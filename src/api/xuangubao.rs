@@ -1,0 +1,146 @@
+use anyhow::Result;
+use serde::Deserialize;
+
+const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PlateReason {
+    pub plate_id: i64,
+    pub plate_name: String,
+    pub plate_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SurgeReason {
+    pub symbol: String,
+    pub stock_reason: String,
+    pub related_plates: Vec<PlateReason>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LimitTimelineItem {
+    pub timestamp: i64,
+    pub status: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct LimitTimeline {
+    pub items: Vec<LimitTimelineItem>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Stock {
+    pub symbol: String,
+    pub stock_chi_name: String,
+    pub price: f64,
+    pub change_percent: f64,
+    pub limit_up_days: u32,
+    pub first_limit_up: i64,
+    pub last_limit_up: i64,
+    pub break_limit_up_times: u32,
+    pub first_break_limit_up: i64,
+    pub last_break_limit_up: i64,
+    pub limit_down_days: u32,
+    pub first_limit_down: i64,
+    pub last_limit_down: i64,
+    pub break_limit_down_times: u32,
+    pub first_break_limit_down: i64,
+    pub last_break_limit_down: i64,
+    pub yesterday_first_limit_up: i64,
+    pub yesterday_last_limit_up: i64,
+    pub yesterday_break_limit_up_times: u32,
+    pub yesterday_limit_up_days: u32,
+    pub yesterday_limit_down_days: u32,
+    pub non_restricted_capital: f64,
+    pub total_capital: f64,
+    pub turnover_ratio: f64,
+    pub volume_bias_ratio: f64,
+    pub buy_lock_volume_ratio: f64,
+    pub sell_lock_volume_ratio: f64,
+    pub stock_type: i32,
+    pub is_new_stock: bool,
+    pub issue_price: f64,
+    pub listed_date: i64,
+    pub surge_reason: Option<SurgeReason>,
+    pub limit_timeline: LimitTimeline,
+    pub mtm: f64,
+    pub m_days_n_boards_boards: u32,
+    pub m_days_n_boards_days: u32,
+    pub nearly_new_acc_pcp: f64,
+    pub nearly_new_break_days: u32,
+    pub new_stock_acc_pcp: f64,
+    pub new_stock_break_limit_up: u32,
+    pub new_stock_limit_up_days: u32,
+    pub new_stock_limit_up_price_before_broken: f64,
+}
+
+// ✅ 正确的结构，data 直接是 Vec<Stock>
+#[derive(Deserialize)]
+struct ApiResponse<T> {
+    code: i32,
+    data: T,
+}
+
+#[derive(Debug, Clone)]
+pub struct MarketOverview {
+    pub limit_up_count: u32,
+    pub limit_down_count: u32,
+    pub rise_count: u32,
+    pub fall_count: u32,
+    pub bomb_rate: f64, // 炸板率 = 炸板数 / (涨停+炸板)
+}
+
+pub struct XuanguBaoClient {
+    client: reqwest::Client,
+}
+
+impl XuanguBaoClient {
+    pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+            .build()
+            .unwrap();
+        Self { client }
+    }
+
+    async fn fetch_pool(&self, pool_name: &str) -> Result<Vec<Stock>> {
+        let url = format!("{BASE_URL}/pool/detail?pool_name={pool_name}");
+
+        let resp: ApiResponse<Vec<Stock>> = self.client.get(&url).send().await?.json().await?;
+
+        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+        Ok(resp.data)
+    }
+
+    pub async fn fetch_limit_up(&self) -> Result<Vec<Stock>> {
+        let url = format!("{BASE_URL}/pool/detail?pool_name=limit_up");
+        // 直接用 ApiResponse<Vec<Stock>>
+        self.fetch_pool(&url).await
+    }
+
+    pub async fn fetch_limit_down(&self) -> Result<Vec<Stock>> {
+        self.fetch_pool("limit_down").await
+    }
+
+    pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
+        let fields = "rise_count,fall_count,limit_up_count,limit_down_count";
+        let url = format!("{BASE_URL}/market_indicator/line?fields={fields}");
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+
+        // 取最新一条数据
+        let latest = &resp["data"]["items"]
+            .as_array()
+            .and_then(|a| a.last())
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(MarketOverview {
+            rise_count: latest["rise_count"].as_u64().unwrap_or(0) as u32,
+            fall_count: latest["fall_count"].as_u64().unwrap_or(0) as u32,
+            limit_up_count: latest["limit_up_count"].as_u64().unwrap_or(0) as u32,
+            limit_down_count: latest["limit_down_count"].as_u64().unwrap_or(0) as u32,
+            bomb_rate: 0.0, // 可后续计算
+        })
+    }
+}
