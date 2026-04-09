@@ -36,7 +36,7 @@ impl LlmClient {
         Self {
             client: reqwest::Client::new(),
             api_key,
-            model: "deepseek/deepseek-chat".to_string(), // 改成你的 model
+            model: "nvidia/nemotron-3-super-120b-a12b:free".to_string(), // 改成你的 model
         }
     }
 
