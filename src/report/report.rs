@@ -4,7 +4,7 @@ use std::io::Write;
 
 use chrono::Local;
 
-use crate::api::jiuyangongshe::FieldPlate;
+use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, Stock};
 use crate::roles::analyst::Role;
 
@@ -24,8 +24,10 @@ pub struct Report {
     pub date: String,
     pub overview: MarketOverview,
     pub limit_up: Vec<Stock>,
-    /// 九言公社异动数据（按板块分组）
+    /// 韭研公社异动数据（按板块分组）
     pub field_items: Vec<FieldPlate>,
+    /// 韭研公社时间线数据（按日期分组）
+    pub timeline: Vec<TimelineDay>,
     pub analyses: Vec<RoleAnalysis>,
 }
 
@@ -34,6 +36,7 @@ impl Report {
         overview: MarketOverview,
         limit_up: Vec<Stock>,
         field_items: Vec<FieldPlate>,
+        timeline: Vec<TimelineDay>,
         analyses: Vec<RoleAnalysis>,
     ) -> Self {
         Self {
@@ -41,6 +44,7 @@ impl Report {
             overview,
             limit_up,
             field_items,
+            timeline,
             analyses,
         }
     }
@@ -113,8 +117,11 @@ impl Report {
         // 涨停股明细
         self.render_limit_up_table(&mut out);
 
-        // 九言公社异动
+        // 韭研公社异动
         self.render_field_table(&mut out);
+
+        // 韭研公社时间线
+        self.render_timeline(&mut out);
 
         // 各角色
         for analysis in &self.analyses {
@@ -306,14 +313,14 @@ impl Report {
         writeln!(out).unwrap();
     }
 
-    // ─── 渲染九言公社异动 Markdown 表格（按板块分组）──────────
+    // ─── 渲染韭研公社异动 Markdown 表格（按板块分组）──────────
 
     fn render_field_table(&self, out: &mut String) {
         if self.field_items.is_empty() {
             return;
         }
 
-        writeln!(out, "## 九言公社异动").unwrap();
+        writeln!(out, "## 韭研公社异动").unwrap();
 
         for plate in &self.field_items {
             // 板块标题 + 异动原因
@@ -346,6 +353,62 @@ impl Report {
                     time, stock.code, stock.name, num, desc
                 )
                 .unwrap();
+            }
+
+            writeln!(out).unwrap();
+        }
+    }
+
+    // ─── 渲染韭研公社时间线 Markdown ─────────────────────────────
+
+    fn render_timeline(&self, out: &mut String) {
+        if self.timeline.is_empty() {
+            return;
+        }
+
+        writeln!(out, "## 时间线").unwrap();
+
+        // 全部数据（按日期倒序）
+        for day in self.timeline.iter().rev() {
+            if day.list.is_empty() {
+                continue;
+            }
+
+            writeln!(out, "### {}", day.date).unwrap();
+            writeln!(out).unwrap();
+
+            // 按 grade 分组显示
+            for item in &day.list {
+                let grade_emoji = match item.timeline.grade {
+                    5 => "⭐",
+                    6 => "🌟",
+                    _ => "•",
+                };
+
+                // 提取主题标签
+                let tags: Vec<&str> = item
+                    .timeline
+                    .theme_list
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect();
+                let tag_str = if tags.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", tags.join(", "))
+                };
+
+                // 内容摘要（不截断，完整显示）
+                let content_preview = if !item.content.is_empty() && item.content != " " {
+                    Some(item.content.replace('\n', " "))
+                } else {
+                    None
+                };
+
+                writeln!(out, "- {} **{}**{}", grade_emoji, item.title, tag_str).unwrap();
+                if let Some(content) = content_preview {
+                    writeln!(out, "  - {}", content).unwrap();
+                }
             }
 
             writeln!(out).unwrap();

@@ -3,6 +3,10 @@ name = "trending-agent"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "trending-agent"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "cookies"] }
@@ -12,3 +16,4 @@ anyhow = "1"
 chrono = "0.4"
 futures = "0.3"
 dotenvy = "0.15"
+clap = { version = "4", features = ["derive"] }

@@ -5,3 +5,5 @@ jiuyan_res.json
 pre-commit-usage.md
 reports/
 .qwen/
+jiuyan_api.md
+tests/

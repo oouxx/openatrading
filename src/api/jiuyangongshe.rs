@@ -73,6 +73,111 @@ pub struct FieldPlate {
 /// action/field 接口返回的数据结构（data 数组里的每个元素）
 pub type FieldData = Vec<FieldPlate>;
 
+// ─── Timeline 时间线数据 ───────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimelineUser {
+    pub user_id: String,
+    pub nickname: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimelineTheme {
+    #[serde(rename = "timeline_theme_id")]
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimelineInfo {
+    #[serde(rename = "article_id")]
+    pub article_id: String,
+    #[serde(rename = "timeline_id")]
+    pub timeline_id: String,
+    pub date: String,
+    pub grade: i32,
+    pub source: String,
+    #[serde(rename = "create_time")]
+    pub create_time: String,
+    #[serde(default)]
+    pub theme_list: Vec<TimelineTheme>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimelineItem {
+    #[serde(rename = "article_id")]
+    pub article_id: String,
+    #[serde(rename = "user_id")]
+    pub user_id: String,
+    pub title: String,
+    pub content: String,
+    #[serde(rename = "like_count")]
+    pub like_count: i32,
+    #[serde(rename = "comment_count")]
+    pub comment_count: i32,
+    #[serde(rename = "forward_count")]
+    pub forward_count: i32,
+    pub user: TimelineUser,
+    pub timeline: TimelineInfo,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimelineDay {
+    pub date: String,
+    pub list: Vec<TimelineItem>,
+}
+
+pub type TimelineData = Vec<TimelineDay>;
+
+// ─── 社群文章数据 ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommunityUser {
+    pub user_id: String,
+    pub nickname: String,
+    pub avatar: Option<String>,
+    pub style_str: Option<String>,
+    #[serde(default)]
+    pub medal_count: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommunityStock {
+    pub stock_id: String,
+    pub name: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommunityArticle {
+    pub article_id: String,
+    pub is_top: i32,
+    pub user_id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub cover: Option<String>,
+    #[serde(rename = "type")]
+    pub article_type: i32,
+    pub comment_count: i32,
+    pub collect_count: i32,
+    pub like_count: i32,
+    pub forward_count: i32,
+    pub create_time: String,
+    pub content: Option<String>,
+    pub user: CommunityUser,
+    #[serde(default)]
+    pub stock_list: Vec<CommunityStock>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommunityData {
+    pub result: Vec<CommunityArticle>,
+    #[serde(rename = "pageNo")]
+    pub page_no: i32,
+    #[serde(rename = "pageSize")]
+    pub page_size: i32,
+}
+
 // ─── 会话管理器 ───────────────────────────────────────────────
 
 struct InnerSession {
@@ -339,11 +444,82 @@ impl JiuYanSession {
 
         Ok(data)
     }
-}
 
-impl Default for JiuYanSession {
-    fn default() -> Self {
-        Self::new()
+    /// 获取时间线数据（timeline/list 接口）
+    pub async fn fetch_timeline(&self, year_month: &str) -> Result<TimelineData> {
+        #[derive(Serialize)]
+        struct TimelineReq {
+            date: String,
+        }
+
+        let body = TimelineReq {
+            date: year_month.to_string(),
+        };
+
+        let resp: serde_json::Value = self.post("/timeline/list", &body).await?;
+
+        if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
+            if err_code != "0" {
+                anyhow::bail!(
+                    "timeline/list 请求失败: errCode={}, msg={}",
+                    err_code,
+                    resp["msg"]
+                );
+            }
+        }
+
+        let data: TimelineData =
+            serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
+                .context("解析 timeline 数据失败")?;
+
+        Ok(data)
+    }
+
+    /// 获取社群文章数据（article/community 接口）
+    pub async fn fetch_community(
+        &self,
+        category_id: &str,
+        article_type: i32,
+        page_no: i32,
+        page_size: i32,
+    ) -> Result<CommunityData> {
+        #[derive(Serialize)]
+        struct CommunityReq {
+            category_id: String,
+            #[serde(rename = "type")]
+            r#type: i32,
+            limit: i32,
+            order: i32,
+            start: i32,
+            back_garden: i32,
+        }
+
+        let body = CommunityReq {
+            category_id: category_id.to_string(),
+            r#type: article_type,
+            limit: page_size,
+            order: 1,
+            start: page_no,
+            back_garden: 0,
+        };
+
+        let resp: serde_json::Value = self.post("/article/community", &body).await?;
+
+        if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
+            if err_code != "0" {
+                anyhow::bail!(
+                    "article/community 请求失败: errCode={}, msg={}",
+                    err_code,
+                    resp["msg"]
+                );
+            }
+        }
+
+        let data: CommunityData =
+            serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
+                .context("解析社群文章数据失败")?;
+
+        Ok(data)
     }
 }
 
