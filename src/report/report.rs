@@ -2,11 +2,13 @@ use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::io::Write;
 
+use askama::Template;
 use chrono::Local;
 
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
 use crate::roles::analyst::Role;
+use crate::templates::{ReportHtmlTemplate, ReportMdTemplate};
 
 // ─── 单个角色的分析结果 ───────────────────────────────────────
 
@@ -19,7 +21,7 @@ pub struct RoleAnalysis {
 
 // ─── 完整报告数据 ─────────────────────────────────────────────
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Report {
     pub date: String,
     pub overview: MarketOverview,
@@ -87,61 +89,31 @@ impl Report {
     // ─── 渲染成 Markdown（存文件 / 推送用）────────────────────
 
     pub fn render_markdown(&self) -> String {
-        let mut out = String::new();
+        let template = ReportMdTemplate::from_report(
+            &self.date,
+            &self.overview,
+            &self.limit_up,
+            &self.plate_abnormal,
+            &self.field_items,
+            &self.timeline,
+            &self.analyses,
+        );
+        template.render().unwrap()
+    }
 
-        writeln!(out, "# 📊 A股市场 AI 分析报告").unwrap();
-        writeln!(out, "> 生成时间：{}", self.date).unwrap();
-        writeln!(out).unwrap();
+    // ─── 渲染成 HTML（网页展示用）──────────────────────────────
 
-        // 市场概览
-        writeln!(out, "## 市场概览").unwrap();
-        writeln!(out, "| 指标 | 数值 |").unwrap();
-        writeln!(out, "|------|------|").unwrap();
-        writeln!(out, "| 上涨家数 | {} |", self.overview.rise_count).unwrap();
-        writeln!(out, "| 下跌家数 | {} |", self.overview.fall_count).unwrap();
-        writeln!(out, "| 涨停家数 | {} |", self.overview.limit_up_count).unwrap();
-        writeln!(out, "| 跌停家数 | {} |", self.overview.limit_down_count).unwrap();
-        writeln!(out, "| 炸板率 | {} |", self.overview.bomb_rate).unwrap();
-        writeln!(
-            out,
-            "| 涨跌比 | {:.2} |",
-            self.overview.rise_count as f64 / self.overview.fall_count.max(1) as f64
-        )
-        .unwrap();
-        writeln!(out).unwrap();
-
-        // 连板结构
-        writeln!(out, "## 连板高度分布").unwrap();
-        let board_map = self.calc_board_distribution();
-        for (boards, count) in &board_map {
-            writeln!(out, "- {}板：{}家", boards, count).unwrap();
-        }
-        writeln!(out).unwrap();
-
-        // 涨停股明细
-        self.render_limit_up_table(&mut out);
-
-        // 选股宝板块异动
-        self.render_plate_abnormal(&mut out);
-
-        // 韭研公社异动
-        self.render_field_table(&mut out);
-
-        // 韭研公社时间线
-        self.render_timeline(&mut out);
-
-        // 各角色
-        for analysis in &self.analyses {
-            writeln!(out, "## {} 视角", analysis.role.name()).unwrap();
-            writeln!(out, "{}", analysis.content).unwrap();
-            writeln!(out, "> 响应耗时：{}ms", analysis.elapsed_ms).unwrap();
-            writeln!(out).unwrap();
-        }
-
-        writeln!(out, "---").unwrap();
-        writeln!(out, "> ⚠️ AI 生成内容，仅供参考，不构成投资建议").unwrap();
-
-        out
+    pub fn render_html(&self) -> String {
+        let template = ReportHtmlTemplate::from_report(
+            &self.date,
+            &self.overview,
+            &self.limit_up,
+            &self.plate_abnormal,
+            &self.field_items,
+            &self.timeline,
+            &self.analyses,
+        );
+        template.render().unwrap()
     }
 
     // ─── 内部渲染辅助方法 ─────────────────────────────────────
@@ -595,6 +567,14 @@ impl Reporter {
         let filename = format!("{}/report_{}.md", dir, Local::now().format("%Y%m%d_%H%M"));
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_markdown())?;
+        Ok(filename)
+    }
+
+    /// 写入 HTML 文件
+    pub fn save_html(&self, dir: &str) -> anyhow::Result<String> {
+        let filename = format!("{}/report_{}.html", dir, Local::now().format("%Y%m%d_%H%M"));
+        fs::create_dir_all(dir)?;
+        fs::write(&filename, self.report.render_html())?;
         Ok(filename)
     }
 

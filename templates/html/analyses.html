@@ -1,0 +1,7 @@
+{% if analyses.len() > 0 %}
+{% for analysis in analyses %}
+    <h2>{{ analysis.role_name }} 视角</h2>
+    <p>{{ analysis.content | safe }}</p>
+    <p><em>响应耗时：{{ analysis.elapsed_ms }}ms</em></p>
+{% endfor %}
+{% endif %}

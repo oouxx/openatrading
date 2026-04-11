@@ -8,6 +8,7 @@ use crate::api::Client;
 use crate::llm::openrouter::LlmClient;
 use crate::report::report::{Report, Reporter, RoleAnalysis};
 use crate::roles::analyst::{build_prompt, Role};
+use crate::web::{start_web_server, WebState};
 
 pub async fn run() -> Result<()> {
     dotenvy::dotenv().ok();
@@ -17,22 +18,53 @@ pub async fn run() -> Result<()> {
     let client = Client::new();
 
     match cli.command {
-        Some(Commands::LimitUp) => run_limit_up(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::LimitDown) => run_limit_down(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::Overview) => run_overview(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::PlateAbnormal) => {
-            run_plate_abnormal(client, &cli.output, api_key.as_ref()).await?
+        Some(Commands::LimitUp(opts)) => {
+            run_limit_up(client, &opts.output, &opts.format, api_key.as_ref()).await?
         }
-        Some(Commands::Field) => run_field(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::Timeline) => run_timeline(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::Community) => run_community(client, &cli.output, api_key.as_ref()).await?,
-        Some(Commands::Run) | None => run_all(client, &cli, api_key).await?,
+        Some(Commands::LimitDown(opts)) => {
+            run_limit_down(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::Overview(opts)) => {
+            run_overview(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::PlateAbnormal(opts)) => {
+            run_plate_abnormal(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::Field(opts)) => {
+            run_field(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::Timeline(opts)) => {
+            run_timeline(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::Community(opts)) => {
+            run_community(client, &opts.output, &opts.format, api_key.as_ref()).await?
+        }
+        Some(Commands::Run(opts)) => run_all(client, opts, api_key).await?,
+        None => {
+            run_all(
+                client,
+                app::RunOpts {
+                    ai: false,
+                    format: "markdown".to_string(),
+                    output: "./reports".to_string(),
+                    web: false,
+                    port: 8080,
+                },
+                api_key,
+            )
+            .await?
+        }
     }
 
     Ok(())
 }
 
-async fn run_limit_up(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_limit_up(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     println!("📡 拉取涨停数据...");
     let (limit_up, overview) = tokio::join!(
         client.xuangubao.fetch_limit_up(),
@@ -50,7 +82,7 @@ async fn run_limit_up(client: Client, output: &str, api_key: Option<&String>) ->
         vec![],
         vec![ra()],
     );
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -59,7 +91,12 @@ async fn run_limit_up(client: Client, output: &str, api_key: Option<&String>) ->
     Ok(())
 }
 
-async fn run_limit_down(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_limit_down(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     println!("📡 拉取跌停数据...");
     let (limit_down, overview) = tokio::join!(
         client.xuangubao.fetch_limit_down(),
@@ -70,7 +107,7 @@ async fn run_limit_down(client: Client, output: &str, api_key: Option<&String>) 
     println!("✅ 跌停: {} 只", limit_down.len());
 
     let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -79,7 +116,12 @@ async fn run_limit_down(client: Client, output: &str, api_key: Option<&String>) 
     Ok(())
 }
 
-async fn run_overview(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_overview(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     println!("📡 拉取市场概览...");
     let overview = client.xuangubao.fetch_market_overview().await?;
     println!(
@@ -92,7 +134,7 @@ async fn run_overview(client: Client, output: &str, api_key: Option<&String>) ->
     );
 
     let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -101,7 +143,12 @@ async fn run_overview(client: Client, output: &str, api_key: Option<&String>) ->
     Ok(())
 }
 
-async fn run_plate_abnormal(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_plate_abnormal(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     println!("📡 拉取板块异动...");
 
     let (plate_abnormal, overview) = tokio::join!(
@@ -121,7 +168,7 @@ async fn run_plate_abnormal(client: Client, output: &str, api_key: Option<&Strin
         vec![],
         vec![ra()],
     );
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -130,7 +177,12 @@ async fn run_plate_abnormal(client: Client, output: &str, api_key: Option<&Strin
     Ok(())
 }
 
-async fn run_field(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_field(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     println!("📡 拉取异动数据...");
 
@@ -156,7 +208,7 @@ async fn run_field(client: Client, output: &str, api_key: Option<&String>) -> Re
         vec![],
         vec![ra()],
     );
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -165,7 +217,12 @@ async fn run_field(client: Client, output: &str, api_key: Option<&String>) -> Re
     Ok(())
 }
 
-async fn run_timeline(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_timeline(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     let this_month = chrono::Local::now().format("%Y-%m").to_string();
     println!("📡 拉取时间线数据...");
 
@@ -186,7 +243,7 @@ async fn run_timeline(client: Client, output: &str, api_key: Option<&String>) ->
         timeline,
         vec![ra()],
     );
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -195,7 +252,12 @@ async fn run_timeline(client: Client, output: &str, api_key: Option<&String>) ->
     Ok(())
 }
 
-async fn run_community(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+async fn run_community(
+    client: Client,
+    output: &str,
+    format: &str,
+    api_key: Option<&String>,
+) -> Result<()> {
     println!("📡 拉取社群文章...");
 
     let (community_result, overview) = tokio::join!(
@@ -208,7 +270,7 @@ async fn run_community(client: Client, output: &str, api_key: Option<&String>) -
     println!("✅ 社群文章: {} 篇", community.result.len());
 
     let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
-    save_report(report, output)?;
+    save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
         run_ai(key.to_string(), &overview, &vec![]).await;
@@ -217,7 +279,9 @@ async fn run_community(client: Client, output: &str, api_key: Option<&String>) -
     Ok(())
 }
 
-async fn run_all(client: Client, cli: &Cli, api_key: Option<String>) -> Result<()> {
+use app::RunOpts;
+
+async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Result<()> {
     println!("📡 拉取选股宝数据...");
 
     let (limit_up, limit_down, overview) = tokio::join!(
@@ -276,10 +340,19 @@ async fn run_all(client: Client, cli: &Cli, api_key: Option<String>) -> Result<(
         timeline,
         vec![ra()],
     );
-    let path = save_report(report, &cli.output)?;
+
+    // 保存报告
+    let path = save_report_formatted(&report, &opts.output, &opts.format)?;
     println!("✅ 报告已保存: {}", path);
 
-    if cli.ai {
+    // 启动 Web UI
+    if opts.web {
+        let state = WebState::new();
+        state.set_report(report).await;
+        start_web_server(opts.port, state).await;
+    }
+
+    if opts.ai {
         if let Some(key) = api_key {
             run_ai(key, &overview, &limit_up).await;
         } else {
@@ -337,7 +410,17 @@ fn ra() -> RoleAnalysis {
     }
 }
 
-fn save_report(report: Report, output: &str) -> Result<String> {
-    let reporter = Reporter::new(report);
-    reporter.save_markdown(output)
+fn save_report_formatted(report: &Report, output: &str, format: &str) -> Result<String> {
+    let reporter = Reporter::new(report.clone());
+
+    match format {
+        "markdown" => reporter.save_markdown(output),
+        "html" => reporter.save_html(output),
+        "both" => {
+            let md_path = reporter.save_markdown(output)?;
+            let html_path = reporter.save_html(output)?;
+            Ok(format!("{}\n{}", md_path, html_path))
+        }
+        _ => reporter.save_markdown(output),
+    }
 }

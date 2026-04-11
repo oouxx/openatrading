@@ -1,0 +1,23 @@
+{% if plates.len() > 0 %}
+<h2>韭研公社异动</h2>
+{% for plate in plates %}
+    <h3>{{ plate.name }}（{{ plate.count }}只）</h3>
+    {% if plate.reason != "" %}
+    <blockquote>{{ plate.reason }}</blockquote>
+    {% endif %}
+    {% if plate.stocks.len() > 0 %}
+    <table>
+        <tr><th>时间</th><th>代码</th><th>名称</th><th>连板</th><th>异动理由</th></tr>
+        {% for stock in plate.stocks %}
+        <tr>
+            <td>{{ stock.time }}</td>
+            <td>{{ stock.code }}</td>
+            <td>{{ stock.name }}</td>
+            <td>{{ stock.num }}</td>
+            <td>{{ stock.desc | safe }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+{% endfor %}
+{% endif %}

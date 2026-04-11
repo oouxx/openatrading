@@ -3,6 +3,8 @@ mod cli;
 mod llm;
 mod report;
 mod roles;
+mod templates;
+mod web;
 
 use anyhow::Result;
 

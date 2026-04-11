@@ -21,3 +21,5 @@ chrono = "0.4"
 futures = "0.3"
 dotenvy = "0.15"
 clap = { version = "4", features = ["derive"] }
+askama = "0.15"
+axum = "0.7"

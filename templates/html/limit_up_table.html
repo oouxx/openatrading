@@ -1,0 +1,18 @@
+{% if stocks.len() > 0 %}
+<h2>涨停股明细</h2>
+<table>
+    <tr><th>代码</th><th>名称</th><th>连板数</th><th>涨跌幅%</th><th>换手率%</th><th>涨停原因</th><th>炸板次数</th><th>流通市值(亿)</th></tr>
+{% for stock in stocks %}
+    <tr>
+        <td>{{ stock.symbol }}</td>
+        <td>{{ stock.name }}</td>
+        <td>{{ stock.days }}板</td>
+        <td>{{ stock.change_percent }}</td>
+        <td>{{ stock.turnover }}</td>
+        <td>{{ stock.reason }}</td>
+        <td>{{ stock.bomb }}</td>
+        <td>{{ stock.capital }}</td>
+    </tr>
+{% endfor %}
+</table>
+{% endif %}

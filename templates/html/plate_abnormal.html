@@ -1,0 +1,30 @@
+{% if events_by_time.keys().len() > 0 %}
+<h2>板块异动</h2>
+
+<h3>涨跌分布</h3>
+<pre class="mermaid">
+pie title 板块涨跌
+    上涨 : {{ rise_count }}
+    下跌 : {{ fall_count }}
+</pre>
+
+<h3>按时间排序</h3>
+{% for (datetime, events) in events_by_time %}
+    <h4>{{ datetime }}</h4>
+    {% for event in events %}
+        <h5>{{ event.plate_name }}</h5>
+        <ul>
+            <li>涨跌幅: {{ event.pcp }}</li>
+            {% if event.related_stocks.len() > 0 %}
+            <li>关联股票:
+                <ul>
+                {% for stock in event.related_stocks %}
+                    <li>{{ stock.name }} ({{ stock.pcp }})</li>
+                {% endfor %}
+                </ul>
+            </li>
+            {% endif %}
+        </ul>
+    {% endfor %}
+{% endfor %}
+{% endif %}
