@@ -367,17 +367,44 @@ impl Report {
         }
 
         writeln!(out, "## 时间线").unwrap();
+        writeln!(out).unwrap();
 
-        // 全部数据（按日期倒序）
+        // Mermaid 甘特图
+        writeln!(out, "### 事件分布").unwrap();
+        writeln!(out, "```mermaid").unwrap();
+        writeln!(out, "gantt").unwrap();
+        writeln!(out, "    title 时间线事件").unwrap();
+        writeln!(out, "    dateFormat YYYY-MM-DD").unwrap();
+        writeln!(out).unwrap();
+
+        for day in self.timeline.iter().rev() {
+            if day.list.is_empty() {
+                continue;
+            }
+            for item in &day.list {
+                let title = item.title.clone();
+                let grade = match item.timeline.grade {
+                    5 => "⭐",
+                    6 => "🌟",
+                    _ => "•",
+                };
+                writeln!(out, "    {} {} :crit, {}, 1d", grade, title, day.date).unwrap();
+            }
+        }
+
+        writeln!(out, "```").unwrap();
+        writeln!(out).unwrap();
+
+        // 详细列表
+        writeln!(out, "### 详细事件").unwrap();
         for day in self.timeline.iter().rev() {
             if day.list.is_empty() {
                 continue;
             }
 
-            writeln!(out, "### {}", day.date).unwrap();
+            writeln!(out, "#### {}", day.date).unwrap();
             writeln!(out).unwrap();
 
-            // 按 grade 分组显示
             for item in &day.list {
                 let grade_emoji = match item.timeline.grade {
                     5 => "⭐",
@@ -385,7 +412,6 @@ impl Report {
                     _ => "•",
                 };
 
-                // 提取主题标签
                 let tags: Vec<&str> = item
                     .timeline
                     .theme_list
@@ -398,7 +424,6 @@ impl Report {
                     format!(" [{}]", tags.join(", "))
                 };
 
-                // 内容摘要（不截断，完整显示）
                 let content_preview = if !item.content.is_empty() && item.content != " " {
                     Some(item.content.replace('\n', " "))
                 } else {
