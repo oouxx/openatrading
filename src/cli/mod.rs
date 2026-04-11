@@ -20,6 +20,9 @@ pub async fn run() -> Result<()> {
         Some(Commands::LimitUp) => run_limit_up(client, &cli.output, api_key.as_ref()).await?,
         Some(Commands::LimitDown) => run_limit_down(client, &cli.output, api_key.as_ref()).await?,
         Some(Commands::Overview) => run_overview(client, &cli.output, api_key.as_ref()).await?,
+        Some(Commands::PlateAbnormal) => {
+            run_plate_abnormal(client, &cli.output, api_key.as_ref()).await?
+        }
         Some(Commands::Field) => run_field(client, &cli.output, api_key.as_ref()).await?,
         Some(Commands::Timeline) => run_timeline(client, &cli.output, api_key.as_ref()).await?,
         Some(Commands::Community) => run_community(client, &cli.output, api_key.as_ref()).await?,
@@ -39,7 +42,14 @@ async fn run_limit_up(client: Client, output: &str, api_key: Option<&String>) ->
     let overview = overview?;
     println!("✅ 涨停: {} 只", limit_up.len());
 
-    let report = Report::new(overview.clone(), limit_up, vec![], vec![], vec![ra()]);
+    let report = Report::new(
+        overview.clone(),
+        limit_up,
+        vec![],
+        vec![],
+        vec![],
+        vec![ra()],
+    );
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -59,7 +69,7 @@ async fn run_limit_down(client: Client, output: &str, api_key: Option<&String>) 
     let overview = overview?;
     println!("✅ 跌停: {} 只", limit_down.len());
 
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![ra()]);
+    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -81,7 +91,36 @@ async fn run_overview(client: Client, output: &str, api_key: Option<&String>) ->
         overview.bomb_rate * 100.0
     );
 
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![ra()]);
+    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
+    save_report(report, output)?;
+
+    if let Some(key) = api_key {
+        run_ai(key.to_string(), &overview, &vec![]).await;
+    }
+
+    Ok(())
+}
+
+async fn run_plate_abnormal(client: Client, output: &str, api_key: Option<&String>) -> Result<()> {
+    println!("📡 拉取板块异动...");
+
+    let (plate_abnormal, overview) = tokio::join!(
+        client.xuangubao.fetch_plate_abnormal(30),
+        client.xuangubao.fetch_market_overview(),
+    );
+
+    let plate_abnormal = plate_abnormal?;
+    let overview = overview?;
+    println!("✅ 板块异动: {} 个板块", plate_abnormal.len());
+
+    let report = Report::new(
+        overview.clone(),
+        vec![],
+        plate_abnormal,
+        vec![],
+        vec![],
+        vec![ra()],
+    );
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -109,7 +148,14 @@ async fn run_field(client: Client, output: &str, api_key: Option<&String>) -> Re
         total
     );
 
-    let report = Report::new(overview.clone(), vec![], field_items, vec![], vec![ra()]);
+    let report = Report::new(
+        overview.clone(),
+        vec![],
+        vec![],
+        field_items,
+        vec![],
+        vec![ra()],
+    );
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -132,7 +178,14 @@ async fn run_timeline(client: Client, output: &str, api_key: Option<&String>) ->
     let overview = overview?;
     println!("✅ 时间线数据: {} 天", timeline.len());
 
-    let report = Report::new(overview.clone(), vec![], vec![], timeline, vec![ra()]);
+    let report = Report::new(
+        overview.clone(),
+        vec![],
+        vec![],
+        vec![],
+        timeline,
+        vec![ra()],
+    );
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -154,7 +207,7 @@ async fn run_community(client: Client, output: &str, api_key: Option<&String>) -
     let overview = overview?;
     println!("✅ 社群文章: {} 篇", community.result.len());
 
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![ra()]);
+    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
     save_report(report, output)?;
 
     if let Some(key) = api_key {
@@ -218,6 +271,7 @@ async fn run_all(client: Client, cli: &Cli, api_key: Option<String>) -> Result<(
     let report = Report::new(
         overview.clone(),
         limit_up.clone(),
+        vec![],
         field_items,
         timeline,
         vec![ra()],

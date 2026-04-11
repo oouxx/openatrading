@@ -5,7 +5,7 @@ use std::io::Write;
 use chrono::Local;
 
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
-use crate::api::xuangubao::{MarketOverview, Stock};
+use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
 use crate::roles::analyst::Role;
 
 // ─── 单个角色的分析结果 ───────────────────────────────────────
@@ -24,6 +24,8 @@ pub struct Report {
     pub date: String,
     pub overview: MarketOverview,
     pub limit_up: Vec<Stock>,
+    /// 选股宝板块异动数据
+    pub plate_abnormal: Vec<PlateAbnormalEvent>,
     /// 韭研公社异动数据（按板块分组）
     pub field_items: Vec<FieldPlate>,
     /// 韭研公社时间线数据（按日期分组）
@@ -35,6 +37,7 @@ impl Report {
     pub fn new(
         overview: MarketOverview,
         limit_up: Vec<Stock>,
+        plate_abnormal: Vec<PlateAbnormalEvent>,
         field_items: Vec<FieldPlate>,
         timeline: Vec<TimelineDay>,
         analyses: Vec<RoleAnalysis>,
@@ -43,6 +46,7 @@ impl Report {
             date: Local::now().format("%Y-%m-%d %H:%M").to_string(),
             overview,
             limit_up,
+            plate_abnormal,
             field_items,
             timeline,
             analyses,
@@ -116,6 +120,9 @@ impl Report {
 
         // 涨停股明细
         self.render_limit_up_table(&mut out);
+
+        // 选股宝板块异动
+        self.render_plate_abnormal(&mut out);
 
         // 韭研公社异动
         self.render_field_table(&mut out);
@@ -308,6 +315,87 @@ impl Report {
                 s.total_capital / 1e8,
             )
             .unwrap();
+        }
+
+        writeln!(out).unwrap();
+    }
+
+    // ─── 渲染选股宝板块异动 Markdown ─────────────────────────────
+
+    fn render_plate_abnormal(&self, out: &mut String) {
+        if self.plate_abnormal.is_empty() {
+            return;
+        }
+
+        writeln!(out, "## 板块异动").unwrap();
+        writeln!(out).unwrap();
+
+        // Mermaid 饼图
+        writeln!(out, "### 涨跌分布").unwrap();
+        writeln!(out, "```mermaid").unwrap();
+        writeln!(out, "pie title 板块涨跌").unwrap();
+
+        let mut rise_count = 0;
+        let mut fall_count = 0;
+        for event in &self.plate_abnormal {
+            if let Some(d) = &event.plate_abnormal_event_data {
+                if let Some(pcp) = d.pcp {
+                    if pcp > 0.0 {
+                        rise_count += 1;
+                    } else {
+                        fall_count += 1;
+                    }
+                }
+            }
+        }
+        writeln!(out, "    上涨 : {}", rise_count).unwrap();
+        writeln!(out, "    下跌 : {}", fall_count).unwrap();
+        writeln!(out, "```").unwrap();
+        writeln!(out).unwrap();
+
+        // 按事件时间分组渲染
+        writeln!(out, "### 按时间排序").unwrap();
+
+        // 按时间戳倒序分组
+        let mut events_by_time: std::collections::BTreeMap<String, Vec<&PlateAbnormalEvent>> =
+            Default::default();
+        for event in &self.plate_abnormal {
+            let ts = event.event_timestamp;
+            let datetime = chrono::DateTime::from_timestamp(ts, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| ts.to_string());
+            events_by_time.entry(datetime).or_default().push(event);
+        }
+
+        for (datetime, events) in events_by_time.iter().rev() {
+            writeln!(out, "#### {}", datetime).unwrap();
+            writeln!(out).unwrap();
+
+            for event in events {
+                let plate_data = match &event.plate_abnormal_event_data {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                let plate_name = plate_data.plate_name.as_deref().unwrap_or("-");
+                let pcp = plate_data
+                    .pcp
+                    .map(|p| format!("{:+.1}%", p * 100.0))
+                    .unwrap_or_else(|| "-".to_string());
+
+                writeln!(out, "##### {}", plate_name).unwrap();
+                writeln!(out, "- 涨跌幅: {}", pcp).unwrap();
+
+                if !plate_data.related_stocks.is_empty() {
+                    writeln!(out, "- 关联股票:").unwrap();
+                    for stock in &plate_data.related_stocks {
+                        let stock_pcp = format!("{:+.1}%", stock.pcp * 100.0);
+                        writeln!(out, "  - {} ({})", stock.name, stock_pcp).unwrap();
+                    }
+                }
+            }
+
+            writeln!(out).unwrap();
         }
 
         writeln!(out).unwrap();

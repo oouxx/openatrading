@@ -24,6 +24,8 @@ pub enum Commands {
     LimitDown,
     /// 获取选股宝市场概览
     Overview,
+    /// 获取选股宝板块异动
+    PlateAbnormal,
     /// 获取韭研公社异动数据
     Field,
     /// 获取韭研公社时间线数据

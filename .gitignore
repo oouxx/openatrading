@@ -7,3 +7,4 @@ reports/
 .qwen/
 jiuyan_api.md
 tests/
+.DS_Store

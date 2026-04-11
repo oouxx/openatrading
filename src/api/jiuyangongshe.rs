@@ -190,6 +190,12 @@ pub struct JiuYanSession {
     client: reqwest::Client,
 }
 
+impl Default for JiuYanSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JiuYanSession {
     pub fn new() -> Self {
         let init_token = std::env::var("JIUYAN_INIT_TOKEN")

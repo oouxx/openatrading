@@ -7,6 +7,10 @@ edition = "2021"
 name = "trending-agent"
 path = "src/main.rs"
 
+[lib]
+name = "trending_agent"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "cookies"] }
