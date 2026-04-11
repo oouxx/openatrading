@@ -1,10 +1,10 @@
 use std::fmt::Write as FmtWrite;
 use std::fs;
-use std::io::{self, Write};
-use std::path::Path;
+use std::io::Write;
 
 use chrono::Local;
 
+use crate::api::jiuyangongshe::FieldPlate;
 use crate::api::xuangubao::{MarketOverview, Stock};
 use crate::roles::analyst::Role;
 
@@ -24,6 +24,8 @@ pub struct Report {
     pub date: String,
     pub overview: MarketOverview,
     pub limit_up: Vec<Stock>,
+    /// 九言公社异动数据（按板块分组）
+    pub field_items: Vec<FieldPlate>,
     pub analyses: Vec<RoleAnalysis>,
 }
 
@@ -31,12 +33,14 @@ impl Report {
     pub fn new(
         overview: MarketOverview,
         limit_up: Vec<Stock>,
+        field_items: Vec<FieldPlate>,
         analyses: Vec<RoleAnalysis>,
     ) -> Self {
         Self {
             date: Local::now().format("%Y-%m-%d %H:%M").to_string(),
             overview,
             limit_up,
+            field_items,
             analyses,
         }
     }
@@ -89,6 +93,7 @@ impl Report {
         writeln!(out, "| 下跌家数 | {} |", self.overview.fall_count).unwrap();
         writeln!(out, "| 涨停家数 | {} |", self.overview.limit_up_count).unwrap();
         writeln!(out, "| 跌停家数 | {} |", self.overview.limit_down_count).unwrap();
+        writeln!(out, "| 炸板率 | {} |", self.overview.bomb_rate).unwrap();
         writeln!(
             out,
             "| 涨跌比 | {:.2} |",
@@ -104,6 +109,12 @@ impl Report {
             writeln!(out, "- {}板：{}家", boards, count).unwrap();
         }
         writeln!(out).unwrap();
+
+        // 涨停股明细
+        self.render_limit_up_table(&mut out);
+
+        // 九言公社异动
+        self.render_field_table(&mut out);
 
         // 各角色
         for analysis in &self.analyses {
@@ -166,7 +177,7 @@ impl Report {
         writeln!(out, "│  连板分布：{}", dist_str.join(" / ")).unwrap();
 
         // 炸板情况
-        let total_bomb: u32 = self.limit_up.iter().map(|s| s.zbc).sum();
+        let total_bomb: u32 = self.limit_up.iter().map(|s| s.break_limit_up_times).sum();
         let bomb_rate =
             total_bomb as f64 / (self.limit_up.len() as f64 + total_bomb as f64) * 100.0;
         writeln!(
@@ -182,8 +193,12 @@ impl Report {
         writeln!(out, "│  热门行业：{}", industries.join(" > ")).unwrap();
 
         // 连板 2+ 龙头列表
-        let mut high: Vec<&Stock> = self.limit_up.iter().filter(|s| s.lbc >= 2).collect();
-        high.sort_by(|a, b| b.lbc.cmp(&a.lbc));
+        let mut high: Vec<&Stock> = self
+            .limit_up
+            .iter()
+            .filter(|s| s.limit_up_days >= 2)
+            .collect();
+        high.sort_by(|a, b| b.limit_up_days.cmp(&a.limit_up_days));
 
         if !high.is_empty() {
             writeln!(out, "│").unwrap();
@@ -192,7 +207,11 @@ impl Report {
                 writeln!(
                     out,
                     "│    {} {} │ {}板 │ 封:{} │ 炸:{}次",
-                    s.dm, s.mc, s.lbc, s.fbt, s.zbc
+                    s.symbol,
+                    s.stock_chi_name,
+                    s.limit_up_days,
+                    s.last_limit_up,
+                    s.break_limit_up_times
                 )
                 .unwrap();
             }
@@ -227,12 +246,118 @@ impl Report {
         writeln!(out).unwrap();
     }
 
+    // ─── 渲染涨停股 Markdown 表格 ─────────────────────────────
+
+    fn render_limit_up_table(&self, out: &mut String) {
+        if self.limit_up.is_empty() {
+            return;
+        }
+
+        writeln!(out, "## 涨停股明细").unwrap();
+        writeln!(
+            out,
+            "| 代码 | 名称 | 连板数 | 涨跌幅% | 换手率% | 涨停原因 | 炸板次数 | 流通市值(亿) |"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "|------|------|--------|---------|---------|----------|----------|--------------|"
+        )
+        .unwrap();
+
+        // 按连板数降序、流通市值降序排序
+        let mut sorted = self.limit_up.clone();
+        sorted.sort_by(|a, b| {
+            b.limit_up_days.cmp(&a.limit_up_days).then(
+                b.total_capital
+                    .partial_cmp(&a.total_capital)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+        });
+
+        for s in &sorted {
+            let reason = s
+                .surge_reason
+                .as_ref()
+                .map(|r| {
+                    r.related_plates
+                        .iter()
+                        .map(|p| p.plate_name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+
+            writeln!(
+                out,
+                "| {} | {} | {}板 | {:.2} | {:.2} | {} | {} | {:.2} |",
+                s.symbol,
+                s.stock_chi_name,
+                s.limit_up_days,
+                s.change_percent,
+                s.turnover_ratio,
+                reason,
+                s.break_limit_up_times,
+                s.total_capital / 1e8,
+            )
+            .unwrap();
+        }
+
+        writeln!(out).unwrap();
+    }
+
+    // ─── 渲染九言公社异动 Markdown 表格（按板块分组）──────────
+
+    fn render_field_table(&self, out: &mut String) {
+        if self.field_items.is_empty() {
+            return;
+        }
+
+        writeln!(out, "## 九言公社异动").unwrap();
+
+        for plate in &self.field_items {
+            // 板块标题 + 异动原因
+            writeln!(out, "### {}（{}只）", plate.name, plate.count).unwrap();
+            if !plate.reason.is_empty() {
+                writeln!(out, "> {}", plate.reason).unwrap();
+            }
+            writeln!(out).unwrap();
+
+            // 该板块异动股票列表
+            if plate.list.is_empty() {
+                continue;
+            }
+
+            writeln!(out, "| 时间 | 代码 | 名称 | 连板 | 异动理由 |").unwrap();
+            writeln!(out, "|------|------|------|------|----------|").unwrap();
+
+            for stock in &plate.list {
+                let action = stock.article.as_ref().and_then(|a| a.action_info.as_ref());
+                let time = action.and_then(|a| a.time.as_deref()).unwrap_or("");
+                let num = action.and_then(|a| a.num.as_deref()).unwrap_or("-");
+                let desc = action
+                    .and_then(|a| a.expound.as_deref())
+                    .unwrap_or("-")
+                    .replace('\n', "<br>");
+
+                writeln!(
+                    out,
+                    "| {} | {} | {} | {} | {} |",
+                    time, stock.code, stock.name, num, desc
+                )
+                .unwrap();
+            }
+
+            writeln!(out).unwrap();
+        }
+    }
+
     // ─── 数据计算辅助 ─────────────────────────────────────────
 
     fn calc_board_distribution(&self) -> Vec<(u32, u32)> {
         let mut map: std::collections::BTreeMap<u32, u32> = Default::default();
         for s in &self.limit_up {
-            *map.entry(s.lbc).or_default() += 1;
+            *map.entry(s.limit_up_days).or_default() += 1;
         }
         // 降序排列（高板在前）
         let mut vec: Vec<(u32, u32)> = map.into_iter().collect();
@@ -243,7 +368,11 @@ impl Report {
     fn calc_top_industries(&self, n: usize) -> Vec<String> {
         let mut map: std::collections::HashMap<&str, u32> = Default::default();
         for s in &self.limit_up {
-            *map.entry(s.hy.as_str()).or_default() += 1;
+            if let Some(ref reason) = s.surge_reason {
+                for plate in &reason.related_plates {
+                    *map.entry(plate.plate_name.as_str()).or_default() += 1;
+                }
+            }
         }
         let mut vec: Vec<_> = map.into_iter().collect();
         vec.sort_by(|a, b| b.1.cmp(&a.1));

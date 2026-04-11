@@ -1,2 +1,7 @@
 /target
 .env
+test_data.json
+jiuyan_res.json
+pre-commit-usage.md
+reports/
+.qwen/

@@ -113,9 +113,7 @@ impl XuanguBaoClient {
     }
 
     pub async fn fetch_limit_up(&self) -> Result<Vec<Stock>> {
-        let url = format!("{BASE_URL}/pool/detail?pool_name=limit_up");
-        // 直接用 ApiResponse<Vec<Stock>>
-        self.fetch_pool(&url).await
+        self.fetch_pool("limit_up").await
     }
 
     pub async fn fetch_limit_down(&self) -> Result<Vec<Stock>> {
@@ -123,13 +121,16 @@ impl XuanguBaoClient {
     }
 
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
-        let fields = "rise_count,fall_count,limit_up_count,limit_down_count";
+        // yesterday_limit_up_avg_pcp 昨日涨停表现
+        // limit_up_broken_count,limit_up_broken_ratio 涨停炸板数和涨停炸板率
+        // market_temperature 市场温度
+        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio";
         let url = format!("{BASE_URL}/market_indicator/line?fields={fields}");
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
 
         // 取最新一条数据
-        let latest = &resp["data"]["items"]
+        let latest = &resp["data"]
             .as_array()
             .and_then(|a| a.last())
             .cloned()
@@ -140,7 +141,7 @@ impl XuanguBaoClient {
             fall_count: latest["fall_count"].as_u64().unwrap_or(0) as u32,
             limit_up_count: latest["limit_up_count"].as_u64().unwrap_or(0) as u32,
             limit_down_count: latest["limit_down_count"].as_u64().unwrap_or(0) as u32,
-            bomb_rate: 0.0, // 可后续计算
+            bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
         })
     }
 }
