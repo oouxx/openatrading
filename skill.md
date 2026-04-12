@@ -28,12 +28,12 @@ trending-agent run --web --port 3000 # 自定义 Web UI 端口
 
 ## 环境变量
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
+| 变量                 | 必填     | 说明               |
+| -------------------- | -------- | ------------------ |
 | `OPENROUTER_API_KEY` | AI分析时 | OpenRouter API Key |
-| `JIUYAN_PHONE` | 可选 | 韭研公社手机号 |
-| `JIUYAN_PASSWORD` | 可选 | 韭研公社密码 |
-| `JIUYAN_INIT_TOKEN` | 可选 | 韭研公社初始 Token |
+| `JIUYAN_PHONE`       | 可选     | 韭研公社手机号     |
+| `JIUYAN_PASSWORD`    | 可选     | 韭研公社密码       |
+| `JIUYAN_INIT_TOKEN`  | 可选     | 韭研公社初始 Token |
 
 ## 项目结构
 

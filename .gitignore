@@ -8,4 +8,5 @@ reports/
 jiuyan_api.md
 tests/
 .DS_Store
-docs/
+docs/*.md
+docs/*.json
