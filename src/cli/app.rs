@@ -26,6 +26,8 @@ pub enum Commands {
     Community(CommonOpts),
     /// 运行完整报告（包含所有数据源）
     Run(RunOpts),
+    /// 进入交互模式
+    Agent(CommonOpts),
 }
 
 #[derive(clap::Args)]

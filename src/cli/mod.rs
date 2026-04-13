@@ -40,6 +40,7 @@ pub async fn run() -> Result<()> {
             run_community(client, &opts.output, &opts.format, api_key.as_ref()).await?
         }
         Some(Commands::Run(opts)) => run_all(client, opts, api_key).await?,
+        Some(Commands::Agent(opts)) => run_interactive(opts, api_key).await?,
         None => {
             run_all(
                 client,
@@ -280,6 +281,128 @@ async fn run_community(
 }
 
 use app::RunOpts;
+
+async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Result<()> {
+    use rustyline::error::ReadlineError;
+    use rustyline::Editor;
+
+    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
+    let output = opts.output.clone();
+    let format = opts.format.clone();
+
+    let mut rl: Editor<(), rustyline::history::FileHistory> = Editor::new().unwrap();
+
+    println!("🤖 进入交互模式（输入 help 查看命令）...");
+    println!("可用命令: limit-up, limit-down, overview, plate, field, timeline, community, ai, help, exit");
+    println!("提示: 支持 Tab 补全\n");
+
+    let commands = [
+        "limit-up",
+        "limit-down",
+        "overview",
+        "plate",
+        "field",
+        "timeline",
+        "community",
+        "ai",
+        "help",
+        "exit",
+        "quit",
+    ];
+    let hints = [
+        " - 获取涨停数据",
+        " - 获取跌停数据",
+        " - 获取市场概览",
+        " - 获取板块异动",
+        " - 获取异动数据",
+        " - 获取时间线",
+        " - 获取社群文章",
+        " - AI 分析",
+        " - 查看帮助",
+        " - 退出交互模式",
+        " - 退出交互模式",
+    ];
+
+    loop {
+        let readline = rl.readline("> ");
+        let input: String = match readline {
+            Ok(s) => s.trim().to_string(),
+            Err(ReadlineError::Interrupted) => {
+                println!("\n👋 退出交互模式");
+                break;
+            }
+            Err(ReadlineError::Eof) => {
+                println!("👋 退出交互模式");
+                break;
+            }
+            Err(err) => {
+                eprintln!("Error: {}", err);
+                break;
+            }
+        };
+
+        if input.is_empty() {
+            continue;
+        }
+        let _ = rl.add_history_entry(&input);
+
+        if input == "exit" || input == "quit" {
+            println!("👋 退出交互模式");
+            break;
+        }
+
+        if input == "help" {
+            for (cmd, hint) in commands.iter().zip(hints.iter()) {
+                println!("  {} {}", cmd, hint);
+            }
+            continue;
+        }
+
+        let cmd = if input.starts_with('/') {
+            input.trim_start_matches('/').to_string()
+        } else {
+            input
+        };
+
+        let client = Client::new();
+
+        match cmd.as_str() {
+            "limit-up" => run_limit_up(client, &output, &format, api_key.as_ref()).await?,
+            "limit-down" => run_limit_down(client, &output, &format, api_key.as_ref()).await?,
+            "overview" => run_overview(client, &output, &format, api_key.as_ref()).await?,
+            "plate" => run_plate_abnormal(client, &output, &format, api_key.as_ref()).await?,
+            "field" => run_field(client, &output, &format, api_key.as_ref()).await?,
+            "timeline" => run_timeline(client, &output, &format, api_key.as_ref()).await?,
+            "community" => run_community(client, &output, &format, api_key.as_ref()).await?,
+            "ai" => {
+                let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
+                if let Some(key) = api_key.as_ref() {
+                    let client = Client::new();
+                    let overview = client.xuangubao.fetch_market_overview().await?;
+                    let limit_up = client.xuangubao.fetch_limit_up().await.unwrap_or_default();
+                    let results = futures::future::join_all(roles.iter().map(|&role| {
+                        let llm = LlmClient::new(key.clone());
+                        let prompt = build_prompt(role, &overview, &limit_up);
+                        async move { (role, llm.chat(&prompt).await) }
+                    }))
+                    .await;
+                    for (role, result) in results {
+                        match result {
+                            Ok(text) => println!("【{}】\n{}\n", role.name(), text),
+                            Err(e) => eprintln!("【{}】分析失败: {}", role.name(), e),
+                        }
+                    }
+                } else {
+                    println!("⚠️ 未配置 OPENROUTER_API_KEY，无法使用 AI 分析");
+                }
+            }
+            _ => {
+                println!("❌ 未知命令: {}（输入 help 查看可用命令）", cmd);
+            }
+        }
+    }
+    Ok(())
+}
 
 async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Result<()> {
     println!("📡 拉取选股宝数据...");
