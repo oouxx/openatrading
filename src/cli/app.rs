@@ -28,6 +28,12 @@ pub enum Commands {
     Run(RunOpts),
     /// 进入交互模式
     Agent(CommonOpts),
+    /// 舆情分析
+    Sentiment(CommonOpts),
+    /// 技术分析
+    Technical(CommonOpts),
+    /// 保存淘股吧用户帖子
+    SaveUser(UserOpts),
 }
 
 #[derive(clap::Args)]
@@ -66,4 +72,14 @@ pub struct RunOpts {
     /// Web UI 端口
     #[arg(long, default_value = "8080")]
     pub port: u16,
+}
+
+#[derive(clap::Args)]
+pub struct UserOpts {
+    /// 淘股吧用户ID
+    pub user_id: String,
+
+    /// 输出目录
+    #[arg(short, long, default_value = "./methodology/tgb")]
+    pub output: String,
 }
