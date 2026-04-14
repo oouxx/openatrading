@@ -1,12 +1,15 @@
 pub mod jiuyangongshe;
+pub mod taoguba;
 pub mod xuangubao;
 
 use jiuyangongshe::JiuYanSession;
+use taoguba::TgbClient;
 use xuangubao::XuanguBaoClient;
 
 pub struct Client {
     pub xuangubao: XuanguBaoClient,
     pub jiuyan: JiuYanSession,
+    pub taoguba: TgbClient,
 }
 
 impl Client {
@@ -14,6 +17,7 @@ impl Client {
         Self {
             xuangubao: XuanguBaoClient::new(),
             jiuyan: JiuYanSession::new(),
+            taoguba: TgbClient::new(),
         }
     }
 }

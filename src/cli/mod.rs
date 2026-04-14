@@ -9,6 +9,7 @@ use crate::llm::openrouter::LlmClient;
 use crate::report::report::{Report, Reporter, RoleAnalysis};
 use crate::roles::analyst::{build_prompt, Role};
 use crate::web::{start_web_server, WebState};
+use futures::StreamExt;
 
 pub async fn run() -> Result<()> {
     dotenvy::dotenv().ok();
@@ -41,6 +42,9 @@ pub async fn run() -> Result<()> {
         }
         Some(Commands::Run(opts)) => run_all(client, opts, api_key).await?,
         Some(Commands::Agent(opts)) => run_interactive(opts, api_key).await?,
+        Some(Commands::Sentiment(opts)) => run_sentiment(client, opts, api_key).await?,
+        Some(Commands::Technical(opts)) => run_technical(client, opts, api_key).await?,
+        Some(Commands::SaveUser(opts)) => run_save_user(client, opts).await?,
         None => {
             run_all(
                 client,
@@ -282,6 +286,136 @@ async fn run_community(
 
 use app::RunOpts;
 
+async fn run_sentiment_cmd(client: &Client) -> Result<()> {
+    use crate::agents::sentiment::analyze_sentiment;
+
+    println!("📊 拉取舆情数据...");
+    let result = analyze_sentiment(client).await?;
+    println!("✅ 舆情分析完成");
+    println!("\n📊 热度趋势: {}", result.trend);
+    println!("📊 热门股票:");
+    for (code, name, cnt) in result.hot_stocks.iter().take(5) {
+        println!("  {} {} - {}次", code, name, cnt);
+    }
+    println!("📊 热门文章:");
+    for (title, eng) in result.hot_articles.iter().take(3) {
+        println!("  {} (热度:{})", title, eng);
+    }
+    println!("\n📊 总结: {}", result.summary);
+    Ok(())
+}
+
+async fn run_technical_cmd(client: &Client) -> Result<()> {
+    use crate::agents::technical::analyze_technical;
+
+    println!("📈 拉取技术数据...");
+    let result = analyze_technical(client).await?;
+    println!("✅ 技术分析完成");
+    println!("\n📈 连板梯队:");
+    for level in result.levels.iter().take(3) {
+        println!("  {}板: {}只", level.days, level.stocks.len());
+    }
+    println!("📈 热门板块:");
+    for (name, cnt) in result.hot_sectors.iter().take(3) {
+        println!("  {} - {}只", name, cnt);
+    }
+    if !result.risk_signals.is_empty() {
+        println!("📈 风险信号:");
+        for sig in &result.risk_signals {
+            println!("  ⚠️ {}", sig);
+        }
+    }
+    println!("\n📈 总结: {}", result.summary);
+    Ok(())
+}
+
+async fn run_sentiment(
+    client: Client,
+    _opts: app::CommonOpts,
+    _api_key: Option<String>,
+) -> Result<()> {
+    run_sentiment_cmd(&client).await
+}
+
+async fn run_technical(
+    client: Client,
+    _opts: app::CommonOpts,
+    _api_key: Option<String>,
+) -> Result<()> {
+    run_technical_cmd(&client).await
+}
+
+async fn run_save_user(client: Client, opts: app::UserOpts) -> Result<()> {
+    use crate::api::taoguba::save_user_posts;
+
+    save_user_posts(&client.taoguba, &opts.user_id, &opts.output).await?;
+    Ok(())
+}
+
+async fn run_ai_all(client: &Client, api_key: &Option<String>) -> Result<()> {
+    if let Some(key) = api_key {
+        let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
+        let overview = client.xuangubao.fetch_market_overview().await?;
+        let limit_up = client.xuangubao.fetch_limit_up().await.unwrap_or_default();
+
+        for &role in &roles {
+            let llm = LlmClient::new(key.clone());
+            let prompt = build_prompt(role, &overview, &limit_up);
+
+            print!("【{}】", role.name());
+
+            match llm.chat_stream(&prompt).await {
+                Ok(mut stream) => {
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(text) => {
+                                print!("{}", text);
+                                std::io::Write::flush(&mut std::io::stdout()).unwrap_or_default();
+                            }
+                            Err(e) => eprint!("{}", e),
+                        }
+                    }
+                    println!("\n───────────────────────────────────\n");
+                }
+                Err(e) => eprintln!("【{}】分析失败: {}", role.name(), e),
+            }
+        }
+    } else {
+        println!("⚠️ 未配置 OPENROUTER_API_KEY，无法使用 AI 分析");
+    }
+    Ok(())
+}
+
+async fn run_ai_role(client: &Client, api_key: &Option<String>, role: Role) -> Result<()> {
+    if let Some(key) = api_key {
+        let overview = client.xuangubao.fetch_market_overview().await?;
+        let limit_up = client.xuangubao.fetch_limit_up().await.unwrap_or_default();
+        let llm = LlmClient::new(key.clone());
+        let prompt = build_prompt(role, &overview, &limit_up);
+
+        print!("【{}】", role.name());
+
+        match llm.chat_stream(&prompt).await {
+            Ok(mut stream) => {
+                while let Some(result) = stream.next().await {
+                    match result {
+                        Ok(text) => {
+                            print!("{}", text);
+                            std::io::Write::flush(&mut std::io::stdout()).unwrap_or_default();
+                        }
+                        Err(e) => eprint!("{}", e),
+                    }
+                }
+                println!("\n");
+            }
+            Err(e) => eprintln!("【{}】分析失败: {}", role.name(), e),
+        }
+    } else {
+        println!("⚠️ 未配置 OPENROUTER_API_KEY，无法使用 AI 分析");
+    }
+    Ok(())
+}
+
 async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Result<()> {
     use rustyline::error::ReadlineError;
     use rustyline::Editor;
@@ -304,7 +438,12 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
         "field",
         "timeline",
         "community",
+        "sentiment",
+        "technical",
         "ai",
+        "ai trader",
+        "ai quant",
+        "ai risk",
         "help",
         "exit",
         "quit",
@@ -317,7 +456,12 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
         " - 获取异动数据",
         " - 获取时间线",
         " - 获取社群文章",
-        " - AI 分析",
+        " - 舆情分析",
+        " - 技术分析",
+        " - AI 综合分析(三种角色)",
+        " - 游资角色分析",
+        " - 量化角色分析",
+        " - 风控角色分析",
         " - 查看帮助",
         " - 退出交互模式",
         " - 退出交互模式",
@@ -374,28 +518,14 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
             "field" => run_field(client, &output, &format, api_key.as_ref()).await?,
             "timeline" => run_timeline(client, &output, &format, api_key.as_ref()).await?,
             "community" => run_community(client, &output, &format, api_key.as_ref()).await?,
+            "sentiment" => run_sentiment_cmd(&client).await?,
+            "technical" => run_technical_cmd(&client).await?,
             "ai" => {
-                let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
-                if let Some(key) = api_key.as_ref() {
-                    let client = Client::new();
-                    let overview = client.xuangubao.fetch_market_overview().await?;
-                    let limit_up = client.xuangubao.fetch_limit_up().await.unwrap_or_default();
-                    let results = futures::future::join_all(roles.iter().map(|&role| {
-                        let llm = LlmClient::new(key.clone());
-                        let prompt = build_prompt(role, &overview, &limit_up);
-                        async move { (role, llm.chat(&prompt).await) }
-                    }))
-                    .await;
-                    for (role, result) in results {
-                        match result {
-                            Ok(text) => println!("【{}】\n{}\n", role.name(), text),
-                            Err(e) => eprintln!("【{}】分析失败: {}", role.name(), e),
-                        }
-                    }
-                } else {
-                    println!("⚠️ 未配置 OPENROUTER_API_KEY，无法使用 AI 分析");
-                }
+                run_ai_all(&client, &api_key).await?;
             }
+            "ai trader" => run_ai_role(&client, &api_key, Role::Trader).await?,
+            "ai quant" => run_ai_role(&client, &api_key, Role::Quant).await?,
+            "ai risk" => run_ai_role(&client, &api_key, Role::RiskOfficer).await?,
             _ => {
                 println!("❌ 未知命令: {}（输入 help 查看可用命令）", cmd);
             }
@@ -493,22 +623,24 @@ async fn run_ai(
 ) {
     let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
 
-    let results = futures::future::join_all(roles.iter().map(|&role| {
+    for &role in &roles {
         let llm = LlmClient::new(api_key.clone());
         let prompt = build_prompt(role, overview, limit_up);
-        async move { (role, llm.chat(&prompt).await) }
-    }))
-    .await;
 
-    println!("═══════════════════════════════════\n");
-    for (role, result) in results {
-        match result {
-            Ok(text) => {
-                println!(
-                    "【{}】\n{}\n───────────────────────────────────\n",
-                    role.name(),
-                    text
-                );
+        print!("【{}】", role.name());
+
+        match llm.chat_stream(&prompt).await {
+            Ok(mut stream) => {
+                while let Some(result) = stream.next().await {
+                    match result {
+                        Ok(text) => {
+                            print!("{}", text);
+                            std::io::Write::flush(&mut std::io::stdout()).unwrap_or_default();
+                        }
+                        Err(e) => eprint!("{}", e),
+                    }
+                }
+                println!("\n───────────────────────────────────\n");
             }
             Err(e) => eprintln!("【{}】分析失败: {}", role.name(), e),
         }
