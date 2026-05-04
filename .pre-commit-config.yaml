@@ -10,7 +10,7 @@ repos:
 
       - id: clippy
         name: cargo clippy --fix
-        entry: cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged -- -D warnings
+        entry: bash -c 'cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged -- -D warnings && git add -u'
         language: system
         types: [rust]
         pass_filenames: false
