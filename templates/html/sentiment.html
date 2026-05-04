@@ -1,0 +1,25 @@
+{% if trend.len() > 0 %}
+<section id="sentiment">
+    <h2>社群舆情分析</h2>
+    <p><strong>热度趋势</strong>：{{ trend }}</p>
+    
+    <h3>热门股票（提及次数）</h3>
+    <ul>
+        {% for stock in hot_stocks %}
+        <li>{{ stock.1 }} ({{ stock.0 }}) - {{ stock.2 }}次</li>
+        {% endfor %}
+    </ul>
+    
+    <h3>热门文章（热度）</h3>
+    <ul>
+        {% for article in hot_articles %}
+        <li>{{ article.0 }} (热度: {{ article.1 }})</li>
+        {% endfor %}
+    </ul>
+    
+    <h3>今日新闻资讯摘要</h3>
+    <p>{{ news_summary }}</p>
+    
+    <p><strong>总结</strong>：{{ summary }}</p>
+</section>
+{% endif %}

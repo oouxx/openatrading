@@ -86,6 +86,7 @@ async fn run_limit_up(
         vec![],
         vec![],
         vec![ra()],
+        None,
     );
     save_report_formatted(&report, output, format)?;
 
@@ -111,7 +112,15 @@ async fn run_limit_down(
     let overview = overview?;
     println!("✅ 跌停: {} 只", limit_down.len());
 
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
+    let report = Report::new(
+        overview.clone(),
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        vec![ra()],
+        None,
+    );
     save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
@@ -138,7 +147,15 @@ async fn run_overview(
         overview.bomb_rate * 100.0
     );
 
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
+    let report = Report::new(
+        overview.clone(),
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        vec![ra()],
+        None,
+    );
     save_report_formatted(&report, output, format)?;
 
     if let Some(key) = api_key {
@@ -172,6 +189,7 @@ async fn run_plate_abnormal(
         vec![],
         vec![],
         vec![ra()],
+        None,
     );
     save_report_formatted(&report, output, format)?;
 
@@ -212,6 +230,7 @@ async fn run_field(
         field_items,
         vec![],
         vec![ra()],
+        None,
     );
     save_report_formatted(&report, output, format)?;
 
@@ -247,6 +266,7 @@ async fn run_timeline(
         vec![],
         timeline,
         vec![ra()],
+        None,
     );
     save_report_formatted(&report, output, format)?;
 
@@ -261,25 +281,112 @@ async fn run_community(
     client: Client,
     output: &str,
     format: &str,
-    api_key: Option<&String>,
+    _api_key: Option<&String>,
 ) -> Result<()> {
     println!("📡 拉取社群文章...");
 
-    let (community_result, overview) = tokio::join!(
-        client.jiuyan.fetch_community("", 0, 1, 30),
-        client.xuangubao.fetch_market_overview(),
-    );
+    let community_data = client.jiuyan.fetch_community("", 0, 1, 50).await?;
+    let articles = community_data.result;
+    println!("✅ 获取到 {} 篇文章", articles.len());
 
-    let community = community_result?;
-    let overview = overview?;
-    println!("✅ 社群文章: {} 篇", community.result.len());
-
-    let report = Report::new(overview.clone(), vec![], vec![], vec![], vec![], vec![ra()]);
-    save_report_formatted(&report, output, format)?;
-
-    if let Some(key) = api_key {
-        run_ai(key.to_string(), &overview, &vec![]).await;
+    if articles.is_empty() {
+        println!("⚠️ 未获取到文章");
+        return Ok(());
     }
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let output_dir = std::path::Path::new(output)
+        .join("jiuyan")
+        .join("community")
+        .join(&today);
+    std::fs::create_dir_all(&output_dir)?;
+    println!("📁 保存目录: {}", output_dir.display());
+
+    let mut index = format!("# 社群文章\n\n共 {} 篇\n\n## 列表\n\n", articles.len());
+
+    for (i, article) in articles.iter().enumerate() {
+        println!(
+            "📝 获取第 {}/{} 篇: {}",
+            i + 1,
+            articles.len(),
+            article.title
+        );
+
+        let detail = match client
+            .jiuyan
+            .fetch_article_detail(&article.article_id)
+            .await
+        {
+            Ok(Some(content)) => content,
+            Ok(None) => {
+                eprintln!("  文章 {} 无正文", article.article_id);
+                continue;
+            }
+            Err(e) => {
+                eprintln!("  获取文章详情失败: {}", e);
+                continue;
+            }
+        };
+
+        let safe_title: String = article
+            .title
+            .chars()
+            .filter(|c| {
+                c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_' || *c == '(' || *c == ')'
+            })
+            .take(50)
+            .collect();
+
+        if safe_title.is_empty() {
+            continue;
+        }
+
+        let filename_base = format!("{}_{:03}", safe_title, i + 1);
+
+        if format == "markdown" || format == "both" {
+            let md_path = output_dir.join(format!("{}.md", filename_base));
+            let md_content = format!(
+                "# {}\n\n**作者:** {} | **时间:** {} | **点赞:** {} | **评论:** {} | **收藏:** {} | **转发:** {}\n\n{}\n",
+                article.title,
+                article.user.nickname,
+                article.create_time,
+                article.like_count,
+                article.comment_count,
+                article.collect_count,
+                article.forward_count,
+                detail
+            );
+            std::fs::write(&md_path, md_content)?;
+            println!("  ✅ 已保存: {}", md_path.display());
+        }
+
+        if format == "html" || format == "both" {
+            let html_path = output_dir.join(format!("{}.html", filename_base));
+            let meta = format!(
+                "作者: {} | 时间: {} | 点赞: {} | 评论: {} | 收藏: {} | 转发: {}",
+                article.user.nickname,
+                article.create_time,
+                article.like_count,
+                article.comment_count,
+                article.collect_count,
+                article.forward_count
+            );
+            let html_content = markdown_to_html(&article.title, &meta, &detail);
+            std::fs::write(&html_path, html_content)?;
+            println!("  ✅ 已保存: {}", html_path.display());
+        }
+
+        index.push_str(&format!(
+            "{}. [{}]({})\n",
+            i + 1,
+            article.title,
+            filename_base
+        ));
+    }
+
+    let index_path = output_dir.join("index.md");
+    std::fs::write(&index_path, &index)?;
+    println!("✅ 索引文件已保存: {}", index_path.display());
 
     Ok(())
 }
@@ -354,7 +461,7 @@ async fn run_save_user(client: Client, opts: app::UserOpts) -> Result<()> {
 
 async fn run_ai_all(client: &Client, api_key: &Option<String>) -> Result<()> {
     if let Some(key) = api_key {
-        let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
+        let roles = [Role::Trader, Role::Quant, Role::RiskOfficer, Role::Zarili];
         let overview = client.xuangubao.fetch_market_overview().await?;
         let limit_up = client.xuangubao.fetch_limit_up().await.unwrap_or_default();
 
@@ -444,6 +551,7 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
         "ai trader",
         "ai quant",
         "ai risk",
+        "ai zarili",
         "help",
         "exit",
         "quit",
@@ -458,10 +566,11 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
         " - 获取社群文章",
         " - 舆情分析",
         " - 技术分析",
-        " - AI 综合分析(三种角色)",
+        " - AI 综合分析(四种角色)",
         " - 游资角色分析",
         " - 量化角色分析",
         " - 风控角色分析",
+        " - zarili量价派分析",
         " - 查看帮助",
         " - 退出交互模式",
         " - 退出交互模式",
@@ -526,6 +635,7 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
             "ai trader" => run_ai_role(&client, &api_key, Role::Trader).await?,
             "ai quant" => run_ai_role(&client, &api_key, Role::Quant).await?,
             "ai risk" => run_ai_role(&client, &api_key, Role::RiskOfficer).await?,
+            "ai zarili" => run_ai_role(&client, &api_key, Role::Zarili).await?,
             _ => {
                 println!("❌ 未知命令: {}（输入 help 查看可用命令）", cmd);
             }
@@ -592,6 +702,7 @@ async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Resu
         field_items,
         timeline,
         vec![ra()],
+        None,
     );
 
     // 保存报告
@@ -678,4 +789,29 @@ fn save_report_formatted(report: &Report, output: &str, format: &str) -> Result<
         }
         _ => reporter.save_markdown(output),
     }
+}
+
+fn markdown_to_html(title: &str, meta: &str, content: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #333; }}
+        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
+        .meta {{ color: #666; font-size: 14px; margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
+        .content {{ white-space: pre-wrap; font-family: inherit; }}
+    </style>
+</head>
+<body>
+    <h1>{}</h1>
+    <div class="meta">{}</div>
+    <div class="content">{}</div>
+</body>
+</html>"#,
+        title, title, meta, content
+    )
 }

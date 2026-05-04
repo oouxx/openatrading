@@ -1,15 +1,6 @@
-mod agents;
-mod api;
-mod cli;
-mod llm;
-mod report;
-mod roles;
-mod templates;
-mod web;
-
-use anyhow::Result;
+use trending_agent::cli;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     cli::run().await
 }
