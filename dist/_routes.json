@@ -1,0 +1,5 @@
+{
+  "routes": [
+    { "src": "/reports/.*", "headers": { "Cache-Control": "max-age=3600" } }
+  ]
+}

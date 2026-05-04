@@ -34,6 +34,8 @@ pub enum Commands {
     Technical(CommonOpts),
     /// 保存淘股吧用户帖子
     SaveUser(UserOpts),
+    /// 生成报告索引页
+    Index(IndexOpts),
 }
 
 #[derive(clap::Args)]
@@ -97,4 +99,10 @@ pub struct UserOpts {
     /// 输出目录
     #[arg(short, long, default_value = "./methodology/tgb")]
     pub output: String,
+}
+
+#[derive(clap::Args)]
+pub struct IndexOpts {
+    #[arg(short, long, default_value = "./dist")]
+    pub dir: String,
 }

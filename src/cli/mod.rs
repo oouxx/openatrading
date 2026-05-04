@@ -43,6 +43,7 @@ pub async fn run() -> Result<()> {
         Some(Commands::Sentiment(opts)) => run_sentiment(client, opts, api_key).await?,
         Some(Commands::Technical(opts)) => run_technical(client, opts, api_key).await?,
         Some(Commands::SaveUser(opts)) => run_save_user(client, opts).await?,
+        Some(Commands::Index(opts)) => run_index(opts).await?,
         None => {
             run_all(
                 client,
@@ -688,6 +689,12 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
                 )
                 .await?
             }
+            "index" => {
+                run_index(app::IndexOpts {
+                    dir: "./dist".to_string(),
+                })
+                .await?
+            }
             "sentiment" => run_sentiment_cmd(&client).await?,
             "technical" => run_technical_cmd(&client).await?,
             "ai" => {
@@ -875,4 +882,77 @@ fn markdown_to_html(title: &str, meta: &str, content: &str) -> String {
 </html>"#,
         title, title, meta, content
     )
+}
+
+async fn run_index(opts: app::IndexOpts) -> Result<()> {
+    let reports_dir = std::path::Path::new(&opts.dir).join("reports");
+    if !reports_dir.exists() {
+        eprintln!("⚠️ 报告目录不存在: {}", reports_dir.display());
+        return Ok(());
+    }
+
+    let mut entries: Vec<(String, String)> = Vec::new();
+    for entry in std::fs::read_dir(&reports_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("html") {
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                let display_name = file_name
+                    .trim_end_matches(".html")
+                    .replace(['_', '-'], " ");
+                entries.push((file_name.to_string(), display_name));
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        println!("⚠️ 未找到 HTML 报告文件");
+        return Ok(());
+    }
+
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股异动报告</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        h1 { color: #333; }
+        ul { list-style: none; padding: 0; }
+        li { margin: 12px 0; padding: 12px; background: #f9f9f9; border-radius: 6px; }
+        a { color: #007bff; text-decoration: none; font-size: 18px; }
+        a:hover { text-decoration: underline; }
+        .meta { color: #666; font-size: 14px; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <h1>📊 A股市场异动报告</h1>
+    <ul>
+"#,
+    );
+
+    for (file_name, display_name) in &entries {
+        html.push_str(&format!(
+            r#"        <li><a href="reports/{}">{}</a></li>
+"#,
+            file_name, display_name
+        ));
+    }
+
+    html.push_str(
+        r#"    </ul>
+</body>
+</html>
+"#,
+    );
+
+    let index_path = std::path::Path::new(&opts.dir).join("index.html");
+    std::fs::write(&index_path, html)?;
+    println!("✅ 索引页已生成: {}", index_path.display());
+
+    Ok(())
 }
