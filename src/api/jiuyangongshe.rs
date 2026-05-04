@@ -27,7 +27,7 @@ pub struct Credentials {
 // ─── action/field 响应结构 ────────────────────────────────────
 
 /// 异动详情（action_info 字段）
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionInfo {
     /// 异动时间，如 "09:35:38"，可能为 null
     pub time: Option<String>,
@@ -39,7 +39,7 @@ pub struct ActionInfo {
 }
 
 /// 文章信息
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Article {
     pub action_info: Option<ActionInfo>,
     /// 文章标题
@@ -48,7 +48,7 @@ pub struct Article {
 }
 
 /// 单只异动股票
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldStock {
     pub code: String,
     pub name: String,
@@ -56,7 +56,7 @@ pub struct FieldStock {
 }
 
 /// 异动板块
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FieldPlate {
     /// 板块名称，如 "公告"、"固态电池"
     #[serde(default)]
