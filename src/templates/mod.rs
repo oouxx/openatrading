@@ -70,6 +70,26 @@ pub struct AnalysisData {
     pub elapsed_ms: u64,
 }
 
+#[derive(Debug)]
+pub struct CommunityArticleStockData {
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(Debug)]
+pub struct CommunityArticleData {
+    pub article_id: String,
+    pub title: String,
+    pub create_time: String,
+    pub nickname: String,
+    pub like_count: i32,
+    pub comment_count: i32,
+    pub forward_count: i32,
+    pub collect_count: i32,
+    pub content: String,
+    pub stocks: Vec<CommunityArticleStockData>,
+}
+
 // ============== Markdown Templates ==============
 
 #[derive(Template)]
@@ -364,16 +384,41 @@ pub struct SentimentMdTemplate {
     pub hot_articles: Vec<(String, i32)>,
     pub summary: String,
     pub news_summary: String,
+    pub articles: Vec<CommunityArticleData>,
 }
 
 impl SentimentMdTemplate {
     pub fn render(sentiment: &crate::agents::sentiment::SentimentResult) -> Self {
+        let articles = sentiment
+            .articles
+            .iter()
+            .map(|a| CommunityArticleData {
+                article_id: a.article_id.clone(),
+                title: a.title.clone(),
+                create_time: a.create_time.clone(),
+                nickname: a.user.nickname.clone(),
+                like_count: a.like_count,
+                comment_count: a.comment_count,
+                forward_count: a.forward_count,
+                collect_count: a.collect_count,
+                content: a.content.clone().unwrap_or_default(),
+                stocks: a
+                    .stock_list
+                    .iter()
+                    .map(|s| CommunityArticleStockData {
+                        code: s.code.clone(),
+                        name: s.name.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
         Self {
             trend: sentiment.trend.clone(),
             hot_stocks: sentiment.hot_stocks.clone(),
             hot_articles: sentiment.hot_articles.clone(),
             summary: sentiment.summary.clone(),
             news_summary: sentiment.news_summary.clone(),
+            articles,
         }
     }
 }
@@ -732,16 +777,41 @@ pub struct SentimentHtmlTemplate {
     pub hot_articles: Vec<(String, i32)>,
     pub summary: String,
     pub news_summary: String,
+    pub articles: Vec<CommunityArticleData>,
 }
 
 impl SentimentHtmlTemplate {
     pub fn render(sentiment: &crate::agents::sentiment::SentimentResult) -> Self {
+        let articles = sentiment
+            .articles
+            .iter()
+            .map(|a| CommunityArticleData {
+                article_id: a.article_id.clone(),
+                title: a.title.clone(),
+                create_time: a.create_time.clone(),
+                nickname: a.user.nickname.clone(),
+                like_count: a.like_count,
+                comment_count: a.comment_count,
+                forward_count: a.forward_count,
+                collect_count: a.collect_count,
+                content: a.content.clone().unwrap_or_default(),
+                stocks: a
+                    .stock_list
+                    .iter()
+                    .map(|s| CommunityArticleStockData {
+                        code: s.code.clone(),
+                        name: s.name.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
         Self {
             trend: sentiment.trend.clone(),
             hot_stocks: sentiment.hot_stocks.clone(),
             hot_articles: sentiment.hot_articles.clone(),
             summary: sentiment.summary.clone(),
             news_summary: sentiment.news_summary.clone(),
+            articles,
         }
     }
 }

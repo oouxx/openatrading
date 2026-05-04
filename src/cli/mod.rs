@@ -37,9 +37,7 @@ pub async fn run() -> Result<()> {
         Some(Commands::Timeline(opts)) => {
             run_timeline(client, &opts.output, &opts.format, api_key.as_ref()).await?
         }
-        Some(Commands::Community(opts)) => {
-            run_community(client, &opts.output, &opts.format, api_key.as_ref()).await?
-        }
+        Some(Commands::Community(opts)) => run_community(client, opts, api_key.as_ref()).await?,
         Some(Commands::Run(opts)) => run_all(client, opts, api_key).await?,
         Some(Commands::Agent(opts)) => run_interactive(opts, api_key).await?,
         Some(Commands::Sentiment(opts)) => run_sentiment(client, opts, api_key).await?,
@@ -279,114 +277,165 @@ async fn run_timeline(
 
 async fn run_community(
     client: Client,
-    output: &str,
-    format: &str,
+    opts: app::CommunityOpts,
     _api_key: Option<&String>,
 ) -> Result<()> {
+    use crate::agents::sentiment::{self};
+
     println!("📡 拉取社群文章...");
 
-    let community_data = client.jiuyan.fetch_community("", 0, 1, 50).await?;
-    let articles = community_data.result;
-    println!("✅ 获取到 {} 篇文章", articles.len());
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let mut all_articles: Vec<crate::api::jiuyangongshe::CommunityArticle> = Vec::new();
+    for page in 1..=100 {
+        let resp = client.jiuyan.fetch_community("", 0, page, 50).await?;
+        if resp.result.is_empty() {
+            break;
+        }
+        let result_len = resp.result.len();
+        all_articles.extend(resp.result);
+        if result_len < 50 {
+            break;
+        }
+    }
 
-    if articles.is_empty() {
+    if all_articles.is_empty() {
         println!("⚠️ 未获取到文章");
         return Ok(());
     }
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let output_dir = std::path::Path::new(output)
-        .join("jiuyan")
-        .join("community")
-        .join(&today);
-    std::fs::create_dir_all(&output_dir)?;
-    println!("📁 保存目录: {}", output_dir.display());
+    println!("✅ 获取到 {} 篇文章，正在获取详情...", all_articles.len());
 
-    let mut index = format!("# 社群文章\n\n共 {} 篇\n\n## 列表\n\n", articles.len());
-
-    for (i, article) in articles.iter().enumerate() {
-        println!(
-            "📝 获取第 {}/{} 篇: {}",
-            i + 1,
-            articles.len(),
-            article.title
-        );
-
-        let detail = match client
-            .jiuyan
-            .fetch_article_detail(&article.article_id)
-            .await
-        {
-            Ok(Some(content)) => content,
-            Ok(None) => {
-                eprintln!("  文章 {} 无正文", article.article_id);
-                continue;
+    for article in &mut all_articles {
+        if article.content.is_none() {
+            match client
+                .jiuyan
+                .fetch_article_detail(&article.article_id)
+                .await
+            {
+                Ok(Some(content)) => {
+                    article.content = Some(content);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("  获取文章 {} 详情失败: {}", article.article_id, e);
+                }
             }
-            Err(e) => {
-                eprintln!("  获取文章详情失败: {}", e);
-                continue;
-            }
-        };
-
-        let safe_title: String = article
-            .title
-            .chars()
-            .filter(|c| {
-                c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_' || *c == '(' || *c == ')'
-            })
-            .take(50)
-            .collect();
-
-        if safe_title.is_empty() {
-            continue;
         }
-
-        let filename_base = format!("{}_{:03}", safe_title, i + 1);
-
-        if format == "markdown" || format == "both" {
-            let md_path = output_dir.join(format!("{}.md", filename_base));
-            let md_content = format!(
-                "# {}\n\n**作者:** {} | **时间:** {} | **点赞:** {} | **评论:** {} | **收藏:** {} | **转发:** {}\n\n{}\n",
-                article.title,
-                article.user.nickname,
-                article.create_time,
-                article.like_count,
-                article.comment_count,
-                article.collect_count,
-                article.forward_count,
-                detail
-            );
-            std::fs::write(&md_path, md_content)?;
-            println!("  ✅ 已保存: {}", md_path.display());
-        }
-
-        if format == "html" || format == "both" {
-            let html_path = output_dir.join(format!("{}.html", filename_base));
-            let meta = format!(
-                "作者: {} | 时间: {} | 点赞: {} | 评论: {} | 收藏: {} | 转发: {}",
-                article.user.nickname,
-                article.create_time,
-                article.like_count,
-                article.comment_count,
-                article.collect_count,
-                article.forward_count
-            );
-            let html_content = markdown_to_html(&article.title, &meta, &detail);
-            std::fs::write(&html_path, html_content)?;
-            println!("  ✅ 已保存: {}", html_path.display());
-        }
-
-        index.push_str(&format!(
-            "{}. [{}]({})\n",
-            i + 1,
-            article.title,
-            filename_base
-        ));
     }
 
-    let index_path = output_dir.join("index.md");
-    std::fs::write(&index_path, &index)?;
-    println!("✅ 索引文件已保存: {}", index_path.display());
+    let sentiment_result = sentiment::analyze_from_articles(all_articles);
+
+    println!("📊 热度趋势: {}", sentiment_result.trend);
+
+    // 保存社群文章到文件（保持原有功能）
+    if !sentiment_result.articles.is_empty() {
+        let output_dir = std::path::Path::new(&opts.output)
+            .join("jiuyan")
+            .join("community")
+            .join(&today);
+        std::fs::create_dir_all(&output_dir)?;
+        println!("📁 保存目录: {}", output_dir.display());
+
+        let mut index = format!(
+            "# 社群文章\n\n共 {} 篇\n\n## 列表\n\n",
+            sentiment_result.articles.len()
+        );
+
+        for (i, article) in sentiment_result.articles.iter().enumerate() {
+            println!(
+                "📝 处理第 {}/{} 篇: {}",
+                i + 1,
+                sentiment_result.articles.len(),
+                article.title
+            );
+
+            let safe_title: String = article
+                .title
+                .chars()
+                .filter(|c| {
+                    c.is_alphanumeric()
+                        || *c == ' '
+                        || *c == '-'
+                        || *c == '_'
+                        || *c == '('
+                        || *c == ')'
+                })
+                .take(50)
+                .collect();
+
+            if safe_title.is_empty() {
+                continue;
+            }
+
+            let filename_base = format!("{}_{:03}", safe_title, i + 1);
+
+            if opts.format == "markdown" || opts.format == "both" {
+                let md_path = output_dir.join(format!("{}.md", filename_base));
+                let content = article.content.as_deref().unwrap_or("（无正文）");
+                let md_content = format!(
+                    "# {}\n\n**作者:** {} | **时间:** {} | **点赞:** {} | **评论:** {} | **收藏:** {} | **转发:** {}\n\n原文链接: https://www.jiuyangongshe.com/a/{}\n\n{}\n",
+                    article.title,
+                    article.user.nickname,
+                    article.create_time,
+                    article.like_count,
+                    article.comment_count,
+                    article.collect_count,
+                    article.forward_count,
+                    article.article_id,
+                    content
+                );
+                std::fs::write(&md_path, md_content)?;
+                println!("  ✅ 已保存: {}", md_path.display());
+            }
+
+            if opts.format == "html" || opts.format == "both" {
+                let html_path = output_dir.join(format!("{}.html", filename_base));
+                let content = article.content.as_deref().unwrap_or("（无正文）");
+                let meta = format!(
+                    "作者: {} | 时间: {} | 点赞: {} | 评论: {} | 收藏: {} | 转发: {}",
+                    article.user.nickname,
+                    article.create_time,
+                    article.like_count,
+                    article.comment_count,
+                    article.collect_count,
+                    article.forward_count
+                );
+                let html_content = markdown_to_html(&article.title, &meta, content);
+                std::fs::write(&html_path, html_content)?;
+                println!("  ✅ 已保存: {}", html_path.display());
+            }
+
+            index.push_str(&format!(
+                "{}. [{}]({})\n",
+                i + 1,
+                article.title,
+                filename_base
+            ));
+        }
+
+        let index_path = output_dir.join("index.md");
+        std::fs::write(&index_path, &index)?;
+        println!("✅ 索引文件已保存: {}", index_path.display());
+    }
+
+    // 创建 Report 并设置到 WebState（如果启用 web）
+    let overview = client.xuangubao.fetch_market_overview().await?;
+
+    let report = Report::new(
+        overview,
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        vec![ra()],
+        Some(sentiment_result),
+    );
+
+    if opts.web {
+        let state = WebState::new();
+        state.set_report(report).await;
+        start_web_server(opts.port, state).await;
+    }
 
     Ok(())
 }
@@ -626,7 +675,19 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
             "plate" => run_plate_abnormal(client, &output, &format, api_key.as_ref()).await?,
             "field" => run_field(client, &output, &format, api_key.as_ref()).await?,
             "timeline" => run_timeline(client, &output, &format, api_key.as_ref()).await?,
-            "community" => run_community(client, &output, &format, api_key.as_ref()).await?,
+            "community" => {
+                run_community(
+                    client,
+                    app::CommunityOpts {
+                        format: format.clone(),
+                        output: output.clone(),
+                        web: false,
+                        port: 8080,
+                    },
+                    api_key.as_ref(),
+                )
+                .await?
+            }
             "sentiment" => run_sentiment_cmd(&client).await?,
             "technical" => run_technical_cmd(&client).await?,
             "ai" => {
