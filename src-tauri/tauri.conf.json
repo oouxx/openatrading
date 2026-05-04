@@ -1,0 +1,21 @@
+{
+  "productName": "trending-agent-tauri",
+  "version": "0.1.0",
+  "identifier": "com.trending-agent.app",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devUrl": "../src/dist",
+    "frontendDist": "../src/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "A股市场异动追踪",
+        "width": 1200,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  }
+}

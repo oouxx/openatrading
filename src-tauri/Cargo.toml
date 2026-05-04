@@ -1,0 +1,15 @@
+[package]
+name = "trending-agent-tauri"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "trending-agent-tauri"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+trending-agent-core = { path = "../crates/core" }
+tauri = { version = "2", features = ["devtools"] }
