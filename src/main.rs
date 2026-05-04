@@ -4,3 +4,4 @@ use trending_agent::cli;
 async fn main() -> anyhow::Result<()> {
     cli::run().await
 }
+// test comment
