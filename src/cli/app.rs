@@ -23,7 +23,7 @@ pub enum Commands {
     /// 获取韭研公社时间线数据
     Timeline(CommonOpts),
     /// 获取韭研公社社群文章
-    Community(CommonOpts),
+    Community(CommunityOpts),
     /// 运行完整报告（包含所有数据源）
     Run(RunOpts),
     /// 进入交互模式
@@ -49,6 +49,21 @@ pub struct CommonOpts {
     /// 输出目录
     #[arg(short, long, default_value = "./reports")]
     pub output: String,
+}
+
+#[derive(clap::Args)]
+pub struct CommunityOpts {
+    #[arg(short, long, default_value = "markdown")]
+    pub format: String,
+
+    #[arg(short, long, default_value = "./reports")]
+    pub output: String,
+
+    #[arg(long)]
+    pub web: bool,
+
+    #[arg(long, default_value = "8080")]
+    pub port: u16,
 }
 
 #[derive(clap::Args)]

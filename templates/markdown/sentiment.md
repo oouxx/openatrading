@@ -21,4 +21,27 @@
 
 **总结**：{{ summary }}
 
+### 社群文章列表（{{ articles.len() }}篇）
+
+{% for article in articles %}
+<details>
+<summary><strong>{{ article.title }}</strong> - {{ article.nickname }} | {{ article.create_time }} | 👍 {{ article.like_count }} 💬 {{ article.comment_count }} 🔄 {{ article.forward_count }} ⭐ {{ article.collect_count }}</summary>
+
+**原文链接**：https://www.jiuyangongshe.com/a/{{ article.article_id }}
+
+{% if article.stocks.len() > 0 %}
+**关联股票**：
+{% for stock in article.stocks %}
+- {{ stock.name }} ({{ stock.code }})
+{% endfor %}
+{% endif %}
+
+{% if article.content.len() > 0 %}
+{{ article.content }}
+{% endif %}
+
+</details>
+
+{% endfor %}
+
 {% endif %}
