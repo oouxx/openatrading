@@ -4,15 +4,12 @@ use anyhow::Result;
 use app::{Cli, Commands};
 use clap::Parser;
 
-use crate::api::xuangubao::XuanGubaoExtra;
-use crate::api::Client;
-use crate::llm::openrouter::LlmClient;
-use crate::report::report::{Report, Reporter, RoleAnalysis};
-use crate::roles::analyst::{build_prompt, Role};
-use crate::web::{start_web_server, WebState};
-use futures::StreamExt;
-use serde_json;
 use std::path::Path;
+use trending_agent_core::api::xuangubao::XuanGubaoExtra;
+use trending_agent_core::api::Client;
+use trending_agent_core::llm::openrouter::LlmClient;
+use trending_agent_core::report::report::{Report, Reporter, RoleAnalysis};
+use trending_agent_core::roles::analyst::{build_prompt, Role};
 
 pub async fn run() -> Result<()> {
     dotenvy::dotenv().ok();
@@ -56,8 +53,6 @@ pub async fn run() -> Result<()> {
                     ai: false,
                     format: "markdown".to_string(),
                     output: "./reports".to_string(),
-                    web: false,
-                    port: 8080,
                 },
                 api_key,
             )
@@ -372,12 +367,13 @@ async fn run_community(
     opts: app::CommunityOpts,
     _api_key: Option<&String>,
 ) -> Result<()> {
-    use crate::agents::sentiment::{self};
+    use trending_agent_core::agents::sentiment::{self};
 
     println!("📡 拉取社群文章...");
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let mut all_articles: Vec<crate::api::jiuyangongshe::CommunityArticle> = Vec::new();
+    let mut all_articles: Vec<trending_agent_core::api::jiuyangongshe::CommunityArticle> =
+        Vec::new();
     for page in 1..=100 {
         let resp = client.jiuyan.fetch_community("", 0, page, 50).await?;
         if resp.result.is_empty() {
@@ -510,10 +506,9 @@ async fn run_community(
         println!("✅ 索引文件已保存: {}", index_path.display());
     }
 
-    // 创建 Report 并设置到 WebState（如果启用 web）
     let overview = client.xuangubao.fetch_market_overview().await?;
 
-    let report = Report::new(
+    let _report = Report::new(
         overview,
         vec![],
         vec![],
@@ -528,19 +523,13 @@ async fn run_community(
         },
     );
 
-    if opts.web {
-        let state = WebState::new();
-        state.set_report(report).await;
-        start_web_server(opts.port, state).await;
-    }
-
     Ok(())
 }
 
 use app::RunOpts;
 
 async fn run_sentiment_cmd(client: &Client) -> Result<()> {
-    use crate::agents::sentiment::analyze_sentiment;
+    use trending_agent_core::agents::sentiment::analyze_sentiment;
 
     println!("📊 拉取舆情数据...");
     let result = analyze_sentiment(client).await?;
@@ -559,7 +548,7 @@ async fn run_sentiment_cmd(client: &Client) -> Result<()> {
 }
 
 async fn run_technical_cmd(client: &Client) -> Result<()> {
-    use crate::agents::technical::analyze_technical;
+    use trending_agent_core::agents::technical::analyze_technical;
 
     println!("📈 拉取技术数据...");
     let result = analyze_technical(client).await?;
@@ -599,7 +588,7 @@ async fn run_technical(
 }
 
 async fn run_save_user(client: Client, opts: app::UserOpts) -> Result<()> {
-    use crate::api::taoguba::save_user_posts;
+    use trending_agent_core::api::taoguba::save_user_posts;
 
     save_user_posts(&client.taoguba, &opts.user_id, &opts.output).await?;
     Ok(())
@@ -725,7 +714,7 @@ async fn run_ai_all(client: &Client, api_key: &Option<String>) -> Result<()> {
 
             match llm.chat_stream(&prompt).await {
                 Ok(mut stream) => {
-                    while let Some(result) = stream.next().await {
+                    while let Some(result) = futures::StreamExt::next(&mut stream).await {
                         match result {
                             Ok(text) => {
                                 print!("{}", text);
@@ -756,7 +745,7 @@ async fn run_ai_role(client: &Client, api_key: &Option<String>, role: Role) -> R
 
         match llm.chat_stream(&prompt).await {
             Ok(mut stream) => {
-                while let Some(result) = stream.next().await {
+                while let Some(result) = futures::StreamExt::next(&mut stream).await {
                     match result {
                         Ok(text) => {
                             print!("{}", text);
@@ -884,8 +873,6 @@ async fn run_interactive(opts: app::CommonOpts, _api_key: Option<String>) -> Res
                     app::CommunityOpts {
                         format: format.clone(),
                         output: output.clone(),
-                        web: false,
-                        port: 8080,
                     },
                     api_key.as_ref(),
                 )
@@ -984,13 +971,6 @@ async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Resu
     let path = save_report_formatted(&report, &opts.output, &opts.format)?;
     println!("✅ 报告已保存: {}", path);
 
-    // 启动 Web UI
-    if opts.web {
-        let state = WebState::new();
-        state.set_report(report).await;
-        start_web_server(opts.port, state).await;
-    }
-
     if opts.ai {
         if let Some(key) = api_key {
             run_ai(key, &overview, &limit_up).await;
@@ -1004,8 +984,8 @@ async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Resu
 
 async fn run_ai(
     api_key: String,
-    overview: &crate::api::xuangubao::MarketOverview,
-    limit_up: &Vec<crate::api::xuangubao::Stock>,
+    overview: &trending_agent_core::api::xuangubao::MarketOverview,
+    limit_up: &Vec<trending_agent_core::api::xuangubao::Stock>,
 ) {
     let roles = [Role::Trader, Role::Quant, Role::RiskOfficer];
 
@@ -1017,7 +997,7 @@ async fn run_ai(
 
         match llm.chat_stream(&prompt).await {
             Ok(mut stream) => {
-                while let Some(result) = stream.next().await {
+                while let Some(result) = futures::StreamExt::next(&mut stream).await {
                     match result {
                         Ok(text) => {
                             print!("{}", text);
@@ -1033,8 +1013,8 @@ async fn run_ai(
     }
 }
 
-fn empty_overview() -> crate::api::xuangubao::MarketOverview {
-    crate::api::xuangubao::MarketOverview {
+fn empty_overview() -> trending_agent_core::api::xuangubao::MarketOverview {
+    trending_agent_core::api::xuangubao::MarketOverview {
         limit_up_count: 0,
         limit_down_count: 0,
         rise_count: 0,

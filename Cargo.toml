@@ -1,17 +1,12 @@
-[package]
-name = "trending-agent"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "crates/core",
+    "crates/cli",
+    "crates/web",
+    "crates/wasm",
+]
 
-[[bin]]
-name = "trending-agent"
-path = "src/main.rs"
-
-[lib]
-name = "trending_agent"
-path = "src/lib.rs"
-
-[dependencies]
+[workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "cookies", "stream"] }
 scraper = "0.26"
@@ -21,8 +16,8 @@ anyhow = "1"
 chrono = "0.4"
 futures = "0.3"
 dotenvy = "0.15"
-clap = { version = "4", features = ["derive"] }
 askama = "0.15"
-axum = "0.7"
-rustyline = { version = "18.0.0", features = ["default"] }
 regex = "1"
+
+[profile.release]
+opt-level = 3

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{extract::State, response::Html, routing::get, Router};
 use tokio::sync::Mutex;
 
-use crate::report::report::Report;
+use trending_agent_core::report::report::Report;
 
 #[derive(Clone)]
 pub struct WebState {
@@ -38,7 +38,7 @@ pub async fn start_web_server(port: u16, state: WebState) {
     let addr = format!("0.0.0.0:{}", port);
     println!("🌐 启动 Web UI: http://localhost:{}", port);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -98,7 +98,7 @@ async fn get_report(
     State(state): State<WebState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Html<String> {
-    let report = state.report.lock().await;
+    let report: tokio::sync::MutexGuard<Option<Report>> = state.report.lock().await;
     if let Some(r) = report.as_ref() {
         let format = params.get("format").cloned().unwrap_or_default();
         let content = if format == "html" {
@@ -124,4 +124,11 @@ async fn get_report(
     } else {
         Html("<div style='text-align:center;color:#666;'>暂无报告数据</div>".to_string())
     }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let state = WebState::new();
+    start_web_server(8080, state).await;
+    Ok(())
 }
