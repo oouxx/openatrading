@@ -2107,23 +2107,55 @@ dependencies = [
 ]
 
 [[package]]
-name = "trending-agent"
+name = "trending-agent-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "askama",
- "axum",
  "chrono",
  "clap",
  "dotenvy",
  "futures",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trending-agent-core",
+]
+
+[[package]]
+name = "trending-agent-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "askama",
+ "chrono",
+ "dotenvy",
+ "futures",
  "regex",
  "reqwest",
- "rustyline",
  "scraper",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "trending-agent-wasm"
+version = "0.1.0"
+dependencies = [
+ "trending-agent-core",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "trending-agent-web"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "tokio",
+ "trending-agent-core",
 ]
 
 [[package]]

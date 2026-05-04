@@ -65,12 +65,6 @@ pub struct CommunityOpts {
 
     #[arg(short, long, default_value = "./reports")]
     pub output: String,
-
-    #[arg(long)]
-    pub web: bool,
-
-    #[arg(long, default_value = "8080")]
-    pub port: u16,
 }
 
 #[derive(clap::Args)]
@@ -86,14 +80,6 @@ pub struct RunOpts {
     /// 输出目录
     #[arg(short, long, default_value = "./reports")]
     pub output: String,
-
-    /// 启动 Web UI（默认端口 8080）
-    #[arg(long)]
-    pub web: bool,
-
-    /// Web UI 端口
-    #[arg(long, default_value = "8080")]
-    pub port: u16,
 }
 
 #[derive(clap::Args)]
