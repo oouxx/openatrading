@@ -90,9 +90,11 @@ docker compose up -d
 ### 静态部署（Vercel/Cloudflare Pages）
 生成静态 HTML 报告并部署到 Vercel 或 Cloudflare Pages：
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?s=https://github.com/你的用户名/trending-agent&env=OPENROUTER_API_KEY,JIUYAN_PHONE&envDescription=需要 OpenRouter API Key 和韭研公社手机号)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
 
-[![Deploy to Cloudflare Pages](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/pages/create)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
+
+> **注意**：Vercel 部署时请在设置中手动添加环境变量 `OPENROUTER_API_KEY` 和 `JIUYAN_PHONE`。
 
 ```bash
 # 1. 生成 HTML 报告到 dist/reports/
@@ -103,6 +105,15 @@ cargo run -- index --dir ./dist/
 
 # 3. 提交并推送（Vercel/Cloudflare 自动部署）
 git add dist/ && git commit -m "chore: update reports" && git push
+```
+
+目录结构：
+```
+dist/
+├── index.html          # 索引页，列出所有报告
+├── reports/          # HTML 报告
+├── vercel.json       # Vercel 配置（自动生成）
+└── _routes.json      # Cloudflare Pages 配置（自动生成）
 ```
 
 目录结构：
