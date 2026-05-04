@@ -5,6 +5,7 @@ use std::io::Write;
 use askama::Template;
 use chrono::Local;
 
+use crate::agents::sentiment::SentimentResult;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
 use crate::roles::analyst::Role;
@@ -33,6 +34,8 @@ pub struct Report {
     /// 韭研公社时间线数据（按日期分组）
     pub timeline: Vec<TimelineDay>,
     pub analyses: Vec<RoleAnalysis>,
+    /// 社群文章舆情分析结果
+    pub sentiment: Option<SentimentResult>,
 }
 
 impl Report {
@@ -43,6 +46,7 @@ impl Report {
         field_items: Vec<FieldPlate>,
         timeline: Vec<TimelineDay>,
         analyses: Vec<RoleAnalysis>,
+        sentiment: Option<SentimentResult>,
     ) -> Self {
         Self {
             date: Local::now().format("%Y-%m-%d %H:%M").to_string(),
@@ -52,6 +56,7 @@ impl Report {
             field_items,
             timeline,
             analyses,
+            sentiment,
         }
     }
 
@@ -69,6 +74,9 @@ impl Report {
 
         // 市场概览区块
         self.render_overview(&mut out);
+
+        // 社群舆情分析
+        self.render_sentiment(&mut out);
 
         // 涨停结构分析
         self.render_limit_up_structure(&mut out);
@@ -97,6 +105,7 @@ impl Report {
             &self.field_items,
             &self.timeline,
             &self.analyses,
+            &self.sentiment,
         );
         template.render().unwrap()
     }
@@ -112,6 +121,7 @@ impl Report {
             &self.field_items,
             &self.timeline,
             &self.analyses,
+            &self.sentiment,
         );
         template.render().unwrap()
     }
@@ -143,6 +153,31 @@ impl Report {
         .unwrap();
         writeln!(out, "│  涨跌比 {:.2}  {}", ratio, sentiment_label).unwrap();
         writeln!(out, "│  {}", sentiment_bar).unwrap();
+        writeln!(out, "└────────────────────────────────────────").unwrap();
+        writeln!(out).unwrap();
+    }
+
+    fn render_sentiment(&self, out: &mut String) {
+        let Some(ref sentiment) = self.sentiment else {
+            return;
+        };
+
+        writeln!(out, "┌─ 社群舆情分析 ─────────────────────────────").unwrap();
+        writeln!(out, "│  热度趋势：{}", sentiment.trend).unwrap();
+        writeln!(out, "│").unwrap();
+        writeln!(out, "│  热门股票（提及次数）：").unwrap();
+        for (code, name, cnt) in sentiment.hot_stocks.iter().take(5) {
+            writeln!(out, "│    {} {} - {}次", code, name, cnt).unwrap();
+        }
+        writeln!(out, "│").unwrap();
+        writeln!(out, "│  热门文章（热度）：").unwrap();
+        for (title, eng) in sentiment.hot_articles.iter().take(3) {
+            writeln!(out, "│    {} (热度:{})", title, eng).unwrap();
+        }
+        writeln!(out, "│").unwrap();
+        writeln!(out, "│  今日新闻资讯摘要：{}", sentiment.news_summary).unwrap();
+        writeln!(out, "│").unwrap();
+        writeln!(out, "│  总结：{}", sentiment.summary).unwrap();
         writeln!(out, "└────────────────────────────────────────").unwrap();
         writeln!(out).unwrap();
     }
@@ -212,6 +247,7 @@ impl Report {
             Role::Trader => "⚡",
             Role::Quant => "📐",
             Role::RiskOfficer => "🛡️",
+            Role::Zarili => "📊",
         };
 
         writeln!(

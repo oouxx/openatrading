@@ -1,19 +1,49 @@
+use crate::api::jiuyangongshe::CommunityArticle;
 use crate::api::Client;
 use anyhow::Result;
+use chrono::Local;
 
+#[derive(Debug, Clone)]
 pub struct SentimentResult {
     pub hot_stocks: Vec<(String, String, i32)>,
     pub hot_articles: Vec<(String, i32)>,
     pub trend: String,
     pub summary: String,
+    pub news_summary: String,
+    pub articles: Vec<CommunityArticle>,
 }
 
 pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
-    let resp = client.jiuyan.fetch_community("", 0, 1, 30).await?;
-    let articles = &resp.result;
+    let mut all_articles = Vec::new();
+    for page in 1..=3 {
+        let resp = client.jiuyan.fetch_community("", 0, page, 30).await?;
+        if resp.result.is_empty() {
+            break;
+        }
+        all_articles.extend(resp.result);
+    }
+
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let articles: Vec<CommunityArticle> = all_articles
+        .into_iter()
+        .filter(|a| a.create_time.starts_with(&today))
+        .collect();
+
+    if articles.is_empty() {
+        return Ok(SentimentResult {
+            hot_stocks: vec![],
+            hot_articles: vec![],
+            trend: "暂无数据".to_string(),
+            summary: "今日暂无社群文章".to_string(),
+            news_summary: "今日暂无社群文章更新".to_string(),
+            articles: vec![],
+        });
+    }
+
+    let articles_ref: Vec<&CommunityArticle> = articles.iter().collect();
 
     let mut stock_mentions: std::collections::HashMap<(String, String), i32> = Default::default();
-    for article in articles {
+    for article in &articles_ref {
         for stock in &article.stock_list {
             *stock_mentions
                 .entry((stock.code.clone(), stock.name.clone()))
@@ -28,7 +58,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
     hot_stocks.sort_by(|a, b| b.2.cmp(&a.2));
     let hot_stocks: Vec<_> = hot_stocks.into_iter().take(10).collect();
 
-    let mut hot_articles: Vec<_> = articles
+    let mut hot_articles: Vec<_> = articles_ref
         .iter()
         .map(|a| {
             (
@@ -40,7 +70,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
     hot_articles.sort_by(|a, b| b.1.cmp(&a.1));
     let hot_articles: Vec<_> = hot_articles.into_iter().take(5).collect();
 
-    let total_engagement: i32 = articles
+    let total_engagement: i32 = articles_ref
         .iter()
         .map(|a| a.like_count + a.comment_count)
         .sum();
@@ -68,6 +98,8 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
         hot_articles,
         trend,
         summary,
+        news_summary: String::new(),
+        articles,
     })
 }
 
@@ -100,6 +132,9 @@ pub fn build_prompt(result: &SentimentResult) -> String {
 ### 热门文章
 {}
 
+### 今日新闻资讯摘要
+{}
+
 ---
 请分析：
 1. 市场情绪偏向
@@ -107,6 +142,6 @@ pub fn build_prompt(result: &SentimentResult) -> String {
 3. 风险提示
 
 50字以内。"#,
-        result.trend, stocks, articles,
+        result.trend, stocks, articles, result.news_summary,
     )
 }

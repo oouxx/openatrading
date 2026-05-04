@@ -357,6 +357,28 @@ impl AnalysesMdTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "markdown/sentiment.md")]
+pub struct SentimentMdTemplate {
+    pub trend: String,
+    pub hot_stocks: Vec<(String, String, i32)>,
+    pub hot_articles: Vec<(String, i32)>,
+    pub summary: String,
+    pub news_summary: String,
+}
+
+impl SentimentMdTemplate {
+    pub fn render(sentiment: &crate::agents::sentiment::SentimentResult) -> Self {
+        Self {
+            trend: sentiment.trend.clone(),
+            hot_stocks: sentiment.hot_stocks.clone(),
+            hot_articles: sentiment.hot_articles.clone(),
+            summary: sentiment.summary.clone(),
+            news_summary: sentiment.news_summary.clone(),
+        }
+    }
+}
+
+#[derive(Template)]
 #[template(path = "markdown/report.md")]
 pub struct ReportMdTemplate {
     pub date: String,
@@ -367,6 +389,7 @@ pub struct ReportMdTemplate {
     pub field_items: String,
     pub timeline: String,
     pub analyses: String,
+    pub sentiment: String,
 }
 
 impl ReportMdTemplate {
@@ -378,6 +401,7 @@ impl ReportMdTemplate {
         field_items: &[FieldPlate],
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],
+        sentiment: &Option<crate::agents::sentiment::SentimentResult>,
     ) -> Self {
         let overview = OverviewMdTemplate::render(overview).render().unwrap();
         let board_distribution = BoardDistributionMdTemplate::render(limit_up)
@@ -396,6 +420,10 @@ impl ReportMdTemplate {
             .and_then(|t| t.render().ok())
             .unwrap_or_default();
         let analyses = AnalysesMdTemplate::render(analyses).render().unwrap();
+        let sentiment = match sentiment {
+            Some(s) => SentimentMdTemplate::render(s).render().unwrap_or_default(),
+            None => String::new(),
+        };
         Self {
             date: date.to_string(),
             overview,
@@ -405,6 +433,7 @@ impl ReportMdTemplate {
             field_items,
             timeline,
             analyses,
+            sentiment,
         }
     }
 }
@@ -696,6 +725,28 @@ impl AnalysesHtmlTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "html/sentiment.html")]
+pub struct SentimentHtmlTemplate {
+    pub trend: String,
+    pub hot_stocks: Vec<(String, String, i32)>,
+    pub hot_articles: Vec<(String, i32)>,
+    pub summary: String,
+    pub news_summary: String,
+}
+
+impl SentimentHtmlTemplate {
+    pub fn render(sentiment: &crate::agents::sentiment::SentimentResult) -> Self {
+        Self {
+            trend: sentiment.trend.clone(),
+            hot_stocks: sentiment.hot_stocks.clone(),
+            hot_articles: sentiment.hot_articles.clone(),
+            summary: sentiment.summary.clone(),
+            news_summary: sentiment.news_summary.clone(),
+        }
+    }
+}
+
+#[derive(Template)]
 #[template(path = "html/report.html")]
 pub struct ReportHtmlTemplate {
     pub date: String,
@@ -706,6 +757,7 @@ pub struct ReportHtmlTemplate {
     pub field_items: String,
     pub timeline: String,
     pub analyses: String,
+    pub sentiment: String,
 }
 
 impl ReportHtmlTemplate {
@@ -717,6 +769,7 @@ impl ReportHtmlTemplate {
         field_items: &[FieldPlate],
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],
+        sentiment: &Option<crate::agents::sentiment::SentimentResult>,
     ) -> Self {
         let overview = OverviewHtmlTemplate::render(overview).render().unwrap();
         let board_distribution = BoardDistributionHtmlTemplate::render(limit_up)
@@ -735,6 +788,12 @@ impl ReportHtmlTemplate {
             .and_then(|t| t.render().ok())
             .unwrap_or_default();
         let analyses = AnalysesHtmlTemplate::render(analyses).render().unwrap();
+        let sentiment = match sentiment {
+            Some(s) => SentimentHtmlTemplate::render(s)
+                .render()
+                .unwrap_or_default(),
+            None => String::new(),
+        };
         Self {
             date: date.to_string(),
             overview,
@@ -744,6 +803,7 @@ impl ReportHtmlTemplate {
             field_items,
             timeline,
             analyses,
+            sentiment,
         }
     }
 }

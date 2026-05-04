@@ -14,6 +14,8 @@
 
 {{ timeline }}
 
+{{ sentiment }}
+
 {{ analyses }}
 
 ---
