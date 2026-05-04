@@ -90,6 +90,10 @@ docker compose up -d
 ### 静态部署（Vercel/Cloudflare Pages）
 生成静态 HTML 报告并部署到 Vercel 或 Cloudflare Pages：
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?s=https://github.com/你的用户名/trending-agent&env=OPENROUTER_API_KEY,JIUYAN_PHONE&envDescription=需要 OpenRouter API Key 和韭研公社手机号)
+
+[![Deploy to Cloudflare Pages](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/pages/create)
+
 ```bash
 # 1. 生成 HTML 报告到 dist/reports/
 cargo run -- run --format html --output ./dist/reports/

@@ -1,0 +1,8 @@
+{
+  "buildCommand": null,
+  "outputDirectory": "dist",
+  "routes": [
+    { "src": "/", "dest": "/index.html" },
+    { "src": "/reports/(.*)", "dest": "/reports/$1" }
+  ]
+}
