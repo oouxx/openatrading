@@ -12,7 +12,7 @@ docs/*.md
 docs/*.json
 ROADMAP.md
 methodology
+
 # Allow dist/ for static deploy
 !dist/
 !dist/**
-dist/reports/
