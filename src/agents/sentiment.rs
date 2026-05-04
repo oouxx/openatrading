@@ -105,16 +105,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
 
 pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentResult {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    eprintln!("  调试: 今天日期 = {}", today);
-    eprintln!("  调试: 过滤前文章数 = {}", articles.len());
-    if !articles.is_empty() {
-        eprintln!(
-            "  调试: 第一篇文章 create_time = {:?}",
-            articles[0].create_time
-        );
-    }
     articles.retain(|a| a.create_time.starts_with(&today));
-    eprintln!("  调试: 过滤后文章数 = {}", articles.len());
 
     if articles.is_empty() {
         return SentimentResult {
