@@ -1,5 +1,6 @@
 use anyhow::Result;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
 
@@ -16,6 +17,15 @@ pub struct TgbPost {
     pub reply_count: i32,
     pub like_count: i32,
     pub link: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TgbUserSummary {
+    pub user_id: String,
+    pub nickname: String,
+    pub post_count: usize,
+    pub top_post_title: String,
+    pub last_update: String,
 }
 
 pub struct TgbClient {

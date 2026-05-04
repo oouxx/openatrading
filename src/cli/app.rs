@@ -34,8 +34,13 @@ pub enum Commands {
     Technical(CommonOpts),
     /// 保存淘股吧用户帖子
     SaveUser(UserOpts),
+    /// 生成淘股吧子页面
+    TaoGuBa(TaoGuBaOpts),
     /// 生成报告索引页
     Index(IndexOpts),
+    /// 生成选股宝子页面
+    #[command(name = "xuangubao")]
+    XuanGuBao(XuanGuBaoOpts),
 }
 
 #[derive(clap::Args)]
@@ -101,8 +106,27 @@ pub struct UserOpts {
     pub output: String,
 }
 
+/// TaoGuBa 子页面生成选项
+#[derive(clap::Args)]
+pub struct TaoGuBaOpts {
+    /// 用户ID列表（逗号分隔）
+    #[arg(short, long)]
+    pub users: String,
+    /// 输出目录
+    #[arg(short, long, default_value = "./dist/taoguba")]
+    pub output: String,
+}
+
 #[derive(clap::Args)]
 pub struct IndexOpts {
     #[arg(short, long, default_value = "./dist")]
     pub dir: String,
+}
+
+/// 生成选股宝子页面
+#[derive(clap::Args)]
+pub struct XuanGuBaoOpts {
+    /// 输出目录
+    #[arg(short, long, default_value = "./dist/xuangubao")]
+    pub output: String,
 }

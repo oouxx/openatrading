@@ -435,6 +435,10 @@ pub struct ReportMdTemplate {
     pub timeline: String,
     pub analyses: String,
     pub sentiment: String,
+    // 新增字段：风险等级、机会信号、决策摘要（追加到 Markdown 模板的上下文中）
+    pub risk_level: String,
+    pub opportunity_signals: String,
+    pub decision_summary: String,
 }
 
 impl ReportMdTemplate {
@@ -447,6 +451,9 @@ impl ReportMdTemplate {
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],
         sentiment: &Option<crate::agents::sentiment::SentimentResult>,
+        risk_level: &str,
+        opportunity_signals: &[String],
+        decision_summary: &str,
     ) -> Self {
         let overview = OverviewMdTemplate::render(overview).render().unwrap();
         let board_distribution = BoardDistributionMdTemplate::render(limit_up)
@@ -469,6 +476,14 @@ impl ReportMdTemplate {
             Some(s) => SentimentMdTemplate::render(s).render().unwrap_or_default(),
             None => String::new(),
         };
+        // 将风险等级/信号/决策摘要写入模板字段
+        // Convert 中文风险等级 to CSS-friendly english label for HTML/CSS styling
+        let risk_level_css = match risk_level {
+            "高" => "high",
+            "中" => "mid",
+            "低" => "low",
+            _ => "low",
+        };
         Self {
             date: date.to_string(),
             overview,
@@ -479,6 +494,9 @@ impl ReportMdTemplate {
             timeline,
             analyses,
             sentiment,
+            risk_level: risk_level_css.to_string(),
+            opportunity_signals: opportunity_signals.join(" / "),
+            decision_summary: decision_summary.to_string(),
         }
     }
 }
@@ -828,6 +846,10 @@ pub struct ReportHtmlTemplate {
     pub timeline: String,
     pub analyses: String,
     pub sentiment: String,
+    // 新增字段：风险等级、机会信号、决策摘要（追加到 HTML 模板的上下文中）
+    pub risk_level: String,
+    pub opportunity_signals: String,
+    pub decision_summary: String,
 }
 
 impl ReportHtmlTemplate {
@@ -840,7 +862,17 @@ impl ReportHtmlTemplate {
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],
         sentiment: &Option<crate::agents::sentiment::SentimentResult>,
+        risk_level: &str,
+        opportunity_signals: &[String],
+        decision_summary: &str,
     ) -> Self {
+        let risk_level_css = match risk_level {
+            "高" => "high",
+            "中" => "mid",
+            "低" => "low",
+            _ => "low",
+        };
+
         let overview = OverviewHtmlTemplate::render(overview).render().unwrap();
         let board_distribution = BoardDistributionHtmlTemplate::render(limit_up)
             .render()
@@ -874,6 +906,9 @@ impl ReportHtmlTemplate {
             timeline,
             analyses,
             sentiment,
+            risk_level: risk_level_css.to_string(),
+            opportunity_signals: opportunity_signals.join(" / "),
+            decision_summary: decision_summary.to_string(),
         }
     }
 }

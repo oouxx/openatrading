@@ -10,6 +10,9 @@ use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
 use crate::roles::analyst::Role;
 use crate::templates::{ReportHtmlTemplate, ReportMdTemplate};
+// NOTE: New fields for extended risk/opportunity insights
+use crate::api::taoguba::TgbUserSummary;
+use crate::api::xuangubao::XuanGubaoExtra;
 
 // ─── 单个角色的分析结果 ───────────────────────────────────────
 
@@ -36,6 +39,12 @@ pub struct Report {
     pub analyses: Vec<RoleAnalysis>,
     /// 社群文章舆情分析结果
     pub sentiment: Option<SentimentResult>,
+    // 新增字段：风险与机会信号及辅助数据
+    pub risk_level: String,
+    pub opportunity_signals: Vec<String>,
+    pub decision_summary: String,
+    pub taoguba_users: Vec<TgbUserSummary>,
+    pub xuangubao_extra: XuanGubaoExtra,
 }
 
 impl Report {
@@ -47,7 +56,47 @@ impl Report {
         timeline: Vec<TimelineDay>,
         analyses: Vec<RoleAnalysis>,
         sentiment: Option<SentimentResult>,
+        taoguba_users: Vec<TgbUserSummary>,
+        xuangubao_extra: XuanGubaoExtra,
     ) -> Self {
+        // 计算风险等级与信号
+        let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+        let risk_level = if ratio < 0.8 && overview.bomb_rate > 30.0 {
+            "高".to_string()
+        } else if ratio < 1.2 || overview.bomb_rate > 20.0 {
+            "中".to_string()
+        } else {
+            "低".to_string()
+        };
+
+        // 生成机会信号：优先展示龙头与热度板块（简单实现，后续可扩展）
+        let mut opportunity_signals: Vec<String> = Vec::new();
+        // 龙头板块（涨停股中连板天数最高的股票）
+        if let Some(head) = limit_up.iter().max_by_key(|s| s.limit_up_days) {
+            opportunity_signals.push(format!("龙头：{}（{}板）", head.symbol, head.limit_up_days));
+        }
+        // 热门行业/板块（尝试统计前3）
+        let mut industries: std::collections::HashMap<&str, u32> = Default::default();
+        for s in &limit_up {
+            if let Some(ref reason) = s.surge_reason {
+                for plate in &reason.related_plates {
+                    let name = plate.plate_name.as_str();
+                    *industries.entry(name).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut inds: Vec<(&str, u32)> = industries.into_iter().collect();
+        inds.sort_by(|a, b| b.1.cmp(&a.1));
+        if let Some((name, _cnt)) = inds.first() {
+            opportunity_signals.push(format!("热门板块：{}", name));
+        }
+
+        // 简要决策摘要：风险等级 + 关键信号
+        let mut decision_summary = format!("风险等级：{}；", risk_level);
+        if !opportunity_signals.is_empty() {
+            decision_summary.push_str(&format!("信号：{}", opportunity_signals.join(" / ")));
+        }
+
         Self {
             date: Local::now().format("%Y-%m-%d %H:%M").to_string(),
             overview,
@@ -57,6 +106,11 @@ impl Report {
             timeline,
             analyses,
             sentiment,
+            risk_level,
+            opportunity_signals,
+            decision_summary,
+            taoguba_users,
+            xuangubao_extra,
         }
     }
 
@@ -106,6 +160,9 @@ impl Report {
             &self.timeline,
             &self.analyses,
             &self.sentiment,
+            &self.risk_level,
+            &self.opportunity_signals,
+            &self.decision_summary,
         );
         template.render().unwrap()
     }
@@ -122,6 +179,9 @@ impl Report {
             &self.timeline,
             &self.analyses,
             &self.sentiment,
+            &self.risk_level,
+            &self.opportunity_signals,
+            &self.decision_summary,
         );
         template.render().unwrap()
     }

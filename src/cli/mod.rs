@@ -4,12 +4,15 @@ use anyhow::Result;
 use app::{Cli, Commands};
 use clap::Parser;
 
+use crate::api::xuangubao::XuanGubaoExtra;
 use crate::api::Client;
 use crate::llm::openrouter::LlmClient;
 use crate::report::report::{Report, Reporter, RoleAnalysis};
 use crate::roles::analyst::{build_prompt, Role};
 use crate::web::{start_web_server, WebState};
 use futures::StreamExt;
+use serde_json;
+use std::path::Path;
 
 pub async fn run() -> Result<()> {
     dotenvy::dotenv().ok();
@@ -43,7 +46,9 @@ pub async fn run() -> Result<()> {
         Some(Commands::Sentiment(opts)) => run_sentiment(client, opts, api_key).await?,
         Some(Commands::Technical(opts)) => run_technical(client, opts, api_key).await?,
         Some(Commands::SaveUser(opts)) => run_save_user(client, opts).await?,
+        Some(Commands::TaoGuBa(opts)) => run_taoguba(client, opts).await?,
         Some(Commands::Index(opts)) => run_index(opts).await?,
+        Some(Commands::XuanGuBao(opts)) => run_xuangubao(opts).await?,
         None => {
             run_all(
                 client,
@@ -60,6 +65,62 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// 选股宝子页面生成入口
+async fn run_xuangubao(opts: app::XuanGuBaoOpts) -> Result<()> {
+    println!("📡 拉取选股宝数据...报价子页生成中");
+    let client = Client::new();
+
+    // 并行拉取需要的数据
+    let (limit_up_r, limit_down_r, overview_r, plate_r) = tokio::join!(
+        client.xuangubao.fetch_limit_up(),
+        client.xuangubao.fetch_limit_down(),
+        client.xuangubao.fetch_market_overview(),
+        client.xuangubao.fetch_plate_abnormal(30)
+    );
+
+    let limit_up = limit_up_r?.clone(); // Vec<Stock>
+    let limit_down = limit_down_r?.clone();
+    let overview = overview_r?;
+    let plate_abnormal = plate_r?;
+
+    // 输出目录准备
+    let out_dir = Path::new(&opts.output);
+    std::fs::create_dir_all(out_dir)?;
+
+    // 简单 HTML 生成：将数据以 JSON 形式嵌入页面，避免对具体字段的强耦合
+    let index_html = format!(
+        "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<title>选股宝总览</title>\n</head>\n<body>\n<h1>选股宝总览</h1>\n<p>上涨股票数: {} | 下跌股票数: {} | 涨停: {} | 跌停: {}%</p>\n<pre>{}</pre>\n</body>\n</html>",
+        overview.rise_count,
+        overview.fall_count,
+        overview.limit_up_count,
+        overview.limit_down_count,
+        serde_json::to_string_pretty(&overview).unwrap_or_default()
+    );
+    std::fs::write(out_dir.join("index.html"), index_html)?;
+
+    // 具体子页
+    let limit_up_html = format!(
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"></head><body><h1>Limit Up</h1><pre>{}</pre></body></html>",
+        serde_json::to_string_pretty(&limit_up).unwrap_or_default()
+    );
+    std::fs::write(out_dir.join("limit-up.html"), limit_up_html)?;
+
+    let limit_down_html = format!(
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"></head><body><h1>Limit Down</h1><pre>{}</pre></body></html>",
+        serde_json::to_string_pretty(&limit_down).unwrap_or_default()
+    );
+    std::fs::write(out_dir.join("limit-down.html"), limit_down_html)?;
+
+    let plates_html = format!(
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\"></head><body><h1>Plate Abnormal</h1><pre>{}</pre></body></html>",
+        serde_json::to_string_pretty(&plate_abnormal).unwrap_or_default()
+    );
+    std::fs::write(out_dir.join("plates.html"), plates_html)?;
+
+    println!("✅ 选股宝子页面已生成: {}", out_dir.display());
     Ok(())
 }
 
@@ -86,6 +147,11 @@ async fn run_limit_up(
         vec![],
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -119,6 +185,11 @@ async fn run_limit_down(
         vec![],
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down,
+            plate_abnormal: vec![],
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -154,6 +225,11 @@ async fn run_overview(
         vec![],
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -184,11 +260,16 @@ async fn run_plate_abnormal(
     let report = Report::new(
         overview.clone(),
         vec![],
-        plate_abnormal,
+        plate_abnormal.clone(),
         vec![],
         vec![],
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal,
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -226,10 +307,15 @@ async fn run_field(
         overview.clone(),
         vec![],
         vec![],
-        field_items,
+        field_items.clone(),
         vec![],
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -266,6 +352,11 @@ async fn run_timeline(
         timeline,
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
     save_report_formatted(&report, output, format)?;
 
@@ -430,6 +521,11 @@ async fn run_community(
         vec![],
         vec![ra()],
         Some(sentiment_result),
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
 
     if opts.web {
@@ -506,6 +602,112 @@ async fn run_save_user(client: Client, opts: app::UserOpts) -> Result<()> {
     use crate::api::taoguba::save_user_posts;
 
     save_user_posts(&client.taoguba, &opts.user_id, &opts.output).await?;
+    Ok(())
+}
+
+/// 生成淘股吧子页面（HTML），并输出索引页
+async fn run_taoguba(client: Client, opts: app::TaoGuBaOpts) -> Result<()> {
+    use std::path::PathBuf;
+    use tokio::fs;
+
+    // 1) 解析用户列表
+    let mut user_ids: Vec<String> = Vec::new();
+    for s in opts.users.split(',') {
+        let t = s.trim();
+        if !t.is_empty() {
+            user_ids.push(t.to_string());
+        }
+    }
+
+    if user_ids.is_empty() {
+        eprintln!("⚠️ 未提供有效的用户ID列表");
+        return Ok(());
+    }
+
+    // 2) 备份输出目录
+    let out_dir = PathBuf::from(opts.output.clone());
+    if let Err(e) = fs::create_dir_all(&out_dir).await {
+        eprintln!("⚠️ 无法创建输出目录 {}: {}", out_dir.display(), e);
+        return Err(e.into());
+    }
+
+    // 3) 为每个用户生成 HTML 页面（并尝试获取内容）
+    let mut index_entries: Vec<(String, String)> = Vec::new();
+
+    for user_id in &user_ids {
+        // 3a) 获取帖子列表及用户名
+        match client.taoguba.fetch_user_posts(user_id).await {
+            Ok((posts, username)) => {
+                // 创建一个简单的 HTML 页面，包含用户名与所有帖子的内容
+                let mut html = String::new();
+                html.push_str(&format!("<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>淘股吧 用户 {} - {}</title>\n</head>\n<body>\n<h1>用户 {}（{}）的帖子</h1>\n", user_id, username, user_id, username));
+
+                // 逐条帖子获取内容并写入 HTML
+                for (idx, post) in posts.iter().enumerate() {
+                    html.push_str(&format!("<hr><h2>{}. {} </h2>\n", idx + 1, post.title));
+                    html.push_str(&format!("<p>时间: {}</p>\n", post.create_time));
+
+                    // 尝试获取内容
+                    match client.taoguba.fetch_post_content(&post.id).await {
+                        Ok((content, _time)) => {
+                            if !content.is_empty() {
+                                html.push_str(&format!(
+                                    "<div class=\"content\">{}</div>\n",
+                                    content
+                                ));
+                            } else {
+                                html.push_str("<p>(暂无内容)</p>\n");
+                            }
+                        }
+                        Err(e) => {
+                            html.push_str(&format!("<p>获取帖子内容失败: {}</p>\n", e));
+                        }
+                    }
+                    html.push_str(&format!("<p><a href=\"{}\">原文链接</a></p>\n", post.link));
+                }
+
+                html.push_str("</body></html>");
+
+                // 保存 HTML 文件
+                let user_html_path = out_dir.join(format!("user-{}.html", user_id));
+                if let Err(e) = fs::write(&user_html_path, html).await {
+                    eprintln!("⚠️ 写入用户页面失败 {}: {}", user_html_path.display(), e);
+                    continue;
+                }
+                println!("✅ 已生成: {}", user_html_path.display());
+
+                index_entries.push((user_id.clone(), user_html_path.display().to_string()));
+            }
+            Err(e) => {
+                eprintln!("⚠️ 无法获取用户 {} 的帖子: {}", user_id, e);
+                // 继续处理其他用户，错误不会阻塞整个流程
+            }
+        }
+    }
+
+    // 4) 生成索引页面（dist/taoguba/index.html）
+    if !index_entries.is_empty() {
+        let mut index_html = String::new();
+        index_html.push_str("<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>淘股吧子页面索引</title>\n</head>\n<body>\n<h1>淘股吧子页面索引</h1>\n<ul>\n");
+        for (uid, path) in &index_entries {
+            index_html.push_str(&format!(
+                "<li><a href=\"{}\">用户 {}</a></li>\n",
+                path.split('/').next_back().unwrap_or(""),
+                uid
+            ));
+        }
+        index_html.push_str("</ul>\n</body>\n</html>");
+
+        let index_path = out_dir.join("index.html");
+        if let Err(e) = fs::write(&index_path, index_html).await {
+            eprintln!("⚠️ 写入索引页失败: {}", e);
+            return Err(e.into());
+        }
+        println!("✅ 索引页已生成: {}", index_path.display());
+    } else {
+        println!("⚠️ 未生成任何用户页面，因为未能检索到有效数据");
+    }
+
     Ok(())
 }
 
@@ -771,6 +973,11 @@ async fn run_all(client: Client, opts: RunOpts, api_key: Option<String>) -> Resu
         timeline,
         vec![ra()],
         None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down: vec![],
+            plate_abnormal: vec![],
+        },
     );
 
     // 保存报告
@@ -897,9 +1104,7 @@ async fn run_index(opts: app::IndexOpts) -> Result<()> {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("html") {
             if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                let display_name = file_name
-                    .trim_end_matches(".html")
-                    .replace(['_', '-'], " ");
+                let display_name = file_name.trim_end_matches(".html").replace(['_', '-'], " ");
                 entries.push((file_name.to_string(), display_name));
             }
         }

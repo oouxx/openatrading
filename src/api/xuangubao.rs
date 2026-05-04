@@ -1,36 +1,36 @@
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlateReason {
     pub plate_id: i64,
     pub plate_name: String,
     pub plate_reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SurgeReason {
     pub symbol: String,
     pub stock_reason: String,
     pub related_plates: Vec<PlateReason>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LimitTimelineItem {
     pub timestamp: i64,
     pub status: i32,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LimitTimeline {
     pub items: Vec<LimitTimelineItem>,
 }
 
 // ─── 板块异动数据 ───────────────────────────────────────────
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelatedStock {
     pub symbol: String,
     pub name: String,
@@ -38,7 +38,7 @@ pub struct RelatedStock {
     pub pcp: f64,
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PlateAbnormalEventData {
     #[serde(default)]
     pub plate_id: Option<i64>,
@@ -50,7 +50,7 @@ pub struct PlateAbnormalEventData {
     pub related_stocks: Vec<RelatedStock>,
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct StockAbnormalEventData {
     pub symbol: Option<String>,
     pub name: Option<String>,
@@ -58,7 +58,7 @@ pub struct StockAbnormalEventData {
     pub mtm: Option<f64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlateAbnormalEvent {
     pub id: i64,
     pub target: String,
@@ -78,7 +78,7 @@ pub struct ApiResponse<T> {
     pub data: T,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stock {
     pub symbol: String,
     pub stock_chi_name: String,
@@ -124,7 +124,13 @@ pub struct Stock {
     pub new_stock_limit_up_price_before_broken: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+pub struct XuanGubaoExtra {
+    pub limit_down: Vec<Stock>,
+    pub plate_abnormal: Vec<PlateAbnormalEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketOverview {
     pub limit_up_count: u32,
     pub limit_down_count: u32,
