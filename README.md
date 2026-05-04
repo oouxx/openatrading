@@ -87,6 +87,29 @@ cargo test -- --ignored
 docker compose up -d
 ```
 
+### 静态部署（Vercel/Cloudflare Pages）
+生成静态 HTML 报告并部署到 Vercel 或 Cloudflare Pages：
+
+```bash
+# 1. 生成 HTML 报告到 dist/reports/
+cargo run -- run --format html --output ./dist/reports/
+
+# 2. 生成索引页 dist/index.html
+cargo run -- index --dir ./dist/
+
+# 3. 提交并推送（Vercel/Cloudflare 自动部署）
+git add dist/ && git commit -m "chore: update reports" && git push
+```
+
+目录结构：
+```
+dist/
+├── index.html          # 索引页，列出所有报告
+├── reports/          # HTML 报告
+├── vercel.json       # Vercel 配置（自动生成）
+└── _routes.json      # Cloudflare Pages 配置（自动生成）
+```
+
 ## 配置
 请在 .env 中配置以下环境变量（示例值请用实际信息替换，切勿提交敏感数据）
 ```dotenv
