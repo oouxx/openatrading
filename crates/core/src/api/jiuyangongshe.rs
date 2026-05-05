@@ -133,7 +133,7 @@ pub type TimelineData = Vec<TimelineDay>;
 
 // ─── 社群文章数据 ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunityUser {
     pub user_id: String,
     pub nickname: String,
@@ -143,14 +143,14 @@ pub struct CommunityUser {
     pub medal_count: i32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunityStock {
     pub stock_id: String,
     pub name: String,
     pub code: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunityArticle {
     pub article_id: String,
     pub is_top: i32,
@@ -171,7 +171,7 @@ pub struct CommunityArticle {
     pub stock_list: Vec<CommunityStock>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunityData {
     pub result: Vec<CommunityArticle>,
     #[serde(rename = "pageNo")]

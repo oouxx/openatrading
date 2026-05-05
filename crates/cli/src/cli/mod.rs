@@ -1037,6 +1037,7 @@ fn save_report_formatted(report: &Report, output: &str, format: &str) -> Result<
     match format {
         "markdown" => reporter.save_markdown(output),
         "html" => reporter.save_html(output),
+        "json" => reporter.save_json(output),
         "both" => {
             let md_path = reporter.save_markdown(output)?;
             let html_path = reporter.save_html(output)?;

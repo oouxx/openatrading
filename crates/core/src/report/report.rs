@@ -4,6 +4,7 @@ use std::io::Write;
 
 use askama::Template;
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 
 use crate::agents::sentiment::SentimentResult;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
@@ -16,7 +17,7 @@ use crate::api::xuangubao::XuanGubaoExtra;
 
 // ─── 单个角色的分析结果 ───────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoleAnalysis {
     pub role: Role,
     pub content: String,
@@ -25,7 +26,7 @@ pub struct RoleAnalysis {
 
 // ─── 完整报告数据 ─────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub date: String,
     pub overview: MarketOverview,
@@ -679,6 +680,15 @@ impl Reporter {
         let filename = format!("{}/report_{}.txt", dir, Local::now().format("%Y%m%d_%H%M"));
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_text())?;
+        Ok(filename)
+    }
+
+    /// 写入 JSON 文件
+    pub fn save_json(&self, dir: &str) -> anyhow::Result<String> {
+        let filename = format!("{}/report_{}.json", dir, Local::now().format("%Y%m%d_%H%M"));
+        fs::create_dir_all(dir)?;
+        let json = serde_json::to_string_pretty(&self.report)?;
+        fs::write(&filename, json)?;
         Ok(filename)
     }
 

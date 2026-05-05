@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::sync::OnceLock;
 use wasm_bindgen::prelude::*;
 
-static OPENROUTER_KEY: OnceLock<String> = OnceLock::new();
+static XGB_BASE_URL: OnceLock<String> = OnceLock::new();
 
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 
@@ -15,33 +15,41 @@ struct WasmReport {
     risk_level: String,
     opportunity_signals: Vec<String>,
     decision_summary: String,
-    field_items: Vec<trending_agent_core::api::jiuyangongshe::FieldPlate>,
-    timeline: Vec<trending_agent_core::api::jiuyangongshe::TimelineDay>,
+    field_items: Vec<serde_json::Value>,
+    timeline: Vec<serde_json::Value>,
     analyses: Vec<serde_json::Value>,
     sentiment: Option<serde_json::Value>,
-    taoguba_users: Vec<trending_agent_core::api::taoguba::TgbUserSummary>,
-    xuangubao_extra: trending_agent_core::api::xuangubao::XuanGubaoExtra,
+    taoguba_users: Vec<serde_json::Value>,
 }
 
+/// 设置选股宝 API 代理地址。开发时传入 "/api/xgb" 走 Vite proxy，生产环境调用真实 URL。
 #[wasm_bindgen]
-pub fn set_openrouter_key(key: &str) {
-    let _ = OPENROUTER_KEY.set(key.to_string());
+pub fn set_xgb_base_url(url: &str) {
+    let _ = XGB_BASE_URL.set(url.to_string());
 }
 
 #[wasm_bindgen]
 pub async fn run_report() -> Result<JsValue, JsValue> {
-    let client = XuanguBaoClient::new();
+    let base_url = XGB_BASE_URL
+        .get()
+        .cloned()
+        .unwrap_or_else(|| "https://flash-api.xuangubao.cn/api".to_string());
 
-    // 并行拉取选股宝 3 个端点（futures::join! 无需 tokio runtime）
-    let (overview, limit_up, plates) = futures::join!(
-        client.fetch_market_overview(),
-        client.fetch_limit_up(),
-        client.fetch_plate_abnormal(50),
-    );
+    let client = XuanguBaoClient::with_base_url(base_url);
 
-    let overview = overview.map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let limit_up = limit_up.map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let plates = plates.map_err(|e| JsValue::from_str(&e.to_string()))?;
+    // WASM 中 futures::join! 不兼容 wasm-bindgen-futures，使用顺序 await
+    let overview = client
+        .fetch_market_overview()
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let limit_up = client
+        .fetch_limit_up()
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let plates = client
+        .fetch_plate_abnormal(50)
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     // 风险等级计算
     let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
@@ -89,10 +97,6 @@ pub async fn run_report() -> Result<JsValue, JsValue> {
         analyses: vec![],
         sentiment: None,
         taoguba_users: vec![],
-        xuangubao_extra: trending_agent_core::api::xuangubao::XuanGubaoExtra {
-            limit_down: vec![],
-            plate_abnormal: vec![],
-        },
     };
 
     let json = serde_json::to_string(&report).map_err(|e| JsValue::from_str(&e.to_string()))?;

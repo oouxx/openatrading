@@ -11,4 +11,10 @@ path = "src/main.rs"
 trending-agent-core = { path = "../core" }
 tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
 axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+dotenvy = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }

@@ -1,62 +1,90 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
-    <!-- Top Nav -->
-    <nav class="bg-gray-800 text-white shadow-lg fixed top-0 w-full z-50">
-      <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-        <div class="flex items-center gap-3">
-          <span class="text-xl">📊</span>
-          <h1 class="text-lg font-bold">A股市场异动追踪</h1>
+  <div class="min-h-screen" style="background: var(--bg-primary)">
+    <!-- Top Bar -->
+    <header class="fixed top-0 w-full z-50 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle)">
+      <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <span class="pulse-dot"></span>
+          <h1 class="text-sm font-bold tracking-wider" style="color: var(--text-primary); font-family: var(--font-mono)">
+            TRENDING<span style="color: var(--blue)">.AGENT</span>
+          </h1>
         </div>
-        <div class="flex gap-2">
-          <button 
-            @click="refreshData" 
-            :disabled="loading"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition"
+
+        <!-- API Address Input (only in api mode) -->
+        <div v-if="dataSource === 'api'" class="flex items-center gap-2 flex-1 max-w-sm">
+          <input
+            :value="apiUrl"
+            @change="onApiUrlChange"
+            placeholder="http://localhost:8080"
+            class="flex-1 px-3 py-1 text-xs rounded border"
+            style="background: var(--bg-primary); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono); outline: none"
+          />
+        </div>
+
+        <div class="flex items-center gap-4 flex-shrink-0">
+          <!-- Source indicator -->
+          <span class="text-xs px-2 py-0.5 rounded font-mono"
+            :style="{ background: sourceBg, color: sourceColor }">
+            {{ dataSource.toUpperCase() }}
+          </span>
+          <span v-if="reportStore.report" class="text-xs" style="color: var(--text-muted); font-family: var(--font-mono)">
+            {{ reportStore.report.date }}
+          </span>
+          <button
+            @click="refreshData"
+            :disabled="reportStore.loading"
+            class="px-4 py-1.5 text-xs font-medium rounded border transition-all"
+            :style="{
+              background: reportStore.loading ? 'transparent' : 'rgba(68,138,255,0.1)',
+              color: reportStore.loading ? 'var(--text-muted)' : 'var(--blue)',
+              borderColor: reportStore.loading ? 'var(--border-subtle)' : 'rgba(68,138,255,0.3)',
+              cursor: reportStore.loading ? 'not-allowed' : 'pointer'
+            }"
           >
-            {{ loading ? '刷新中...' : '🔄 刷新数据' }}
-          </button>
-          <button class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm transition">
-            📝 导出报告
+            {{ reportStore.loading ? '刷新中...' : '↻ 刷新' }}
           </button>
         </div>
       </div>
-    </nav>
+    </header>
 
-    <!-- Main Content -->
-    <main class="container mx-auto px-4 pt-24 pb-8">
-      <!-- Error State -->
-      <div v-if="reportStore.error" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 max-w-4xl mx-auto">
-        <p class="text-red-700 text-sm">⚠️ 数据获取失败：{{ reportStore.error }}</p>
-        <button @click="refreshData" class="mt-2 text-sm text-red-600 underline">重试</button>
+    <!-- Main -->
+    <main class="max-w-7xl mx-auto px-6 pt-20 pb-12">
+      <!-- Error -->
+      <div v-if="reportStore.error" class="mb-6 p-4 rounded-lg flex items-center justify-between" style="background: rgba(255,23,68,0.08); border: 1px solid rgba(255,23,68,0.2)">
+        <div class="flex items-center gap-3">
+          <span style="color: var(--red); font-size: 16px">&#9888;</span>
+          <span class="text-sm" style="color: var(--red)">{{ reportStore.error }}</span>
+        </div>
+        <button @click="refreshData" class="text-xs underline" style="color: var(--red)">重试</button>
       </div>
 
-      <!-- Loading State -->
-      <div v-if="reportStore.loading && !reportStore.report" class="text-center py-20 text-gray-400">
-        <p class="text-lg animate-pulse">加载中...</p>
+      <!-- Loading -->
+      <div v-if="reportStore.loading && !reportStore.report" class="flex flex-col items-center justify-center py-32 gap-4">
+        <div class="pulse-dot" style="width: 12px; height: 12px"></div>
+        <span class="text-sm" style="color: var(--text-muted); font-family: var(--font-mono)">加载市场数据...</span>
       </div>
 
-      <!-- KPI Cards -->
-      <KpiCards v-if="reportStore.report" :overview="reportStore.report.overview" />
+      <!-- Content -->
+      <template v-if="reportStore.report">
+        <KpiCards
+          :overview="reportStore.report.overview"
+          :risk-level="reportStore.report.risk_level"
+          :decision-summary="reportStore.report.decision_summary"
+        />
 
-      <!-- Tab Bar -->
-      <TabBar v-model="activeTab" />
+        <TabBar v-model="activeTab" />
 
-      <!-- Tab Content -->
-      <div class="mt-6">
-        <component :is="currentTabComponent" />
-      </div>
+        <div class="mt-6">
+          <component :is="currentTabComponent" />
+        </div>
+      </template>
     </main>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-gray-400 text-center py-4 mt-12">
-      <p class="text-sm">trending-agent v0.1.0 | 数据更新: {{ reportStore.report?.date || '暂无' }}</p>
-    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useReportStore } from '../stores/report'
+import { useReportStore, fetchReport, getApiBaseUrlForDisplay, setApiBaseUrl } from '@/stores/report'
 import KpiCards from './components/KpiCards.vue'
 import TabBar from './components/TabBar.vue'
 import TabLimitUp from './components/tabs/TabLimitUp.vue'
@@ -67,21 +95,44 @@ import TabTgb from './components/tabs/TabTgb.vue'
 
 const reportStore = useReportStore()
 const activeTab = ref('limit-up')
+const dataSource = computed(() => reportStore.source)
+const apiUrl = ref(getApiBaseUrlForDisplay())
 
-const tabComponents = {
+const tabComponents: Record<string, any> = {
   'limit-up': TabLimitUp,
   'plate': TabPlate,
   'sentiment': TabSentiment,
   'ai': TabAi,
-  'tgb': TabTgb
+  'tgb': TabTgb,
 }
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])
 
-const refreshData = () => {
-  reportStore.fetchReport()
+const sourceBg = computed(() => {
+  switch (dataSource.value) {
+    case 'api': return 'rgba(0,230,118,0.1)'
+    case 'wasm': return 'rgba(68,138,255,0.1)'
+    default: return 'rgba(255,171,0,0.1)'
+  }
+})
+
+const sourceColor = computed(() => {
+  switch (dataSource.value) {
+    case 'api': return 'var(--green)'
+    case 'wasm': return 'var(--blue)'
+    default: return 'var(--amber)'
+  }
+})
+
+function onApiUrlChange(e: Event) {
+  const val = (e.target as HTMLInputElement).value.trim()
+  if (val) {
+    setApiBaseUrl(val)
+    apiUrl.value = val
+  }
 }
 
-// Initial load
-reportStore.fetchReport()
+const refreshData = () => fetchReport()
+
+fetchReport()
 </script>

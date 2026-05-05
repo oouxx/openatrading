@@ -2,8 +2,9 @@ use crate::api::jiuyangongshe::CommunityArticle;
 use crate::api::Client;
 use anyhow::Result;
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentimentResult {
     pub hot_stocks: Vec<(String, String, i32)>,
     pub hot_articles: Vec<(String, i32)>,
