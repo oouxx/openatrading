@@ -42,7 +42,7 @@ impl WebState {
     }
 }
 
-async fn refresh_report(state: &WebState) -> anyhow::Result<()> {
+async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::Result<()> {
     let client = ApiClient::new();
 
     let (overview, limit_up, limit_down, plate_abnormal) = tokio::join!(
@@ -59,10 +59,12 @@ async fn refresh_report(state: &WebState) -> anyhow::Result<()> {
 
     // Jiuyan: optional if JiuYan auth env is configured
     let (field_items, timeline) = if std::env::var("JIUYAN_PHONE").is_ok() {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let field_date_str = field_date
+            .unwrap_or(&chrono::Local::now().format("%Y-%m-%d").to_string())
+            .to_string();
         let this_month = chrono::Local::now().format("%Y-%m").to_string();
         let (f, t) = tokio::join!(
-            client.jiuyan.fetch_field(&today, 1),
+            client.jiuyan.fetch_field(&field_date_str, 1),
             client.jiuyan.fetch_timeline(&this_month),
         );
         (f.unwrap_or_default(), t.unwrap_or_default())
@@ -151,11 +153,21 @@ async fn get_report_json(
     Ok(Json(result))
 }
 
-async fn get_report_live(State(state): State<WebState>) -> Result<impl IntoResponse, StatusCode> {
-    refresh_report(&state).await.map_err(|e| {
-        eprintln!("refresh error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
+#[derive(serde::Deserialize)]
+struct LiveQuery {
+    date: Option<String>,
+}
+
+async fn get_report_live(
+    State(state): State<WebState>,
+    Query(q): Query<LiveQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    refresh_report(&state, q.date.as_deref())
+        .await
+        .map_err(|e| {
+            eprintln!("refresh error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
     let report = state
         .get_report()
         .await
@@ -169,7 +181,7 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     let state = WebState::new();
 
-    if let Err(e) = refresh_report(&state).await {
+    if let Err(e) = refresh_report(&state, None).await {
         eprintln!(
             "⚠️  initial fetch failed: {} — API will retry on request",
             e
