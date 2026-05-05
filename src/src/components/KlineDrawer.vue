@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import { createChart, ColorType } from 'lightweight-charts'
+import { createChart, ColorType, CandlestickSeries, HistogramSeries } from 'lightweight-charts'
 
 const props = defineProps<{ symbol: string; name: string }>()
 defineEmits<{ close: [] }>()
@@ -100,14 +100,9 @@ async function fetchRealtime() {
   } catch { /* ignore */ }
 }
 
-function toChartTime(ts: number, p: string): string | number {
-  if (p === 'minute') {
-    // 分钟K: 保留秒级时间戳，lightweight-charts 自动格式化为 HH:MM
-    return ts
-  }
-  // 日/周/月K: 使用 YYYY-MM-DD 字符串格式
-  const d = new Date(ts * 1000)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function toChartTime(ts: number): number {
+  // lightweight-charts 使用 Unix 秒级时间戳作为 UTCTimestamp
+  return ts
 }
 
 async function fetchKline() {
@@ -116,7 +111,7 @@ async function fetchKline() {
     if (!resp.ok) return
     const data = await resp.json()
     const chartData = data.candles.map((c: any) => ({
-      time: toChartTime(c.time, data.period),
+      time: toChartTime(c.time),
       open: c.open,
       high: c.high,
       low: c.low,
@@ -124,7 +119,7 @@ async function fetchKline() {
     }))
     candleSeries?.setData(chartData)
     volumeSeries?.setData(data.candles.map((c: any) => ({
-      time: toChartTime(c.time, data.period),
+      time: toChartTime(c.time),
       value: c.volume,
       color: c.close >= c.open ? 'rgba(0,230,118,0.3)' : 'rgba(255,23,68,0.3)',
     })))
@@ -144,7 +139,17 @@ async function initChart() {
     width: chartContainer.value.clientWidth || 520,
     height: 420,
     crosshair: { mode: 0 },
-    timeScale: { borderColor: '#1e2a3a', timeVisible: true },
+    timeScale: {
+      borderColor: '#1e2a3a',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    localization: {
+      timeFormatter: (ts: number) => {
+        const d = new Date(ts * 1000)
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      },
+    },
     rightPriceScale: { borderColor: '#1e2a3a' },
   })
 
