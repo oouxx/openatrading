@@ -1,30 +1,20 @@
-let wasmModule: any = null;
+let wasmModule: any = null
 
 async function loadWasm() {
-    if (!wasmModule) {
-        wasmModule = await import('../wasm/trending_agent_wasm');
+  if (!wasmModule) {
+    wasmModule = await import('../wasm/trending_agent_wasm')
+    // Inject OpenRouter API key if configured
+    if (typeof __OPENROUTER_KEY__ !== 'undefined' && __OPENROUTER_KEY__) {
+      wasmModule.set_openrouter_key(__OPENROUTER_KEY__)
     }
-    return wasmModule;
+  }
+  return wasmModule
 }
 
-export async function runReport(format: string = 'markdown'): Promise<string> {
-    const wasm = await loadWasm();
-    try {
-        const result = await wasm.run_report(format);
-        return result;
-    } catch (error) {
-        console.error('WASM call error:', error);
-        throw error;
-    }
-}
+declare const __OPENROUTER_KEY__: string
 
-export async function getSentiment(): Promise<any> {
-    const wasm = await loadWasm();
-    try {
-        const result = await wasm.get_sentiment();
-        return result;
-    } catch (error) {
-        console.error('WASM call error:', error);
-        throw error;
-    }
+export async function runReport(): Promise<string> {
+  const wasm = await loadWasm()
+  const result = await wasm.run_report()
+  return result as string
 }
