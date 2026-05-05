@@ -152,11 +152,21 @@ export const useReportStore = defineStore('report', () => {
     loading.value = true
     error.value = null
     try {
+      // 优先通过 WASM 获取实时数据
       const jsonStr = await runReport()
       report.value = JSON.parse(jsonStr) as Report
     } catch (e) {
-      console.error('Failed to fetch report:', e)
-      error.value = String(e)
+      console.warn('WASM fetch failed, falling back to static data:', e)
+      try {
+        // fallback: 加载静态 JSON
+        const resp = await fetch('/data/report.json')
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        report.value = await resp.json() as Report
+        error.value = null // 静态数据加载成功，清除错误
+      } catch (e2) {
+        console.error('Static data fallback also failed:', e2)
+        error.value = String(e)
+      }
     } finally {
       loading.value = false
     }

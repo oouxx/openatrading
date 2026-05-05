@@ -1,0 +1,321 @@
+{
+  "date": "2026-05-05 14:30",
+  "overview": {
+    "rise_count": 2671,
+    "fall_count": 2362,
+    "limit_up_count": 97,
+    "limit_down_count": 51,
+    "bomb_rate": 23.5
+  },
+  "limit_up": [
+    {
+      "symbol": "000609.SZ",
+      "stock_chi_name": "*ST中迪",
+      "price": 3.42,
+      "change_percent": 0.05,
+      "limit_up_days": 6,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 0.01,
+      "total_capital": 4315000000,
+      "surge_reason": {
+        "symbol": "000609.SZ",
+        "stock_reason": "ST股保壳预期，连板龙头",
+        "related_plates": [
+          { "plate_id": 10001, "plate_name": "ST板块", "plate_reason": "保壳行情" }
+        ]
+      }
+    },
+    {
+      "symbol": "600519.SH",
+      "stock_chi_name": "贵州茅台",
+      "price": 1680.50,
+      "change_percent": 10.0,
+      "limit_up_days": 3,
+      "break_limit_up_times": 1,
+      "turnover_ratio": 2.5,
+      "total_capital": 2110000000000,
+      "surge_reason": {
+        "symbol": "600519.SH",
+        "stock_reason": "白酒板块集体走强，年报业绩超预期",
+        "related_plates": [
+          { "plate_id": 20001, "plate_name": "白酒", "plate_reason": "业绩驱动" },
+          { "plate_id": 20002, "plate_name": "消费", "plate_reason": "消费复苏" }
+        ]
+      }
+    },
+    {
+      "symbol": "002289.SZ",
+      "stock_chi_name": "*ST宇顺",
+      "price": 5.80,
+      "change_percent": 5.02,
+      "limit_up_days": 4,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 0.8,
+      "total_capital": 2100000000,
+      "surge_reason": {
+        "symbol": "002289.SZ",
+        "stock_reason": "ST摘帽预期",
+        "related_plates": [
+          { "plate_id": 10001, "plate_name": "ST板块", "plate_reason": null }
+        ]
+      }
+    },
+    {
+      "symbol": "300608.SZ",
+      "stock_chi_name": "思特奇",
+      "price": 12.90,
+      "change_percent": 19.98,
+      "limit_up_days": 2,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 15.3,
+      "total_capital": 3709742000,
+      "surge_reason": {
+        "symbol": "300608.SZ",
+        "stock_reason": "算力概念，微服务+容器云平台",
+        "related_plates": [
+          { "plate_id": 30001, "plate_name": "算力", "plate_reason": "AI投资主线" },
+          { "plate_id": 30002, "plate_name": "云计算", "plate_reason": "数字化转型" }
+        ]
+      }
+    },
+    {
+      "symbol": "688981.SH",
+      "stock_chi_name": "中芯国际",
+      "price": 56.30,
+      "change_percent": 10.02,
+      "limit_up_days": 2,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 8.7,
+      "total_capital": 447000000000,
+      "surge_reason": {
+        "symbol": "688981.SH",
+        "stock_reason": "芯片自主可控，先进制程突破",
+        "related_plates": [
+          { "plate_id": 40001, "plate_name": "半导体", "plate_reason": "国产替代加速" },
+          { "plate_id": 40002, "plate_name": "芯片", "plate_reason": "政策支持" }
+        ]
+      }
+    },
+    {
+      "symbol": "000001.SZ",
+      "stock_chi_name": "平安银行",
+      "price": 12.34,
+      "change_percent": 9.98,
+      "limit_up_days": 1,
+      "break_limit_up_times": 2,
+      "turnover_ratio": 3.1,
+      "total_capital": 239000000000,
+      "surge_reason": null
+    },
+    {
+      "symbol": "300750.SZ",
+      "stock_chi_name": "宁德时代",
+      "price": 210.50,
+      "change_percent": 20.0,
+      "limit_up_days": 1,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 5.2,
+      "total_capital": 926000000000,
+      "surge_reason": {
+        "symbol": "300750.SZ",
+        "stock_reason": "固态电池技术突破，储能订单大增",
+        "related_plates": [
+          { "plate_id": 50001, "plate_name": "新能源", "plate_reason": "政策利好" },
+          { "plate_id": 50002, "plate_name": "储能", "plate_reason": "需求爆发" },
+          { "plate_id": 50003, "plate_name": "固态电池", "plate_reason": "技术突破" }
+        ]
+      }
+    },
+    {
+      "symbol": "002594.SZ",
+      "stock_chi_name": "比亚迪",
+      "price": 268.80,
+      "change_percent": 10.0,
+      "limit_up_days": 1,
+      "break_limit_up_times": 0,
+      "turnover_ratio": 4.6,
+      "total_capital": 782000000000,
+      "surge_reason": null
+    }
+  ],
+  "plate_abnormal": [
+    {
+      "id": 1001,
+      "target": "plate",
+      "event_type": 1,
+      "event_timestamp": 1746415800,
+      "plate_abnormal_event_data": {
+        "plate_id": 50001,
+        "plate_name": "新能源",
+        "pcp": 0.035,
+        "related_stocks": [
+          { "symbol": "300750.SZ", "name": "宁德时代", "mtm": 0.05, "pcp": 0.20 },
+          { "symbol": "002594.SZ", "name": "比亚迪", "mtm": 0.03, "pcp": 0.10 }
+        ]
+      },
+      "good_or_bad": 1,
+      "stock_abnormal_event_data": null
+    },
+    {
+      "id": 1002,
+      "target": "plate",
+      "event_type": 1,
+      "event_timestamp": 1746416200,
+      "plate_abnormal_event_data": {
+        "plate_id": 40001,
+        "plate_name": "半导体",
+        "pcp": 0.028,
+        "related_stocks": [
+          { "symbol": "688981.SH", "name": "中芯国际", "mtm": 0.04, "pcp": 0.10 }
+        ]
+      },
+      "good_or_bad": 1,
+      "stock_abnormal_event_data": null
+    },
+    {
+      "id": 1003,
+      "target": "plate",
+      "event_type": 2,
+      "event_timestamp": 1746416500,
+      "plate_abnormal_event_data": {
+        "plate_id": 30001,
+        "plate_name": "算力",
+        "pcp": 0.042,
+        "related_stocks": [
+          { "symbol": "300608.SZ", "name": "思特奇", "mtm": 0.06, "pcp": 0.20 },
+          { "symbol": "600519.SH", "name": "贵州茅台", "mtm": 0.02, "pcp": 0.10 }
+        ]
+      },
+      "good_or_bad": 1,
+      "stock_abnormal_event_data": null
+    },
+    {
+      "id": 1004,
+      "target": "plate",
+      "event_type": 3,
+      "event_timestamp": 1746416800,
+      "plate_abnormal_event_data": {
+        "plate_id": 20001,
+        "plate_name": "白酒",
+        "pcp": -0.012,
+        "related_stocks": [
+          { "symbol": "600519.SH", "name": "贵州茅台", "mtm": -0.01, "pcp": -0.02 }
+        ]
+      },
+      "good_or_bad": -1,
+      "stock_abnormal_event_data": null
+    },
+    {
+      "id": 1005,
+      "target": "plate",
+      "event_type": 1,
+      "event_timestamp": 1746417000,
+      "plate_abnormal_event_data": {
+        "plate_id": 50002,
+        "plate_name": "储能",
+        "pcp": 0.018,
+        "related_stocks": [
+          { "symbol": "300750.SZ", "name": "宁德时代", "mtm": 0.02, "pcp": 0.08 }
+        ]
+      },
+      "good_or_bad": 1,
+      "stock_abnormal_event_data": null
+    }
+  ],
+  "field_items": [],
+  "timeline": [],
+  "analyses": [
+    {
+      "role": "Trader",
+      "content": "市场情绪偏乐观，连板高度6板，炸板率23.5%处于可控区间。新能源、半导体、算力三大主线并行，资金轮动健康。建议关注连板龙头*ST中迪的走势，以及新能源板块的持续性。当前仓位建议5-6成，重点配置半导体和储能方向。",
+      "elapsed_ms": 1200
+    },
+    {
+      "role": "Quant",
+      "content": "技术面看，涨跌比1.13偏多，炸板率23.5%处于正常区间。连板梯队完整（6/4/3/2板均有），市场结构健康。热门板块集中在新能源(+3.5%)、半导体(+2.8%)、算力(+4.2%)。短期超买信号尚未出现，MACD金叉延续。建议关注成交量变化，若缩量上涨需警惕回调。",
+      "elapsed_ms": 980
+    },
+    {
+      "role": "RiskOfficer",
+      "content": "风险评估：当前风险等级为【中】。主要风险点：1) 涨跌比1.13，多空力量均衡偏多；2) 炸板率23.5%，封板还算稳健；3) 跌停51家，市场分化明显。建议设置止损位，控制单票仓位不超过10%，总仓位不超过6成。重点关注外围市场波动和北向资金流向。",
+      "elapsed_ms": 1100
+    }
+  ],
+  "sentiment": {
+    "hot_stocks": [
+      ["300750.SZ", "宁德时代", 15],
+      ["688981.SH", "中芯国际", 12],
+      ["600519.SH", "贵州茅台", 10],
+      ["300608.SZ", "思特奇", 8],
+      ["002594.SZ", "比亚迪", 7],
+      ["000609.SZ", "*ST中迪", 6],
+      ["002289.SZ", "*ST宇顺", 4],
+      ["000001.SZ", "平安银行", 3]
+    ],
+    "hot_articles": [
+      ["固态电池技术突破：宁德时代发布新一代产品", 95],
+      ["半导体国产替代加速：中芯国际先进制程进展", 88],
+      ["白酒板块集体走强：年报业绩超预期", 72]
+    ],
+    "trend": "震荡上行",
+    "summary": "市场情绪偏乐观，资金关注新能源和半导体主线。社群讨论热度集中在固态电池、算力、白酒三大方向。",
+    "news_summary": "今日热点：固态电池技术突破、半导体国产替代、白酒业绩超预期。政策面偏暖，北向资金净流入。",
+    "articles": [
+      {
+        "article_id": "art_001",
+        "title": "固态电池技术突破：宁德时代发布新一代产品",
+        "create_time": "2026-05-05 10:30",
+        "content": "宁德时代今日发布第三代固态电池，能量密度提升50%，预计2027年量产。多家机构上调目标价。",
+        "like_count": 256,
+        "comment_count": 89,
+        "forward_count": 45,
+        "collect_count": 120,
+        "user": { "user_id": "u001", "nickname": "新能源研究", "avatar": null },
+        "stock_list": [{ "code": "300750.SZ", "name": "宁德时代" }]
+      },
+      {
+        "article_id": "art_002",
+        "title": "半导体国产替代加速：中芯国际先进制程进展",
+        "create_time": "2026-05-05 09:15",
+        "content": "中芯国际7nm良率大幅提升，月产能突破5万片。国产设备导入进度超预期，产业链受益标的一览。",
+        "like_count": 198,
+        "comment_count": 67,
+        "forward_count": 32,
+        "collect_count": 88,
+        "user": { "user_id": "u002", "nickname": "芯片观察", "avatar": null },
+        "stock_list": [{ "code": "688981.SH", "name": "中芯国际" }]
+      },
+      {
+        "article_id": "art_003",
+        "title": "白酒板块集体走强：年报业绩超预期",
+        "create_time": "2026-05-05 08:00",
+        "content": "茅台年报净利润增长18%，五粮液增长15%，白酒板块整体估值修复中。消费复苏预期强烈。",
+        "like_count": 145,
+        "comment_count": 52,
+        "forward_count": 28,
+        "collect_count": 65,
+        "user": { "user_id": "u003", "nickname": "消费趋势", "avatar": null },
+        "stock_list": [{ "code": "600519.SH", "name": "贵州茅台" }]
+      }
+    ]
+  },
+  "risk_level": "中",
+  "opportunity_signals": [
+    "龙头：*ST中迪（6板）",
+    "热门板块：新能源"
+  ],
+  "decision_summary": "风险等级：中；上涨2671家/下跌2362家",
+  "taoguba_users": [
+    {
+      "user_id": "2577911",
+      "nickname": "著名游资",
+      "post_count": 30,
+      "top_post_title": "科技线是接下来一段时间的主线",
+      "last_update": "2026-05-05"
+    }
+  ],
+  "xuangubao_extra": {
+    "limit_down": [],
+    "plate_abnormal": []
+  }
+}
