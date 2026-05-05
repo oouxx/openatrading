@@ -45,7 +45,10 @@ struct Delta {
     content: Option<String>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
+#[cfg(target_arch = "wasm32")]
+pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 
 pub struct LlmClient {
     client: Client,
