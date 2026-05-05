@@ -141,6 +141,7 @@ pub struct MarketOverview {
 
 pub struct XuanguBaoClient {
     client: reqwest::Client,
+    base_url: String,
 }
 
 impl Default for XuanguBaoClient {
@@ -151,15 +152,29 @@ impl Default for XuanguBaoClient {
 
 impl XuanguBaoClient {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
+        Self::with_base_url(BASE_URL.to_string())
+    }
+
+    pub fn with_base_url(base_url: String) -> Self {
+        let client = Self::build_client();
+        Self { client, base_url }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn build_client() -> reqwest::Client {
+        reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
             .build()
-            .unwrap();
-        Self { client }
+            .unwrap()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn build_client() -> reqwest::Client {
+        reqwest::Client::new()
     }
 
     async fn fetch_pool(&self, pool_name: &str) -> Result<Vec<Stock>> {
-        let url = format!("{BASE_URL}/pool/detail?pool_name={pool_name}");
+        let url = format!("{}/pool/detail?pool_name={pool_name}", self.base_url);
 
         let resp: ApiResponse<Vec<Stock>> = self.client.get(&url).send().await?.json().await?;
 
@@ -180,7 +195,7 @@ impl XuanguBaoClient {
         // limit_up_broken_count,limit_up_broken_ratio 涨停炸板数和涨停炸板率
         // market_temperature 市场温度
         let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio";
-        let url = format!("{BASE_URL}/market_indicator/line?fields={fields}");
+        let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
 
@@ -203,7 +218,10 @@ impl XuanguBaoClient {
     pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateAbnormalEvent>> {
         let types =
             "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010,11000,11001";
-        let url = format!("{BASE_URL}/event/history?count={}&types={}", count, types);
+        let url = format!(
+            "{}/event/history?count={}&types={}",
+            self.base_url, count, types
+        );
 
         let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
             self.client.get(&url).send().await?.json().await?;

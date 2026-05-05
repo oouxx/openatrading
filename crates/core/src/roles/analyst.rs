@@ -1,6 +1,7 @@
 use crate::api::xuangubao::{MarketOverview, Stock};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Role {
     Trader,      // 游资短线
     Quant,       // 量化数据派

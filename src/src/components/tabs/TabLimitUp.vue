@@ -1,54 +1,46 @@
 <template>
   <div>
-    <h2 class="text-xl font-bold mb-4">📈 涨停榜</h2>
-    
-    <!-- 热门板块标签云 -->
-    <div class="mb-6">
-      <h3 class="text-lg font-medium mb-2">热门板块</h3>
-      <div class="flex flex-wrap gap-2">
-        <span 
-          v-for="(plate, idx) in plates" 
-          :key="idx"
-          class="px-3 py-1 rounded-full text-sm"
-          :style="{ fontSize: (12 + idx * 2) + 'px', backgroundColor: getPlateColor(idx) }"
-        >
-          {{ plate.name }} ({{ plate.count }})
-        </span>
-      </div>
+    <div class="flex items-center gap-4 mb-6 text-sm">
+      <span style="color: var(--text-muted)">
+        共 <b style="color: var(--text-primary)">{{ stocks.length }}</b> 只涨停
+      </span>
+      <span v-if="bombRate > 0.2" style="color: var(--amber); font-family: var(--font-mono); font-size: 13px">
+        ⚠ 炸板率 {{ (bombRate * 100).toFixed(1) }}%
+      </span>
     </div>
 
-    <!-- 风险提示 -->
-    <div 
-      v-if="bombRate > 0.3" 
-      class="bg-red-50 border-l-4 border-red-500 p-3 mb-4 rounded"
-    >
-      <p class="text-red-700 font-medium">⚠️ 警告：炸板率高达 {{ (bombRate * 100).toFixed(1) }}%，市场风险较高！</p>
-    </div>
-
-    <!-- 连板梯队表格 -->
-    <div>
-      <h3 class="text-lg font-medium mb-2">连板梯队</h3>
-      <table class="w-full text-sm">
+    <div class="glow-card overflow-hidden">
+      <table class="data-table">
         <thead>
-          <tr class="bg-gray-50">
-            <th class="px-4 py-2 text-left">连板天数</th>
-            <th class="px-4 py-2 text-left">代码</th>
-            <th class="px-4 py-2 text-left">名称</th>
-            <th class="px-4 py-2 text-right">涨跌幅</th>
-            <th class="px-4 py-2 text-right">换手率</th>
+          <tr>
+            <th>连板</th>
+            <th>代码</th>
+            <th>名称</th>
+            <th style="text-align:right">涨跌幅</th>
+            <th style="text-align:right">换手率</th>
+            <th style="text-align:right">流通市值</th>
+            <th>板块</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="stock in stocks" :key="stock.symbol" class="border-t hover:bg-gray-50">
-            <td class="px-4 py-2">
-              <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+          <tr v-for="stock in sortedStocks" :key="stock.symbol">
+            <td>
+              <span class="px-2 py-0.5 rounded text-xs font-mono"
+                :style="{
+                  background: stock.limit_up_days >= 3 ? 'rgba(255,171,0,0.15)' : 'rgba(68,138,255,0.1)',
+                  color: stock.limit_up_days >= 3 ? 'var(--amber)' : 'var(--blue)'
+                }">
                 {{ stock.limit_up_days }}板
               </span>
             </td>
-            <td class="px-4 py-2 font-mono">{{ stock.symbol }}</td>
-            <td class="px-4 py-2 font-medium">{{ stock.stock_chi_name }}</td>
-            <td class="px-4 py-2 text-right text-green-600">+{{ stock.change_percent.toFixed(2) }}%</td>
-            <td class="px-4 py-2 text-right">{{ stock.turnover_ratio.toFixed(2) }}%</td>
+            <td style="font-family: var(--font-mono); color: var(--text-primary)">{{ stock.symbol }}</td>
+            <td style="font-weight: 500; color: var(--text-primary)">{{ stock.stock_chi_name }}</td>
+            <td style="text-align:right; font-family: var(--font-mono); color: var(--green)">+{{ stock.change_percent.toFixed(2) }}%</td>
+            <td style="text-align:right; font-family: var(--font-mono)">{{ stock.turnover_ratio.toFixed(2) }}%</td>
+            <td style="text-align:right; font-family: var(--font-mono)">{{ (stock.total_capital / 1e8).toFixed(1) }}亿</td>
+            <td style="color: var(--text-muted); font-size: 12px">
+              {{ stock.surge_reason?.related_plates?.map((p: any) => p.plate_name).join(', ') || '-' }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -58,28 +50,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useReportStore } from '../../../stores/report'
+import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
-
 const stocks = computed(() => store.report?.limit_up || [])
 const bombRate = computed(() => store.report?.overview.bomb_rate || 0)
 
-const plates = computed(() => {
-  const counts: Record<string, number> = {}
-  store.report?.limit_up.forEach(stock => {
-    stock.surge_reason?.related_plates.forEach(p => {
-      counts[p.plate_name] = (counts[p.plate_name] || 0) + 1
-    })
-  })
-  return Object.entries(counts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 15)
-})
-
-const getPlateColor = (idx: number) => {
-  const colors = ['#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE']
-  return colors[idx % colors.length]
-}
+const sortedStocks = computed(() =>
+  [...stocks.value].sort((a, b) => b.limit_up_days - a.limit_up_days || b.total_capital - a.total_capital)
+)
 </script>

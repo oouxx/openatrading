@@ -1,45 +1,37 @@
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl shadow p-4 border-l-4 border-green-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-sm">📈 上涨家数</p>
-          <p class="text-3xl font-bold mt-2">{{ overview.rise_count }}</p>
-        </div>
-        <span class="text-green-500 text-sm">↑ 环比+5%</span>
-      </div>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <!-- Rise -->
+    <div class="glow-card p-5" style="border-left: 3px solid var(--green)">
+      <p class="text-xs tracking-wide mb-3" style="color: var(--text-muted)">上涨家数</p>
+      <p class="text-3xl font-bold" style="color: var(--green); font-family: var(--font-mono)">{{ overview.rise_count.toLocaleString() }}</p>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-4 border-l-4 border-red-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-sm">📉 下跌家数</p>
-          <p class="text-3xl font-bold mt-2">{{ overview.fall_count }}</p>
-        </div>
-        <span class="text-red-500 text-sm">↓ 环比-2%</span>
-      </div>
+    <!-- Fall -->
+    <div class="glow-card p-5" style="border-left: 3px solid var(--red)">
+      <p class="text-xs tracking-wide mb-3" style="color: var(--text-muted)">下跌家数</p>
+      <p class="text-3xl font-bold" style="color: var(--red); font-family: var(--font-mono)">{{ overview.fall_count.toLocaleString() }}</p>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-4 border-l-4 border-yellow-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-sm">📊 涨跌比</p>
-          <p class="text-3xl font-bold mt-2" :class="bombRateColor">{{ ratio }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ overview.limit_up_count }}涨停 / {{ overview.limit_down_count }}跌停</p>
-        </div>
-        <span class="text-gray-500 text-sm">今日</span>
-      </div>
+    <!-- Ratio -->
+    <div class="glow-card p-5" style="border-left: 3px solid var(--blue)">
+      <p class="text-xs tracking-wide mb-3" style="color: var(--text-muted)">涨跌比</p>
+      <p class="text-3xl font-bold" style="font-family: var(--font-mono)" :style="{ color: ratioColor }">{{ ratio }}</p>
+      <p class="text-xs mt-2" style="color: var(--text-muted)">{{ overview.limit_up_count }}涨停 / {{ overview.limit_down_count }}跌停</p>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-4 border-l-4 border-yellow-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-sm">⚠️ 炸板率</p>
-          <p class="text-3xl font-bold mt-2" :class="bombRateColor">{{ (overview.bomb_rate * 100).toFixed(1) }}%</p>
-        </div>
-        <span class="text-gray-500 text-sm">正常范围</span>
-      </div>
+    <!-- Bomb Rate -->
+    <div class="glow-card p-5" style="border-left: 3px solid var(--amber)">
+      <p class="text-xs tracking-wide mb-3" style="color: var(--text-muted)">炸板率</p>
+      <p class="text-3xl font-bold" style="font-family: var(--font-mono)" :style="{ color: bombColor }">{{ (overview.bomb_rate * 100).toFixed(1) }}%</p>
     </div>
+  </div>
+
+  <!-- Decision Summary Bar -->
+  <div class="glow-card px-5 py-3 mb-8 flex items-center gap-6 text-sm" v-if="decisionSummary">
+    <span class="px-2 py-0.5 rounded text-xs font-bold font-mono" :style="{ background: riskBadgeBg, color: riskBadgeColor }">
+      {{ riskLevel }}
+    </span>
+    <span style="color: var(--text-secondary)">{{ decisionSummary }}</span>
   </div>
 </template>
 
@@ -54,16 +46,41 @@ const props = defineProps<{
     limit_down_count: number
     bomb_rate: number
   }
+  riskLevel: string
+  decisionSummary: string
 }>()
-
-const bombRateColor = computed(() => {
-  if (props.overview.bomb_rate > 0.3) return 'text-red-600'
-  if (props.overview.bomb_rate > 0.2) return 'text-yellow-600'
-  return 'text-green-600'
-})
 
 const ratio = computed(() => {
   if (props.overview.fall_count === 0) return '∞'
   return (props.overview.rise_count / props.overview.fall_count).toFixed(2)
+})
+
+const ratioColor = computed(() => {
+  const r = props.overview.rise_count / Math.max(props.overview.fall_count, 1)
+  if (r >= 2) return 'var(--green)'
+  if (r >= 1) return 'var(--blue)'
+  return 'var(--red)'
+})
+
+const bombColor = computed(() => {
+  if (props.overview.bomb_rate > 0.3) return 'var(--red)'
+  if (props.overview.bomb_rate > 0.2) return 'var(--amber)'
+  return 'var(--green)'
+})
+
+const riskBadgeBg = computed(() => {
+  switch (props.riskLevel) {
+    case '高': return 'rgba(255,23,68,0.1)'
+    case '中': return 'rgba(255,171,0,0.1)'
+    default: return 'rgba(0,230,118,0.1)'
+  }
+})
+
+const riskBadgeColor = computed(() => {
+  switch (props.riskLevel) {
+    case '高': return 'var(--red)'
+    case '中': return 'var(--amber)'
+    default: return 'var(--green)'
+  }
 })
 </script>

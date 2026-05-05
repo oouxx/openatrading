@@ -1,13 +1,23 @@
 use std::sync::Arc;
 
-use axum::{extract::State, response::Html, routing::get, Router};
-use tokio::sync::Mutex;
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json, Router,
+};
+use serde_json::json;
+use tokio::sync::RwLock;
+use tower_http::cors::{Any, CorsLayer};
 
+use trending_agent_core::api::xuangubao::XuanGubaoExtra;
+use trending_agent_core::api::Client as ApiClient;
 use trending_agent_core::report::report::Report;
 
 #[derive(Clone)]
 pub struct WebState {
-    pub report: Arc<Mutex<Option<Report>>>,
+    pub report: Arc<RwLock<Option<Report>>>,
 }
 
 impl Default for WebState {
@@ -19,116 +29,140 @@ impl Default for WebState {
 impl WebState {
     pub fn new() -> Self {
         Self {
-            report: Arc::new(Mutex::new(None)),
+            report: Arc::new(RwLock::new(None)),
         }
     }
 
     pub async fn set_report(&self, report: Report) {
-        let mut r = self.report.lock().await;
-        *r = Some(report);
+        *self.report.write().await = Some(report);
+    }
+
+    pub async fn get_report(&self) -> Option<Report> {
+        self.report.read().await.clone()
     }
 }
 
-pub async fn start_web_server(port: u16, state: WebState) {
+async fn refresh_report(state: &WebState) -> anyhow::Result<()> {
+    let client = ApiClient::new();
+
+    let (overview, limit_up, limit_down, plate_abnormal) = tokio::join!(
+        client.xuangubao.fetch_market_overview(),
+        client.xuangubao.fetch_limit_up(),
+        client.xuangubao.fetch_limit_down(),
+        client.xuangubao.fetch_plate_abnormal(30),
+    );
+
+    let overview = overview?;
+    let limit_up = limit_up.unwrap_or_default();
+    let limit_down = limit_down.unwrap_or_default();
+    let plate_abnormal = plate_abnormal.unwrap_or_default();
+
+    let report = Report::new(
+        overview,
+        limit_up,
+        plate_abnormal.clone(),
+        vec![],
+        vec![],
+        vec![],
+        None,
+        vec![],
+        XuanGubaoExtra {
+            limit_down,
+            plate_abnormal,
+        },
+    );
+    state.set_report(report).await;
+    Ok(())
+}
+
+async fn start_web_server(port: u16, state: WebState) {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
-        .route("/", get(index))
-        .route("/report", get(get_report))
+        .route("/api/report", get(get_report_json))
+        .route("/api/report/live", get(get_report_live))
+        .layer(cors)
         .with_state(state);
 
     let addr = format!("0.0.0.0:{}", port);
-    println!("🌐 启动 Web UI: http://localhost:{}", port);
+    println!("🌐 Web API: http://localhost:{}", port);
 
-    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn index() -> Html<String> {
-    Html(r#"
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A股市场 AI 分析报告</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { color: #333; text-align: center; margin-bottom: 30px; }
-        .nav { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; }
-        .nav button { padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 5px; cursor: pointer; }
-        .nav button:hover { background: #0056b3; }
-        .nav button.active { background: #0056b3; }
-        #content { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); min-height: 500px; }
-        .loading { text-align: center; color: #666; padding: 50px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📊 A股市场 AI 分析报告</h1>
-        <div class="nav">
-            <button id="btn-md" class="active" onclick="showFormat('markdown')">Markdown</button>
-            <button id="btn-html" onclick="showFormat('html')">HTML</button>
-        </div>
-        <div id="content">
-            <div class="loading">加载中...</div>
-        </div>
-    </div>
-    <script>
-        let currentFormat = 'markdown';
-        async function loadReport() {
-            const res = await fetch('/report?format=' + currentFormat);
-            const text = await res.text();
-            document.getElementById('content').innerHTML = text;
-        }
-        function showFormat(fmt) {
-            currentFormat = fmt;
-            document.getElementById('btn-md').className = fmt === 'markdown' ? 'active' : '';
-            document.getElementById('btn-html').className = fmt === 'html' ? 'active' : '';
-            loadReport();
-        }
-        loadReport();
-    </script>
-</body>
-</html>
-"#.to_string())
+#[derive(serde::Deserialize)]
+struct ReportQuery {
+    section: Option<String>,
 }
 
-async fn get_report(
+async fn get_report_json(
     State(state): State<WebState>,
-    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Html<String> {
-    let report: tokio::sync::MutexGuard<Option<Report>> = state.report.lock().await;
-    if let Some(r) = report.as_ref() {
-        let format = params.get("format").cloned().unwrap_or_default();
-        let content = if format == "html" {
-            r.render_html()
-        } else {
-            r.render_markdown()
-        };
-        if format == "html" {
-            Html(content)
-        } else {
-            let escaped = content
-                .replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;")
-                .replace('\n', "<br>");
-            Html(format!(
-                r#"
-<div style="white-space: pre-wrap; font-family: monospace; line-height: 1.6;">{}</div>
-"#,
-                escaped
-            ))
+    Query(q): Query<ReportQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let report = state
+        .get_report()
+        .await
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let full = serde_json::to_value(&report).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let result = match q.section {
+        Some(ref sections) if !sections.is_empty() => {
+            let mut out = json!({});
+            let obj = out.as_object_mut().unwrap();
+            for key in sections.split(',').map(|s| s.trim()) {
+                match key {
+                    "summary" => {
+                        obj.insert("risk_level".into(), full["risk_level"].clone());
+                        obj.insert(
+                            "opportunity_signals".into(),
+                            full["opportunity_signals"].clone(),
+                        );
+                        obj.insert("decision_summary".into(), full["decision_summary"].clone());
+                    }
+                    _ => {
+                        if let Some(val) = full.get(key) {
+                            obj.insert(key.to_string(), val.clone());
+                        }
+                    }
+                }
+            }
+            out
         }
-    } else {
-        Html("<div style='text-align:center;color:#666;'>暂无报告数据</div>".to_string())
-    }
+        _ => full,
+    };
+
+    Ok(Json(result))
+}
+
+async fn get_report_live(State(state): State<WebState>) -> Result<impl IntoResponse, StatusCode> {
+    refresh_report(&state).await.map_err(|e| {
+        eprintln!("refresh error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    let report = state
+        .get_report()
+        .await
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let json = serde_json::to_value(&report).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(json))
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     let state = WebState::new();
+
+    if let Err(e) = refresh_report(&state).await {
+        eprintln!(
+            "⚠️  initial fetch failed: {} — API will retry on request",
+            e
+        );
+    }
+
     start_web_server(8080, state).await;
     Ok(())
 }

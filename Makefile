@@ -11,49 +11,49 @@ release:
 # ─── Run ─────────────────────────────────────────────
 
 run:
-	cargo run
+	cargo run --bin trending-agent
 
 run-ai:
-	cargo run -- run --ai
+	cargo run --bin trending-agent -- run --ai
 
 run-web:
-	cargo run -- run --web
+	cargo run --bin trending-agent -- run --web
 
 run-all:
-	cargo run -- run --ai --web --format both
+	cargo run --bin trending-agent -- run --ai --web --format both
 
 # single data source
 limit-up:
-	cargo run -- limit-up
+	cargo run --bin trending-agent -- limit-up
 
 limit-down:
-	cargo run -- limit-down
+	cargo run --bin trending-agent -- limit-down
 
 overview:
-	cargo run -- overview
+	cargo run --bin trending-agent -- overview
 
 plate:
-	cargo run -- plate-abnormal
+	cargo run --bin trending-agent -- plate-abnormal
 
 field:
-	cargo run -- field
+	cargo run --bin trending-agent -- field
 
 timeline:
-	cargo run -- timeline
+	cargo run --bin trending-agent -- timeline
 
 community:
-	cargo run -- community
+	cargo run --bin trending-agent -- community
 
 agent:
-	cargo run -- agent
+	cargo run --bin trending-agent -- agent
 
 # ─── AI Analysis ─────────────────────────────────────
 
 sentiment:
-	cargo run -- sentiment
+	cargo run --bin trending-agent -- sentiment
 
 technical:
-	cargo run -- technical
+	cargo run --bin trending-agent -- technical
 
 # ─── Test ────────────────────────────────────────────
 
@@ -84,11 +84,23 @@ dev-frontend:
 dev-tauri:
 	cargo tauri dev
 
+# ─── JSON ────────────────────────────────────────────
+
+json:
+	cargo run --bin trending-agent -- run --format json --output ./src/public/
+	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
+	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/report.json && echo "✅ report.json ready"; fi
+
 # ─── Static Deploy ───────────────────────────────────
 
+# TAOGUBA_USERS: comma-separated user IDs, e.g. TAOGUBA_USERS=2577911,123456
+TAOGUBA_USERS ?= 2577911
+
 deploy-static:
-	cargo run -- run --format html --output ./dist/reports/
-	cargo run -- index --dir ./dist/
+	cargo run --bin trending-agent -- run --format html --output ./dist/reports/
+	cargo run --bin trending-agent -- index --dir ./dist/
+#	cargo run --bin trending-agent -- taoguba --users $(TAOGUBA_USERS) --output ./dist/taoguba
+#	cargo run --bin trending-agent -- xuangubao --output ./dist/xuangubao
 
 # ─── Docker ──────────────────────────────────────────
 
@@ -146,7 +158,8 @@ help:
 	@echo "  dev-tauri      Tauri desktop app"
 	@echo ""
 	@echo "Deploy:"
-	@echo "  deploy-static  generate static HTML to dist/"
+	@echo "  deploy-static  generate dist/ (reports + taoguba + xuangubao + index)"
+	@echo "                 override users: make deploy-static TAOGUBA_USERS=2577911,123456"
 	@echo "  docker-up      start via docker compose"
 	@echo "  docker-down    stop docker compose"
 	@echo ""
