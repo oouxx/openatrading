@@ -232,8 +232,8 @@ impl Report {
         }
         writeln!(out, "│").unwrap();
         writeln!(out, "│  热门文章（热度）：").unwrap();
-        for (title, eng) in sentiment.hot_articles.iter().take(3) {
-            writeln!(out, "│    {} (热度:{})", title, eng).unwrap();
+        for a in sentiment.hot_articles.iter().take(3) {
+            writeln!(out, "│    {} (热度:{})", a.title, a.heat_score).unwrap();
         }
         writeln!(out, "│").unwrap();
         writeln!(out, "│  今日新闻资讯摘要：{}", sentiment.news_summary).unwrap();

@@ -5,9 +5,21 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HotArticle {
+    pub article_id: String,
+    pub title: String,
+    pub like_count: i32,
+    pub comment_count: i32,
+    pub forward_count: i32,
+    pub heat_score: i32,
+    pub nickname: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentimentResult {
     pub hot_stocks: Vec<(String, String, i32)>,
-    pub hot_articles: Vec<(String, i32)>,
+    pub hot_articles: Vec<HotArticle>,
     pub trend: String,
     pub summary: String,
     pub news_summary: String,
@@ -59,17 +71,23 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
     hot_stocks.sort_by(|a, b| b.2.cmp(&a.2));
     let hot_stocks: Vec<_> = hot_stocks.into_iter().take(10).collect();
 
-    let mut hot_articles: Vec<_> = articles_ref
+    let mut hot_articles: Vec<HotArticle> = articles_ref
         .iter()
         .map(|a| {
-            (
-                a.title.clone(),
-                a.like_count + a.comment_count + a.forward_count,
-            )
+            let heat = a.like_count + a.comment_count + a.forward_count;
+            HotArticle {
+                article_id: a.article_id.clone(),
+                title: a.title.clone(),
+                like_count: a.like_count,
+                comment_count: a.comment_count,
+                forward_count: a.forward_count,
+                heat_score: heat,
+                nickname: a.user.nickname.clone(),
+                content: a.content.clone().unwrap_or_default(),
+            }
         })
         .collect();
-    hot_articles.sort_by(|a, b| b.1.cmp(&a.1));
-    let hot_articles: Vec<_> = hot_articles.into_iter().take(5).collect();
+    hot_articles.sort_by(|a, b| b.heat_score.cmp(&a.heat_score));
 
     let total_engagement: i32 = articles_ref
         .iter()
@@ -137,17 +155,23 @@ pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentRe
     hot_stocks.sort_by(|a, b| b.2.cmp(&a.2));
     let hot_stocks: Vec<_> = hot_stocks.into_iter().take(10).collect();
 
-    let mut hot_articles: Vec<_> = articles_ref
+    let mut hot_articles: Vec<HotArticle> = articles_ref
         .iter()
         .map(|a| {
-            (
-                a.title.clone(),
-                a.like_count + a.comment_count + a.forward_count,
-            )
+            let heat = a.like_count + a.comment_count + a.forward_count;
+            HotArticle {
+                article_id: a.article_id.clone(),
+                title: a.title.clone(),
+                like_count: a.like_count,
+                comment_count: a.comment_count,
+                forward_count: a.forward_count,
+                heat_score: heat,
+                nickname: a.user.nickname.clone(),
+                content: a.content.clone().unwrap_or_default(),
+            }
         })
         .collect();
-    hot_articles.sort_by(|a, b| b.1.cmp(&a.1));
-    let hot_articles: Vec<_> = hot_articles.into_iter().take(5).collect();
+    hot_articles.sort_by(|a, b| b.heat_score.cmp(&a.heat_score));
 
     let total_engagement: i32 = articles_ref
         .iter()
@@ -195,7 +219,7 @@ pub fn build_prompt(result: &SentimentResult) -> String {
         .hot_articles
         .iter()
         .take(5)
-        .map(|(title, eng)| format!("{} (热度:{})", title, eng))
+        .map(|a| format!("{} (热度:{})", a.title, a.heat_score))
         .collect::<Vec<_>>()
         .join("\n");
 

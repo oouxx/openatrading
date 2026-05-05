@@ -12,7 +12,7 @@
 ### 热门文章（热度）
 
 {% for article in hot_articles %}
-- {{ article.0 }} (热度: {{ article.1 }})
+- [{{ article.title }}](https://www.jiuyangongshe.com/a/{{ article.article_id }}) — {{ article.nickname }} | 👍{{ article.like_count }} 💬{{ article.comment_count }} 🔄{{ article.forward_count }} (热度: {{ article.heat_score }})
 {% endfor %}
 
 ### 今日新闻资讯摘要

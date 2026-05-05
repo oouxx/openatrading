@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use askama::Template;
 
+use crate::agents::sentiment::HotArticle;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
 use crate::report::report::RoleAnalysis;
@@ -381,7 +382,7 @@ impl AnalysesMdTemplate {
 pub struct SentimentMdTemplate {
     pub trend: String,
     pub hot_stocks: Vec<(String, String, i32)>,
-    pub hot_articles: Vec<(String, i32)>,
+    pub hot_articles: Vec<HotArticle>,
     pub summary: String,
     pub news_summary: String,
     pub articles: Vec<CommunityArticleData>,
@@ -792,7 +793,7 @@ impl AnalysesHtmlTemplate {
 pub struct SentimentHtmlTemplate {
     pub trend: String,
     pub hot_stocks: Vec<(String, String, i32)>,
-    pub hot_articles: Vec<(String, i32)>,
+    pub hot_articles: Vec<HotArticle>,
     pub summary: String,
     pub news_summary: String,
     pub articles: Vec<CommunityArticleData>,

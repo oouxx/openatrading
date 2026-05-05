@@ -114,11 +114,27 @@ deploy-static:
 
 # ─── Docker ──────────────────────────────────────────
 
+docker-build:
+	docker compose build
+
 docker-up:
 	docker compose up -d
 
 docker-down:
 	docker compose down
+
+docker-logs:
+	docker compose logs -f
+
+docker-restart:
+	docker compose restart
+
+docker-rebuild:
+	docker compose build --no-cache
+	docker compose up -d
+
+docker-shell:
+	docker compose exec trending-agent bash
 
 # ─── Clean ───────────────────────────────────────────
 
@@ -171,8 +187,13 @@ help:
 	@echo "  deploy-static  generate report.json + build Vue → src/dist/"
 	@echo "                 Vercel default: VITE_DATA_SOURCE=json"
 	@echo "                 Set VITE_API_BASE_URL in Vercel dashboard for API mode"
-	@echo "  docker-up      start via docker compose"
+	@echo "  docker-build   build Docker image"
+	@echo "  docker-up      start via docker compose (port 8080)"
 	@echo "  docker-down    stop docker compose"
+	@echo "  docker-logs    view Docker logs"
+	@echo "  docker-restart restart Docker services"
+	@echo "  docker-rebuild rebuild --no-cache + up"
+	@echo "  docker-shell   bash into running container"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"

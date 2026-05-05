@@ -44,7 +44,16 @@ interface Report {
   sentiment?: {
     trend: string
     hot_stocks: [string, string, number][]
-    hot_articles: [string, number][]
+    hot_articles: Array<{
+      article_id: string
+      title: string
+      like_count: number
+      comment_count: number
+      forward_count: number
+      heat_score: number
+      nickname: string
+      content: string
+    }>
     summary: string
   }
   risk_level: string

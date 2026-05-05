@@ -13,7 +13,7 @@
     <h3>热门文章（热度）</h3>
     <ul>
         {% for article in hot_articles %}
-        <li>{{ article.0 }} (热度: {{ article.1 }})</li>
+        <li><a href="https://www.jiuyangongshe.com/a/{{ article.article_id }}" target="_blank">{{ article.title }}</a> — {{ article.nickname }} | 👍{{ article.like_count }} 💬{{ article.comment_count }} 🔄{{ article.forward_count }} (热度: {{ article.heat_score }})</li>
         {% endfor %}
     </ul>
     
