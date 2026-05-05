@@ -1,8 +1,13 @@
 <template>
   <div>
     <h2 class="text-xl font-bold mb-4">🤖️ AI 三角色观点</h2>
-    
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+    <div v-if="analyses.length === 0" class="text-gray-400 py-12 text-center">
+      <p class="text-lg">未配置 AI 分析</p>
+      <p class="text-sm mt-2">设置 OPENROUTER_API_KEY 环境变量后重新构建即可启用</p>
+    </div>
+
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div 
         v-for="(analysis, idx) in analyses" 
         :key="idx"
