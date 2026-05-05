@@ -46,7 +46,7 @@
               </span>
             </td>
             <td class="px-4 py-2 font-mono">{{ stock.symbol }}</td>
-            <td class="px-4 py-2 font-medium">{{ stock.stock_name }}</td>
+            <td class="px-4 py-2 font-medium">{{ stock.stock_chi_name }}</td>
             <td class="px-4 py-2 text-right text-green-600">+{{ stock.change_percent.toFixed(2) }}%</td>
             <td class="px-4 py-2 text-right">{{ stock.turnover_ratio.toFixed(2) }}%</td>
           </tr>
@@ -67,10 +67,15 @@ const bombRate = computed(() => store.report?.overview.bomb_rate || 0)
 
 const plates = computed(() => {
   const counts: Record<string, number> = {}
-  store.report?.plate_abnormal.forEach(e => {
-    counts[e.plate_name] = (counts[e.plate_name] || 0) + 1
+  store.report?.limit_up.forEach(stock => {
+    stock.surge_reason?.related_plates.forEach(p => {
+      counts[p.plate_name] = (counts[p.plate_name] || 0) + 1
+    })
   })
-  return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+  return Object.entries(counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 15)
 })
 
 const getPlateColor = (idx: number) => {
