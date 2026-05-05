@@ -24,6 +24,17 @@
 
     <!-- Main Content -->
     <main class="container mx-auto px-4 pt-24 pb-8">
+      <!-- Error State -->
+      <div v-if="reportStore.error" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 max-w-4xl mx-auto">
+        <p class="text-red-700 text-sm">⚠️ 数据获取失败：{{ reportStore.error }}</p>
+        <button @click="refreshData" class="mt-2 text-sm text-red-600 underline">重试</button>
+      </div>
+
+      <!-- Loading State -->
+      <div v-if="reportStore.loading && !reportStore.report" class="text-center py-20 text-gray-400">
+        <p class="text-lg animate-pulse">加载中...</p>
+      </div>
+
       <!-- KPI Cards -->
       <KpiCards v-if="reportStore.report" :overview="reportStore.report.overview" />
 
