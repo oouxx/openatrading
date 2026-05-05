@@ -53,13 +53,22 @@
     </div>
 
     <!-- 韭研异动 Section -->
-    <div v-if="fieldItems.length" class="mt-8">
-      <div class="flex items-center gap-3 mb-4">
+    <div class="mt-8">
+      <div class="flex items-center gap-3 mb-4 flex-wrap">
         <h3 class="text-sm font-bold" style="color: var(--text-primary)">📡 韭研公社异动</h3>
+        <input
+          type="date"
+          :value="fieldDate"
+          @change="onDateChange"
+          class="px-2 py-1 text-xs rounded border"
+          style="background: var(--bg-card); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono)"
+        />
         <span class="text-xs" style="color: var(--text-muted)">
           {{ fieldItems.length }} 个板块 · {{ totalFieldStocks }} 只股票
         </span>
+        <span v-if="fieldLoading" class="text-xs animate-pulse" style="color: var(--blue); font-family: var(--font-mono)">加载中...</span>
       </div>
+      <div v-if="fieldItems.length === 0 && !fieldLoading" class="glow-card p-6 text-center text-sm" style="color: var(--text-muted)">该日期无异动数据</div>
       <div v-for="plate in fieldItems" :key="plate.name" class="glow-card p-4 mb-4">
         <div class="flex items-center gap-2 mb-3">
           <span class="text-sm font-medium" style="color: var(--text-primary)">{{ plate.name }}</span>
@@ -99,6 +108,11 @@ import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
 const hideST = ref(true)
+const fieldLoading = ref(false)
+
+// 默认今天
+const todayStr = () => new Date().toISOString().split('T')[0]
+const fieldDate = ref(todayStr())
 
 const stocks = computed(() => store.report?.limit_up || [])
 const bombRate = computed(() => store.report?.overview.bomb_rate || 0)
@@ -116,4 +130,21 @@ const displayStocks = computed(() => {
 const totalFieldStocks = computed(() =>
   fieldItems.value.reduce((sum: number, p: any) => sum + (p.list?.length || 0), 0)
 )
+
+async function onDateChange(e: Event) {
+  const val = (e.target as HTMLInputElement).value
+  if (!val) return
+  fieldDate.value = val
+  fieldLoading.value = true
+  try {
+    const base = localStorage.getItem('trading-agent-api-url') || 'http://localhost:8080'
+    const resp = await fetch(`${base}/api/report/live?date=${val}`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    store.report = await resp.json()
+  } catch (err: any) {
+    console.error('Field date change failed:', err)
+  } finally {
+    fieldLoading.value = false
+  }
+}
 </script>
