@@ -87,7 +87,9 @@ async function fetchFromJson(): Promise<Report> {
 }
 
 async function fetchFromWasm(): Promise<Report> {
-  const mod = await import('../wasm/trending_agent_wasm.js')
+  // 使用动态路径避免 Vite 在 WASM 模块不存在时构建失败（Vercel 环境）
+  const wasmPath = '../wasm/trending_agent_wasm.js'
+  const mod = await import(/* @vite-ignore */ wasmPath)
   await mod.default()
   const isDev = import.meta.env.DEV
   mod.set_xgb_base_url(isDev ? '/api/xgb' : 'https://flash-api.xuangubao.cn/api')
