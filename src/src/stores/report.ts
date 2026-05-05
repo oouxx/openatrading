@@ -81,7 +81,7 @@ async function fetchFromApi(): Promise<Report> {
 }
 
 async function fetchFromJson(): Promise<Report> {
-  const resp = await fetch('/report.json')
+  const resp = await fetch('/data/report.json')
   if (!resp.ok) throw new Error(`JSON ${resp.status}`)
   return resp.json()
 }
