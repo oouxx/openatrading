@@ -17,7 +17,7 @@ run-ai:
 	cargo run --bin trending-agent -- run --ai
 
 run-web:
-	cargo run --bin trending-agent -- run --web
+	cargo run --bin trending-agent-web
 
 run-all:
 	cargo run --bin trending-agent -- run --ai --web --format both
