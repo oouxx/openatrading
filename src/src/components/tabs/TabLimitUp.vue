@@ -39,7 +39,7 @@
                 {{ stock.limit_up_days }}板
               </span>
             </td>
-            <td style="font-family: var(--font-mono); color: var(--text-primary)">{{ stock.symbol }}</td>
+            <td class="cursor-pointer font-mono hover:underline" style="color: var(--blue)" @click="openKline(stock.symbol, stock.stock_chi_name)">{{ stock.symbol }}</td>
             <td style="font-weight: 500; color: var(--text-primary)">{{ stock.stock_chi_name }}</td>
             <td style="text-align:right; font-family: var(--font-mono); color: var(--green)">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
             <td style="text-align:right; font-family: var(--font-mono)">{{ (stock.turnover_ratio * 100).toFixed(2) }}%</td>
@@ -103,10 +103,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, inject } from 'vue'
 import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
+const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 const hideST = ref(true)
 const fieldLoading = ref(false)
 

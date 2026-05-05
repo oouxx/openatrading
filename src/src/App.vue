@@ -79,13 +79,22 @@
         </div>
       </template>
     </main>
+
+    <!-- K-line Drawer -->
+    <KlineDrawer
+      v-if="klineSymbol"
+      :symbol="klineSymbol"
+      :name="klineName"
+      @close="klineSymbol = ''"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, provide } from 'vue'
 import { useReportStore, fetchReport, getApiBaseUrlForDisplay, setApiBaseUrl } from '@/stores/report'
 import KpiCards from './components/KpiCards.vue'
+import KlineDrawer from './components/KlineDrawer.vue'
 import TabBar from './components/TabBar.vue'
 import TabLimitUp from './components/tabs/TabLimitUp.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
@@ -98,6 +107,15 @@ const reportStore = useReportStore()
 const activeTab = ref('limit-up')
 const dataSource = computed(() => reportStore.source)
 const apiUrl = ref(getApiBaseUrlForDisplay())
+
+// K-line drawer state
+const klineSymbol = ref('')
+const klineName = ref('')
+function openKline(symbol: string, name: string) {
+  klineSymbol.value = symbol
+  klineName.value = name
+}
+provide('openKline', openKline)
 
 const tabComponents: Record<string, any> = {
   'limit-up': TabLimitUp,
