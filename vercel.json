@@ -3,7 +3,7 @@
   "outputDirectory": "src/dist",
   "routes": [
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
-    { "src": "/report.json", "dest": "/report.json" },
+    { "src": "/data/report.json", "dest": "/data/report.json" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
