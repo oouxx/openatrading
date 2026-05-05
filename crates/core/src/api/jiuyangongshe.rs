@@ -77,20 +77,20 @@ pub type FieldData = Vec<FieldPlate>;
 
 // ─── Timeline 时间线数据 ───────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineUser {
     pub user_id: String,
     pub nickname: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineTheme {
     #[serde(rename = "timeline_theme_id")]
     pub id: String,
     pub name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineInfo {
     #[serde(rename = "article_id")]
     pub article_id: String,
@@ -105,7 +105,7 @@ pub struct TimelineInfo {
     pub theme_list: Vec<TimelineTheme>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineItem {
     #[serde(rename = "article_id")]
     pub article_id: String,
@@ -123,7 +123,7 @@ pub struct TimelineItem {
     pub timeline: TimelineInfo,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineDay {
     pub date: String,
     pub list: Vec<TimelineItem>,
