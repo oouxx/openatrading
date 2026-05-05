@@ -24,6 +24,25 @@ interface Report {
     } | null
   }>
   plate_abnormal: Array<any>
+  field_items: Array<{
+    name: string
+    count: number
+    reason: string
+    list: Array<{
+      code: string
+      name: string
+      time?: string
+      num?: string
+      desc?: string
+    }>
+  }>
+  timeline: Array<{ date: string; list: any[] }>
+  sentiment?: {
+    trend: string
+    hot_stocks: [string, string, number][]
+    hot_articles: [string, number][]
+    summary: string
+  }
   risk_level: string
   opportunity_signals: string[]
   decision_summary: string

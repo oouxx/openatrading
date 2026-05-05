@@ -57,12 +57,25 @@ async fn refresh_report(state: &WebState) -> anyhow::Result<()> {
     let limit_down = limit_down.unwrap_or_default();
     let plate_abnormal = plate_abnormal.unwrap_or_default();
 
+    // Jiuyan: optional if JiuYan auth env is configured
+    let (field_items, timeline) = if std::env::var("JIUYAN_PHONE").is_ok() {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let this_month = chrono::Local::now().format("%Y-%m").to_string();
+        let (f, t) = tokio::join!(
+            client.jiuyan.fetch_field(&today, 1),
+            client.jiuyan.fetch_timeline(&this_month),
+        );
+        (f.unwrap_or_default(), t.unwrap_or_default())
+    } else {
+        (vec![], vec![])
+    };
+
     let report = Report::new(
         overview,
         limit_up,
         plate_abnormal.clone(),
-        vec![],
-        vec![],
+        field_items,
+        timeline,
         vec![],
         None,
         vec![],
