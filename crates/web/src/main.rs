@@ -107,8 +107,8 @@ async fn start_web_server(port: u16, state: WebState) {
     let app = Router::new()
         .route("/api/report", get(get_report_json))
         .route("/api/report/live", get(get_report_live))
-        .route("/api/kline/{symbol}", get(get_kline))
-        .route("/api/realtime/{symbol}", get(get_realtime))
+        .route("/api/kline/:symbol", get(get_kline))
+        .route("/api/realtime/:symbol", get(get_realtime))
         .layer(cors)
         .with_state(state);
 
