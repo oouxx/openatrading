@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useReportStore } from './stores/report'
+import { useReportStore } from '../stores/report'
 import KpiCards from './components/KpiCards.vue'
 import TabBar from './components/TabBar.vue'
 import TabLimitUp from './components/tabs/TabLimitUp.vue'
