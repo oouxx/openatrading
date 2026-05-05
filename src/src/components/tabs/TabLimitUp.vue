@@ -1,5 +1,6 @@
 <template>
   <div>
+    <!-- 涨停榜 Section -->
     <div class="flex items-center gap-4 mb-6 text-sm">
       <span style="color: var(--text-muted)">
         共 <b style="color: var(--text-primary)">{{ displayStocks.length }}</b> 只涨停
@@ -14,7 +15,7 @@
       </span>
     </div>
 
-    <div class="glow-card overflow-hidden">
+    <div class="glow-card overflow-hidden mb-8">
       <table class="data-table">
         <thead>
           <tr>
@@ -50,6 +51,45 @@
         </tbody>
       </table>
     </div>
+
+    <!-- 韭研异动 Section -->
+    <div v-if="fieldItems.length" class="mt-8">
+      <div class="flex items-center gap-3 mb-4">
+        <h3 class="text-sm font-bold" style="color: var(--text-primary)">📡 韭研公社异动</h3>
+        <span class="text-xs" style="color: var(--text-muted)">
+          {{ fieldItems.length }} 个板块 · {{ totalFieldStocks }} 只股票
+        </span>
+      </div>
+      <div v-for="plate in fieldItems" :key="plate.name" class="glow-card p-4 mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-sm font-medium" style="color: var(--text-primary)">{{ plate.name }}</span>
+          <span class="text-xs px-2 py-0.5 rounded font-mono" style="background: var(--border-subtle); color: var(--text-secondary)">
+            {{ plate.count }}只
+          </span>
+          <span class="text-xs" style="color: var(--amber)" v-if="plate.reason">{{ plate.reason }}</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>代码</th>
+              <th>名称</th>
+              <th>连板</th>
+              <th>异动理由</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="stock in plate.list" :key="stock.code">
+              <td class="font-mono" style="color: var(--text-muted)">{{ stock.time || '-' }}</td>
+              <td class="font-mono" style="color: var(--text-primary)">{{ stock.code }}</td>
+              <td style="color: var(--text-primary); font-weight: 500">{{ stock.name }}</td>
+              <td class="font-mono">{{ stock.num || '-' }}</td>
+              <td style="color: var(--text-secondary); font-size: 12px; max-width: 300px" v-html="stock.desc"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -62,6 +102,7 @@ const hideST = ref(true)
 
 const stocks = computed(() => store.report?.limit_up || [])
 const bombRate = computed(() => store.report?.overview.bomb_rate || 0)
+const fieldItems = computed(() => store.report?.field_items || [])
 
 const sortedStocks = computed(() =>
   [...stocks.value].sort((a, b) => b.limit_up_days - a.limit_up_days || b.total_capital - a.total_capital)
@@ -71,4 +112,8 @@ const displayStocks = computed(() => {
   if (!hideST.value) return sortedStocks.value
   return sortedStocks.value.filter(s => !s.stock_chi_name.includes('ST') && !s.stock_chi_name.includes('*'))
 })
+
+const totalFieldStocks = computed(() =>
+  fieldItems.value.reduce((sum: number, p: any) => sum + (p.list?.length || 0), 0)
+)
 </script>

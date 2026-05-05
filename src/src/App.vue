@@ -90,6 +90,7 @@ import TabBar from './components/TabBar.vue'
 import TabLimitUp from './components/tabs/TabLimitUp.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabSentiment from './components/tabs/TabSentiment.vue'
+import TabTimeline from './components/tabs/TabTimeline.vue'
 import TabAi from './components/tabs/TabAi.vue'
 import TabTgb from './components/tabs/TabTgb.vue'
 
@@ -101,6 +102,7 @@ const apiUrl = ref(getApiBaseUrlForDisplay())
 const tabComponents: Record<string, any> = {
   'limit-up': TabLimitUp,
   'plate': TabPlate,
+  'timeline': TabTimeline,
   'sentiment': TabSentiment,
   'ai': TabAi,
   'tgb': TabTgb,
