@@ -9,6 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 trending-agent-core = { path = "../core" }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
 axum = "0.7"
 anyhow = { workspace = true }

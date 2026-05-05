@@ -291,12 +291,17 @@ impl JiuYanSession {
         let init_token = std::env::var("JIUYAN_INIT_TOKEN")
             .unwrap_or_else(|_| "3f79cb21f69cf26271919c901d749274".to_string());
 
-        let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-            .cookie_store(true)
+        let builder = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36");
+        #[cfg(not(target_arch = "wasm32"))]
+        let builder = builder.cookie_store(true);
+        let client = builder
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+                headers.insert(
+                    "Accept",
+                    "application/json, text/plain, */*".parse().unwrap(),
+                );
                 headers.insert("Origin", "https://www.jiuyangongshe.com".parse().unwrap());
                 headers.insert("Referer", "https://www.jiuyangongshe.com/".parse().unwrap());
                 headers.insert("platform", "3".parse().unwrap());
