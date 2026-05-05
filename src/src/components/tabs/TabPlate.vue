@@ -53,7 +53,7 @@
           <tbody>
             <tr v-for="event in stockEvents" :key="event.id">
               <td class="font-mono" style="color: var(--text-muted)">{{ formatTime(event.event_timestamp) }}</td>
-              <td class="font-mono" style="color: var(--text-primary)">{{ event.symbol }}</td>
+              <td class="font-mono cursor-pointer hover:underline" style="color: var(--blue)" @click="openKline(event.symbol, event.name)">{{ event.symbol }}</td>
               <td style="color: var(--text-primary); font-weight: 500">{{ event.name }}</td>
               <td class="font-mono text-right" :style="{ color: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }">{{ formatPcp(event.pcp) }}</td>
               <td class="font-mono text-right" style="color: var(--text-secondary)">{{ event.mtm?.toFixed(2) || '-' }}</td>
@@ -77,10 +77,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
+const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 
 interface PlateFlatEvent {
   id: number
