@@ -250,24 +250,37 @@ impl XuanguBaoClient {
             resp["message"]
         );
 
-        let data = &resp["data"]["candle"][symbol]["lines"];
-        let lines = data.as_array().context("missing kline lines array")?;
+        let candle_data = &resp["data"]["candle"][symbol];
+        let lines = candle_data["lines"]
+            .as_array()
+            .context("missing kline lines array")?;
+
+        // API 返回的字段顺序以 data.fields 为准，需要动态映射
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let candles: Vec<KlineCandle> = lines
             .iter()
             .filter_map(|line| {
                 let arr = line.as_array()?;
-                if arr.len() < 7 {
-                    return None;
-                }
+                let get = |name: &str| -> Option<f64> {
+                    let idx = fields.iter().position(|f| f == name)?;
+                    arr.get(idx)?.as_f64()
+                };
                 Some(KlineCandle {
-                    time: arr[0].as_i64()?,
-                    open: arr[1].as_f64()?,
-                    close: arr[2].as_f64()?,
-                    high: arr[3].as_f64()?,
-                    low: arr[4].as_f64()?,
-                    volume: arr[5].as_f64()?,
-                    change_rate: arr[6].as_f64()?,
+                    time: get("tick_at")? as i64,
+                    open: get("open_px")?,
+                    close: get("close_px")?,
+                    high: get("high_px")?,
+                    low: get("low_px")?,
+                    volume: get("turnover_volume")?,
+                    change_rate: get("px_change_rate").unwrap_or(0.0),
                 })
             })
             .collect();
