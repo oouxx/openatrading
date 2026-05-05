@@ -11,6 +11,7 @@ use serde_json::json;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
+use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanGubaoExtra;
 use trending_agent_core::api::Client as ApiClient;
 use trending_agent_core::report::report::Report;
@@ -72,6 +73,13 @@ async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::R
         (vec![], vec![])
     };
 
+    // Sentiment: optional if Jiuyan auth is configured and community data is available
+    let sentiment = if std::env::var("JIUYAN_PHONE").is_ok() {
+        analyze_sentiment(&client).await.ok()
+    } else {
+        None
+    };
+
     let report = Report::new(
         overview,
         limit_up,
@@ -79,7 +87,7 @@ async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::R
         field_items,
         timeline,
         vec![],
-        None,
+        sentiment,
         vec![],
         XuanGubaoExtra {
             limit_down,
