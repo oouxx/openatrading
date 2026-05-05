@@ -1,8 +1,9 @@
 {
-  "buildCommand": null,
-  "outputDirectory": "dist",
+  "buildCommand": "cd src && npm install && npm run build",
+  "outputDirectory": "src/dist",
   "routes": [
-    { "src": "/", "dest": "/index.html" },
-    { "src": "/reports/(.*)", "dest": "/reports/$1" }
+    { "src": "/assets/(.*)", "dest": "/assets/$1" },
+    { "src": "/report.json", "dest": "/report.json" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
