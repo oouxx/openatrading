@@ -31,9 +31,13 @@ interface Report {
     list: Array<{
       code: string
       name: string
-      time?: string
-      num?: string
-      desc?: string
+      article?: {
+        action_info?: {
+          time?: string
+          num?: string
+          expound?: string
+        }
+      }
     }>
   }>
   timeline: Array<{ date: string; list: any[] }>

@@ -89,11 +89,11 @@
           </thead>
           <tbody>
             <tr v-for="stock in plate.list" :key="stock.code">
-              <td class="font-mono" style="color: var(--text-muted)">{{ stock.time || '-' }}</td>
+              <td class="font-mono" style="color: var(--text-muted)">{{ stock.article?.action_info?.time || '-' }}</td>
               <td class="font-mono" style="color: var(--text-primary)">{{ stock.code }}</td>
               <td style="color: var(--text-primary); font-weight: 500">{{ stock.name }}</td>
-              <td class="font-mono">{{ stock.num || '-' }}</td>
-              <td style="color: var(--text-secondary); font-size: 12px; max-width: 300px" v-html="stock.desc"></td>
+              <td class="font-mono">{{ stock.article?.action_info?.num || '-' }}</td>
+              <td style="color: var(--text-secondary); font-size: 12px; max-width: 300px">{{ stock.article?.action_info?.expound || '' }}</td>
             </tr>
           </tbody>
         </table>
