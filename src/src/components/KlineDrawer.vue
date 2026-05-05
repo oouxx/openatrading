@@ -29,7 +29,7 @@
       </div>
 
       <!-- Chart -->
-      <div ref="chartContainer" class="w-full" style="height: 360px"></div>
+      <div ref="chartContainer" class="w-full" style="height: 420px"></div>
 
       <!-- Metrics -->
       <div v-if="quote" class="p-4 grid grid-cols-3 gap-2 text-xs">
@@ -62,6 +62,7 @@ const quote = ref<any>(null)
 
 let chart: any = null
 let candleSeries: any = null
+let volumeSeries: any = null
 
 function formatVolume(v: number) {
   if (!v) return '-'
@@ -99,24 +100,40 @@ async function fetchRealtime() {
   } catch { /* ignore */ }
 }
 
+function toChartTime(ts: number, p: string): string | number {
+  if (p === 'minute') {
+    // 分钟K: 保留秒级时间戳，lightweight-charts 自动格式化为 HH:MM
+    return ts
+  }
+  // 日/周/月K: 使用 YYYY-MM-DD 字符串格式
+  const d = new Date(ts * 1000)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 async function fetchKline() {
   try {
     const resp = await fetch(`${getApiBase()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
     if (!resp.ok) return
     const data = await resp.json()
-    candleSeries?.setData(data.candles.map((c: any) => ({
-      time: c.time as number,
+    const chartData = data.candles.map((c: any) => ({
+      time: toChartTime(c.time, data.period),
       open: c.open,
-      close: c.close,
       high: c.high,
       low: c.low,
+      close: c.close,
+    }))
+    candleSeries?.setData(chartData)
+    volumeSeries?.setData(data.candles.map((c: any) => ({
+      time: toChartTime(c.time, data.period),
+      value: c.volume,
+      color: c.close >= c.open ? 'rgba(0,230,118,0.3)' : 'rgba(255,23,68,0.3)',
     })))
   } catch { /* ignore */ }
 }
 
 async function initChart() {
   if (!chartContainer.value) return
-  if (chart) { chart.remove(); chart = null }
+  if (chart) { chart.remove(); chart = null; volumeSeries = null }
 
   chart = createChart(chartContainer.value, {
     layout: {
@@ -125,7 +142,7 @@ async function initChart() {
     },
     grid: { vertLines: { color: '#1e2a3a' }, horzLines: { color: '#1e2a3a' } },
     width: chartContainer.value.clientWidth || 520,
-    height: 360,
+    height: 420,
     crosshair: { mode: 0 },
     timeScale: { borderColor: '#1e2a3a', timeVisible: true },
     rightPriceScale: { borderColor: '#1e2a3a' },
@@ -138,6 +155,16 @@ async function initChart() {
     borderDownColor: '#ff1744',
     wickUpColor: '#00e676',
     wickDownColor: '#ff1744',
+    priceScaleId: 'right',
+  })
+
+  volumeSeries = chart.addHistogramSeries({
+    color: '#334455',
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'volume',
+  })
+  chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.8, bottom: 0 },
   })
 
   await fetchKline()
