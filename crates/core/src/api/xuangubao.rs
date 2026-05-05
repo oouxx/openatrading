@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
@@ -229,4 +229,180 @@ impl XuanguBaoClient {
         anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
         Ok(resp.data)
     }
+
+    // ─── K线数据 ───────────────────────────────────────
+
+    pub async fn fetch_kline(
+        &self,
+        symbol: &str,
+        period: KlinePeriod,
+        count: u32,
+    ) -> Result<KlineData> {
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward&fields=tick_at,open_px,close_px,high_px,low_px,turnover_volume,px_change_rate",
+            period_sec = period.as_seconds()
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Kline API error: {}",
+            resp["message"]
+        );
+
+        let data = &resp["data"]["candle"][symbol]["lines"];
+        let lines = data.as_array().context("missing kline lines array")?;
+
+        let candles: Vec<KlineCandle> = lines
+            .iter()
+            .filter_map(|line| {
+                let arr = line.as_array()?;
+                if arr.len() < 7 {
+                    return None;
+                }
+                Some(KlineCandle {
+                    time: arr[0].as_i64()?,
+                    open: arr[1].as_f64()?,
+                    close: arr[2].as_f64()?,
+                    high: arr[3].as_f64()?,
+                    low: arr[4].as_f64()?,
+                    volume: arr[5].as_f64()?,
+                    change_rate: arr[6].as_f64()?,
+                })
+            })
+            .collect();
+
+        Ok(KlineData {
+            symbol: symbol.to_string(),
+            period: period.as_str().to_string(),
+            candles,
+        })
+    }
+
+    pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={symbol}"
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Realtime API error: {}",
+            resp["message"]
+        );
+
+        let snap = &resp["data"]["snapshot"][symbol];
+        let arr = snap.as_array().context("missing snapshot array")?;
+
+        let get = |i: usize, default: f64| -> f64 {
+            arr.get(i).and_then(|v| v.as_f64()).unwrap_or(default)
+        };
+        let get_str = |i: usize, default: &str| -> String {
+            arr.get(i)
+                .and_then(|v| v.as_str())
+                .unwrap_or(default)
+                .to_string()
+        };
+
+        Ok(RealtimeQuote {
+            symbol: symbol.to_string(),
+            name: get_str(0, ""),
+            trade_status: get_str(1, ""),
+            update_time: arr.get(2).and_then(|v| v.as_i64()).unwrap_or(0),
+            last_px: get(3, 0.0),
+            px_change: get(4, 0.0),
+            px_change_rate: get(5, 0.0),
+            preclose_px: get(6, 0.0),
+            open_px: get(7, 0.0),
+            high_px: get(8, 0.0),
+            low_px: get(9, 0.0),
+            amplitude: get(10, 0.0),
+            turnover_ratio: get(11, 0.0),
+            pe_rate: get(12, 0.0),
+            dyn_pe: get(13, 0.0),
+            dyn_pb_rate: get(14, 0.0),
+            market_value: get(15, 0.0),
+            circulation_value: get(16, 0.0),
+            turnover_volume: get(17, 0.0),
+            turnover_value: get(18, 0.0),
+            volume_ratio: get(21, 0.0),
+            circulation_shares: get(22, 0.0),
+            total_shares: get(23, 0.0),
+        })
+    }
+}
+
+// ─── K线数据结构 ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy)]
+pub enum KlinePeriod {
+    Minute,
+    Day,
+    Week,
+    Month,
+}
+
+impl KlinePeriod {
+    pub fn as_seconds(&self) -> u32 {
+        match self {
+            KlinePeriod::Minute => 60,
+            KlinePeriod::Day => 86400,
+            KlinePeriod::Week => 604800,
+            KlinePeriod::Month => 2592000,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            KlinePeriod::Minute => "minute",
+            KlinePeriod::Day => "day",
+            KlinePeriod::Week => "week",
+            KlinePeriod::Month => "month",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KlineCandle {
+    pub time: i64,
+    pub open: f64,
+    pub close: f64,
+    pub high: f64,
+    pub low: f64,
+    pub volume: f64,
+    pub change_rate: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KlineData {
+    pub symbol: String,
+    pub period: String,
+    pub candles: Vec<KlineCandle>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RealtimeQuote {
+    pub symbol: String,
+    pub name: String,
+    pub last_px: f64,
+    pub px_change: f64,
+    pub px_change_rate: f64,
+    pub open_px: f64,
+    pub high_px: f64,
+    pub low_px: f64,
+    pub preclose_px: f64,
+    pub amplitude: f64,
+    pub turnover_ratio: f64,
+    pub turnover_volume: f64,
+    pub turnover_value: f64,
+    pub market_value: f64,
+    pub circulation_value: f64,
+    pub pe_rate: f64,
+    pub dyn_pe: f64,
+    pub dyn_pb_rate: f64,
+    pub volume_ratio: f64,
+    pub circulation_shares: f64,
+    pub total_shares: f64,
+    pub trade_status: String,
+    pub update_time: i64,
 }
