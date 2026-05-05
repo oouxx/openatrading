@@ -16,3 +16,10 @@ methodology
 # Allow dist/ for static deploy
 !dist/
 !dist/**
+
+# Frontend
+node_modules/
+public/report_*.json
+*.log
+
+report_*.json

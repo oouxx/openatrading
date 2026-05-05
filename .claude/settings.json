@@ -3,5 +3,6 @@
     "allow": [
       "Bash(cargo tree *)"
     ]
-  }
+  },
+  "defaultMode": "bypassPermissions"
 }

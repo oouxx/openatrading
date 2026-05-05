@@ -89,7 +89,7 @@ dev-tauri:
 json:
 	cargo run --bin trending-agent -- run --format json --output ./src/public/
 	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
-	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/report.json && echo "✅ report.json ready"; fi
+	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "✅ report.json ready"; fi
 
 # ─── Static Deploy ───────────────────────────────────
 
@@ -100,7 +100,7 @@ deploy-static:
 	@echo "📡 生成静态数据 report.json..."
 	@cargo run --bin trending-agent -- run --format json --output ./src/public/
 	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
-	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/report.json && echo "✅ report.json ready"; fi
+	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "✅ report.json ready"; fi
 	@echo "📦 构建 Vue 前端..."
 	@cd src && npm run build
 	@echo ""
