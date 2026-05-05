@@ -3,7 +3,7 @@
     <div class="bg-white rounded-xl shadow p-4 border-l-4 border-green-500">
       <div class="flex justify-between items-start">
         <div>
-          <p class="text-gray-500 text-sm">📈 涨停家数</p>
+          <p class="text-gray-500 text-sm">📈 上涨家数</p>
           <p class="text-3xl font-bold mt-2">{{ overview.rise_count }}</p>
         </div>
         <span class="text-green-500 text-sm">↑ 环比+5%</span>
@@ -13,10 +13,21 @@
     <div class="bg-white rounded-xl shadow p-4 border-l-4 border-red-500">
       <div class="flex justify-between items-start">
         <div>
-          <p class="text-gray-500 text-sm">📉 跌停家数</p>
+          <p class="text-gray-500 text-sm">📉 下跌家数</p>
           <p class="text-3xl font-bold mt-2">{{ overview.fall_count }}</p>
         </div>
         <span class="text-red-500 text-sm">↓ 环比-2%</span>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-4 border-l-4 border-yellow-500">
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="text-gray-500 text-sm">📊 涨跌比</p>
+          <p class="text-3xl font-bold mt-2" :class="bombRateColor">{{ ratio }}</p>
+          <p class="text-xs text-gray-400 mt-1">{{ overview.limit_up_count }}涨停 / {{ overview.limit_down_count }}跌停</p>
+        </div>
+        <span class="text-gray-500 text-sm">今日</span>
       </div>
     </div>
 
@@ -29,19 +40,6 @@
         <span class="text-gray-500 text-sm">正常范围</span>
       </div>
     </div>
-
-    <div class="bg-white rounded-xl shadow p-4 border-l-4" :class="sentimentBorder">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-sm">🎯 市场情绪</p>
-          <p class="text-2xl font-bold mt-2 flex items-center gap-2">
-            {{ overview.sentiment }}
-            <span class="w-3 h-3 rounded-full" :class="sentimentDot"></span>
-          </p>
-        </div>
-        <span class="text-gray-500 text-sm">今日</span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -52,8 +50,9 @@ const props = defineProps<{
   overview: {
     rise_count: number
     fall_count: number
+    limit_up_count: number
+    limit_down_count: number
     bomb_rate: number
-    sentiment: string
   }
 }>()
 
@@ -63,15 +62,8 @@ const bombRateColor = computed(() => {
   return 'text-green-600'
 })
 
-const sentimentBorder = computed(() => {
-  if (props.overview.sentiment === '高') return 'border-red-500'
-  if (props.overview.sentiment === '中') return 'border-yellow-500'
-  return 'border-green-500'
-})
-
-const sentimentDot = computed(() => {
-  if (props.overview.sentiment === '高') return 'bg-red-500'
-  if (props.overview.sentiment === '中') return 'bg-yellow-500'
-  return 'bg-green-500'
+const ratio = computed(() => {
+  if (props.overview.fall_count === 0) return '∞'
+  return (props.overview.rise_count / props.overview.fall_count).toFixed(2)
 })
 </script>
