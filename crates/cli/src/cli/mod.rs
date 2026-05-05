@@ -540,8 +540,8 @@ async fn run_sentiment_cmd(client: &Client) -> Result<()> {
         println!("  {} {} - {}次", code, name, cnt);
     }
     println!("📊 热门文章:");
-    for (title, eng) in result.hot_articles.iter().take(3) {
-        println!("  {} (热度:{})", title, eng);
+    for a in result.hot_articles.iter().take(3) {
+        println!("  {} (热度:{})", a.title, a.heat_score);
     }
     println!("\n📊 总结: {}", result.summary);
     Ok(())
