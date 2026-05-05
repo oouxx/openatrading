@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useReportStore } from '../../stores/report'
+import { useReportStore } from '../../../stores/report'
 
 const store = useReportStore()
 
