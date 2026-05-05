@@ -1,50 +1,78 @@
 <template>
   <div>
-    <div class="flex items-center gap-4 mb-6 text-sm">
+    <div class="flex items-center gap-3 mb-6 text-sm">
       <span style="color: var(--text-muted)">
-        <b style="color: var(--text-primary)">{{ flatEvents.length }}</b> 条异动事件
+        <b style="color: var(--text-primary)">{{ plateEvents.length }}</b> 板块异动
+      </span>
+      <span style="color: var(--border-subtle)">|</span>
+      <span style="color: var(--text-muted)">
+        <b style="color: var(--text-primary)">{{ stockEvents.length }}</b> 个股异动
       </span>
     </div>
 
-    <!-- Heat Map -->
-    <div class="glow-card p-5 mb-6">
-      <h3 class="text-xs font-medium mb-4" style="color: var(--text-muted); letter-spacing: 0.5px">板块热度</h3>
+    <!-- Event Timeline: Plate -->
+    <div class="mb-6" v-if="plateEvents.length">
+      <h3 class="text-xs font-medium mb-3" style="color: var(--text-muted); letter-spacing: 0.5px">板块事件</h3>
       <div class="space-y-2">
-        <div v-for="(item, idx) in plateHeat" :key="idx" class="flex items-center gap-3">
-          <span class="w-24 text-xs truncate" style="color: var(--text-secondary)">{{ item.name }}</span>
-          <div class="flex-1 h-5 rounded-full overflow-hidden" style="background: var(--border-subtle)">
-            <div class="h-full rounded-full transition-all duration-700"
-              :style="{ width: item.percent + '%', background: 'linear-gradient(90deg, var(--blue-dim), var(--blue))' }"
-            ></div>
+        <div v-for="event in plateEvents" :key="event.id" class="glow-card pl-4 py-3 pr-4 flex gap-4 items-start">
+          <div class="w-1 self-stretch rounded-full flex-shrink-0"
+            :style="{ background: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }"></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <span class="text-sm font-medium" style="color: var(--text-primary)">{{ event.plate_name }}</span>
+              <span class="text-xs font-mono" :style="{ color: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }">{{ formatPcp(event.pcp) }}</span>
+            </div>
+            <div class="flex gap-1 flex-wrap mt-2" v-if="event.stocks.length">
+              <span v-for="stock in event.stocks" :key="stock.symbol"
+                class="px-2 py-0.5 rounded text-xs font-mono"
+                style="background: var(--border-subtle); color: var(--text-secondary)">
+                {{ stock.symbol }} {{ stock.name }}
+              </span>
+            </div>
           </div>
-          <span class="w-10 text-xs text-right font-mono" style="color: var(--text-secondary)">{{ item.count }}</span>
+          <span class="text-xs flex-shrink-0 font-mono" style="color: var(--text-muted)">{{ formatTime(event.event_timestamp) }}</span>
         </div>
-        <div v-if="plateHeat.length === 0" class="text-center py-8 text-sm" style="color: var(--text-muted)">暂无数据</div>
       </div>
     </div>
 
-    <!-- Event Timeline -->
-    <div class="space-y-3">
-      <div v-for="event in sortedEvents" :key="event.id" class="glow-card pl-4 py-3 pr-4 flex gap-4 items-start">
-        <div class="w-1 self-stretch rounded-full flex-shrink-0"
-          :style="{ background: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }"></div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-1 flex-wrap">
-            <span class="text-sm font-medium" style="color: var(--text-primary)">{{ event.plate_name || '未知板块' }}</span>
-            <span class="text-xs font-mono" :style="{ color: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }">{{ formatPcp(event.pcp) }}</span>
-          </div>
-          <div class="flex gap-1 flex-wrap mt-2">
-            <span v-for="stock in event.stocks" :key="stock.symbol"
-              class="px-2 py-0.5 rounded text-xs font-mono"
-              style="background: var(--border-subtle); color: var(--text-secondary)">
-              {{ stock.symbol }} {{ stock.name }}
-            </span>
-          </div>
-        </div>
-        <span class="text-xs flex-shrink-0 font-mono" style="color: var(--text-muted)">{{ formatTime(event.event_timestamp) }}</span>
+    <!-- Event Timeline: Stock -->
+    <div v-if="stockEvents.length">
+      <h3 class="text-xs font-medium mb-3" style="color: var(--text-muted); letter-spacing: 0.5px">个股事件</h3>
+      <div class="glow-card overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>代码</th>
+              <th>名称</th>
+              <th style="text-align:right">涨跌幅</th>
+              <th style="text-align:right">动量</th>
+              <th>方向</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="event in stockEvents" :key="event.id">
+              <td class="font-mono" style="color: var(--text-muted)">{{ formatTime(event.event_timestamp) }}</td>
+              <td class="font-mono" style="color: var(--text-primary)">{{ event.symbol }}</td>
+              <td style="color: var(--text-primary); font-weight: 500">{{ event.name }}</td>
+              <td class="font-mono text-right" :style="{ color: event.pcp >= 0 ? 'var(--red)' : 'var(--green)' }">{{ formatPcp(event.pcp) }}</td>
+              <td class="font-mono text-right" style="color: var(--text-secondary)">{{ event.mtm?.toFixed(2) || '-' }}</td>
+              <td>
+                <span class="px-2 py-0.5 rounded text-xs font-mono"
+                  :style="{
+                    background: event.good_or_bad === 1 ? 'rgba(0,230,118,0.1)' : 'rgba(255,23,68,0.1)',
+                    color: event.good_or_bad === 1 ? 'var(--green)' : 'var(--red)'
+                  }">
+                  {{ event.good_or_bad === 1 ? '利好' : '利空' }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div v-if="sortedEvents.length === 0" class="text-center py-12 text-sm" style="color: var(--text-muted)">暂无板块异动数据</div>
     </div>
+
+    <div v-if="plateEvents.length === 0 && stockEvents.length === 0" class="text-center py-12 text-sm" style="color: var(--text-muted)">暂无异动数据</div>
   </div>
 </template>
 
@@ -54,7 +82,7 @@ import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
 
-interface FlatEvent {
+interface PlateFlatEvent {
   id: number
   plate_name: string
   pcp: number
@@ -62,31 +90,48 @@ interface FlatEvent {
   stocks: { symbol: string; name: string }[]
 }
 
-const flatEvents = computed<FlatEvent[]>(() => {
-  const events: FlatEvent[] = []
+interface StockFlatEvent {
+  id: number
+  symbol: string
+  name: string
+  pcp: number
+  mtm: number | null
+  event_timestamp: number
+  good_or_bad: number
+}
+
+const plateEvents = computed<PlateFlatEvent[]>(() => {
+  const events: PlateFlatEvent[] = []
   store.report?.plate_abnormal.forEach((e: any) => {
     const d = e.plate_abnormal_event_data
-    if (!d) return
+    if (!d || !d.plate_name) return
     events.push({
       id: e.id,
-      plate_name: d.plate_name || '未知板块',
+      plate_name: d.plate_name,
       pcp: d.pcp ?? 0,
       event_timestamp: e.event_timestamp,
       stocks: (d.related_stocks || []).map((s: any) => ({ symbol: s.symbol, name: s.name })),
     })
   })
-  return events
+  return events.sort((a, b) => b.event_timestamp - a.event_timestamp)
 })
 
-const sortedEvents = computed(() => [...flatEvents.value].sort((a, b) => b.event_timestamp - a.event_timestamp))
-
-const plateHeat = computed(() => {
-  const counts: Record<string, number> = {}
-  flatEvents.value.forEach(e => { counts[e.plate_name] = (counts[e.plate_name] || 0) + 1 })
-  const max = Math.max(...Object.values(counts), 1)
-  return Object.entries(counts)
-    .map(([name, count]) => ({ name, count, percent: Math.round((count / max) * 100) }))
-    .sort((a, b) => b.count - a.count).slice(0, 10)
+const stockEvents = computed<StockFlatEvent[]>(() => {
+  const events: StockFlatEvent[] = []
+  store.report?.plate_abnormal.forEach((e: any) => {
+    const d = e.stock_abnormal_event_data
+    if (!d || !d.name) return
+    events.push({
+      id: e.id,
+      symbol: d.symbol || '-',
+      name: d.name,
+      pcp: d.pcp ?? 0,
+      mtm: d.mtm ?? null,
+      event_timestamp: e.event_timestamp,
+      good_or_bad: e.good_or_bad ?? 0,
+    })
+  })
+  return events.sort((a, b) => b.event_timestamp - a.event_timestamp)
 })
 
 function formatTime(ts: number): string {
