@@ -97,10 +97,20 @@ json:
 TAOGUBA_USERS ?= 2577911
 
 deploy-static:
-	cargo run --bin trending-agent -- run --format html --output ./dist/reports/
-	cargo run --bin trending-agent -- index --dir ./dist/
-#	cargo run --bin trending-agent -- taoguba --users $(TAOGUBA_USERS) --output ./dist/taoguba
-#	cargo run --bin trending-agent -- xuangubao --output ./dist/xuangubao
+	@echo "📡 生成静态数据 report.json..."
+	@cargo run --bin trending-agent -- run --format json --output ./src/public/
+	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
+	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/report.json && echo "✅ report.json ready"; fi
+	@echo "📦 构建 Vue 前端..."
+	@cd src && npm run build
+	@echo ""
+	@echo "✅ 部署文件已生成到 src/dist/"
+	@echo ""
+	@echo "Vercel 配置说明："
+	@echo "  默认: VITE_DATA_SOURCE=json (读取内置 report.json)"
+	@echo "  动态: 在 Vercel 环境变量设置:"
+	@echo "    VITE_DATA_SOURCE=api"
+	@echo "    VITE_API_BASE_URL=https://你的后端地址"
 
 # ─── Docker ──────────────────────────────────────────
 
@@ -158,8 +168,9 @@ help:
 	@echo "  dev-tauri      Tauri desktop app"
 	@echo ""
 	@echo "Deploy:"
-	@echo "  deploy-static  generate dist/ (reports + taoguba + xuangubao + index)"
-	@echo "                 override users: make deploy-static TAOGUBA_USERS=2577911,123456"
+	@echo "  deploy-static  generate report.json + build Vue → src/dist/"
+	@echo "                 Vercel default: VITE_DATA_SOURCE=json"
+	@echo "                 Set VITE_API_BASE_URL in Vercel dashboard for API mode"
 	@echo "  docker-up      start via docker compose"
 	@echo "  docker-down    stop docker compose"
 	@echo ""
