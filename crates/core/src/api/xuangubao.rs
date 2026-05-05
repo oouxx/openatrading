@@ -124,7 +124,7 @@ pub struct Stock {
     pub new_stock_limit_up_price_before_broken: f64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct XuanGubaoExtra {
     pub limit_down: Vec<Stock>,
     pub plate_abnormal: Vec<PlateAbnormalEvent>,
