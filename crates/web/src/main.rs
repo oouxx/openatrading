@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
 use trending_agent_core::agents::sentiment::analyze_sentiment;
-use trending_agent_core::api::xuangubao::XuanGubaoExtra;
+use trending_agent_core::api::xuangubao::{KlinePeriod, XuanGubaoExtra, XuanguBaoClient};
 use trending_agent_core::api::Client as ApiClient;
 use trending_agent_core::report::report::Report;
 
@@ -107,6 +107,8 @@ async fn start_web_server(port: u16, state: WebState) {
     let app = Router::new()
         .route("/api/report", get(get_report_json))
         .route("/api/report/live", get(get_report_live))
+        .route("/api/kline/{symbol}", get(get_kline))
+        .route("/api/realtime/{symbol}", get(get_realtime))
         .layer(cors)
         .with_state(state);
 
@@ -181,6 +183,52 @@ async fn get_report_live(
         .await
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let json = serde_json::to_value(&report).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(json))
+}
+
+#[derive(serde::Deserialize)]
+struct KlineQuery {
+    #[serde(default = "default_kline_period")]
+    period: String,
+    #[serde(default = "default_kline_count")]
+    count: u32,
+}
+fn default_kline_period() -> String {
+    "day".into()
+}
+fn default_kline_count() -> u32 {
+    256
+}
+
+async fn get_kline(
+    Path(symbol): Path<String>,
+    Query(q): Query<KlineQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let period = match q.period.as_str() {
+        "week" => KlinePeriod::Week,
+        "month" => KlinePeriod::Month,
+        "minute" => KlinePeriod::Minute,
+        _ => KlinePeriod::Day,
+    };
+    let client = XuanguBaoClient::new();
+    let data = client
+        .fetch_kline(&symbol, period, q.count)
+        .await
+        .map_err(|e| {
+            eprintln!("kline error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+    let json = serde_json::to_value(&data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(json))
+}
+
+async fn get_realtime(Path(symbol): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let data = client.fetch_realtime(&symbol).await.map_err(|e| {
+        eprintln!("realtime error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    let json = serde_json::to_value(&data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json))
 }
 
