@@ -2306,6 +2306,10 @@ dependencies = [
 name = "trending-agent-wasm"
 version = "0.1.0"
 dependencies = [
+ "futures",
+ "js-sys",
+ "serde",
+ "serde_json",
  "trending-agent-core",
  "wasm-bindgen",
  "wasm-bindgen-futures",
