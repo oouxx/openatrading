@@ -59,6 +59,37 @@
         <div v-else class="text-center py-4 text-xs" style="color: var(--text-muted)">今日暂无数据</div>
       </div>
 
+      <!-- 淘股吧推荐 -->
+      <div class="glow-card p-5 mb-6" v-if="taogubaArticles.length">
+        <h3 class="text-xs font-medium mb-3" style="color: var(--text-muted); letter-spacing: 0.5px">淘股吧推荐 · {{ taogubaArticles.length }}篇</h3>
+        <div class="space-y-2">
+          <div v-for="(a, idx) in taogubaArticles" :key="a.topic_id"
+            class="p-3 rounded cursor-pointer transition-colors" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle)"
+            @click="toggleTgbArticle(a.topic_id)">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <span class="text-xs font-mono shrink-0" style="color: var(--text-muted)">#{{ idx + 1 }}</span>
+                  <span class="text-sm font-medium truncate" style="color: var(--text-primary)">{{ a.subject }}</span>
+                </div>
+                <div class="flex items-center gap-3 text-xs" style="color: var(--text-muted)">
+                  <span>{{ a.user_name }}</span>
+                  <span>👁️ {{ a.view_count }}</span>
+                  <span>💬 {{ a.reply_count }}</span>
+                  <span>{{ a.date_time }}</span>
+                </div>
+              </div>
+              <span class="text-xs shrink-0 transition-transform" :style="{ transform: expandedTgbId === a.topic_id ? 'rotate(180deg)' : '', color: 'var(--text-muted)' }">▼</span>
+            </div>
+            <div v-if="expandedTgbId === a.topic_id" class="mt-3 pt-3 border-t" style="border-color: var(--border-subtle)">
+              <div class="text-xs leading-relaxed" style="color: var(--text-secondary)" v-html="a.content"></div>
+              <a :href="`https://www.tgb.cn/article/${a.new_topic_id}`" target="_blank"
+                class="inline-block mt-2 text-xs hover:underline" style="color: var(--blue)">📎 查看原文</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Summary -->
       <div class="glow-card p-5" v-if="sentiment?.summary">
         <h3 class="text-xs font-medium mb-2" style="color: var(--text-muted); letter-spacing: 0.5px">舆情总结</h3>
@@ -74,16 +105,26 @@ import { useReportStore } from '@/stores/report'
 
 const store = useReportStore()
 const expandedId = ref<string | null>(null)
+const expandedTgbId = ref<number | null>(null)
 
 function toggleArticle(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+function toggleTgbArticle(id: number) {
+  expandedTgbId.value = expandedTgbId.value === id ? null : id
+}
+
 const sentiment = computed(() => store.report?.sentiment as any)
-const hasData = computed(() => !!(sentiment.value && (sentiment.value.hot_stocks?.length || sentiment.value.hot_articles?.length)))
+const hasData = computed(() => !!(sentiment.value && (
+  sentiment.value.hot_stocks?.length ||
+  sentiment.value.hot_articles?.length ||
+  sentiment.value.taoguba_articles?.length
+)))
 
 const hotStocks = computed(() => sentiment.value?.hot_stocks || [])
 const hotArticles = computed(() => sentiment.value?.hot_articles || [])
+const taogubaArticles = computed(() => sentiment.value?.taoguba_articles || [])
 
 const trendText = computed(() => {
   const t = sentiment.value?.trend
