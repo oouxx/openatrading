@@ -29,7 +29,7 @@
       </div>
 
       <!-- Crosshair Info Bar -->
-      <div v-if="crosshair.visible" class="flex items-center justify-between px-4 py-1 font-mono" style="background: #1a2332; border-bottom: 1px solid #1e2a3a; min-height: 30px; font-size: 11px">
+      <div class="flex items-center justify-between px-4 py-1 font-mono" style="background: #1a2332; border-bottom: 1px solid #1e2a3a; min-height: 30px; font-size: 11px">
         <span style="color: var(--text-primary)">{{ crosshair.time }}</span>
         <div class="flex items-center gap-2" style="color: var(--text-muted)">
           <span>开 <span style="color: var(--text-primary)">{{ crosshair.open }}</span></span>
@@ -203,7 +203,6 @@ function formatCrosshairTime(ts: number, p: string): string {
 
 function crosshairHandler(param: any) {
   if (!param.point || !param.time || !candleSeries) {
-    crosshair.value = { visible: false, time: '', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 }
     tooltip.value = { visible: false, x: 0, y: 0, price: '' }
     return
   }
@@ -269,6 +268,24 @@ async function fetchKline() {
       color: c.close >= c.open ? 'rgba(255,23,68,0.3)' : 'rgba(0,230,118,0.3)',
     })))
     if (period.value === 'minute') updateCenterBounding()
+
+    // 初始化信息栏为最新一根K线数据
+    if (data.candles.length > 0) {
+      const last = data.candles[data.candles.length - 1]
+      const preclose = quote.value?.preclose_px
+      const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
+      crosshair.value = {
+        visible: true,
+        time: formatCrosshairTime(last.time, period.value),
+        open: last.open?.toFixed(2) || '-',
+        high: last.high?.toFixed(2) || '-',
+        low: last.low?.toFixed(2) || '-',
+        close: last.close?.toFixed(2) || '-',
+        volume: formatVolume(last.volume || 0),
+        change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+        changeNum: changeRate,
+      }
+    }
   } catch (e) { console.error('[KlineDrawer] fetchKline error:', e) }
 }
 

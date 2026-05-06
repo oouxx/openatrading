@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "wasm:build": "cd ../crates/wasm && wasm-pack build --target web --out-dir ../../src/src/wasm",
-    "dev": "npm run wasm:build && vite",
-    "build": "npm run wasm:build && vue-tsc -b && vite build",
+    "dev": "bun run wasm:build && vite",
+    "build": "bun run wasm:build && vue-tsc -b && vite build",
     "build:vercel": "vite build",
     "preview": "vite preview"
   },
