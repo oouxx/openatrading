@@ -297,10 +297,6 @@ fn parse_stats(text: &str) -> (i32, i32) {
     (views, replies)
 }
 
-fn html_to_markdown(html: &str) -> String {
-    crate::utils::html::html_to_markdown(html)
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str) -> Result<()> {
     println!("📥 正在获取用户 {} 的帖子...", user_id);
