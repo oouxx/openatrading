@@ -5,6 +5,45 @@ use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::fs;
 
+// 淘股吧推荐 API 响应结构体
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct TgbRecommendResponse {
+    dto: TgbRecommendDto,
+}
+
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct TgbRecommendDto {
+    list: Vec<TgbRecommendItem>,
+}
+
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct TgbRecommendItem {
+    topicID: i64,
+    subject: Option<String>,
+    subinfo: Option<String>,
+    userName: Option<String>,
+    totalViewNum: Option<i64>,
+    totalReplyNum: Option<i64>,
+    dateTime: Option<i64>,
+    newTopicID: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaogubaRecommend {
+    pub topic_id: i64,
+    pub new_topic_id: String,
+    pub subject: String,
+    pub subinfo: String,
+    pub user_name: String,
+    pub view_count: i64,
+    pub reply_count: i64,
+    pub date_time: String,
+    pub content: String,
+}
+
 const BASE_URL: &str = "https://www.tgb.cn";
 const MOBILE_URL: &str = "https://m.tgb.cn";
 
@@ -155,7 +194,7 @@ impl TgbClient {
             // PC 端有登录墙时，回退到移动端获取完整内容
             self.fetch_mobile_post_content(post_id).await
         } else {
-            self.extract_post_content(&html)
+            Self::extract_post_content(&html)
         }
     }
 
@@ -168,10 +207,10 @@ impl TgbClient {
         }
 
         let html = request.send().await?.text().await?;
-        self.extract_mobile_post_content(&html)
+        Self::extract_mobile_post_content(&html)
     }
 
-    fn extract_mobile_post_content(&self, html: &str) -> Result<(String, String)> {
+    fn extract_mobile_post_content(html: &str) -> Result<(String, String)> {
         let document = Html::parse_document(html);
 
         // 移动端内容在 .tzitem_text 中，无登录墙
@@ -214,7 +253,7 @@ impl TgbClient {
         Ok((content.trim().to_string(), pub_time))
     }
 
-    fn extract_post_content(&self, html: &str) -> Result<(String, String)> {
+    fn extract_post_content(html: &str) -> Result<(String, String)> {
         let document = Html::parse_document(html);
 
         // 提取正文元素
@@ -281,6 +320,70 @@ impl TgbClient {
         };
 
         Ok((content.trim().to_string(), pub_time))
+    }
+
+    pub async fn fetch_recommend_articles(&self) -> Result<Vec<TaogubaRecommend>> {
+        // 并行请求 3 页推荐数据
+        async fn fetch_page(
+            client: &reqwest::Client,
+            cookie: &Option<String>,
+            page: i32,
+        ) -> Result<Vec<TgbRecommendItem>> {
+            let url = format!(
+                "https://www.tgb.cn/newIndex/getNowRecommend?pageNo={}",
+                page
+            );
+            let mut request = client.get(&url);
+            if let Some(ref c) = cookie {
+                request = request.header("Cookie", c.clone());
+            }
+            let resp: TgbRecommendResponse = request.send().await?.json().await?;
+            Ok(resp.dto.list)
+        }
+
+        let (p1, p2, p3) = tokio::join!(
+            fetch_page(&self.client, &self.cookie, 1),
+            fetch_page(&self.client, &self.cookie, 2),
+            fetch_page(&self.client, &self.cookie, 3),
+        );
+
+        let mut items = Vec::new();
+        for result in [p1, p2, p3] {
+            match result {
+                Ok(list) => items.extend(list),
+                Err(e) => eprintln!("获取淘股吧推荐页失败: {}", e),
+            }
+        }
+
+        let articles: Vec<TaogubaRecommend> = items
+            .into_iter()
+            .map(|item| {
+                let date_time = item
+                    .dateTime
+                    .and_then(|ms| {
+                        chrono::DateTime::from_timestamp(
+                            ms / 1000,
+                            ((ms % 1000) * 1_000_000) as u32,
+                        )
+                    })
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_default();
+
+                TaogubaRecommend {
+                    topic_id: item.topicID,
+                    new_topic_id: item.newTopicID.unwrap_or_default(),
+                    subject: item.subject.unwrap_or_default(),
+                    subinfo: item.subinfo.clone().unwrap_or_default(),
+                    user_name: item.userName.unwrap_or_default(),
+                    view_count: item.totalViewNum.unwrap_or(0),
+                    reply_count: item.totalReplyNum.unwrap_or(0),
+                    date_time,
+                    content: item.subinfo.unwrap_or_default(),
+                }
+            })
+            .collect();
+
+        Ok(articles)
     }
 }
 

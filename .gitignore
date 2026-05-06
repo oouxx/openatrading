@@ -5,7 +5,6 @@ jiuyan_res.json
 pre-commit-usage.md
 reports/
 .qwen/
-jiuyan_api.md
 tests/
 .DS_Store
 docs/*.md
@@ -23,3 +22,4 @@ public/report_*.json
 *.log
 
 report_*.json
+.claude/

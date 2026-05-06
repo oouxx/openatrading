@@ -1,8 +1,4 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(cargo tree *)"
-    ]
-  },
-  "defaultMode": "bypassPermissions"
+
+  "defaultMode": "acceptEdits"
 }

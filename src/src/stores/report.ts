@@ -55,6 +55,17 @@ interface Report {
       content: string
     }>
     summary: string
+    taoguba_articles: Array<{
+      topic_id: number
+      new_topic_id: string
+      subject: string
+      subinfo: string
+      user_name: string
+      view_count: number
+      reply_count: number
+      date_time: string
+      content: string
+    }>
   }
   risk_level: string
   opportunity_signals: string[]

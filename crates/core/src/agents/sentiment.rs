@@ -1,4 +1,5 @@
 use crate::api::jiuyangongshe::CommunityArticle;
+use crate::api::taoguba::TaogubaRecommend;
 use crate::api::Client;
 use anyhow::Result;
 use chrono::Local;
@@ -24,20 +25,44 @@ pub struct SentimentResult {
     pub summary: String,
     pub news_summary: String,
     pub articles: Vec<CommunityArticle>,
+    pub taoguba_articles: Vec<TaogubaRecommend>,
 }
 
 pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
-    let mut all_articles = Vec::new();
-    for page in 1..=3 {
-        let resp = client.jiuyan.fetch_community("", 0, page, 30).await?;
-        if resp.result.is_empty() {
-            break;
-        }
-        all_articles.extend(resp.result);
-    }
+    // 并行获取韭研数据和淘股吧推荐
+    let (jiuyan_articles, taoguba_articles) = tokio::join!(
+        async {
+            let mut all = Vec::new();
+            for page in 1..=3 {
+                match client.jiuyan.fetch_community("", 0, page, 30).await {
+                    Ok(resp) => {
+                        if resp.result.is_empty() {
+                            break;
+                        }
+                        all.extend(resp.result);
+                    }
+                    Err(e) => {
+                        eprintln!("获取韭研数据失败: {}", e);
+                        break;
+                    }
+                }
+            }
+            all
+        },
+        async {
+            client
+                .taoguba
+                .fetch_recommend_articles()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("获取淘股吧推荐失败: {}", e);
+                    vec![]
+                })
+        },
+    );
 
     let today = Local::now().format("%Y-%m-%d").to_string();
-    let articles: Vec<CommunityArticle> = all_articles
+    let articles: Vec<CommunityArticle> = jiuyan_articles
         .into_iter()
         .filter(|a| a.create_time.starts_with(&today))
         .collect();
@@ -50,6 +75,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
             summary: "今日暂无社群文章".to_string(),
             news_summary: "今日暂无社群文章更新".to_string(),
             articles: vec![],
+            taoguba_articles,
         });
     }
 
@@ -119,6 +145,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
         summary,
         news_summary: String::new(),
         articles,
+        taoguba_articles,
     })
 }
 
@@ -134,6 +161,7 @@ pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentRe
             summary: "今日暂无社群文章".to_string(),
             news_summary: "今日暂无社群文章更新".to_string(),
             articles: vec![],
+            taoguba_articles: vec![],
         };
     }
 
@@ -203,6 +231,7 @@ pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentRe
         summary,
         news_summary: String::new(),
         articles,
+        taoguba_articles: vec![],
     }
 }
 
