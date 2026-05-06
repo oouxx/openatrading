@@ -1013,16 +1013,6 @@ async fn run_ai(
     }
 }
 
-fn empty_overview() -> trending_agent_core::api::xuangubao::MarketOverview {
-    trending_agent_core::api::xuangubao::MarketOverview {
-        limit_up_count: 0,
-        limit_down_count: 0,
-        rise_count: 0,
-        fall_count: 0,
-        bomb_rate: 0.0,
-    }
-}
-
 fn ra() -> RoleAnalysis {
     RoleAnalysis {
         role: Role::Trader,
