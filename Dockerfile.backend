@@ -1,5 +1,5 @@
 # Build Rust backend
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.88-bookworm AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
@@ -11,7 +11,7 @@ COPY crates/wasm/Cargo.toml crates/wasm/
 RUN mkdir -p crates/core/src crates/cli/src crates/web/src crates/wasm/src && \
     echo "fn main() {}" > crates/cli/src/main.rs && \
     echo "fn main() {}" > crates/web/src/main.rs && \
-    echo "fn main() {}" > crates/wasm/src/main.rs && \
+    echo "pub fn dummy() {}" > crates/wasm/src/lib.rs && \
     echo "pub fn dummy() {}" > crates/core/src/lib.rs
 RUN cargo build --release -p trending-agent-web
 RUN rm -rf crates/*/src target/release/.fingerprint/trending-agent*
