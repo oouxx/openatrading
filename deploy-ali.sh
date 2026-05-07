@@ -143,4 +143,4 @@ rm -rf "$IMAGES_DIR"
 
 echo ""
 echo "=== Deploy complete ($SERVICE) ==="
-echo "Frontend: http://47.116.170.125:8080"
+echo "Frontend: http://47.116.170.125:18080"
