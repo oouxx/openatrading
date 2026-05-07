@@ -97,19 +97,13 @@ json:
 TAOGUBA_USERS ?= 2577911
 
 deploy-static:
-	@echo "📡 生成静态数据 report.json..."
-	@cargo run --bin trending-agent -- run --format json --output ./src/public/
-	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
-	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "✅ report.json ready"; fi
 	@echo "📦 构建 Vue 前端..."
 	@cd src && npm run build
 	@echo ""
 	@echo "✅ 部署文件已生成到 src/dist/"
 	@echo ""
 	@echo "Vercel 配置说明："
-	@echo "  默认: VITE_DATA_SOURCE=json (读取内置 report.json)"
 	@echo "  动态: 在 Vercel 环境变量设置:"
-	@echo "    VITE_DATA_SOURCE=api"
 	@echo "    VITE_API_BASE_URL=https://你的后端地址"
 
 # ─── Docker ──────────────────────────────────────────
