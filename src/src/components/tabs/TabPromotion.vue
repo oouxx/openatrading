@@ -2,49 +2,49 @@
   <div>
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-16 gap-3">
-      <span class="pulse-dot" style="width: 8px; height: 8px"></span>
-      <span class="text-sm" style="color: var(--text-muted); font-family: var(--font-mono)">加载晋级数据...</span>
+      <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+      <span class="text-caption font-mono text-white/40">加载晋级数据...</span>
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="glow-card p-6 text-center text-sm" style="color: var(--text-muted)">
+    <div v-else-if="error" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner text-center text-caption text-white/40">
       {{ error }}
     </div>
 
     <template v-else-if="ladder.length > 0">
       <!-- Promotion Ladder Overview -->
-      <div class="mb-6">
-        <div class="flex items-center gap-3 mb-4">
-          <h3 class="text-sm font-bold" style="color: var(--text-primary)">📊 连板晋级梯队</h3>
-          <span class="text-xs" style="color: var(--text-muted)">
+      <div class="mb-12">
+        <div class="flex items-center gap-3 mb-6">
+          <h3 class="text-display-md text-white">连板晋级梯队</h3>
+          <span class="text-caption text-white/40">
             昨 {{ totalYesterday }} 只 → 今 {{ totalToday }} 只 · 综合晋级率
-            <b :style="{ color: overallRate >= 0.5 ? 'var(--red)' : 'var(--text-muted)' }">{{ (overallRate * 100).toFixed(1) }}%</b>
+            <b :class="overallRate >= 0.5 ? 'text-data-red' : 'text-white/40'">{{ (overallRate * 100).toFixed(1) }}%</b>
           </span>
         </div>
 
-        <div class="glow-card p-4">
+        <div class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner">
           <div
             v-for="row in ladder"
             :key="row.yesterdayDays"
             class="mb-3 last:mb-0 cursor-pointer"
             @click="selectedBoard = selectedBoard === row.yesterdayDays ? null : row.yesterdayDays"
           >
-            <div class="flex items-center gap-3 text-sm" style="font-family: var(--font-mono)">
-              <span class="px-2 py-0.5 rounded text-xs" style="background: var(--border-subtle); color: var(--text-secondary); min-width: 56px; text-align: center">
+            <div class="flex items-center gap-3 text-caption font-mono">
+              <span class="px-2 py-0.5 rounded-badge text-caption bg-white/10 text-white/60" style="min-width: 56px; text-align: center">
                 昨{{ row.yesterdayDays }}板
               </span>
-              <span style="color: var(--text-muted); min-width: 40px">{{ row.yesterdayCount }}只</span>
-              <span style="color: var(--text-muted)">→</span>
-              <span class="px-2 py-0.5 rounded text-xs" :style="{ background: row.rate >= 0.5 ? 'rgba(255,23,68,0.1)' : 'rgba(0,230,118,0.1)', color: row.rate >= 0.5 ? 'var(--red)' : 'var(--green)', minWidth: '56px', textAlign: 'center' }">
+              <span class="text-white/40" style="min-width: 40px">{{ row.yesterdayCount }}只</span>
+              <span class="text-white/40">→</span>
+              <span class="px-2 py-0.5 rounded-badge text-caption" :class="row.rate >= 0.5 ? 'bg-data-red/15 text-data-red' : 'bg-data-green/15 text-data-green'" style="min-width: 56px; text-align: center">
                 今{{ row.yesterdayDays + 1 }}板
               </span>
-              <span style="color: var(--text-primary); min-width: 40px">{{ row.promotedCount }}只</span>
-              <span style="color: var(--text-muted)" class="text-xs">晋级率</span>
-              <b :style="{ color: row.rate >= 0.5 ? 'var(--red)' : 'var(--text-muted)' }">{{ (row.rate * 100).toFixed(1) }}%</b>
-              <div class="flex-1 h-2 rounded-full" style="background: var(--border-subtle); min-width: 60px">
-                <div class="h-full rounded-full transition-all" :style="{ width: (row.rate * 100) + '%', background: row.rate >= 0.5 ? 'var(--red)' : 'var(--green)' }"></div>
+              <span class="text-white" style="min-width: 40px">{{ row.promotedCount }}只</span>
+              <span class="text-white/40 text-caption">晋级率</span>
+              <b :class="row.rate >= 0.5 ? 'text-data-red' : 'text-white/40'">{{ (row.rate * 100).toFixed(1) }}%</b>
+              <div class="flex-1 h-2 rounded-full bg-white/10" style="min-width: 60px">
+                <div class="h-full rounded-full transition-all" :style="{ width: (row.rate * 100) + '%' }" :class="row.rate >= 0.5 ? 'bg-data-red' : 'bg-data-green'"></div>
               </div>
-              <span class="text-xs" style="color: var(--text-muted)">断板 {{ row.brokenCount }}只</span>
+              <span class="text-white/40 text-caption">断板 {{ row.brokenCount }}只</span>
             </div>
 
             <!-- Expanded detail -->
@@ -62,21 +62,18 @@
                 </thead>
                 <tbody>
                   <tr v-for="s in row.details" :key="s.symbol">
-                    <td class="cursor-pointer font-mono hover:underline" style="color: var(--blue)" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
-                    <td style="color: var(--text-primary); font-weight: 500">{{ s.name }}</td>
+                    <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
+                    <td class="font-medium text-white">{{ s.name }}</td>
                     <td class="font-mono">
-                      <span :style="{ color: s.status === 'promoted' ? 'var(--red)' : 'var(--text-muted)' }">
+                      <span :class="s.status === 'promoted' ? 'text-data-red' : 'text-white/40'">
                         {{ s.yesterdayDays }}板 → {{ s.status === 'promoted' ? s.todayDays + '板' : '断板' }}
                       </span>
                     </td>
-                    <td style="text-align:right; font-family: var(--font-mono)">{{ s.turnover ? (s.turnover * 100).toFixed(2) + '%' : '-' }}</td>
-                    <td style="text-align:right; font-family: var(--font-mono)">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
+                    <td class="text-right font-mono">{{ s.turnover ? (s.turnover * 100).toFixed(2) + '%' : '-' }}</td>
+                    <td class="text-right font-mono">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
                     <td>
-                      <span class="px-2 py-0.5 rounded text-xs font-mono"
-                        :style="{
-                          background: s.status === 'promoted' ? 'rgba(255,23,68,0.1)' : 'rgba(255,255,255,0.05)',
-                          color: s.status === 'promoted' ? 'var(--red)' : 'var(--text-muted)'
-                        }">
+                      <span class="px-2 py-0.5 rounded-badge text-caption font-mono"
+                        :class="s.status === 'promoted' ? 'bg-data-red/15 text-data-red' : 'bg-white/10 text-white/40'">
                         {{ s.status === 'promoted' ? '晋级' : '断板' }}
                       </span>
                     </td>
@@ -89,12 +86,12 @@
       </div>
 
       <!-- First Board (首板新进) -->
-      <div v-if="firstBoard.length > 0" class="mt-8">
-        <div class="flex items-center gap-3 mb-4">
-          <h3 class="text-sm font-bold" style="color: var(--text-primary)">🆕 首板新进</h3>
-          <span class="text-xs" style="color: var(--text-muted)">共 {{ firstBoard.length }} 只</span>
+      <div v-if="firstBoard.length > 0">
+        <div class="flex items-center gap-3 mb-6">
+          <h3 class="text-display-md text-white">首板新进</h3>
+          <span class="text-caption text-white/40">共 {{ firstBoard.length }} 只</span>
         </div>
-        <div class="glow-card overflow-hidden">
+        <div class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden">
           <table class="data-table">
             <thead>
               <tr>
@@ -108,12 +105,12 @@
             </thead>
             <tbody>
               <tr v-for="s in firstBoard" :key="s.symbol">
-                <td class="cursor-pointer font-mono hover:underline" style="color: var(--blue)" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
-                <td style="color: var(--text-primary); font-weight: 500">{{ s.name }}</td>
-                <td style="text-align:right; font-family: var(--font-mono); color: var(--green)">+{{ (s.changePercent * 100).toFixed(2) }}%</td>
-                <td style="text-align:right; font-family: var(--font-mono)">{{ (s.turnover * 100).toFixed(2) }}%</td>
-                <td style="text-align:right; font-family: var(--font-mono)">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
-                <td style="color: var(--text-muted); font-size: 12px">{{ s.reason || '-' }}</td>
+                <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
+                <td class="font-medium text-white">{{ s.name }}</td>
+                <td class="text-right font-mono text-data-green">+{{ (s.changePercent * 100).toFixed(2) }}%</td>
+                <td class="text-right font-mono">{{ (s.turnover * 100).toFixed(2) }}%</td>
+                <td class="text-right font-mono">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
+                <td class="text-white/40 text-caption">{{ s.reason || '-' }}</td>
               </tr>
             </tbody>
           </table>
@@ -122,7 +119,7 @@
     </template>
 
     <!-- Empty -->
-    <div v-else class="glow-card p-6 text-center text-sm" style="color: var(--text-muted)">
+    <div v-else class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner text-center text-caption text-white/40">
       今日无涨停数据
     </div>
   </div>
