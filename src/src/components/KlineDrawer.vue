@@ -128,8 +128,10 @@ function formatTime(ts: number, p: string): string {
   return ymd
 }
 
+declare const __API_BASE_URL__: string
+
 function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || 'http://localhost:8080'
+  return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
 }
 
 async function fetchRealtime() {
