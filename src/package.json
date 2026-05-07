@@ -8,6 +8,7 @@
     "dev": "bun run wasm:build && vite",
     "build": "bun run wasm:build && vue-tsc -b && vite build",
     "build:vercel": "vite build",
+    "build:cloudflare": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
