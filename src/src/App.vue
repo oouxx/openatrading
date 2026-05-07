@@ -10,12 +10,6 @@
         </div>
 
         <div class="flex items-center gap-4">
-          <span class="text-nav-link font-mono px-2 py-0.5 rounded-badge"
-            :class="dataSource === 'api'
-              ? 'bg-data-green/10 text-data-green'
-              : 'bg-primary/10 text-primary'">
-            {{ dataSource.toUpperCase() }}
-          </span>
           <span v-if="reportStore.report" class="text-nav-link font-mono text-white/60">
             {{ reportStore.report.date }}
           </span>
@@ -109,7 +103,6 @@ import TabPromotion from './components/tabs/TabPromotion.vue'
 
 const reportStore = useReportStore()
 const activeTab = ref('limit-up')
-const dataSource = computed(() => reportStore.source)
 // K-line drawer state
 const klineSymbol = ref('')
 const klineName = ref('')

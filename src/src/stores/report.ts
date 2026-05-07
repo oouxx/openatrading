@@ -72,52 +72,24 @@ interface Report {
   decision_summary: string
 }
 
-const LS_KEY = 'trading-agent-api-url'
-
 function getApiBaseUrl(): string {
-  return localStorage.getItem(LS_KEY) || __API_BASE_URL__
-}
-
-export function getApiBaseUrlForDisplay(): string {
-  return getApiBaseUrl()
-}
-
-export function setApiBaseUrl(url: string) {
-  localStorage.setItem(LS_KEY, url)
+  return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
 }
 
 const store = reactive({
   report: null as Report | null,
   loading: false,
   error: '',
-  source: __DATA_SOURCE__ as string,
 })
-
-async function fetchFromApi(): Promise<Report> {
-  const base = getApiBaseUrl()
-  const resp = await fetch(`${base}/api/report`)
-  if (!resp.ok) throw new Error(`API ${resp.status}: ${resp.statusText}`)
-  return resp.json()
-}
-
-async function fetchFromJson(): Promise<Report> {
-  const resp = await fetch('/data/report.json')
-  if (!resp.ok) throw new Error(`JSON ${resp.status}`)
-  return resp.json()
-}
 
 async function fetchReport() {
   store.loading = true
   store.error = ''
   try {
-    switch (__DATA_SOURCE__) {
-      case 'api':
-        store.report = await fetchFromApi()
-        break
-      case 'json':
-        store.report = await fetchFromJson()
-        break
-    }
+    const base = getApiBaseUrl()
+    const resp = await fetch(`${base}/api/report`)
+    if (!resp.ok) throw new Error(`API ${resp.status}: ${resp.statusText}`)
+    store.report = await resp.json()
   } catch (e: any) {
     store.error = e.message || String(e)
     console.error('Fetch failed:', e)
