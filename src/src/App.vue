@@ -1,45 +1,31 @@
 <template>
-  <div class="min-h-screen" style="background: var(--bg-primary)">
-    <!-- Top Bar -->
-    <header class="fixed top-0 w-full z-50 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle)">
-      <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3 flex-shrink-0">
-          <span class="pulse-dot"></span>
-          <h1 class="text-sm font-bold tracking-wider" style="color: var(--text-primary); font-family: var(--font-mono)">
-            TRENDING<span style="color: var(--blue)">.AGENT</span>
+  <div class="min-h-screen bg-canvas">
+    <!-- Global Nav -->
+    <header class="fixed top-0 w-full z-50 bg-black" style="height: 44px">
+      <div class="max-w-[1200px] mx-auto px-6 h-full flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <h1 class="text-nav-link font-semibold text-white tracking-tight">
+            TRENDING<span class="text-primary">.AGENT</span>
           </h1>
         </div>
 
-        <!-- API Address Input (only in api mode) -->
-        <div v-if="dataSource === 'api'" class="flex items-center gap-2 flex-1 max-w-sm">
-          <input
-            :value="apiUrl"
-            @change="onApiUrlChange"
-            :placeholder="defaultApiPlaceholder"
-            class="flex-1 px-3 py-1 text-xs rounded border"
-            style="background: var(--bg-primary); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono); outline: none"
-          />
-        </div>
-
-        <div class="flex items-center gap-4 flex-shrink-0">
-          <!-- Source indicator -->
-          <span class="text-xs px-2 py-0.5 rounded font-mono"
-            :style="{ background: sourceBg, color: sourceColor }">
+        <div class="flex items-center gap-4">
+          <span class="text-nav-link font-mono px-2 py-0.5 rounded-badge"
+            :class="dataSource === 'api'
+              ? 'bg-data-green/10 text-data-green'
+              : 'bg-primary/10 text-primary'">
             {{ dataSource.toUpperCase() }}
           </span>
-          <span v-if="reportStore.report" class="text-xs" style="color: var(--text-muted); font-family: var(--font-mono)">
+          <span v-if="reportStore.report" class="text-nav-link font-mono text-white/60">
             {{ reportStore.report.date }}
           </span>
           <button
             @click="refreshData"
             :disabled="reportStore.loading"
-            class="px-4 py-1.5 text-xs font-medium rounded border transition-all"
-            :style="{
-              background: reportStore.loading ? 'transparent' : 'rgba(68,138,255,0.1)',
-              color: reportStore.loading ? 'var(--text-muted)' : 'var(--blue)',
-              borderColor: reportStore.loading ? 'var(--border-subtle)' : 'rgba(68,138,255,0.3)',
-              cursor: reportStore.loading ? 'not-allowed' : 'pointer'
-            }"
+            class="px-4 py-1.5 text-nav-link font-medium rounded-[8px] transition-all active:scale-95"
+            :class="reportStore.loading
+              ? 'bg-white/10 text-white/30 cursor-not-allowed'
+              : 'bg-ink text-white hover:bg-ink/90 cursor-pointer'"
           >
             {{ reportStore.loading ? '刷新中...' : '↻ 刷新' }}
           </button>
@@ -47,36 +33,53 @@
       </div>
     </header>
 
-    <!-- Main -->
-    <main class="max-w-7xl mx-auto px-6 pt-20 pb-12">
+    <!-- Main Content -->
+    <main class="pt-[44px]">
       <!-- Error -->
-      <div v-if="reportStore.error" class="mb-6 p-4 rounded-lg flex items-center justify-between" style="background: rgba(255,23,68,0.08); border: 1px solid rgba(255,23,68,0.2)">
-        <div class="flex items-center gap-3">
-          <span style="color: var(--red); font-size: 16px">&#9888;</span>
-          <span class="text-sm" style="color: var(--red)">{{ reportStore.error }}</span>
+      <div v-if="reportStore.error" class="py-4">
+        <div class="max-w-[1200px] mx-auto px-6">
+          <div class="bg-data-red/5 border border-data-red/20 rounded-card px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-data-red text-sm">&#9888;</span>
+              <span class="text-caption text-data-red">{{ reportStore.error }}</span>
+            </div>
+            <button @click="refreshData" class="text-caption text-data-red underline cursor-pointer">重试</button>
+          </div>
         </div>
-        <button @click="refreshData" class="text-xs underline" style="color: var(--red)">重试</button>
       </div>
 
       <!-- Loading -->
       <div v-if="reportStore.loading && !reportStore.report" class="flex flex-col items-center justify-center py-32 gap-4">
-        <div class="pulse-dot" style="width: 12px; height: 12px"></div>
-        <span class="text-sm" style="color: var(--text-muted); font-family: var(--font-mono)">加载市场数据...</span>
+        <div class="w-3 h-3 rounded-full bg-primary animate-pulse"></div>
+        <span class="text-caption font-mono text-ink-muted">加载市场数据...</span>
       </div>
 
       <!-- Content -->
       <template v-if="reportStore.report">
-        <KpiCards
-          :overview="reportStore.report.overview"
-          :risk-level="reportStore.report.risk_level"
-          :decision-summary="reportStore.report.decision_summary"
-        />
+        <!-- KPI Tile: white canvas -->
+        <section class="bg-canvas" style="padding: 80px 0">
+          <div class="max-w-[980px] mx-auto px-6">
+            <KpiCards
+              :overview="reportStore.report.overview"
+              :risk-level="reportStore.report.risk_level"
+              :decision-summary="reportStore.report.decision_summary"
+            />
+          </div>
+        </section>
 
-        <TabBar v-model="activeTab" />
+        <!-- Tab Tile: parchment + sticky -->
+        <section class="bg-canvas-parchment sticky z-40" style="top: 44px; padding: 0">
+          <div class="max-w-[1200px] mx-auto px-6">
+            <TabBar v-model="activeTab" />
+          </div>
+        </section>
 
-        <div class="mt-6">
-          <component :is="currentTabComponent" />
-        </div>
+        <!-- Data Tile: dark -->
+        <section class="bg-surface-dark" style="padding: 80px 0; min-height: 60vh">
+          <div class="max-w-[1200px] mx-auto px-6">
+            <component :is="currentTabComponent" />
+          </div>
+        </section>
       </template>
     </main>
 
