@@ -106,17 +106,6 @@ async function fetchFromJson(): Promise<Report> {
   return resp.json()
 }
 
-async function fetchFromWasm(): Promise<Report> {
-  // 使用动态路径避免 Vite 在 WASM 模块不存在时构建失败（Vercel 环境）
-  const wasmPath = '../wasm/trending_agent_wasm.js'
-  const mod = await import(/* @vite-ignore */ wasmPath)
-  await mod.default()
-  const isDev = import.meta.env.DEV
-  mod.set_xgb_base_url(isDev ? '/api/xgb' : 'https://flash-api.xuangubao.cn/api')
-  const json = await mod.run_report()
-  return JSON.parse(json)
-}
-
 async function fetchReport() {
   store.loading = true
   store.error = ''
@@ -127,9 +116,6 @@ async function fetchReport() {
         break
       case 'json':
         store.report = await fetchFromJson()
-        break
-      case 'wasm':
-        store.report = await fetchFromWasm()
         break
     }
   } catch (e: any) {
