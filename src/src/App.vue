@@ -131,7 +131,6 @@ const currentTabComponent = computed(() => tabComponents[activeTab.value])
 const sourceBg = computed(() => {
   switch (dataSource.value) {
     case 'api': return 'rgba(0,230,118,0.1)'
-    case 'wasm': return 'rgba(68,138,255,0.1)'
     default: return 'rgba(255,171,0,0.1)'
   }
 })
@@ -139,7 +138,6 @@ const sourceBg = computed(() => {
 const sourceColor = computed(() => {
   switch (dataSource.value) {
     case 'api': return 'var(--green)'
-    case 'wasm': return 'var(--blue)'
     default: return 'var(--amber)'
   }
 })

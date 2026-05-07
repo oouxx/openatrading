@@ -5,15 +5,8 @@ import { resolve } from 'path'
 export default defineConfig(async ({ mode }) => {
   // 从项目根目录加载 .env（Vite 默认只读当前目录的 .env）
   const rootEnv = loadEnv(mode, resolve(__dirname, '..'), '')
-  const skipWasm = process.env.SKIP_WASM === '1'
 
   const plugins: any[] = [vue()]
-
-  if (!skipWasm) {
-    const wasm = (await import('vite-plugin-wasm')).default
-    const topLevelAwait = (await import('vite-plugin-top-level-await')).default
-    plugins.push(wasm(), topLevelAwait())
-  }
 
   return {
     resolve: {
