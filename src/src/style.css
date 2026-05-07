@@ -2,113 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @layer base {
-  :root {
-    --bg-primary: #0a0e17;
-    --bg-secondary: #111827;
-    --bg-card: #141c2b;
-    --border-subtle: #1e2a3a;
-    --border-active: #2a3a50;
-    --text-primary: #e2e8f0;
-    --text-secondary: #8899aa;
-    --text-muted: #566477;
-    --green: #00e676;
-    --green-dim: #00c853;
-    --red: #ff1744;
-    --red-dim: #d50000;
-    --amber: #ffab00;
-    --amber-dim: #ff8f00;
-    --blue: #448aff;
-    --blue-dim: #2962ff;
-    --font-mono: 'JetBrains Mono', monospace;
-    --font-sans: 'DM Sans', -apple-system, sans-serif;
-  }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: var(--font-sans);
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #ffffff;
+    color: #1d1d1f;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg-primary); }
-  ::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: #f5f5f7; }
+  ::-webkit-scrollbar-thumb { background: #86868b; border-radius: 3px; }
 
-  ::selection { background: rgba(0, 230, 118, 0.2); color: var(--green); }
+  ::selection { background: rgba(0, 102, 204, 0.15); color: #1d1d1f; }
 }
 
 @layer components {
-  .glow-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    transition: border-color 0.3s, box-shadow 0.3s;
-  }
-  .glow-card:hover {
-    border-color: var(--border-active);
-    box-shadow: 0 0 20px rgba(68, 138, 255, 0.05);
-  }
-
   .data-table {
     width: 100%;
     border-collapse: collapse;
-    font-family: var(--font-mono);
-    font-size: 13px;
   }
   .data-table th {
     text-align: left;
     padding: 10px 16px;
-    color: var(--text-muted);
-    font-weight: 500;
+    color: #86868b;
+    font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
   .data-table td {
     padding: 10px 16px;
-    border-bottom: 1px solid rgba(30, 42, 58, 0.5);
-    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #a1a1a6;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
   }
   .data-table tr:hover td {
-    background: rgba(68, 138, 255, 0.03);
-    color: var(--text-primary);
-  }
-
-  .tab-btn {
-    padding: 12px 24px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: var(--font-sans);
-  }
-  .tab-btn:hover { color: var(--text-secondary); }
-  .tab-btn.active {
-    color: var(--blue);
-    border-bottom-color: var(--blue);
-  }
-
-  .pulse-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
   }
 }
