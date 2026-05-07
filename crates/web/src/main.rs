@@ -109,6 +109,7 @@ async fn start_web_server(port: u16, state: WebState) {
         .route("/api/report/live", get(get_report_live))
         .route("/api/kline/:symbol", get(get_kline))
         .route("/api/realtime/:symbol", get(get_realtime))
+        .route("/api/yesterday-limit-up", get(get_yesterday_limit_up))
         .layer(cors)
         .with_state(state);
 
@@ -226,6 +227,16 @@ async fn get_realtime(Path(symbol): Path<String>) -> Result<impl IntoResponse, S
     let client = XuanguBaoClient::new();
     let data = client.fetch_realtime(&symbol).await.map_err(|e| {
         eprintln!("realtime error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    let json = serde_json::to_value(&data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(json))
+}
+
+async fn get_yesterday_limit_up() -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let data = client.fetch_yesterday_limit_up().await.map_err(|e| {
+        eprintln!("yesterday_limit_up error: {:#}", e);
         StatusCode::SERVICE_UNAVAILABLE
     })?;
     let json = serde_json::to_value(&data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

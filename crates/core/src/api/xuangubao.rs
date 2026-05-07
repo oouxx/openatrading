@@ -112,7 +112,8 @@ pub struct Stock {
     pub issue_price: f64,
     pub listed_date: i64,
     pub surge_reason: Option<SurgeReason>,
-    pub limit_timeline: LimitTimeline,
+    #[serde(default)]
+    pub limit_timeline: Option<LimitTimeline>,
     pub mtm: f64,
     pub m_days_n_boards_boards: u32,
     pub m_days_n_boards_days: u32,
@@ -188,6 +189,10 @@ impl XuanguBaoClient {
 
     pub async fn fetch_limit_down(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("limit_down").await
+    }
+
+    pub async fn fetch_yesterday_limit_up(&self) -> Result<Vec<Stock>> {
+        self.fetch_pool("yesterday_limit_up").await
     }
 
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
