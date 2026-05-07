@@ -1,7 +1,6 @@
 # Stage 1: Build Vue frontend
 FROM oven/bun:1 AS builder
 WORKDIR /app
-ENV VITE_DATA_SOURCE=api
 ENV VITE_API_BASE_URL=http://47.116.170.125:8080
 
 COPY src/package.json src/bun.lock ./

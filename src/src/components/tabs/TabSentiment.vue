@@ -90,11 +90,7 @@
         </div>
       </div>
 
-      <!-- Summary -->
-      <div class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner" v-if="sentiment?.summary">
-        <h3 class="text-caption-strong text-white/40 mb-3 tracking-wider uppercase">舆情总结</h3>
-        <p class="text-body leading-relaxed text-white/60">{{ sentimentData.summary }}</p>
-      </div>
+
     </template>
   </div>
 </template>
