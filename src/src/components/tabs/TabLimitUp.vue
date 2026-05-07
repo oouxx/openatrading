@@ -63,16 +63,16 @@
           class="px-3 py-1.5 text-caption font-mono rounded-input border border-hairline-dark bg-surface-dark text-white outline-none focus:border-primary"
         />
         <span class="text-caption text-white/40">
-          {{ fieldItems.length }} 个板块 · {{ totalFieldStocks }} 只股票
+          {{ fieldPlates.length }} 个板块 · {{ totalFieldStocks }} 只股票
         </span>
-        <span v-if="fieldLoading" class="text-caption font-mono text-primary animate-pulse">加载中...</span>
+        <span v-if="fieldItems.loading" class="text-caption font-mono text-primary animate-pulse">加载中...</span>
       </div>
 
       <!-- Field item cards -->
-      <div v-if="fieldItems.length === 0 && !fieldLoading" class="text-center py-12 text-caption text-white/40">
+      <div v-if="fieldPlates.length === 0 && !fieldItems.loading" class="text-center py-12 text-caption text-white/40">
         该日期无异动数据
       </div>
-      <div v-for="plate in fieldItems" :key="plate.name" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-4">
+      <div v-for="plate in fieldPlates" :key="plate.name" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-4">
         <div class="flex items-center gap-2 mb-4">
           <span class="text-body-strong text-white">{{ plate.name }}</span>
           <span class="text-caption font-mono px-2 py-0.5 rounded-badge bg-white/10 text-white/60">
@@ -108,20 +108,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, inject } from 'vue'
-import { useReportStore } from '@/stores/report'
+import { computed, ref, inject, onMounted } from 'vue'
+import { limitUp, fieldItems, overview, fetchLimitUp, fetchFieldItems } from '@/stores/data'
 
-const store = useReportStore()
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 const hideST = ref(true)
-const fieldLoading = ref(false)
 
-const todayStr = () => new Date().toISOString().split('T')[0]
-const fieldDate = ref(todayStr())
+const fieldDate = computed({
+  get: () => fieldItems.date,
+  set: (val: string) => fetchFieldItems(val),
+})
 
-const stocks = computed(() => store.report?.limit_up || [])
-const bombRate = computed(() => store.report?.overview.bomb_rate || 0)
-const fieldItems = computed(() => store.report?.field_items || [])
+const stocks = computed(() => limitUp.data)
+const bombRate = computed(() => overview.data?.bomb_rate || 0)
+const fieldPlates = computed(() => fieldItems.data)
 
 const sortedStocks = computed(() =>
   [...stocks.value].sort((a, b) => b.limit_up_days - a.limit_up_days || b.total_capital - a.total_capital)
@@ -133,23 +133,17 @@ const displayStocks = computed(() => {
 })
 
 const totalFieldStocks = computed(() =>
-  fieldItems.value.reduce((sum: number, p: any) => sum + (p.list?.length || 0), 0)
+  fieldPlates.value.reduce((sum: number, p: any) => sum + (p.list?.length || 0), 0)
 )
 
 async function onDateChange(e: Event) {
   const val = (e.target as HTMLInputElement).value
   if (!val) return
-  fieldDate.value = val
-  fieldLoading.value = true
-  try {
-    const base = localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
-    const resp = await fetch(`${base}/api/report/live?date=${val}`)
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    store.report = await resp.json()
-  } catch (err: any) {
-    console.error('Field date change failed:', err)
-  } finally {
-    fieldLoading.value = false
-  }
+  await fetchFieldItems(val)
 }
+
+onMounted(() => {
+  fetchLimitUp()
+  fetchFieldItems()
+})
 </script>

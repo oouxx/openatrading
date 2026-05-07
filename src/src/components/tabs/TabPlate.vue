@@ -80,10 +80,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject } from 'vue'
-import { useReportStore } from '@/stores/report'
+import { computed, inject, onMounted } from 'vue'
+import { plateAbnormal, fetchPlateAbnormal } from '@/stores/data'
 
-const store = useReportStore()
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 
 interface PlateFlatEvent {
@@ -106,7 +105,7 @@ interface StockFlatEvent {
 
 const plateEvents = computed<PlateFlatEvent[]>(() => {
   const events: PlateFlatEvent[] = []
-  store.report?.plate_abnormal.forEach((e: any) => {
+  plateAbnormal.data.forEach((e: any) => {
     const d = e.plate_abnormal_event_data
     if (!d || !d.plate_name) return
     events.push({
@@ -120,7 +119,7 @@ const plateEvents = computed<PlateFlatEvent[]>(() => {
 
 const stockEvents = computed<StockFlatEvent[]>(() => {
   const events: StockFlatEvent[] = []
-  store.report?.plate_abnormal.forEach((e: any) => {
+  plateAbnormal.data.forEach((e: any) => {
     const d = e.stock_abnormal_event_data
     if (!d || !d.name) return
     events.push({
@@ -137,4 +136,6 @@ function formatTime(ts: number): string {
 function formatPcp(pcp: number): string {
   return pcp === 0 ? '0%' : (pcp > 0 ? '+' : '') + (pcp * 100).toFixed(1) + '%'
 }
+
+onMounted(() => fetchPlateAbnormal())
 </script>

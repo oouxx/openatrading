@@ -10,18 +10,18 @@
         </div>
 
         <div class="flex items-center gap-4">
-          <span v-if="reportStore.report" class="text-nav-link font-mono text-white/60">
-            {{ reportStore.report.date }}
+          <span v-if="overview.data" class="text-nav-link font-mono text-white/60">
+            {{ overview.data.date }}
           </span>
           <button
             @click="refreshData"
-            :disabled="reportStore.loading"
+            :disabled="overview.loading"
             class="px-4 py-1.5 text-nav-link font-medium rounded-lg transition-all active:scale-95"
-            :class="reportStore.loading
+            :class="overview.loading
               ? 'bg-white/10 text-white/30 cursor-not-allowed'
               : 'bg-ink text-white hover:bg-ink/90 cursor-pointer'"
           >
-            {{ reportStore.loading ? '刷新中...' : '↻ 刷新' }}
+            {{ overview.loading ? '刷新中...' : '↻ 刷新' }}
           </button>
         </div>
       </div>
@@ -30,12 +30,12 @@
     <!-- Main Content -->
     <main class="pt-11">
       <!-- Error -->
-      <div v-if="reportStore.error" class="py-4">
+      <div v-if="overview.error" class="py-4">
         <div class="max-w-[1200px] mx-auto px-6">
           <div class="bg-data-red/5 border border-data-red/20 rounded-card px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
               <span class="text-data-red text-sm">&#9888;</span>
-              <span class="text-caption text-data-red">{{ reportStore.error }}</span>
+              <span class="text-caption text-data-red">{{ overview.error }}</span>
             </div>
             <button @click="refreshData" class="text-caption text-data-red underline cursor-pointer">重试</button>
           </div>
@@ -43,20 +43,20 @@
       </div>
 
       <!-- Loading -->
-      <div v-if="reportStore.loading && !reportStore.report" class="flex flex-col items-center justify-center py-32 gap-4">
+      <div v-if="overview.loading && !overview.data" class="flex flex-col items-center justify-center py-32 gap-4">
         <div class="w-3 h-3 rounded-full bg-primary animate-pulse"></div>
         <span class="text-caption font-mono text-ink-muted">加载市场数据...</span>
       </div>
 
       <!-- Content -->
-      <template v-if="reportStore.report">
+      <template v-if="overview.data">
         <!-- KPI Tile: white canvas -->
         <section class="bg-canvas py-section-y">
           <div class="max-w-[980px] mx-auto px-6">
             <KpiCards
-              :overview="reportStore.report.overview"
-              :risk-level="reportStore.report.risk_level"
-              :decision-summary="reportStore.report.decision_summary"
+              :overview="overview.data"
+              :risk-level="overview.data.risk_level"
+              :decision-summary="overview.data.decision_summary"
             />
           </div>
         </section>
@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue'
-import { useReportStore, fetchReport } from '@/stores/report'
+import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
 import TabBar from './components/TabBar.vue'
@@ -101,7 +101,6 @@ import TabAi from './components/tabs/TabAi.vue'
 import TabTgb from './components/tabs/TabTgb.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 
-const reportStore = useReportStore()
 const activeTab = ref('limit-up')
 // K-line drawer state
 const klineSymbol = ref('')
@@ -124,7 +123,7 @@ const tabComponents: Record<string, any> = {
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])
 
-const refreshData = () => fetchReport()
+const refreshData = () => fetchOverview()
 
-fetchReport()
+fetchOverview()
 </script>

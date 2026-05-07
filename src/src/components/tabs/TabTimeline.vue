@@ -29,10 +29,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useReportStore } from '@/stores/report'
-
-const store = useReportStore()
+import { computed, onMounted } from 'vue'
+import { timeline, fetchTimeline } from '@/stores/data'
 
 interface TimelineItem {
   grade_emoji: string
@@ -43,7 +41,7 @@ interface TimelineItem {
 
 const timelineDays = computed(() => {
   const items: { date: string; items: TimelineItem[] }[] = []
-  ;[...(store.report?.timeline || [])].reverse().forEach((day: any) => {
+  ;[...(timeline.data || [])].reverse().forEach((day: any) => {
     if (!day.list?.length) return
     items.push({
       date: day.date,
@@ -61,4 +59,6 @@ const timelineDays = computed(() => {
 const totalEvents = computed(() =>
   timelineDays.value.reduce((sum, d) => sum + d.items.length, 0)
 )
+
+onMounted(() => fetchTimeline())
 </script>
