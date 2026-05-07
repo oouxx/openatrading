@@ -15,7 +15,7 @@
           <input
             :value="apiUrl"
             @change="onApiUrlChange"
-            placeholder="http://localhost:8080"
+            :placeholder="__API_BASE_URL__ || 'http://your-api:8080'"
             class="flex-1 px-3 py-1 text-xs rounded border"
             style="background: var(--bg-primary); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono); outline: none"
           />
