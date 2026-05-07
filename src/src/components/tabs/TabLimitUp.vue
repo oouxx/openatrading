@@ -1,21 +1,22 @@
 <template>
   <div>
-    <!-- 涨停榜 Section -->
-    <div class="flex items-center gap-4 mb-6 text-sm">
-      <span style="color: var(--text-muted)">
-        共 <b style="color: var(--text-primary)">{{ displayStocks.length }}</b> 只涨停
+    <!-- Stats bar -->
+    <div class="flex items-center gap-4 mb-8 text-caption">
+      <span class="text-white/60">
+        共 <b class="text-white">{{ displayStocks.length }}</b> 只涨停
         <template v-if="hideST">（已隐藏ST）</template>
       </span>
-      <label class="flex items-center gap-2 cursor-pointer select-none" style="color: var(--text-muted)">
+      <label class="flex items-center gap-2 cursor-pointer select-none text-white/60">
         <input type="checkbox" v-model="hideST" class="cursor-pointer">
-        <span class="text-xs">隐藏ST</span>
+        <span class="text-caption">隐藏ST</span>
       </label>
-      <span v-if="bombRate > 0.2" style="color: var(--amber); font-family: var(--font-mono); font-size: 13px">
+      <span v-if="bombRate > 0.2" class="text-data-red font-mono text-xs">
         ⚠ 炸板率 {{ (bombRate * 100).toFixed(1) }}%
       </span>
     </div>
 
-    <div class="glow-card overflow-hidden mb-8">
+    <!-- Limit-up table in dark card -->
+    <div class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden mb-12">
       <table class="data-table">
         <thead>
           <tr>
@@ -31,20 +32,19 @@
         <tbody>
           <tr v-for="stock in displayStocks" :key="stock.symbol">
             <td>
-              <span class="px-2 py-0.5 rounded text-xs font-mono"
-                :style="{
-                  background: stock.limit_up_days >= 3 ? 'rgba(255,171,0,0.15)' : 'rgba(68,138,255,0.1)',
-                  color: stock.limit_up_days >= 3 ? 'var(--amber)' : 'var(--blue)'
-                }">
+              <span class="px-2 py-0.5 rounded-badge text-xs font-mono"
+                :class="stock.limit_up_days >= 3
+                  ? 'bg-primary/20 text-primary'
+                  : 'bg-white/10 text-white/60'">
                 {{ stock.limit_up_days }}板
               </span>
             </td>
-            <td class="cursor-pointer font-mono hover:underline" style="color: var(--blue)" @click="openKline(stock.symbol, stock.stock_chi_name)">{{ stock.symbol }}</td>
-            <td style="font-weight: 500; color: var(--text-primary)">{{ stock.stock_chi_name }}</td>
-            <td style="text-align:right; font-family: var(--font-mono); color: var(--green)">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
-            <td style="text-align:right; font-family: var(--font-mono)">{{ (stock.turnover_ratio * 100).toFixed(2) }}%</td>
-            <td style="text-align:right; font-family: var(--font-mono)">{{ (stock.total_capital / 1e8).toFixed(1) }}亿</td>
-            <td style="color: var(--text-muted); font-size: 12px">
+            <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(stock.symbol, stock.stock_chi_name)">{{ stock.symbol }}</td>
+            <td class="font-medium text-white">{{ stock.stock_chi_name }}</td>
+            <td class="text-right font-mono text-data-green">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
+            <td class="text-right font-mono">{{ (stock.turnover_ratio * 100).toFixed(2) }}%</td>
+            <td class="text-right font-mono">{{ (stock.total_capital / 1e8).toFixed(1) }}亿</td>
+            <td class="text-white/40 text-xs">
               {{ stock.surge_reason?.related_plates?.map((p: any) => p.plate_name).join(', ') || '-' }}
             </td>
           </tr>
@@ -52,51 +52,56 @@
       </table>
     </div>
 
-    <!-- 韭研异动 Section -->
-    <div class="mt-8">
-      <div class="flex items-center gap-3 mb-4 flex-wrap">
-        <h3 class="text-sm font-bold" style="color: var(--text-primary)">📡 韭研公社异动</h3>
+    <!-- Field Items Section -->
+    <div>
+      <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <h3 class="text-display-md text-white">韭研公社异动</h3>
         <input
           type="date"
           :value="fieldDate"
           @change="onDateChange"
-          class="px-2 py-1 text-xs rounded border"
-          style="background: var(--bg-card); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono)"
+          class="px-3 py-1.5 text-caption font-mono rounded-input border border-hairline-dark bg-surface-dark text-white outline-none focus:border-primary"
         />
-        <span class="text-xs" style="color: var(--text-muted)">
+        <span class="text-caption text-white/40">
           {{ fieldItems.length }} 个板块 · {{ totalFieldStocks }} 只股票
         </span>
-        <span v-if="fieldLoading" class="text-xs animate-pulse" style="color: var(--blue); font-family: var(--font-mono)">加载中...</span>
+        <span v-if="fieldLoading" class="text-caption font-mono text-primary animate-pulse">加载中...</span>
       </div>
-      <div v-if="fieldItems.length === 0 && !fieldLoading" class="glow-card p-6 text-center text-sm" style="color: var(--text-muted)">该日期无异动数据</div>
-      <div v-for="plate in fieldItems" :key="plate.name" class="glow-card p-4 mb-4">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-sm font-medium" style="color: var(--text-primary)">{{ plate.name }}</span>
-          <span class="text-xs px-2 py-0.5 rounded font-mono" style="background: var(--border-subtle); color: var(--text-secondary)">
+
+      <!-- Field item cards -->
+      <div v-if="fieldItems.length === 0 && !fieldLoading" class="text-center py-12 text-caption text-white/40">
+        该日期无异动数据
+      </div>
+      <div v-for="plate in fieldItems" :key="plate.name" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-4">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-body-strong text-white">{{ plate.name }}</span>
+          <span class="text-caption font-mono px-2 py-0.5 rounded-badge bg-white/10 text-white/60">
             {{ plate.count }}只
           </span>
-          <span class="text-xs" style="color: var(--amber)" v-if="plate.reason">{{ plate.reason }}</span>
+          <span class="text-caption text-primary" v-if="plate.reason">{{ plate.reason }}</span>
         </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>代码</th>
-              <th>名称</th>
-              <th>连板</th>
-              <th>异动理由</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="stock in plate.list" :key="stock.code">
-              <td class="font-mono" style="color: var(--text-muted)">{{ stock.article?.action_info?.time || '-' }}</td>
-              <td class="font-mono" style="color: var(--text-primary)">{{ stock.code }}</td>
-              <td style="color: var(--text-primary); font-weight: 500">{{ stock.name }}</td>
-              <td class="font-mono">{{ stock.article?.action_info?.num || '-' }}</td>
-              <td style="color: var(--text-secondary); font-size: 12px; max-width: 300px">{{ stock.article?.action_info?.expound || '' }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="bg-surface-dark-2 rounded-card overflow-hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>代码</th>
+                <th>名称</th>
+                <th>连板</th>
+                <th>异动理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="stock in plate.list" :key="stock.code">
+                <td class="font-mono text-white/40">{{ stock.article?.action_info?.time || '-' }}</td>
+                <td class="font-mono text-white">{{ stock.code }}</td>
+                <td class="font-medium text-white">{{ stock.name }}</td>
+                <td class="font-mono">{{ stock.article?.action_info?.num || '-' }}</td>
+                <td class="text-white/60 text-xs" style="max-width: 300px">{{ stock.article?.action_info?.expound || '' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -111,7 +116,6 @@ const openKline = inject<(symbol: string, name: string) => void>('openKline', ()
 const hideST = ref(true)
 const fieldLoading = ref(false)
 
-// 默认今天
 const todayStr = () => new Date().toISOString().split('T')[0]
 const fieldDate = ref(todayStr())
 
