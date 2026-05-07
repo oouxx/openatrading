@@ -19,7 +19,6 @@
           <span class="text-xs" style="color: var(--text-muted)">
             昨 {{ totalYesterday }} 只 → 今 {{ totalToday }} 只 · 综合晋级率
             <b :style="{ color: overallRate >= 0.5 ? 'var(--red)' : 'var(--text-muted)' }">{{ (overallRate * 100).toFixed(1) }}%</b>
-            <span v-if="!hasFullData" class="px-1.5 py-0.5 rounded text-xs" style="background: rgba(255,171,0,0.1); color: var(--amber)">首次访问 · 次日自动对比</span>
           </span>
         </div>
 
@@ -57,6 +56,7 @@
                     <th>名称</th>
                     <th>昨板→今板</th>
                     <th style="text-align:right">换手率</th>
+                    <th style="text-align:right">流通市值</th>
                     <th>状态</th>
                   </tr>
                 </thead>
@@ -70,6 +70,7 @@
                       </span>
                     </td>
                     <td style="text-align:right; font-family: var(--font-mono)">{{ s.turnover ? (s.turnover * 100).toFixed(2) + '%' : '-' }}</td>
+                    <td style="text-align:right; font-family: var(--font-mono)">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
                     <td>
                       <span class="px-2 py-0.5 rounded text-xs font-mono"
                         :style="{
@@ -102,6 +103,7 @@
                 <th style="text-align:right">涨跌幅</th>
                 <th style="text-align:right">换手率</th>
                 <th style="text-align:right">流通市值</th>
+                <th>板块</th>
               </tr>
             </thead>
             <tbody>
@@ -111,6 +113,7 @@
                 <td style="text-align:right; font-family: var(--font-mono); color: var(--green)">+{{ (s.changePercent * 100).toFixed(2) }}%</td>
                 <td style="text-align:right; font-family: var(--font-mono)">{{ (s.turnover * 100).toFixed(2) }}%</td>
                 <td style="text-align:right; font-family: var(--font-mono)">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
+                <td style="color: var(--text-muted); font-size: 12px">{{ s.reason || '-' }}</td>
               </tr>
             </tbody>
           </table>
@@ -145,86 +148,68 @@ interface PromotionItem {
   turnover: number
   capital: number
   changePercent: number
+  reason: string
 }
 
-const STORAGE_PREFIX = 'promotion-snapshot-'
-
-function dateKey(offset = 0): string {
-  const d = new Date()
-  d.setDate(d.getDate() - offset)
-  return d.toISOString().split('T')[0]
+function getApiBase(): string {
+  return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
 }
 
-function saveTodaySnapshot(todayList: any[]) {
-  const key = STORAGE_PREFIX + dateKey(0)
-  localStorage.setItem(key, JSON.stringify(todayList))
-  // Clean old keys (>7 days)
-  for (let i = 7; i <= 14; i++) {
-    localStorage.removeItem(STORAGE_PREFIX + dateKey(i))
-  }
-}
+// ─── Fetch ─────────────────────────────────────────
 
-function loadPrevSnapshot(): any[] | null {
-  for (let i = 1; i <= 5; i++) {
-    const key = STORAGE_PREFIX + dateKey(i)
-    const raw = localStorage.getItem(key)
-    if (raw) {
-      try { return JSON.parse(raw) } catch { localStorage.removeItem(key) }
-    }
-  }
+async function fetchYesterdayLimitUp(): Promise<any[] | null> {
+  try {
+    const resp = await fetch(`${getApiBase()}/api/yesterday-limit-up`)
+    if (resp.ok) return await resp.json()
+  } catch { /* ignore */ }
   return null
 }
 
-function mergeData(todayList: any[], yesterdayList: any[] | null): PromotionItem[] {
+// ─── Merge ─────────────────────────────────────────
+
+function mergeData(todayList: any[], yesterdayList: any[]): PromotionItem[] {
+  const yesterdayMap = new Map<string, any>()
+  for (const s of yesterdayList) yesterdayMap.set(s.symbol, s)
+
   const result: PromotionItem[] = []
 
-  if (yesterdayList) {
-    // Full comparison: have previous day's full list
-    const yesterdayMap = new Map<string, any>()
-    for (const s of yesterdayList) yesterdayMap.set(s.symbol, s)
-
-    for (const s of todayList) {
-      const prev = yesterdayMap.get(s.symbol)
-      if (prev && prev.limit_up_days > 0) {
-        result.push({
-          symbol: s.symbol, name: s.stock_chi_name,
-          yesterdayDays: prev.limit_up_days, todayDays: s.limit_up_days,
-          status: 'promoted', turnover: s.turnover_ratio,
-          capital: s.total_capital, changePercent: s.change_percent,
-        })
-        yesterdayMap.delete(s.symbol)
-      } else {
-        result.push({
-          symbol: s.symbol, name: s.stock_chi_name,
-          yesterdayDays: 0, todayDays: s.limit_up_days,
-          status: 'first', turnover: s.turnover_ratio,
-          capital: s.total_capital, changePercent: s.change_percent,
-        })
-      }
-    }
-    for (const s of yesterdayMap.values()) {
+  for (const s of todayList) {
+    const prev = yesterdayMap.get(s.symbol)
+    const plates = s.surge_reason?.related_plates?.map((p: any) => p.plate_name).join(', ') || ''
+    if (prev && prev.limit_up_days > 0) {
       result.push({
         symbol: s.symbol, name: s.stock_chi_name,
-        yesterdayDays: s.limit_up_days, todayDays: 0,
-        status: 'broken', turnover: s.turnover_ratio || 0,
-        capital: s.total_capital || 0, changePercent: 0,
+        yesterdayDays: prev.limit_up_days, todayDays: s.limit_up_days,
+        status: 'promoted', turnover: s.turnover_ratio,
+        capital: s.total_capital, changePercent: s.change_percent,
+        reason: plates,
       })
-    }
-  } else {
-    // Partial: use yesterday_limit_up_days from today's stocks
-    for (const s of todayList) {
-      const yd = s.yesterday_limit_up_days || 0
+      yesterdayMap.delete(s.symbol)
+    } else {
       result.push({
         symbol: s.symbol, name: s.stock_chi_name,
-        yesterdayDays: yd, todayDays: s.limit_up_days,
-        status: yd > 0 ? 'promoted' : 'first',
-        turnover: s.turnover_ratio, capital: s.total_capital,
-        changePercent: s.change_percent,
+        yesterdayDays: 0, todayDays: s.limit_up_days,
+        status: 'first', turnover: s.turnover_ratio,
+        capital: s.total_capital, changePercent: s.change_percent,
+        reason: plates,
       })
     }
   }
+
+  for (const s of yesterdayMap.values()) {
+    result.push({
+      symbol: s.symbol, name: s.stock_chi_name,
+      yesterdayDays: s.limit_up_days, todayDays: 0,
+      status: 'broken', turnover: s.turnover_ratio || 0,
+      capital: s.total_capital || 0, changePercent: 0,
+      reason: '',
+    })
+  }
+
   return result
 }
+
+// ─── Computed ──────────────────────────────────────
 
 const allItems = ref<PromotionItem[]>([])
 
@@ -284,7 +269,7 @@ const ladder = computed(() => {
   return rows.sort((a, b) => b.yesterdayDays - a.yesterdayDays)
 })
 
-const hasFullData = ref(false)
+// ─── Init ──────────────────────────────────────────
 
 onMounted(async () => {
   const todayList = store.report?.limit_up || []
@@ -294,11 +279,14 @@ onMounted(async () => {
     return
   }
 
-  saveTodaySnapshot(todayList)
+  const yesterdayList = await fetchYesterdayLimitUp()
+  if (!yesterdayList || yesterdayList.length === 0) {
+    loading.value = false
+    error.value = '未能获取昨日涨停数据'
+    return
+  }
 
-  const prevList = loadPrevSnapshot()
-  hasFullData.value = !!prevList
-  allItems.value = mergeData(todayList, prevList)
+  allItems.value = mergeData(todayList, yesterdayList)
   loading.value = false
 })
 </script>
