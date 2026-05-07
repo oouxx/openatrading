@@ -136,6 +136,26 @@ docker-rebuild:
 docker-shell:
 	docker compose exec trending-agent bash
 
+# ─── Deploy (Aliyun) ────────────────────────────────
+
+define deploy-ali-help
+	cargo run --bin trending-agent -- run --format json --output ./src/public/; \
+	latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
+	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "  ✅ report.json ready"; fi
+endef
+
+deploy-ali:
+	@echo "🚀 Deploying all (backend + frontend) to Aliyun..."
+	@bash deploy-ali.sh all
+
+deploy-ali-backend:
+	@echo "🚀 Deploying backend to Aliyun..."
+	@bash deploy-ali.sh backend
+
+deploy-ali-frontend:
+	@echo "🚀 Deploying frontend to Aliyun..."
+	@bash deploy-ali.sh frontend
+
 # ─── Clean ───────────────────────────────────────────
 
 clean:
@@ -183,7 +203,12 @@ help:
 	@echo "  dev-frontend   Vue 3 dev server"
 	@echo "  dev-tauri      Tauri desktop app"
 	@echo ""
-	@echo "Deploy:"
+	@echo "Deploy (Aliyun):"
+	@echo "  deploy-ali         deploy backend + frontend to Aliyun"
+	@echo "  deploy-ali-backend  deploy backend only"
+	@echo "  deploy-ali-frontend deploy frontend only"
+	@echo ""
+	@echo "Deploy (Static):"
 	@echo "  deploy-static  generate report.json + build Vue → src/dist/"
 	@echo "                 Vercel default: VITE_DATA_SOURCE=json"
 	@echo "                 Set VITE_API_BASE_URL in Vercel dashboard for API mode"
