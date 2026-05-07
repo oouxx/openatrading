@@ -6,8 +6,6 @@ services:
       dockerfile: Dockerfile.backend
     env_file:
       - .env
-    ports:
-      - "8080:8080"
     environment:
       - RUST_BACKTRACE=1
     restart: unless-stopped
@@ -18,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "18080:80"
+      - "80:80"
     environment:
       - BACKEND_HOST=backend
     depends_on:
