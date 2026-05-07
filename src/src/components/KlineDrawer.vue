@@ -2,42 +2,41 @@
   <Teleport to="body">
     <div @click="$emit('close')" class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)"></div>
 
-    <div class="fixed top-0 right-0 h-full z-50 overflow-y-auto" style="width: 520px; background: var(--bg-secondary); border-left: 1px solid var(--border-subtle)">
+    <div class="fixed top-0 right-0 h-full z-50 overflow-y-auto bg-surface-dark border-l border-hairline-dark" style="width: 520px">
       <!-- Header -->
-      <div class="sticky top-0 z-10 p-4" style="background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle)">
+      <div class="sticky top-0 z-10 p-4 bg-surface-dark border-b border-hairline-dark">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-bold" style="color: var(--text-primary)">{{ name }}</span>
-            <span class="text-xs font-mono" style="color: var(--text-muted)">{{ symbol }}</span>
+            <span class="text-sm font-bold text-white">{{ name }}</span>
+            <span class="text-xs font-mono text-white/40">{{ symbol }}</span>
           </div>
-          <button @click="$emit('close')" class="text-lg leading-none p-1" style="color: var(--text-muted)">&times;</button>
+          <button @click="$emit('close')" class="text-lg leading-none p-1 text-white/40 hover:text-white/60">&times;</button>
         </div>
         <div v-if="quote" class="flex items-center gap-3">
-          <span class="text-xl font-bold font-mono" :style="{ color: quote.px_change_rate >= 0 ? 'var(--red)' : 'var(--green)' }">{{ quote.last_px?.toFixed(2) }}</span>
-          <span class="text-sm font-mono" :style="{ color: quote.px_change_rate >= 0 ? 'var(--red)' : 'var(--green)' }">{{ quote.px_change_rate >= 0 ? '+' : '' }}{{ quote.px_change_rate?.toFixed(2) }}%</span>
-          <span class="text-xs" style="color: var(--text-muted)">成交 {{ formatVolume(quote.turnover_value) }}</span>
+          <span class="text-xl font-bold font-mono" :class="quote.px_change_rate >= 0 ? 'text-data-red' : 'text-data-green'">{{ quote.last_px?.toFixed(2) }}</span>
+          <span class="text-sm font-mono" :class="quote.px_change_rate >= 0 ? 'text-data-red' : 'text-data-green'">{{ quote.px_change_rate >= 0 ? '+' : '' }}{{ quote.px_change_rate?.toFixed(2) }}%</span>
+          <span class="text-xs text-white/40">成交 {{ formatVolume(quote.turnover_value) }}</span>
         </div>
       </div>
 
       <!-- Period Toggle -->
-      <div class="flex gap-1 px-4 py-2 sticky z-10" style="background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle); top: 97px">
+      <div class="flex gap-1 px-4 py-2 sticky z-10 bg-surface-dark border-b border-hairline-dark top-[97px]">
         <button v-for="p in periods" :key="p.value" @click="period = p.value"
-          class="px-3 py-1 text-xs rounded font-mono transition"
-          :style="period === p.value ? { background: 'var(--blue)', color: '#fff' } : { background: 'transparent', color: 'var(--text-muted)' }">
+          :class="['px-3 py-1 text-xs font-mono transition rounded-button', period === p.value ? 'bg-primary text-white' : 'bg-transparent text-white/40']">
           {{ p.label }}
         </button>
       </div>
 
       <!-- Crosshair Info Bar -->
-      <div class="flex items-center justify-between px-4 py-1 font-mono" style="background: #1a2332; border-bottom: 1px solid #1e2a3a; min-height: 30px; font-size: 11px">
-        <span style="color: var(--text-primary)">{{ crosshair.time }}</span>
-        <div class="flex items-center gap-2" style="color: var(--text-muted)">
-          <span>开 <span style="color: var(--text-primary)">{{ crosshair.open }}</span></span>
-          <span>高 <span style="color: var(--text-primary)">{{ crosshair.high }}</span></span>
-          <span>低 <span style="color: var(--text-primary)">{{ crosshair.low }}</span></span>
-          <span>收 <span style="color: var(--text-primary)">{{ crosshair.close }}</span></span>
-          <span>量 <span style="color: var(--text-primary)">{{ crosshair.volume }}</span></span>
-          <span :style="{ color: crosshair.changeNum >= 0 ? 'var(--red)' : 'var(--green)' }">{{ crosshair.change }}</span>
+      <div class="flex items-center justify-between px-4 py-1 font-mono bg-surface-dark-2 border-b border-hairline-dark min-h-[30px] text-caption">
+        <span class="text-white">{{ crosshair.time }}</span>
+        <div class="flex items-center gap-2 text-white/40">
+          <span>开 <span class="text-white">{{ crosshair.open }}</span></span>
+          <span>高 <span class="text-white">{{ crosshair.high }}</span></span>
+          <span>低 <span class="text-white">{{ crosshair.low }}</span></span>
+          <span>收 <span class="text-white">{{ crosshair.close }}</span></span>
+          <span>量 <span class="text-white">{{ crosshair.volume }}</span></span>
+          <span :class="crosshair.changeNum >= 0 ? 'text-data-red' : 'text-data-green'">{{ crosshair.change }}</span>
         </div>
       </div>
 
@@ -46,9 +45,9 @@
 
       <!-- Metrics -->
       <div v-if="quote" class="p-4 grid grid-cols-3 gap-2 text-xs">
-        <div v-for="m in metrics" :key="m.label" class="glow-card p-3 text-center">
-          <p style="color: var(--text-muted); font-size: 11px">{{ m.label }}</p>
-          <p class="font-mono mt-1" style="color: var(--text-primary); font-size: 12px">{{ m.value }}</p>
+        <div v-for="m in metrics" :key="m.label" class="bg-surface-dark rounded-card border border-hairline-dark p-3 text-center">
+          <p class="text-white/40 text-[11px]">{{ m.label }}</p>
+          <p class="font-mono mt-1 text-white text-xs">{{ m.value }}</p>
         </div>
       </div>
     </div>
@@ -184,8 +183,8 @@ function buildMarkLines() {
     // 昨收零轴线
     lines.push({
       yAxis: preclose,
-      lineStyle: { color: 'rgba(255,255,255,0.30)', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `昨收 ${preclose.toFixed(2)}`, color: '#8899aa', fontSize: 10 },
+      lineStyle: { color: 'rgba(255,255,255,0.20)', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `昨收 ${preclose.toFixed(2)}`, color: '#86868b', fontSize: 10 },
       symbol: 'none',
     })
 
@@ -195,14 +194,14 @@ function buildMarkLines() {
 
     lines.push({
       yAxis: limitUp,
-      lineStyle: { color: '#ff1744', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `涨停 ${limitUp.toFixed(2)}`, color: '#ff1744', fontSize: 10 },
+      lineStyle: { color: '#ff3b30', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `涨停 ${limitUp.toFixed(2)}`, color: '#ff3b30', fontSize: 10 },
       symbol: 'none',
     })
     lines.push({
       yAxis: limitDown,
-      lineStyle: { color: '#00e676', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `跌停 ${limitDown.toFixed(2)}`, color: '#00e676', fontSize: 10 },
+      lineStyle: { color: '#34c759', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `跌停 ${limitDown.toFixed(2)}`, color: '#34c759', fontSize: 10 },
       symbol: 'none',
     })
   }
@@ -254,7 +253,7 @@ function renderChart() {
   }
 
   const option: any = {
-    backgroundColor: '#111827',
+    backgroundColor: '#272729',
     grid: [
       { left: 8, right: 50, top: 8, height: '65%' },
       { left: 8, right: 50, top: '75%', height: '15%' },
@@ -264,10 +263,10 @@ function renderChart() {
         type: 'category',
         data: timestamps,
         gridIndex: 0,
-        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
         axisTick: { show: false },
         axisLabel: {
-          color: '#8899aa',
+          color: '#86868b',
           fontSize: 10,
           formatter: (value: number) => formatTime(value, period.value),
           interval: Math.max(Math.floor(klineData.length / 6), 1),
@@ -278,7 +277,7 @@ function renderChart() {
         type: 'category',
         data: timestamps,
         gridIndex: 1,
-        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
         axisTick: { show: false },
         axisLabel: { show: false },
         splitLine: { show: false },
@@ -291,15 +290,15 @@ function renderChart() {
         scale: true,
         min: yMin,
         max: yMax,
-        axisLine: { lineStyle: { color: '#1e2a3a' } },
-        axisLabel: { color: '#8899aa', fontSize: 10 },
-        splitLine: { lineStyle: { color: '#1e2a3a' } },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+        axisLabel: { color: '#86868b', fontSize: 10 },
+        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
       },
       {
         type: 'value',
         gridIndex: 1,
-        axisLine: { lineStyle: { color: '#1e2a3a' } },
-        axisLabel: { color: '#8899aa', fontSize: 10, formatter: (v: number) => formatVolume(v) },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+        axisLabel: { color: '#86868b', fontSize: 10, formatter: (v: number) => formatVolume(v) },
         splitLine: { show: false },
         min: 0,
       },
@@ -316,10 +315,10 @@ function renderChart() {
         yAxisIndex: 0,
         data: candleData,
         itemStyle: {
-          color: '#ff1744',
-          color0: '#00e676',
-          borderColor: '#ff1744',
-          borderColor0: '#00e676',
+          color: '#ff3b30',
+          color0: '#34c759',
+          borderColor: '#ff3b30',
+          borderColor0: '#34c759',
         },
         markLine: {
           silent: true,
@@ -333,7 +332,7 @@ function renderChart() {
         yAxisIndex: 1,
         data: volumeData,
         itemStyle: {
-          color: (params: any) => params.data?.[2] >= 0 ? 'rgba(255,23,68,0.3)' : 'rgba(0,230,118,0.3)',
+          color: (params: any) => params.data?.[2] >= 0 ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
         },
       },
     ],
