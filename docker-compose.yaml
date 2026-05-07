@@ -17,6 +17,9 @@ services:
       dockerfile: Dockerfile.frontend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /root/certs:/etc/ssl/cloudflare:ro
     environment:
       - BACKEND_HOST=backend
     depends_on:
