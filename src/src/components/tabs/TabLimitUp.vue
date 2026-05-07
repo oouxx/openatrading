@@ -138,7 +138,7 @@ async function onDateChange(e: Event) {
   fieldDate.value = val
   fieldLoading.value = true
   try {
-    const base = localStorage.getItem('trading-agent-api-url') || 'http://localhost:8080'
+    const base = localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
     const resp = await fetch(`${base}/api/report/live?date=${val}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     store.report = await resp.json()
