@@ -102,6 +102,7 @@ import TabSentiment from './components/tabs/TabSentiment.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
 import TabAi from './components/tabs/TabAi.vue'
 import TabTgb from './components/tabs/TabTgb.vue'
+import TabPromotion from './components/tabs/TabPromotion.vue'
 
 const reportStore = useReportStore()
 const activeTab = ref('limit-up')
@@ -121,6 +122,7 @@ provide('openKline', openKline)
 const tabComponents: Record<string, any> = {
   'limit-up': TabLimitUp,
   'plate': TabPlate,
+  'promotion': TabPromotion,
   'timeline': TabTimeline,
   'sentiment': TabSentiment,
   'ai': TabAi,
