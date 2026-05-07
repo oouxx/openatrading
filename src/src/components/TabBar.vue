@@ -20,6 +20,7 @@ const activeTab = defineModel<string>({ default: 'limit-up' })
 const tabs = [
   { id: 'limit-up', label: '📈 涨停数据' },
   { id: 'plate', label: '🗺 板块异动' },
+  { id: 'promotion', label: '🏆 晋级' },
   { id: 'timeline', label: '📅 时间线' },
   { id: 'sentiment', label: '📰 舆情分析' },
   { id: 'ai', label: '🤖 AI 观点' },
