@@ -93,17 +93,16 @@
       <!-- Summary -->
       <div class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner" v-if="sentiment?.summary">
         <h3 class="text-caption-strong text-white/40 mb-3 tracking-wider uppercase">舆情总结</h3>
-        <p class="text-body leading-relaxed text-white/60">{{ sentiment.summary }}</p>
+        <p class="text-body leading-relaxed text-white/60">{{ sentimentData.summary }}</p>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useReportStore } from '@/stores/report'
+import { ref, computed, onMounted } from 'vue'
+import { sentiment, fetchSentiment } from '@/stores/data'
 
-const store = useReportStore()
 const expandedId = ref<string | null>(null)
 const expandedTgbId = ref<number | null>(null)
 
@@ -115,27 +114,29 @@ function toggleTgbArticle(id: number) {
   expandedTgbId.value = expandedTgbId.value === id ? null : id
 }
 
-const sentiment = computed(() => store.report?.sentiment as any)
-const hasData = computed(() => !!(sentiment.value && (
-  sentiment.value.hot_stocks?.length ||
-  sentiment.value.hot_articles?.length ||
-  sentiment.value.taoguba_articles?.length
+const sentimentData = computed(() => sentiment.data as any)
+const hasData = computed(() => !!(sentimentData.value && (
+  sentimentData.value.hot_stocks?.length ||
+  sentimentData.value.hot_articles?.length ||
+  sentimentData.value.taoguba_articles?.length
 )))
 
-const hotStocks = computed(() => sentiment.value?.hot_stocks || [])
-const hotArticles = computed(() => sentiment.value?.hot_articles || [])
-const taogubaArticles = computed(() => sentiment.value?.taoguba_articles || [])
+const hotStocks = computed(() => sentimentData.value?.hot_stocks || [])
+const hotArticles = computed(() => sentimentData.value?.hot_articles || [])
+const taogubaArticles = computed(() => sentimentData.value?.taoguba_articles || [])
 
 const trendText = computed(() => {
-  const t = sentiment.value?.trend
+  const t = sentimentData.value?.trend
   if (!t) return '暂无数据'
   return t === '偏多' ? '偏多' : t === '中性' ? '中性' : '偏弱'
 })
 
 const trendColor = computed(() => {
-  const t = sentiment.value?.trend
+  const t = sentimentData.value?.trend
   if (t === '偏多') return 'text-data-green'
   if (t === '中性') return 'text-primary'
   return 'text-data-red'
 })
+
+onMounted(() => fetchSentiment())
 </script>

@@ -127,9 +127,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, inject } from 'vue'
-import { useReportStore } from '@/stores/report'
-
-const store = useReportStore()
+import { limitUp, fetchLimitUp } from '@/stores/data'
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 
 const loading = ref(true)
@@ -269,7 +267,8 @@ const ladder = computed(() => {
 // ─── Init ──────────────────────────────────────────
 
 onMounted(async () => {
-  const todayList = store.report?.limit_up || []
+  await fetchLimitUp()
+  const todayList = limitUp.data || []
   if (todayList.length === 0) {
     loading.value = false
     error.value = '今日无涨停数据'
