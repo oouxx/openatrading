@@ -129,13 +129,13 @@ const taogubaArticles = computed(() => sentiment.value?.taoguba_articles || [])
 const trendText = computed(() => {
   const t = sentiment.value?.trend
   if (!t) return '暂无数据'
-  return t === '偏多' ? '📈 偏多' : t === '中性' ? '➡️ 中性' : '📉 偏弱'
+  return t === '偏多' ? '偏多' : t === '中性' ? '中性' : '偏弱'
 })
 
 const trendColor = computed(() => {
   const t = sentiment.value?.trend
-  if (t === '偏多') return 'var(--green)'
-  if (t === '中性') return 'var(--amber)'
-  return 'var(--red)'
+  if (t === '偏多') return 'text-data-green'
+  if (t === '中性') return 'text-primary'
+  return 'text-data-red'
 })
 </script>
