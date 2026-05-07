@@ -1,14 +1,11 @@
-use std::sync::Arc;
-
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
     Json, Router,
 };
 use serde_json::json;
-use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
 use trending_agent_core::agents::sentiment::analyze_sentiment;
@@ -16,34 +13,7 @@ use trending_agent_core::api::xuangubao::{KlinePeriod, XuanGubaoExtra, XuanguBao
 use trending_agent_core::api::Client as ApiClient;
 use trending_agent_core::report::report::Report;
 
-#[derive(Clone)]
-pub struct WebState {
-    pub report: Arc<RwLock<Option<Report>>>,
-}
-
-impl Default for WebState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WebState {
-    pub fn new() -> Self {
-        Self {
-            report: Arc::new(RwLock::new(None)),
-        }
-    }
-
-    pub async fn set_report(&self, report: Report) {
-        *self.report.write().await = Some(report);
-    }
-
-    pub async fn get_report(&self) -> Option<Report> {
-        self.report.read().await.clone()
-    }
-}
-
-async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::Result<()> {
+async fn build_report(field_date: Option<&str>) -> anyhow::Result<Report> {
     let client = ApiClient::new();
 
     let (overview, limit_up, limit_down, plate_abnormal) = tokio::join!(
@@ -80,7 +50,7 @@ async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::R
         None
     };
 
-    let report = Report::new(
+    Ok(Report::new(
         overview,
         limit_up,
         plate_abnormal.clone(),
@@ -93,12 +63,10 @@ async fn refresh_report(state: &WebState, field_date: Option<&str>) -> anyhow::R
             limit_down,
             plate_abnormal,
         },
-    );
-    state.set_report(report).await;
-    Ok(())
+    ))
 }
 
-async fn start_web_server(port: u16, state: WebState) {
+async fn start_web_server(port: u16) {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -110,8 +78,7 @@ async fn start_web_server(port: u16, state: WebState) {
         .route("/api/kline/:symbol", get(get_kline))
         .route("/api/realtime/:symbol", get(get_realtime))
         .route("/api/yesterday-limit-up", get(get_yesterday_limit_up))
-        .layer(cors)
-        .with_state(state);
+        .layer(cors);
 
     let addr = format!("0.0.0.0:{}", port);
     println!("🌐 Web API: http://localhost:{}", port);
@@ -125,14 +92,11 @@ struct ReportQuery {
     section: Option<String>,
 }
 
-async fn get_report_json(
-    State(state): State<WebState>,
-    Query(q): Query<ReportQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let report = state
-        .get_report()
-        .await
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+async fn get_report_json(Query(q): Query<ReportQuery>) -> Result<impl IntoResponse, StatusCode> {
+    let report = build_report(None).await.map_err(|e| {
+        eprintln!("report error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
     let full = serde_json::to_value(&report).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let result = match q.section {
@@ -169,20 +133,11 @@ struct LiveQuery {
     date: Option<String>,
 }
 
-async fn get_report_live(
-    State(state): State<WebState>,
-    Query(q): Query<LiveQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    refresh_report(&state, q.date.as_deref())
-        .await
-        .map_err(|e| {
-            eprintln!("refresh error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    let report = state
-        .get_report()
-        .await
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+async fn get_report_live(Query(q): Query<LiveQuery>) -> Result<impl IntoResponse, StatusCode> {
+    let report = build_report(q.date.as_deref()).await.map_err(|e| {
+        eprintln!("report_live error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
     let json = serde_json::to_value(&report).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json))
 }
@@ -246,15 +201,6 @@ async fn get_yesterday_limit_up() -> Result<impl IntoResponse, StatusCode> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    let state = WebState::new();
-
-    if let Err(e) = refresh_report(&state, None).await {
-        eprintln!(
-            "⚠️  initial fetch failed: {} — API will retry on request",
-            e
-        );
-    }
-
-    start_web_server(8080, state).await;
+    start_web_server(8080).await;
     Ok(())
 }
