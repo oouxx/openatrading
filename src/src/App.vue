@@ -15,7 +15,7 @@
           <input
             :value="apiUrl"
             @change="onApiUrlChange"
-            :placeholder="__API_BASE_URL__ || 'http://your-api:8080'"
+            :placeholder="defaultApiPlaceholder"
             class="flex-1 px-3 py-1 text-xs rounded border"
             style="background: var(--bg-primary); color: var(--text-primary); border-color: var(--border-subtle); font-family: var(--font-mono); outline: none"
           />
@@ -107,6 +107,7 @@ const reportStore = useReportStore()
 const activeTab = ref('limit-up')
 const dataSource = computed(() => reportStore.source)
 const apiUrl = ref(getApiBaseUrlForDisplay())
+const defaultApiPlaceholder = __API_BASE_URL__ || 'http://your-api:8080'
 
 // K-line drawer state
 const klineSymbol = ref('')
