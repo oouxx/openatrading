@@ -1,12 +1,19 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
 import { resolve } from 'path'
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   // 从项目根目录加载 .env（Vite 默认只读当前目录的 .env）
   const rootEnv = loadEnv(mode, resolve(__dirname, '..'), '')
+  const skipWasm = process.env.SKIP_WASM === '1'
+
+  const plugins: any[] = [vue()]
+
+  if (!skipWasm) {
+    const wasm = (await import('vite-plugin-wasm')).default
+    const topLevelAwait = (await import('vite-plugin-top-level-await')).default
+    plugins.push(wasm(), topLevelAwait())
+  }
 
   return {
     resolve: {
@@ -14,17 +21,13 @@ export default defineConfig(({ mode }) => {
         '@': resolve(__dirname, 'src'),
       },
     },
-    plugins: [
-      vue(),
-      wasm(),
-      topLevelAwait(),
-    ],
+    plugins,
     define: {
       __OPENROUTER_KEY__: JSON.stringify(rootEnv.OPENROUTER_API_KEY || ''),
       __JIUYAN_PHONE__: JSON.stringify(rootEnv.JIUYAN_PHONE || ''),
       __JIUYAN_PASSWORD__: JSON.stringify(rootEnv.JIUYAN_PASSWORD || ''),
       __DATA_SOURCE__: JSON.stringify(rootEnv.VITE_DATA_SOURCE || 'json'),
-      __API_BASE_URL__: JSON.stringify(rootEnv.VITE_API_BASE_URL || 'http://localhost:8080'),
+      __API_BASE_URL__: JSON.stringify(rootEnv.VITE_API_BASE_URL || ''),
     },
     server: {
       proxy: {

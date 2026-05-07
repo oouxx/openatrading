@@ -23,3 +23,6 @@ public/report_*.json
 
 report_*.json
 .claude/
+
+# Deploy
+deploy-ali.sh

@@ -4,7 +4,8 @@ WORKDIR /app
 COPY src/package.json src/package-lock.json ./
 RUN bun install --frozen-lockfile
 COPY src/ ./
-RUN bun run build
+ENV SKIP_WASM=1
+RUN bun run build:vercel
 
 # Stage 2: nginx
 FROM nginx:stable-alpine
