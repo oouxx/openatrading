@@ -1,25 +1,25 @@
 <template>
   <div>
-    <div class="flex items-center gap-3 mb-6 text-sm">
-      <span style="color: var(--text-muted)">
-        <b style="color: var(--text-primary)">{{ totalEvents }}</b> 条事件 · <b style="color: var(--text-primary)">{{ timelineDays.length }}</b> 天
+    <div class="flex items-center gap-3 mb-8 text-caption">
+      <span class="text-white/60">
+        <b class="text-white">{{ totalEvents }}</b> 条事件 · <b class="text-white">{{ timelineDays.length }}</b> 天
       </span>
     </div>
 
-    <div v-if="timelineDays.length === 0" class="text-center py-12 text-sm" style="color: var(--text-muted)">暂无时间线数据</div>
+    <div v-if="timelineDays.length === 0" class="text-center py-12 text-caption text-white/40">暂无时间线数据</div>
 
-    <div class="space-y-6">
+    <div class="space-y-8">
       <div v-for="day in timelineDays" :key="day.date">
-        <h3 class="text-xs font-mono font-medium mb-3 px-2" style="color: var(--blue)">{{ day.date }}</h3>
-        <div class="space-y-2">
-          <div v-for="item in day.items" :key="item.title" class="glow-card pl-4 py-3 pr-4 flex gap-3 items-start">
-            <span class="text-sm flex-shrink-0 mt-0.5">{{ item.grade_emoji }}</span>
+        <h3 class="text-caption-strong font-mono mb-4 px-2 text-primary">{{ day.date }}</h3>
+        <div class="space-y-3">
+          <div v-for="item in day.items" :key="item.title" class="bg-surface-dark rounded-card border border-hairline-dark pl-4 py-3 pr-4 flex gap-3 items-start">
+            <span class="text-caption flex-shrink-0 mt-0.5">{{ item.grade_emoji }}</span>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-medium" style="color: var(--text-primary)">{{ item.title }}</span>
-                <span v-if="item.tags" class="text-xs px-1.5 py-0.5 rounded font-mono" style="background: var(--border-subtle); color: var(--text-muted)">{{ item.tags }}</span>
+                <span class="text-body-strong text-white">{{ item.title }}</span>
+                <span v-if="item.tags" class="text-caption px-2 py-0.5 rounded-badge font-mono bg-white/10 text-white/40">{{ item.tags }}</span>
               </div>
-              <p v-if="item.content" class="text-xs mt-1 leading-relaxed" style="color: var(--text-secondary)">{{ item.content }}</p>
+              <p v-if="item.content" class="text-caption mt-1 leading-relaxed text-white/60">{{ item.content }}</p>
             </div>
           </div>
         </div>
