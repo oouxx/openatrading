@@ -42,13 +42,7 @@
       </div>
 
       <!-- Chart -->
-      <div ref="chartContainer" class="w-full relative" style="height: 420px">
-        <!-- Floating crosshair tooltip -->
-        <div v-if="tooltip.visible" class="absolute pointer-events-none z-50 px-2 py-1 font-mono rounded" style="background: rgba(0,0,0,0.75); color: #fff; font-size: 11px; transform: translate(-50%, -120%); white-space: nowrap; border: 1px solid rgba(255,255,255,0.15)"
-          :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
-          {{ tooltip.price }}
-        </div>
-      </div>
+      <div ref="chartContainer" class="w-full" style="height: 420px"></div>
 
       <!-- Metrics -->
       <div v-if="quote" class="p-4 grid grid-cols-3 gap-2 text-xs">
@@ -63,7 +57,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries, LineStyle } from 'lightweight-charts'
+import * as echarts from 'echarts'
 
 const props = defineProps<{ symbol: string; name: string }>()
 defineEmits<{ close: [] }>()
@@ -80,16 +74,18 @@ const chartContainer = ref<HTMLElement>()
 const quote = ref<any>(null)
 
 const crosshair = ref({ visible: false, time: '', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 })
-const tooltip = ref({ visible: false, x: 0, y: 0, price: '' })
 
-let chart: any = null
-let candleSeries: any = null
-let volumeSeries: any = null
-let limitUpLine: any = null
-let limitDownLine: any = null
-let zeroLine: any = null
-let centerBounding: any = null
+let chart: echarts.ECharts | null = null
 let klineData: any[] = []
+
+// A-share trading sessions (minutes since midnight)
+const TRADING_SESSIONS = [[570, 690], [780, 900]] // 9:30-11:30, 13:00-15:00
+
+function isTradingTime(ts: number): boolean {
+  const d = new Date(ts * 1000)
+  const mins = d.getHours() * 60 + d.getMinutes()
+  return TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)
+}
 
 function formatVolume(v: number) {
   if (!v) return '-'
@@ -117,120 +113,19 @@ const metrics = computed(() => {
 })
 
 function getLimitRate(symbol: string, name: string): number {
-  // ST 股 ±5%
   if (name?.includes('ST')) return 0.05
-  // 科创板 688xxx ±20%
   if (symbol.startsWith('688')) return 0.20
-  // 创业板 300xxx, 301xxx ±20%
   if (/^30[01]/.test(symbol)) return 0.20
-  // 北交所 8xxxxx ±30%
   if (/^8/.test(symbol)) return 0.30
-  // 主板 ±10%
   return 0.10
 }
 
-function updateLimitLines() {
-  // remove old lines
-  if (limitUpLine) { candleSeries?.removePriceLine(limitUpLine); limitUpLine = null }
-  if (limitDownLine) { candleSeries?.removePriceLine(limitDownLine); limitDownLine = null }
-  if (zeroLine) { candleSeries?.removePriceLine(zeroLine); zeroLine = null }
-
-  if (!quote.value?.preclose_px || !candleSeries) return
-
-  const preclose = quote.value.preclose_px
-
-  // 昨收零轴线 — 仅1分K
-  if (period.value === 'minute') {
-    zeroLine = candleSeries.createPriceLine({
-      price: preclose,
-      color: 'rgba(255,255,255,0.30)',
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: `昨收 ${preclose.toFixed(2)}`,
-    })
-  }
-
-  // 涨停/跌停线 — 仅1分K
-  if (period.value !== 'minute') return
-
-  const rate = getLimitRate(props.symbol, props.name)
-  const limitUp = Math.round(preclose * (1 + rate) * 100) / 100
-  const limitDown = Math.round(preclose * (1 - rate) * 100) / 100
-
-  limitUpLine = candleSeries.createPriceLine({
-    price: limitUp,
-    color: '#ff1744',
-    lineWidth: 1,
-    lineStyle: LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: `涨停 ${limitUp.toFixed(2)}`,
-  })
-
-  limitDownLine = candleSeries.createPriceLine({
-    price: limitDown,
-    color: '#00e676',
-    lineWidth: 1,
-    lineStyle: LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: `跌停 ${limitDown.toFixed(2)}`,
-  })
-}
-
-function updateCenterBounding() {
-  if (!klineData.length || !quote.value?.preclose_px || !centerBounding) return
-  const preclose = quote.value.preclose_px
-  let maxUpper = 0
-  let maxLower = 0
-  for (const c of klineData) {
-    if (c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
-    if (c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
-  }
-  const range = Math.max(maxUpper, maxLower) * 1.15 || preclose * 0.02
-  centerBounding.setData([
-    { time: klineData[0].time, value: preclose + range },
-    { time: klineData[klineData.length - 1].time, value: preclose - range },
-  ])
-}
-
-function formatCrosshairTime(ts: number, p: string): string {
+function formatTime(ts: number, p: string): string {
   const d = new Date(ts * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   if (p === 'minute') return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return ymd
-}
-
-function crosshairHandler(param: any) {
-  if (!param.point || !param.time || !candleSeries) {
-    tooltip.value = { visible: false, x: 0, y: 0, price: '' }
-    return
-  }
-
-  const candleData = param.seriesData?.get(candleSeries) as any
-  const volData = param.seriesData?.get(volumeSeries) as any
-
-  if (candleData) {
-    const preclose = quote.value?.preclose_px
-    const changeRate = preclose ? ((candleData.close - preclose) / preclose * 100) : 0
-    crosshair.value = {
-      visible: true,
-      time: formatCrosshairTime(candleData.time as number, period.value),
-      open: candleData.open?.toFixed(2) || '-',
-      high: candleData.high?.toFixed(2) || '-',
-      low: candleData.low?.toFixed(2) || '-',
-      close: candleData.close?.toFixed(2) || '-',
-      volume: formatVolume(volData?.value || 0),
-      change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
-      changeNum: changeRate,
-    }
-    tooltip.value = {
-      visible: true,
-      x: param.point.x,
-      y: param.point.y,
-      price: candleData.close?.toFixed(2) || '-',
-    }
-  }
 }
 
 function getApiBase(): string {
@@ -244,39 +139,28 @@ async function fetchRealtime() {
   } catch (e) { console.error('[KlineDrawer] fetchRealtime error:', e) }
 }
 
-function toChartTime(ts: number): number {
-  // lightweight-charts 使用 Unix 秒级时间戳作为 UTCTimestamp
-  return ts
-}
-
 async function fetchKline() {
   try {
     const resp = await fetch(`${getApiBase()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
     if (!resp.ok) return
     const data = await resp.json()
-    klineData = data.candles
-    candleSeries?.setData(data.candles.map((c: any) => ({
-      time: toChartTime(c.time),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    })))
-    volumeSeries?.setData(data.candles.map((c: any) => ({
-      time: toChartTime(c.time),
-      value: c.volume,
-      color: c.close >= c.open ? 'rgba(255,23,68,0.3)' : 'rgba(0,230,118,0.3)',
-    })))
-    if (period.value === 'minute') updateCenterBounding()
+    klineData = data.candles || []
 
-    // 初始化信息栏为最新一根K线数据
-    if (data.candles.length > 0) {
-      const last = data.candles[data.candles.length - 1]
+    // For 1-min period, filter to trading hours only
+    if (period.value === 'minute') {
+      klineData = klineData.filter((c: any) => isTradingTime(c.time))
+    }
+
+    renderChart()
+
+    // Init crosshair bar with last candle
+    if (klineData.length > 0) {
+      const last = klineData[klineData.length - 1]
       const preclose = quote.value?.preclose_px
       const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
       crosshair.value = {
         visible: true,
-        time: formatCrosshairTime(last.time, period.value),
+        time: formatTime(last.time, period.value),
         open: last.open?.toFixed(2) || '-',
         high: last.high?.toFixed(2) || '-',
         low: last.low?.toFixed(2) || '-',
@@ -289,76 +173,182 @@ async function fetchKline() {
   } catch (e) { console.error('[KlineDrawer] fetchKline error:', e) }
 }
 
-async function initChart() {
-  if (!chartContainer.value) return
-  if (chart) { chart.remove(); chart = null; volumeSeries = null; centerBounding = null }
+function buildMarkLines() {
+  if (!quote.value?.preclose_px) return []
+  const preclose = quote.value.preclose_px
+  const lines: any[] = []
 
-  chart = createChart(chartContainer.value, {
-    layout: {
-      background: { type: ColorType.Solid, color: '#111827' },
-      textColor: '#8899aa',
-    },
-    grid: { vertLines: { color: '#1e2a3a' }, horzLines: { color: '#1e2a3a' } },
-    width: chartContainer.value.clientWidth || 520,
-    height: 420,
-    crosshair: { mode: 0 },
-    timeScale: {
-      borderColor: '#1e2a3a',
-      timeVisible: true,
-      secondsVisible: false,
-    },
-    localization: {
-      timeFormatter: (ts: number) => {
-        const d = new Date(ts * 1000)
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      },
-    },
-    rightPriceScale: { borderColor: '#1e2a3a' },
-  })
+  if (period.value === 'minute') {
+    // 昨收零轴线
+    lines.push({
+      yAxis: preclose,
+      lineStyle: { color: 'rgba(255,255,255,0.30)', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `昨收 ${preclose.toFixed(2)}`, color: '#8899aa', fontSize: 10 },
+      symbol: 'none',
+    })
 
-  candleSeries = chart.addSeries(CandlestickSeries, {
-    upColor: '#ff1744',
-    downColor: '#00e676',
-    borderUpColor: '#ff1744',
-    borderDownColor: '#00e676',
-    wickUpColor: '#ff1744',
-    wickDownColor: '#00e676',
-    priceScaleId: 'right',
-  })
+    const rate = getLimitRate(props.symbol, props.name)
+    const limitUp = Math.round(preclose * (1 + rate) * 100) / 100
+    const limitDown = Math.round(preclose * (1 - rate) * 100) / 100
 
-  volumeSeries = chart.addSeries(HistogramSeries, {
-    color: '#334455',
-    priceFormat: { type: 'volume' },
-    priceScaleId: 'volume',
-  })
-  chart.priceScale('volume').applyOptions({
-    scaleMargins: { top: 0.8, bottom: 0 },
-  })
-
-  // 隐藏的边界序列，用于1分K将昨收价固定在价格轴中央
-  centerBounding = chart.addSeries(LineSeries, {
-    lineVisible: false,
-    lastValueVisible: false,
-    crosshairMarkerVisible: false,
-    priceLineVisible: false,
-    priceScaleId: 'right',
-  })
-
-  chart.subscribeCrosshairMove(crosshairHandler)
-
-  await fetchKline()
-  updateLimitLines()
+    lines.push({
+      yAxis: limitUp,
+      lineStyle: { color: '#ff1744', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `涨停 ${limitUp.toFixed(2)}`, color: '#ff1744', fontSize: 10 },
+      symbol: 'none',
+    })
+    lines.push({
+      yAxis: limitDown,
+      lineStyle: { color: '#00e676', type: 'dashed', width: 1 },
+      label: { show: true, formatter: `跌停 ${limitDown.toFixed(2)}`, color: '#00e676', fontSize: 10 },
+      symbol: 'none',
+    })
+  }
+  return lines
 }
 
-watch(period, () => { fetchKline(); updateLimitLines() })
+function renderChart() {
+  if (!chartContainer.value) return
+
+  if (!chart) {
+    chart = echarts.init(chartContainer.value, 'dark')
+    chart.on('updateAxisPointer', (event: any) => {
+      const dataIndex = event.dataIndex
+      if (dataIndex == null || dataIndex < 0 || dataIndex >= klineData.length) return
+      const c = klineData[dataIndex]
+      const preclose = quote.value?.preclose_px
+      const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
+      crosshair.value = {
+        visible: true,
+        time: formatTime(c.time, period.value),
+        open: c.open?.toFixed(2) || '-',
+        high: c.high?.toFixed(2) || '-',
+        low: c.low?.toFixed(2) || '-',
+        close: c.close?.toFixed(2) || '-',
+        volume: formatVolume(c.volume || 0),
+        change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+        changeNum: changeRate,
+      }
+    })
+  }
+
+  const timestamps = klineData.map((c: any) => c.time)
+  const candleData = klineData.map((c: any) => [c.open, c.close, c.low, c.high])
+  const volumeData = klineData.map((c: any, i: number) => [i, c.volume, c.close >= c.open ? 1 : -1])
+  const preclose = quote.value?.preclose_px
+
+  // 1-min: compute y-axis range centered on preclose
+  let yMin: any = 'dataMin'
+  let yMax: any = 'dataMax'
+  if (period.value === 'minute' && preclose && klineData.length > 0) {
+    let maxUpper = 0, maxLower = 0
+    for (const c of klineData) {
+      if (c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
+      if (c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
+    }
+    const range = Math.max(maxUpper, maxLower) * 1.15 || preclose * 0.02
+    yMin = preclose - range
+    yMax = preclose + range
+  }
+
+  const option: any = {
+    backgroundColor: '#111827',
+    grid: [
+      { left: 8, right: 50, top: 8, height: '65%' },
+      { left: 8, right: 50, top: '75%', height: '15%' },
+    ],
+    xAxis: [
+      {
+        type: 'category',
+        data: timestamps,
+        gridIndex: 0,
+        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: '#8899aa',
+          fontSize: 10,
+          formatter: (value: number) => formatTime(value, period.value),
+          interval: Math.max(Math.floor(klineData.length / 6), 1),
+        },
+        splitLine: { show: false },
+      },
+      {
+        type: 'category',
+        data: timestamps,
+        gridIndex: 1,
+        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { show: false },
+      },
+    ],
+    yAxis: [
+      {
+        type: 'value',
+        gridIndex: 0,
+        scale: true,
+        min: yMin,
+        max: yMax,
+        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisLabel: { color: '#8899aa', fontSize: 10 },
+        splitLine: { lineStyle: { color: '#1e2a3a' } },
+      },
+      {
+        type: 'value',
+        gridIndex: 1,
+        axisLine: { lineStyle: { color: '#1e2a3a' } },
+        axisLabel: { color: '#8899aa', fontSize: 10, formatter: (v: number) => formatVolume(v) },
+        splitLine: { show: false },
+        min: 0,
+      },
+    ],
+    tooltip: { show: false },
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      triggerOn: 'mousemove',
+    },
+    series: [
+      {
+        type: 'candlestick',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: candleData,
+        itemStyle: {
+          color: '#ff1744',
+          color0: '#00e676',
+          borderColor: '#ff1744',
+          borderColor0: '#00e676',
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: buildMarkLines(),
+        },
+      },
+      {
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volumeData,
+        itemStyle: {
+          color: (params: any) => params.data?.[2] >= 0 ? 'rgba(255,23,68,0.3)' : 'rgba(0,230,118,0.3)',
+        },
+      },
+    ],
+  }
+
+  chart.setOption(option, true)
+}
+
+watch(period, () => fetchKline())
 
 onMounted(async () => {
   await fetchRealtime()
-  initChart()
+  fetchKline()
 })
 
 onUnmounted(() => {
-  try { chart?.unsubscribeCrosshairMove(crosshairHandler) } catch { /* ignore */ }
-  try { chart?.remove() } catch { /* ignore */ }
+  chart?.dispose()
+  chart = null
 })
 </script>
