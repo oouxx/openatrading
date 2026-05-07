@@ -19,7 +19,6 @@ export default defineConfig(async ({ mode }) => {
       __OPENROUTER_KEY__: JSON.stringify(rootEnv.OPENROUTER_API_KEY || ''),
       __JIUYAN_PHONE__: JSON.stringify(rootEnv.JIUYAN_PHONE || ''),
       __JIUYAN_PASSWORD__: JSON.stringify(rootEnv.JIUYAN_PASSWORD || ''),
-      __DATA_SOURCE__: JSON.stringify(rootEnv.VITE_DATA_SOURCE || 'json'),
       __API_BASE_URL__: JSON.stringify(rootEnv.VITE_API_BASE_URL || ''),
     },
     server: {
