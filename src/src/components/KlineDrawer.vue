@@ -74,13 +74,13 @@ const props = defineProps<{ symbol: string; name: string }>()
 defineEmits<{ close: [] }>()
 
 const periods = [
-  { label: '1分', value: 'minute' },
+  { label: '分时', value: 'intraday' },
   { label: '日K', value: 'day' },
   { label: '周K', value: 'week' },
   { label: '月K', value: 'month' },
 ]
 
-const period = ref('day')
+const period = ref('intraday')
 const chartContainer = ref<HTMLElement>()
 const quote = ref<any>(null)
 
@@ -138,7 +138,7 @@ function formatTime(ts: number, p: string): string {
   const d = new Date(ts * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  if (p === 'minute') return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (p === 'intraday' || p === 'minute') return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return ymd
 }
 
@@ -162,7 +162,7 @@ async function fetchKline() {
     const data = await resp.json()
     klineData = data.candles || []
 
-    if (period.value === 'minute') {
+    if (period.value === 'intraday') {
       klineData = klineData.filter((c: any) => isTradingTime(c.time))
     }
 
@@ -226,7 +226,7 @@ function initChart() {
       mode: CrosshairMode.Normal,
     },
     timeScale: {
-      timeVisible: period.value === 'minute',
+      timeVisible: period.value === 'intraday',
       secondsVisible: false,
       borderColor: 'rgba(255,255,255,0.06)',
       tickMarkFormatter: (time: Time) => formatTime(time as number, period.value),
