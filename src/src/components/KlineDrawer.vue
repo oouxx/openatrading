@@ -91,6 +91,10 @@ let candleSeries: ISeriesApi<'Candlestick'> | null = null
 let volumeSeries: ISeriesApi<'Histogram'> | null = null
 let anchorSeries: ISeriesApi<'Line'> | null = null
 let priceLines: PriceLine[] = []
+let priceSeries: ISeriesApi<'Line'> | null = null
+let avgPriceSeries: ISeriesApi<'Line'> | null = null
+let pctAnchorSeries: ISeriesApi<'Line'> | null = null
+let timeLabels: string[] = []
 let klineData: any[] = []
 
 const TRADING_SESSIONS = [[570, 690], [780, 900]] // 9:30-11:30, 13:00-15:00
@@ -99,6 +103,14 @@ function isTradingTime(ts: number): boolean {
   const d = new Date(ts * 1000)
   const mins = d.getHours() * 60 + d.getMinutes()
   return TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)
+}
+
+function buildTimeLabels(candles: any[]): string[] {
+  return candles.map((c) => {
+    const d = new Date(c.time * 1000)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
 }
 
 function formatVolume(v: number) {
@@ -202,6 +214,41 @@ function buildCandleData(): CandlestickData[] {
 function buildVolumeData(): HistogramData[] {
   return klineData.map((c: any) => ({
     time: c.time as Time,
+    value: c.volume || 0,
+    color: c.close >= c.open ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
+  }))
+}
+
+function buildVwapData(): { time: number; value: number }[] {
+  let cumValue = 0
+  let cumVolume = 0
+  return klineData.map((c: any, i: number) => {
+    cumValue += c.close * c.volume
+    cumVolume += c.volume
+    return {
+      time: i,
+      value: cumVolume > 0 ? cumValue / cumVolume : c.close,
+    }
+  })
+}
+
+function buildPctAnchorData(preclose: number): { time: number; value: number }[] {
+  return klineData.map((c: any, i: number) => ({
+    time: i,
+    value: (c.close - preclose) / preclose * 100,
+  }))
+}
+
+function buildPriceData(): { time: number; value: number }[] {
+  return klineData.map((c: any, i: number) => ({
+    time: i,
+    value: c.close,
+  }))
+}
+
+function buildIntradayVolumeData(): HistogramData[] {
+  return klineData.map((c: any, i: number) => ({
+    time: i as Time,
     value: c.volume || 0,
     color: c.close >= c.open ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
   }))
