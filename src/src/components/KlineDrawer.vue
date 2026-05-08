@@ -34,7 +34,7 @@
           <span>开 <span class="text-white">{{ crosshair.open }}</span></span>
           <span>高 <span class="text-white">{{ crosshair.high }}</span></span>
           <span>低 <span class="text-white">{{ crosshair.low }}</span></span>
-          <span>收 <span class="text-white">{{ crosshair.close }}</span></span>
+          <span>{{ period === 'intraday' ? '均' : '收' }} <span class="text-white">{{ crosshair.close }}</span></span>
           <span>量 <span class="text-white">{{ crosshair.volume }}</span></span>
           <span :class="crosshair.changeNum >= 0 ? 'text-data-red' : 'text-data-green'">{{ crosshair.change }}</span>
         </div>
@@ -184,10 +184,30 @@ async function fetchKline() {
 }
 
 function updateCrosshairFromData() {
-  if (klineData.length > 0) {
-    const last = klineData[klineData.length - 1]
-    const preclose = quote.value?.preclose_px
-    const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
+  if (klineData.length === 0) return
+  const last = klineData[klineData.length - 1]
+  const preclose = quote.value?.preclose_px
+  const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
+
+  if (period.value === 'intraday') {
+    // Compute VWAP for last point
+    let cv = 0, cvol = 0
+    for (let j = 0; j < klineData.length; j++) {
+      cv += klineData[j].close * klineData[j].volume
+      cvol += klineData[j].volume
+    }
+    const vwap = cvol > 0 ? cv / cvol : last.close
+    crosshair.value = {
+      time: timeLabels.length > 0 ? timeLabels[timeLabels.length - 1] : '',
+      open: last.open?.toFixed(2) || '-',
+      high: last.high?.toFixed(2) || '-',
+      low: last.low?.toFixed(2) || '-',
+      close: vwap?.toFixed(2) || '-',
+      volume: formatVolume(last.volume || 0),
+      change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+      changeNum: changeRate,
+    }
+  } else {
     crosshair.value = {
       time: formatTime(last.time, period.value),
       open: last.open?.toFixed(2) || '-',
@@ -439,9 +459,10 @@ function initIntradayChart() {
 }
 
 function clearPriceLines() {
-  if (!candleSeries) return
+  const series = period.value === 'intraday' ? priceSeries : candleSeries
+  if (!series) return
   for (const line of priceLines) {
-    candleSeries.removePriceLine(line)
+    series.removePriceLine(line)
   }
   priceLines = []
 }
@@ -450,7 +471,7 @@ function updatePriceLines() {
   if (!candleSeries) return
   clearPriceLines()
 
-  if (period.value !== 'intraday' || !quote.value?.preclose_px) return
+  if (period.value === 'intraday' || !quote.value?.preclose_px) return
 
   const preclose = quote.value.preclose_px
   const rate = getLimitRate()
@@ -494,7 +515,7 @@ function updateAnchorSeries() {
     anchorSeries = null
   }
 
-  if (period.value !== 'intraday' || !quote.value?.preclose_px || klineData.length === 0) return
+  if (period.value === 'intraday' || !quote.value?.preclose_px || klineData.length === 0) return
 
   const preclose = quote.value.preclose_px
   let maxUpper = 0, maxLower = 0
@@ -524,6 +545,51 @@ function updateAnchorSeries() {
 
 function renderChart() {
   if (!chartContainer.value) return
+
+  if (period.value === 'intraday') {
+    renderIntradayChart()
+  } else {
+    renderKlineChart()
+  }
+}
+
+function renderIntradayChart() {
+  if (klineData.length === 0) return
+
+  // Build time labels
+  timeLabels = buildTimeLabels(klineData)
+
+  if (!chart) {
+    initIntradayChart()
+  }
+
+  if (!priceSeries || !avgPriceSeries || !volumeSeries || !pctAnchorSeries) return
+
+  priceSeries.setData(buildPriceData())
+  avgPriceSeries.setData(buildVwapData())
+  pctAnchorSeries.setData(buildPctAnchorData(quote.value?.preclose_px || 0))
+  volumeSeries.setData(buildIntradayVolumeData())
+
+  // Preclose price line on price series
+  clearPriceLines()
+  if (quote.value?.preclose_px && priceSeries) {
+    priceLines.push(
+      priceSeries.createPriceLine({
+        price: quote.value.preclose_px,
+        color: 'rgba(255,255,255,0.20)',
+        lineStyle: 2,
+        lineWidth: 1,
+        axisLabelVisible: true,
+        title: '',
+      })
+    )
+  }
+
+  chart!.timeScale().fitContent()
+}
+
+function renderKlineChart() {
+  if (klineData.length === 0) return
 
   if (!chart) {
     initKlineChart()
