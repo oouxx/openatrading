@@ -26,10 +26,11 @@
               </span>
             </div>
             <div class="flex gap-1 flex-wrap mt-2" v-if="event.stocks.length">
-              <span v-for="stock in event.stocks" :key="stock.symbol"
-                class="px-2 py-0.5 rounded-badge text-caption font-mono bg-white/10 text-white/60">
-                {{ stock.symbol }} {{ stock.name }}
-              </span>
+              <MiniChartPreview v-for="stock in event.stocks" :key="stock.symbol" :symbol="stock.symbol" :name="stock.name">
+                <span class="px-2 py-0.5 rounded-badge text-caption font-mono bg-white/10 text-white/60">
+                  {{ stock.symbol }} {{ stock.name }}
+                </span>
+              </MiniChartPreview>
             </div>
           </div>
           <span class="text-caption font-mono flex-shrink-0 text-white/40">{{ formatTime(event.event_timestamp) }}</span>
@@ -55,7 +56,7 @@
           <tbody>
             <tr v-for="event in stockEvents" :key="event.id">
               <td class="font-mono text-white/40">{{ formatTime(event.event_timestamp) }}</td>
-              <td class="font-mono cursor-pointer hover:underline text-primary" @click="openKline(event.symbol, event.name)">{{ event.symbol }}</td>
+              <td class="font-mono cursor-pointer hover:underline text-primary" @click="openKline(event.symbol, event.name)"><MiniChartPreview :symbol="event.symbol" :name="event.name">{{ event.symbol }}</MiniChartPreview></td>
               <td class="font-medium text-white">{{ event.name }}</td>
               <td class="font-mono text-right" :class="event.pcp >= 0 ? 'text-data-red' : 'text-data-green'">{{ formatPcp(event.pcp) }}</td>
               <td class="font-mono text-right text-white/60">{{ event.mtm?.toFixed(2) || '-' }}</td>
@@ -82,6 +83,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted } from 'vue'
 import { plateAbnormal, fetchPlateAbnormal } from '@/stores/data'
+import MiniChartPreview from '@/components/MiniChartPreview.vue'
 
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 

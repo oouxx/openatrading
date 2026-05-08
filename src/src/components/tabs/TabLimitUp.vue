@@ -39,8 +39,8 @@
                 {{ stock.limit_up_days }}板
               </span>
             </td>
-            <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(stock.symbol, stock.stock_chi_name)">{{ stock.symbol }}</td>
-            <td class="font-medium text-white">{{ stock.stock_chi_name }}</td>
+            <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(stock.symbol, stock.stock_chi_name)"><MiniChartPreview :symbol="stock.symbol" :name="stock.stock_chi_name">{{ stock.symbol }}</MiniChartPreview></td>
+            <td class="font-medium text-white"><MiniChartPreview :symbol="stock.symbol" :name="stock.stock_chi_name">{{ stock.stock_chi_name }}</MiniChartPreview></td>
             <td class="text-right font-mono text-data-green">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
             <td class="text-right font-mono">{{ (stock.turnover_ratio * 100).toFixed(2) }}%</td>
             <td class="text-right font-mono">{{ (stock.total_capital / 1e8).toFixed(1) }}亿</td>
@@ -94,8 +94,8 @@
             <tbody>
               <tr v-for="stock in plate.list" :key="stock.code">
                 <td class="font-mono text-white/40">{{ stock.article?.action_info?.time || '-' }}</td>
-                <td class="font-mono text-white">{{ stock.code }}</td>
-                <td class="font-medium text-white">{{ stock.name }}</td>
+                <td class="font-mono text-white"><MiniChartPreview :symbol="stock.code" :name="stock.name">{{ stock.code }}</MiniChartPreview></td>
+                <td class="font-medium text-white"><MiniChartPreview :symbol="stock.code" :name="stock.name">{{ stock.name }}</MiniChartPreview></td>
                 <td class="font-mono">{{ stock.article?.action_info?.num || '-' }}</td>
                 <td class="text-white/60 text-xs" style="max-width: 300px">{{ stock.article?.action_info?.expound || '' }}</td>
               </tr>
@@ -110,6 +110,7 @@
 <script setup lang="ts">
 import { computed, ref, inject, onMounted } from 'vue'
 import { limitUp, fieldItems, overview, fetchLimitUp, fetchFieldItems } from '@/stores/data'
+import MiniChartPreview from '@/components/MiniChartPreview.vue'
 
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 const hideST = ref(true)
