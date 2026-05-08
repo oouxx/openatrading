@@ -39,9 +39,18 @@ const props = defineProps<{
   name: string
 }>()
 
-const prefix = computed(() => props.symbol.startsWith('6') ? 'sh' : 'sz')
+function normalizeSymbol(raw: string): string {
+  const dot = raw.indexOf('.')
+  if (dot !== -1) {
+    const code = raw.substring(0, dot)
+    const suffix = raw.substring(dot + 1).toLowerCase()
+    return suffix + code
+  }
+  return (raw.startsWith('6') ? 'sh' : 'sz') + raw
+}
+
 const gifUrl = computed(() =>
-  `https://image.sinajs.cn/newchart/min/n/${prefix.value}${props.symbol}.gif`
+  `https://image.sinajs.cn/newchart/min/n/${normalizeSymbol(props.symbol)}.gif`
 )
 
 const visible = ref(false)
