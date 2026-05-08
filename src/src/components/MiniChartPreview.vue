@@ -21,18 +21,33 @@
         :src="gifUrl"
         width="240"
         height="180"
-        class="rounded-[8px] block"
+        class="rounded-[8px] block cursor-pointer"
         alt=""
+        @click.stop="enlarged = true"
       />
       <p class="text-caption font-mono text-center text-ink-muted mt-1">
         {{ symbol }} {{ name }}
       </p>
     </div>
+
+    <!-- Fullscreen overlay -->
+    <div
+      v-if="enlarged"
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      @click="enlarged = false"
+    >
+      <img
+        :src="gifUrl"
+        class="max-w-[90vw] max-h-[90vh] rounded-[12px]"
+        alt=""
+        @click.stop
+      />
+    </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 
 const props = defineProps<{
   symbol: string
@@ -55,6 +70,7 @@ const gifUrl = computed(() =>
 )
 
 const visible = ref(false)
+const enlarged = ref(false)
 const pos = ref({ x: 0, y: 0 })
 const trigger = ref<HTMLElement>()
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -74,6 +90,17 @@ function onLeave() {
 function clearTimer() {
   if (timer) { clearTimeout(timer); timer = null }
 }
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') enlarged.value = false
+}
+
+watch(enlarged, (val) => {
+  if (val) document.addEventListener('keydown', onKeydown)
+  else document.removeEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 
 function updatePosition() {
   if (!trigger.value) return
