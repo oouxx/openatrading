@@ -55,8 +55,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import * as echarts from 'echarts'
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import {
+  createChart,
+  CandlestickSeries,
+  HistogramSeries,
+  LineSeries,
+  CrosshairMode,
+  type IChartApi,
+  type ISeriesApi,
+  type CandlestickData,
+  type HistogramData,
+  type Time,
+  type PriceLine,
+} from 'lightweight-charts'
 
 const props = defineProps<{ symbol: string; name: string }>()
 defineEmits<{ close: [] }>()
@@ -72,12 +84,15 @@ const period = ref('day')
 const chartContainer = ref<HTMLElement>()
 const quote = ref<any>(null)
 
-const crosshair = ref({ visible: false, time: '', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 })
+const crosshair = ref({ time: '', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 })
 
-let chart: echarts.ECharts | null = null
+let chart: IChartApi | null = null
+let candleSeries: ISeriesApi<'Candlestick'> | null = null
+let volumeSeries: ISeriesApi<'Histogram'> | null = null
+let anchorSeries: ISeriesApi<'Line'> | null = null
+let priceLines: PriceLine[] = []
 let klineData: any[] = []
 
-// A-share trading sessions (minutes since midnight)
 const TRADING_SESSIONS = [[570, 690], [780, 900]] // 9:30-11:30, 13:00-15:00
 
 function isTradingTime(ts: number): boolean {
@@ -111,11 +126,11 @@ const metrics = computed(() => {
   ]
 })
 
-function getLimitRate(symbol: string, name: string): number {
-  if (name?.includes('ST')) return 0.05
-  if (symbol.startsWith('688')) return 0.20
-  if (/^30[01]/.test(symbol)) return 0.20
-  if (/^8/.test(symbol)) return 0.30
+function getLimitRate(): number {
+  if (props.name?.includes('ST')) return 0.05
+  if (props.symbol.startsWith('688')) return 0.20
+  if (/^30[01]/.test(props.symbol)) return 0.20
+  if (/^8/.test(props.symbol)) return 0.30
   return 0.10
 }
 
@@ -147,209 +162,237 @@ async function fetchKline() {
     const data = await resp.json()
     klineData = data.candles || []
 
-    // For 1-min period, filter to trading hours only
     if (period.value === 'minute') {
       klineData = klineData.filter((c: any) => isTradingTime(c.time))
     }
 
     renderChart()
-
-    // Init crosshair bar with last candle
-    if (klineData.length > 0) {
-      const last = klineData[klineData.length - 1]
-      const preclose = quote.value?.preclose_px
-      const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
-      crosshair.value = {
-        visible: true,
-        time: formatTime(last.time, period.value),
-        open: last.open?.toFixed(2) || '-',
-        high: last.high?.toFixed(2) || '-',
-        low: last.low?.toFixed(2) || '-',
-        close: last.close?.toFixed(2) || '-',
-        volume: formatVolume(last.volume || 0),
-        change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
-        changeNum: changeRate,
-      }
-    }
+    updateCrosshairFromData()
   } catch (e) { console.error('[KlineDrawer] fetchKline error:', e) }
 }
 
-function buildMarkLines() {
-  if (!quote.value?.preclose_px) return []
-  const preclose = quote.value.preclose_px
-  const lines: any[] = []
-
-  if (period.value === 'minute') {
-    // 昨收零轴线
-    lines.push({
-      yAxis: preclose,
-      lineStyle: { color: 'rgba(255,255,255,0.20)', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `昨收 ${preclose.toFixed(2)}`, color: '#86868b', fontSize: 10 },
-      symbol: 'none',
-    })
-
-    const rate = getLimitRate(props.symbol, props.name)
-    const limitUp = Math.round(preclose * (1 + rate) * 100) / 100
-    const limitDown = Math.round(preclose * (1 - rate) * 100) / 100
-
-    lines.push({
-      yAxis: limitUp,
-      lineStyle: { color: '#ff3b30', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `涨停 ${limitUp.toFixed(2)}`, color: '#ff3b30', fontSize: 10 },
-      symbol: 'none',
-    })
-    lines.push({
-      yAxis: limitDown,
-      lineStyle: { color: '#34c759', type: 'dashed', width: 1 },
-      label: { show: true, formatter: `跌停 ${limitDown.toFixed(2)}`, color: '#34c759', fontSize: 10 },
-      symbol: 'none',
-    })
+function updateCrosshairFromData() {
+  if (klineData.length > 0) {
+    const last = klineData[klineData.length - 1]
+    const preclose = quote.value?.preclose_px
+    const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
+    crosshair.value = {
+      time: formatTime(last.time, period.value),
+      open: last.open?.toFixed(2) || '-',
+      high: last.high?.toFixed(2) || '-',
+      low: last.low?.toFixed(2) || '-',
+      close: last.close?.toFixed(2) || '-',
+      volume: formatVolume(last.volume || 0),
+      change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+      changeNum: changeRate,
+    }
   }
-  return lines
+}
+
+function buildCandleData(): CandlestickData[] {
+  return klineData.map((c: any) => ({
+    time: c.time as Time,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+  }))
+}
+
+function buildVolumeData(): HistogramData[] {
+  return klineData.map((c: any) => ({
+    time: c.time as Time,
+    value: c.volume || 0,
+    color: c.close >= c.open ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
+  }))
+}
+
+function initChart() {
+  if (!chartContainer.value) return
+
+  chart = createChart(chartContainer.value, {
+    width: chartContainer.value.clientWidth,
+    height: 420,
+    layout: {
+      background: { color: '#272729' },
+      textColor: '#86868b',
+      fontSize: 10,
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.06)' },
+      horzLines: { color: 'rgba(255,255,255,0.06)' },
+    },
+    crosshair: {
+      mode: CrosshairMode.Normal,
+    },
+    timeScale: {
+      timeVisible: period.value === 'minute',
+      secondsVisible: false,
+      borderColor: 'rgba(255,255,255,0.06)',
+      tickMarkFormatter: (time: Time) => formatTime(time as number, period.value),
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(255,255,255,0.06)',
+      autoScale: true,
+    },
+    leftPriceScale: {
+      visible: false,
+    },
+  })
+
+  candleSeries = chart.addSeries(CandlestickSeries, {
+    upColor: '#ff3b30',
+    downColor: '#34c759',
+    borderUpColor: '#ff3b30',
+    borderDownColor: '#34c759',
+    wickUpColor: '#ff3b30',
+    wickDownColor: '#34c759',
+    priceScaleId: 'right',
+  })
+
+  volumeSeries = chart.addSeries(HistogramSeries, {
+    priceScaleId: 'volume',
+    priceFormat: { type: 'volume' },
+  })
+
+  // Set up volume price scale
+  chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.85, bottom: 0 },
+    borderColor: 'rgba(255,255,255,0.06)',
+  })
+
+  chart.subscribeCrosshairMove((param: any) => {
+    if (!param.point || !param.time || param.seriesData.size === 0) return
+    const data = param.seriesData.get(candleSeries!)
+    if (!data) return
+    const preclose = quote.value?.preclose_px
+    const changeRate = preclose ? ((data.close - preclose) / preclose * 100) : 0
+    crosshair.value = {
+      time: formatTime(data.time as number, period.value),
+      open: data.open?.toFixed(2) || '-',
+      high: data.high?.toFixed(2) || '-',
+      low: data.low?.toFixed(2) || '-',
+      close: data.close?.toFixed(2) || '-',
+      volume: formatVolume((param.seriesData.get(volumeSeries!) as any)?.value || 0),
+      change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+      changeNum: changeRate,
+    }
+  })
+}
+
+function clearPriceLines() {
+  if (!candleSeries) return
+  for (const line of priceLines) {
+    candleSeries.removePriceLine(line)
+  }
+  priceLines = []
+}
+
+function updatePriceLines() {
+  if (!candleSeries) return
+  clearPriceLines()
+
+  if (period.value !== 'minute' || !quote.value?.preclose_px) return
+
+  const preclose = quote.value.preclose_px
+  const rate = getLimitRate()
+  const limitUp = Math.round(preclose * (1 + rate) * 100) / 100
+  const limitDown = Math.round(preclose * (1 - rate) * 100) / 100
+
+  priceLines.push(
+    candleSeries.createPriceLine({
+      price: preclose,
+      color: 'rgba(255,255,255,0.20)',
+      lineStyle: 2, // dashed
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: `昨收 ${preclose.toFixed(2)}`,
+    }),
+    candleSeries.createPriceLine({
+      price: limitUp,
+      color: '#ff3b30',
+      lineStyle: 2,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: `涨停 ${limitUp.toFixed(2)}`,
+    }),
+    candleSeries.createPriceLine({
+      price: limitDown,
+      color: '#34c759',
+      lineStyle: 2,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: `跌停 ${limitDown.toFixed(2)}`,
+    }),
+  )
+}
+
+function updateAnchorSeries() {
+  if (!chart || !candleSeries) return
+
+  // Remove old anchor series if exists
+  if (anchorSeries) {
+    chart.removeSeries(anchorSeries)
+    anchorSeries = null
+  }
+
+  if (period.value !== 'minute' || !quote.value?.preclose_px || klineData.length === 0) return
+
+  const preclose = quote.value.preclose_px
+  let maxUpper = 0, maxLower = 0
+  for (const c of klineData) {
+    if (c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
+    if (c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
+  }
+  const range = Math.max(maxUpper, maxLower) * 1.15 || preclose * 0.02
+  const yMin = preclose - range
+  const yMax = preclose + range
+
+  anchorSeries = chart.addSeries(LineSeries, {
+    lineWidth: 0,
+    priceScaleId: candleSeries.priceScaleId(),
+    lastValueVisible: false,
+    priceLineVisible: false,
+    crosshairMarkerVisible: false,
+  })
+
+  const firstTime = klineData[0].time as Time
+  const lastTime = klineData[klineData.length - 1].time as Time
+  anchorSeries.setData([
+    { time: firstTime, value: yMin },
+    { time: lastTime, value: yMax },
+  ])
 }
 
 function renderChart() {
   if (!chartContainer.value) return
 
   if (!chart) {
-    chart = echarts.init(chartContainer.value, 'dark')
-    chart.on('updateAxisPointer', (event: any) => {
-      const dataIndex = event.dataIndex
-      if (dataIndex == null || dataIndex < 0 || dataIndex >= klineData.length) return
-      const c = klineData[dataIndex]
-      const preclose = quote.value?.preclose_px
-      const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
-      crosshair.value = {
-        visible: true,
-        time: formatTime(c.time, period.value),
-        open: c.open?.toFixed(2) || '-',
-        high: c.high?.toFixed(2) || '-',
-        low: c.low?.toFixed(2) || '-',
-        close: c.close?.toFixed(2) || '-',
-        volume: formatVolume(c.volume || 0),
-        change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
-        changeNum: changeRate,
-      }
-    })
+    initChart()
   }
 
-  const timestamps = klineData.map((c: any) => c.time)
-  const candleData = klineData.map((c: any) => [c.open, c.close, c.low, c.high])
-  const volumeData = klineData.map((c: any, i: number) => [i, c.volume, c.close >= c.open ? 1 : -1])
-  const preclose = quote.value?.preclose_px
+  if (!candleSeries || !volumeSeries) return
 
-  // 1-min: compute y-axis range centered on preclose
-  let yMin: any = 'dataMin'
-  let yMax: any = 'dataMax'
-  if (period.value === 'minute' && preclose && klineData.length > 0) {
-    let maxUpper = 0, maxLower = 0
-    for (const c of klineData) {
-      if (c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
-      if (c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
-    }
-    const range = Math.max(maxUpper, maxLower) * 1.15 || preclose * 0.02
-    yMin = preclose - range
-    yMax = preclose + range
-  }
-
-  const option: any = {
-    backgroundColor: '#272729',
-    grid: [
-      { left: 8, right: 50, top: 8, height: '65%' },
-      { left: 8, right: 50, top: '75%', height: '15%' },
-    ],
-    xAxis: [
-      {
-        type: 'category',
-        data: timestamps,
-        gridIndex: 0,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-        axisTick: { show: false },
-        axisLabel: {
-          color: '#86868b',
-          fontSize: 10,
-          formatter: (value: number) => formatTime(value, period.value),
-          interval: Math.max(Math.floor(klineData.length / 6), 1),
-        },
-        splitLine: { show: false },
-      },
-      {
-        type: 'category',
-        data: timestamps,
-        gridIndex: 1,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-        axisTick: { show: false },
-        axisLabel: { show: false },
-        splitLine: { show: false },
-      },
-    ],
-    yAxis: [
-      {
-        type: 'value',
-        gridIndex: 0,
-        scale: true,
-        min: yMin,
-        max: yMax,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-        axisLabel: { color: '#86868b', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-      },
-      {
-        type: 'value',
-        gridIndex: 1,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-        axisLabel: { color: '#86868b', fontSize: 10, formatter: (v: number) => formatVolume(v) },
-        splitLine: { show: false },
-        min: 0,
-      },
-    ],
-    tooltip: { show: false },
-    axisPointer: {
-      link: [{ xAxisIndex: 'all' }],
-      triggerOn: 'mousemove',
-    },
-    series: [
-      {
-        type: 'candlestick',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        data: candleData,
-        itemStyle: {
-          color: '#ff3b30',
-          color0: '#34c759',
-          borderColor: '#ff3b30',
-          borderColor0: '#34c759',
-        },
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          data: buildMarkLines(),
-        },
-      },
-      {
-        type: 'bar',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        data: volumeData,
-        itemStyle: {
-          color: (params: any) => params.data?.[2] >= 0 ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
-        },
-      },
-    ],
-  }
-
-  chart.setOption(option, true)
+  candleSeries.setData(buildCandleData())
+  volumeSeries.setData(buildVolumeData())
+  updatePriceLines()
+  updateAnchorSeries()
+  chart!.timeScale().fitContent()
 }
 
 watch(period, () => fetchKline())
 
 onMounted(async () => {
   await fetchRealtime()
+  await nextTick()
   fetchKline()
 })
 
 onUnmounted(() => {
-  chart?.dispose()
+  chart?.remove()
   chart = null
+  candleSeries = null
+  volumeSeries = null
+  anchorSeries = null
 })
 </script>
