@@ -33,15 +33,24 @@
     <!-- Fullscreen overlay -->
     <div
       v-if="enlarged"
-      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      class="fixed inset-0 z-[70] flex items-center justify-center"
       @click="enlarged = false"
     >
-      <img
-        :src="gifUrl"
-        class="max-w-[90vw] max-h-[90vh] rounded-[12px]"
-        alt=""
+      <div
+        class="bg-canvas rounded-card border border-hairline p-4"
         @click.stop
-      />
+        @wheel.prevent="onWheel"
+      >
+        <img
+          :src="gifUrl"
+          :style="{ width: 240 * scale + 'px', height: 180 * scale + 'px' }"
+          class="rounded-[8px] block"
+          alt=""
+        />
+        <p class="text-caption font-mono text-center text-ink-muted mt-2">
+          {{ symbol }} {{ name }}  ·  {{ scale }}x  滚轮缩放
+        </p>
+      </div>
     </div>
   </Teleport>
 </template>
@@ -71,6 +80,7 @@ const gifUrl = computed(() =>
 
 const visible = ref(false)
 const enlarged = ref(false)
+const scale = ref(1)
 const pos = ref({ x: 0, y: 0 })
 const trigger = ref<HTMLElement>()
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -95,9 +105,18 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') enlarged.value = false
 }
 
+function onWheel(e: WheelEvent) {
+  scale.value += e.deltaY < 0 ? 0.25 : -0.25
+  scale.value = Math.max(1, Math.min(4, scale.value))
+}
+
 watch(enlarged, (val) => {
-  if (val) document.addEventListener('keydown', onKeydown)
-  else document.removeEventListener('keydown', onKeydown)
+  if (val) {
+    scale.value = 1
+    document.addEventListener('keydown', onKeydown)
+  } else {
+    document.removeEventListener('keydown', onKeydown)
+  }
 })
 
 onUnmounted(() => document.removeEventListener('keydown', onKeydown))
