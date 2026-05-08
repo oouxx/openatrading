@@ -8,6 +8,7 @@ services:
       - .env
     environment:
       - RUST_BACKTRACE=1
+      - TZ=Asia/Shanghai
     restart: unless-stopped
 
   frontend:
@@ -22,6 +23,7 @@ services:
       - /root/certs:/etc/ssl/cloudflare:ro
     environment:
       - BACKEND_HOST=backend
+      - TZ=Asia/Shanghai
     depends_on:
       - backend
     restart: unless-stopped
