@@ -43,7 +43,8 @@ function normalizeSymbol(raw: string): string {
   const dot = raw.indexOf('.')
   if (dot !== -1) {
     const code = raw.substring(0, dot)
-    const suffix = raw.substring(dot + 1).toLowerCase()
+    let suffix = raw.substring(dot + 1).toLowerCase()
+    if (suffix === 'ss') suffix = 'sh'
     return suffix + code
   }
   return (raw.startsWith('6') ? 'sh' : 'sz') + raw
