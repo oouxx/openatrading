@@ -22,7 +22,12 @@ public/report_*.json
 *.log
 
 report_*.json
-.claude/
 
 # Deploy
 deploy-ali.sh
+
+# cert
+certs/
+
+# claude
+./claude/worktrees/
