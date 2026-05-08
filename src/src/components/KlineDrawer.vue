@@ -292,7 +292,7 @@ function updatePriceLines() {
   if (!candleSeries) return
   clearPriceLines()
 
-  if (period.value !== 'minute' || !quote.value?.preclose_px) return
+  if (period.value !== 'intraday' || !quote.value?.preclose_px) return
 
   const preclose = quote.value.preclose_px
   const rate = getLimitRate()
@@ -336,7 +336,7 @@ function updateAnchorSeries() {
     anchorSeries = null
   }
 
-  if (period.value !== 'minute' || !quote.value?.preclose_px || klineData.length === 0) return
+  if (period.value !== 'intraday' || !quote.value?.preclose_px || klineData.length === 0) return
 
   const preclose = quote.value.preclose_px
   let maxUpper = 0, maxLower = 0
