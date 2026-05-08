@@ -254,7 +254,7 @@ function buildIntradayVolumeData(): HistogramData[] {
   }))
 }
 
-function initChart() {
+function initKlineChart() {
   if (!chartContainer.value) return
 
   chart = createChart(chartContainer.value, {
@@ -321,6 +321,117 @@ function initChart() {
       low: data.low?.toFixed(2) || '-',
       close: data.close?.toFixed(2) || '-',
       volume: formatVolume((param.seriesData.get(volumeSeries!) as any)?.value || 0),
+      change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
+      changeNum: changeRate,
+    }
+  })
+}
+
+function initIntradayChart() {
+  if (!chartContainer.value) return
+
+  chart = createChart(chartContainer.value, {
+    width: chartContainer.value.clientWidth,
+    height: 420,
+    layout: {
+      background: { color: '#272729' },
+      textColor: '#86868b',
+      fontSize: 10,
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.06)' },
+      horzLines: { color: 'rgba(255,255,255,0.06)' },
+    },
+    crosshair: {
+      mode: CrosshairMode.Normal,
+    },
+    timeScale: {
+      timeVisible: false,
+      secondsVisible: false,
+      borderColor: 'rgba(255,255,255,0.06)',
+      tickMarkFormatter: (time: Time) => {
+        const idx = time as number
+        return (idx >= 0 && idx < timeLabels.length) ? timeLabels[idx] : ''
+      },
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(255,255,255,0.06)',
+      autoScale: true,
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+    },
+    leftPriceScale: {
+      visible: true,
+      borderColor: 'rgba(255,255,255,0.06)',
+      autoScale: true,
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+    },
+  })
+
+  // Price line (left scale)
+  priceSeries = chart.addSeries(LineSeries, {
+    color: '#ffffff',
+    lineWidth: 1,
+    priceScaleId: 'left',
+    crosshairMarkerVisible: true,
+    crosshairMarkerRadius: 4,
+    lastValueVisible: false,
+    priceLineVisible: false,
+  })
+
+  // VWAP average price line (left scale)
+  avgPriceSeries = chart.addSeries(LineSeries, {
+    color: '#f5a623',
+    lineWidth: 1,
+    lineStyle: 2, // dashed
+    priceScaleId: 'left',
+    crosshairMarkerVisible: false,
+    lastValueVisible: false,
+    priceLineVisible: false,
+  })
+
+  // Hidden pct anchor (right scale) — drives right Y-axis autoScale
+  pctAnchorSeries = chart.addSeries(LineSeries, {
+    lineWidth: 0,
+    priceScaleId: 'right',
+    lastValueVisible: false,
+    priceLineVisible: false,
+    crosshairMarkerVisible: false,
+  })
+
+  // Volume (separate scale at bottom)
+  volumeSeries = chart.addSeries(HistogramSeries, {
+    priceScaleId: 'volume',
+    priceFormat: { type: 'volume' },
+  })
+
+  chart.priceScale('volume').applyOptions({
+    scaleMargins: { top: 0.80, bottom: 0 },
+    borderColor: 'rgba(255,255,255,0.06)',
+  })
+
+  chart.subscribeCrosshairMove((param: any) => {
+    if (!param.point || param.time === undefined || param.seriesData.size === 0) return
+    const idx = param.time as number
+    if (idx < 0 || idx >= klineData.length) return
+    const c = klineData[idx]
+    const preclose = quote.value?.preclose_px
+    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
+
+    // Compute VWAP at this index
+    let cv = 0, cvol = 0
+    for (let j = 0; j <= idx; j++) {
+      cv += klineData[j].close * klineData[j].volume
+      cvol += klineData[j].volume
+    }
+    const vwapVal = cvol > 0 ? cv / cvol : c.close
+
+    crosshair.value = {
+      time: timeLabels[idx] || '',
+      open: c.open?.toFixed(2) || '-',
+      high: c.high?.toFixed(2) || '-',
+      low: c.low?.toFixed(2) || '-',
+      close: vwapVal?.toFixed(2) || '-',
+      volume: formatVolume(c.volume || 0),
       change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
       changeNum: changeRate,
     }
@@ -415,7 +526,7 @@ function renderChart() {
   if (!chartContainer.value) return
 
   if (!chart) {
-    initChart()
+    initKlineChart()
   }
 
   if (!candleSeries || !volumeSeries) return
