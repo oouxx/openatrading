@@ -554,7 +554,10 @@ function renderChart() {
 }
 
 function renderIntradayChart() {
-  if (klineData.length === 0) return
+  if (klineData.length === 0) {
+    crosshair.value = { time: '暂无分时数据', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 }
+    return
+  }
 
   // Build time labels
   timeLabels = buildTimeLabels(klineData)
