@@ -95,6 +95,7 @@ let priceSeries: ISeriesApi<'Line'> | null = null
 let avgPriceSeries: ISeriesApi<'Line'> | null = null
 let pctAnchorSeries: ISeriesApi<'Line'> | null = null
 let timeLabels: string[] = []
+let fetchId = 0
 let klineData: any[] = []
 
 const TRADING_SESSIONS = [[570, 690], [780, 900]] // 9:30-11:30, 13:00-15:00
@@ -168,16 +169,19 @@ async function fetchRealtime() {
 }
 
 async function fetchKline() {
+  const id = ++fetchId
   try {
     const resp = await fetch(`${getApiBase()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
     if (!resp.ok) return
     const data = await resp.json()
+    if (id !== fetchId) return
     klineData = data.candles || []
 
     if (period.value === 'intraday') {
       klineData = klineData.filter((c: any) => isTradingTime(c.time))
     }
 
+    if (id !== fetchId) return
     renderChart()
     updateCrosshairFromData()
   } catch (e) { console.error('[KlineDrawer] fetchKline error:', e) }
@@ -570,7 +574,10 @@ function renderIntradayChart() {
 
   priceSeries.setData(buildPriceData())
   avgPriceSeries.setData(buildVwapData())
-  pctAnchorSeries.setData(buildPctAnchorData(quote.value?.preclose_px || 0))
+  const preclose = quote.value?.preclose_px
+  if (preclose && preclose > 0) {
+    pctAnchorSeries.setData(buildPctAnchorData(preclose))
+  }
   volumeSeries.setData(buildIntradayVolumeData())
 
   // Preclose price line on price series
@@ -620,7 +627,8 @@ function resetChart() {
     anchorSeries = null
   }
   timeLabels = []
-  klineData = []
+  0
+  fetchId = 0
 }
 
 watch(period, () => {
@@ -645,6 +653,7 @@ onUnmounted(() => {
   volumeSeries = null
   anchorSeries = null
   timeLabels = []
-  klineData = []
+  0
+  fetchId = 0
 })
 </script>
