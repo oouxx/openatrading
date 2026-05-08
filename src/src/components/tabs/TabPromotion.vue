@@ -62,8 +62,8 @@
                 </thead>
                 <tbody>
                   <tr v-for="s in row.details" :key="s.symbol">
-                    <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
-                    <td class="font-medium text-white">{{ s.name }}</td>
+                    <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)"><MiniChartPreview :symbol="s.symbol" :name="s.name">{{ s.symbol }}</MiniChartPreview></td>
+                    <td class="font-medium text-white"><MiniChartPreview :symbol="s.symbol" :name="s.name">{{ s.name }}</MiniChartPreview></td>
                     <td class="font-mono">
                       <span :class="s.status === 'promoted' ? 'text-data-red' : 'text-white/40'">
                         {{ s.yesterdayDays }}板 → {{ s.status === 'promoted' ? s.todayDays + '板' : '断板' }}
@@ -105,8 +105,8 @@
             </thead>
             <tbody>
               <tr v-for="s in firstBoard" :key="s.symbol">
-                <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)">{{ s.symbol }}</td>
-                <td class="font-medium text-white">{{ s.name }}</td>
+                <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(s.symbol, s.name)"><MiniChartPreview :symbol="s.symbol" :name="s.name">{{ s.symbol }}</MiniChartPreview></td>
+                <td class="font-medium text-white"><MiniChartPreview :symbol="s.symbol" :name="s.name">{{ s.name }}</MiniChartPreview></td>
                 <td class="text-right font-mono text-data-green">+{{ (s.changePercent * 100).toFixed(2) }}%</td>
                 <td class="text-right font-mono">{{ (s.turnover * 100).toFixed(2) }}%</td>
                 <td class="text-right font-mono">{{ (s.capital / 1e8).toFixed(1) }}亿</td>
@@ -128,6 +128,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, inject } from 'vue'
 import { limitUp, fetchLimitUp } from '@/stores/data'
+import MiniChartPreview from '@/components/MiniChartPreview.vue'
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 
 const loading = ref(true)
