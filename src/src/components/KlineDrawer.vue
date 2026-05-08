@@ -580,7 +580,7 @@ function renderIntradayChart() {
         lineStyle: 2,
         lineWidth: 1,
         axisLabelVisible: true,
-        title: '',
+        title: `昨收 ${quote.value.preclose_px.toFixed(2)}`,
       })
     )
   }
@@ -604,7 +604,26 @@ function renderKlineChart() {
   chart!.timeScale().fitContent()
 }
 
-watch(period, () => fetchKline())
+function resetChart() {
+  clearPriceLines()
+  if (chart) {
+    chart.remove()
+    chart = null
+    candleSeries = null
+    priceSeries = null
+    avgPriceSeries = null
+    pctAnchorSeries = null
+    volumeSeries = null
+    anchorSeries = null
+  }
+  timeLabels = []
+  klineData = []
+}
+
+watch(period, () => {
+  resetChart()
+  fetchKline()
+})
 
 onMounted(async () => {
   await fetchRealtime()
@@ -613,10 +632,16 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearPriceLines()
   chart?.remove()
   chart = null
   candleSeries = null
+  priceSeries = null
+  avgPriceSeries = null
+  pctAnchorSeries = null
   volumeSeries = null
   anchorSeries = null
+  timeLabels = []
+  klineData = []
 })
 </script>
