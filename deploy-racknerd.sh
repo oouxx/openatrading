@@ -2,12 +2,12 @@
 set -e
 
 SERVICE="${1:-all}"  # backend | frontend | all
-SERVER="root@47.116.170.125"
+SERVER="root@107.172.238.76"
 REMOTE_DIR="/root/trending-agent"
 IMAGES_DIR="./docker-images"
 
 usage() {
-  echo "Usage: ./deploy-ali.sh [backend|frontend|all]"
+  echo "Usage: ./deploy-racknerd.sh [backend|frontend|all]"
   echo "  backend   Build & deploy backend only"
   echo "  frontend  Build & deploy frontend only"
   echo "  all       Build & deploy both (default)"

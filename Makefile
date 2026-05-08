@@ -130,25 +130,25 @@ docker-rebuild:
 docker-shell:
 	docker compose exec trending-agent bash
 
-# ─── Deploy (Aliyun) ────────────────────────────────
+# ─── Deploy (RackNerd) ──────────────────────────────
 
-define deploy-ali-help
+define deploy-racknerd-help
 	cargo run --bin trending-agent -- run --format json --output ./src/public/; \
 	latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
 	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "  ✅ report.json ready"; fi
 endef
 
-deploy-ali:
-	@echo "🚀 Deploying all (backend + frontend) to Aliyun..."
-	@bash deploy-ali.sh all
+deploy-racknerd:
+	@echo "🚀 Deploying all (backend + frontend) to RackNerd..."
+	@bash deploy-racknerd.sh all
 
-deploy-ali-backend:
-	@echo "🚀 Deploying backend to Aliyun..."
-	@bash deploy-ali.sh backend
+deploy-racknerd-backend:
+	@echo "🚀 Deploying backend to RackNerd..."
+	@bash deploy-racknerd.sh backend
 
-deploy-ali-frontend:
-	@echo "🚀 Deploying frontend to Aliyun..."
-	@bash deploy-ali.sh frontend
+deploy-racknerd-frontend:
+	@echo "🚀 Deploying frontend to RackNerd..."
+	@bash deploy-racknerd.sh frontend
 
 # ─── Clean ───────────────────────────────────────────
 
@@ -197,10 +197,10 @@ help:
 	@echo "  dev-frontend   Vue 3 dev server"
 	@echo "  dev-tauri      Tauri desktop app"
 	@echo ""
-	@echo "Deploy (Aliyun):"
-	@echo "  deploy-ali         deploy backend + frontend to Aliyun"
-	@echo "  deploy-ali-backend  deploy backend only"
-	@echo "  deploy-ali-frontend deploy frontend only"
+	@echo "Deploy (RackNerd):"
+	@echo "  deploy-racknerd         deploy backend + frontend to RackNerd"
+	@echo "  deploy-racknerd-backend  deploy backend only"
+	@echo "  deploy-racknerd-frontend deploy frontend only"
 	@echo ""
 	@echo "Deploy (Static):"
 	@echo "  deploy-static  generate report.json + build Vue → src/dist/"
