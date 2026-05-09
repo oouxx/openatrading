@@ -17,11 +17,11 @@
         <div v-for="event in plateEvents" :key="event.id"
           class="bg-surface-dark rounded-card border border-hairline-dark pl-4 py-3 pr-4 flex gap-4 items-start">
           <div class="w-1 self-stretch rounded-full flex-shrink-0"
-            :class="event.pcp >= 0 ? 'bg-data-red' : 'bg-data-green'"></div>
+            :class="event.pcp >= 0 ? 'bg-up' : 'bg-down'"></div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-2 flex-wrap">
               <span class="text-body-strong text-white">{{ event.plate_name }}</span>
-              <span class="text-caption-strong font-mono" :class="event.pcp >= 0 ? 'text-data-red' : 'text-data-green'">
+              <span class="text-caption-strong font-mono" :class="event.pcp >= 0 ? 'text-up' : 'text-down'">
                 {{ formatPcp(event.pcp) }}
               </span>
             </div>
@@ -56,15 +56,15 @@
           <tbody>
             <tr v-for="event in stockEvents" :key="event.id">
               <td class="font-mono text-white/40">{{ formatTime(event.event_timestamp) }}</td>
-              <td class="font-mono cursor-pointer hover:underline text-primary" @click="openKline(event.symbol, event.name)"><MiniChartPreview :symbol="event.symbol" :name="event.name">{{ event.symbol }}</MiniChartPreview></td>
+              <td class="font-mono cursor-pointer hover:underline text-ai" @click="openKline(event.symbol, event.name)"><MiniChartPreview :symbol="event.symbol" :name="event.name">{{ event.symbol }}</MiniChartPreview></td>
               <td class="font-medium text-white">{{ event.name }}</td>
-              <td class="font-mono text-right" :class="event.pcp >= 0 ? 'text-data-red' : 'text-data-green'">{{ formatPcp(event.pcp) }}</td>
+              <td class="font-mono text-right" :class="event.pcp >= 0 ? 'text-up' : 'text-down'">{{ formatPcp(event.pcp) }}</td>
               <td class="font-mono text-right text-white/60">{{ event.mtm?.toFixed(2) || '-' }}</td>
               <td>
                 <span class="px-2 py-0.5 rounded-badge text-caption font-mono"
                   :class="event.good_or_bad === 1
-                    ? 'bg-data-green/15 text-data-green'
-                    : 'bg-data-red/15 text-data-red'">
+                    ? 'bg-up/15 text-up'
+                    : 'bg-down/15 text-down'">
                   {{ event.good_or_bad === 1 ? '利好' : '利空' }}
                 </span>
               </td>

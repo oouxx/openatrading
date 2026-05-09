@@ -7,8 +7,8 @@
       class="flex-shrink-0 px-4 transition-colors duration-200 border-b-2 cursor-pointer"
       style="padding-top: 10px; padding-bottom: 10px"
       :class="activeTab === tab.id
-        ? 'text-ink border-primary'
-        : 'text-ink-muted border-transparent hover:text-ink/70'"
+        ? 'text-white border-ai'
+        : 'text-ink-muted border-transparent hover:text-white/80'"
     >
       <span class="text-caption">{{ tab.label }}</span>
     </button>

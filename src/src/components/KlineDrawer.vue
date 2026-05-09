@@ -13,8 +13,8 @@
           <button @click="$emit('close')" class="text-lg leading-none p-1 text-white/40 hover:text-white/60">&times;</button>
         </div>
         <div v-if="quote" class="flex items-center gap-3">
-          <span class="text-xl font-bold font-mono" :class="quote.px_change_rate >= 0 ? 'text-data-red' : 'text-data-green'">{{ quote.last_px?.toFixed(2) }}</span>
-          <span class="text-sm font-mono" :class="quote.px_change_rate >= 0 ? 'text-data-red' : 'text-data-green'">{{ quote.px_change_rate >= 0 ? '+' : '' }}{{ quote.px_change_rate?.toFixed(2) }}%</span>
+          <span class="text-xl font-bold font-mono" :class="quote.px_change_rate >= 0 ? 'text-up' : 'text-down'">{{ quote.last_px?.toFixed(2) }}</span>
+          <span class="text-sm font-mono" :class="quote.px_change_rate >= 0 ? 'text-up' : 'text-down'">{{ quote.px_change_rate >= 0 ? '+' : '' }}{{ quote.px_change_rate?.toFixed(2) }}%</span>
           <span class="text-xs text-white/40">成交 {{ formatVolume(quote.turnover_value) }}</span>
         </div>
       </div>
@@ -22,7 +22,7 @@
       <!-- Period Toggle -->
       <div class="flex gap-1 px-4 py-2 sticky z-10 bg-surface-dark border-b border-hairline-dark top-[97px]">
         <button v-for="p in periods" :key="p.value" @click="period = p.value"
-          :class="['px-3 py-1 text-xs font-mono transition rounded-button', period === p.value ? 'bg-primary text-white' : 'bg-transparent text-white/40']">
+          :class="['px-3 py-1 text-xs font-mono transition rounded-button', period === p.value ? 'bg-ai text-white' : 'bg-transparent text-white/40']">
           {{ p.label }}
         </button>
       </div>
@@ -36,7 +36,7 @@
           <span>低 <span class="text-white">{{ crosshair.low }}</span></span>
           <span>{{ period === 'intraday' ? '均' : '收' }} <span class="text-white">{{ crosshair.close }}</span></span>
           <span>量 <span class="text-white">{{ crosshair.volume }}</span></span>
-          <span :class="crosshair.changeNum >= 0 ? 'text-data-red' : 'text-data-green'">{{ crosshair.change }}</span>
+          <span :class="crosshair.changeNum >= 0 ? 'text-up' : 'text-down'">{{ crosshair.change }}</span>
         </div>
       </div>
 
@@ -239,7 +239,7 @@ function buildVolumeData(): HistogramData[] {
   return klineData.map((c: any) => ({
     time: c.time as Time,
     value: c.volume || 0,
-    color: c.close >= c.open ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
+    color: c.close >= c.open ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
   }))
 }
 
@@ -274,7 +274,7 @@ function buildIntradayVolumeData(): HistogramData[] {
   return klineData.map((c: any, i: number) => ({
     time: i as Time,
     value: c.volume || 0,
-    color: c.close >= c.open ? 'rgba(255,59,48,0.3)' : 'rgba(52,199,89,0.3)',
+    color: c.close >= c.open ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
   }))
 }
 
@@ -285,8 +285,8 @@ function initKlineChart() {
     width: chartContainer.value.clientWidth,
     height: 420,
     layout: {
-      background: { color: '#272729' },
-      textColor: '#86868b',
+      background: { color: '#111124' },
+      textColor: '#888780',
       fontSize: 10,
     },
     grid: {
@@ -312,12 +312,12 @@ function initKlineChart() {
   })
 
   candleSeries = chart.addSeries(CandlestickSeries, {
-    upColor: '#ff3b30',
-    downColor: '#34c759',
-    borderUpColor: '#ff3b30',
-    borderDownColor: '#34c759',
-    wickUpColor: '#ff3b30',
-    wickDownColor: '#34c759',
+    upColor: '#FF5C5C',
+    downColor: '#1D9E75',
+    borderUpColor: '#FF5C5C',
+    borderDownColor: '#1D9E75',
+    wickUpColor: '#FF5C5C',
+    wickDownColor: '#1D9E75',
     priceScaleId: 'right',
   })
 
@@ -358,8 +358,8 @@ function initIntradayChart() {
     width: chartContainer.value.clientWidth,
     height: 420,
     layout: {
-      background: { color: '#272729' },
-      textColor: '#86868b',
+      background: { color: '#111124' },
+      textColor: '#888780',
       fontSize: 10,
     },
     grid: {
@@ -493,7 +493,7 @@ function updatePriceLines() {
     }),
     candleSeries.createPriceLine({
       price: limitUp,
-      color: '#ff3b30',
+      color: '#FF5C5C',
       lineStyle: 2,
       lineWidth: 1,
       axisLabelVisible: true,
@@ -501,7 +501,7 @@ function updatePriceLines() {
     }),
     candleSeries.createPriceLine({
       price: limitDown,
-      color: '#34c759',
+      color: '#1D9E75',
       lineStyle: 2,
       lineWidth: 1,
       axisLabelVisible: true,

@@ -10,7 +10,7 @@
 
     <div class="space-y-8">
       <div v-for="day in timelineDays" :key="day.date">
-        <h3 class="text-caption-strong font-mono mb-4 px-2 text-primary">{{ day.date }}</h3>
+        <h3 class="text-caption-strong font-mono mb-4 px-2 text-ai">{{ day.date }}</h3>
         <div class="space-y-3">
           <div v-for="item in day.items" :key="item.title" class="bg-surface-dark rounded-card border border-hairline-dark pl-4 py-3 pr-4 flex gap-3 items-start">
             <span class="text-caption flex-shrink-0 mt-0.5">{{ item.grade_emoji }}</span>

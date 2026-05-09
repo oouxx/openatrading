@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen bg-canvas">
+  <div class="min-h-screen bg-bg">
     <!-- Global Nav -->
     <header class="fixed top-0 w-full z-50 bg-black h-11">
-      <div class="max-w-[1200px] mx-auto px-6 h-full flex items-center justify-between">
+      <div class="max-w-[1600px] mx-auto px-6 h-full flex items-center justify-between">
         <div class="flex items-center gap-2 flex-shrink-0">
           <h1 class="text-nav-link font-semibold text-white tracking-tight">
-            TRENDING<span class="text-primary">.AGENT</span>
+            TRENDING<span class="text-ai">.AGENT</span>
           </h1>
         </div>
 
@@ -31,51 +31,114 @@
     <main class="pt-11">
       <!-- Error -->
       <div v-if="overview.error" class="py-4">
-        <div class="max-w-[1200px] mx-auto px-6">
-          <div class="bg-data-red/5 border border-data-red/20 rounded-card px-5 py-3 flex items-center justify-between">
+        <div class="max-w-[1600px] mx-auto px-6">
+          <div class="bg-up/5 border border-up/20 rounded-card px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <span class="text-data-red text-sm">&#9888;</span>
-              <span class="text-caption text-data-red">{{ overview.error }}</span>
+              <span class="text-up text-sm">&#9888;</span>
+              <span class="text-caption text-up">{{ overview.error }}</span>
             </div>
-            <button @click="refreshData" class="text-caption text-data-red underline cursor-pointer">重试</button>
+            <button @click="refreshData" class="text-caption text-up underline cursor-pointer">重试</button>
           </div>
         </div>
       </div>
 
       <!-- Loading -->
       <div v-if="overview.loading && !overview.data" class="flex flex-col items-center justify-center py-32 gap-4">
-        <div class="w-3 h-3 rounded-full bg-primary animate-pulse"></div>
+        <div class="w-3 h-3 rounded-full bg-ai animate-pulse"></div>
         <span class="text-caption font-mono text-ink-muted">加载市场数据...</span>
       </div>
 
       <!-- Content -->
       <template v-if="overview.data">
-        <!-- KPI Tile: white canvas -->
-        <section class="bg-canvas py-section-y">
-          <div class="max-w-[980px] mx-auto px-6">
-            <KpiCards
+        <div class="flex max-w-[1600px] mx-auto">
+          <!-- Left Column: Main Content (68%) -->
+          <div class="flex-1 min-w-0 lg:max-w-[68%]">
+
+            <!-- ① Market Status + ② KPI -->
+            <section class="px-6 py-section-y">
+              <KpiCards
+                :overview="overview.data"
+                :risk-level="overview.data.risk_level"
+                :decision-summary="overview.data.decision_summary"
+              />
+            </section>
+
+            <!-- ③ AI Market Summary -->
+            <section class="px-6 pb-8">
+              <div class="bg-bg-surface rounded-card border border-hairline p-card-inner">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-ai"></span>
+                  <span class="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">AI 市场摘要</span>
+                </div>
+                <p class="text-body text-white/80 leading-relaxed">{{ overview.data.decision_summary || '等待数据...' }}</p>
+              </div>
+            </section>
+
+            <!-- ④ Tab Bar + Content -->
+            <div class="sticky z-40 top-11 bg-bg border-b border-hairline">
+              <div class="px-6">
+                <TabBar v-model="activeTab" />
+              </div>
+            </div>
+            <section class="min-h-[60vh] px-6 py-6">
+              <component :is="currentTabComponent" />
+            </section>
+          </div>
+
+          <!-- Right Column: AI Sidebar (desktop 32%) -->
+          <aside
+            v-show="sidebarOpen"
+            class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300"
+            :class="sidebarOpen ? 'w-[32%]' : 'w-0 overflow-hidden border-l-0'"
+          >
+            <AiSidebar
+              :active-tab="activeTab"
               :overview="overview.data"
-              :risk-level="overview.data.risk_level"
-              :decision-summary="overview.data.decision_summary"
+              @close="sidebarOpen = false"
             />
-          </div>
-        </section>
+          </aside>
 
-        <!-- Tab Tile: parchment + sticky -->
-        <section class="bg-canvas-parchment sticky z-40 top-11 p-0">
-          <div class="max-w-[1200px] mx-auto px-6">
-            <TabBar v-model="activeTab" />
-          </div>
-        </section>
-
-        <!-- Data Tile: dark -->
-        <section class="bg-surface-dark py-section-y min-h-[60vh]">
-          <div class="max-w-[1200px] mx-auto px-6">
-            <component :is="currentTabComponent" />
-          </div>
-        </section>
+          <!-- Mobile Sidebar Overlay -->
+          <Teleport to="body">
+            <div
+              v-if="sidebarOpen && mobileSidebarVisible"
+              class="fixed inset-0 z-50 lg:hidden"
+            >
+              <div @click="mobileSidebarVisible = false" class="absolute inset-0 bg-black/50"></div>
+              <div class="absolute top-11 right-0 h-[calc(100vh-44px)] w-[85vw] max-w-[400px] shadow-terminal-lg border-l border-hairline bg-bg-surface">
+                <AiSidebar
+                  :active-tab="activeTab"
+                  :overview="overview.data"
+                  @close="mobileSidebarVisible = false"
+                />
+              </div>
+            </div>
+          </Teleport>
+        </div>
       </template>
     </main>
+
+    <!-- AI Sidebar Toggle (when sidebar collapsed) -->
+    <button
+      v-if="overview.data && !sidebarOpen"
+      @click="sidebarOpen = true"
+      class="fixed right-3 top-1/2 -translate-y-1/2 z-30 px-3 py-2 rounded-button
+             bg-ai/15 text-ai border border-ai/25 text-caption font-mono
+             hover:bg-ai/25 transition-colors cursor-pointer"
+    >
+      AI
+    </button>
+
+    <!-- Mobile AI Sidebar Toggle (always visible on small screens) -->
+    <button
+      v-if="overview.data && windowWidth < 1024"
+      @click="mobileSidebarVisible = true"
+      class="fixed right-3 top-1/2 -translate-y-1/2 z-30 px-3 py-2 rounded-button
+             bg-ai/15 text-ai border border-ai/25 text-caption font-mono
+             hover:bg-ai/25 transition-colors cursor-pointer lg:hidden"
+    >
+      AI
+    </button>
 
     <!-- K-line Drawer -->
     <KlineDrawer
@@ -88,11 +151,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
 import TabBar from './components/TabBar.vue'
+import AiSidebar from './components/AiSidebar.vue'
 import TabLimitUp from './components/tabs/TabLimitUp.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabSentiment from './components/tabs/TabSentiment.vue'
@@ -102,6 +166,14 @@ import TabTgb from './components/tabs/TabTgb.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 
 const activeTab = ref('limit-up')
+const sidebarOpen = ref(true)
+const mobileSidebarVisible = ref(false)
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
+
+function onResize() { windowWidth.value = window.innerWidth }
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
+
 // K-line drawer state
 const klineSymbol = ref('')
 const klineName = ref('')
