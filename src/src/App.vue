@@ -101,11 +101,18 @@
             class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300"
             :class="sidebarOpen ? 'w-[32%]' : 'w-0 overflow-hidden border-l-0'"
           >
-            <AiSidebar
-              :active-tab="activeTab"
-              :overview="overview.data"
-              @close="sidebarOpen = false"
-            />
+            <div class="h-full flex flex-col">
+              <div class="flex-shrink-0">
+                <NewsFeed />
+              </div>
+              <div class="flex-1 min-h-0">
+                <AiSidebar
+                  :active-tab="activeTab"
+                  :overview="overview.data"
+                  @close="sidebarOpen = false"
+                />
+              </div>
+            </div>
           </aside>
 
           <!-- Mobile Sidebar Overlay -->
@@ -115,12 +122,17 @@
               class="fixed inset-0 z-50 lg:hidden"
             >
               <div @click="mobileSidebarVisible = false" class="absolute inset-0 bg-black/50"></div>
-              <div class="absolute top-11 right-0 h-[calc(100vh-44px)] w-[85vw] max-w-[400px] shadow-terminal-lg border-l border-hairline bg-bg-surface">
-                <AiSidebar
-                  :active-tab="activeTab"
-                  :overview="overview.data"
-                  @close="mobileSidebarVisible = false"
-                />
+              <div class="absolute top-11 right-0 h-[calc(100vh-44px)] w-[85vw] max-w-[400px] shadow-terminal-lg border-l border-hairline bg-bg-surface flex flex-col">
+                <div class="flex-shrink-0">
+                  <NewsFeed />
+                </div>
+                <div class="flex-1 min-h-0">
+                  <AiSidebar
+                    :active-tab="activeTab"
+                    :overview="overview.data"
+                    @close="mobileSidebarVisible = false"
+                  />
+                </div>
               </div>
             </div>
           </Teleport>
@@ -168,6 +180,7 @@ import KlineDrawer from './components/KlineDrawer.vue'
 import SentimentHistory from './components/SentimentHistory.vue'
 import TabBar from './components/TabBar.vue'
 import AiSidebar from './components/AiSidebar.vue'
+import NewsFeed from './components/NewsFeed.vue'
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
