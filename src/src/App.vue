@@ -9,6 +9,21 @@
           </h1>
         </div>
 
+        <!-- Mode Selector -->
+        <div class="flex items-center gap-1">
+          <button
+            v-for="m in modes"
+            :key="m.id"
+            @click="activeMode = m.id"
+            class="px-3 py-1 rounded-button text-nav-link font-mono transition-colors cursor-pointer"
+            :class="activeMode === m.id
+              ? 'bg-ai/20 text-ai'
+              : 'text-ink-muted hover:text-white/80'"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+
         <div class="flex items-center gap-4">
           <span v-if="overview.data" class="text-nav-link font-mono text-white/60">
             {{ overview.data.date }}
@@ -195,8 +210,27 @@ const mobileSidebarVisible = ref(false)
 const sentimentHistory = ref<{date: string, value: number}[]>([])
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
+const activeMode = ref<'pre' | 'live' | 'review'>('live')
+
+const modes = [
+  { id: 'pre' as const, label: '盘前' },
+  { id: 'live' as const, label: '盘中' },
+  { id: 'review' as const, label: '复盘' },
+]
+
+function detectMode() {
+  const now = new Date()
+  const mins = now.getHours() * 60 + now.getMinutes()
+  if (mins >= 9 * 60 + 30 && mins < 15 * 60 + 5) activeMode.value = 'live'
+  else if (mins >= 15 * 60 + 30 || mins < 9 * 60) activeMode.value = 'review'
+  else activeMode.value = 'pre'
+}
+
 function onResize() { windowWidth.value = window.innerWidth }
-onMounted(() => window.addEventListener('resize', onResize))
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  detectMode()
+})
 onUnmounted(() => window.removeEventListener('resize', onResize))
 
 // K-line drawer state
