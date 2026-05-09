@@ -18,7 +18,7 @@
             <span class="text-caption font-mono w-6 text-white/40">#{{ idx + 1 }}</span>
             <span class="text-caption font-mono text-white">{{ s[0] }}</span>
             <span class="text-caption text-white/60">{{ s[1] }}</span>
-            <span class="text-caption font-mono ml-auto px-2 py-0.5 rounded-badge bg-primary/15 text-primary">{{ s[2] }}次</span>
+            <span class="text-caption font-mono ml-auto px-2 py-0.5 rounded-badge bg-ai/15 text-ai">{{ s[2] }}次</span>
           </div>
         </div>
         <div v-else class="text-center py-4 text-caption text-white/40">今日暂无数据</div>
@@ -44,7 +44,7 @@
                   <span>👍 {{ a.like_count }}</span>
                   <span>💬 {{ a.comment_count }}</span>
                   <span>🔄 {{ a.forward_count }}</span>
-                  <span class="text-caption font-mono px-1 py-0.5 rounded-badge bg-primary/15 text-primary">{{ a.heat_score }}热度</span>
+                  <span class="text-caption font-mono px-1 py-0.5 rounded-badge bg-ai/15 text-ai">{{ a.heat_score }}热度</span>
                 </div>
               </div>
               <span class="text-caption shrink-0 transition-transform text-white/40" :style="{ transform: expandedId === a.article_id ? 'rotate(180deg)' : '' }">▼</span>
@@ -52,7 +52,7 @@
             <div v-if="expandedId === a.article_id" class="mt-3 pt-3 border-t border-hairline-dark">
               <div class="text-caption leading-relaxed text-white/60" v-html="a.content"></div>
               <a :href="`https://www.jiuyangongshe.com/a/${a.article_id}`" target="_blank"
-                class="inline-block mt-2 text-caption hover:underline text-primary">📎 查看原文</a>
+                class="inline-block mt-2 text-caption hover:underline text-ai">📎 查看原文</a>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@
             <div v-if="expandedTgbId === a.topic_id" class="mt-3 pt-3 border-t border-hairline-dark">
               <div class="text-caption leading-relaxed text-white/60" v-html="a.content"></div>
               <a :href="`https://www.tgb.cn/article/${a.new_topic_id}`" target="_blank"
-                class="inline-block mt-2 text-caption hover:underline text-primary">📎 查看原文</a>
+                class="inline-block mt-2 text-caption hover:underline text-ai">📎 查看原文</a>
             </div>
           </div>
         </div>
@@ -129,9 +129,9 @@ const trendText = computed(() => {
 
 const trendColor = computed(() => {
   const t = sentimentData.value?.trend
-  if (t === '偏多') return 'text-data-green'
-  if (t === '中性') return 'text-primary'
-  return 'text-data-red'
+  if (t === '偏多') return 'text-up'
+  if (t === '中性') return 'text-ai'
+  return 'text-down'
 })
 
 onMounted(() => fetchSentiment())

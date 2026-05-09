@@ -6,26 +6,50 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Backgrounds
         canvas: {
-          DEFAULT: '#ffffff',
-          parchment: '#f5f5f7',
+          DEFAULT: '#0d0d1a',
+          parchment: '#111124',
         },
         'surface-dark': {
-          DEFAULT: '#272729',
-          2: '#2a2a2c',
-          3: '#252527',
+          DEFAULT: '#111124',
+          2: '#1a1a35',
+          3: '#0f0f20',
         },
+        // Text
         ink: {
-          DEFAULT: '#1d1d1f',
-          muted: '#86868b',
+          DEFAULT: '#e8e8ed',
+          muted: '#888780',
+          dim: 'rgba(255,255,255,0.06)',
         },
+        // Semantic: A-share 红涨绿跌
+        up: {
+          DEFAULT: '#FF5C5C',
+          muted: 'rgba(255,92,92,0.15)',
+        },
+        down: {
+          DEFAULT: '#1D9E75',
+          muted: 'rgba(29,158,117,0.15)',
+        },
+        // AI purple
+        ai: {
+          DEFAULT: '#7F77DD',
+          focus: '#9990f0',
+          muted: 'rgba(127,119,221,0.15)',
+        },
+        // Legacy aliases (keep for gradual migration)
         primary: {
-          DEFAULT: '#0066cc',
-          focus: '#0071e3',
-          'on-dark': '#2997ff',
+          DEFAULT: '#7F77DD',
+          focus: '#9990f0',
+          'on-dark': '#7F77DD',
         },
-        'data-green': '#34c759',
-        'data-red': '#ff3b30',
+        'data-green': '#1D9E75',
+        'data-red': '#FF5C5C',
+        bg: {
+          DEFAULT: '#0d0d1a',
+          surface: '#111124',
+          hover: '#1a1a35',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
@@ -51,8 +75,12 @@ module.exports = {
         'card-inner': '24px',
       },
       borderColor: {
-        hairline: 'rgba(0, 0, 0, 0.08)',
-        'hairline-dark': 'rgba(255, 255, 255, 0.06)',
+        hairline: 'rgba(255,255,255,0.06)',
+        'hairline-dark': 'rgba(255,255,255,0.04)',
+      },
+      boxShadow: {
+        terminal: '0 1px 3px rgba(0,0,0,0.3)',
+        'terminal-lg': '0 4px 12px rgba(0,0,0,0.4)',
       },
     },
   },

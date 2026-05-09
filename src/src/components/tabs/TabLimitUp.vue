@@ -10,7 +10,7 @@
         <input type="checkbox" v-model="hideST" class="cursor-pointer">
         <span class="text-caption">隐藏ST</span>
       </label>
-      <span v-if="bombRate > 0.2" class="text-data-red font-mono text-xs">
+      <span v-if="bombRate > 0.2" class="text-up font-mono text-xs">
         ⚠ 炸板率 {{ (bombRate * 100).toFixed(1) }}%
       </span>
     </div>
@@ -34,14 +34,14 @@
             <td>
               <span class="px-2 py-0.5 rounded-badge text-xs font-mono"
                 :class="stock.limit_up_days >= 3
-                  ? 'bg-primary/20 text-primary'
+                  ? 'bg-ai/20 text-ai'
                   : 'bg-white/10 text-white/60'">
                 {{ stock.limit_up_days }}板
               </span>
             </td>
-            <td class="cursor-pointer font-mono hover:underline text-primary" @click="openKline(stock.symbol, stock.stock_chi_name)"><MiniChartPreview :symbol="stock.symbol" :name="stock.stock_chi_name">{{ stock.symbol }}</MiniChartPreview></td>
+            <td class="cursor-pointer font-mono hover:underline text-ai" @click="openKline(stock.symbol, stock.stock_chi_name)"><MiniChartPreview :symbol="stock.symbol" :name="stock.stock_chi_name">{{ stock.symbol }}</MiniChartPreview></td>
             <td class="font-medium text-white"><MiniChartPreview :symbol="stock.symbol" :name="stock.stock_chi_name">{{ stock.stock_chi_name }}</MiniChartPreview></td>
-            <td class="text-right font-mono text-data-green">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
+            <td class="text-right font-mono text-up">+{{ (stock.change_percent * 100).toFixed(2) }}%</td>
             <td class="text-right font-mono">{{ (stock.turnover_ratio * 100).toFixed(2) }}%</td>
             <td class="text-right font-mono">{{ (stock.total_capital / 1e8).toFixed(1) }}亿</td>
             <td class="text-white/40 text-xs">
@@ -60,12 +60,12 @@
           type="date"
           :value="fieldDate"
           @change="onDateChange"
-          class="px-3 py-1.5 text-caption font-mono rounded-input border border-hairline-dark bg-surface-dark text-white outline-none focus:border-primary"
+          class="px-3 py-1.5 text-caption font-mono rounded-input border border-hairline-dark bg-surface-dark text-white outline-none focus:border-ai"
         />
         <span class="text-caption text-white/40">
           {{ fieldPlates.length }} 个板块 · {{ totalFieldStocks }} 只股票
         </span>
-        <span v-if="fieldItems.loading" class="text-caption font-mono text-primary animate-pulse">加载中...</span>
+        <span v-if="fieldItems.loading" class="text-caption font-mono text-ai animate-pulse">加载中...</span>
       </div>
 
       <!-- Field item cards -->
@@ -78,7 +78,7 @@
           <span class="text-caption font-mono px-2 py-0.5 rounded-badge bg-white/10 text-white/60">
             {{ plate.count }}只
           </span>
-          <span class="text-caption text-primary" v-if="plate.reason">{{ plate.reason }}</span>
+          <span class="text-caption text-ai" v-if="plate.reason">{{ plate.reason }}</span>
         </div>
         <div class="bg-surface-dark-2 rounded-card overflow-hidden">
           <table class="data-table">

@@ -12,7 +12,7 @@
     <div
       v-if="visible"
       ref="card"
-      class="fixed z-[60] bg-canvas rounded-card border border-hairline p-2"
+      class="fixed z-[60] bg-bg-surface rounded-card border border-hairline p-2"
       :style="{ top: pos.y + 'px', left: pos.x + 'px' }"
       @mouseenter="clearTimer"
       @mouseleave="onLeave"
@@ -37,7 +37,7 @@
       @click="enlarged = false"
     >
       <div
-        class="bg-canvas rounded-card border border-hairline p-4"
+        class="bg-bg-surface rounded-card border border-hairline p-4"
         @click.stop
         @wheel.prevent="onWheel"
       >
