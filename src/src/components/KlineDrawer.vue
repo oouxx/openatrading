@@ -67,7 +67,7 @@ import {
   type CandlestickData,
   type HistogramData,
   type Time,
-  type PriceLine,
+  type IPriceLine,
 } from 'lightweight-charts'
 
 const props = defineProps<{ symbol: string; name: string }>()
@@ -90,7 +90,7 @@ let chart: IChartApi | null = null
 let candleSeries: ISeriesApi<'Candlestick'> | null = null
 let volumeSeries: ISeriesApi<'Histogram'> | null = null
 let anchorSeries: ISeriesApi<'Line'> | null = null
-let priceLines: PriceLine[] = []
+let priceLines: IPriceLine[] = []
 let priceSeries: ISeriesApi<'Line'> | null = null
 let avgPriceSeries: ISeriesApi<'Line'> | null = null
 let pctAnchorSeries: ISeriesApi<'Line'> | null = null
@@ -243,29 +243,29 @@ function buildVolumeData(): HistogramData[] {
   }))
 }
 
-function buildVwapData(): { time: number; value: number }[] {
+function buildVwapData(): { time: Time; value: number }[] {
   let cumValue = 0
   let cumVolume = 0
   return klineData.map((c: any, i: number) => {
     cumValue += c.close * c.volume
     cumVolume += c.volume
     return {
-      time: i,
+      time: i as Time,
       value: cumVolume > 0 ? cumValue / cumVolume : c.close,
     }
   })
 }
 
-function buildPctAnchorData(preclose: number): { time: number; value: number }[] {
+function buildPctAnchorData(preclose: number): { time: Time; value: number }[] {
   return klineData.map((c: any, i: number) => ({
-    time: i,
+    time: i as Time,
     value: (c.close - preclose) / preclose * 100,
   }))
 }
 
-function buildPriceData(): { time: number; value: number }[] {
+function buildPriceData(): { time: Time; value: number }[] {
   return klineData.map((c: any, i: number) => ({
-    time: i,
+    time: i as Time,
     value: c.close,
   }))
 }
@@ -415,7 +415,7 @@ function initIntradayChart() {
 
   // Hidden pct anchor (right scale) — drives right Y-axis autoScale
   pctAnchorSeries = chart.addSeries(LineSeries, {
-    lineWidth: 0,
+    color: 'transparent',
     priceScaleId: 'right',
     lastValueVisible: false,
     priceLineVisible: false,
@@ -532,8 +532,8 @@ function updateAnchorSeries() {
   const yMax = preclose + range
 
   anchorSeries = chart.addSeries(LineSeries, {
-    lineWidth: 0,
-    priceScaleId: candleSeries.priceScaleId(),
+    color: 'transparent',
+    priceScaleId: 'right',
     lastValueVisible: false,
     priceLineVisible: false,
     crosshairMarkerVisible: false,

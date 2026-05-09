@@ -28,6 +28,12 @@ export interface OverviewData {
   bomb_rate: number
   risk_level: string
   decision_summary: string
+  // Optional extended fields from /api/overview
+  sentiment_temp?: number
+  promotion_rate?: number
+  promotion_history_avg?: number
+  net_flow?: number
+  flow_sector?: string
 }
 
 export interface Stock {

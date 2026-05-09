@@ -65,7 +65,7 @@ type AiContextMode = 'global_summary' | 'tab_context' | 'qa'
 
 const mode = ref<AiContextMode>('global_summary')
 
-const modes = [
+const modes: { label: string; value: AiContextMode }[] = [
   { label: '全局摘要', value: 'global_summary' },
   { label: 'Tab联动', value: 'tab_context' },
   { label: '问答', value: 'qa' },
