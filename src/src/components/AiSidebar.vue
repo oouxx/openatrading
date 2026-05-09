@@ -142,15 +142,34 @@ const tabLabels: Record<string, string> = {
 const TabContext = defineComponent({
   props: { activeTab: String },
   setup(props: any) {
+    const quickQuestions = computed(() => {
+      const map: Record<string, string[]> = {
+        'strong-stocks': ['这只龙头明天能打吗？', '今天适合打板吗？', '哪个板块明天可能接力？'],
+        'promotion': ['历史上4板胜率怎么样？', '现在应该几成仓？', '晋级率下降说明什么？'],
+        'plate': ['哪个板块明天可能接力？', '轮动路径怎么看？', '今天为什么这个板块涨？'],
+        'timeline': ['今天资金节奏怎么样？', '午后有没有加速信号？', '明天早盘怎么看？'],
+        'sentiment-chip': ['情绪能持续几天？', '筹码结构健康吗？', '现在偏热还是偏冷？'],
+        'market-intel': ['论坛情绪是否过热？', '题材还能持续吗？', '散户在讨论什么？'],
+        'ai': ['帮我总结今日行情', '明天操作方向', '市场风险在哪？'],
+      }
+      return map[props.activeTab] || []
+    })
+
     return () => h('div', { class: 'space-y-3' }, [
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
         h('p', { class: 'text-caption text-ink-muted mb-1' }, '当前模块'),
         h('p', { class: 'text-body-strong text-white' }, tabLabels[props.activeTab] || props.activeTab),
       ]),
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
-        h('p', { class: 'text-caption text-ai mb-2 font-mono' }, '// AI 联动态'),
-        h('p', { class: 'text-caption text-ink-muted leading-relaxed' },
-          '当前模块的 AI 上下文分析将在后续版本中启用。将根据所选 Tab 自动生成对应的市场解读。'),
+        h('p', { class: 'text-caption text-ai mb-3 font-mono' }, '// 快捷问题'),
+        h('div', { class: 'space-y-2' },
+          quickQuestions.value.map((q: string) =>
+            h('button', {
+              class: 'w-full text-left px-3 py-2 rounded-card bg-bg-hover text-caption text-ink-muted hover:text-white transition-colors cursor-pointer',
+              onClick: () => askQuick(q),
+            }, q)
+          )
+        ),
       ]),
     ])
   },
@@ -160,6 +179,14 @@ const TabContext = defineComponent({
 
 const chatInput = ref('')
 const chatMessages = ref<{ role: 'user' | 'ai'; text: string }[]>([])
+
+function askQuick(question: string) {
+  mode.value = 'qa'
+  chatMessages.value = [{ role: 'user' as const, text: question }, {
+    role: 'ai' as const,
+    text: '需配置 OPENROUTER_API_KEY 以启用 AI 问答功能。',
+  }]
+}
 
 const ChatPanel = defineComponent({
   setup() {
