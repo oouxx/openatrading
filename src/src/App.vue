@@ -157,7 +157,7 @@ import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
 import TabBar from './components/TabBar.vue'
 import AiSidebar from './components/AiSidebar.vue'
-import TabLimitUp from './components/tabs/TabLimitUp.vue'
+import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabSentiment from './components/tabs/TabSentiment.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
@@ -165,7 +165,7 @@ import TabAi from './components/tabs/TabAi.vue'
 import TabTgb from './components/tabs/TabTgb.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 
-const activeTab = ref('limit-up')
+const activeTab = ref('strong-stocks')
 const sidebarOpen = ref(true)
 const mobileSidebarVisible = ref(false)
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
@@ -184,7 +184,7 @@ function openKline(symbol: string, name: string) {
 provide('openKline', openKline)
 
 const tabComponents: Record<string, any> = {
-  'limit-up': TabLimitUp,
+  'strong-stocks': TabStrongStocks,
   'plate': TabPlate,
   'promotion': TabPromotion,
   'timeline': TabTimeline,
