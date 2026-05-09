@@ -9,7 +9,6 @@ tests/
 .DS_Store
 docs/*.md
 docs/*.json
-ROADMAP.md
 methodology
 
 # Allow dist/ for static deploy

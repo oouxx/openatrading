@@ -1,170 +1,116 @@
-# trending-agent
+# Trending Agent
 
-## 预览
+AI-native A 股短线交易决策工作台。「AI 情绪周期分析终端」
 
 [预览](./docs/preview.png)
 
-## 本地开发
+## 快速开始
 
-### 安装hook
-
+```bash
+# 安装 pre-commit hook
 pre-commit install
 
-### build
-
+# 构建
 cargo build
 
-### 提交前代码前运行
-
-pre-commit run --all-files
-
-## 项目描述
-trending-agent 是一个用于追踪 A 股市场异动的分析工具。它从选股宝、韭研公社、淘股吧三个数据源获取行情数据，结合 AI 的多角色分析（游资操盘手/量化分析师/风控官），生成 Markdown/HTML 报告，支持终端输出、文件保存和 Web UI 预览。
-
-## 技术栈
-- **语言**: Rust (Edition 2021)
-- **异步运行时**: Tokio
-- **HTTP 客户端**: Reqwest
-- **HTML 解析**: Scraper
-- **CLI 框架**: Clap
-- **模板引擎**: Askama (Markdown/HTML 双轨渲染)
-- **Web 框架**: Axum
-- **错误处理**: anyhow
-- **其他依赖**: Serde, Chrono, Regex
-
-## 快速开始
-以下命令来自项目文档 AGENTS.md，供快速本地构建与运行使用。
-
-### 构建
-```bash
-cargo build
-cargo build --release
-```
-
-### 运行
-```bash
+# 运行（完整报告）
 cargo run
-cargo run -- run --format both --web --port 8080
-```
 
-### 单数据源示例
-```bash
-cargo run -- limit-up
-cargo run -- limit-down
-cargo run -- overview
-cargo run -- plate-abnormal
-cargo run -- field
-cargo run -- timeline
-cargo run -- community
-```
+# 完整报告 + AI 分析 + Web UI
+cargo run -- run --ai --web --port 8080
 
-### AI 分析
-```bash
-cargo run -- sentiment
-cargo run -- technical
-cargo run -- run --ai
-```
+# Vue 前端开发
+cd src && bun install && bun run dev
 
-### 互动模式
-```bash
-cargo run -- agent
-```
-
-### 淘股吧
-```bash
-cargo run -- save-user 2577911
-```
-
-### 测试
-> 注意：韭研公社测试需要环境变量 JIUYAN_PHONE，默认 ignore
-```bash
-cargo test
-cargo test -- --ignored
-```
-
-### Docker
-```bash
+# Docker
 docker compose up -d
 ```
 
-### 静态部署（Vercel/Cloudflare Pages）
-生成静态 HTML 报告并部署到 Vercel 或 Cloudflare Pages：
+## 数据源
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
+| 数据源 | 内容 | 认证 |
+|--------|------|------|
+| 选股宝 | 涨停/跌停、板块异动、市场概览 | 公开 API |
+| 韭研公社 | 社群文章、时间线、情绪 | 手机号登录 |
+| 淘股吧 | 用户帖子、游资观点 | HTML 爬虫 |
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
+## AI 分析
 
-> **注意**：Vercel 部署时请在设置中手动添加环境变量 `OPENROUTER_API_KEY` 和 `JIUYAN_PHONE`。
+多角色 AI 分析（游资操盘手 / 量化分析师 / 风控官 / 量价低吸派），通过 OpenRouter 调用 LLM。
 
 ```bash
-# 1. 生成 HTML 报告到 dist/reports/
-cargo run -- run --format html --output ./dist/reports/
-
-# 2. 生成索引页 dist/index.html
-cargo run -- index --dir ./dist/
-
-# 3. 提交并推送（Vercel/Cloudflare 自动部署）
-git add dist/ && git commit -m "chore: update reports" && git push
+cargo run -- sentiment    # 情绪分析
+cargo run -- technical    # 技术分析
+cargo run -- run --ai     # 完整报告 + AI
+cargo run -- agent        # 交互模式
 ```
 
-目录结构：
-```
-dist/
-├── index.html          # 索引页，列出所有报告
-├── reports/          # HTML 报告
-├── vercel.json       # Vercel 配置（自动生成）
-└── _routes.json      # Cloudflare Pages 配置（自动生成）
-```
+## 技术栈
 
-目录结构：
-```
-dist/
-├── index.html          # 索引页，列出所有报告
-├── reports/          # HTML 报告
-├── vercel.json       # Vercel 配置（自动生成）
-└── _routes.json      # Cloudflare Pages 配置（自动生成）
-```
+| Layer | Tech |
+|-------|------|
+| 后端 | Rust (Cargo Workspace: core + cli + web + wasm) |
+| 前端 | Vue 3, TypeScript, Vite, TailwindCSS, Pinia, lightweight-charts |
+| 包管理 | Bun |
+| LLM | OpenRouter (deepseek/deepseek-chat) |
+| 部署 | Docker Compose, Vercel, RackNerd |
 
 ## 配置
-请在 .env 中配置以下环境变量（示例值请用实际信息替换，切勿提交敏感数据）
-```dotenv
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=deepseek/deepseek-chat
-JIUYAN_PHONE=your_phone_number
-REPORTS_DIR=./reports
-TGB_OUTPUT_DIR=./methodology/tgb/{user_id}/
-REPORT_FORMAT=markdown
-WEB_PORT=8080
+
+在 `.env` 中配置环境变量：
+
+| 变量 | 必需 | 用途 |
+|------|------|------|
+| `OPENROUTER_API_KEY` | AI 分析必需 | OpenRouter API key |
+| `OPENROUTER_MODEL` | 可选 | 默认 `deepseek/deepseek-chat` |
+| `JIUYAN_PHONE` | 韭研公社必需 | 登录手机号 |
+| `JIUYAN_PASSWORD` | 可选 | 韭研公社密码 |
+| `TAOGUBA_USER` | 可选 | 淘股吧用户名 |
+| `TAOGUBA_PASSWORD` | 可选 | 淘股吧密码 |
+
+## 常用命令
+
+```bash
+# 单数据源
+cargo run -- limit-up        # 涨停
+cargo run -- overview        # 市场概览
+cargo run -- timeline        # 时间线
+
+# 质量检查
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+cargo test -- --ignored      # 集成测试（需 JIUYAN_PHONE）
+
+# 提交前检查
+pre-commit run --all-files
 ```
-说明：
-- OPENROUTER_API_KEY 为 OpenRouter 的 API Key，必填
-- OPENROUTER_MODEL 为要使用的模型，非必填，默认为 deepseek/deepseek-chat
-- JIUYAN_PHONE 为韭研公社登录所需手机号，若未配置将跳过登录相关流程
-- REPORTS_DIR 与 TGB_OUTPUT_DIR 为输出目录，默认如上
-- REPORT_FORMAT 是输出格式，常用 markdown
-- WEB_PORT 是本地 Web 服务端口
 
-## 架构概览
-trending-agent 的核心分为 API 层、Agent 层和报告渲染层。
-- API 层：聚合来自三个数据源的客户端，形成统一的 API 接口。
-- 数据源客户端：
-  - XuanguBaoClient（选股宝，公开 API，无需登录）
-  - JiuYanSession（韭研公社，手机号登录，令牌缓存）
-  - TgbClient（淘股吧，HTML 爬虫）
-- Agent 层：负责从各数据源抽取信息、进行情感分析与技术分析并输出结构化数据。
-  - SentimentAgent（情感分析） 
-  - TechnicalAgent（技术分析） 
-  - MainAgent（整合输出，生成角色化观点）
-- LLM 集成：通过 OpenRouter 接口与多角色对话，产出分析摘要
-- 模板渲染：Askama 模板渲染 Markdown/HTML 报告
-- 输出与 Web 展示：终端输出、文件输出、Web UI
+## 架构
 
-核心模块示意：
-- src/api/：数据源聚合与 API 客户端
-- src/agents/：情感/技术分析代理
-- src/llm/openrouter.rs：LLM 接入
-- src/report/：报告聚合与渲染
-- templates/：Markdown/HTML 模板
-- web/：Axum Web 服务
+```
+crates/core/    # 业务逻辑（API 客户端 / Agent / LLM / 报告 / 模板）
+crates/cli/     # CLI 二进制
+crates/web/     # Axum Web 服务
+crates/wasm/    # WASM 绑定
+src/            # Vue 3 前端
+src-tauri/      # Tauri 桌面应用
+tests/          # 集成测试
+```
 
+`crates/core` 不含框架依赖（无 Clap/Axum/Tauri），所有交付方式都是调用 `core` 的薄封装层。
 
+更多细节 → `.claude/context/engineering.md`
+
+## 部署
+
+```bash
+# Docker
+docker compose up -d
+
+# RackNerd
+make deploy-racknerd
+
+# Vercel 静态部署
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
+```
