@@ -159,10 +159,9 @@ import TabBar from './components/TabBar.vue'
 import AiSidebar from './components/AiSidebar.vue'
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
-import TabSentiment from './components/tabs/TabSentiment.vue'
+import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
 import TabAi from './components/tabs/TabAi.vue'
-import TabTgb from './components/tabs/TabTgb.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 
 const activeTab = ref('strong-stocks')
@@ -188,9 +187,8 @@ const tabComponents: Record<string, any> = {
   'plate': TabPlate,
   'promotion': TabPromotion,
   'timeline': TabTimeline,
-  'sentiment': TabSentiment,
+  'market-intel': TabMarketIntel,
   'ai': TabAi,
-  'tgb': TabTgb,
 }
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])
