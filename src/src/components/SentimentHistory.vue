@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { createChart, LineSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts'
+import { createChart, LineSeries, type IChartApi, type Time } from 'lightweight-charts'
 
 const props = defineProps<{
   data?: { date: string; value: number }[]
