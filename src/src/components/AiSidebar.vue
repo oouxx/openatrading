@@ -130,13 +130,13 @@ const GlobalSummary = defineComponent({
 // ─── Mode 2: Tab Context ─────────────────────────────
 
 const tabLabels: Record<string, string> = {
-  'limit-up': '涨停数据',
+  'strong-stocks': '强势股',
+  'promotion': '晋级分析',
   'plate': '板块异动',
-  'promotion': '晋级',
   'timeline': '时间线',
-  'sentiment': '舆情分析',
+  'sentiment-chip': '情绪筹码',
+  'market-intel': '市场情报',
   'ai': 'AI 观点',
-  'tgb': '淘股吧',
 }
 
 const TabContext = defineComponent({
