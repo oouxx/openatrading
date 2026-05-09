@@ -68,6 +68,11 @@
               />
             </section>
 
+            <!-- ② Sentiment History Chart -->
+            <section class="px-6 pb-8">
+              <SentimentHistory :data="sentimentHistory" />
+            </section>
+
             <!-- ③ AI Market Summary -->
             <section class="px-6 pb-8">
               <div class="bg-bg-surface rounded-card border border-hairline p-card-inner">
@@ -160,6 +165,7 @@ import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
+import SentimentHistory from './components/SentimentHistory.vue'
 import TabBar from './components/TabBar.vue'
 import AiSidebar from './components/AiSidebar.vue'
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
@@ -173,6 +179,7 @@ import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
 const activeTab = ref('strong-stocks')
 const sidebarOpen = ref(true)
 const mobileSidebarVisible = ref(false)
+const sentimentHistory = ref<{date: string, value: number}[]>([])
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
 function onResize() { windowWidth.value = window.innerWidth }
