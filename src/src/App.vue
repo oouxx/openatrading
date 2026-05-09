@@ -163,6 +163,7 @@ import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
 import TabAi from './components/tabs/TabAi.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
+import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
 
 const activeTab = ref('strong-stocks')
 const sidebarOpen = ref(true)
@@ -189,6 +190,7 @@ const tabComponents: Record<string, any> = {
   'timeline': TabTimeline,
   'market-intel': TabMarketIntel,
   'ai': TabAi,
+  'sentiment-chip': TabSentimentChip,
 }
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])
