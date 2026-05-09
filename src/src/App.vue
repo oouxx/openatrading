@@ -60,6 +60,11 @@
                 :overview="overview.data"
                 :risk-level="overview.data.risk_level"
                 :decision-summary="overview.data.decision_summary"
+                :sentiment-temp="overview.data.sentiment_temp"
+                :promotion-rate="overview.data.promotion_rate"
+                :promotion-history-avg="overview.data.promotion_history_avg"
+                :net-flow="overview.data.net_flow"
+                :flow-sector="overview.data.flow_sector"
               />
             </section>
 
