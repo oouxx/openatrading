@@ -16,15 +16,15 @@
 </template>
 
 <script setup lang="ts">
-const activeTab = defineModel<string>({ default: 'limit-up' })
+const activeTab = defineModel<string>({ default: 'strong-stocks' })
 
 const tabs = [
-  { id: 'limit-up', label: '涨停数据' },
+  { id: 'strong-stocks', label: '强势股' },
+  { id: 'promotion', label: '晋级分析' },
   { id: 'plate', label: '板块异动' },
-  { id: 'promotion', label: '晋级' },
   { id: 'timeline', label: '时间线' },
-  { id: 'sentiment', label: '舆情分析' },
+  { id: 'sentiment-chip', label: '情绪筹码' },
+  { id: 'market-intel', label: '市场情报' },
   { id: 'ai', label: 'AI 观点' },
-  { id: 'tgb', label: '淘股吧' },
 ]
 </script>
