@@ -19,8 +19,8 @@
     >
       <img
         :src="gifUrl"
-        width="240"
-        height="180"
+        :width="baseWidth"
+        :height="baseHeight"
         class="rounded-[8px] block cursor-pointer"
         alt=""
         @click.stop="enlarged = true"
@@ -43,12 +43,12 @@
       >
         <img
           :src="gifUrl"
-          :style="{ width: 240 * scale + 'px', height: 180 * scale + 'px' }"
+          :style="{ width: baseWidth * scale + 'px', height: baseHeight * scale + 'px' }"
           class="rounded-[8px] block"
           alt=""
         />
         <p class="text-caption font-mono text-center text-ink-muted mt-2">
-          {{ symbol }} {{ name }}  ·  {{ scale }}x  滚轮缩放
+          {{ symbol }} {{ name }}  ·  {{ scale.toFixed(2) }}x  滚轮缩放
         </p>
       </div>
     </div>
@@ -83,7 +83,16 @@ const enlarged = ref(false)
 const scale = ref(1)
 const pos = ref({ x: 0, y: 0 })
 const trigger = ref<HTMLElement>()
+const baseWidth = 240
+const baseHeight = 180
 let timer: ReturnType<typeof setTimeout> | null = null
+
+function calcDefaultScale(): number {
+  // 1/3 of screen for both dimensions, pick the smaller
+  const w = (window.innerWidth / 3) / baseWidth
+  const h = (window.innerHeight / 3) / baseHeight
+  return Math.min(w, h)
+}
 
 function onEnter() {
   clearTimer()
@@ -106,13 +115,14 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function onWheel(e: WheelEvent) {
-  scale.value += e.deltaY < 0 ? 0.25 : -0.25
-  scale.value = Math.max(1, Math.min(4, scale.value))
+  const step = 0.5
+  scale.value += e.deltaY < 0 ? step : -step
+  scale.value = Math.max(0.5, Math.min(8, scale.value))
 }
 
 watch(enlarged, (val) => {
   if (val) {
-    scale.value = 1
+    scale.value = calcDefaultScale()
     document.addEventListener('keydown', onKeydown)
   } else {
     document.removeEventListener('keydown', onKeydown)
