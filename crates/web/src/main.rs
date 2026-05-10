@@ -213,6 +213,48 @@ async fn get_yesterday_limit_up() -> Result<impl IntoResponse, StatusCode> {
     Ok(Json(data))
 }
 
+/// GET /api/super-stock
+async fn get_super_stock() -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let data = client.fetch_super_stock().await.map_err(|e| {
+        eprintln!("super_stock error: {:#}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    Ok(Json(data))
+}
+
+/// GET /api/telegraph/:category
+async fn get_telegraph(Path(category): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    let client = ApiClient::new();
+    let data = client.cls.fetch_telegraph(&category).await.map_err(|e| {
+        eprintln!("telegraph error: {:#}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    Ok(Json(data))
+}
+
+/// GET /api/dapan-abnormal
+async fn get_dapan_abnormal() -> Result<impl IntoResponse, StatusCode> {
+    let client = ApiClient::new();
+    let data = client.xuangubao.fetch_dapan_abnormal().await.map_err(|e| {
+        eprintln!("dapan_abnormal error: {:#}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    Ok(Json(data))
+}
+/// GET /api/market-trend/:symbol
+async fn get_market_trend(Path(symbol): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    let client = ApiClient::new();
+    let data = client
+        .xuangubao
+        .fetch_market_trend(&symbol)
+        .await
+        .map_err(|e| {
+            eprintln!("market_trend error: {:#}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+    Ok(Json(data))
+}
 // ── Server ────────────────────────────────────────────
 
 async fn start_web_server(port: u16) {
@@ -232,6 +274,10 @@ async fn start_web_server(port: u16) {
         .route("/api/kline/:symbol", get(get_kline))
         .route("/api/realtime/:symbol", get(get_realtime))
         .route("/api/yesterday-limit-up", get(get_yesterday_limit_up))
+        .route("/api/super-stock", get(get_super_stock))
+        .route("/api/telegraph/:category", get(get_telegraph))
+        .route("/api/dapan-abnormal", get(get_dapan_abnormal))
+        .route("/api/market-trend/:symbol", get(get_market_trend))
         .layer(cors);
 
     let addr = format!("0.0.0.0:{}", port);
