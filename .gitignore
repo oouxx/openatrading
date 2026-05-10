@@ -30,3 +30,5 @@ certs/
 
 # claude
 ./claude/worktrees/
+
+.playwright-mcp
