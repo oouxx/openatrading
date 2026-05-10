@@ -270,7 +270,19 @@ struct AppState {
     api: ApiClient,
 }
 
-fn build_system_prompt(overview: &OverviewResponse) -> String {
+fn build_system_prompt(
+    overview: &OverviewResponse,
+    field_items: Option<&str>,
+    super_stocks: Option<&str>,
+) -> String {
+    let field_section = field_items
+        .map(|s| format!("\n## 韭研公社异动数据\n{s}\n"))
+        .unwrap_or_default();
+
+    let super_section = super_stocks
+        .map(|s| format!("\n## 强势股数据（未涨停但强）\n{s}\n"))
+        .unwrap_or_default();
+
     format!(
         r#"你是一个A股短线交易AI助手（交易副驾驶）。
 
@@ -286,11 +298,11 @@ fn build_system_prompt(overview: &OverviewResponse) -> String {
 - 下跌家数：{fall} 家
 - 涨停家数：{limit_up} 只
 - 跌停家数：{limit_down} 只
-- 炸板率：{bomb_rate}%
+- 炸板率：{bomb_rate:.1}%
 - 涨跌比：{ratio}
 - 风险等级：{risk_level}
 - 市场摘要：{summary}
-
+{field_items}{super_stocks}
 请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。"#,
         date = overview.date,
         rise = overview.rise_count,
@@ -304,6 +316,8 @@ fn build_system_prompt(overview: &OverviewResponse) -> String {
         ),
         risk_level = overview.risk_level,
         summary = overview.decision_summary,
+        field_items = field_section,
+        super_stocks = super_section,
     )
 }
 
@@ -317,7 +331,14 @@ async fn ai_chat(
         StatusCode::SERVICE_UNAVAILABLE
     })?;
 
-    let system_prompt = build_system_prompt(&overview);
+    // Fetch field items (韭研公社异动) — skip on failure
+    let field_items = fetch_field_summary(&state.api).await;
+
+    // Fetch super stocks (强势股) — skip on failure
+    let super_stocks = fetch_super_stock_summary(&state.api).await;
+
+    let system_prompt =
+        build_system_prompt(&overview, field_items.as_deref(), super_stocks.as_deref());
 
     // Build messages array: system + user
     let prompt = serde_json::json!([
@@ -356,6 +377,77 @@ async fn ai_chat(
     };
 
     Ok(Sse::new(sse_stream))
+}
+
+async fn fetch_field_summary(api: &ApiClient) -> Option<String> {
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    match api.jiuyan.fetch_field(&date, 1).await {
+        Ok(plates) if !plates.is_empty() => {
+            let lines: Vec<String> = plates
+                .iter()
+                .take(8)
+                .map(|p| {
+                    let stocks = p
+                        .list
+                        .iter()
+                        .take(5)
+                        .map(|s| {
+                            let info = s.article.as_ref().and_then(|a| a.action_info.as_ref());
+                            let num = info.and_then(|i| i.num.as_deref()).unwrap_or("-");
+                            let reason = info.and_then(|i| i.expound.as_deref()).unwrap_or("");
+                            let reason_str = if reason.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" {}", reason)
+                            };
+                            format!("{}({}){}", s.name, num, reason_str)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("、");
+                    format!(
+                        "【{plate}】{count}只 {reason} | {stocks}",
+                        plate = p.name,
+                        count = p.count,
+                        reason = p.reason,
+                        stocks = stocks,
+                    )
+                })
+                .collect();
+            Some(format!(
+                "今日异动板块（前{}个）：\n{}",
+                lines.len(),
+                lines.join("\n")
+            ))
+        }
+        _ => None,
+    }
+}
+
+async fn fetch_super_stock_summary(api: &ApiClient) -> Option<String> {
+    match api.xuangubao.fetch_super_stock().await {
+        Ok(stocks) if !stocks.is_empty() => {
+            let lines: Vec<String> = stocks
+                .iter()
+                .take(10)
+                .map(|s| {
+                    format!(
+                        "{name}({symbol}) 涨幅{change:+.1}% 换手{turnover:.1}% 市值{cap:.1}亿",
+                        name = s.stock_chi_name,
+                        symbol = s.symbol,
+                        change = s.change_percent * 100.0,
+                        turnover = s.turnover_ratio * 100.0,
+                        cap = s.total_capital / 1e8,
+                    )
+                })
+                .collect();
+            Some(format!(
+                "今日强势股（前{}只，未涨停但强）：\n{}",
+                lines.len(),
+                lines.join("\n")
+            ))
+        }
+        _ => None,
+    }
 }
 
 async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
