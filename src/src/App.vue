@@ -95,11 +95,12 @@
             </section>
           </div>
 
-          <!-- Right Column: AI Sidebar (desktop 32%) -->
+          <!-- Right Column: AI Sidebar (desktop 35%, sticky) -->
           <aside
             v-show="sidebarOpen"
-            class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300"
+            class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300 sticky top-11 self-start"
             :class="sidebarOpen ? 'w-[35%]' : 'w-0 overflow-hidden border-l-0'"
+            style="height: calc(100vh - 44px)"
           >
             <div class="h-full flex flex-col">
               <div class="flex-shrink-0">
