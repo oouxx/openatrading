@@ -25,6 +25,5 @@ const tabs = [
   { id: 'timeline', label: '时间线' },
   { id: 'sentiment-chip', label: '情绪筹码' },
   { id: 'market-intel', label: '市场情报' },
-  { id: 'ai', label: 'AI 观点' },
 ]
 </script>

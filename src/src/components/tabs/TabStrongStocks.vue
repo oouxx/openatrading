@@ -168,11 +168,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, inject, onMounted } from 'vue'
+import { computed, ref, inject, onMounted, watch } from 'vue'
 import { limitUp, fieldItems, overview, fetchLimitUp, fetchFieldItems } from '@/stores/data'
 import MiniChartPreview from '@/components/MiniChartPreview.vue'
 
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
+const setSubView = inject<(v: string) => void>('setSubView', () => {})
 const hideST = ref(true)
 
 const fieldDate = computed({
@@ -204,6 +205,9 @@ const subViews = computed(() => [
   { id: 'limit-up' as const, label: '涨停股', count: `${displayStocks.value.length}只` },
   { id: 'strong-pool' as const, label: '强势股池', count: '-- 只' },
 ])
+
+// Report sub-view to AiSidebar
+watch(activeSubView, (v) => setSubView(v), { immediate: true })
 
 // Filter pills
 const activeFilter = ref('all')
