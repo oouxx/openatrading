@@ -52,18 +52,50 @@ pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 pub struct LlmClient {
     client: Client,
     api_key: String,
+    api_endpoint: String,
     model: String,
 }
 
 impl LlmClient {
-    pub fn new(api_key: String) -> Self {
-        let model = std::env::var("OPENROUTER_MODEL")
-            .unwrap_or_else(|_| "deepseek/deepseek-chat".to_string());
+    /// Create from env vars:
+    /// - `LLM_API_ENDPOINT` default: DeepSeek (auto-switches to OpenRouter if only OPENROUTER_API_KEY set)
+    /// - `LLM_API_KEY` priority: LLM_API_KEY > DEEPSEEK_API_KEY > OPENROUTER_API_KEY
+    /// - `LLM_MODEL` default: deepseek-chat
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("LLM_API_KEY")
+            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
+            .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
+            .unwrap_or_default();
+
+        // If using OpenRouter key but no LLM_API_ENDPOINT set, use OpenRouter endpoint
+        let default_endpoint = if std::env::var("OPENROUTER_API_KEY").is_ok()
+            && std::env::var("DEEPSEEK_API_KEY").is_err()
+            && std::env::var("LLM_API_KEY").is_err()
+        {
+            "https://openrouter.ai/api/v1/chat/completions"
+        } else {
+            "https://api.deepseek.com/v1/chat/completions"
+        };
+
+        let api_endpoint =
+            std::env::var("LLM_API_ENDPOINT").unwrap_or_else(|_| default_endpoint.to_string());
+
+        let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "deepseek-chat".to_string());
+
         Self {
             client: Client::new(),
             api_key,
+            api_endpoint,
             model,
         }
+    }
+
+    pub fn new(api_key: String) -> Self {
+        let mut c = Self::from_env();
+        if !api_key.is_empty() {
+            c.api_key = api_key;
+        }
+        c
     }
 
     pub async fn chat(&self, prompt: &str) -> Result<String> {
@@ -80,7 +112,7 @@ impl LlmClient {
 
         let resp: ChatResponse = self
             .client
-            .post("https://openrouter.ai/api/v1/chat/completions")
+            .post(&self.api_endpoint)
             .bearer_auth(&self.api_key)
             .json(&req)
             .send()
@@ -92,7 +124,6 @@ impl LlmClient {
     }
 
     pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
-        // messages_json is a JSON array of {"role", "content"} objects
         let body = serde_json::json!({
             "model": self.model,
             "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
@@ -104,7 +135,7 @@ impl LlmClient {
 
         let resp = self
             .client
-            .post("https://openrouter.ai/api/v1/chat/completions")
+            .post(&self.api_endpoint)
             .bearer_auth(&self.api_key)
             .header("Content-Type", "application/json")
             .body(body)
@@ -162,7 +193,7 @@ impl LlmClient {
 
         let resp = self
             .client
-            .post("https://openrouter.ai/api/v1/chat/completions")
+            .post(&self.api_endpoint)
             .bearer_auth(&self.api_key)
             .json(&req)
             .send()
