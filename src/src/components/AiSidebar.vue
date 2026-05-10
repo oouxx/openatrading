@@ -1,73 +1,56 @@
 <template>
-  <div class="h-full flex flex-col bg-bg-surface" style="min-height: calc(100vh - 44px)">
-    <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-hairline">
-      <div class="flex items-center gap-2">
-        <span class="w-1.5 h-1.5 rounded-full bg-ai"></span>
-        <span class="text-caption-strong text-white font-mono">AI 问答</span>
+  <div class="h-full flex flex-col">
+    <!-- Messages -->
+    <div ref="msgContainer" class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div v-if="messages.length === 0" class="text-center py-8">
+        <p class="text-caption text-ink-muted mb-3">AI 交易副驾驶</p>
+        <p class="text-caption text-ink-muted text-sm">结合实时行情数据，回答短线市场问题</p>
+        <div class="mt-4 space-y-2">
+          <button
+            v-for="q in suggestedQuestions"
+            :key="q"
+            @click="send(q)"
+            class="w-full text-left px-3 py-2 rounded-card bg-bg-hover text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
+          >
+            {{ q }}
+          </button>
+        </div>
       </div>
-      <button
-        @click="$emit('close')"
-        class="text-ink-muted hover:text-white text-sm cursor-pointer transition-colors"
+
+      <div
+        v-for="(msg, idx) in messages"
+        :key="idx"
+        class="px-3 py-2 rounded-card text-caption"
+        :class="msg.role === 'user'
+          ? 'bg-ai/15 text-white ml-8'
+          : 'bg-bg border border-hairline text-white/80 mr-4'"
       >
-        ✕
-      </button>
+        <div v-if="msg.role === 'ai'" v-html="renderMarkdown(msg.text)"></div>
+        <div v-else>{{ msg.text }}</div>
+      </div>
+
+      <!-- Streaming indicator -->
+      <div v-if="streaming" class="px-3 py-2 rounded-card text-caption bg-bg border border-hairline text-ai mr-4">
+        <span class="animate-pulse">▌</span>
+      </div>
     </div>
 
-    <!-- Chat Area -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Messages -->
-      <div ref="msgContainer" class="flex-1 overflow-y-auto p-4 space-y-3">
-        <div v-if="messages.length === 0" class="text-center py-8">
-          <p class="text-caption text-ink-muted mb-3">AI 交易副驾驶</p>
-          <p class="text-caption text-ink-muted text-sm">结合实时行情数据，回答短线市场问题</p>
-          <div class="mt-4 space-y-2">
-            <button
-              v-for="q in suggestedQuestions"
-              :key="q"
-              @click="send(q)"
-              class="w-full text-left px-3 py-2 rounded-card bg-bg-hover text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
-            >
-              {{ q }}
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-for="(msg, idx) in messages"
-          :key="idx"
-          class="px-3 py-2 rounded-card text-caption"
-          :class="msg.role === 'user'
-            ? 'bg-ai/15 text-white ml-8'
-            : 'bg-bg border border-hairline text-white/80 mr-4'"
-        >
-          <div v-if="msg.role === 'ai'" v-html="renderMarkdown(msg.text)"></div>
-          <div v-else>{{ msg.text }}</div>
-        </div>
-
-        <!-- Streaming indicator -->
-        <div v-if="streaming" class="px-3 py-2 rounded-card text-caption bg-bg border border-hairline text-ai mr-4">
-          <span class="animate-pulse">▌</span>
-        </div>
-      </div>
-
-      <!-- Input -->
-      <div class="flex gap-2 p-3 border-t border-hairline">
-        <input
-          v-model="input"
-          class="flex-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white placeholder-ink-muted outline-none focus:border-ai/50 transition-colors font-mono"
-          placeholder="问任何短线问题..."
-          @keydown="onKeydown"
-          :disabled="streaming"
-        />
-        <button
-          @click="send()"
-          :disabled="streaming || !input.trim()"
-          class="px-4 py-2 bg-ai/20 text-ai rounded-button text-caption font-mono hover:bg-ai/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          发送
-        </button>
-      </div>
+    <!-- Input -->
+    <div class="flex gap-2 p-3 border-t border-hairline flex-shrink-0">
+      <input
+        v-model="input"
+        class="flex-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white placeholder-ink-muted outline-none focus:border-ai/50 transition-colors font-mono"
+        placeholder="问任何短线问题..."
+        @keydown="onKeydown"
+        :disabled="streaming"
+      />
+      <button
+        @click="send()"
+        :disabled="streaming || !input.trim()"
+        class="px-4 py-2 bg-ai/20 text-ai rounded-button text-caption font-mono hover:bg-ai/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        发送
+      </button>
     </div>
   </div>
 </template>
@@ -75,7 +58,9 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 
-defineEmits<{ close: [] }>()
+defineProps<{
+  overview?: any
+}>()
 
 const input = ref('')
 const messages = ref<{ role: 'user' | 'ai'; text: string }[]>([])
@@ -184,7 +169,6 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function renderMarkdown(text: string): string {
-  // Simple markdown: bold, bullet points, newlines
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
     .replace(/^- (.+)$/gm, '<span class="text-ai">•</span> $1')

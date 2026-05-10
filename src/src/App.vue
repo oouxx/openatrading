@@ -50,116 +50,93 @@
 
       <!-- Content -->
       <template v-if="overview.data">
-        <div class="flex max-w-[1600px] mx-auto">
-          <!-- Left Column: Main Content (68%) -->
-          <div class="flex-1 min-w-0 lg:max-w-[65%]">
+        <!-- ① Market Status + ② KPI -->
+        <section class="max-w-[1600px] mx-auto px-6 py-section-y">
+          <KpiCards
+            :overview="overview.data"
+            :risk-level="overview.data.risk_level"
+            :decision-summary="overview.data.decision_summary"
+            :sentiment-temp="overview.data.sentiment_temp"
+            :promotion-rate="overview.data.promotion_rate"
+            :promotion-history-avg="overview.data.promotion_history_avg"
+            :net-flow="overview.data.net_flow"
+            :flow-sector="overview.data.flow_sector"
+          />
+        </section>
 
-            <!-- ① Market Status + ② KPI -->
-            <section class="px-6 py-section-y">
-              <KpiCards
-                :overview="overview.data"
-                :risk-level="overview.data.risk_level"
-                :decision-summary="overview.data.decision_summary"
-                :sentiment-temp="overview.data.sentiment_temp"
-                :promotion-rate="overview.data.promotion_rate"
-                :promotion-history-avg="overview.data.promotion_history_avg"
-                :net-flow="overview.data.net_flow"
-                :flow-sector="overview.data.flow_sector"
-              />
-            </section>
+        <!-- ② Sentiment History Chart -->
+        <section class="max-w-[1600px] mx-auto px-6 pb-8">
+          <SentimentHistory :data="sentimentHistory" />
+        </section>
 
-            <!-- ② Sentiment History Chart -->
-            <section class="px-6 pb-8">
-              <SentimentHistory :data="sentimentHistory" />
-            </section>
-
-            <!-- ③ AI Market Summary -->
-            <section class="px-6 pb-8">
-              <div class="bg-bg-surface rounded-card border border-hairline p-card-inner">
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-ai"></span>
-                  <span class="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">AI 市场摘要</span>
-                </div>
-                <p class="text-body text-white/80 leading-relaxed">{{ overview.data.decision_summary || '等待数据...' }}</p>
-              </div>
-            </section>
-
-            <!-- ④ Tab Bar + Content -->
-            <div class="sticky z-40 top-11 bg-bg border-b border-hairline">
-              <div class="px-6">
-                <TabBar v-model="activeTab" />
-              </div>
+        <!-- ③ AI Market Summary -->
+        <section class="max-w-[1600px] mx-auto px-6 pb-8">
+          <div class="bg-bg-surface rounded-card border border-hairline p-card-inner">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-ai"></span>
+              <span class="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">AI 市场摘要</span>
             </div>
-            <section class="min-h-[60vh] px-6 py-6">
-              <component :is="currentTabComponent" />
-            </section>
+            <p class="text-body text-white/80 leading-relaxed">{{ overview.data.decision_summary || '等待数据...' }}</p>
           </div>
+        </section>
 
-          <!-- Right Column: AI Sidebar (desktop 35%, sticky) -->
-          <aside
-            v-show="sidebarOpen"
-            class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300 sticky top-11 self-start"
-            :class="sidebarOpen ? 'w-[35%]' : 'w-0 overflow-hidden border-l-0'"
-            style="height: calc(100vh - 44px)"
-          >
-            <div class="h-full flex flex-col">
-              <div class="flex-shrink-0">
-                <NewsFeed />
-              </div>
-              <div class="flex-1 min-h-0">
-                <AiSidebar
-                  :overview="overview.data"
-                  @close="sidebarOpen = false"
-                />
-              </div>
-            </div>
-          </aside>
-
-          <!-- Mobile Sidebar Overlay -->
-          <Teleport to="body">
-            <div
-              v-if="sidebarOpen && mobileSidebarVisible"
-              class="fixed inset-0 z-50 lg:hidden"
-            >
-              <div @click="mobileSidebarVisible = false" class="absolute inset-0 bg-black/50"></div>
-              <div class="absolute top-11 right-0 h-[calc(100vh-44px)] w-[85vw] max-w-[400px] shadow-terminal-lg border-l border-hairline bg-bg-surface flex flex-col">
-                <div class="flex-shrink-0">
-                  <NewsFeed />
-                </div>
-                <div class="flex-1 min-h-0">
-                  <AiSidebar
-                    :overview="overview.data"
-                    @close="mobileSidebarVisible = false"
-                  />
-                </div>
-              </div>
-            </div>
-          </Teleport>
+        <!-- ④ Tab Bar + Content -->
+        <div class="sticky z-40 top-11 bg-bg border-b border-hairline">
+          <div class="max-w-[1600px] mx-auto px-6">
+            <TabBar v-model="activeTab" />
+          </div>
         </div>
+        <section class="max-w-[1600px] mx-auto min-h-[60vh] px-6 py-6">
+          <component :is="currentTabComponent" />
+        </section>
       </template>
     </main>
 
-    <!-- AI Sidebar Toggle (when sidebar collapsed) -->
+    <!-- Floating AI Robot Button -->
     <button
-      v-if="overview.data && !sidebarOpen"
-      @click="sidebarOpen = true"
-      class="fixed right-3 top-1/2 -translate-y-1/2 z-30 px-3 py-2 rounded-button
-             bg-ai/15 text-ai border border-ai/25 text-caption font-mono
-             hover:bg-ai/25 transition-colors cursor-pointer"
+      v-if="overview.data"
+      @click="showAiChat = true"
+      class="fixed right-5 bottom-8 z-40 w-14 h-14 rounded-full
+             bg-ai shadow-terminal-lg border-2 border-ai/30
+             flex items-center justify-center text-2xl
+             hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+      title="AI 交易副驾驶"
     >
-      AI
+      🤖
     </button>
 
-    <!-- Mobile AI Sidebar Toggle (always visible on small screens) -->
-    <button
-      v-if="overview.data && windowWidth < 1024"
-      @click="mobileSidebarVisible = true"
-      class="fixed right-3 top-1/2 -translate-y-1/2 z-30 px-3 py-2 rounded-button
-             bg-ai/15 text-ai border border-ai/25 text-caption font-mono
-             hover:bg-ai/25 transition-colors cursor-pointer lg:hidden"
-    >
-      AI
-    </button>
+    <!-- AI Chat Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="showAiChat"
+        class="fixed inset-0 z-[80] flex items-center justify-center"
+        @click.self="showAiChat = false"
+      >
+        <div
+          class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg flex flex-col"
+          style="width: 480px; max-width: 90vw; height: 600px; max-height: 80vh"
+        >
+          <!-- Dialog Header -->
+          <div class="flex items-center justify-between px-4 py-3 border-b border-hairline flex-shrink-0">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🤖</span>
+              <span class="text-caption-strong text-white font-mono">AI 交易副驾驶</span>
+            </div>
+            <button
+              @click="showAiChat = false"
+              class="text-ink-muted hover:text-white text-sm cursor-pointer transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          <!-- Chat Body -->
+          <div class="flex-1 min-h-0">
+            <AiChatPanel :overview="overview.data" />
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- K-line Drawer -->
     <KlineDrawer
@@ -172,14 +149,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
+import { ref, computed, provide } from 'vue'
 import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
 import SentimentHistory from './components/SentimentHistory.vue'
 import TabBar from './components/TabBar.vue'
-import AiSidebar from './components/AiSidebar.vue'
-import NewsFeed from './components/NewsFeed.vue'
+import AiChatPanel from './components/AiSidebar.vue'
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
@@ -188,16 +164,8 @@ import TabPromotion from './components/tabs/TabPromotion.vue'
 import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
 
 const activeTab = ref('strong-stocks')
-const sidebarOpen = ref(true)
-const mobileSidebarVisible = ref(false)
+const showAiChat = ref(false)
 const sentimentHistory = ref<{date: string, value: number}[]>([])
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-
-function onResize() { windowWidth.value = window.innerWidth }
-onMounted(() => {
-  window.addEventListener('resize', onResize)
-})
-onUnmounted(() => window.removeEventListener('resize', onResize))
 
 // K-line drawer state
 const klineSymbol = ref('')
