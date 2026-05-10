@@ -96,7 +96,7 @@ async function send(question?: string) {
     })
 
     if (!resp.ok) {
-      updateLastMessage('[错误] AI 服务不可用，请检查 OPENROUTER_API_KEY 配置')
+      updateLastMessage('[错误] AI 服务不可用，请检查 LLM_API_KEY 配置')
       streaming.value = false
       return
     }

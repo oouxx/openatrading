@@ -430,9 +430,8 @@ async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse
 // ── Server ────────────────────────────────────────────
 
 async fn start_web_server(port: u16) {
-    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
     let state = Arc::new(AppState {
-        llm: LlmClient::new(api_key),
+        llm: LlmClient::from_env(),
         api: ApiClient::new(),
     });
 
