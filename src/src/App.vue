@@ -9,21 +9,6 @@
           </h1>
         </div>
 
-        <!-- Mode Selector -->
-        <div class="flex items-center gap-1">
-          <button
-            v-for="m in modes"
-            :key="m.id"
-            @click="activeMode = m.id"
-            class="px-3 py-1 rounded-button text-nav-link font-mono transition-colors cursor-pointer"
-            :class="activeMode === m.id
-              ? 'bg-ai/20 text-ai'
-              : 'text-ink-muted hover:text-white/80'"
-          >
-            {{ m.label }}
-          </button>
-        </div>
-
         <div class="flex items-center gap-4">
           <span v-if="overview.data" class="text-nav-link font-mono text-white/60">
             {{ overview.data.date }}
@@ -67,7 +52,7 @@
       <template v-if="overview.data">
         <div class="flex max-w-[1600px] mx-auto">
           <!-- Left Column: Main Content (68%) -->
-          <div class="flex-1 min-w-0 lg:max-w-[68%]">
+          <div class="flex-1 min-w-0 lg:max-w-[65%]">
 
             <!-- ① Market Status + ② KPI -->
             <section class="px-6 py-section-y">
@@ -114,7 +99,7 @@
           <aside
             v-show="sidebarOpen"
             class="hidden lg:block flex-shrink-0 border-l border-hairline transition-all duration-300"
-            :class="sidebarOpen ? 'w-[32%]' : 'w-0 overflow-hidden border-l-0'"
+            :class="sidebarOpen ? 'w-[35%]' : 'w-0 overflow-hidden border-l-0'"
           >
             <div class="h-full flex flex-col">
               <div class="flex-shrink-0">
@@ -123,6 +108,7 @@
               <div class="flex-1 min-h-0">
                 <AiSidebar
                   :active-tab="activeTab"
+                  :sub-view="currentSubView"
                   :overview="overview.data"
                   @close="sidebarOpen = false"
                 />
@@ -144,6 +130,7 @@
                 <div class="flex-1 min-h-0">
                   <AiSidebar
                     :active-tab="activeTab"
+                    :sub-view="currentSubView"
                     :overview="overview.data"
                     @close="mobileSidebarVisible = false"
                   />
@@ -188,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, watch } from 'vue'
 import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
@@ -200,7 +187,6 @@ import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
-import TabAi from './components/tabs/TabAi.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
 
@@ -210,26 +196,9 @@ const mobileSidebarVisible = ref(false)
 const sentimentHistory = ref<{date: string, value: number}[]>([])
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
-const activeMode = ref<'pre' | 'live' | 'review'>('live')
-
-const modes = [
-  { id: 'pre' as const, label: '盘前' },
-  { id: 'live' as const, label: '盘中' },
-  { id: 'review' as const, label: '复盘' },
-]
-
-function detectMode() {
-  const now = new Date()
-  const mins = now.getHours() * 60 + now.getMinutes()
-  if (mins >= 9 * 60 + 30 && mins < 15 * 60 + 5) activeMode.value = 'live'
-  else if (mins >= 15 * 60 + 30 || mins < 9 * 60) activeMode.value = 'review'
-  else activeMode.value = 'pre'
-}
-
 function onResize() { windowWidth.value = window.innerWidth }
 onMounted(() => {
   window.addEventListener('resize', onResize)
-  detectMode()
 })
 onUnmounted(() => window.removeEventListener('resize', onResize))
 
@@ -241,6 +210,9 @@ function openKline(symbol: string, name: string) {
   klineName.value = name
 }
 provide('openKline', openKline)
+const currentSubView = ref('')
+provide('setSubView', (v: string) => { currentSubView.value = v })
+watch(activeTab, (tab) => { if (tab !== 'strong-stocks') currentSubView.value = '' })
 
 const tabComponents: Record<string, any> = {
   'strong-stocks': TabStrongStocks,
@@ -248,7 +220,6 @@ const tabComponents: Record<string, any> = {
   'promotion': TabPromotion,
   'timeline': TabTimeline,
   'market-intel': TabMarketIntel,
-  'ai': TabAi,
   'sentiment-chip': TabSentimentChip,
 }
 

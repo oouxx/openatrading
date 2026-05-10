@@ -31,17 +31,14 @@
 
     <!-- Content Area -->
     <div class="flex-1 overflow-y-auto p-4 space-y-4">
-      <!-- Mode 1: Global Summary -->
       <div v-if="mode === 'global_summary'">
         <GlobalSummary :overview="overview" />
       </div>
 
-      <!-- Mode 2: Tab Context -->
       <div v-else-if="mode === 'tab_context'">
-        <TabContext :active-tab="activeTab" />
+        <TabContext :active-tab="activeTab" :sub-view="subView" />
       </div>
 
-      <!-- Mode 3: Q&A -->
       <div v-else class="flex flex-col" style="height: calc(100vh - 188px)">
         <ChatPanel />
       </div>
@@ -54,6 +51,7 @@ import { ref, defineComponent, h, computed } from 'vue'
 
 defineProps<{
   activeTab: string
+  subView?: string
   overview: any
 }>()
 
@@ -86,7 +84,6 @@ const GlobalSummary = defineComponent({
     })
 
     return () => h('div', { class: 'space-y-4' }, [
-      // Risk Level
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
         h('p', { class: 'text-caption text-ink-muted mb-2' }, '风险等级'),
         h('div', { class: 'flex items-center gap-3' }, [
@@ -96,8 +93,6 @@ const GlobalSummary = defineComponent({
           h('span', { class: 'text-caption text-ink-muted' }, props.overview?.decision_summary || ''),
         ]),
       ]),
-
-      // KPI Snapshot
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
         h('p', { class: 'text-caption text-ink-muted mb-3' }, '市场快照'),
         h('div', { class: 'grid grid-cols-2 gap-3' }, [
@@ -136,29 +131,40 @@ const tabLabels: Record<string, string> = {
   'timeline': '时间线',
   'sentiment-chip': '情绪筹码',
   'market-intel': '市场情报',
-  'ai': 'AI 观点',
 }
 
 const TabContext = defineComponent({
-  props: { activeTab: String },
+  props: { activeTab: String, subView: String },
   setup(props: any) {
     const quickQuestions = computed(() => {
+      if (props.activeTab === 'strong-stocks') {
+        if (props.subView === 'strong-pool') {
+          return ['这只强势股明天有补涨机会吗？', '今天没涨停但强的逻辑是什么？', '主力今天在布局什么？']
+        }
+        return ['这只龙头明天能打吗？', '今天适合打板吗？', '哪个板块明天可能接力？']
+      }
       const map: Record<string, string[]> = {
-        'strong-stocks': ['这只龙头明天能打吗？', '今天适合打板吗？', '哪个板块明天可能接力？'],
         'promotion': ['历史上4板胜率怎么样？', '现在应该几成仓？', '晋级率下降说明什么？'],
         'plate': ['哪个板块明天可能接力？', '轮动路径怎么看？', '今天为什么这个板块涨？'],
         'timeline': ['今天资金节奏怎么样？', '午后有没有加速信号？', '明天早盘怎么看？'],
         'sentiment-chip': ['情绪能持续几天？', '筹码结构健康吗？', '现在偏热还是偏冷？'],
         'market-intel': ['论坛情绪是否过热？', '题材还能持续吗？', '散户在讨论什么？'],
-        'ai': ['帮我总结今日行情', '明天操作方向', '市场风险在哪？'],
       }
       return map[props.activeTab] || []
+    })
+
+    const displayLabel = computed(() => {
+      if (props.activeTab === 'strong-stocks' && props.subView) {
+        const sv = props.subView === 'strong-pool' ? '强势股池' : '涨停股'
+        return `${tabLabels[props.activeTab]} · ${sv}`
+      }
+      return tabLabels[props.activeTab] || props.activeTab
     })
 
     return () => h('div', { class: 'space-y-3' }, [
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
         h('p', { class: 'text-caption text-ink-muted mb-1' }, '当前模块'),
-        h('p', { class: 'text-body-strong text-white' }, tabLabels[props.activeTab] || props.activeTab),
+        h('p', { class: 'text-body-strong text-white' }, displayLabel.value),
       ]),
       h('div', { class: 'bg-bg rounded-card border border-hairline p-card-inner' }, [
         h('p', { class: 'text-caption text-ai mb-3 font-mono' }, '// 快捷问题'),
@@ -201,7 +207,6 @@ const ChatPanel = defineComponent({
     }
 
     return () => h('div', { class: 'flex flex-col h-full' }, [
-      // Messages
       h('div', { class: 'flex-1 overflow-y-auto space-y-3 mb-3' }, [
         chatMessages.value.length === 0
           ? h('p', { class: 'text-caption text-ink-muted text-center py-8' }, '向 AI 提问市场相关问题')
@@ -213,7 +218,6 @@ const ChatPanel = defineComponent({
               }, msg.text)
             ),
       ]),
-      // Input
       h('div', { class: 'flex gap-2' }, [
         h('input', {
           class: 'flex-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white placeholder-ink-muted outline-none focus:border-ai/50 transition-colors font-mono',
