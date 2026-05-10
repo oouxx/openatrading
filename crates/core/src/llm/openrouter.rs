@@ -127,7 +127,7 @@ impl LlmClient {
         let body = serde_json::json!({
             "model": self.model,
             "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
-            "max_tokens": 600,
+            "max_tokens": 4096,
             "temperature": 0.7,
             "stream": true,
         })
@@ -142,38 +142,57 @@ impl LlmClient {
             .send()
             .await?;
 
-        let stream = resp.bytes_stream().map(|chunk| match chunk {
-            Ok(bytes) => {
-                let text = String::from_utf8_lossy(&bytes).to_string();
-                let mut content = String::new();
+        use std::cell::RefCell;
 
-                for line in text.lines() {
-                    if line.starts_with("data: ") {
-                        let data = line.trim_start_matches("data: ");
-                        if data == "[DONE]" {
-                            continue;
-                        }
-                        if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
-                            if let Some(choices) = chunk.choices {
-                                for choice in choices {
-                                    if let Some(delta) = choice.delta {
-                                        if let Some(c) = delta.content {
-                                            content.push_str(&c);
+        let buf = RefCell::new(String::new());
+
+        let stream = resp.bytes_stream().map(move |chunk| {
+            match chunk {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes).to_string();
+                    let mut content = String::new();
+
+                    // Prepend any partial line from previous chunk
+                    let mut prev = buf.borrow_mut();
+                    let merged = format!("{}{}", *prev, text);
+
+                    let mut lines: Vec<&str> = merged.lines().collect();
+
+                    // Last line may be incomplete — save for next chunk
+                    if merged.ends_with('\n') {
+                        prev.clear();
+                    } else {
+                        *prev = lines.pop().unwrap_or("").to_string();
+                    }
+
+                    for line in lines {
+                        if line.starts_with("data: ") {
+                            let data = line.trim_start_matches("data: ");
+                            if data == "[DONE]" {
+                                continue;
+                            }
+                            if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
+                                if let Some(choices) = chunk.choices {
+                                    for choice in choices {
+                                        if let Some(delta) = choice.delta {
+                                            if let Some(c) = delta.content {
+                                                content.push_str(&c);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                if !content.is_empty() {
-                    Ok(content)
-                } else {
-                    Ok(String::new())
+                    if !content.is_empty() {
+                        Ok(content)
+                    } else {
+                        Ok(String::new())
+                    }
                 }
+                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
             }
-            Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
         });
 
         Ok(Box::pin(stream))
@@ -186,7 +205,7 @@ impl LlmClient {
                 role: "user".to_string(),
                 content: prompt.to_string(),
             }],
-            max_tokens: 400,
+            max_tokens: 4096,
             temperature: 0.7,
             stream: true,
         };
@@ -199,12 +218,25 @@ impl LlmClient {
             .send()
             .await?;
 
-        let stream = resp.bytes_stream().map(|chunk| match chunk {
+        use std::cell::RefCell;
+        let buf = RefCell::new(String::new());
+
+        let stream = resp.bytes_stream().map(move |chunk| match chunk {
             Ok(bytes) => {
                 let text = String::from_utf8_lossy(&bytes).to_string();
                 let mut content = String::new();
 
-                for line in text.lines() {
+                let mut prev = buf.borrow_mut();
+                let merged = format!("{}{}", *prev, text);
+
+                let mut lines: Vec<&str> = merged.lines().collect();
+                if merged.ends_with('\n') {
+                    prev.clear();
+                } else {
+                    *prev = lines.pop().unwrap_or("").to_string();
+                }
+
+                for line in lines {
                     if line.starts_with("data: ") {
                         let data = line.trim_start_matches("data: ");
                         if data == "[DONE]" {
