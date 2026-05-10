@@ -107,8 +107,6 @@
               </div>
               <div class="flex-1 min-h-0">
                 <AiSidebar
-                  :active-tab="activeTab"
-                  :sub-view="currentSubView"
                   :overview="overview.data"
                   @close="sidebarOpen = false"
                 />
@@ -129,8 +127,6 @@
                 </div>
                 <div class="flex-1 min-h-0">
                   <AiSidebar
-                    :active-tab="activeTab"
-                    :sub-view="currentSubView"
                     :overview="overview.data"
                     @close="mobileSidebarVisible = false"
                   />
@@ -175,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { overview, fetchOverview } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
@@ -210,9 +206,6 @@ function openKline(symbol: string, name: string) {
   klineName.value = name
 }
 provide('openKline', openKline)
-const currentSubView = ref('')
-provide('setSubView', (v: string) => { currentSubView.value = v })
-watch(activeTab, (tab) => { if (tab !== 'strong-stocks') currentSubView.value = '' })
 
 const tabComponents: Record<string, any> = {
   'strong-stocks': TabStrongStocks,

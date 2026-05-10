@@ -1,16 +1,19 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
-    routing::get,
+    response::{sse::Event, IntoResponse, Sse},
+    routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
+use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use trending_agent_core::api::Client as ApiClient;
+use trending_agent_core::llm::openrouter::LlmClient;
 
 // ── Response types ────────────────────────────────────
 
@@ -255,9 +258,148 @@ async fn get_market_trend(Path(symbol): Path<String>) -> Result<impl IntoRespons
         })?;
     Ok(Json(data))
 }
+// ── AI Chat (SSE) ─────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ChatRequest {
+    message: String,
+}
+
+struct AppState {
+    llm: LlmClient,
+    api: ApiClient,
+}
+
+fn build_system_prompt(overview: &OverviewResponse) -> String {
+    format!(
+        r#"你是一个A股短线交易AI助手（交易副驾驶）。
+
+## 核心原则
+- 红涨绿跌（A股规则），上涨=红色，下跌=绿色
+- 你可以分析市场、解释行情、识别风险，但**禁止给出明确买卖建议**
+- 禁止保证收益、预测具体涨跌点位、使用夸张营销语言
+- 用简洁专业的短线交易者语言回答，直击要点
+
+## 当前市场数据
+- 日期：{date}
+- 上涨家数：{rise} 家
+- 下跌家数：{fall} 家
+- 涨停家数：{limit_up} 只
+- 跌停家数：{limit_down} 只
+- 炸板率：{bomb_rate}%
+- 涨跌比：{ratio}
+- 风险等级：{risk_level}
+- 市场摘要：{summary}
+
+请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。"#,
+        date = overview.date,
+        rise = overview.rise_count,
+        fall = overview.fall_count,
+        limit_up = overview.limit_up_count,
+        limit_down = overview.limit_down_count,
+        bomb_rate = overview.bomb_rate,
+        ratio = format!(
+            "{:.2}",
+            overview.rise_count as f64 / overview.fall_count.max(1) as f64
+        ),
+        risk_level = overview.risk_level,
+        summary = overview.decision_summary,
+    )
+}
+
+async fn ai_chat(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ChatRequest>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    // Fetch market overview for system prompt
+    let overview = fetch_overview_data(&state.api).await.map_err(|e| {
+        eprintln!("ai_chat: overview error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+
+    let system_prompt = build_system_prompt(&overview);
+
+    // Build messages array: system + user
+    let prompt = serde_json::json!([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": req.message}
+    ])
+    .to_string();
+
+    // Call LLM streaming
+    let mut llm_stream = state
+        .llm
+        .chat_stream_with_messages(&prompt)
+        .await
+        .map_err(|e| {
+            eprintln!("ai_chat: llm error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+
+    // Convert to SSE stream
+    use futures::StreamExt;
+
+    let sse_stream = async_stream::stream! {
+        while let Some(chunk) = llm_stream.next().await {
+            match chunk {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        yield Ok(Event::default().data(text));
+                    }
+                }
+                Err(e) => {
+                    yield Ok(Event::default().data(format!("[ERROR] {}", e)));
+                }
+            }
+        }
+        yield Ok(Event::default().data("[DONE]"));
+    };
+
+    Ok(Sse::new(sse_stream))
+}
+
+async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
+    let overview = api.xuangubao.fetch_market_overview().await?;
+
+    let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+    let risk_level = if ratio < 0.8 && overview.bomb_rate > 30.0 {
+        "高"
+    } else if ratio < 1.2 || overview.bomb_rate > 20.0 {
+        "中"
+    } else {
+        "低"
+    };
+
+    let decision_summary = format!(
+        "风险等级：{}；上涨{}家，下跌{}家，涨停{}只，跌停{}只",
+        risk_level,
+        overview.rise_count,
+        overview.fall_count,
+        overview.limit_up_count,
+        overview.limit_down_count,
+    );
+
+    Ok(OverviewResponse {
+        date: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+        rise_count: overview.rise_count,
+        fall_count: overview.fall_count,
+        limit_up_count: overview.limit_up_count,
+        limit_down_count: overview.limit_down_count,
+        bomb_rate: overview.bomb_rate,
+        risk_level: risk_level.to_string(),
+        decision_summary,
+    })
+}
+
 // ── Server ────────────────────────────────────────────
 
 async fn start_web_server(port: u16) {
+    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
+    let state = Arc::new(AppState {
+        llm: LlmClient::new(api_key),
+        api: ApiClient::new(),
+    });
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -278,6 +420,8 @@ async fn start_web_server(port: u16) {
         .route("/api/telegraph/:category", get(get_telegraph))
         .route("/api/dapan-abnormal", get(get_dapan_abnormal))
         .route("/api/market-trend/:symbol", get(get_market_trend))
+        .route("/api/ai/chat", post(ai_chat))
+        .with_state(state)
         .layer(cors);
 
     let addr = format!("0.0.0.0:{}", port);

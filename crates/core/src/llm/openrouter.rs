@@ -91,6 +91,63 @@ impl LlmClient {
         Ok(resp.choices[0].message.content.clone())
     }
 
+    pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
+        // messages_json is a JSON array of {"role", "content"} objects
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
+            "max_tokens": 600,
+            "temperature": 0.7,
+            "stream": true,
+        })
+        .to_string();
+
+        let resp = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+
+        let stream = resp.bytes_stream().map(|chunk| match chunk {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes).to_string();
+                let mut content = String::new();
+
+                for line in text.lines() {
+                    if line.starts_with("data: ") {
+                        let data = line.trim_start_matches("data: ");
+                        if data == "[DONE]" {
+                            continue;
+                        }
+                        if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
+                            if let Some(choices) = chunk.choices {
+                                for choice in choices {
+                                    if let Some(delta) = choice.delta {
+                                        if let Some(c) = delta.content {
+                                            content.push_str(&c);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !content.is_empty() {
+                    Ok(content)
+                } else {
+                    Ok(String::new())
+                }
+            }
+            Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+        });
+
+        Ok(Box::pin(stream))
+    }
+
     pub async fn chat_stream(&self, prompt: &str) -> Result<StreamResult> {
         let req = ChatRequest {
             model: self.model.clone(),
