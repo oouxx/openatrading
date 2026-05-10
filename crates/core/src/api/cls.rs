@@ -47,6 +47,17 @@ pub struct TelegramInfo {
     pub assoc_fast_fact: Option<serde_json::Value>,
 }
 
+// pub enum Categories {
+//     Watch,
+//     Announcement ,
+//     Explain ,
+//     Red,
+//     Jpush,
+//     Remind,
+//     Fund ,
+//     Hk,
+// }
+
 impl ClsClient {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()

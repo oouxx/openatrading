@@ -70,7 +70,40 @@ pub struct PlateAbnormalEvent {
     pub plate_abnormal_event_data: Option<PlateAbnormalEventData>,
     pub good_or_bad: i32,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DapanAbnormal {
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "Title")]
+    pub title: String,
+    #[serde(rename = "BkYiDongType")]
+    pub bk_yi_dong_type: i32,
+    #[serde(rename = "BkjInfo")]
+    pub bkj_info: BkjInfo,
+    #[serde(rename = "CreatedAt")]
+    pub created_at: i64,
+    #[serde(rename = "UpdatedAt")]
+    pub updated_at: i64,
+}
+// 板块信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BkjInfo {
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "Name")]
+    pub name: String,
+}
+/*
+      "BkYiDongType": 1,
+      "BkjInfo": {
+        "Id": "56044969",
+        "Name": "数字人民币"
+      },
+      "CreatedAt": 1775797961,
+      "UpdatedAt": 1775798032
 
+
+*/
 #[derive(Debug, Deserialize, Clone)]
 pub struct ApiResponse<T> {
     pub code: i32,
@@ -139,7 +172,12 @@ pub struct MarketOverview {
     pub fall_count: u32,
     pub bomb_rate: f64, // 炸板率 = 炸板数 / (涨停+炸板)
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
 
+pub struct MarketTrend {
+    pub symbol: String,
+    pub candles: Vec<KlineCandle>,
+}
 pub struct XuanguBaoClient {
     client: reqwest::Client,
     base_url: String,
@@ -194,6 +232,9 @@ impl XuanguBaoClient {
     pub async fn fetch_yesterday_limit_up(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("yesterday_limit_up").await
     }
+    pub async fn fetch_super_stock(&self) -> Result<Vec<Stock>> {
+        self.fetch_pool("super_stock").await
+    }
 
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
         // yesterday_limit_up_avg_pcp 昨日涨停表现
@@ -219,6 +260,54 @@ impl XuanguBaoClient {
             bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
         })
     }
+    pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
+        let url = format!(
+            "{}/trend?fields=tick_at,close_px&prod_code={symbol}",
+            self.base_url
+        );
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Trend API error: {}",
+            resp["message"]
+        );
+        let candle_data = &resp["data"]["candle"][symbol];
+        let lines = candle_data["lines"]
+            .as_array()
+            .context("missing kline lines array")?;
+        // API 返回的字段顺序以 data.fields 为准，需要动态映射
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let candles: Vec<KlineCandle> = lines
+            .iter()
+            .filter_map(|line| {
+                let arr = line.as_array()?;
+                let get = |name: &str| -> Option<f64> {
+                    let idx = fields.iter().position(|f| f == name)?;
+                    arr.get(idx)?.as_f64()
+                };
+                Some(KlineCandle {
+                    time: get("tick_at")? as i64,
+                    open: get("open_px"),
+                    close: get("close_px")?,
+                    high: get("high_px"),
+                    low: get("low_px"),
+                    volume: get("turnover_volume"),
+                    change_rate: get("px_change_rate"),
+                })
+            })
+            .collect();
+        Ok(MarketTrend {
+            symbol: symbol.to_string(),
+            candles,
+        })
+    }
 
     pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateAbnormalEvent>> {
         let types =
@@ -232,6 +321,18 @@ impl XuanguBaoClient {
             self.client.get(&url).send().await?.json().await?;
 
         anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+        Ok(resp.data)
+    }
+    // ---大盘异动---------------------------------------
+    pub async fn fetch_dapan_abnormal(&self) -> Result<Vec<DapanAbnormal>> {
+        let url = format!(
+            "{}/api/messages/todayDaPanYiDong?headmark={}",
+            self.base_url, 0
+        );
+
+        let resp: ApiResponse<Vec<DapanAbnormal>> =
+            self.client.get(&url).send().await?.json().await?;
+
         Ok(resp.data)
     }
 
@@ -280,12 +381,12 @@ impl XuanguBaoClient {
                 };
                 Some(KlineCandle {
                     time: get("tick_at")? as i64,
-                    open: get("open_px")?,
+                    open: get("open_px"),
                     close: get("close_px")?,
-                    high: get("high_px")?,
-                    low: get("low_px")?,
-                    volume: get("turnover_volume")?,
-                    change_rate: get("px_change_rate").unwrap_or(0.0),
+                    high: get("high_px"),
+                    low: get("low_px"),
+                    volume: get("turnover_volume"),
+                    change_rate: get("px_change_rate"),
                 })
             })
             .collect();
@@ -383,12 +484,17 @@ impl KlinePeriod {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KlineCandle {
     pub time: i64,
-    pub open: f64,
+    #[serde(default)]
+    pub open: Option<f64>,
     pub close: f64,
-    pub high: f64,
-    pub low: f64,
-    pub volume: f64,
-    pub change_rate: f64,
+    #[serde(default)]
+    pub high: Option<f64>,
+    #[serde(default)]
+    pub low: Option<f64>,
+    #[serde(default)]
+    pub volume: Option<f64>,
+    #[serde(default)]
+    pub change_rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
