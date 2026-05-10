@@ -331,11 +331,11 @@ async fn ai_chat(
         StatusCode::SERVICE_UNAVAILABLE
     })?;
 
-    // Fetch field items (韭研公社异动) — skip on failure
-    let field_items = fetch_field_summary(&state.api).await;
+    // Fetch field items (韭研公社异动) — full JSON, skip on failure
+    let field_items = fetch_field_json(&state.api).await;
 
-    // Fetch super stocks (强势股) — skip on failure
-    let super_stocks = fetch_super_stock_summary(&state.api).await;
+    // Fetch super stocks (强势股) — full JSON, skip on failure
+    let super_stocks = fetch_super_stock_json(&state.api).await;
 
     let system_prompt =
         build_system_prompt(&overview, field_items.as_deref(), super_stocks.as_deref());
@@ -379,73 +379,17 @@ async fn ai_chat(
     Ok(Sse::new(sse_stream))
 }
 
-async fn fetch_field_summary(api: &ApiClient) -> Option<String> {
+async fn fetch_field_json(api: &ApiClient) -> Option<String> {
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     match api.jiuyan.fetch_field(&date, 1).await {
-        Ok(plates) if !plates.is_empty() => {
-            let lines: Vec<String> = plates
-                .iter()
-                .take(8)
-                .map(|p| {
-                    let stocks = p
-                        .list
-                        .iter()
-                        .take(5)
-                        .map(|s| {
-                            let info = s.article.as_ref().and_then(|a| a.action_info.as_ref());
-                            let num = info.and_then(|i| i.num.as_deref()).unwrap_or("-");
-                            let reason = info.and_then(|i| i.expound.as_deref()).unwrap_or("");
-                            let reason_str = if reason.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" {}", reason)
-                            };
-                            format!("{}({}){}", s.name, num, reason_str)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("、");
-                    format!(
-                        "【{plate}】{count}只 {reason} | {stocks}",
-                        plate = p.name,
-                        count = p.count,
-                        reason = p.reason,
-                        stocks = stocks,
-                    )
-                })
-                .collect();
-            Some(format!(
-                "今日异动板块（前{}个）：\n{}",
-                lines.len(),
-                lines.join("\n")
-            ))
-        }
+        Ok(plates) if !plates.is_empty() => serde_json::to_string(&plates).ok(),
         _ => None,
     }
 }
 
-async fn fetch_super_stock_summary(api: &ApiClient) -> Option<String> {
+async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
     match api.xuangubao.fetch_super_stock().await {
-        Ok(stocks) if !stocks.is_empty() => {
-            let lines: Vec<String> = stocks
-                .iter()
-                .take(10)
-                .map(|s| {
-                    format!(
-                        "{name}({symbol}) 涨幅{change:+.1}% 换手{turnover:.1}% 市值{cap:.1}亿",
-                        name = s.stock_chi_name,
-                        symbol = s.symbol,
-                        change = s.change_percent * 100.0,
-                        turnover = s.turnover_ratio * 100.0,
-                        cap = s.total_capital / 1e8,
-                    )
-                })
-                .collect();
-            Some(format!(
-                "今日强势股（前{}只，未涨停但强）：\n{}",
-                lines.len(),
-                lines.join("\n")
-            ))
-        }
+        Ok(stocks) if !stocks.is_empty() => serde_json::to_string(&stocks).ok(),
         _ => None,
     }
 }
