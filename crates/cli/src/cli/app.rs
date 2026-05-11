@@ -1,118 +1,59 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 #[derive(Parser)]
 #[command(name = "trending-agent")]
-#[command(about = "A股市场异动追踪工具")]
+#[command(about = "A股市场异动追踪工具 — 命令行接口")]
+#[command(long_about = r#"
+trending-agent 是一个 A 股市场异动追踪工具。
+支持多种数据源的获取和 AI 分析，输出 JSON / Markdown / HTML 格式。
+
+用法:
+  trending-agent                           # 默认获取全量数据，输出 Markdown 到 stdout
+  trending-agent --json                    # 输出 JSON 到 stdout
+  trending-agent --html --output report.html  # 输出 HTML 到文件
+  trending-agent --data limit_up,overview  # 只获取涨停和市场概览
+  trending-agent --data cls_telegraph --ai # 获取财联社电报并 AI 分析
+
+环境变量:
+  LLM_API_KEY       LLM API 密钥 (DeepSeek 或 OpenAI-compatible)
+  LLM_MODEL         LLM 模型名称 (默认 deepseek-chat)
+  LLM_API_ENDPOINT  LLM API 端点 (默认 DeepSeek)
+  JIUYAN_PHONE      韭研公社登录手机号
+"#)]
 pub struct Cli {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
+    /// 输出 JSON 格式
+    #[arg(long, group = "format")]
+    pub json: bool,
 
-#[derive(Subcommand)]
-pub enum Commands {
-    /// 获取选股宝涨停数据
-    LimitUp(CommonOpts),
-    /// 获取选股宝跌停数据
-    LimitDown(CommonOpts),
-    /// 获取选股宝市场概览
-    Overview(CommonOpts),
-    /// 获取选股宝板块异动
-    PlateAbnormal(CommonOpts),
-    /// 获取韭研公社异动数据
-    Field(CommonOpts),
-    /// 获取韭研公社时间线数据
-    Timeline(CommonOpts),
-    /// 获取韭研公社社群文章
-    Community(CommunityOpts),
-    /// 运行完整报告（包含所有数据源）
-    Run(RunOpts),
-    /// 进入交互模式
-    Agent(CommonOpts),
-    /// 舆情分析
-    Sentiment(CommonOpts),
-    /// 技术分析
-    Technical(CommonOpts),
-    /// 保存淘股吧用户帖子
-    SaveUser(UserOpts),
-    /// 生成淘股吧子页面
-    TaoGuBa(TaoGuBaOpts),
-    /// 生成报告索引页
-    Index(IndexOpts),
-    /// 生成选股宝子页面
-    #[command(name = "xuangubao")]
-    XuanGuBao(XuanGuBaoOpts),
-}
+    /// 输出 Markdown 格式（默认）
+    #[arg(long, group = "format")]
+    pub markdown: bool,
 
-#[derive(clap::Args)]
-pub struct CommonOpts {
-    /// 启用 AI 分析（需要配置 OPENROUTER_API_KEY）
+    /// 输出 HTML 格式
+    #[arg(long, group = "format")]
+    pub html: bool,
+
+    /// 输出到文件（默认 stdout）
     #[arg(short, long)]
+    pub output: Option<String>,
+
+    /// 数据源，逗号分隔
+    /// 可选: limit_up, limit_down, super_stock, field_item, overview,
+    ///       plate_abnormal, timeline, community, sentiment, technical,
+    ///       cls_telegraph, dapan_abnormal, market_trend
+    /// 默认: 全部
+    #[arg(short, long, value_delimiter = ',')]
+    pub data: Option<Vec<String>>,
+
+    /// 启用 AI 分析
+    #[arg(long)]
     pub ai: bool,
 
-    /// 输出格式: markdown, html, both
-    #[arg(short, long, default_value = "markdown")]
-    pub format: String,
+    /// 淘股吧用户 ID（community 数据源使用）
+    #[arg(long)]
+    pub tgb_user: Option<String>,
 
-    /// 输出目录
-    #[arg(short, long, default_value = "./reports")]
-    pub output: String,
-}
-
-#[derive(clap::Args)]
-pub struct CommunityOpts {
-    #[arg(short, long, default_value = "markdown")]
-    pub format: String,
-
-    #[arg(short, long, default_value = "./reports")]
-    pub output: String,
-}
-
-#[derive(clap::Args)]
-pub struct RunOpts {
-    /// 启用 AI 分析（需要配置 OPENROUTER_API_KEY）
-    #[arg(short, long)]
-    pub ai: bool,
-
-    /// 输出格式: markdown, html, both
-    #[arg(short, long, default_value = "markdown")]
-    pub format: String,
-
-    /// 输出目录
-    #[arg(short, long, default_value = "./reports")]
-    pub output: String,
-}
-
-#[derive(clap::Args)]
-pub struct UserOpts {
-    /// 淘股吧用户ID
-    pub user_id: String,
-
-    /// 输出目录
-    #[arg(short, long, default_value = "./methodology/tgb")]
-    pub output: String,
-}
-
-/// TaoGuBa 子页面生成选项
-#[derive(clap::Args)]
-pub struct TaoGuBaOpts {
-    /// 用户ID列表（逗号分隔）
-    #[arg(short, long)]
-    pub users: String,
-    /// 输出目录
-    #[arg(short, long, default_value = "./dist/taoguba")]
-    pub output: String,
-}
-
-#[derive(clap::Args)]
-pub struct IndexOpts {
-    #[arg(short, long, default_value = "./dist")]
-    pub dir: String,
-}
-
-/// 生成选股宝子页面
-#[derive(clap::Args)]
-pub struct XuanGuBaoOpts {
-    /// 输出目录
-    #[arg(short, long, default_value = "./dist/xuangubao")]
-    pub output: String,
+    /// 财联社电报分类（cls_telegraph 数据源使用）
+    #[arg(long)]
+    pub cls_category: Option<String>,
 }

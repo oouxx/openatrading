@@ -13,47 +13,42 @@ release:
 run:
 	cargo run --bin trending-agent
 
+run-json:
+	cargo run --bin trending-agent -- --json
+
+run-html:
+	cargo run --bin trending-agent -- --html --output report.html
+
 run-ai:
-	cargo run --bin trending-agent -- run --ai
+	cargo run --bin trending-agent -- --ai
 
 run-web:
 	@pkill -f trending-agent-web 2>/dev/null; sleep 1; cargo run --bin trending-agent-web
 
-run-all:
-	cargo run --bin trending-agent -- run --ai --web --format both
-
 # single data source
 limit-up:
-	cargo run --bin trending-agent -- limit-up
+	cargo run --bin trending-agent -- --data limit_up
 
-limit-down:
-	cargo run --bin trending-agent -- limit-down
+super-stock:
+	cargo run --bin trending-agent -- --data super_stock
 
 overview:
-	cargo run --bin trending-agent -- overview
-
-plate:
-	cargo run --bin trending-agent -- plate-abnormal
+	cargo run --bin trending-agent -- --data overview
 
 field:
-	cargo run --bin trending-agent -- field
+	cargo run --bin trending-agent -- --data field_item
 
 timeline:
-	cargo run --bin trending-agent -- timeline
-
-community:
-	cargo run --bin trending-agent -- community
-
-agent:
-	cargo run --bin trending-agent -- agent
-
-# ─── AI Analysis ─────────────────────────────────────
+	cargo run --bin trending-agent -- --data timeline
 
 sentiment:
-	cargo run --bin trending-agent -- sentiment
+	cargo run --bin trending-agent -- --data sentiment
 
-technical:
-	cargo run --bin trending-agent -- technical
+cls:
+	cargo run --bin trending-agent -- --data cls_telegraph
+
+plate:
+	cargo run --bin trending-agent -- --data plate_abnormal
 
 # ─── Test ────────────────────────────────────────────
 
