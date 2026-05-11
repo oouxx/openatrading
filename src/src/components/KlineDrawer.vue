@@ -34,7 +34,7 @@
           <span>开 <span class="text-white">{{ crosshair.open }}</span></span>
           <span>高 <span class="text-white">{{ crosshair.high }}</span></span>
           <span>低 <span class="text-white">{{ crosshair.low }}</span></span>
-          <span>{{ period === 'intraday' ? '均' : '收' }} <span class="text-white">{{ crosshair.close }}</span></span>
+          <span>{{ period === 'minute' ? '均' : '收' }} <span class="text-white">{{ crosshair.close }}</span></span>
           <span>量 <span class="text-white">{{ crosshair.volume }}</span></span>
           <span :class="crosshair.changeNum >= 0 ? 'text-up' : 'text-down'">{{ crosshair.change }}</span>
         </div>
@@ -74,13 +74,13 @@ const props = defineProps<{ symbol: string; name: string }>()
 defineEmits<{ close: [] }>()
 
 const periods = [
-  { label: '分时', value: 'intraday' },
+  { label: '分时', value: 'minute' },
   { label: '日K', value: 'day' },
   { label: '周K', value: 'week' },
   { label: '月K', value: 'month' },
 ]
 
-const period = ref('intraday')
+const period = ref('minute')
 const chartContainer = ref<HTMLElement>()
 const quote = ref<any>(null)
 
@@ -94,7 +94,7 @@ let priceLines: IPriceLine[] = []
 let priceSeries: ISeriesApi<'Line'> | null = null
 let avgPriceSeries: ISeriesApi<'Line'> | null = null
 let pctAnchorSeries: ISeriesApi<'Line'> | null = null
-let timeLabels: string[] = []
+let timeLabelMap = new Map<number, string>()
 let fetchId = 0
 let klineData: any[] = []
 
@@ -106,12 +106,14 @@ function isTradingTime(ts: number): boolean {
   return TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)
 }
 
-function buildTimeLabels(candles: any[]): string[] {
-  return candles.map((c) => {
+function buildTimeLabels(candles: any[]): Map<number, string> {
+  const map = new Map<number, string>()
+  candles.forEach((c) => {
     const d = new Date(c.time * 1000)
     const pad = (n: number) => String(n).padStart(2, '0')
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    map.set(c.time, `${pad(d.getHours())}:${pad(d.getMinutes())}`)
   })
+  return map
 }
 
 function formatVolume(v: number) {
@@ -151,7 +153,7 @@ function formatTime(ts: number, p: string): string {
   const d = new Date(ts * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  if (p === 'intraday' || p === 'minute') return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (p === 'minute') return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return ymd
 }
 
@@ -177,7 +179,7 @@ async function fetchKline() {
     if (id !== fetchId) return
     klineData = data.candles || []
 
-    if (period.value === 'intraday') {
+    if (period.value === 'minute') {
       klineData = klineData.filter((c: any) => isTradingTime(c.time))
     }
 
@@ -193,16 +195,16 @@ function updateCrosshairFromData() {
   const preclose = quote.value?.preclose_px
   const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
 
-  if (period.value === 'intraday') {
-    // Compute VWAP for last point
+  if (period.value === 'minute') {
     let cv = 0, cvol = 0
     for (let j = 0; j < klineData.length; j++) {
       cv += klineData[j].close * klineData[j].volume
       cvol += klineData[j].volume
     }
     const vwap = cvol > 0 ? cv / cvol : last.close
+    const lastLabel = timeLabelMap.get(last.time) || ''
     crosshair.value = {
-      time: timeLabels.length > 0 ? timeLabels[timeLabels.length - 1] : '',
+      time: lastLabel,
       open: last.open?.toFixed(2) || '-',
       high: last.high?.toFixed(2) || '-',
       low: last.low?.toFixed(2) || '-',
@@ -246,33 +248,33 @@ function buildVolumeData(): HistogramData[] {
 function buildVwapData(): { time: Time; value: number }[] {
   let cumValue = 0
   let cumVolume = 0
-  return klineData.map((c: any, i: number) => {
+  return klineData.map((c: any) => {
     cumValue += c.close * c.volume
     cumVolume += c.volume
     return {
-      time: i as Time,
+      time: c.time as Time,
       value: cumVolume > 0 ? cumValue / cumVolume : c.close,
     }
   })
 }
 
 function buildPctAnchorData(preclose: number): { time: Time; value: number }[] {
-  return klineData.map((c: any, i: number) => ({
-    time: i as Time,
+  return klineData.map((c: any) => ({
+    time: c.time as Time,
     value: (c.close - preclose) / preclose * 100,
   }))
 }
 
 function buildPriceData(): { time: Time; value: number }[] {
-  return klineData.map((c: any, i: number) => ({
-    time: i as Time,
+  return klineData.map((c: any) => ({
+    time: c.time as Time,
     value: c.close,
   }))
 }
 
 function buildIntradayVolumeData(): HistogramData[] {
-  return klineData.map((c: any, i: number) => ({
-    time: i as Time,
+  return klineData.map((c: any) => ({
+    time: c.time as Time,
     value: c.volume || 0,
     color: c.close >= c.open ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
   }))
@@ -297,7 +299,7 @@ function initKlineChart() {
       mode: CrosshairMode.Normal,
     },
     timeScale: {
-      timeVisible: period.value === 'intraday',
+      timeVisible: period.value === 'minute',
       secondsVisible: false,
       borderColor: 'rgba(255,255,255,0.06)',
       tickMarkFormatter: (time: Time) => formatTime(time as number, period.value),
@@ -370,12 +372,11 @@ function initIntradayChart() {
       mode: CrosshairMode.Normal,
     },
     timeScale: {
-      timeVisible: false,
+      timeVisible: true,
       secondsVisible: false,
       borderColor: 'rgba(255,255,255,0.06)',
       tickMarkFormatter: (time: Time) => {
-        const idx = time as number
-        return (idx >= 0 && idx < timeLabels.length) ? timeLabels[idx] : ''
+        return timeLabelMap.get(time as number) || ''
       },
     },
     rightPriceScale: {
@@ -435,13 +436,13 @@ function initIntradayChart() {
 
   chart.subscribeCrosshairMove((param: any) => {
     if (!param.point || param.time === undefined || param.seriesData.size === 0) return
-    const idx = param.time as number
-    if (idx < 0 || idx >= klineData.length) return
-    const c = klineData[idx]
+    const ts = param.time as number
+    const c = klineData.find((d: any) => d.time === ts)
+    if (!c) return
     const preclose = quote.value?.preclose_px
     const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
 
-    // Compute VWAP at this index
+    const idx = klineData.indexOf(c)
     let cv = 0, cvol = 0
     for (let j = 0; j <= idx; j++) {
       cv += klineData[j].close * klineData[j].volume
@@ -450,7 +451,7 @@ function initIntradayChart() {
     const vwapVal = cvol > 0 ? cv / cvol : c.close
 
     crosshair.value = {
-      time: timeLabels[idx] || '',
+      time: timeLabelMap.get(ts) || '',
       open: c.open?.toFixed(2) || '-',
       high: c.high?.toFixed(2) || '-',
       low: c.low?.toFixed(2) || '-',
@@ -463,7 +464,7 @@ function initIntradayChart() {
 }
 
 function clearPriceLines() {
-  const series = period.value === 'intraday' ? priceSeries : candleSeries
+  const series = period.value === 'minute' ? priceSeries : candleSeries
   if (!series) return
   for (const line of priceLines) {
     series.removePriceLine(line)
@@ -475,7 +476,7 @@ function updatePriceLines() {
   if (!candleSeries) return
   clearPriceLines()
 
-  if (period.value === 'intraday' || !quote.value?.preclose_px) return
+  if (period.value === 'minute' || !quote.value?.preclose_px) return
 
   const preclose = quote.value.preclose_px
   const rate = getLimitRate()
@@ -519,7 +520,7 @@ function updateAnchorSeries() {
     anchorSeries = null
   }
 
-  if (period.value === 'intraday' || !quote.value?.preclose_px || klineData.length === 0) return
+  if (period.value === 'minute' || !quote.value?.preclose_px || klineData.length === 0) return
 
   const preclose = quote.value.preclose_px
   let maxUpper = 0, maxLower = 0
@@ -550,7 +551,7 @@ function updateAnchorSeries() {
 function renderChart() {
   if (!chartContainer.value) return
 
-  if (period.value === 'intraday') {
+  if (period.value === 'minute') {
     renderIntradayChart()
   } else {
     renderKlineChart()
@@ -563,8 +564,7 @@ function renderIntradayChart() {
     return
   }
 
-  // Build time labels
-  timeLabels = buildTimeLabels(klineData)
+  timeLabelMap = buildTimeLabels(klineData)
 
   if (!chart) {
     initIntradayChart()
@@ -626,9 +626,8 @@ function resetChart() {
     volumeSeries = null
     anchorSeries = null
   }
-  timeLabels = []
-  0
-  fetchId = 0
+  timeLabelMap = new Map<number, string>()
+  fetchId++
 }
 
 watch(period, () => {
@@ -652,8 +651,7 @@ onUnmounted(() => {
   pctAnchorSeries = null
   volumeSeries = null
   anchorSeries = null
-  timeLabels = []
-  0
-  fetchId = 0
+  timeLabelMap = new Map<number, string>()
+  fetchId++
 })
 </script>
