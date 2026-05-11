@@ -1,4 +1,4 @@
-.PHONY: build release run test test-all fmt lint clean dev-frontend dev-tauri docker-up docker-down deploy-static help
+.PHONY: build release run run-json run-html run-ai run-web limit-up super-stock overview field timeline sentiment cls plate test test-all fmt lint check clean dev-frontend json deploy-static docker-build docker-up docker-down docker-logs docker-restart docker-rebuild docker-shell deploy-racknerd deploy-racknerd-backend deploy-racknerd-frontend help
 
 # ─── Build ───────────────────────────────────────────
 
@@ -72,7 +72,7 @@ check: fmt lint test
 # ─── Frontend ────────────────────────────────────────
 
 dev-frontend:
-	cd src && npm run dev
+	cd src && bun run dev
 
 # ─── Tauri ───────────────────────────────────────────
 
@@ -82,9 +82,8 @@ dev-tauri:
 # ─── JSON ────────────────────────────────────────────
 
 json:
-	cargo run --bin trending-agent -- run --format json --output ./src/public/
-	@latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
-	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "✅ report.json ready"; fi
+	cargo run --bin trending-agent -- --json --output ./src/public/data/report.json
+	@echo "✅ report.json ready"
 
 # ─── Static Deploy ───────────────────────────────────
 
@@ -93,7 +92,7 @@ TAOGUBA_USERS ?= 2577911
 
 deploy-static:
 	@echo "📦 构建 Vue 前端..."
-	@cd src && npm run build
+	@cd src && bun run build
 	@echo ""
 	@echo "✅ 部署文件已生成到 src/dist/"
 	@echo ""
@@ -128,11 +127,8 @@ docker-shell:
 # ─── Deploy (RackNerd) ──────────────────────────────
 
 define deploy-racknerd-help
-	cargo run --bin trending-agent -- run --format json --output ./src/public/; \
-	latest=$$(ls -t ./src/public/report_*.json 2>/dev/null | head -1); \
-	if [ -n "$$latest" ]; then cp "$$latest" ./src/public/data/report.json && echo "  ✅ report.json ready"; fi
+	cargo run --bin trending-agent -- --json --output ./src/public/data/report.json && echo "  ✅ report.json ready"
 endef
-
 deploy-racknerd:
 	@echo "🚀 Deploying all (backend + frontend) to RackNerd..."
 	@bash deploy-racknerd.sh all
@@ -160,24 +156,21 @@ help:
 	@echo "  release        release build"
 	@echo ""
 	@echo "Run:"
-	@echo "  run            default run (full report)"
-	@echo "  run-ai         full report + AI analysis"
-	@echo "  run-web        full report + Web UI"
-	@echo "  run-all        full report + AI + Web + both formats"
+	@echo "  run            full data → Markdown stdout"
+	@echo "  run-json       full data → JSON stdout"
+	@echo "  run-html       full data → HTML file"
+	@echo "  run-ai         full data + AI analysis"
+	@echo "  run-web        Web API server (:8080)"
 	@echo ""
-	@echo "Single source:"
-	@echo "  limit-up       fetch limit-up data"
-	@echo "  limit-down     fetch limit-down data"
-	@echo "  overview       market overview"
-	@echo "  plate          plate abnormal"
-	@echo "  field          Jiuyan field data"
-	@echo "  timeline       Jiuyan timeline"
-	@echo "  community      community articles"
-	@echo "  agent          interactive REPL"
-	@echo ""
-	@echo "AI:"
-	@echo "  sentiment      sentiment analysis"
-	@echo "  technical      technical analysis"
+	@echo "Data source:"
+	@echo "  limit-up       --data limit_up"
+	@echo "  super-stock    --data super_stock"
+	@echo "  overview       --data overview"
+	@echo "  field          --data field_item"
+	@echo "  timeline       --data timeline"
+	@echo "  sentiment      --data sentiment"
+	@echo "  cls            --data cls_telegraph"
+	@echo "  plate          --data plate_abnormal"
 	@echo ""
 	@echo "Test:"
 	@echo "  test           unit tests"
@@ -189,25 +182,13 @@ help:
 	@echo "  check          fmt + lint + test"
 	@echo ""
 	@echo "Dev:"
-	@echo "  dev-frontend   Vue 3 dev server"
-	@echo "  dev-tauri      Tauri desktop app"
+	@echo "  dev-frontend   Vue 3 dev server (bun)"
 	@echo ""
-	@echo "Deploy (RackNerd):"
-	@echo "  deploy-racknerd         deploy backend + frontend to RackNerd"
-	@echo "  deploy-racknerd-backend  deploy backend only"
-	@echo "  deploy-racknerd-frontend deploy frontend only"
-	@echo ""
-	@echo "Deploy (Static):"
-	@echo "  deploy-static  generate report.json + build Vue → src/dist/"
-	@echo "                 Vercel default: VITE_DATA_SOURCE=json"
-	@echo "                 Set VITE_API_BASE_URL in Vercel dashboard for API mode"
-	@echo "  docker-build   build Docker image"
-	@echo "  docker-up      start via docker compose (port 8080)"
+	@echo "Deploy:"
+	@echo "  json           generate report.json for static frontend"
+	@echo "  deploy-static  build Vue → src/dist/"
+	@echo "  docker-up      start via docker compose (:8080)"
 	@echo "  docker-down    stop docker compose"
-	@echo "  docker-logs    view Docker logs"
-	@echo "  docker-restart restart Docker services"
-	@echo "  docker-rebuild rebuild --no-cache + up"
-	@echo "  docker-shell   bash into running container"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"
