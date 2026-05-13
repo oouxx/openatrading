@@ -68,6 +68,7 @@ pub struct TgbUserSummary {
     pub last_update: String,
 }
 
+#[derive(Clone)]
 pub struct TgbClient {
     client: reqwest::Client,
     cookie: Option<String>,
