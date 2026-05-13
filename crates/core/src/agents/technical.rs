@@ -1,6 +1,8 @@
 use crate::api::Client;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TechnicalResult {
     pub levels: Vec<LevelStocks>,
     pub hot_sectors: Vec<(String, u32)>,
@@ -8,6 +10,7 @@ pub struct TechnicalResult {
     pub summary: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LevelStocks {
     pub days: u32,
     pub stocks: Vec<(String, String, f64, f64)>,

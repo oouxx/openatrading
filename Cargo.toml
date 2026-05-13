@@ -5,6 +5,7 @@ members = [
     "crates/cli",
     "crates/web",
     "crates/wasm",
+    "src-tauri",
 ]
 
 [workspace.dependencies]

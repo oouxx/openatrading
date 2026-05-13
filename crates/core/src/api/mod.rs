@@ -6,6 +6,7 @@ use cls::ClsClient;
 use jiuyangongshe::JiuYanSession;
 use taoguba::TgbClient;
 use xuangubao::XuanguBaoClient;
+#[derive(Clone)]
 pub struct Client {
     pub xuangubao: XuanguBaoClient,
     pub jiuyan: JiuYanSession,

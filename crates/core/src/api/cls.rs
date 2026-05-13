@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest as Sha1Digest, Sha1};
 use std::collections::BTreeMap;
 use url::form_urlencoded;
+#[derive(Clone)]
 pub struct ClsClient {
     client: reqwest::Client,
 }

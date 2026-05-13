@@ -178,6 +178,7 @@ pub struct MarketTrend {
     pub symbol: String,
     pub candles: Vec<KlineCandle>,
 }
+#[derive(Clone)]
 pub struct XuanguBaoClient {
     client: reqwest::Client,
     base_url: String,

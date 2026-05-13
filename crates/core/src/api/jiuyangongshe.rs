@@ -192,6 +192,18 @@ pub struct JiuYanSession {
     client: reqwest::Client,
 }
 
+impl Clone for JiuYanSession {
+    fn clone(&self) -> Self {
+        Self {
+            inner: RwLock::new(InnerSession {
+                credentials: None,
+                refreshing: AtomicBool::new(false),
+            }),
+            client: self.client.clone(),
+        }
+    }
+}
+
 impl Default for JiuYanSession {
     fn default() -> Self {
         Self::new()
