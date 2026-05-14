@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Arc;
+use tauri::State;
 use trending_agent_core::agents::main::run_main_agent;
 use trending_agent_core::api::Client;
 use trending_agent_core::roles::analyst::Role;
-use tauri::State;
-use std::sync::Arc;
 
 struct ApiClient(Arc<Client>);
 
@@ -70,7 +70,7 @@ async fn get_available_roles() -> Result<Vec<serde_json::Value>, String> {
 #[tauri::command]
 async fn analyze_market(
     role_type: String,
-    api_key: String,
+    api_key: Option<String>,
     client: State<'_, ApiClient>,
 ) -> Result<AnalyzeResult, String> {
     let role = match role_type.as_str() {
@@ -81,9 +81,17 @@ async fn analyze_market(
         _ => return Err(format!("无效的角色类型: {}", role_type)),
     };
 
-    let result = run_main_agent(role, &client.0, &api_key)
+    // Use provided api_key or fall back to env (LLM_API_KEY > DEEPSEEK_API_KEY > OPENROUTER_API_KEY)
+    let key = api_key
+        .filter(|k| !k.is_empty())
+        .or_else(|| std::env::var("LLM_API_KEY").ok())
+        .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok())
+        .or_else(|| std::env::var("OPENROUTER_API_KEY").ok())
+        .ok_or("未配置 LLM_API_KEY，请在 .env 中设置或传入 api_key 参数")?;
+
+    let result = run_main_agent(role, &client.0, &key)
         .await
-        .map_err(|e| format!("分析失败: {:?}", e))?;
+        .map_err(|e| format!("分析失败: {}", e))?;
 
     Ok(AnalyzeResult {
         sentiment: SentimentInfo {
