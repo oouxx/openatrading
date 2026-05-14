@@ -171,6 +171,26 @@ export async function fetchTimeline() {
   }
 }
 
+// ── Super Stock ────────────────────────────────────────
+
+export const superStock = reactive({
+  data: [] as Stock[],
+  loading: false,
+  error: '',
+})
+
+export async function fetchSuperStock() {
+  superStock.loading = true
+  superStock.error = ''
+  try {
+    superStock.data = await fetchJson<Stock[]>('/api/super-stock')
+  } catch (e: any) {
+    superStock.error = e.message || String(e)
+  } finally {
+    superStock.loading = false
+  }
+}
+
 // ── Sentiment ──────────────────────────────────────────
 
 export const sentiment = reactive({
