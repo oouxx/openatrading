@@ -87,7 +87,12 @@
           </div>
         </section>
 
-        <!-- ④ Tab Bar + Content -->
+        <!-- ④ News Feed -->
+        <section class="max-w-[1600px] mx-auto px-6 pb-8">
+          <NewsFeed />
+        </section>
+
+        <!-- ⑤ Tab Bar + Content -->
         <div class="sticky z-40 top-11 bg-bg border-b border-hairline">
           <div class="max-w-[1600px] mx-auto px-6">
             <TabBar v-model="activeTab" />
@@ -215,6 +220,7 @@ import KlineDrawer from './components/KlineDrawer.vue'
 import SentimentHistory from './components/SentimentHistory.vue'
 import TabBar from './components/TabBar.vue'
 import AiChatPanel from './components/AiSidebar.vue'
+import NewsFeed from './components/NewsFeed.vue'
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
