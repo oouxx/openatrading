@@ -15,7 +15,7 @@
           </span>
           <button
             @click="showSettings = true"
-            class="text-nav-link text-ink-muted hover:text-white transition-colors cursor-pointer"
+            class="text-lg text-ink-muted hover:text-white transition-colors cursor-pointer"
             title="设置后端地址"
           >
             ⚙
