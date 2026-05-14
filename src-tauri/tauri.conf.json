@@ -9,11 +9,14 @@
     "frontendDist": "../src/dist"
   },
   "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    },
     "windows": [
       {
-        "title": "A股市场异动追踪",
-        "width": 1200,
-        "height": 800,
+        "title": "Trending Agent",
+        "width": 1400,
+        "height": 900,
         "resizable": true
       }
     ]
