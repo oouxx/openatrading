@@ -1,10 +1,10 @@
 {
-  "productName": "trending-agent-tauri",
+  "productName": "Trending Agent",
   "version": "0.1.0",
   "identifier": "com.trending-agent.app",
   "build": {
     "beforeDevCommand": "cd ../src && bun run dev",
-    "beforeBuildCommand": "cd ../src && bun run build",
+    "beforeBuildCommand": "cd ../src && bun install && bun run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../src/dist"
   },
@@ -20,5 +20,20 @@
         "resizable": true
       }
     ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "shortDescription": "AI-native A股短线交易决策工作台",
+    "longDescription": "Trending Agent 是一个 AI-native A 股短线交易决策工作台。提供市场情绪分析、龙头结构追踪、资金行为监测、热点扩散分析等功能。",
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
+    "linux": {
+      "deb": { "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"] },
+      "appimage": {}
+    },
+    "windows": {}
   }
 }
