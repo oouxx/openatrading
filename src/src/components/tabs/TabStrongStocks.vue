@@ -139,10 +139,12 @@
       </div>
     </div>
 
-    <!-- Sub-view B: 强势股池 (placeholder) -->
+    <!-- Sub-view B: 强势股池 -->
     <div v-else>
       <div class="flex items-center gap-3 mb-6 flex-wrap">
-        <span class="text-caption text-ink-muted">共 <b class="text-white">--</b> 只强势股</span>
+        <span class="text-caption text-ink-muted">
+          共 <b class="text-white">{{ displayStrongStocks.length }}</b> 只强势股
+        </span>
         <div class="flex items-center gap-1">
           <button v-for="s in sortOptions" :key="s.id" @click="strongSort = s.id"
             class="px-2 py-0.5 rounded-badge text-caption font-mono transition-colors cursor-pointer"
@@ -151,16 +153,42 @@
           </button>
         </div>
         <label class="flex items-center gap-2 cursor-pointer select-none text-ink-muted">
-          <input type="checkbox" v-model="strongMainlineOnly" class="cursor-pointer"><span class="text-caption">主线板块优先</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer select-none text-ink-muted">
           <input type="checkbox" v-model="strongHideST" class="cursor-pointer"><span class="text-caption">隐藏ST</span>
         </label>
       </div>
-      <div class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden">
+
+      <div v-if="strongStock.loading" class="text-center py-8 text-caption text-ink-muted">加载中...</div>
+
+      <div v-else-if="displayStrongStocks.length === 0" class="text-center py-8 text-caption text-ink-muted">
+        暂无强势股数据
+      </div>
+
+      <div v-else class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden">
         <table class="data-table">
-          <thead><tr><th>强度</th><th>代码</th><th>名称</th><th style="text-align:right">涨幅</th><th style="text-align:right">量比</th><th style="text-align:right">换手率</th><th>板块</th><th>特征</th></tr></thead>
-          <tbody><tr><td colspan="8" class="text-center text-ink-muted py-8">强势股池数据需要 /api/strong-stocks 后端支持，暂无数据</td></tr></tbody>
+          <thead>
+            <tr>
+              <th>代码</th><th>名称</th><th style="text-align:right">涨跌幅</th>
+              <th style="text-align:right">换手率</th><th style="text-align:right">流通市值</th><th>板块</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in displayStrongStocks" :key="s.symbol">
+              <td class="cursor-pointer font-mono hover:underline text-ai" @click="openKline(s.symbol, s.stock_chi_name)">
+                <MiniChartPreview :symbol="s.symbol" :name="s.stock_chi_name">{{ s.symbol }}</MiniChartPreview>
+              </td>
+              <td class="font-medium text-white">
+                <MiniChartPreview :symbol="s.symbol" :name="s.stock_chi_name">{{ s.stock_chi_name }}</MiniChartPreview>
+              </td>
+              <td class="text-right font-mono" :class="s.change_percent >= 0 ? 'text-up' : 'text-down'">
+                {{ s.change_percent >= 0 ? '+' : '' }}{{ (s.change_percent * 100).toFixed(2) }}%
+              </td>
+              <td class="text-right font-mono">{{ (s.turnover_ratio * 100).toFixed(2) }}%</td>
+              <td class="text-right font-mono">{{ (s.total_capital / 1e8).toFixed(1) }}亿</td>
+              <td class="text-white/40 text-xs">
+                {{ s.surge_reason?.related_plates?.map((p: any) => p.plate_name).join(', ') || '-' }}
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -169,7 +197,7 @@
 
 <script setup lang="ts">
 import { computed, ref, inject, onMounted, watch } from 'vue'
-import { limitUp, fieldItems, overview, fetchLimitUp, fetchFieldItems } from '@/stores/data'
+import { limitUp, fieldItems, overview, superStock as strongStock, fetchLimitUp, fetchFieldItems, fetchSuperStock } from '@/stores/data'
 import MiniChartPreview from '@/components/MiniChartPreview.vue'
 
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
@@ -201,9 +229,11 @@ const totalFieldStocks = computed(() =>
 // Sub-view toggle
 const activeSubView = ref<'limit-up' | 'strong-pool'>('limit-up')
 
+const strongCount = computed(() => displayStrongStocks.value.length)
+
 const subViews = computed(() => [
   { id: 'limit-up' as const, label: '涨停股', count: `${displayStocks.value.length}只` },
-  { id: 'strong-pool' as const, label: '强势股池', count: '-- 只' },
+  { id: 'strong-pool' as const, label: '强势股池', count: `${strongCount.value}只` },
 ])
 
 // Report sub-view to AiSidebar
@@ -226,14 +256,28 @@ const filteredStocks = computed(() => {
 })
 
 // Strong pool sort options
-const strongSort = ref('strength')
+const strongSort = ref('change')
 const sortOptions = [
-  { id: 'strength', label: '按强度' },
   { id: 'change', label: '按涨幅' },
-  { id: 'volume', label: '按量比' },
+  { id: 'turnover', label: '按换手' },
+  { id: 'capital', label: '按市值' },
 ]
-const strongMainlineOnly = ref(true)
 const strongHideST = ref(true)
+
+const displayStrongStocks = computed(() => {
+  let list = [...strongStock.data]
+  if (strongHideST.value) {
+    list = list.filter(s => !s.stock_chi_name.includes('ST') && !s.stock_chi_name.includes('*'))
+  }
+  if (strongSort.value === 'change') {
+    list.sort((a, b) => b.change_percent - a.change_percent)
+  } else if (strongSort.value === 'turnover') {
+    list.sort((a, b) => b.turnover_ratio - a.turnover_ratio)
+  } else if (strongSort.value === 'capital') {
+    list.sort((a, b) => b.total_capital - a.total_capital)
+  }
+  return list
+})
 
 async function onDateChange(e: Event) {
   const val = (e.target as HTMLInputElement).value
@@ -244,5 +288,6 @@ async function onDateChange(e: Event) {
 onMounted(() => {
   fetchLimitUp()
   fetchFieldItems()
+  fetchSuperStock()
 })
 </script>
