@@ -9,10 +9,17 @@
           </h1>
         </div>
 
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
           <span v-if="overview.data" class="text-nav-link font-mono text-white/60">
             {{ overview.data.date }}
           </span>
+          <button
+            @click="showSettings = true"
+            class="text-nav-link text-ink-muted hover:text-white transition-colors cursor-pointer"
+            title="设置后端地址"
+          >
+            ⚙
+          </button>
           <button
             @click="refreshData"
             :disabled="overview.loading"
@@ -138,6 +145,58 @@
       </div>
     </Teleport>
 
+    <!-- Settings Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="showSettings"
+        class="fixed inset-0 z-[90] flex items-center justify-center"
+        @click.self="showSettings = false"
+      >
+        <div class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg p-6" style="width: 420px; max-width: 90vw">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-caption-strong text-white font-mono">⚙ 设置</span>
+            <button @click="showSettings = false" class="text-ink-muted hover:text-white cursor-pointer">✕</button>
+          </div>
+
+          <label class="block mb-2">
+            <span class="text-caption text-ink-muted">后端 API 地址</span>
+            <input
+              v-model="apiUrlInput"
+              class="w-full mt-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white font-mono outline-none focus:border-ai/50 transition-colors"
+              placeholder="http://localhost:8080"
+              @keydown.enter="saveSettings"
+            />
+          </label>
+
+          <p class="text-caption text-ink-muted mb-1">
+            状态：
+            <span :class="settingsStatus === 'ok' ? 'text-down' : settingsStatus === 'error' ? 'text-up' : 'text-ink-muted'">
+              {{ settingsStatusText }}
+            </span>
+          </p>
+
+          <div class="flex gap-2 mt-4">
+            <button
+              @click="testConnection"
+              class="flex-1 px-3 py-2 bg-bg-hover text-caption text-ink-muted hover:text-white rounded-card transition-colors cursor-pointer font-mono"
+            >
+              测试连接
+            </button>
+            <button
+              @click="saveSettings"
+              class="flex-1 px-3 py-2 bg-ai/20 text-ai rounded-card text-caption font-mono hover:bg-ai/30 transition-colors cursor-pointer"
+            >
+              保存
+            </button>
+          </div>
+
+          <p class="text-caption text-ink-muted mt-3 text-xs">
+            桌面端默认 <code class="text-ai/80">http://localhost:8080</code>。<br>如果后端部署在远程服务器，请输入完整地址，如 <code class="text-ai/80">http://your-server:8080</code>。
+          </p>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- K-line Drawer -->
     <KlineDrawer
       v-if="klineSymbol"
@@ -165,7 +224,39 @@ import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
 
 const activeTab = ref('strong-stocks')
 const showAiChat = ref(false)
+const showSettings = ref(false)
 const sentimentHistory = ref<{date: string, value: number}[]>([])
+
+// ── Settings ──────────────────────────────────────────
+
+const apiUrlInput = ref(localStorage.getItem('trading-agent-api-url') || '')
+const settingsStatus = ref<'idle' | 'ok' | 'error'>('idle')
+const settingsStatusText = computed(() => {
+  if (settingsStatus.value === 'ok') return '连接成功'
+  if (settingsStatus.value === 'error') return '连接失败'
+  return '未测试'
+})
+
+async function testConnection() {
+  const url = apiUrlInput.value.trim() || 'http://localhost:8080'
+  try {
+    const resp = await fetch(`${url}/api/overview`)
+    settingsStatus.value = resp.ok ? 'ok' : 'error'
+  } catch {
+    settingsStatus.value = 'error'
+  }
+}
+
+function saveSettings() {
+  const url = apiUrlInput.value.trim()
+  if (url) {
+    localStorage.setItem('trading-agent-api-url', url)
+  } else {
+    localStorage.removeItem('trading-agent-api-url')
+  }
+  showSettings.value = false
+  fetchOverview() // re-fetch with new URL
+}
 
 // K-line drawer state
 const klineSymbol = ref('')
