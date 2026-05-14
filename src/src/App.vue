@@ -87,12 +87,7 @@
           </div>
         </section>
 
-        <!-- ④ News Feed -->
-        <section class="max-w-[1600px] mx-auto px-6 pb-8">
-          <NewsFeed />
-        </section>
-
-        <!-- ⑤ Tab Bar + Content -->
+        <!-- ④ Tab Bar + Content -->
         <div class="sticky z-40 top-11 bg-bg border-b border-hairline">
           <div class="max-w-[1600px] mx-auto px-6">
             <TabBar v-model="activeTab" />
@@ -220,13 +215,14 @@ import KlineDrawer from './components/KlineDrawer.vue'
 import SentimentHistory from './components/SentimentHistory.vue'
 import TabBar from './components/TabBar.vue'
 import AiChatPanel from './components/AiSidebar.vue'
-import NewsFeed from './components/NewsFeed.vue'
+
 import TabStrongStocks from './components/tabs/TabStrongStocks.vue'
 import TabPlate from './components/tabs/TabPlate.vue'
 import TabMarketIntel from './components/tabs/TabMarketIntel.vue'
 import TabTimeline from './components/tabs/TabTimeline.vue'
 import TabPromotion from './components/tabs/TabPromotion.vue'
 import TabSentimentChip from './components/tabs/TabSentimentChip.vue'
+import TabNews from './components/tabs/TabNews.vue'
 
 const activeTab = ref('strong-stocks')
 const showAiChat = ref(false)
@@ -280,6 +276,7 @@ const tabComponents: Record<string, any> = {
   'timeline': TabTimeline,
   'market-intel': TabMarketIntel,
   'sentiment-chip': TabSentimentChip,
+  'news': TabNews,
 }
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])

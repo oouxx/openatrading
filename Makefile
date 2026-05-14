@@ -25,31 +25,6 @@ run-ai:
 run-web:
 	@pkill -f trending-agent-web 2>/dev/null; sleep 1; cargo run --bin trending-agent-web
 
-# single data source
-limit-up:
-	cargo run --bin trending-agent -- --data limit_up
-
-super-stock:
-	cargo run --bin trending-agent -- --data super_stock
-
-overview:
-	cargo run --bin trending-agent -- --data overview
-
-field:
-	cargo run --bin trending-agent -- --data field_item
-
-timeline:
-	cargo run --bin trending-agent -- --data timeline
-
-sentiment:
-	cargo run --bin trending-agent -- --data sentiment
-
-cls:
-	cargo run --bin trending-agent -- --data cls_telegraph
-
-plate:
-	cargo run --bin trending-agent -- --data plate_abnormal
-
 # ─── Test ────────────────────────────────────────────
 
 test:
@@ -84,45 +59,6 @@ dev-tauri:
 json:
 	cargo run --bin trending-agent -- --json --output ./src/public/data/report.json
 	@echo "✅ report.json ready"
-
-# ─── Static Deploy ───────────────────────────────────
-
-# TAOGUBA_USERS: comma-separated user IDs, e.g. TAOGUBA_USERS=2577911,123456
-TAOGUBA_USERS ?= 2577911
-
-deploy-static:
-	@echo "📦 构建 Vue 前端..."
-	@cd src && bun run build
-	@echo ""
-	@echo "✅ 部署文件已生成到 src/dist/"
-	@echo ""
-	@echo "Vercel 配置说明："
-	@echo "  动态: 在 Vercel 环境变量设置:"
-	@echo "    VITE_API_BASE_URL=https://你的后端地址"
-
-# ─── Docker ──────────────────────────────────────────
-
-docker-build:
-	docker compose build
-
-docker-up:
-	docker compose up -d
-
-docker-down:
-	docker compose down
-
-docker-logs:
-	docker compose logs -f
-
-docker-restart:
-	docker compose restart
-
-docker-rebuild:
-	docker compose build --no-cache
-	docker compose up -d
-
-docker-shell:
-	docker compose exec trending-agent bash
 
 # ─── Deploy (RackNerd) ──────────────────────────────
 
@@ -162,16 +98,6 @@ help:
 	@echo "  run-ai         full data + AI analysis"
 	@echo "  run-web        Web API server (:8080)"
 	@echo ""
-	@echo "Data source:"
-	@echo "  limit-up       --data limit_up"
-	@echo "  super-stock    --data super_stock"
-	@echo "  overview       --data overview"
-	@echo "  field          --data field_item"
-	@echo "  timeline       --data timeline"
-	@echo "  sentiment      --data sentiment"
-	@echo "  cls            --data cls_telegraph"
-	@echo "  plate          --data plate_abnormal"
-	@echo ""
 	@echo "Test:"
 	@echo "  test           unit tests"
 	@echo "  test-all       all tests (including integration)"
@@ -186,9 +112,6 @@ help:
 	@echo ""
 	@echo "Deploy:"
 	@echo "  json           generate report.json for static frontend"
-	@echo "  deploy-static  build Vue → src/dist/"
-	@echo "  docker-up      start via docker compose (:8080)"
-	@echo "  docker-down    stop docker compose"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"
