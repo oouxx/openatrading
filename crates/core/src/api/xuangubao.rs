@@ -5,8 +5,10 @@ const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlateReason {
+    #[serde(default)]
     pub plate_id: i64,
     pub plate_name: String,
+    #[serde(default)]
     pub plate_reason: Option<String>,
 }
 
