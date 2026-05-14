@@ -64,15 +64,15 @@ async function fetchNews() {
   loading.value = true
   try {
     const base = getApiBase()
-    const resp = await fetch(`${base}/api/telegraph/`)
+    const resp = await fetch(`${base}/api/telegraph`)
     if (resp.ok) {
       const data: any[] = await resp.json()
       newsItems.value = data.map((item: any, idx: number) => ({
         id: item.id || idx,
-        severity: item.level === 'R' ? 'major' : 'normal',
+        severity: item.level === 'R' || item.level === 'B' ? 'major' : 'normal',
         time: formatTime(item.ctime || item.modified_time),
-        title: item.title || item.content?.substring(0, 60) || '',
-        aiNote: item.brief || '',
+        title: item.brief || item.title || (item.content || '').substring(0, 60),
+        aiNote: item.title || '',
         source: 'cls',
       }))
     }

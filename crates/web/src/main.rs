@@ -226,6 +226,16 @@ async fn get_super_stock() -> Result<impl IntoResponse, StatusCode> {
     Ok(Json(data))
 }
 
+/// GET /api/telegraph — all categories
+async fn get_telegraph_all() -> Result<impl IntoResponse, StatusCode> {
+    let client = ApiClient::new();
+    let data = client.cls.fetch_telegraph("").await.map_err(|e| {
+        eprintln!("telegraph error: {:#}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    Ok(Json(data))
+}
+
 /// GET /api/telegraph/:category
 async fn get_telegraph(Path(category): Path<String>) -> Result<impl IntoResponse, StatusCode> {
     let client = ApiClient::new();
@@ -452,6 +462,7 @@ async fn start_web_server(port: u16) {
         .route("/api/realtime/:symbol", get(get_realtime))
         .route("/api/yesterday-limit-up", get(get_yesterday_limit_up))
         .route("/api/super-stock", get(get_super_stock))
+        .route("/api/telegraph", get(get_telegraph_all))
         .route("/api/telegraph/:category", get(get_telegraph))
         .route("/api/dapan-abnormal", get(get_dapan_abnormal))
         .route("/api/market-trend/:symbol", get(get_market_trend))
