@@ -142,14 +142,6 @@ const metrics = computed(() => {
   ]
 })
 
-function getLimitRate(): number {
-  if (props.name?.includes('ST')) return 0.05
-  if (props.symbol.startsWith('688')) return 0.20
-  if (/^30[01]/.test(props.symbol)) return 0.20
-  if (/^8/.test(props.symbol)) return 0.30
-  return 0.10
-}
-
 function formatTime(ts: number, p: string): string {
   const d = new Date(ts * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -435,9 +427,11 @@ function initIntradayChart() {
     borderColor: 'rgba(255,255,255,0.06)',
   })
 
-  // Right price scale: show % sign on ticks
-  chart.priceScale('right').applyOptions({
-    priceFormat: { type: 'percent', precision: 2, minMove: 0.01 },
+  // Right price scale: % formatter for intraday
+  chart.applyOptions({
+    localization: {
+      priceFormatter: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`,
+    },
   })
 
   chart.subscribeCrosshairMove((param: any) => {
@@ -476,45 +470,6 @@ function clearPriceLines() {
     series.removePriceLine(line)
   }
   priceLines = []
-}
-
-function updatePriceLines() {
-  if (!candleSeries) return
-  clearPriceLines()
-
-  if (period.value === 'minute' || !quote.value?.preclose_px) return
-
-  const preclose = quote.value.preclose_px
-  const rate = getLimitRate()
-  const limitUp = Math.round(preclose * (1 + rate) * 100) / 100
-  const limitDown = Math.round(preclose * (1 - rate) * 100) / 100
-
-  priceLines.push(
-    candleSeries.createPriceLine({
-      price: preclose,
-      color: 'rgba(255,255,255,0.20)',
-      lineStyle: 2, // dashed
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: `昨收 ${preclose.toFixed(2)}`,
-    }),
-    candleSeries.createPriceLine({
-      price: limitUp,
-      color: '#FF5C5C',
-      lineStyle: 2,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: `涨停 ${limitUp.toFixed(2)}`,
-    }),
-    candleSeries.createPriceLine({
-      price: limitDown,
-      color: '#1D9E75',
-      lineStyle: 2,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: `跌停 ${limitDown.toFixed(2)}`,
-    }),
-  )
 }
 
 function updateAnchorSeries() {
@@ -636,6 +591,13 @@ function renderKlineChart() {
   if (!chart) {
     initKlineChart()
   }
+
+  // Reset localization: plain price formatter (no %)
+  chart!.applyOptions({
+    localization: {
+      priceFormatter: (v: number) => v.toFixed(2),
+    },
+  })
 
   if (!candleSeries || !volumeSeries) return
 
