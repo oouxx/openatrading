@@ -66,7 +66,7 @@ const newsItems = ref<NewsItem[]>([])
 
 async function fetchNews() {
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/news`)
+    const resp = await fetch(`${getApiBaseUrl()}/api/telegraph`)
     if (resp.ok) {
       const data: any[] = await resp.json()
       newsItems.value = data.map((item: any, idx: number) => ({
