@@ -48,6 +48,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { getApiBaseUrl } from '@/stores/data'
 
 const source = ref('all')
 const loading = ref(false)
@@ -63,15 +64,7 @@ interface NewsItem {
 
 const newsItems = ref<NewsItem[]>([])
 
-function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || (window as any).__API_BASE_URL__ || ''
-}
-
-async function fetchNews() {
-  loading.value = true
-  try {
-    const base = getApiBase()
-    const resp = await fetch(`${base}/api/telegraph`)
+const filteredNews
     if (resp.ok) {
       const data: any[] = await resp.json()
       newsItems.value = data.map((item: any, idx: number) => ({

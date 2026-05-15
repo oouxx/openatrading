@@ -44,7 +44,7 @@ function renderChart() {
     priceFormat: { type: 'custom', formatter: (p: number) => p.toFixed(0) },
   })
 
-  const chartData = props.data.map((d, i) => ({ time: i as Time, value: d.value }))
+  const chartData = props.data.map((d) => ({ time: d.date as Time, value: d.value }))
   series.setData(chartData)
 
   // Mark today

@@ -2,7 +2,14 @@
   <Teleport to="body">
     <div @click="$emit('close')" class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)"></div>
 
-    <div class="fixed top-0 right-0 h-full z-50 overflow-y-auto bg-surface-dark border-l border-hairline-dark" style="width: 520px">
+    <motion.div
+      class="fixed top-0 right-0 h-full z-50 overflow-y-auto bg-surface-dark border-l border-hairline-dark"
+      style="width: 520px"
+      :initial="{ x: 520 }"
+      :animate="{ x: 0 }"
+      :exit="{ x: 520 }"
+      :transition="{ duration: 0.3, easing: [0.32, 0.72, 0, 1] }"
+    >
       <!-- Header -->
       <div class="sticky top-0 z-10 p-4 bg-surface-dark border-b border-hairline-dark">
         <div class="flex items-center justify-between mb-2">
@@ -50,11 +57,13 @@
           <p class="font-mono mt-1 text-white text-xs">{{ m.value }}</p>
         </div>
       </div>
-    </div>
+    </motion.div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
+import { motion } from 'motion-v'
+import { getApiBaseUrl } from '@/stores/data'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import {
   createChart,
@@ -150,15 +159,9 @@ function formatTime(ts: number, p: string): string {
   return ymd
 }
 
-declare const __API_BASE_URL__: string
-
-function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
-}
-
 async function fetchRealtime() {
   try {
-    const resp = await fetch(`${getApiBase()}/api/realtime/${props.symbol}`)
+    const resp = await fetch(`${getApiBaseUrl()}/api/realtime/${props.symbol}`)
     if (resp.ok) quote.value = await resp.json()
   } catch (e) { console.error('[KlineDrawer] fetchRealtime error:', e) }
 }
@@ -166,7 +169,7 @@ async function fetchRealtime() {
 async function fetchKline() {
   const id = ++fetchId
   try {
-    const resp = await fetch(`${getApiBase()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
+    const resp = await fetch(`${getApiBaseUrl()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
     if (!resp.ok) return
     const data = await resp.json()
     if (id !== fetchId) return

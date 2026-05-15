@@ -95,59 +95,77 @@
     </main>
 
     <!-- Floating AI Robot Button -->
-    <button
+    <motion.button
       v-if="overview.data"
       @click="showAiChat = true"
       class="fixed right-5 bottom-8 z-40 w-14 h-14 rounded-full
              bg-ai shadow-terminal-lg border-2 border-ai/30
-             flex items-center justify-center text-2xl
-             hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+             flex items-center justify-center text-2xl cursor-pointer"
+      :initial="{ opacity: 0, scale: 0 }"
+      :animate="{ opacity: 1, scale: 1 }"
+      :whileHover="{ scale: 1.15 }"
+      :whilePress="{ scale: 0.9 }"
+      :transition="{ type: 'spring', stiffness: 400, damping: 17 }"
       title="AI 交易副驾驶"
     >
       🤖
-    </button>
+    </motion.button>
 
     <!-- AI Chat Dialog -->
     <Teleport to="body">
-      <div
-        v-if="showAiChat"
-        class="fixed inset-0 z-[80] flex items-center justify-center"
-        @click.self="showAiChat = false"
-      >
+      <AnimatePresence>
         <div
-          class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg flex flex-col"
-          style="width: 480px; max-width: 90vw; height: 600px; max-height: 80vh"
+          v-if="showAiChat"
+          class="fixed inset-0 z-[80] flex items-center justify-center"
+          @click.self="showAiChat = false"
         >
-          <!-- Dialog Header -->
-          <div class="flex items-center justify-between px-4 py-3 border-b border-hairline flex-shrink-0">
-            <div class="flex items-center gap-2">
-              <span class="text-xl">🤖</span>
-              <span class="text-caption-strong text-white font-mono">AI 交易副驾驶</span>
+          <motion.div
+            class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg flex flex-col"
+            style="width: 480px; max-width: 90vw; height: 600px; max-height: 80vh"
+            :initial="{ opacity: 0, scale: 0.92, y: 30 }"
+            :animate="{ opacity: 1, scale: 1, y: 0 }"
+            :exit="{ opacity: 0, scale: 0.92, y: 30 }"
+            :transition="{ duration: 0.25, easing: 'ease-out' }"
+          >
+            <!-- Dialog Header -->
+            <div class="flex items-center justify-between px-4 py-3 border-b border-hairline flex-shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">🤖</span>
+                <span class="text-caption-strong text-white font-mono">AI 交易副驾驶</span>
+              </div>
+              <button
+                @click="showAiChat = false"
+                class="text-ink-muted hover:text-white text-sm cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
             </div>
-            <button
-              @click="showAiChat = false"
-              class="text-ink-muted hover:text-white text-sm cursor-pointer transition-colors"
-            >
-              ✕
-            </button>
-          </div>
 
-          <!-- Chat Body -->
-          <div class="flex-1 min-h-0">
-            <AiChatPanel :overview="overview.data" />
-          </div>
+            <!-- Chat Body -->
+            <div class="flex-1 min-h-0">
+              <AiChatPanel :overview="overview.data" />
+            </div>
+          </motion.div>
         </div>
-      </div>
+      </AnimatePresence>
     </Teleport>
 
     <!-- Settings Dialog -->
     <Teleport to="body">
-      <div
-        v-if="showSettings"
-        class="fixed inset-0 z-[90] flex items-center justify-center"
-        @click.self="showSettings = false"
-      >
-        <div class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg p-6" style="width: 420px; max-width: 90vw">
+      <AnimatePresence>
+        <div
+          v-if="showSettings"
+          class="fixed inset-0 z-[90] flex items-center justify-center"
+          @click.self="showSettings = false"
+        >
+          <motion.div
+            class="bg-bg-surface rounded-card border border-hairline shadow-terminal-lg p-6"
+            style="width: 420px; max-width: 90vw"
+            :initial="{ opacity: 0, scale: 0.92, y: 20 }"
+            :animate="{ opacity: 1, scale: 1, y: 0 }"
+            :exit="{ opacity: 0, scale: 0.92, y: 20 }"
+            :transition="{ duration: 0.2, easing: 'ease-out' }"
+          >
           <div class="flex items-center justify-between mb-4">
             <span class="text-caption-strong text-white font-mono">⚙ 设置</span>
             <button @click="showSettings = false" class="text-ink-muted hover:text-white cursor-pointer">✕</button>
@@ -188,22 +206,26 @@
           <p class="text-caption text-ink-muted mt-3 text-xs">
             桌面端默认 <code class="text-ai/80">http://localhost:8080</code>。<br>如果后端部署在远程服务器，请输入完整地址，如 <code class="text-ai/80">http://your-server:8080</code>。
           </p>
+          </motion.div>
         </div>
-      </div>
+      </AnimatePresence>
     </Teleport>
 
     <!-- K-line Drawer -->
-    <KlineDrawer
-      v-if="klineSymbol"
-      :symbol="klineSymbol"
-      :name="klineName"
-      @close="klineSymbol = ''"
-    />
+    <AnimatePresence>
+      <KlineDrawer
+        v-if="klineSymbol"
+        :symbol="klineSymbol"
+        :name="klineName"
+        @close="klineSymbol = ''"
+      />
+    </AnimatePresence>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue'
+import { motion, AnimatePresence } from 'motion-v'
 import { overview, fetchOverview, sentimentHistory, fetchSentimentHistory } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
@@ -222,6 +244,17 @@ import TabNews from './components/tabs/TabNews.vue'
 const activeTab = ref('strong-stocks')
 const showAiChat = ref(false)
 const showSettings = ref(false)
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (showAiChat.value) showAiChat.value = false
+    else if (showSettings.value) showSettings.value = false
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', onGlobalKeydown)
+}
 
 // ── Settings ──────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 <template>
   <div class="flex overflow-x-auto gap-1" style="padding: 12px 0">
-    <button
+    <motion.button
       v-for="tab in tabs"
       :key="tab.id"
       @click="activeTab = tab.id"
@@ -9,13 +9,17 @@
       :class="activeTab === tab.id
         ? 'text-white border-ai'
         : 'text-ink-muted border-transparent hover:text-white/80'"
+      :whileHover="{ y: -1 }"
+      :whilePress="{ scale: 0.97 }"
+      :transition="{ duration: 0.15 }"
     >
       <span class="text-caption">{{ tab.label }}</span>
-    </button>
+    </motion.button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { motion } from 'motion-v'
 const activeTab = defineModel<string>({ default: 'strong-stocks' })
 
 const tabs = [

@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 
 // ── Helpers ────────────────────────────────────────────
 
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
 }
 

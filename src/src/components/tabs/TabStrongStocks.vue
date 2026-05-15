@@ -39,7 +39,12 @@
       </div>
 
       <!-- Limit-up table in dark card -->
-      <div class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden mb-12">
+      <motion.div
+        class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden mb-12"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35 }"
+      >
         <table class="data-table">
           <thead>
             <tr>
@@ -73,7 +78,7 @@
             </tr>
           </tbody>
         </table>
-      </div>
+      </motion.div>
 
       <!-- 炸板记录 -->
       <div v-if="bombRate > 0" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-12">
@@ -197,6 +202,7 @@
 
 <script setup lang="ts">
 import { computed, ref, inject, onMounted, watch } from 'vue'
+import { motion } from 'motion-v'
 import { limitUp, fieldItems, overview, superStock as strongStock, fetchLimitUp, fetchFieldItems, fetchSuperStock } from '@/stores/data'
 import MiniChartPreview from '@/components/MiniChartPreview.vue'
 

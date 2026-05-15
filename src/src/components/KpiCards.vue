@@ -2,46 +2,72 @@
   <div>
     <!-- KPI Grid -->
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 mb-6">
-      <!-- Card 1: 情绪温度 (from API market_temperature) -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2" :class="sentimentBorderClass">
+      <!-- Card 1: 情绪温度 -->
+      <motion.div
+        class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2"
+        :class="sentimentBorderClass"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35, delay: 0 }"
+      >
         <p class="text-caption text-ink-muted mb-2">情绪温度</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="sentimentColorClass">
           {{ sentimentTemp.toFixed(0) }}
         </p>
         <p class="text-caption text-ink-muted mt-1">/100 {{ sentimentLabel }}</p>
-      </div>
+      </motion.div>
 
       <!-- Card 2: 涨停家数 -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-up">
+      <motion.div
+        class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-up"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35, delay: 0.06 }"
+      >
         <p class="text-caption text-ink-muted mb-2">涨停家数</p>
         <p class="font-mono font-semibold text-up" style="font-size: 22px">{{ overview.limit_up_count }}</p>
         <p class="text-caption text-ink-muted mt-1">跌停 {{ overview.limit_down_count }}</p>
-      </div>
+      </motion.div>
 
       <!-- Card 3: 炸板率 -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline">
+      <motion.div
+        class="bg-bg-surface rounded-card p-card-inner border border-hairline"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35, delay: 0.12 }"
+      >
         <p class="text-caption text-ink-muted mb-2">炸板率</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="bombColorClass">
           {{ bombPct.toFixed(1) }}%
         </p>
         <p class="text-caption text-ink-muted mt-1">{{ bombLabel }}</p>
-      </div>
+      </motion.div>
 
       <!-- Card 4: 昨日涨停表现 -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline">
+      <motion.div
+        class="bg-bg-surface rounded-card p-card-inner border border-hairline"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35, delay: 0.18 }"
+      >
         <p class="text-caption text-ink-muted mb-2">昨日涨停表现</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="prevLimitUpClass">
           {{ overview.yesterday_limit_up_avg_pcp != null ? (overview.yesterday_limit_up_avg_pcp * 100).toFixed(2) + '%' : '--' }}
         </p>
         <p class="text-caption text-ink-muted mt-1">{{ prevLimitUpLabel }}</p>
-      </div>
+      </motion.div>
 
       <!-- Card 5: 涨跌比 -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-ai">
+      <motion.div
+        class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-ai"
+        :initial="{ opacity: 0, y: 16 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.35, delay: 0.24 }"
+      >
         <p class="text-caption text-ink-muted mb-2">涨跌比</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="ratioColorClass">{{ ratio }}</p>
         <p class="text-caption text-ink-muted mt-1">上{{ overview.rise_count }} 下{{ overview.fall_count }}</p>
-      </div>
+      </motion.div>
     </div>
 
     <!-- Risk Bar -->
@@ -56,6 +82,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { motion } from 'motion-v'
 
 const props = defineProps<{
   overview: {
