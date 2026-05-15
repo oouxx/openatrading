@@ -82,41 +82,39 @@ async fn get_overview() -> Result<impl IntoResponse, StatusCode> {
     }))
 }
 
-/// GET /api/sentiment-history?days=10
-#[derive(serde::Deserialize)]
-struct SentimentHistoryQuery {
-    #[serde(default = "default_sentiment_days")]
-    days: usize,
-}
-fn default_sentiment_days() -> usize {
-    10
-}
-
-async fn get_sentiment_history(
-    Query(q): Query<SentimentHistoryQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
+/// GET /api/sentiment-history
+async fn get_sentiment_history() -> Result<impl IntoResponse, StatusCode> {
     let client = XuanguBaoClient::new();
-    let history = client.fetch_market_overview_history(q.days).await.map_err(|e| {
-        eprintln!("sentiment_history error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
+    let trading_days = XuanguBaoClient::last_n_trading_days(10);
 
-    let days: Vec<SentimentHistoryDay> = history
-        .into_iter()
-        .map(|d| {
-            let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-            let sentiment = d.market_temperature * 0.5
-                + (1.0 - d.bomb_rate / 100.0) * 25.0
-                + (rise_ratio / 3.0).min(1.0) * 25.0;
-            SentimentHistoryDay {
-                date: d.date,
-                sentiment: (sentiment * 10.0).round() / 10.0,
-                limit_up_count: d.limit_up_count,
-                bomb_rate: d.bomb_rate,
-                rise_ratio: (rise_ratio * 100.0).round() / 100.0,
+    let mut days: Vec<SentimentHistoryDay> = Vec::with_capacity(trading_days.len());
+
+    for date in &trading_days {
+        match client.fetch_market_overview_for_date(date).await {
+            Ok(Some(d)) => {
+                let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
+                let sentiment = d.market_temperature * 0.5
+                    + (1.0 - d.bomb_rate / 100.0) * 25.0
+                    + (rise_ratio / 3.0).min(1.0) * 25.0;
+                days.push(SentimentHistoryDay {
+                    date: d.date,
+                    sentiment: (sentiment * 10.0).round() / 10.0,
+                    limit_up_count: d.limit_up_count,
+                    bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
+                    rise_ratio: (rise_ratio * 100.0).round() / 100.0,
+                });
             }
-        })
-        .collect();
+            Ok(None) => {
+                eprintln!("sentiment_history: no data for {date}");
+            }
+            Err(e) => {
+                eprintln!("sentiment_history error for {date}: {e}");
+            }
+        }
+    }
+
+    // Reverse so most recent is last
+    days.reverse();
 
     Ok(Json(days))
 }

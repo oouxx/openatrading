@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
@@ -269,13 +270,17 @@ impl XuanguBaoClient {
             fall_count: latest["fall_count"].as_u64().unwrap_or(0) as u32,
             limit_up_count: latest["limit_up_count"].as_u64().unwrap_or(0) as u32,
             limit_down_count: latest["limit_down_count"].as_u64().unwrap_or(0) as u32,
-            bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
+            bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
             market_temperature: latest["market_temperature"].as_f64().unwrap_or(50.0) as f64,
-            yesterday_limit_up_avg_pcp: latest["yesterday_limit_up_avg_pcp"].as_f64().unwrap_or(0.0) as f64,
+            yesterday_limit_up_avg_pcp: latest["yesterday_limit_up_avg_pcp"].as_f64().unwrap_or(0.0)
+                as f64,
         })
     }
 
-    pub async fn fetch_market_overview_history(&self, days: usize) -> Result<Vec<MarketOverviewDay>> {
+    pub async fn fetch_market_overview_history(
+        &self,
+        days: usize,
+    ) -> Result<Vec<MarketOverviewDay>> {
         let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature";
         let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
 
@@ -283,7 +288,11 @@ impl XuanguBaoClient {
 
         let arr = resp["data"].as_array().cloned().unwrap_or_default();
         let take = arr.len().min(days);
-        let slice = if arr.len() > take { &arr[arr.len() - take..] } else { &arr };
+        let slice = if arr.len() > take {
+            &arr[arr.len() - take..]
+        } else {
+            &arr
+        };
 
         Ok(slice
             .iter()
@@ -293,10 +302,65 @@ impl XuanguBaoClient {
                 fall_count: d["fall_count"].as_u64().unwrap_or(0) as u32,
                 limit_up_count: d["limit_up_count"].as_u64().unwrap_or(0) as u32,
                 limit_down_count: d["limit_down_count"].as_u64().unwrap_or(0) as u32,
-                bomb_rate: d["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
-                market_temperature: d["market_temperature"].as_f64().unwrap_or(50.0) as f64,
+                bomb_rate: d["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
+                market_temperature: d["market_temperature"].as_f64().unwrap_or(50.0),
             })
             .collect())
+    }
+
+    /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
+    /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
+    pub fn last_n_trading_days(n: usize) -> Vec<String> {
+        let mut dates = Vec::with_capacity(n);
+        let mut current = chrono::Local::now().date_naive();
+        // If today is a weekend, start from Friday
+        while dates.len() < n {
+            match current.weekday() {
+                chrono::Weekday::Sat => {
+                    current = current.pred_opt().unwrap();
+                    continue;
+                }
+                chrono::Weekday::Sun => {
+                    current = current.pred_opt().unwrap();
+                    continue;
+                }
+                _ => {
+                    dates.push(current.format("%Y-%m-%d").to_string());
+                    current = current.pred_opt().unwrap();
+                }
+            }
+        }
+        dates
+    }
+
+    pub async fn fetch_market_overview_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Option<MarketOverviewDay>> {
+        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature";
+        let url = format!(
+            "{}/market_indicator/line?fields={fields}&date={date}",
+            self.base_url
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        let arr = resp["data"].as_array().cloned().unwrap_or_default();
+
+        // Take the last data point (most recent timestamp) from the intraday array
+        let last = match arr.last() {
+            Some(v) => v.clone(),
+            None => return Ok(None),
+        };
+
+        Ok(Some(MarketOverviewDay {
+            date: date.to_string(),
+            rise_count: last["rise_count"].as_u64().unwrap_or(0) as u32,
+            fall_count: last["fall_count"].as_u64().unwrap_or(0) as u32,
+            limit_up_count: last["limit_up_count"].as_u64().unwrap_or(0) as u32,
+            limit_down_count: last["limit_down_count"].as_u64().unwrap_or(0) as u32,
+            bomb_rate: last["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) * 100.0,
+            market_temperature: last["market_temperature"].as_f64().unwrap_or(50.0),
+        }))
     }
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
         let url = format!(
