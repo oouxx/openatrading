@@ -24,7 +24,7 @@
           </div>
           <p class="text-caption text-ink-muted mt-3">{{ phaseAdvice }}</p>
         </div>
-      </div>
+      </motion.div>
 
       <!-- Right: Market Chip Structure -->
       <motion.div

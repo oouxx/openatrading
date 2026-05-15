@@ -64,7 +64,9 @@ interface NewsItem {
 
 const newsItems = ref<NewsItem[]>([])
 
-const filteredNews
+async function fetchNews() {
+  try {
+    const resp = await fetch(`${getApiBaseUrl()}/api/news`)
     if (resp.ok) {
       const data: any[] = await resp.json()
       newsItems.value = data.map((item: any, idx: number) => ({

@@ -228,6 +228,7 @@ function onKeydown(e: KeyboardEvent) {
 function renderMarkdown(text: string): string {
   return marked.parse(text) as string
 }
+</script>
 
 <style scoped>
 .md-body :deep(.md-h2) {
