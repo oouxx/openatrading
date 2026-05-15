@@ -6,28 +6,35 @@
         <p class="text-caption text-ink-muted mb-3">AI 交易副驾驶</p>
         <p class="text-caption text-ink-muted text-sm">结合实时行情数据，回答短线市场问题</p>
         <div class="mt-4 space-y-2">
-          <button
-            v-for="q in suggestedQuestions"
+          <motion.button
+            v-for="(q, qi) in suggestedQuestions"
             :key="q"
             @click="send(q)"
             class="w-full text-left px-3 py-2 rounded-card bg-bg-hover text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
+            :initial="{ opacity: 0, x: -10 }"
+            :animate="{ opacity: 1, x: 0 }"
+            :transition="{ duration: 0.25, delay: qi * 0.06 }"
+            :whileHover="{ x: 4 }"
           >
             {{ q }}
-          </button>
+          </motion.button>
         </div>
       </div>
 
-      <div
+      <motion.div
         v-for="(msg, idx) in messages"
         :key="idx"
         class="px-3 py-2 rounded-card text-caption"
         :class="msg.role === 'user'
           ? 'bg-ai/15 text-white ml-8'
           : 'bg-bg border border-hairline text-white/80 mr-4'"
+        :initial="{ opacity: 0, y: 8 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ duration: 0.2, delay: idx * 0.02 }"
       >
-        <div v-if="msg.role === 'ai'" class="md-body" v-html="renderMarkdown(msg.text)"></div>
+        <div v-if="msg.role === 'ai'" class="md-body" v-html="msg.html"></div>
         <div v-else>{{ msg.text }}</div>
-      </div>
+      </motion.div>
 
       <!-- Streaming indicator -->
       <div v-if="streaming" class="px-3 py-2 rounded-card text-caption bg-bg border border-hairline text-ai mr-4">
@@ -59,6 +66,8 @@
 import { ref, nextTick } from 'vue'
 import { Marked } from 'marked'
 import hljs from 'highlight.js'
+import { motion } from 'motion-v'
+import { getApiBaseUrl } from '@/stores/data'
 
 const marked = new Marked({
   renderer: {
@@ -113,7 +122,7 @@ defineProps<{
 }>()
 
 const input = ref('')
-const messages = ref<{ role: 'user' | 'ai'; text: string }[]>([])
+const messages = ref<{ role: 'user' | 'ai'; text: string; html: string }[]>([])
 const streaming = ref(false)
 const msgContainer = ref<HTMLElement>()
 
@@ -124,22 +133,18 @@ const suggestedQuestions = [
   '今天适合短线操作吗？',
 ]
 
-function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || (window as any).__API_BASE_URL__ || ''
-}
-
 async function send(question?: string) {
   const text = (question || input.value).trim()
   if (!text || streaming.value) return
 
   input.value = ''
-  messages.value.push({ role: 'user', text })
-  messages.value.push({ role: 'ai', text: '' })
+  messages.value.push({ role: 'user', text, html: '' })
+  messages.value.push({ role: 'ai', text: '', html: '' })
   streaming.value = true
   scrollDown()
 
   try {
-    const resp = await fetch(`${getApiBase()}/api/ai/chat`, {
+    const resp = await fetch(`${getApiBaseUrl()}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text }),
@@ -192,6 +197,7 @@ function appendToLastMessage(text: string) {
   const last = messages.value[messages.value.length - 1]
   if (last && last.role === 'ai') {
     last.text += text
+    last.html = renderMarkdown(last.text)
     scrollDown()
   }
 }
@@ -200,6 +206,7 @@ function updateLastMessage(text: string) {
   const last = messages.value[messages.value.length - 1]
   if (last && last.role === 'ai') {
     last.text = text
+    last.html = text.startsWith('[') ? text : renderMarkdown(text)
   }
 }
 
@@ -221,7 +228,6 @@ function onKeydown(e: KeyboardEvent) {
 function renderMarkdown(text: string): string {
   return marked.parse(text) as string
 }
-</script>
 
 <style scoped>
 .md-body :deep(.md-h2) {

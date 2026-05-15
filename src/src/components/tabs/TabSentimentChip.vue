@@ -3,7 +3,12 @@
     <!-- Two-column: emotion cycle + chip structure -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       <!-- Left: Market Emotion Cycle -->
-      <div class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner">
+      <motion.div
+        class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner"
+        :initial="{ opacity: 0, x: -20 }"
+        :animate="{ opacity: 1, x: 0 }"
+        :transition="{ duration: 0.4 }"
+      >
         <h3 class="text-caption-strong text-ink-muted mb-4 uppercase tracking-wider">市场情绪周期判断</h3>
         <div v-if="!history.length" class="text-center py-8 text-caption text-ink-muted">加载中...</div>
         <div v-else class="space-y-3">
@@ -22,7 +27,12 @@
       </div>
 
       <!-- Right: Market Chip Structure -->
-      <div class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner">
+      <motion.div
+        class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner"
+        :initial="{ opacity: 0, x: 20 }"
+        :animate="{ opacity: 1, x: 0 }"
+        :transition="{ duration: 0.4 }"
+      >
         <h3 class="text-caption-strong text-ink-muted mb-4 uppercase tracking-wider">市场筹码结构分析</h3>
         <div v-if="!overviewData" class="text-center py-8 text-caption text-ink-muted">加载中...</div>
         <div v-else class="space-y-3">
@@ -53,11 +63,16 @@
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
 
     <!-- Sentiment History Table -->
-    <div class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden">
+    <motion.div
+      class="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden"
+      :initial="{ opacity: 0, y: 20 }"
+      :animate="{ opacity: 1, y: 0 }"
+      :transition="{ duration: 0.4, delay: 0.15 }"
+    >
       <div class="p-card-inner border-b border-hairline-dark">
         <h3 class="text-caption-strong text-ink-muted uppercase tracking-wider">近{{ history.length }}日情绪数据</h3>
       </div>
@@ -84,12 +99,13 @@
           </tr>
         </tbody>
       </table>
-    </div>
+    </motion.div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { motion } from 'motion-v'
 import { overview, sentimentHistory, fetchSentimentHistory } from '@/stores/data'
 
 type HistoryRow = {
