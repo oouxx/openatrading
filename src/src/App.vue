@@ -63,17 +63,12 @@
             :overview="overview.data"
             :risk-level="overview.data.risk_level"
             :decision-summary="overview.data.decision_summary"
-            :sentiment-temp="overview.data.sentiment_temp"
-            :promotion-rate="overview.data.promotion_rate"
-            :promotion-history-avg="overview.data.promotion_history_avg"
-            :net-flow="overview.data.net_flow"
-            :flow-sector="overview.data.flow_sector"
           />
         </section>
 
         <!-- ② Sentiment History Chart -->
         <section class="max-w-[1600px] mx-auto px-6 pb-8">
-          <SentimentHistory :data="sentimentHistory" />
+          <SentimentHistory :data="sentimentChartData" />
         </section>
 
         <!-- ③ AI Market Summary -->
@@ -209,7 +204,7 @@
 
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue'
-import { overview, fetchOverview } from '@/stores/data'
+import { overview, fetchOverview, sentimentHistory, fetchSentimentHistory } from '@/stores/data'
 import KpiCards from './components/KpiCards.vue'
 import KlineDrawer from './components/KlineDrawer.vue'
 import SentimentHistory from './components/SentimentHistory.vue'
@@ -227,7 +222,6 @@ import TabNews from './components/tabs/TabNews.vue'
 const activeTab = ref('strong-stocks')
 const showAiChat = ref(false)
 const showSettings = ref(false)
-const sentimentHistory = ref<{date: string, value: number}[]>([])
 
 // ── Settings ──────────────────────────────────────────
 
@@ -281,7 +275,12 @@ const tabComponents: Record<string, any> = {
 
 const currentTabComponent = computed(() => tabComponents[activeTab.value])
 
-const refreshData = () => fetchOverview()
+const sentimentChartData = computed(() =>
+  sentimentHistory.data.map(d => ({ date: d.date, value: d.sentiment }))
+)
+
+const refreshData = () => { fetchOverview(); fetchSentimentHistory() }
 
 fetchOverview()
+fetchSentimentHistory()
 </script>

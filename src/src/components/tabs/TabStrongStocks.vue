@@ -33,8 +33,8 @@
           <input type="checkbox" v-model="hideST" class="cursor-pointer">
           <span class="text-caption">隐藏ST</span>
         </label>
-        <span v-if="bombRate > 0.2" class="text-up font-mono text-xs">
-          &#9888; 炸板率 {{ (bombRate * 100).toFixed(1) }}%
+        <span v-if="bombRate > 20" class="text-up font-mono text-xs">
+          &#9888; 炸板率 {{ bombRate.toFixed(1) }}%
         </span>
       </div>
 
@@ -78,9 +78,9 @@
       <!-- 炸板记录 -->
       <div v-if="bombRate > 0" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-12">
         <span class="text-caption text-ink-muted">
-          今日炸板率：<b :class="bombRate > 0.3 ? 'text-up' : bombRate > 0.2 ? 'text-ai' : 'text-down'">{{ (bombRate * 100).toFixed(1) }}%</b>
-          <span v-if="bombRate > 0.3">（偏高，注意风险）</span>
-          <span v-else-if="bombRate > 0.2">（正常偏高）</span>
+          今日炸板率：<b :class="bombRate > 30 ? 'text-up' : bombRate > 20 ? 'text-ai' : 'text-down'">{{ bombRate.toFixed(1) }}%</b>
+          <span v-if="bombRate > 30">（偏高，注意风险）</span>
+          <span v-else-if="bombRate > 20">（正常偏高）</span>
           <span v-else>（偏低，市场惜售）</span>
         </span>
       </div>
