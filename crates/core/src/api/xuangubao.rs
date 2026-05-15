@@ -172,7 +172,20 @@ pub struct MarketOverview {
     pub limit_down_count: u32,
     pub rise_count: u32,
     pub fall_count: u32,
-    pub bomb_rate: f64, // 炸板率 = 炸板数 / (涨停+炸板)
+    pub bomb_rate: f64,
+    pub market_temperature: f64,
+    pub yesterday_limit_up_avg_pcp: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketOverviewDay {
+    pub date: String,
+    pub rise_count: u32,
+    pub fall_count: u32,
+    pub limit_up_count: u32,
+    pub limit_down_count: u32,
+    pub bomb_rate: f64,
+    pub market_temperature: f64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 
@@ -240,15 +253,11 @@ impl XuanguBaoClient {
     }
 
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
-        // yesterday_limit_up_avg_pcp 昨日涨停表现
-        // limit_up_broken_count,limit_up_broken_ratio 涨停炸板数和涨停炸板率
-        // market_temperature 市场温度
-        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio";
+        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature,yesterday_limit_up_avg_pcp";
         let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
 
-        // 取最新一条数据
         let latest = &resp["data"]
             .as_array()
             .and_then(|a| a.last())
@@ -261,7 +270,33 @@ impl XuanguBaoClient {
             limit_up_count: latest["limit_up_count"].as_u64().unwrap_or(0) as u32,
             limit_down_count: latest["limit_down_count"].as_u64().unwrap_or(0) as u32,
             bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
+            market_temperature: latest["market_temperature"].as_f64().unwrap_or(50.0) as f64,
+            yesterday_limit_up_avg_pcp: latest["yesterday_limit_up_avg_pcp"].as_f64().unwrap_or(0.0) as f64,
         })
+    }
+
+    pub async fn fetch_market_overview_history(&self, days: usize) -> Result<Vec<MarketOverviewDay>> {
+        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature";
+        let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+
+        let arr = resp["data"].as_array().cloned().unwrap_or_default();
+        let take = arr.len().min(days);
+        let slice = if arr.len() > take { &arr[arr.len() - take..] } else { &arr };
+
+        Ok(slice
+            .iter()
+            .map(|d| MarketOverviewDay {
+                date: d["trade_date"].as_str().unwrap_or("").to_string(),
+                rise_count: d["rise_count"].as_u64().unwrap_or(0) as u32,
+                fall_count: d["fall_count"].as_u64().unwrap_or(0) as u32,
+                limit_up_count: d["limit_up_count"].as_u64().unwrap_or(0) as u32,
+                limit_down_count: d["limit_down_count"].as_u64().unwrap_or(0) as u32,
+                bomb_rate: d["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) as f64,
+                market_temperature: d["market_temperature"].as_f64().unwrap_or(50.0) as f64,
+            })
+            .collect())
     }
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
         let url = format!(

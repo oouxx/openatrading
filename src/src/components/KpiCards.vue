@@ -1,55 +1,46 @@
 <template>
   <div>
     <!-- KPI Grid -->
-    <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4 mb-6">
-      <!-- Card 1: 情绪温度 (NEW) -->
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 mb-6">
+      <!-- Card 1: 情绪温度 (from API market_temperature) -->
       <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2" :class="sentimentBorderClass">
         <p class="text-caption text-ink-muted mb-2">情绪温度</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="sentimentColorClass">
-          {{ sentimentTemp?.toFixed(0) || '--' }}
+          {{ sentimentTemp.toFixed(0) }}
         </p>
         <p class="text-caption text-ink-muted mt-1">/100 {{ sentimentLabel }}</p>
       </div>
 
-      <!-- Card 2: 涨停家数 (was 上涨家数 — restructured) -->
+      <!-- Card 2: 涨停家数 -->
       <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-up">
         <p class="text-caption text-ink-muted mb-2">涨停家数</p>
         <p class="font-mono font-semibold text-up" style="font-size: 22px">{{ overview.limit_up_count }}</p>
         <p class="text-caption text-ink-muted mt-1">跌停 {{ overview.limit_down_count }}</p>
       </div>
 
-      <!-- Card 3: 炸板率 (keep existing, add label) -->
+      <!-- Card 3: 炸板率 -->
       <div class="bg-bg-surface rounded-card p-card-inner border border-hairline">
         <p class="text-caption text-ink-muted mb-2">炸板率</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="bombColorClass">
-          {{ (overview.bomb_rate * 100).toFixed(1) }}%
+          {{ bombPct.toFixed(1) }}%
         </p>
         <p class="text-caption text-ink-muted mt-1">{{ bombLabel }}</p>
       </div>
 
-      <!-- Card 4: 连板晋级率 (NEW) -->
+      <!-- Card 4: 昨日涨停表现 -->
       <div class="bg-bg-surface rounded-card p-card-inner border border-hairline">
-        <p class="text-caption text-ink-muted mb-2">连板晋级率</p>
-        <p class="font-mono font-semibold" style="font-size: 22px" :class="promoColorClass">
-          {{ promotionRate != null ? (promotionRate * 100).toFixed(1) + '%' : '--' }}
+        <p class="text-caption text-ink-muted mb-2">昨日涨停表现</p>
+        <p class="font-mono font-semibold" style="font-size: 22px" :class="prevLimitUpClass">
+          {{ overview.yesterday_limit_up_avg_pcp != null ? (overview.yesterday_limit_up_avg_pcp * 100).toFixed(2) + '%' : '--' }}
         </p>
-        <p class="text-caption text-ink-muted mt-1">{{ promoLabel }}</p>
+        <p class="text-caption text-ink-muted mt-1">{{ prevLimitUpLabel }}</p>
       </div>
 
-      <!-- Card 5: 涨跌比 (keep existing, add sub-label) -->
+      <!-- Card 5: 涨跌比 -->
       <div class="bg-bg-surface rounded-card p-card-inner border border-hairline border-l-2 border-l-ai">
         <p class="text-caption text-ink-muted mb-2">涨跌比</p>
         <p class="font-mono font-semibold" style="font-size: 22px" :class="ratioColorClass">{{ ratio }}</p>
         <p class="text-caption text-ink-muted mt-1">上{{ overview.rise_count }} 下{{ overview.fall_count }}</p>
-      </div>
-
-      <!-- Card 6: 主力净流入 (NEW) -->
-      <div class="bg-bg-surface rounded-card p-card-inner border border-hairline">
-        <p class="text-caption text-ink-muted mb-2">主力净流入</p>
-        <p class="font-mono font-semibold" style="font-size: 22px" :class="flowColorClass">
-          {{ flowDisplay }}
-        </p>
-        <p class="text-caption text-ink-muted mt-1">{{ flowSector }}</p>
       </div>
     </div>
 
@@ -73,16 +64,28 @@ const props = defineProps<{
     limit_up_count: number
     limit_down_count: number
     bomb_rate: number
+    market_temperature: number
+    yesterday_limit_up_avg_pcp: number
   }
   riskLevel: string
   decisionSummary: string
-  // New optional props (backend not ready yet — render '--' when undefined)
-  promotionRate?: number
-  promotionHistoryAvg?: number
-  sentimentTemp?: number
-  netFlow?: number
-  flowSector?: string
 }>()
+
+const bombPct = computed(() => {
+  return props.overview.bomb_rate > 1 ? props.overview.bomb_rate : props.overview.bomb_rate * 100
+})
+
+const sentimentTemp = computed(() => {
+  const t = props.overview.market_temperature
+  if (t > 0) return Math.round(t)
+  const { rise_count, fall_count, limit_up_count, limit_down_count } = props.overview
+  const total = rise_count + fall_count
+  if (total === 0) return 50
+  const riseRatio = rise_count / total
+  const bombFactor = 1 - bombPct.value / 100
+  const limitRatio = Math.min(limit_up_count / Math.max(limit_down_count, 1), 10) / 10
+  return Math.round(riseRatio * 60 + bombFactor * 20 + limitRatio * 20)
+})
 
 const ratio = computed(() => {
   if (props.overview.fall_count === 0) return '∞'
@@ -97,9 +100,32 @@ const ratioColorClass = computed(() => {
 })
 
 const bombColorClass = computed(() => {
-  if (props.overview.bomb_rate > 0.3) return 'text-up'
-  if (props.overview.bomb_rate > 0.2) return 'text-ai'
+  const b = bombPct.value
+  if (b > 30) return 'text-up'
+  if (b > 20) return 'text-ai'
   return 'text-down'
+})
+
+const bombLabel = computed(() => {
+  const b = bombPct.value
+  if (b > 30) return '偏高 注意'
+  if (b > 20) return '正常偏高'
+  return '偏低 惜售'
+})
+
+const prevLimitUpClass = computed(() => {
+  const v = props.overview.yesterday_limit_up_avg_pcp
+  if (v == null || v === 0) return 'text-ink-muted'
+  return v > 0 ? 'text-up' : 'text-down'
+})
+
+const prevLimitUpLabel = computed(() => {
+  const v = props.overview.yesterday_limit_up_avg_pcp
+  if (v == null) return '暂无数据'
+  if (v > 0.03) return '赚钱效应强'
+  if (v > 0) return '微利'
+  if (v > -0.03) return '微亏'
+  return '亏钱效应'
 })
 
 const riskBadgeClass = computed(() => {
@@ -111,62 +137,23 @@ const riskBadgeClass = computed(() => {
 })
 
 const sentimentLabel = computed(() => {
-  const t = props.sentimentTemp
-  if (t == null) return '暂无数据'
+  const t = sentimentTemp.value
   if (t >= 75) return '偏热'
   if (t >= 50) return '正常'
   return '偏冷'
 })
 
 const sentimentColorClass = computed(() => {
-  const t = props.sentimentTemp
-  if (t == null) return 'text-ink-muted'
+  const t = sentimentTemp.value
   if (t >= 75) return 'text-up'
   if (t >= 50) return 'text-ai'
   return 'text-down'
 })
 
 const sentimentBorderClass = computed(() => {
-  const t = props.sentimentTemp
-  if (t == null) return 'border-l-ink-dim'
+  const t = sentimentTemp.value
   if (t >= 75) return 'border-l-up'
   if (t >= 50) return 'border-l-ai'
   return 'border-l-down'
 })
-
-const bombLabel = computed(() => {
-  const r = props.overview.bomb_rate
-  if (r > 0.3) return '偏高 注意'
-  if (r > 0.2) return '正常偏高'
-  return '偏低 惜售'
-})
-
-const promoColorClass = computed(() => {
-  const r = props.promotionRate
-  if (r == null) return 'text-ink-muted'
-  if (r >= 0.3) return 'text-up'
-  return 'text-down'
-})
-
-const promoLabel = computed(() => {
-  if (props.promotionHistoryAvg == null || props.promotionRate == null) return ''
-  return props.promotionRate >= props.promotionHistoryAvg ? '↑ 历史均' : '↓ 历史均'
-})
-
-const flowDisplay = computed(() => {
-  const f = props.netFlow
-  if (f == null) return '--'
-  const abs = Math.abs(f)
-  const unit = abs >= 1e8 ? '亿' : '万'
-  const val = abs >= 1e8 ? (abs / 1e8).toFixed(1) : (abs / 1e4).toFixed(0)
-  return (f >= 0 ? '+' : '-') + val + unit
-})
-
-const flowColorClass = computed(() => {
-  const f = props.netFlow
-  if (f == null) return 'text-ink-muted'
-  return f >= 0 ? 'text-up' : 'text-down'
-})
-
-const flowSector = computed(() => props.flowSector || '--')
 </script>

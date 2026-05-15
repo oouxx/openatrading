@@ -28,12 +28,16 @@ export interface OverviewData {
   bomb_rate: number
   risk_level: string
   decision_summary: string
-  // Optional extended fields from /api/overview
-  sentiment_temp?: number
-  promotion_rate?: number
-  promotion_history_avg?: number
-  net_flow?: number
-  flow_sector?: string
+  market_temperature: number
+  yesterday_limit_up_avg_pcp: number
+}
+
+export interface SentimentHistoryDay {
+  date: string
+  sentiment: number
+  limit_up_count: number
+  bomb_rate: number
+  rise_ratio: number
 }
 
 export interface Stock {
@@ -208,5 +212,25 @@ export async function fetchSentiment() {
     sentiment.error = e.message || String(e)
   } finally {
     sentiment.loading = false
+  }
+}
+
+// ── Sentiment History ──────────────────────────────────
+
+export const sentimentHistory = reactive({
+  data: [] as SentimentHistoryDay[],
+  loading: false,
+  error: '',
+})
+
+export async function fetchSentimentHistory(days = 10) {
+  sentimentHistory.loading = true
+  sentimentHistory.error = ''
+  try {
+    sentimentHistory.data = await fetchJson<SentimentHistoryDay[]>(`/api/sentiment-history?days=${days}`)
+  } catch (e: any) {
+    sentimentHistory.error = e.message || String(e)
+  } finally {
+    sentimentHistory.loading = false
   }
 }

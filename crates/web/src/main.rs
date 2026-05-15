@@ -27,6 +27,17 @@ struct OverviewResponse {
     bomb_rate: f64,
     risk_level: String,
     decision_summary: String,
+    market_temperature: f64,
+    yesterday_limit_up_avg_pcp: f64,
+}
+
+#[derive(Serialize)]
+struct SentimentHistoryDay {
+    date: String,
+    sentiment: f64,
+    limit_up_count: u32,
+    bomb_rate: f64,
+    rise_ratio: f64,
 }
 
 // ── Handlers ──────────────────────────────────────────
@@ -66,7 +77,48 @@ async fn get_overview() -> Result<impl IntoResponse, StatusCode> {
         bomb_rate: overview.bomb_rate,
         risk_level: risk_level.to_string(),
         decision_summary,
+        market_temperature: overview.market_temperature,
+        yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
     }))
+}
+
+/// GET /api/sentiment-history?days=10
+#[derive(serde::Deserialize)]
+struct SentimentHistoryQuery {
+    #[serde(default = "default_sentiment_days")]
+    days: usize,
+}
+fn default_sentiment_days() -> usize {
+    10
+}
+
+async fn get_sentiment_history(
+    Query(q): Query<SentimentHistoryQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let history = client.fetch_market_overview_history(q.days).await.map_err(|e| {
+        eprintln!("sentiment_history error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+
+    let days: Vec<SentimentHistoryDay> = history
+        .into_iter()
+        .map(|d| {
+            let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
+            let sentiment = d.market_temperature * 0.5
+                + (1.0 - d.bomb_rate / 100.0) * 25.0
+                + (rise_ratio / 3.0).min(1.0) * 25.0;
+            SentimentHistoryDay {
+                date: d.date,
+                sentiment: (sentiment * 10.0).round() / 10.0,
+                limit_up_count: d.limit_up_count,
+                bomb_rate: d.bomb_rate,
+                rise_ratio: (rise_ratio * 100.0).round() / 100.0,
+            }
+        })
+        .collect();
+
+    Ok(Json(days))
 }
 
 /// GET /api/limit-up
@@ -434,6 +486,8 @@ async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse
         bomb_rate: overview.bomb_rate,
         risk_level: risk_level.to_string(),
         decision_summary,
+        market_temperature: overview.market_temperature,
+        yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
     })
 }
 
@@ -452,6 +506,7 @@ async fn start_web_server(port: u16) {
 
     let app = Router::new()
         .route("/api/overview", get(get_overview))
+        .route("/api/sentiment-history", get(get_sentiment_history))
         .route("/api/limit-up", get(get_limit_up))
         .route("/api/limit-down", get(get_limit_down))
         .route("/api/plate-abnormal", get(get_plate_abnormal))
