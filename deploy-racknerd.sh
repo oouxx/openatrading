@@ -4,7 +4,7 @@ set -e
 SERVICE="${1:-all}"  # backend | frontend | all
 SERVER="root@203.0.113.10"
 REMOTE_DIR="/root/trending-agent"
-IMAGES_DIR="./docker-images"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
   echo "Usage: ./deploy-racknerd.sh [backend|frontend|all]"
@@ -26,120 +26,68 @@ fi
 
 echo "=== Deploying: $SERVICE → $SERVER ==="
 
-rm -rf "$IMAGES_DIR"
-mkdir -p "$IMAGES_DIR"
+# ─── Upload source ──────────────────────────────────────
 
-# ─── Build ────────────────────────────────────────────
-
-build_backend() {
+sync_source() {
   echo ""
-  echo "=== [build] Building backend image (linux/amd64) ==="
-  docker buildx build --platform linux/amd64 \
-    -t trending-agent-backend:latest \
-    -f Dockerfile.backend \
-    -o type=docker .
+  echo "=== [sync] Syncing source code to server ==="
+  ssh $SSH_OPTS "$SERVER" "mkdir -p $REMOTE_DIR"
+  rsync -avz -e "ssh $SSH_OPTS" --delete \
+    --exclude='target/' \
+    --exclude='node_modules/' \
+    --exclude='dist/' \
+    --exclude='.git/' \
+    --exclude='docker-images/' \
+    --exclude='*.tar.gz' \
+    --exclude='*.ico' \
+    --exclude='*.icns' \
+    --exclude='.DS_Store' \
+    ./ "$SERVER:$REMOTE_DIR/"
 }
 
-build_frontend() {
+# ─── Build on server ────────────────────────────────────
+
+build_on_server() {
+  local target="$1"
   echo ""
-  echo "=== [build] Building frontend image (linux/amd64) ==="
-  docker buildx build --platform linux/amd64 \
-    -t trending-agent-frontend:latest \
-    -f Dockerfile.frontend \
-    -o type=docker .
+  echo "=== [build] Building $target on server ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose build $target"
 }
 
-# ─── Save ──────────────────────────────────────────────
+# ─── Deploy ─────────────────────────────────────────────
 
-save_backend() {
+deploy_service() {
+  local target="$1"
   echo ""
-  echo "=== [save] Saving backend image ==="
-  docker save trending-agent-backend:latest | gzip > "$IMAGES_DIR/backend.tar.gz"
+  echo "=== [deploy] Restarting $target ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --no-deps $target"
 }
 
-save_frontend() {
+deploy_all_services() {
   echo ""
-  echo "=== [save] Saving frontend image ==="
-  docker save trending-agent-frontend:latest | gzip > "$IMAGES_DIR/frontend.tar.gz"
+  echo "=== [deploy] Restarting all services ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose down && docker compose up -d"
 }
 
-# ─── Upload ────────────────────────────────────────────
+# ─── Execute ────────────────────────────────────────────
 
-upload() {
-  echo ""
-  echo "=== [upload] Uploading to server ==="
-  ssh "$SERVER" "mkdir -p $REMOTE_DIR"
-
-  local files=""
-  [ -f "$IMAGES_DIR/backend.tar.gz" ] && files="$files $IMAGES_DIR/backend.tar.gz"
-  [ -f "$IMAGES_DIR/frontend.tar.gz" ] && files="$files $IMAGES_DIR/frontend.tar.gz"
-
-  if [ -n "$files" ]; then
-    scp $files "$SERVER:$REMOTE_DIR/"
-  fi
-
-  # Always upload config files (docker-compose, nginx, .env)
-  scp docker-compose.yaml nginx.conf .env "$SERVER:$REMOTE_DIR/"
-}
-
-# ─── Load & Start ──────────────────────────────────────
-
-deploy_backend() {
-  echo ""
-  echo "=== [deploy] Loading backend image & restarting ==="
-  ssh "$SERVER" "cd $REMOTE_DIR && \
-    gunzip -c backend.tar.gz | docker load && \
-    rm -f backend.tar.gz && \
-    docker compose up -d --no-deps backend"
-}
-
-deploy_frontend() {
-  echo ""
-  echo "=== [deploy] Loading frontend image & restarting ==="
-  ssh "$SERVER" "cd $REMOTE_DIR && \
-    gunzip -c frontend.tar.gz | docker load && \
-    rm -f frontend.tar.gz && \
-    docker compose up -d --no-deps frontend"
-}
-
-deploy_all() {
-  echo ""
-  echo "=== [deploy] Loading images & starting all services ==="
-  ssh "$SERVER" "cd $REMOTE_DIR && \
-    gunzip -c backend.tar.gz | docker load && \
-    gunzip -c frontend.tar.gz | docker load && \
-    rm -f backend.tar.gz frontend.tar.gz && \
-    docker compose down && \
-    docker compose up -d"
-}
-
-# ─── Execute ───────────────────────────────────────────
+sync_source
 
 case "$SERVICE" in
   backend)
-    build_backend
-    save_backend
-    upload
-    deploy_backend
+    build_on_server backend
+    deploy_service backend
     ;;
   frontend)
-    build_frontend
-    save_frontend
-    upload
-    deploy_frontend
+    build_on_server frontend
+    deploy_service frontend
     ;;
   all)
-    build_backend
-    build_frontend
-    save_backend
-    save_frontend
-    upload
-    deploy_all
+    build_on_server backend
+    build_on_server frontend
+    deploy_all_services
     ;;
 esac
-
-# Cleanup
-rm -rf "$IMAGES_DIR"
 
 echo ""
 echo "=== Deploy complete ($SERVICE) ==="
