@@ -414,7 +414,7 @@ impl JiuYanSession {
         }
 
         println!(
-            "✅ 九言公社登录成功 (token: {}...)",
+            "✅韭研公社登录成功 (token: {}...)",
             &session_token[..16.min(session_token.len())]
         );
         Ok(creds)
@@ -527,7 +527,7 @@ impl JiuYanSession {
         serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
     }
 
-    /// 获取九言公社异动数据（action/field 接口）
+    /// 获取韭研公社异动数据（action/field 接口）
     pub async fn fetch_field(&self, date: &str, pc: u32) -> Result<FieldData> {
         #[derive(Serialize)]
         struct FieldReq {

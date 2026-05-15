@@ -94,6 +94,7 @@ let priceLines: IPriceLine[] = []
 let priceSeries: ISeriesApi<'Line'> | null = null
 let avgPriceSeries: ISeriesApi<'Line'> | null = null
 let pctAnchorSeries: ISeriesApi<'Line'> | null = null
+let intradayAnchorSeries: ISeriesApi<'Line'> | null = null
 let timeLabelMap = new Map<number, string>()
 let fetchId = 0
 let klineData: any[] = []
@@ -434,6 +435,11 @@ function initIntradayChart() {
     borderColor: 'rgba(255,255,255,0.06)',
   })
 
+  // Right price scale: show % sign on ticks
+  chart.priceScale('right').applyOptions({
+    priceFormat: { type: 'percent', precision: 2, minMove: 0.01 },
+  })
+
   chart.subscribeCrosshairMove((param: any) => {
     if (!param.point || param.time === undefined || param.seriesData.size === 0) return
     const ts = param.time as number
@@ -580,9 +586,35 @@ function renderIntradayChart() {
   }
   volumeSeries.setData(buildIntradayVolumeData())
 
+  // Center left scale around preclose
+  if (chart && preclose && preclose > 0) {
+    if (intradayAnchorSeries) {
+      chart.removeSeries(intradayAnchorSeries)
+      intradayAnchorSeries = null
+    }
+    let maxDev = 0
+    for (const c of klineData) {
+      maxDev = Math.max(maxDev, Math.abs(c.high - preclose), Math.abs(c.low - preclose))
+    }
+    const range = Math.max(maxDev * 1.1, preclose * 0.01)
+    intradayAnchorSeries = chart.addSeries(LineSeries, {
+      color: 'transparent',
+      priceScaleId: 'left',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    const firstTime = klineData[0].time as Time
+    const lastTime = klineData[klineData.length - 1].time as Time
+    intradayAnchorSeries.setData([
+      { time: firstTime, value: preclose - range },
+      { time: lastTime, value: preclose + range },
+    ])
+  }
+
   // Preclose price line on price series
   clearPriceLines()
-  if (quote.value?.preclose_px && priceSeries) {
+  if (preclose && preclose > 0 && priceSeries) {
     priceLines.push(
       priceSeries.createPriceLine({
         price: quote.value.preclose_px,
@@ -609,7 +641,6 @@ function renderKlineChart() {
 
   candleSeries.setData(buildCandleData())
   volumeSeries.setData(buildVolumeData())
-  updatePriceLines()
   updateAnchorSeries()
   chart!.timeScale().fitContent()
 }
@@ -623,6 +654,7 @@ function resetChart() {
     priceSeries = null
     avgPriceSeries = null
     pctAnchorSeries = null
+    intradayAnchorSeries = null
     volumeSeries = null
     anchorSeries = null
   }
@@ -649,6 +681,7 @@ onUnmounted(() => {
   priceSeries = null
   avgPriceSeries = null
   pctAnchorSeries = null
+  intradayAnchorSeries = null
   volumeSeries = null
   anchorSeries = null
   timeLabelMap = new Map<number, string>()
