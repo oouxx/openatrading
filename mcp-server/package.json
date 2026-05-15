@@ -1,0 +1,19 @@
+{
+  "name": "trending-agent-mcp",
+  "version": "1.0.0",
+  "description": "MCP server wrapping trending-agent CLI — exposes A-share market data tools to OpenClaw, Hermes Agent, and other MCP clients.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "trending-agent-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "bun index.js",
+    "check": "bun check index.js"
+  },
+  "keywords": ["mcp", "a-share", "stock", "trending-agent", "bun"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0"
+  }
+}
