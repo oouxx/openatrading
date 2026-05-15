@@ -25,7 +25,7 @@
           ? 'bg-ai/15 text-white ml-8'
           : 'bg-bg border border-hairline text-white/80 mr-4'"
       >
-        <div v-if="msg.role === 'ai'" v-html="renderMarkdown(msg.text)"></div>
+        <div v-if="msg.role === 'ai'" class="md-body" v-html="renderMarkdown(msg.text)"></div>
         <div v-else>{{ msg.text }}</div>
       </div>
 
@@ -57,6 +57,56 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import { Marked } from 'marked'
+import hljs from 'highlight.js'
+
+const marked = new Marked({
+  renderer: {
+    heading({ text, depth }: { text: string; depth: number }) {
+      const cls = depth <= 1 ? 'md-h2' : depth === 2 ? 'md-h3' : 'md-h4'
+      return `<h${depth + 1} class="${cls}">${text}</h${depth + 1}>`
+    },
+    paragraph({ text }: { text: string }) {
+      return `<p class="md-p">${text}</p>`
+    },
+    list({ body, ordered }: { body: string; ordered: boolean }) {
+      return ordered ? `<ol class="md-ol">${body}</ol>` : `<ul class="md-ul">${body}</ul>`
+    },
+    listitem({ text }: { text: string }) {
+      return `<li>${text}</li>`
+    },
+    blockquote({ body }: { body: string }) {
+      return `<blockquote class="md-blockquote">${body}</blockquote>`
+    },
+    code({ text, lang }: { text: string; lang?: string }) {
+      let highlighted: string
+      if (lang && hljs.getLanguage(lang)) {
+        highlighted = hljs.highlight(text, { language: lang }).value
+      } else {
+        highlighted = hljs.highlightAuto(text).value
+      }
+      return `<pre class="md-code-block"><code class="hljs">${highlighted}</code></pre>`
+    },
+    codespan({ text }: { text: string }) {
+      return `<code class="md-inline-code">${text}</code>`
+    },
+    hr() {
+      return '<hr class="md-hr">'
+    },
+    strong({ text }: { text: string }) {
+      return `<strong class="text-white">${text}</strong>`
+    },
+    em({ text }: { text: string }) {
+      return `<em class="md-em">${text}</em>`
+    },
+    del({ text }: { text: string }) {
+      return `<del class="md-del">${text}</del>`
+    },
+    link({ href, text }: { href: string; text: string }) {
+      return `<a href="${href}" target="_blank" class="md-link">${text}</a>`
+    },
+  },
+})
 
 defineProps<{
   overview?: any
@@ -169,9 +219,92 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function renderMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
-    .replace(/^- (.+)$/gm, '<span class="text-ai">•</span> $1')
-    .replace(/\n/g, '<br>')
+  return marked.parse(text) as string
 }
 </script>
+
+<style scoped>
+.md-body :deep(.md-h2) {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e8e8ed;
+  margin: 10px 0 4px;
+}
+.md-body :deep(.md-h3) {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8e8ed;
+  margin: 8px 0 3px;
+}
+.md-body :deep(.md-h4) {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ccc;
+  margin: 6px 0 2px;
+}
+.md-body :deep(.md-p) {
+  margin: 2px 0;
+  line-height: 1.6;
+}
+.md-body :deep(.md-ul) {
+  list-style: none;
+  padding-left: 0;
+  margin: 4px 0;
+}
+.md-body :deep(.md-ul li)::before {
+  content: '•';
+  color: #7F77DD;
+  margin-right: 6px;
+}
+.md-body :deep(.md-ol) {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+.md-body :deep(.md-ol li) {
+  margin: 1px 0;
+}
+.md-body :deep(.md-blockquote) {
+  border-left: 2px solid #7F77DD;
+  padding-left: 10px;
+  margin: 6px 0;
+  color: #aaa;
+}
+.md-body :deep(.md-code-block) {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.md-body :deep(.md-code-block code) {
+  font-family: 'JetBrains Mono', monospace;
+}
+.md-body :deep(.md-inline-code) {
+  background: rgba(127, 119, 221, 0.15);
+  color: #b0a8e8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.md-body :deep(.md-hr) {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 8px 0;
+}
+.md-body :deep(.md-em) {
+  color: #bbb;
+}
+.md-body :deep(.md-del) {
+  color: #888780;
+}
+.md-body :deep(.md-link) {
+  color: #7F77DD;
+}
+.md-body :deep(.md-link:hover) {
+  text-decoration: underline;
+}
+</style>
