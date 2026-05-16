@@ -1,4 +1,4 @@
-.PHONY: build run run-web test fmt lint check dev-frontend deploy deploy-gateway deploy-web clean help
+.PHONY: build run run-web test fmt lint check dev-frontend deploy deploy-cli deploy-gateway deploy-web clean help
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -33,6 +33,10 @@ check: fmt lint test
 deploy:
 	@echo "🚀 Deploying all (gateway + web)..."
 	@bash deploy.sh all
+
+deploy-cli:
+	@echo "🚀 Deploying CLI gateway..."
+	@bash deploy.sh cli
 
 deploy-gateway:
 	@echo "🚀 Deploying gateway..."
