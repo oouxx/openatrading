@@ -1,6 +1,9 @@
 # ── Build Stage ───────────────────────────────────────
 FROM rust:1.88-slim-bookworm AS builder
 
+ARG GIT_VERSION=v0.0.0-dev
+ENV GIT_VERSION=${GIT_VERSION}
+
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
