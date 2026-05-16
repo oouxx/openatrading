@@ -146,7 +146,6 @@ let priceLines: IPriceLine[] = []
 let priceSeries: ISeriesApi<'Line'> | null = null
 let avgPriceSeries: ISeriesApi<'Line'> | null = null
 let pctAnchorSeries: ISeriesApi<'Line'> | null = null
-let intradayAnchorSeries: ISeriesApi<'Line'> | null = null
 let timeLabelMap = new Map<number, string>()
 let fetchId = 0
 let klineData: any[] = []
@@ -590,32 +589,21 @@ function renderIntradayChart() {
   volumeSeries.setData(buildIntradayVolumeData())
 
   if (chart && preclose && preclose > 0) {
-    if (intradayAnchorSeries) {
-      chart.removeSeries(intradayAnchorSeries)
-      intradayAnchorSeries = null
-    }
     const limitPct = getLimitPct(props.symbol)
     const priceRange = preclose * limitPct / 100
     const firstTime = klineData[0].time as Time
     const lastTime = klineData[klineData.length - 1].time as Time
 
-    intradayAnchorSeries = chart.addSeries(LineSeries, {
-      color: 'transparent',
-      priceScaleId: 'left',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      crosshairMarkerVisible: false,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-    })
-    intradayAnchorSeries.setData([
-      { time: firstTime, value: preclose - priceRange },
-      { time: lastTime, value: preclose + priceRange },
-    ])
-
     pctAnchorSeries.setData([
       { time: firstTime, value: -limitPct },
       { time: lastTime, value: limitPct },
     ])
+
+    chart.priceScale('left').setAutoScale(false)
+    chart.priceScale('left').setVisibleRange({ from: preclose - priceRange, to: preclose + priceRange })
+
+    chart.priceScale('right').setAutoScale(false)
+    chart.priceScale('right').setVisibleRange({ from: -limitPct, to: limitPct })
   }
 
   // Preclose price line on price series
@@ -689,7 +677,6 @@ function resetChart() {
     priceSeries = null
     avgPriceSeries = null
     pctAnchorSeries = null
-    intradayAnchorSeries = null
     volumeSeries = null
     anchorSeries = null
   }
@@ -723,7 +710,6 @@ onUnmounted(() => {
   priceSeries = null
   avgPriceSeries = null
   pctAnchorSeries = null
-  intradayAnchorSeries = null
   volumeSeries = null
   anchorSeries = null
   timeLabelMap = new Map<number, string>()
