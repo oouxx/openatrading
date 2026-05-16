@@ -32,6 +32,20 @@ REPO_URL="git@github.com:oouxx/openatrading.git"
 
 # ─── Clone / pull from GitHub ────────────────────────────
 
+# ─── ghcr.io login ─────────────────────────────────────
+
+ghcr_login() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    echo ""
+    echo "=== [auth] Logging into ghcr.io ==="
+    ssh $SSH_OPTS "$SERVER" "echo '$GITHUB_TOKEN' | docker login ghcr.io -u oouxx --password-stdin"
+  else
+    echo "⚠ GITHUB_TOKEN not set, skipping ghcr.io login"
+  fi
+}
+
+# ─── Clone / pull from GitHub ────────────────────────────
+
 clone_or_pull() {
   echo ""
   echo "=== [git] Fetching latest code from GitHub ==="
@@ -72,6 +86,7 @@ deploy_web() {
 # ─── Execute ────────────────────────────────────────────
 
 clone_or_pull
+ghcr_login
 
 case "$SERVICE" in
   gateway)
