@@ -75,27 +75,28 @@ pub struct PlateAbnormalEvent {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DapanAbnormal {
-    #[serde(rename = "Id")]
+    #[serde(alias = "Id")]
     pub id: String,
-    #[serde(rename = "Title")]
+    #[serde(alias = "Title")]
     pub title: String,
-    #[serde(rename = "BkYiDongType")]
+    #[serde(alias = "BkYiDongType")]
     pub bk_yi_dong_type: i32,
-    #[serde(rename = "BkjInfo")]
+    #[serde(alias = "BkjInfo")]
     pub bkj_info: BkjInfo,
-    #[serde(rename = "CreatedAt")]
+    #[serde(alias = "CreatedAt")]
     pub created_at: i64,
-    #[serde(rename = "UpdatedAt")]
+    #[serde(alias = "UpdatedAt")]
     pub updated_at: i64,
 }
 // 板块信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BkjInfo {
-    #[serde(rename = "Id")]
+    #[serde(alias = "Id")]
     pub id: String,
-    #[serde(rename = "Name")]
+    #[serde(alias = "Name")]
     pub name: String,
 }
+
 /*
       "BkYiDongType": 1,
       "BkjInfo": {
@@ -427,15 +428,23 @@ impl XuanguBaoClient {
     }
     // ---大盘异动---------------------------------------
     pub async fn fetch_dapan_abnormal(&self) -> Result<Vec<DapanAbnormal>> {
-        let url = format!(
-            "{}/api/messages/todayDaPanYiDong?headmark={}",
-            self.base_url, 0
-        );
+        let url = "https://api.xuangubao.com.cn/api/messages/todayDaPanYiDong?headmark=0".to_string();
 
-        let resp: ApiResponse<Vec<DapanAbnormal>> =
-            self.client.get(&url).send().await?.json().await?;
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
 
-        Ok(resp.data)
+        // API returns { Messages: [...], NextHeadMark: "..." } or { messages: [...] }
+        let messages = resp["Messages"]
+            .as_array()
+            .or_else(|| resp["messages"].as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let result: Vec<DapanAbnormal> = messages
+            .iter()
+            .filter_map(|v| serde_json::from_value(v.clone()).ok())
+            .collect();
+
+        Ok(result)
     }
 
     // ─── K线数据 ───────────────────────────────────────
