@@ -90,13 +90,13 @@ build_downloads() {
     # ── CLI: Docker cross-compile x86_64 ──────────────
     echo '🔨 Docker build CLI (x86_64-unknown-linux-gnu)...'
     docker build -f Dockerfile --platform linux/amd64 -t openatrading-cli-amd64 .
-    docker run --rm -v \$PWD/downloads:/out openatrading-cli-amd64 cp /usr/local/bin/openatrading /out/openatrading-x86_64-unknown-linux-gnu
+    docker run --rm --entrypoint cp -v \$PWD/downloads:/out openatrading-cli-amd64 /usr/local/bin/openatrading /out/openatrading-x86_64-unknown-linux-gnu
     echo '✅ CLI x86_64 done'
 
     # ── CLI: Docker cross-compile aarch64 ─────────────
     echo '🔨 Docker build CLI (aarch64-unknown-linux-gnu)...'
     docker build -f Dockerfile --platform linux/arm64 -t openatrading-cli-arm64 . 2>/dev/null && \
-      docker run --rm -v \$PWD/downloads:/out openatrading-cli-arm64 cp /usr/local/bin/openatrading /out/openatrading-aarch64-unknown-linux-gnu && \
+      docker run --rm --entrypoint cp -v \$PWD/downloads:/out openatrading-cli-arm64 /usr/local/bin/openatrading /out/openatrading-aarch64-unknown-linux-gnu && \
       echo '✅ CLI aarch64 done' || echo '⚠ CLI aarch64 skipped (need qemu or arm64 host)'
 
     # ── Try Tauri from GitHub Releases ────────────────
