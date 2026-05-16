@@ -1,3 +1,5 @@
+pub mod sqlite;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
