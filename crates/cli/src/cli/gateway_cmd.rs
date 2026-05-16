@@ -45,7 +45,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={exe} serve run
+ExecStart={exe} gateway run
 WorkingDirectory={work_dir}
 Restart=on-failure
 RestartSec=10
@@ -63,7 +63,7 @@ WantedBy=default.target
 }
 
 /// 安装 systemd 服务
-pub fn cmd_serve_install(project_root: &PathBuf) -> Result<()> {
+pub fn cmd_gateway_install(project_root: &PathBuf) -> Result<()> {
     let unit = generate_unit_file(project_root)?;
     let path = service_file_path();
 
@@ -76,15 +76,15 @@ pub fn cmd_serve_install(project_root: &PathBuf) -> Result<()> {
     systemctl(&["enable", SERVICE_NAME])?;
 
     println!("✅ systemd 服务已安装: {}", path.display());
-    println!("   openatrading serve start   # 启动");
-    println!("   openatrading serve stop    # 停止");
-    println!("   openatrading serve status  # 查看状态");
+    println!("   openatrading gateway start   # 启动");
+    println!("   openatrading gateway stop    # 停止");
+    println!("   openatrading gateway status  # 查看状态");
     println!("   journalctl --user -u openatrading -f  # 查看日志");
     Ok(())
 }
 
 /// 卸载 systemd 服务
-pub fn cmd_serve_uninstall() -> Result<()> {
+pub fn cmd_gateway_uninstall() -> Result<()> {
     let _ = systemctl(&["stop", SERVICE_NAME]);
     let _ = systemctl(&["disable", SERVICE_NAME]);
     let path = service_file_path();
@@ -97,27 +97,27 @@ pub fn cmd_serve_uninstall() -> Result<()> {
 }
 
 /// systemctl start
-pub fn cmd_serve_start() -> Result<()> {
+pub fn cmd_gateway_start() -> Result<()> {
     systemctl(&["start", SERVICE_NAME])?;
     println!("✅ 服务已启动");
     Ok(())
 }
 
 /// systemctl stop
-pub fn cmd_serve_stop() -> Result<()> {
+pub fn cmd_gateway_stop() -> Result<()> {
     systemctl(&["stop", SERVICE_NAME])?;
     println!("✅ 服务已停止");
     Ok(())
 }
 
 /// systemctl status
-pub fn cmd_serve_status() -> Result<()> {
+pub fn cmd_gateway_status() -> Result<()> {
     systemctl(&["status", SERVICE_NAME])?;
     Ok(())
 }
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
-pub async fn cmd_serve_run(project_root: &PathBuf) -> Result<()> {
+pub async fn cmd_gateway_run(project_root: &PathBuf) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
 
     let db_path = project_root

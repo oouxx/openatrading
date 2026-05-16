@@ -1,0 +1,25 @@
+default_role = "zarili"
+
+[[roles]]
+name = "zarili"
+display_name = "zarili量价派"
+dir = "strategies/zarili"
+merge_mode = "supplement"
+
+[[roles]]
+name = "trader"
+display_name = "游资操盘手"
+dir = "strategies/trader"
+merge_mode = "base_only"
+
+[[roles]]
+name = "quant"
+display_name = "量化分析师"
+dir = "strategies/quant"
+merge_mode = "base_only"
+
+[[roles]]
+name = "risk_officer"
+display_name = "风控官"
+dir = "strategies/risk_officer"
+merge_mode = "base_only"

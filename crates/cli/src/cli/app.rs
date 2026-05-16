@@ -76,10 +76,10 @@ pub struct Cli {
 pub enum Commands {
     /// 初始化 ~/.atrading/ 配置目录（含内置策略种子文件）
     Init,
-    /// 后台服务管理 (systemd)
-    Serve {
+    /// Gateway 生命周期管理 (systemd)
+    Gateway {
         #[command(subcommand)]
-        action: ServeAction,
+        action: GatewayAction,
     },
     /// 从 GitHub Releases 更新到最新版本
     Update {
@@ -95,7 +95,7 @@ pub enum Commands {
 }
 
 #[derive(Subcommand)]
-pub enum ServeAction {
+pub enum GatewayAction {
     /// 安装 systemd 服务
     Install,
     /// 卸载 systemd 服务
