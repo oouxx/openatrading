@@ -1,4 +1,4 @@
-.PHONY: build release run run-json run-html run-ai run-web limit-up super-stock overview field timeline sentiment cls plate test test-all fmt lint check clean dev-frontend json deploy-static docker-build docker-up docker-down docker-logs docker-restart docker-rebuild docker-shell deploy-racknerd deploy-racknerd-backend deploy-racknerd-frontend help
+.PHONY: build release run run-json run-html run-ai run-web limit-up super-stock overview field timeline sentiment cls plate test test-all fmt lint check clean dev-frontend json deploy-static docker-build docker-up docker-down docker-logs docker-restart docker-rebuild docker-shell deploy deploy-gateway deploy-web help
 
 # ─── Build ───────────────────────────────────────────
 
@@ -60,22 +60,19 @@ json:
 	cargo run --bin trending-agent -- --json --output ./src/public/data/report.json
 	@echo "✅ report.json ready"
 
-# ─── Deploy (RackNerd) ──────────────────────────────
+# ─── Deploy ──────────────────────────────────────────
 
-define deploy-racknerd-help
-	cargo run --bin trending-agent -- --json --output ./src/public/data/report.json && echo "  ✅ report.json ready"
-endef
-deploy-racknerd:
-	@echo "🚀 Deploying all (backend + frontend) to RackNerd..."
-	@bash deploy-racknerd.sh all
+deploy:
+	@echo "🚀 Deploying all (gateway + web)..."
+	@bash deploy.sh all
 
-deploy-racknerd-backend:
-	@echo "🚀 Deploying backend to RackNerd..."
-	@bash deploy-racknerd.sh backend
+deploy-gateway:
+	@echo "🚀 Deploying gateway..."
+	@bash deploy.sh gateway
 
-deploy-racknerd-frontend:
-	@echo "🚀 Deploying frontend to RackNerd..."
-	@bash deploy-racknerd.sh frontend
+deploy-web:
+	@echo "🚀 Deploying web (backend + frontend)..."
+	@bash deploy.sh web
 
 # ─── Clean ───────────────────────────────────────────
 
@@ -111,6 +108,9 @@ help:
 	@echo "  dev-frontend   Vue 3 dev server (bun)"
 	@echo ""
 	@echo "Deploy:"
+	@echo "  deploy         deploy all (gateway + web)"
+	@echo "  deploy-gateway deploy openatrading gateway"
+	@echo "  deploy-web     deploy web backend + frontend"
 	@echo "  json           generate report.json for static frontend"
 	@echo ""
 	@echo "Other:"
