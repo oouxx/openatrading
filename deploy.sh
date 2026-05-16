@@ -2,22 +2,32 @@
 set -e
 
 SERVICE="${1:-all}"  # cli | gateway | web | all
+MODE="${2:-pull}"    # pull | build
 SERVER="root@100.101.88.117"
 REMOTE_DIR="/root/openatrading"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
-  echo "Usage: ./deploy.sh [cli|gateway|web|all]"
+  echo "Usage: ./deploy.sh [cli|gateway|web|all] [pull|build]"
   echo "  cli        Build & deploy CLI gateway only"
   echo "  gateway    Same as cli"
   echo "  web        Build & deploy web backend + frontend"
   echo "  all        Build & deploy everything (default)"
+  echo ""
+  echo "  pull       Pull prebuilt image from ghcr.io (default)"
+  echo "  build      Build image locally on server"
   exit 1
 }
 
 case "$SERVICE" in
   cli) SERVICE=gateway ;;
   gateway|web|all) ;;
+  *) usage ;;
+esac
+
+case "$MODE" in
+  pull) DOCKER_CMD="pull && docker compose up -d" ;;
+  build) DOCKER_CMD="build && docker compose up -d" ;;
   *) usage ;;
 esac
 
@@ -71,16 +81,16 @@ clone_or_pull() {
 
 deploy_gateway() {
   echo ""
-  echo "=== [gateway] Building & deploying openatrading gateway ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose build && docker compose up -d"
+  echo "=== [gateway] Deploying openatrading gateway (mode: $MODE) ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose $DOCKER_CMD"
 }
 
 # ─── Web ─────────────────────────────────────────────────
 
 deploy_web() {
   echo ""
-  echo "=== [web] Deploying web services ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose-web.yaml pull && docker compose -f docker-compose-web.yaml up -d"
+  echo "=== [web] Deploying web services (mode: $MODE) ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose-web.yaml $DOCKER_CMD"
 }
 
 # ─── Execute ────────────────────────────────────────────
