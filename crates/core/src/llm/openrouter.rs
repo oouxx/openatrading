@@ -123,6 +123,31 @@ impl LlmClient {
         Ok(resp.choices[0].message.content.clone())
     }
 
+    /// 非流式发送 messages JSON，返回完整回复文本
+    pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
+            "max_tokens": 4096,
+            "temperature": 0.7,
+            "stream": false,
+        })
+        .to_string();
+
+        let resp: ChatResponse = self
+            .client
+            .post(&self.api_endpoint)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(resp.choices[0].message.content.clone())
+    }
+
     pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
         let body = serde_json::json!({
             "model": self.model,
