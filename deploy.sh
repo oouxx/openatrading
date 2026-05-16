@@ -28,23 +28,25 @@ fi
 
 echo "=== Deploying: $SERVICE → $SERVER ==="
 
-# ─── Upload source ──────────────────────────────────────
+REPO_URL="https://github.com/oouxx/openatrading.git"
 
-sync_source() {
+# ─── Clone / pull from GitHub ────────────────────────────
+
+clone_or_pull() {
   echo ""
-  echo "=== [sync] Syncing source code to server ==="
-  ssh $SSH_OPTS "$SERVER" "mkdir -p $REMOTE_DIR"
-  rsync -avz -e "ssh $SSH_OPTS" --delete \
-    --exclude='target/' \
-    --exclude='node_modules/' \
-    --exclude='dist/' \
-    --exclude='.git/' \
-    --exclude='docker-images/' \
-    --exclude='*.tar.gz' \
-    --exclude='*.ico' \
-    --exclude='*.icns' \
-    --exclude='.DS_Store' \
-    ./ "$SERVER:$REMOTE_DIR/"
+  echo "=== [git] Fetching latest code from GitHub ==="
+  ssh $SSH_OPTS "$SERVER" "
+    if [ -d $REMOTE_DIR/.git ]; then
+      cd $REMOTE_DIR && git fetch origin && git reset --hard origin/main
+      echo '✅ git pull done'
+    else
+      git clone $REPO_URL $REMOTE_DIR
+      echo '✅ git clone done'
+    fi
+  "
+  # Upload .env separately (not in git)
+  echo "=== [env] Uploading .env ==="
+  scp $SSH_OPTS .env "$SERVER:$REMOTE_DIR/.env"
 }
 
 # ─── Gateway ─────────────────────────────────────────────
@@ -66,7 +68,7 @@ deploy_web() {
 
 # ─── Execute ────────────────────────────────────────────
 
-sync_source
+clone_or_pull
 
 case "$SERVICE" in
   gateway)
