@@ -71,21 +71,23 @@ import { getApiBaseUrl } from '@/stores/data'
 
 const marked = new Marked({
   renderer: {
-    heading({ text, depth }: { text: string; depth: number }) {
+    heading({ tokens, depth }: { tokens: any[]; depth: number }) {
+      const text = this.parser.parseInline(tokens)
       const cls = depth <= 1 ? 'md-h2' : depth === 2 ? 'md-h3' : 'md-h4'
       return `<h${depth + 1} class="${cls}">${text}</h${depth + 1}>`
     },
-    paragraph({ text }: { text: string }) {
-      return `<p class="md-p">${text}</p>`
+    paragraph({ tokens }: { tokens: any[] }) {
+      return `<p class="md-p">${this.parser.parseInline(tokens)}</p>`
     },
-    list({ body, ordered }: { body: string; ordered: boolean }) {
+    list({ items, ordered }: { items: any[]; ordered: boolean }) {
+      const body = items.map(item => this.listitem(item)).join('')
       return ordered ? `<ol class="md-ol">${body}</ol>` : `<ul class="md-ul">${body}</ul>`
     },
-    listitem({ text }: { text: string }) {
-      return `<li>${text}</li>`
+    listitem(item: any) {
+      return `<li>${this.parser.parse(item.tokens)}</li>`
     },
-    blockquote({ body }: { body: string }) {
-      return `<blockquote class="md-blockquote">${body}</blockquote>`
+    blockquote({ tokens }: { tokens: any[] }) {
+      return `<blockquote class="md-blockquote">${this.parser.parse(tokens)}</blockquote>`
     },
     code({ text, lang }: { text: string; lang?: string }) {
       let highlighted: string
@@ -102,17 +104,23 @@ const marked = new Marked({
     hr() {
       return '<hr class="md-hr">'
     },
-    strong({ text }: { text: string }) {
-      return `<strong class="text-white">${text}</strong>`
+    strong({ tokens }: { tokens: any[] }) {
+      return `<strong class="text-white">${this.parser.parseInline(tokens)}</strong>`
     },
-    em({ text }: { text: string }) {
-      return `<em class="md-em">${text}</em>`
+    em({ tokens }: { tokens: any[] }) {
+      return `<em class="md-em">${this.parser.parseInline(tokens)}</em>`
     },
-    del({ text }: { text: string }) {
-      return `<del class="md-del">${text}</del>`
+    del({ tokens }: { tokens: any[] }) {
+      return `<del class="md-del">${this.parser.parseInline(tokens)}</del>`
     },
-    link({ href, text }: { href: string; text: string }) {
-      return `<a href="${href}" target="_blank" class="md-link">${text}</a>`
+    link({ href, tokens }: { href: string; tokens: any[] }) {
+      return `<a href="${href}" target="_blank" class="md-link">${this.parser.parseInline(tokens)}</a>`
+    },
+    image({ href, title, text }: { href: string; title?: string; text: string }) {
+      return `<img src="${href}" alt="${text}"${title ? ` title="${title}"` : ''} class="md-image">`
+    },
+    checkbox({ checked }: { checked: boolean }) {
+      return `<input type="checkbox" ${checked ? 'checked' : ''} disabled class="md-checkbox">`
     },
   },
 })

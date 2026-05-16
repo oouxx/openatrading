@@ -195,6 +195,26 @@ export async function fetchSuperStock() {
   }
 }
 
+// ── Dapan Abnormal ─────────────────────────────────────
+
+export const dapanAbnormal = reactive({
+  data: [] as any[],
+  loading: false,
+  error: '',
+})
+
+export async function fetchDapanAbnormal() {
+  dapanAbnormal.loading = true
+  dapanAbnormal.error = ''
+  try {
+    dapanAbnormal.data = await fetchJson<any[]>('/api/dapan-abnormal')
+  } catch (e: any) {
+    dapanAbnormal.error = e.message || String(e)
+  } finally {
+    dapanAbnormal.loading = false
+  }
+}
+
 // ── Sentiment ──────────────────────────────────────────
 
 export const sentiment = reactive({
