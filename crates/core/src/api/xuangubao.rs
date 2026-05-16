@@ -522,43 +522,68 @@ impl XuanguBaoClient {
             resp["message"]
         );
 
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let snap = &resp["data"]["snapshot"][symbol];
         let arr = snap.as_array().context("missing snapshot array")?;
 
-        let get = |i: usize, default: f64| -> f64 {
-            arr.get(i).and_then(|v| v.as_f64()).unwrap_or(default)
+        let get_f64 = |name: &str| -> f64 {
+            fields
+                .iter()
+                .position(|f| f == name)
+                .and_then(|i| arr.get(i))
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0)
         };
-        let get_str = |i: usize, default: &str| -> String {
-            arr.get(i)
+        let get_str = |name: &str| -> String {
+            fields
+                .iter()
+                .position(|f| f == name)
+                .and_then(|i| arr.get(i))
                 .and_then(|v| v.as_str())
-                .unwrap_or(default)
+                .unwrap_or("")
                 .to_string()
+        };
+        let get_i64 = |name: &str| -> i64 {
+            fields
+                .iter()
+                .position(|f| f == name)
+                .and_then(|i| arr.get(i))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
         };
 
         Ok(RealtimeQuote {
             symbol: symbol.to_string(),
-            name: get_str(0, ""),
-            trade_status: get_str(1, ""),
-            update_time: arr.get(2).and_then(|v| v.as_i64()).unwrap_or(0),
-            last_px: get(3, 0.0),
-            px_change: get(4, 0.0),
-            px_change_rate: get(5, 0.0),
-            preclose_px: get(6, 0.0),
-            open_px: get(7, 0.0),
-            high_px: get(8, 0.0),
-            low_px: get(9, 0.0),
-            amplitude: get(10, 0.0),
-            turnover_ratio: get(11, 0.0),
-            pe_rate: get(12, 0.0),
-            dyn_pe: get(13, 0.0),
-            dyn_pb_rate: get(14, 0.0),
-            market_value: get(15, 0.0),
-            circulation_value: get(16, 0.0),
-            turnover_volume: get(17, 0.0),
-            turnover_value: get(18, 0.0),
-            volume_ratio: get(21, 0.0),
-            circulation_shares: get(22, 0.0),
-            total_shares: get(23, 0.0),
+            name: get_str("prod_name"),
+            trade_status: get_str("trade_status"),
+            update_time: get_i64("update_time"),
+            last_px: get_f64("last_px"),
+            px_change: get_f64("px_change"),
+            px_change_rate: get_f64("px_change_rate"),
+            preclose_px: get_f64("preclose_px"),
+            open_px: get_f64("open_px"),
+            high_px: get_f64("high_px"),
+            low_px: get_f64("low_px"),
+            amplitude: get_f64("amplitude"),
+            turnover_ratio: get_f64("turnover_ratio"),
+            pe_rate: get_f64("pe_rate"),
+            dyn_pe: get_f64("dyn_pe"),
+            dyn_pb_rate: get_f64("dyn_pb_rate"),
+            market_value: get_f64("market_value"),
+            circulation_value: get_f64("circulation_value"),
+            turnover_volume: get_f64("turnover_volume"),
+            turnover_value: get_f64("turnover_value"),
+            volume_ratio: get_f64("volume_ratio"),
+            circulation_shares: get_f64("circulation_shares"),
+            total_shares: get_f64("total_shares"),
         })
     }
     pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
@@ -649,30 +674,57 @@ pub struct KlineData {
     pub candles: Vec<KlineCandle>,
 }
 
+// fields=prod_name(0),trade_status(1),update_time(2),last_px(3),px_change(4),
+//   px_change_rate(5),preclose_px(6),open_px(7),high_px(8),low_px(9),
+//   amplitude(10),turnover_ratio(11),pe_rate(12),dyn_pe(13),dyn_pb_rate(14),
+//   market_value(15),circulation_value(16),turnover_volume(17),turnover_value(18),
+//   volume_ratio(19),circulation_shares(20),total_shares(21)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RealtimeQuote {
     pub symbol: String,
+    /// 0: prod_name
     pub name: String,
+    /// 3: last_px
     pub last_px: f64,
+    /// 4: px_change
     pub px_change: f64,
+    /// 5: px_change_rate
     pub px_change_rate: f64,
+    /// 7: open_px
     pub open_px: f64,
+    /// 8: high_px
     pub high_px: f64,
+    /// 9: low_px
     pub low_px: f64,
+    /// 6: preclose_px
     pub preclose_px: f64,
+    /// 10: amplitude
     pub amplitude: f64,
+    /// 11: turnover_ratio
     pub turnover_ratio: f64,
+    /// 17: turnover_volume
     pub turnover_volume: f64,
+    /// 18: turnover_value
     pub turnover_value: f64,
+    /// 15: market_value
     pub market_value: f64,
+    /// 16: circulation_value
     pub circulation_value: f64,
+    /// 12: pe_rate
     pub pe_rate: f64,
+    /// 13: dyn_pe
     pub dyn_pe: f64,
+    /// 14: dyn_pb_rate
     pub dyn_pb_rate: f64,
+    /// 19: volume_ratio
     pub volume_ratio: f64,
+    /// 20: circulation_shares
     pub circulation_shares: f64,
+    /// 21: total_shares
     pub total_shares: f64,
+    /// 1: trade_status
     pub trade_status: String,
+    /// 2: update_time
     pub update_time: i64,
 }
 

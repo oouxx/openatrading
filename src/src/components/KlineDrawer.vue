@@ -35,13 +35,13 @@
       </div>
 
       <!-- Crosshair Info Bar -->
-      <div class="flex items-center justify-between px-4 py-1 font-mono bg-surface-dark-2 border-b border-hairline-dark min-h-[30px] text-caption">
-        <span class="text-white">{{ crosshair.time }}</span>
-        <div class="flex items-center gap-2 text-white/40">
+      <div class="flex items-center justify-between px-3 py-1 font-mono text-xs bg-surface-dark-2 border-b border-hairline-dark h-[28px] whitespace-nowrap overflow-hidden">
+        <span class="text-white shrink-0">{{ crosshair.time }}</span>
+        <div class="flex items-center gap-1.5 text-white/40 shrink-0">
           <span>开 <span class="text-white">{{ crosshair.open }}</span></span>
           <span>高 <span class="text-white">{{ crosshair.high }}</span></span>
           <span>低 <span class="text-white">{{ crosshair.low }}</span></span>
-          <span>{{ period === 'minute' ? '均' : '收' }} <span class="text-white">{{ crosshair.close }}</span></span>
+          <span>价 <span class="text-white">{{ crosshair.close }}</span></span>
           <span>量 <span class="text-white">{{ crosshair.volume }}</span></span>
           <span :class="crosshair.changeNum >= 0 ? 'text-up' : 'text-down'">{{ crosshair.change }}</span>
         </div>
@@ -242,19 +242,13 @@ function updateCrosshairFromData() {
   const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
 
   if (period.value === 'minute') {
-    let cv = 0, cvol = 0
-    for (let j = 0; j < klineData.length; j++) {
-      cv += klineData[j].close * klineData[j].volume
-      cvol += klineData[j].volume
-    }
-    const vwap = cvol > 0 ? cv / cvol : last.close
     const lastLabel = timeLabelMap.get(last.time) || ''
     crosshair.value = {
       time: lastLabel,
       open: last.open?.toFixed(2) || '-',
       high: last.high?.toFixed(2) || '-',
       low: last.low?.toFixed(2) || '-',
-      close: vwap?.toFixed(2) || '-',
+      close: last.close?.toFixed(2) || '-',
       volume: formatVolume(last.volume || 0),
       change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
       changeNum: changeRate,
@@ -381,18 +375,19 @@ function initKlineChart() {
   })
 
   chart.subscribeCrosshairMove((param: any) => {
-    if (!param.point || !param.time || param.seriesData.size === 0) return
-    const data = param.seriesData.get(candleSeries!)
-    if (!data) return
+    if (!param.point || param.time === undefined || param.seriesData.size === 0) return
+    const ts = param.time as number
+    const c = klineData.find((d: any) => d.time === ts)
+    if (!c) return
     const preclose = quote.value?.preclose_px
-    const changeRate = preclose ? ((data.close - preclose) / preclose * 100) : 0
+    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
     crosshair.value = {
-      time: formatTime(data.time as number, period.value),
-      open: data.open?.toFixed(2) || '-',
-      high: data.high?.toFixed(2) || '-',
-      low: data.low?.toFixed(2) || '-',
-      close: data.close?.toFixed(2) || '-',
-      volume: formatVolume((param.seriesData.get(volumeSeries!) as any)?.value || 0),
+      time: formatTime(ts, period.value),
+      open: c.open?.toFixed(2) || '-',
+      high: c.high?.toFixed(2) || '-',
+      low: c.low?.toFixed(2) || '-',
+      close: c.close?.toFixed(2) || '-',
+      volume: formatVolume(c.volume || 0),
       change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
       changeNum: changeRate,
     }
@@ -493,22 +488,15 @@ function initIntradayChart() {
     const c = klineData.find((d: any) => d.time === ts)
     if (!c) return
     const preclose = quote.value?.preclose_px
-    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
 
-    const idx = klineData.indexOf(c)
-    let cv = 0, cvol = 0
-    for (let j = 0; j <= idx; j++) {
-      cv += klineData[j].close * klineData[j].volume
-      cvol += klineData[j].volume
-    }
-    const vwapVal = cvol > 0 ? cv / cvol : c.close
+    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
 
     crosshair.value = {
       time: timeLabelMap.get(ts) || '',
       open: c.open?.toFixed(2) || '-',
       high: c.high?.toFixed(2) || '-',
       low: c.low?.toFixed(2) || '-',
-      close: vwapVal?.toFixed(2) || '-',
+      close: c.close?.toFixed(2) || '-',
       volume: formatVolume(c.volume || 0),
       change: changeRate >= 0 ? `+${changeRate.toFixed(2)}%` : `${changeRate.toFixed(2)}%`,
       changeNum: changeRate,
