@@ -151,7 +151,19 @@ let timeLabelMap = new Map<number, string>()
 let fetchId = 0
 let klineData: any[] = []
 
-const TRADING_SESSIONS = [[570, 690], [780, 900]] // 9:30-11:30, 13:00-15:00
+const TRADING_SESSIONS = [[570, 690], [780, 900]]
+
+function getLimitPct(symbol: string): number {
+  const code = symbol.replace(/\.[A-Z]+$/, '')
+
+  if (/^[48]\d{5}$/.test(code)) return 30  // 北交所
+  if (/^68\d{4}$/.test(code)) return 20    // 科创板
+  if (/^30\d{4}$/.test(code)) return 20    // 创业板
+  if (/^60\d{4}$/.test(code)) return 10    // 沪市主板
+  if (/^00\d{4}$/.test(code)) return 10    // 深市主板
+  
+  return 10 // fallback
+}
 
 function isTradingTime(ts: number): boolean {
   const d = new Date(ts * 1000)
@@ -239,7 +251,13 @@ function updateCrosshairFromData() {
   if (klineData.length === 0) return
   const last = klineData[klineData.length - 1]
   const preclose = quote.value?.preclose_px
-  const changeRate = preclose ? ((last.close - preclose) / preclose * 100) : 0
+
+  let changeRate: number
+  if (period.value === 'minute') {
+    changeRate = preclose ? ((last.close - preclose) / preclose * 100) : (last.change_rate ?? 0)
+  } else {
+    changeRate = last.change_rate ?? (preclose ? ((last.close - preclose) / preclose * 100) : 0)
+  }
 
   if (period.value === 'minute') {
     const lastLabel = timeLabelMap.get(last.time) || ''
@@ -281,7 +299,7 @@ function buildVolumeData(): HistogramData[] {
   return klineData.map((c: any) => ({
     time: c.time as Time,
     value: c.volume || 0,
-    color: c.close >= c.open ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
+    color: c.close >= (c.open ?? c.close) ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
   }))
 }
 
@@ -298,13 +316,6 @@ function buildVwapData(): { time: Time; value: number }[] {
   })
 }
 
-function buildPctAnchorData(preclose: number): { time: Time; value: number }[] {
-  return klineData.map((c: any) => ({
-    time: c.time as Time,
-    value: (c.close - preclose) / preclose * 100,
-  }))
-}
-
 function buildPriceData(): { time: Time; value: number }[] {
   return klineData.map((c: any) => ({
     time: c.time as Time,
@@ -313,10 +324,11 @@ function buildPriceData(): { time: Time; value: number }[] {
 }
 
 function buildIntradayVolumeData(): HistogramData[] {
+  const preclose = quote.value?.preclose_px
   return klineData.map((c: any) => ({
     time: c.time as Time,
     value: c.volume || 0,
-    color: c.close >= c.open ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
+    color: c.close >= (c.open ?? preclose ?? c.close) ? 'rgba(255,92,92,0.3)' : 'rgba(29,158,117,0.3)',
   }))
 }
 
@@ -379,8 +391,7 @@ function initKlineChart() {
     const ts = param.time as number
     const c = klineData.find((d: any) => d.time === ts)
     if (!c) return
-    const preclose = quote.value?.preclose_px
-    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
+    const changeRate = c.change_rate ?? 0
     crosshair.value = {
       time: formatTime(ts, period.value),
       open: c.open?.toFixed(2) || '-',
@@ -423,13 +434,13 @@ function initIntradayChart() {
     rightPriceScale: {
       borderColor: 'rgba(255,255,255,0.06)',
       autoScale: true,
-      scaleMargins: { top: 0.05, bottom: 0.05 },
+      scaleMargins: { top: 0.05, bottom: 0.25 },
     },
     leftPriceScale: {
       visible: true,
       borderColor: 'rgba(255,255,255,0.06)',
       autoScale: true,
-      scaleMargins: { top: 0.05, bottom: 0.05 },
+      scaleMargins: { top: 0.05, bottom: 0.25 },
     },
   })
 
@@ -442,17 +453,19 @@ function initIntradayChart() {
     crosshairMarkerRadius: 4,
     lastValueVisible: false,
     priceLineVisible: false,
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
   })
 
   // VWAP average price line (left scale)
   avgPriceSeries = chart.addSeries(LineSeries, {
     color: '#f5a623',
     lineWidth: 1,
-    lineStyle: 2, // dashed
+    lineStyle: 2,
     priceScaleId: 'left',
     crosshairMarkerVisible: false,
     lastValueVisible: false,
     priceLineVisible: false,
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
   })
 
   // Hidden pct anchor (right scale) — drives right Y-axis autoScale
@@ -462,6 +475,7 @@ function initIntradayChart() {
     lastValueVisible: false,
     priceLineVisible: false,
     crosshairMarkerVisible: false,
+    priceFormat: { type: 'custom', formatter: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`, minMove: 0.01 },
   })
 
   // Volume (separate scale at bottom)
@@ -471,15 +485,8 @@ function initIntradayChart() {
   })
 
   chart.priceScale('volume').applyOptions({
-    scaleMargins: { top: 0.80, bottom: 0 },
+    scaleMargins: { top: 0.78, bottom: 0.02 },
     borderColor: 'rgba(255,255,255,0.06)',
-  })
-
-  // Right price scale: % formatter for intraday
-  chart.applyOptions({
-    localization: {
-      priceFormatter: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`,
-    },
   })
 
   chart.subscribeCrosshairMove((param: any) => {
@@ -488,8 +495,7 @@ function initIntradayChart() {
     const c = klineData.find((d: any) => d.time === ts)
     if (!c) return
     const preclose = quote.value?.preclose_px
-
-    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : 0
+    const changeRate = preclose ? ((c.close - preclose) / preclose * 100) : (c.change_rate ?? 0)
 
     crosshair.value = {
       time: timeLabelMap.get(ts) || '',
@@ -505,10 +511,13 @@ function initIntradayChart() {
 }
 
 function clearPriceLines() {
-  const series = period.value === 'minute' ? priceSeries : candleSeries
-  if (!series) return
-  for (const line of priceLines) {
-    series.removePriceLine(line)
+  const seriesList = period.value === 'minute'
+    ? [priceSeries, pctAnchorSeries].filter((s): s is ISeriesApi<any> => s !== null)
+    : [candleSeries].filter((s): s is ISeriesApi<any> => s !== null)
+  for (const series of seriesList) {
+    for (const line of priceLines) {
+      try { series.removePriceLine(line) } catch {}
+    }
   }
   priceLines = []
 }
@@ -574,37 +583,38 @@ function renderIntradayChart() {
 
   if (!priceSeries || !avgPriceSeries || !volumeSeries || !pctAnchorSeries) return
 
+  const preclose = quote.value?.preclose_px
+
   priceSeries.setData(buildPriceData())
   avgPriceSeries.setData(buildVwapData())
-  const preclose = quote.value?.preclose_px
-  if (preclose && preclose > 0) {
-    pctAnchorSeries.setData(buildPctAnchorData(preclose))
-  }
   volumeSeries.setData(buildIntradayVolumeData())
 
-  // Center left scale around preclose
   if (chart && preclose && preclose > 0) {
     if (intradayAnchorSeries) {
       chart.removeSeries(intradayAnchorSeries)
       intradayAnchorSeries = null
     }
-    let maxDev = 0
-    for (const c of klineData) {
-      maxDev = Math.max(maxDev, Math.abs(c.high - preclose), Math.abs(c.low - preclose))
-    }
-    const range = Math.max(maxDev * 1.1, preclose * 0.01)
+    const limitPct = getLimitPct(props.symbol)
+    const priceRange = preclose * limitPct / 100
+    const firstTime = klineData[0].time as Time
+    const lastTime = klineData[klineData.length - 1].time as Time
+
     intradayAnchorSeries = chart.addSeries(LineSeries, {
       color: 'transparent',
       priceScaleId: 'left',
       lastValueVisible: false,
       priceLineVisible: false,
       crosshairMarkerVisible: false,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
-    const firstTime = klineData[0].time as Time
-    const lastTime = klineData[klineData.length - 1].time as Time
     intradayAnchorSeries.setData([
-      { time: firstTime, value: preclose - range },
-      { time: lastTime, value: preclose + range },
+      { time: firstTime, value: preclose - priceRange },
+      { time: lastTime, value: preclose + priceRange },
+    ])
+
+    pctAnchorSeries.setData([
+      { time: firstTime, value: -limitPct },
+      { time: lastTime, value: limitPct },
     ])
   }
 
@@ -621,6 +631,18 @@ function renderIntradayChart() {
         title: `昨收 ${quote.value.preclose_px.toFixed(2)}`,
       })
     )
+    if (pctAnchorSeries) {
+      priceLines.push(
+        pctAnchorSeries.createPriceLine({
+          price: 0,
+          color: 'rgba(255,255,255,0.20)',
+          lineStyle: 2,
+          lineWidth: 1,
+          axisLabelVisible: true,
+          title: '0.00%',
+        })
+      )
+    }
   }
 
   chart!.timeScale().fitContent()
