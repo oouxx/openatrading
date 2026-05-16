@@ -8,7 +8,7 @@
 | Frontend deps | Pinia 3, lightweight-charts 5, TailwindCSS 3.4 | `src/package.json` |
 | Package manager | Bun | `bun.lock` |
 | Backend | Rust (workspace) | `Cargo.toml` |
-| Crates | core, cli, web, wasm, src-tauri | `crates/`, `src-tauri/` |
+| Crates | core, cli, web, src-tauri | `crates/`, `src-tauri/` |
 | Key Rust deps | tokio, reqwest, serde, chrono, clap, rusqlite, tokio-cron-scheduler, askama, async-trait, teloxide (optional) | |
 | DB | SQLite (rusqlite, bundled) | `.atrading/data.db` |
 | LLM | OpenRouter / DeepSeek API-compatible | `crates/core/src/llm/openrouter.rs` |
@@ -42,8 +42,7 @@
 │   │       ├── trade_cmd.rs  # trade add/list/close
 │   │       ├── update.rs     # self-update from GitHub Releases
 │   │       └── serve.rs → gateway_cmd.rs (renamed)
-│   ├── web/              #   Web server binary (independent deployment)
-│   └── wasm/             #   WASM target stub
+│   └── web/              #   Web server binary (independent deployment)
 ├── src/                  # Vue 3 frontend (own package.json / tsconfig)
 │   ├── src/
 │   │   ├── components/   #   Vue components + tabs/
