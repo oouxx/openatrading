@@ -9,7 +9,41 @@ permissions:
   contents: write
 
 jobs:
-  # ── macOS (x64 + arm64) ─────────────────────────────
+  # ── CLI Binary Build Matrix ──────────────────────────
+  build-cli:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            asset_name: openatrading-x86_64-apple-darwin
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            asset_name: openatrading-aarch64-apple-darwin
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            asset_name: openatrading-x86_64-unknown-linux-gnu
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            asset_name: openatrading-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release -p openatrading-cli --target ${{ matrix.target }}
+      - name: Rename binary
+        shell: bash
+        run: |
+          SRC="target/${{ matrix.target }}/release/openatrading${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          cp "$SRC" "${{ matrix.asset_name }}"
+      - name: Upload CLI binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+
+  # ── macOS Tauri ─────────────────────────────────────
 
   build-macos:
     strategy:
@@ -32,7 +66,7 @@ jobs:
           releaseName: 'v__VERSION__'
           releaseDraft: false
 
-  # ── Linux (x64) ─────────────────────────────────────
+  # ── Linux Tauri (x64) ───────────────────────────────
 
   build-linux-amd64:
     runs-on: ubuntu-latest
@@ -50,7 +84,7 @@ jobs:
           releaseName: 'v__VERSION__'
           releaseDraft: false
 
-  # ── Linux (arm64) ───────────────────────────────────
+  # ── Linux Tauri (arm64) ─────────────────────────────
 
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -68,7 +102,7 @@ jobs:
           releaseName: 'v__VERSION__'
           releaseDraft: false
 
-  # ── Windows (x64) ───────────────────────────────────
+  # ── Windows Tauri ───────────────────────────────────
 
   build-windows:
     runs-on: windows-latest

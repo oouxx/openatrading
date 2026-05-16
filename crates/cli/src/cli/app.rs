@@ -1,21 +1,21 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "trending-agent")]
+#[command(name = "openatrading")]
 #[command(about = "A股市场异动追踪工具 — 命令行接口")]
 #[command(long_about = r#"
-trending-agent 是一个 A 股市场异动追踪工具。
+openatrading 是一个 A 股市场异动追踪工具。
 支持多种数据源的获取和 AI 分析，输出 JSON / Markdown / HTML 格式。
 
 用法:
-  trending-agent                           # 默认获取全量数据，输出 Markdown 到 stdout
-  trending-agent --json                    # 输出 JSON 到 stdout
-  trending-agent --html --output report.html   # 输出 HTML 到文件
-  trending-agent --data limit_up,overview  # 只获取涨停和市场概览
-  trending-agent --data cls_telegraph --ai # 获取财联社电报并 AI 分析
-  trending-agent init                          # 初始化 ~/.atrading/ 配置目录
-  trending-agent --role zarili --ai            # 指定角色运行 AI 分析
-  trending-agent --list-roles                  # 列出所有可用角色
+  openatrading                           # 默认获取全量数据，输出 Markdown 到 stdout
+  openatrading --json                    # 输出 JSON 到 stdout
+  openatrading --html --output report.html   # 输出 HTML 到文件
+  openatrading --data limit_up,overview  # 只获取涨停和市场概览
+  openatrading --data cls_telegraph --ai # 获取财联社电报并 AI 分析
+  openatrading init                          # 初始化 ~/.atrading/ 配置目录
+  openatrading --role zarili --ai            # 指定角色运行 AI 分析
+  openatrading --list-roles                  # 列出所有可用角色
 
 环境变量:
   LLM_API_KEY       LLM API 密钥 (DeepSeek 或 OpenAI-compatible)
@@ -78,6 +78,12 @@ pub enum Commands {
     Init,
     /// 启动后台服务 (cron + telegram)
     Serve,
+    /// 从 GitHub Releases 更新到最新版本
+    Update {
+        /// 仅检查更新，不下载
+        #[arg(long)]
+        check: bool,
+    },
     /// 持仓管理
     Trade {
         #[command(subcommand)]
