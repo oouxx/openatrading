@@ -1,4 +1,5 @@
 <template>
+  <div>
   <Teleport to="body">
     <div @click="$emit('close')" class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)"></div>
 
@@ -100,6 +101,7 @@
       </div>
     </motion.div>
   </Teleport>
+  </div>
 </template>
 
 <script setup lang="ts">
