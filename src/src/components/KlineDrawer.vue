@@ -341,6 +341,11 @@ function initKlineChart() {
       background: { color: '#111124' },
       textColor: '#888780',
       fontSize: 10,
+      panes: {
+        enableResize: false,
+        separatorColor: 'rgba(255,255,255,0.08)',
+        separatorHoverColor: 'rgba(255,255,255,0.08)',
+      },
     },
     grid: {
       vertLines: { color: 'rgba(255,255,255,0.06)' },
@@ -372,17 +377,30 @@ function initKlineChart() {
     wickUpColor: '#FF5C5C',
     wickDownColor: '#1D9E75',
     priceScaleId: 'right',
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
   })
+
+  chart.addPane(true)
 
   volumeSeries = chart.addSeries(HistogramSeries, {
-    priceScaleId: 'volume',
-    priceFormat: { type: 'volume' },
-  })
+    priceScaleId: 'right',
+    priceFormat: {
+      type: 'custom',
+      formatter: (v: number) => {
+        if (v >= 1e8) return (v / 1e8).toFixed(1) + '亿'
+        if (v >= 1e4) return (v / 1e4).toFixed(0) + '万'
+        return v.toFixed(0)
+      },
+      minMove: 1,
+    },
+  }, 1)
 
-  // Set up volume price scale
-  chart.priceScale('volume').applyOptions({
-    scaleMargins: { top: 0.85, bottom: 0 },
-    borderColor: 'rgba(255,255,255,0.06)',
+  chart.panes()[0].setHeight(340)
+  chart.panes()[1].setHeight(80)
+
+  chart.priceScale('right', 1).applyOptions({
+    borderVisible: false,
+    autoScale: true,
   })
 
   chart.subscribeCrosshairMove((param: any) => {
@@ -414,6 +432,11 @@ function initIntradayChart() {
       background: { color: '#111124' },
       textColor: '#888780',
       fontSize: 10,
+      panes: {
+        enableResize: false,
+        separatorColor: 'rgba(255,255,255,0.08)',
+        separatorHoverColor: 'rgba(255,255,255,0.08)',
+      },
     },
     grid: {
       vertLines: { color: 'rgba(255,255,255,0.06)' },
@@ -431,19 +454,16 @@ function initIntradayChart() {
       },
     },
     rightPriceScale: {
-      borderColor: 'rgba(255,255,255,0.06)',
-      autoScale: true,
-      scaleMargins: { top: 0.05, bottom: 0.25 },
+      borderVisible: false,
+      autoScale: false,
     },
     leftPriceScale: {
       visible: true,
-      borderColor: 'rgba(255,255,255,0.06)',
-      autoScale: true,
-      scaleMargins: { top: 0.05, bottom: 0.25 },
+      borderVisible: false,
+      autoScale: false,
     },
   })
 
-  // Price line (left scale)
   priceSeries = chart.addSeries(LineSeries, {
     color: '#ffffff',
     lineWidth: 1,
@@ -455,7 +475,6 @@ function initIntradayChart() {
     priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
   })
 
-  // VWAP average price line (left scale)
   avgPriceSeries = chart.addSeries(LineSeries, {
     color: '#f5a623',
     lineWidth: 1,
@@ -467,7 +486,6 @@ function initIntradayChart() {
     priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
   })
 
-  // Hidden pct anchor (right scale) — drives right Y-axis autoScale
   pctAnchorSeries = chart.addSeries(LineSeries, {
     color: 'transparent',
     priceScaleId: 'right',
@@ -477,15 +495,27 @@ function initIntradayChart() {
     priceFormat: { type: 'custom', formatter: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`, minMove: 0.01 },
   })
 
-  // Volume (separate scale at bottom)
-  volumeSeries = chart.addSeries(HistogramSeries, {
-    priceScaleId: 'volume',
-    priceFormat: { type: 'volume' },
-  })
+  chart.addPane(true)
 
-  chart.priceScale('volume').applyOptions({
-    scaleMargins: { top: 0.78, bottom: 0.02 },
-    borderColor: 'rgba(255,255,255,0.06)',
+  volumeSeries = chart.addSeries(HistogramSeries, {
+    priceScaleId: 'right',
+    priceFormat: {
+      type: 'custom',
+      formatter: (v: number) => {
+        if (v >= 1e8) return (v / 1e8).toFixed(1) + '亿'
+        if (v >= 1e4) return (v / 1e4).toFixed(0) + '万'
+        return v.toFixed(0)
+      },
+      minMove: 1,
+    },
+  }, 1)
+
+  chart.panes()[0].setHeight(320)
+  chart.panes()[1].setHeight(100)
+
+  chart.priceScale('right', 1).applyOptions({
+    borderVisible: false,
+    autoScale: true,
   })
 
   chart.subscribeCrosshairMove((param: any) => {
@@ -590,7 +620,6 @@ function renderIntradayChart() {
 
   if (chart && preclose && preclose > 0) {
     const limitPct = getLimitPct(props.symbol)
-    const priceRange = preclose * limitPct / 100
     const firstTime = klineData[0].time as Time
     const lastTime = klineData[klineData.length - 1].time as Time
 
@@ -598,15 +627,8 @@ function renderIntradayChart() {
       { time: firstTime, value: -limitPct },
       { time: lastTime, value: limitPct },
     ])
-
-    chart.priceScale('left').setAutoScale(false)
-    chart.priceScale('left').setVisibleRange({ from: preclose - priceRange, to: preclose + priceRange })
-
-    chart.priceScale('right').setAutoScale(false)
-    chart.priceScale('right').setVisibleRange({ from: -limitPct, to: limitPct })
   }
 
-  // Preclose price line on price series
   clearPriceLines()
   if (preclose && preclose > 0 && priceSeries) {
     priceLines.push(
@@ -619,21 +641,30 @@ function renderIntradayChart() {
         title: `昨收 ${quote.value.preclose_px.toFixed(2)}`,
       })
     )
-    if (pctAnchorSeries) {
-      priceLines.push(
-        pctAnchorSeries.createPriceLine({
-          price: 0,
-          color: 'rgba(255,255,255,0.20)',
-          lineStyle: 2,
-          lineWidth: 1,
-          axisLabelVisible: true,
-          title: '0.00%',
-        })
-      )
-    }
+    priceLines.push(
+      pctAnchorSeries.createPriceLine({
+        price: 0,
+        color: 'rgba(255,255,255,0.20)',
+        lineStyle: 2,
+        lineWidth: 1,
+        axisLabelVisible: true,
+        title: '0.00%',
+      })
+    )
   }
 
   chart!.timeScale().fitContent()
+
+  if (chart && preclose && preclose > 0) {
+    const limitPct = getLimitPct(props.symbol)
+    const priceRange = preclose * limitPct / 100
+
+    chart.priceScale('left', 0).setAutoScale(false)
+    chart.priceScale('left', 0).setVisibleRange({ from: preclose - priceRange, to: preclose + priceRange })
+
+    chart.priceScale('right', 0).setAutoScale(false)
+    chart.priceScale('right', 0).setVisibleRange({ from: -limitPct, to: limitPct })
+  }
 }
 
 function visibleBarsForPeriod(p: string): number {
@@ -648,13 +679,6 @@ function renderKlineChart() {
   if (!chart) {
     initKlineChart()
   }
-
-  // Reset localization: plain price formatter (no %)
-  chart!.applyOptions({
-    localization: {
-      priceFormatter: (v: number) => v.toFixed(2),
-    },
-  })
 
   if (!candleSeries || !volumeSeries) return
 
