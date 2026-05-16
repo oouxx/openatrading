@@ -75,6 +75,12 @@ pub async fn run() -> Result<()> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
 
+    // Handle --version
+    if cli.version {
+        println!("openatrading {}", env!("GIT_VERSION"));
+        return Ok(());
+    }
+
     // Handle `init` subcommand
     if let Some(Commands::Init) = cli.command {
         return cmd_init();

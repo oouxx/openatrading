@@ -68,6 +68,10 @@ pub struct Cli {
     #[arg(long)]
     pub list_roles: bool,
 
+    /// 显示版本号
+    #[arg(short = 'V', long)]
+    pub version: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
