@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 const REPO: &str = "oouxx/openatrading";
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CURRENT_VERSION: &str = env!("GIT_VERSION");
 
 fn asset_name() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -48,7 +48,7 @@ async fn fetch_latest_release() -> Result<(String, String)> {
 /// 检查更新，返回 (最新版本, 当前版本, 是否需要更新)
 pub async fn cmd_update_check() -> Result<(String, String, bool)> {
     let (latest_tag, _) = fetch_latest_release().await?;
-    let current = format!("v{CURRENT_VERSION}");
+    let current = CURRENT_VERSION.to_string();
     let needs_update = latest_tag != current;
     Ok((latest_tag, current, needs_update))
 }
@@ -56,7 +56,7 @@ pub async fn cmd_update_check() -> Result<(String, String, bool)> {
 /// 下载并替换当前二进制
 pub async fn cmd_update() -> Result<()> {
     let (latest_tag, download_url) = fetch_latest_release().await?;
-    let current = format!("v{CURRENT_VERSION}");
+    let current = CURRENT_VERSION.to_string();
 
     if latest_tag == current {
         println!("✅ 已是最新版本 ({current})");
