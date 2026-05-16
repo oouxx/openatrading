@@ -2,7 +2,7 @@
 set -e
 
 SERVICE="${1:-all}"  # cli | gateway | web | all
-SERVER="root@107.172.238.76"
+SERVER="root@100.101.88.117"
 REMOTE_DIR="/root/openatrading"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
