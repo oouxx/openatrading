@@ -1,25 +1,19 @@
 use anyhow::{Context, Result};
 
-const REPO: &str = "oouxx/trending-agent";
+const REPO: &str = "oouxx/openatrading";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn asset_name() -> &'static str {
-    #[cfg(windows)]
-    {
-        "openatrading-x86_64-pc-windows-msvc.exe"
-    }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    {
-        "openatrading-x86_64-apple-darwin"
-    }
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    {
-        "openatrading-aarch64-apple-darwin"
-    }
+fn asset_name() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        "openatrading-x86_64-unknown-linux-gnu"
+        return Some("openatrading-x86_64-unknown-linux-gnu");
     }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        return Some("openatrading-aarch64-unknown-linux-gnu");
+    }
+    #[allow(unreachable_code)]
+    None
 }
 
 /// 查询最新版本，返回 (tag_name, download_url)
@@ -40,7 +34,7 @@ async fn fetch_latest_release() -> Result<(String, String)> {
         .to_string();
 
     let assets = resp["assets"].as_array().context("无法解析 assets")?;
-    let name = asset_name();
+    let name = asset_name().context("当前平台不支持更新，仅支持 Linux x86_64 / aarch64")?;
     let download_url = assets
         .iter()
         .find(|a| a["name"].as_str() == Some(name))
@@ -119,8 +113,9 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_asset_name_is_valid() {
-        let name = asset_name();
+        let name = asset_name().unwrap();
         assert!(name.starts_with("openatrading-"));
     }
 }

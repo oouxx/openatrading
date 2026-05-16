@@ -1,29 +1,12 @@
 services:
-  backend:
-    image: trending-agent-backend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+  openatrading:
+    image: ghcr.io/oouxx/openatrading:latest
     env_file:
       - .env
     environment:
       - RUST_BACKTRACE=1
       - TZ=Asia/Shanghai
-    restart: unless-stopped
-
-  frontend:
-    image: trending-agent-frontend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "80:80"
-      - "443:443"
     volumes:
-      - /root/certs:/etc/ssl/cloudflare:ro
-    environment:
-      - BACKEND_HOST=backend
-      - TZ=Asia/Shanghai
-    depends_on:
-      - backend
+      - ~/.atrading:/root/.atrading
+      - .:/app
     restart: unless-stopped

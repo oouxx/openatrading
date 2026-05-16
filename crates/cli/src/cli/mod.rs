@@ -1,6 +1,6 @@
 pub mod app;
 pub mod config;
-pub mod serve;
+pub mod gateway_cmd;
 pub mod trade_cmd;
 pub mod update;
 
@@ -10,11 +10,11 @@ use clap::Parser;
 use serde::Serialize;
 use std::io::Write;
 
-use crate::cli::app::{Commands, ServeAction, TradeAction};
+use crate::cli::app::{Commands, GatewayAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
-use crate::cli::serve::{
-    cmd_serve_install, cmd_serve_run, cmd_serve_start, cmd_serve_status, cmd_serve_stop,
-    cmd_serve_uninstall,
+use crate::cli::gateway_cmd::{
+    cmd_gateway_install, cmd_gateway_run, cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop,
+    cmd_gateway_uninstall,
 };
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
@@ -82,15 +82,15 @@ pub async fn run() -> Result<()> {
 
     let project_root = std::env::current_dir()?;
 
-    // Handle `serve` subcommand
-    if let Some(Commands::Serve { action }) = cli.command {
+    // Handle `gateway` subcommand
+    if let Some(Commands::Gateway { action }) = cli.command {
         return match action {
-            ServeAction::Install => cmd_serve_install(&project_root),
-            ServeAction::Uninstall => cmd_serve_uninstall(),
-            ServeAction::Start => cmd_serve_start(),
-            ServeAction::Stop => cmd_serve_stop(),
-            ServeAction::Status => cmd_serve_status(),
-            ServeAction::Run => cmd_serve_run(&project_root).await,
+            GatewayAction::Install => cmd_gateway_install(&project_root),
+            GatewayAction::Uninstall => cmd_gateway_uninstall(),
+            GatewayAction::Start => cmd_gateway_start(),
+            GatewayAction::Stop => cmd_gateway_stop(),
+            GatewayAction::Status => cmd_gateway_status(),
+            GatewayAction::Run => cmd_gateway_run(&project_root).await,
         };
     }
 
