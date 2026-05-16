@@ -1,6 +1,9 @@
 services:
   openatrading:
     image: ghcr.io/oouxx/openatrading:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file:
       - .env
     environment:
