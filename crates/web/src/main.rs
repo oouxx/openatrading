@@ -522,32 +522,73 @@ async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
     ))
 }
 
-/// Proxy download from GitHub Releases, fallback to local downloads/
-async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
-    // Try GitHub first
-    let url = format!("https://github.com/oouxx/openatrading/releases/latest/download/{file}");
+/// Fetch latest release asset list, cached for 5 min
+async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
+    static CACHE: std::sync::OnceLock<(std::time::Instant, Vec<(i64, String)>)> =
+        std::sync::OnceLock::new();
+
+    let cache = CACHE.get();
+    if let Some((t, assets)) = cache {
+        if t.elapsed() < std::time::Duration::from_secs(300) {
+            return Ok(assets.clone());
+        }
+    }
+
+    let url = "https://api.github.com/repos/oouxx/openatrading/releases/latest";
     let client = reqwest::Client::new();
-    let mut req = client
-        .get(&url)
-        .header("Accept", "application/octet-stream");
+    let mut req = client.get(url).header("User-Agent", "openatrading-web");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
-    if let Ok(resp) = req.send().await {
-        if resp.status().is_success() {
-            let content_type = resp
-                .headers()
-                .get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("application/octet-stream")
-                .to_string();
-            let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-            let response = axum::response::Response::builder()
-                .status(StatusCode::OK)
-                .header(axum::http::header::CONTENT_TYPE, content_type)
-                .body(axum::body::Body::from(body))
-                .unwrap();
-            return Ok(response);
+    let resp = req.send().await.map_err(|_| ())?;
+    let json: serde_json::Value = resp.json().await.map_err(|_| ())?;
+
+    let mut assets = Vec::new();
+    if let Some(arr) = json["assets"].as_array() {
+        for a in arr {
+            if let (Some(id), Some(name)) = (a["id"].as_i64(), a["name"].as_str()) {
+                assets.push((id, name.to_string()));
+            }
+        }
+    }
+
+    let _ = CACHE.set((std::time::Instant::now(), assets.clone()));
+    Ok(assets)
+}
+
+/// Proxy download from GitHub Releases via asset API, fallback to local
+async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    // Try GitHub asset API
+    if let Ok(assets) = fetch_assets().await {
+        if let Some((asset_id, _)) = assets.iter().find(|(_, name)| name == &file) {
+            let url = format!(
+                "https://api.github.com/repos/oouxx/openatrading/releases/assets/{asset_id}"
+            );
+            let client = reqwest::Client::new();
+            let mut req = client
+                .get(&url)
+                .header("Accept", "application/octet-stream")
+                .header("User-Agent", "openatrading-web");
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                req = req.header("Authorization", format!("Bearer {token}"));
+            }
+            if let Ok(resp) = req.send().await {
+                if resp.status().is_success() {
+                    let content_type = resp
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("application/octet-stream")
+                        .to_string();
+                    let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+                    let response = axum::response::Response::builder()
+                        .status(StatusCode::OK)
+                        .header(axum::http::header::CONTENT_TYPE, content_type)
+                        .body(axum::body::Body::from(body))
+                        .unwrap();
+                    return Ok(response);
+                }
+            }
         }
     }
 
