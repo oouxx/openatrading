@@ -28,7 +28,7 @@ fi
 
 echo "=== Deploying: $SERVICE → $SERVER ==="
 
-REPO_URL="https://github.com/oouxx/openatrading.git"
+REPO_URL="git@github.com:oouxx/openatrading.git"
 
 # ─── Clone / pull from GitHub ────────────────────────────
 
