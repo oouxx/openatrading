@@ -125,7 +125,7 @@
             :initial="{ opacity: 0, scale: 0.92, y: 30 }"
             :animate="{ opacity: 1, scale: 1, y: 0 }"
             :exit="{ opacity: 0, scale: 0.92, y: 30 }"
-            :transition="{ duration: 0.25, easing: 'ease-out' }"
+            :transition="{ duration: 0.25, ease: 'easeOut' }"
           >
             <!-- Dialog Header -->
             <div class="flex items-center justify-between px-4 py-3 border-b border-hairline flex-shrink-0">
@@ -164,7 +164,7 @@
             :initial="{ opacity: 0, scale: 0.92, y: 20 }"
             :animate="{ opacity: 1, scale: 1, y: 0 }"
             :exit="{ opacity: 0, scale: 0.92, y: 20 }"
-            :transition="{ duration: 0.2, easing: 'ease-out' }"
+            :transition="{ duration: 0.2, ease: 'easeOut' }"
           >
           <div class="flex items-center justify-between mb-4">
             <span class="text-caption-strong text-white font-mono">⚙ 设置</span>
