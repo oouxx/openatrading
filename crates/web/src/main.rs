@@ -488,7 +488,21 @@ async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse
         yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
     })
 }
-
+async fn get_plates_by_any_stock(
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let plates = state
+        .api
+        .xuangubao
+        .plates_by_any_stock(&symbol)
+        .await
+        .map_err(|e| {
+            eprintln!("get_plates_by_any_stock: error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+    Ok(Json(plates))
+}
 // ── Server ────────────────────────────────────────────
 
 async fn start_web_server(port: u16) {
@@ -520,11 +534,15 @@ async fn start_web_server(port: u16) {
         .route("/api/dapan-abnormal", get(get_dapan_abnormal))
         .route("/api/market-trend/:symbol", get(get_market_trend))
         .route("/api/ai/chat", post(ai_chat))
+        .route(
+            "/api/plates-by-any-stock/:symbol",
+            get(get_plates_by_any_stock),
+        )
         .with_state(state)
         .layer(cors);
 
     let addr = format!("0.0.0.0:{}", port);
-    println!("🌐 Web API: http://localhost:{}", port);
+    println!("🌐 Web API: http://0.0.0.0:{}", port);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

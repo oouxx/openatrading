@@ -50,6 +50,47 @@
       <!-- Chart -->
       <div ref="chartContainer" class="w-full" style="height: 420px"></div>
 
+      <!-- Plates -->
+      <div v-if="plates.length > 0" class="px-4 py-3 border-t border-hairline-dark">
+        <p class="text-xs text-white/40 mb-2">所属板块</p>
+        <div class="space-y-1.5 max-h-[240px] overflow-y-auto custom-scroll">
+          <div v-for="p in plates" :key="p.plate_id" class="bg-surface-dark rounded-card border border-hairline-dark p-2.5 cursor-pointer hover:border-white/20 transition-colors" @click="p.reason && (dialogPlate = p)">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-white truncate">{{ p.plate_name }}</span>
+              <span class="text-xs font-mono shrink-0" :class="p.core_avg_pcp >= 0 ? 'text-up' : 'text-down'">
+                {{ p.core_avg_pcp >= 0 ? '+' : '' }}{{ (p.core_avg_pcp * 100).toFixed(2) }}%
+              </span>
+            </div>
+            <p v-if="p.reason" class="text-[11px] text-white/50 mt-1 leading-relaxed line-clamp-2">{{ p.reason }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plate Reason Dialog -->
+      <Teleport to="body">
+        <div v-if="dialogPlate" @click="dialogPlate = null" class="fixed inset-0 z-[60]" style="background: rgba(0,0,0,0.5)"></div>
+        <motion.div v-if="dialogPlate"
+          class="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none"
+          :initial="{ opacity: 0, scale: 0.95 }"
+          :animate="{ opacity: 1, scale: 1 }"
+          :exit="{ opacity: 0, scale: 0.95 }"
+          :transition="{ duration: 0.2 }"
+        >
+          <div class="pointer-events-auto bg-surface-dark border border-hairline-dark rounded-card p-5 w-[420px] max-w-[90vw] shadow-2xl">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-white">{{ dialogPlate.plate_name }}</span>
+                <span class="text-xs font-mono" :class="dialogPlate.core_avg_pcp >= 0 ? 'text-up' : 'text-down'">
+                  {{ dialogPlate.core_avg_pcp >= 0 ? '+' : '' }}{{ (dialogPlate.core_avg_pcp * 100).toFixed(2) }}%
+                </span>
+              </div>
+              <button @click="dialogPlate = null" class="text-lg leading-none p-1 text-white/40 hover:text-white/60">&times;</button>
+            </div>
+            <p class="text-[13px] text-white/70 leading-relaxed">{{ dialogPlate.reason }}</p>
+          </div>
+        </motion.div>
+      </Teleport>
+
       <!-- Metrics -->
       <div v-if="quote" class="p-4 grid grid-cols-3 gap-2 text-xs">
         <div v-for="m in metrics" :key="m.label" class="bg-surface-dark rounded-card border border-hairline-dark p-3 text-center">
@@ -80,7 +121,7 @@ import {
 } from 'lightweight-charts'
 
 const props = defineProps<{ symbol: string; name: string }>()
-defineEmits<{ close: [] }>()
+const $emit = defineEmits<{ close: [] }>()
 
 const periods = [
   { label: '分时', value: 'minute' },
@@ -92,6 +133,8 @@ const periods = [
 const period = ref('minute')
 const chartContainer = ref<HTMLElement>()
 const quote = ref<any>(null)
+const plates = ref<Array<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string }>>([])
+const dialogPlate = ref<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string } | null>(null)
 
 const crosshair = ref({ time: '', open: '-', high: '-', low: '-', close: '-', volume: '-', change: '', changeNum: 0 })
 
@@ -164,6 +207,13 @@ async function fetchRealtime() {
     const resp = await fetch(`${getApiBaseUrl()}/api/realtime/${props.symbol}`)
     if (resp.ok) quote.value = await resp.json()
   } catch (e) { console.error('[KlineDrawer] fetchRealtime error:', e) }
+}
+
+async function fetchPlates() {
+  try {
+    const resp = await fetch(`${getApiBaseUrl()}/api/plates-by-any-stock/${props.symbol}`)
+    if (resp.ok) plates.value = await resp.json()
+  } catch (e) { console.error('[KlineDrawer] fetchPlates error:', e) }
 }
 
 async function fetchKline() {
@@ -588,6 +638,12 @@ function renderIntradayChart() {
   chart!.timeScale().fitContent()
 }
 
+function visibleBarsForPeriod(p: string): number {
+  if (p === 'day') return 60
+  if (p === 'week') return 52
+  return 24 // month
+}
+
 function renderKlineChart() {
   if (klineData.length === 0) return
 
@@ -607,7 +663,11 @@ function renderKlineChart() {
   candleSeries.setData(buildCandleData())
   volumeSeries.setData(buildVolumeData())
   updateAnchorSeries()
-  chart!.timeScale().fitContent()
+
+  const n = visibleBarsForPeriod(period.value)
+  const to = klineData.length - 1
+  const from = Math.max(0, to - n + 1)
+  chart!.timeScale().setVisibleLogicalRange({ from, to })
 }
 
 function resetChart() {
@@ -632,13 +692,20 @@ watch(period, () => {
   fetchKline()
 })
 
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') $emit('close')
+}
+
 onMounted(async () => {
   await fetchRealtime()
+  fetchPlates()
   await nextTick()
   fetchKline()
+  window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
   clearPriceLines()
   chart?.remove()
   chart = null
