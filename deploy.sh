@@ -26,8 +26,8 @@ case "$SERVICE" in
 esac
 
 case "$MODE" in
-  pull) DOCKER_CMD="pull && docker compose up -d" ;;
-  build) DOCKER_CMD="build && docker compose up -d" ;;
+  pull) DOCKER_CMD="pull && up -d" ;;
+  build) DOCKER_CMD="build && up -d" ;;
   *) usage ;;
 esac
 
