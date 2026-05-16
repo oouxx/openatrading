@@ -26,7 +26,8 @@ RUN mkdir -p crates/core/src crates/cli/src crates/web/src src-tauri/src && \
 COPY crates/ crates/
 COPY src-tauri/ src-tauri/
 
-RUN cargo build --release -p trending-agent-cli && \
+RUN touch crates/core/src/lib.rs && \
+    cargo build --release -p trending-agent-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
 
 # ── Runtime Stage ─────────────────────────────────────
