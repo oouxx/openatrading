@@ -7,6 +7,9 @@ use trending_agent_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
 pub struct AppConfig {
     pub default_role: Option<String>,
     pub roles: Vec<RoleEntry>,
+    pub service: ServiceConfig,
+    pub cron: Option<CronTomlConfig>,
+    pub social: Option<SocialConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +24,62 @@ struct RawConfig {
     default_role: Option<String>,
     #[serde(default)]
     roles: Vec<RoleConfig>,
+    #[serde(default)]
+    service: Option<ServiceConfig>,
+    #[serde(default)]
+    cron: Option<CronTomlConfig>,
+    #[serde(default)]
+    social: Option<SocialConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceConfig {
+    #[serde(default = "default_db_path")]
+    pub db_path: String,
+}
+
+fn default_db_path() -> String {
+    "data.db".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CronTomlConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_collection_schedule")]
+    pub collection_schedule: String,
+    #[serde(default = "default_decision_schedule")]
+    pub decision_schedule: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_collection_schedule() -> String {
+    "*/30 9-15 * * 1-5".to_string()
+}
+fn default_decision_schedule() -> String {
+    "0 0 * * 1-5".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SocialConfig {
+    #[serde(default)]
+    pub telegram: Option<TelegramConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TelegramConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub bot_token: Option<String>,
+    pub chat_id: Option<String>,
+    #[serde(default = "default_true")]
+    pub notify_on_collect: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_decision: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_trade: bool,
 }
 
 const DEFAULT_CONFIG_TOML: &str = r##"# ── Trending Agent 配置 ──────────────────────────────────
@@ -52,6 +111,25 @@ name = "risk_officer"
 display_name = "风控官"
 dir = "strategies/risk_officer"
 merge_mode = "supplement"
+
+# ── 后台服务 ─────────────────────────────────────────────
+[service]
+db_path = "data.db"
+
+# ── Cron 调度 ────────────────────────────────────────────
+[cron]
+enabled = true
+collection_schedule = "*/30 9-15 * * 1-5"
+decision_schedule = "0 0 * * 1-5"
+
+# ── 社交平台 ─────────────────────────────────────────────
+[social.telegram]
+enabled = true
+bot_token = "${TELEGRAM_BOT_TOKEN}"
+chat_id = "${TELEGRAM_CHAT_ID}"
+notify_on_collect = true
+notify_on_decision = true
+notify_on_trade = true
 "##;
 
 impl AppConfig {
@@ -64,6 +142,11 @@ impl AppConfig {
         let mut merged = AppConfig {
             default_role: None,
             roles: Vec::new(),
+            service: ServiceConfig {
+                db_path: default_db_path(),
+            },
+            cron: None,
+            social: None,
         };
 
         // Layer 1 (lowest): ~/.atrading/config.toml
@@ -115,12 +198,27 @@ impl AppConfig {
         Some(AppConfig {
             default_role: raw.default_role,
             roles,
+            service: raw.service.unwrap_or(ServiceConfig {
+                db_path: default_db_path(),
+            }),
+            cron: raw.cron,
+            social: raw.social,
         })
     }
 
     fn merge(&mut self, other: AppConfig) {
         if other.default_role.is_some() {
             self.default_role = other.default_role;
+        }
+        // Merge service (higher priority overwrites non-default values)
+        self.service = other.service;
+        // Merge cron
+        if other.cron.is_some() {
+            self.cron = other.cron;
+        }
+        // Merge social
+        if other.social.is_some() {
+            self.social = other.social;
         }
         for entry in other.roles {
             self.roles.retain(|e| e.config.name != entry.config.name);
@@ -234,6 +332,11 @@ mod tests {
                 config: role_a,
                 strategy_base: PathBuf::from("/tmp/a"),
             }],
+            service: ServiceConfig {
+                db_path: default_db_path(),
+            },
+            cron: None,
+            social: None,
         };
         cfg.merge(AppConfig {
             default_role: Some("trader".into()),
@@ -241,6 +344,11 @@ mod tests {
                 config: role_b,
                 strategy_base: PathBuf::from("/tmp/b"),
             }],
+            service: ServiceConfig {
+                db_path: default_db_path(),
+            },
+            cron: None,
+            social: None,
         });
 
         assert_eq!(cfg.default_role.as_deref(), Some("trader"));
