@@ -39,6 +39,10 @@ clone_or_pull() {
     if [ -d $REMOTE_DIR/.git ]; then
       cd $REMOTE_DIR && git fetch origin && git reset --hard origin/main
       echo '✅ git pull done'
+    elif [ -d $REMOTE_DIR ]; then
+      rm -rf $REMOTE_DIR
+      git clone $REPO_URL $REMOTE_DIR
+      echo '✅ old dir removed, git clone done'
     else
       git clone $REPO_URL $REMOTE_DIR
       echo '✅ git clone done'
