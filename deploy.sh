@@ -36,6 +36,11 @@ if [ ! -f ".env" ]; then
   exit 1
 fi
 
+# Source .env to get GITHUB_TOKEN (fallback to existing env var)
+set -a
+source .env
+set +a
+
 echo "=== Deploying: $SERVICE → $SERVER ==="
 
 REPO_URL="git@github.com:oouxx/openatrading.git"
