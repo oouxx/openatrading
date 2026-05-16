@@ -1,6 +1,7 @@
 pub mod app;
 pub mod config;
 pub mod serve;
+pub mod trade_cmd;
 
 use anyhow::Result;
 use app::Cli;
@@ -9,8 +10,10 @@ use serde::Serialize;
 use std::io::Write;
 
 use crate::cli::app::Commands;
+use crate::cli::app::TradeAction;
 use crate::cli::config::{cmd_init, AppConfig};
 use crate::cli::serve::cmd_serve;
+use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 use trending_agent_core::api::Client;
@@ -78,6 +81,26 @@ pub async fn run() -> Result<()> {
     // Handle `serve` subcommand
     if let Some(Commands::Serve) = cli.command {
         return cmd_serve(&project_root).await;
+    }
+
+    // Handle `trade` subcommand
+    if let Some(Commands::Trade { action }) = cli.command {
+        match action {
+            TradeAction::Add {
+                role,
+                symbol,
+                price,
+                shares,
+            } => {
+                return cmd_trade_add(&project_root, &role, &symbol, price, shares);
+            }
+            TradeAction::List { role } => {
+                return cmd_trade_list(&project_root, role.as_deref());
+            }
+            TradeAction::Close { id, price } => {
+                return cmd_trade_close(&project_root, id, price);
+            }
+        }
     }
 
     // Load config

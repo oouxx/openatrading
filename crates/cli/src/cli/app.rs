@@ -78,4 +78,35 @@ pub enum Commands {
     Init,
     /// 启动后台服务 (cron + telegram)
     Serve,
+    /// 持仓管理
+    Trade {
+        #[command(subcommand)]
+        action: TradeAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TradeAction {
+    /// 添加持仓
+    Add {
+        #[arg(long)]
+        role: String,
+        #[arg(long)]
+        symbol: String,
+        #[arg(long)]
+        price: f64,
+        #[arg(long)]
+        shares: i64,
+    },
+    /// 列出持仓
+    List {
+        #[arg(long)]
+        role: Option<String>,
+    },
+    /// 平仓
+    Close {
+        id: i64,
+        #[arg(long)]
+        price: f64,
+    },
 }
