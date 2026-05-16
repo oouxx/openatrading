@@ -10,10 +10,12 @@ use clap::Parser;
 use serde::Serialize;
 use std::io::Write;
 
-use crate::cli::app::Commands;
-use crate::cli::app::TradeAction;
+use crate::cli::app::{Commands, ServeAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
-use crate::cli::serve::cmd_serve;
+use crate::cli::serve::{
+    cmd_serve_install, cmd_serve_run, cmd_serve_start, cmd_serve_status, cmd_serve_stop,
+    cmd_serve_uninstall,
+};
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
 use trending_agent_core::agents::sentiment::analyze_sentiment;
@@ -81,8 +83,15 @@ pub async fn run() -> Result<()> {
     let project_root = std::env::current_dir()?;
 
     // Handle `serve` subcommand
-    if let Some(Commands::Serve) = cli.command {
-        return cmd_serve(&project_root).await;
+    if let Some(Commands::Serve { action }) = cli.command {
+        return match action {
+            ServeAction::Install => cmd_serve_install(&project_root),
+            ServeAction::Uninstall => cmd_serve_uninstall(),
+            ServeAction::Start => cmd_serve_start(),
+            ServeAction::Stop => cmd_serve_stop(),
+            ServeAction::Status => cmd_serve_status(),
+            ServeAction::Run => cmd_serve_run(&project_root).await,
+        };
     }
 
     // Handle `update` subcommand

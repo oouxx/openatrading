@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
 
 use crate::cli::config::AppConfig;
@@ -8,7 +9,115 @@ use trending_agent_core::gateway::Gateway;
 use trending_agent_core::social::telegram::TelegramSender;
 use trending_agent_core::social::{NoopSender, NotificationSender};
 
-pub async fn cmd_serve(project_root: &PathBuf) -> Result<()> {
+const SERVICE_NAME: &str = "openatrading";
+
+fn service_file_path() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join(".config/systemd/user")
+        .join(format!("{SERVICE_NAME}.service"))
+}
+
+fn systemctl(args: &[&str]) -> Result<()> {
+    let status = Command::new("systemctl")
+        .arg("--user")
+        .args(args)
+        .status()
+        .context("systemctl 命令失败，请确认 systemd 已安装")?;
+    if !status.success() {
+        anyhow::bail!("systemctl --user {} 返回非零退出码", args.join(" "));
+    }
+    Ok(())
+}
+
+fn generate_unit_file(project_root: &PathBuf) -> Result<String> {
+    let current_exe = std::env::current_exe().context("无法获取当前二进制路径")?;
+    let work_dir = if project_root.is_absolute() {
+        project_root.clone()
+    } else {
+        std::env::current_dir()?.join(project_root)
+    };
+
+    Ok(format!(
+        r#"[Unit]
+Description=OpenATrading - A股短线交易 Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={exe} serve run
+WorkingDirectory={work_dir}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={name}
+
+[Install]
+WantedBy=default.target
+"#,
+        exe = current_exe.display(),
+        work_dir = work_dir.display(),
+        name = SERVICE_NAME,
+    ))
+}
+
+/// 安装 systemd 服务
+pub fn cmd_serve_install(project_root: &PathBuf) -> Result<()> {
+    let unit = generate_unit_file(project_root)?;
+    let path = service_file_path();
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, &unit)?;
+
+    systemctl(&["daemon-reload"])?;
+    systemctl(&["enable", SERVICE_NAME])?;
+
+    println!("✅ systemd 服务已安装: {}", path.display());
+    println!("   openatrading serve start   # 启动");
+    println!("   openatrading serve stop    # 停止");
+    println!("   openatrading serve status  # 查看状态");
+    println!("   journalctl --user -u openatrading -f  # 查看日志");
+    Ok(())
+}
+
+/// 卸载 systemd 服务
+pub fn cmd_serve_uninstall() -> Result<()> {
+    let _ = systemctl(&["stop", SERVICE_NAME]);
+    let _ = systemctl(&["disable", SERVICE_NAME]);
+    let path = service_file_path();
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    let _ = systemctl(&["daemon-reload"]);
+    println!("✅ systemd 服务已卸载");
+    Ok(())
+}
+
+/// systemctl start
+pub fn cmd_serve_start() -> Result<()> {
+    systemctl(&["start", SERVICE_NAME])?;
+    println!("✅ 服务已启动");
+    Ok(())
+}
+
+/// systemctl stop
+pub fn cmd_serve_stop() -> Result<()> {
+    systemctl(&["stop", SERVICE_NAME])?;
+    println!("✅ 服务已停止");
+    Ok(())
+}
+
+/// systemctl status
+pub fn cmd_serve_status() -> Result<()> {
+    systemctl(&["status", SERVICE_NAME])?;
+    Ok(())
+}
+
+/// 前台运行（debug/直接使用），Ctrl+C 停止
+pub async fn cmd_serve_run(project_root: &PathBuf) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
 
     let db_path = project_root
@@ -23,7 +132,6 @@ pub async fn cmd_serve(project_root: &PathBuf) -> Result<()> {
             if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
                 || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
             {
-                eprintln!("[gateway] Telegram 配置不完整，使用 NoopSender");
                 Arc::new(NoopSender)
             } else {
                 Arc::new(TelegramSender {
@@ -35,13 +143,9 @@ pub async fn cmd_serve(project_root: &PathBuf) -> Result<()> {
                 })
             }
         }
-        _ => {
-            eprintln!("[gateway] Telegram 未配置，使用 NoopSender");
-            Arc::new(NoopSender)
-        }
+        _ => Arc::new(NoopSender),
     };
 
-    // Use cron config from AppConfig or default
     let cron_cfg = match &app_config.cron {
         Some(c) => CronConfig {
             enabled: c.enabled,
