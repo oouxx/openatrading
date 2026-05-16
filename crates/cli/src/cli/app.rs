@@ -76,4 +76,6 @@ pub struct Cli {
 pub enum Commands {
     /// 初始化 ~/.atrading/ 配置目录（含内置策略种子文件）
     Init,
+    /// 启动后台服务 (cron + telegram)
+    Serve,
 }
