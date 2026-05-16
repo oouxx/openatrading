@@ -9,6 +9,7 @@ use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -503,6 +504,17 @@ async fn get_plates_by_any_stock(
         })?;
     Ok(Json(plates))
 }
+
+/// Serve install.sh script as plain text
+async fn serve_install_sh() -> impl IntoResponse {
+    let content = include_str!("../../../install.sh");
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; charset=utf-8")],
+        content,
+    )
+}
+
 // ── Server ────────────────────────────────────────────
 
 async fn start_web_server(port: u16) {
@@ -538,6 +550,9 @@ async fn start_web_server(port: u16) {
             "/api/plates-by-any-stock/:symbol",
             get(get_plates_by_any_stock),
         )
+        // Static files
+        .route("/install.sh", get(serve_install_sh))
+        .nest_service("/downloads", ServeDir::new("downloads"))
         .with_state(state)
         .layer(cors);
 

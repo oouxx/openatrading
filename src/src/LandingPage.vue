@@ -103,7 +103,7 @@
       <h2 class="text-2xl font-bold text-white mb-6 text-center">命令行安装</h2>
       <div class="bg-black/50 border border-hairline rounded-card p-6">
         <p class="text-ink-muted text-sm mb-3">一键安装 CLI（仅 Linux x86_64 / aarch64）：</p>
-        <pre class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash</code></pre>
+        <pre class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"><code>curl -fsSL {{ getApiBaseUrl() }}/install.sh | bash</code></pre>
       </div>
     </section>
 
@@ -119,10 +119,11 @@
 </template>
 
 <script setup lang="ts">
-const DL_BASE = 'https://github.com/oouxx/openatrading/releases/latest/download'
+import { getApiBaseUrl } from '@/stores/data'
+
+const DL_BASE = `${getApiBaseUrl()}/downloads`
 
 function dl(target: string): string {
-  // Tauri bundles follow naming: trending-agent_{target}.dmg / .deb / .msi
   const ext = target.includes('apple') ? '.dmg' : target.includes('linux') ? '.deb' : '.msi'
   return `${DL_BASE}/trending-agent_${target}${ext}`
 }
