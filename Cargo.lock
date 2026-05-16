@@ -4960,6 +4960,7 @@ dependencies = [
  "dirs",
  "dotenvy",
  "futures",
+ "reqwest 0.12.28",
  "rustyline",
  "serde",
  "serde_json",

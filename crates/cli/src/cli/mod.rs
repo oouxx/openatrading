@@ -2,6 +2,7 @@ pub mod app;
 pub mod config;
 pub mod serve;
 pub mod trade_cmd;
+pub mod update;
 
 use anyhow::Result;
 use app::Cli;
@@ -14,6 +15,7 @@ use crate::cli::app::TradeAction;
 use crate::cli::config::{cmd_init, AppConfig};
 use crate::cli::serve::cmd_serve;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
+use crate::cli::update::{cmd_update, cmd_update_check};
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 use trending_agent_core::api::Client;
@@ -81,6 +83,23 @@ pub async fn run() -> Result<()> {
     // Handle `serve` subcommand
     if let Some(Commands::Serve) = cli.command {
         return cmd_serve(&project_root).await;
+    }
+
+    // Handle `update` subcommand
+    if let Some(Commands::Update { check }) = cli.command {
+        if check {
+            let (latest, current, needs_update) = cmd_update_check().await?;
+            println!("当前版本: {current}");
+            println!("最新版本: {latest}");
+            if needs_update {
+                println!("⚠ 有新版本可用，运行 `trending-agent update` 更新");
+            } else {
+                println!("✅ 已是最新版本");
+            }
+        } else {
+            cmd_update().await?;
+        }
+        return Ok(());
     }
 
     // Handle `trade` subcommand
