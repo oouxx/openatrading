@@ -1,26 +1,13 @@
-# Build Rust backend (web server)
 FROM rust:1.88-bookworm AS builder
+
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-
 COPY Cargo.toml Cargo.lock ./
-COPY crates/core/Cargo.toml crates/core/
-COPY crates/cli/Cargo.toml crates/cli/
-COPY crates/web/Cargo.toml crates/web/
-COPY src-tauri/Cargo.toml src-tauri/
-
-# Pre-build deps layer
-RUN mkdir -p crates/core/src crates/cli/src crates/web/src && \
-    echo '' > crates/core/src/lib.rs && \
-    echo 'fn main() {}' > crates/cli/src/main.rs && \
-    echo 'fn main() {}' > crates/web/src/main.rs && \
-    cargo build --release -p trending-agent-web && \
-    rm -rf crates/cli/src crates/core/src crates/web/src
-
-# Copy real source and rebuild
 COPY crates/ crates/
-RUN touch crates/web/src/main.rs && cargo build --release -p trending-agent-web
 
-# Runtime
+RUN cargo build --release -p trending-agent-web
+
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
