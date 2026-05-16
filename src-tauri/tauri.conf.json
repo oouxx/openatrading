@@ -1,6 +1,6 @@
 {
   "productName": "Trending Agent",
-  "version": "0.1.5",
+  "version": "0.2.2",
   "identifier": "com.trending-agent.app",
   "build": {
     "beforeDevCommand": "cd ../src && bun run dev",
