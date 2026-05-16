@@ -1,4 +1,4 @@
-# Trending Agent
+# OpenATrading
 
 A股市场异动追踪工具，从选股宝和韭研公社获取数据，生成 Markdown/HTML 分析报告。
 

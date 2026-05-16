@@ -1,6 +1,6 @@
 # 产品定义
 
-产品名称：Trending Agent
+产品名称：OpenATrading
 
 产品定位：
 
