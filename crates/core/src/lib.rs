@@ -1,7 +1,12 @@
 pub mod agents;
 pub mod api;
+pub mod cron;
+pub mod gateway;
 pub mod llm;
+pub mod memory;
 pub mod report;
 pub mod roles;
+pub mod social;
 pub mod templates;
+pub mod trade;
 pub mod utils;

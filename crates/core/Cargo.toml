@@ -18,6 +18,12 @@ regex = { workspace = true }
 url = { workspace = true}
 md5 = { workspace = true}
 sha1 = { workspace = true}
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio-cron-scheduler = "0.11"
+teloxide = { version = "0.15", optional = true }
+
+[features]
+telegram = ["dep:teloxide"]
 
 [dev-dependencies]
 toml = "0.8"
