@@ -592,7 +592,7 @@ async fn start_web_server(port: u16) {
         )
         // Proxy downloads from GitHub Releases
         .route("/install.sh", get(serve_install_sh))
-        .route("/downloads/{file}", get(serve_download))
+        .route("/downloads/:file", get(serve_download))
         .with_state(state)
         .layer(cors);
 
