@@ -428,7 +428,8 @@ impl XuanguBaoClient {
     }
     // ---大盘异动---------------------------------------
     pub async fn fetch_dapan_abnormal(&self) -> Result<Vec<DapanAbnormal>> {
-        let url = "https://api.xuangubao.com.cn/api/messages/todayDaPanYiDong?headmark=0".to_string();
+        let url =
+            "https://api.xuangubao.com.cn/api/messages/todayDaPanYiDong?headmark=0".to_string();
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
 
@@ -560,6 +561,39 @@ impl XuanguBaoClient {
             total_shares: get(23, 0.0),
         })
     }
+    pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
+        let url = format!(
+            "{}/stage2/plates_by_any_stock?symbol={symbol}&fields=core_avg_pcp,plate_name",
+            self.base_url
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Plates API error: {}",
+            resp["message"]
+        );
+        let plates = resp["data"]
+            .as_object()
+            .context("missing plates data")?
+            .values()
+            .filter_map(|v| {
+                let obj = v.as_object()?;
+                Some(PlateAndReason {
+                    core_avg_pcp: obj.get("core_avg_pcp")?.as_f64()?,
+                    plate_id: obj.get("plate_id")?.as_i64()? as i32,
+                    plate_name: obj.get("plate_name")?.as_str()?.to_string(),
+                    reason: obj
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                })
+            })
+            .collect();
+
+        Ok(plates)
+    }
 }
 
 // ─── K线数据结构 ──────────────────────────────────────────
@@ -640,4 +674,13 @@ pub struct RealtimeQuote {
     pub total_shares: f64,
     pub trade_status: String,
     pub update_time: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateAndReason {
+    pub core_avg_pcp: f64,
+    pub plate_id: i32,
+    pub plate_name: String,
+    #[serde(default)]
+    pub reason: String,
 }
