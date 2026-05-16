@@ -105,14 +105,20 @@ build_downloads() {
     if [ -n \"\${GITHUB_TOKEN:-}\" ]; then
       AUTH=\"-H 'Authorization: Bearer '\$GITHUB_TOKEN''\"
     fi
-    LATEST_TAG=\$(curl -fsSL \$AUTH https://api.github.com/repos/oouxx/openatrading/releases/latest 2>/dev/null | grep '\"tag_name\"' | head -1 | cut -d'\"' -f4 || echo '')
+    RELEASE_JSON=\$(curl -fsSL \$AUTH https://api.github.com/repos/oouxx/openatrading/releases/latest 2>/dev/null || echo '{}')
+    LATEST_TAG=\$(echo \"\$RELEASE_JSON\" | grep '\"tag_name\"' | head -1 | cut -d'\"' -f4 || echo '')
     if [ -n \"\$LATEST_TAG\" ]; then
       echo \"Latest release: \$LATEST_TAG\"
-      ASSETS=\$(curl -fsSL \$AUTH \"https://api.github.com/repos/oouxx/openatrading/releases/tags/\$LATEST_TAG\" 2>/dev/null | grep '\"browser_download_url\"' | cut -d'\"' -f4 || echo '')
-      for url in \$ASSETS; do
-        name=\$(basename \"\$url\")
-        echo \"  ⬇ \$name\"
-        curl -fsSL \$AUTH -o \"downloads/\$name\" \"\$url\" 2>/dev/null || echo \"  ⚠ failed\"
+      # Parse asset IDs and names from JSON, download each via asset API
+      echo \"\$RELEASE_JSON\" | grep -E '\"(id|name)\":' | paste - - 2>/dev/null | while read line; do
+        ASSET_ID=\$(echo \"\$line\" | grep -o '\"id\": [0-9]*' | grep -o '[0-9]*')
+        ASSET_NAME=\$(echo \"\$line\" | grep -o '\"name\": \"[^\"]*\"' | cut -d'\"' -f4)
+        if [ -n \"\$ASSET_ID\" ] && [ -n \"\$ASSET_NAME\" ]; then
+          echo \"  ⬇ \$ASSET_NAME\"
+          curl -fsSL \$AUTH -H 'Accept: application/octet-stream' \
+            -o \"downloads/\$ASSET_NAME\" \
+            \"https://api.github.com/repos/oouxx/openatrading/releases/assets/\$ASSET_ID\" 2>/dev/null || echo \"  ⚠ failed\"
+        fi
       done
     else
       echo '⚠ No GitHub releases found'
