@@ -1,4 +1,4 @@
-.PHONY: build run run-web test fmt lint check dev-frontend deploy deploy-cli deploy-gateway deploy-web clean help
+.PHONY: build run run-web test fmt lint check dev-frontend build-downloads deploy deploy-cli deploy-gateway deploy-web clean help
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -27,6 +27,22 @@ lint:
 
 check: fmt lint test
 	@echo "✅ All checks passed"
+
+# ─── Build downloads ─────────────────────────────────
+
+build-downloads:
+	@echo "🔨 Building CLI binaries..."
+	@mkdir -p downloads
+	cargo build --release -p trending-agent-cli
+	@cp target/release/openatrading downloads/openatrading-linux-amd64
+	@echo "✅ downloads/openatrading-linux-amd64"
+	@if command -v cargo-tauri &>/dev/null; then \
+		echo "🔨 Building Tauri desktop..."; \
+		cd src-tauri && cargo tauri build 2>&1 | tail -5; \
+		echo "✅ Tauri build complete (check src-tauri/target/release/bundle/)"; \
+	else \
+		echo "⚠ cargo-tauri not installed, skip Tauri. Install: cargo install tauri-cli"; \
+	fi
 
 # ─── Deploy ──────────────────────────────────────────
 
@@ -61,6 +77,9 @@ help:
 	@echo "  run            CLI test run"
 	@echo "  run-web        Web server"
 	@echo "  dev-frontend   Vue dev server"
+	@echo ""
+	@echo "Build:"
+	@echo "  build-downloads  Build CLI + Tauri → downloads/"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test"
