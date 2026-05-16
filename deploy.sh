@@ -81,46 +81,26 @@ clone_or_pull() {
 
 build_downloads() {
   echo ""
-  echo "=== [downloads] Cross-compiling CLI + Tauri ==="
+  echo "=== [downloads] Docker cross-compile CLI + Tauri ==="
   ssh $SSH_OPTS "$SERVER" "
     set -e
     cd $REMOTE_DIR
     mkdir -p downloads
 
-    # Ensure Rust is available
-    if ! command -v cargo &>/dev/null; then
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      source \$HOME/.cargo/env
-    fi
-
-    # ── CLI: cross-compile Linux x86_64 + aarch64 ──────
-    echo '🔨 Building CLI (x86_64-unknown-linux-gnu)...'
-    rustup target add x86_64-unknown-linux-gnu 2>/dev/null || true
-    cargo build --release -p trending-agent-cli --target x86_64-unknown-linux-gnu
-    cp target/x86_64-unknown-linux-gnu/release/openatrading downloads/openatrading-x86_64-unknown-linux-gnu
+    # ── CLI: Docker cross-compile x86_64 ──────────────
+    echo '🔨 Docker build CLI (x86_64-unknown-linux-gnu)...'
+    docker build -f Dockerfile --platform linux/amd64 -t openatrading-cli-amd64 .
+    docker run --rm -v \$PWD/downloads:/out openatrading-cli-amd64 cp /usr/local/bin/openatrading /out/openatrading-x86_64-unknown-linux-gnu
     echo '✅ CLI x86_64 done'
 
-    echo '🔨 Building CLI (aarch64-unknown-linux-gnu)...'
-    if ! dpkg -l gcc-aarch64-linux-gnu &>/dev/null; then
-      apt-get update -qq && apt-get install -y -qq gcc-aarch64-linux-gnu 2>/dev/null || true
-    fi
-    rustup target add aarch64-unknown-linux-gnu 2>/dev/null || true
-    cargo build --release -p trending-agent-cli --target aarch64-unknown-linux-gnu && \
-      cp target/aarch64-unknown-linux-gnu/release/openatrading downloads/openatrading-aarch64-unknown-linux-gnu && \
-      echo '✅ CLI aarch64 done' || echo '⚠ CLI aarch64 skipped'
+    # ── CLI: Docker cross-compile aarch64 ─────────────
+    echo '🔨 Docker build CLI (aarch64-unknown-linux-gnu)...'
+    docker build -f Dockerfile --platform linux/arm64 -t openatrading-cli-arm64 . 2>/dev/null && \
+      docker run --rm -v \$PWD/downloads:/out openatrading-cli-arm64 cp /usr/local/bin/openatrading /out/openatrading-aarch64-unknown-linux-gnu && \
+      echo '✅ CLI aarch64 done' || echo '⚠ CLI aarch64 skipped (need qemu or arm64 host)'
 
-    # ── Tauri: Linux builds ────────────────────────────
-    echo '🔨 Building Tauri (Linux)...'
-    if cargo tauri build --target x86_64-unknown-linux-gnu 2>&1 | tail -3; then
-      cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb downloads/ 2>/dev/null || true
-      cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage downloads/ 2>/dev/null || true
-      echo '✅ Tauri Linux done'
-    else
-      echo '⚠ Tauri Linux skipped (need webkit2gtk dev libs)'
-    fi
-
-    # ── Tauri: download macOS/Windows from GitHub ──────
-    echo '⬇ Fetching macOS/Windows Tauri from GitHub Releases...'
+    # ── Try Tauri from GitHub Releases ────────────────
+    echo '⬇ Fetching Tauri clients from GitHub Releases...'
     AUTH=''
     if [ -n \"\${GITHUB_TOKEN:-}\" ]; then
       AUTH=\"-H 'Authorization: Bearer '\$GITHUB_TOKEN''\"
@@ -131,12 +111,8 @@ build_downloads() {
       ASSETS=\$(curl -fsSL \$AUTH \"https://api.github.com/repos/oouxx/openatrading/releases/tags/\$LATEST_TAG\" 2>/dev/null | grep '\"browser_download_url\"' | cut -d'\"' -f4 || echo '')
       for url in \$ASSETS; do
         name=\$(basename \"\$url\")
-        case \"\$name\" in
-          *.dmg|*.msi|*.exe)
-            echo \"  ⬇ \$name\"
-            curl -fsSL \$AUTH -o \"downloads/\$name\" \"\$url\" 2>/dev/null || echo \"  ⚠ failed\"
-            ;;
-        esac
+        echo \"  ⬇ \$name\"
+        curl -fsSL \$AUTH -o \"downloads/\$name\" \"\$url\" 2>/dev/null || echo \"  ⚠ failed\"
       done
     else
       echo '⚠ No GitHub releases found'
