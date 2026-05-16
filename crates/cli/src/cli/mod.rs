@@ -207,7 +207,7 @@ pub async fn run() -> Result<()> {
             let llm = LlmClient::new(key);
             let market_data_json = serde_json::to_string(&output)?;
             let display = output.role_name.as_deref().unwrap_or("AI助手");
-            let prompt = build_prompt(&strategy_text, &market_data_json, display);
+            let prompt = build_prompt(&strategy_text, &market_data_json, "", &[], display);
 
             let messages = serde_json::json!([
                 {"role": "system", "content": prompt.system},
