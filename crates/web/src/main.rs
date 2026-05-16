@@ -1,3 +1,4 @@
+use axum::http::HeaderMap;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -9,7 +10,6 @@ use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
 
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -505,14 +505,57 @@ async fn get_plates_by_any_stock(
     Ok(Json(plates))
 }
 
-/// Serve install.sh script as plain text
-async fn serve_install_sh() -> impl IntoResponse {
-    let content = include_str!("../../../install.sh");
-    (
+/// Proxy install.sh from GitHub
+async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
+    let url = "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh";
+    let resp = reqwest::get(url)
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let body = resp.text().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    Ok((
         StatusCode::OK,
         [("content-type", "text/plain; charset=utf-8")],
-        content,
-    )
+        body,
+    ))
+}
+
+/// Proxy download from GitHub Releases
+async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    let url = format!("https://github.com/oouxx/openatrading/releases/latest/download/{file}");
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert("Accept", "application/octet-stream".parse().unwrap());
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        headers.insert("Authorization", format!("Bearer {token}").parse().unwrap());
+    }
+
+    let resp = client
+        .get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, content_type)],
+        body,
+    ))
 }
 
 // ── Server ────────────────────────────────────────────
@@ -550,9 +593,9 @@ async fn start_web_server(port: u16) {
             "/api/plates-by-any-stock/:symbol",
             get(get_plates_by_any_stock),
         )
-        // Static files
+        // Proxy downloads from GitHub Releases
         .route("/install.sh", get(serve_install_sh))
-        .nest_service("/downloads", ServeDir::new("downloads"))
+        .route("/downloads/{*file}", get(serve_download))
         .with_state(state)
         .layer(cors);
 
