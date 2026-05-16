@@ -49,8 +49,8 @@ sync_source() {
 
 deploy_gateway() {
   echo ""
-  echo "=== [gateway] Deploying openatrading gateway ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose pull && docker compose up -d"
+  echo "=== [gateway] Building & deploying openatrading gateway ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose build && docker compose up -d"
 }
 
 # ─── Web ─────────────────────────────────────────────────
