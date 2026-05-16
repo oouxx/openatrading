@@ -9,8 +9,7 @@ services:
     environment:
       - RUST_BACKTRACE=1
       - TZ=Asia/Shanghai
-    volumes:
-      - ./downloads:/app/downloads
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     restart: unless-stopped
 
   frontend:
