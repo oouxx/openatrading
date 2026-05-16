@@ -154,8 +154,8 @@ pub async fn cmd_gateway_run(project_root: &PathBuf) -> Result<()> {
         },
         None => CronConfig {
             enabled: true,
-            collection_schedule: "*/30 9-15 * * 1-5".to_string(),
-            decision_schedule: "0 0 * * 1-5".to_string(),
+            collection_schedule: "0 */30 9-15 * * 1-5 *".to_string(),
+            decision_schedule: "0 0 0 * * 1-5 *".to_string(),
         },
     };
 

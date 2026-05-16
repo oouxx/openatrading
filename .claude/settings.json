@@ -1,4 +1,16 @@
 {
-
-  "defaultMode": "acceptEdits"
+  "permissions": {
+    "deny": [
+      "Read(target/**)",
+      "Read(dist/**)",
+      "Read(downloads/**)",
+      "Read(.git/**)",
+      "Read(node_modules/**)",
+      "Read(bun.lock)",
+      "Bash(find / -name *)",
+      "Bash(find /usr *)",
+      "Bash(find /etc *)",
+      "Bash(find /var *)"
+    ]
+  }
 }
