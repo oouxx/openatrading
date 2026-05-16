@@ -31,18 +31,29 @@ check: fmt lint test
 # ─── Build downloads ─────────────────────────────────
 
 build-downloads:
-	@echo "🔨 Building CLI binaries..."
 	@mkdir -p downloads
-	cargo build --release -p trending-agent-cli
-	@cp target/release/openatrading downloads/openatrading-linux-amd64
-	@echo "✅ downloads/openatrading-linux-amd64"
+	@echo ""
+	@echo "🔨 Building CLI (all platforms)..."
+	@# Linux x86_64
+	rustup target add x86_64-unknown-linux-gnu 2>/dev/null || true
+	cargo build --release -p trending-agent-cli --target x86_64-unknown-linux-gnu && \
+		cp target/x86_64-unknown-linux-gnu/release/openatrading downloads/openatrading-x86_64-unknown-linux-gnu && \
+		echo "✅ downloads/openatrading-x86_64-unknown-linux-gnu" || echo "⚠ CLI x86_64 skipped"
+	@# Linux aarch64
+	rustup target add aarch64-unknown-linux-gnu 2>/dev/null || true
+	cargo build --release -p trending-agent-cli --target aarch64-unknown-linux-gnu && \
+		cp target/aarch64-unknown-linux-gnu/release/openatrading downloads/openatrading-aarch64-unknown-linux-gnu && \
+		echo "✅ downloads/openatrading-aarch64-unknown-linux-gnu" || echo "⚠ CLI aarch64 skipped (need gcc-aarch64-linux-gnu)"
+	@echo ""
+	@echo "🔨 Building Tauri (macOS only, other platforms use CI)..."
 	@if command -v cargo-tauri &>/dev/null; then \
-		echo "🔨 Building Tauri desktop..."; \
-		cd src-tauri && cargo tauri build 2>&1 | tail -5; \
-		echo "✅ Tauri build complete (check src-tauri/target/release/bundle/)"; \
+		cargo tauri build --target x86_64-apple-darwin 2>&1 | tail -1 || true; \
+		cargo tauri build --target aarch64-apple-darwin 2>&1 | tail -1 || true; \
 	else \
-		echo "⚠ cargo-tauri not installed, skip Tauri. Install: cargo install tauri-cli"; \
+		echo "⚠ cargo-tauri not installed, skip. Install: cargo install tauri-cli"; \
 	fi
+	@echo ""
+	@ls -lh downloads/
 
 # ─── Deploy ──────────────────────────────────────────
 
