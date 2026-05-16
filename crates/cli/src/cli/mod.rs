@@ -1,4 +1,5 @@
 pub mod app;
+pub mod config;
 
 use anyhow::Result;
 use app::Cli;
