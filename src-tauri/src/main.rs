@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tauri::State;
 use trending_agent_core::agents::main::run_main_agent;
 use trending_agent_core::api::Client;
-use trending_agent_core::roles::analyst::Role;
+use trending_agent_core::roles::role::Role;
 
 struct ApiClient(Arc<Client>);
 

@@ -6,7 +6,7 @@ use crate::agents::technical::{
 };
 use crate::api::Client;
 use crate::llm::openrouter::LlmClient;
-use crate::roles::analyst::Role;
+use crate::roles::role::Role;
 use anyhow::Result;
 
 pub struct MainAgentResult {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::agents::sentiment::SentimentResult;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
 use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
-use crate::roles::analyst::Role;
+use crate::roles::role::Role;
 use crate::templates::{ReportHtmlTemplate, ReportMdTemplate};
 // NOTE: New fields for extended risk/opportunity insights
 use crate::api::taoguba::TgbUserSummary;
