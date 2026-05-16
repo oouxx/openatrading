@@ -16,7 +16,6 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 dotenvy = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-rustyline = { version = "18.0.0", features = ["default"] }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 toml = "0.8"
