@@ -100,7 +100,7 @@ jobs:
       - name: Set Tauri version
         run: |
           V="${GITHUB_REF_NAME#v}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           echo "Tauri version: $V"
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -122,7 +122,7 @@ jobs:
       - name: Set Tauri version
         run: |
           V="${GITHUB_REF_NAME#v}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           echo "Tauri version: $V"
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -144,7 +144,7 @@ jobs:
       - name: Set Tauri version
         run: |
           V="${GITHUB_REF_NAME#v}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           echo "Tauri version: $V"
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -165,7 +165,7 @@ jobs:
       - name: Set Tauri version
         run: |
           V="${GITHUB_REF_NAME#v}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
           echo "Tauri version: $V"
       - uses: tauri-apps/tauri-action@v0
         env:
