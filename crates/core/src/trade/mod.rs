@@ -31,6 +31,8 @@ pub struct TradeLog {
     pub created_at: String,
 }
 
+pub mod sqlite;
+
 pub trait TradeManager: Send + Sync {
     fn list_positions(&self, role_name: &str) -> Result<Vec<Position>>;
     fn add_position(&self, pos: Position) -> Result<i64>;

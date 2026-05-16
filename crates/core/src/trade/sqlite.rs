@@ -1,0 +1,243 @@
+use anyhow::{Context, Result};
+use rusqlite::Connection;
+use std::path::Path;
+use std::sync::Mutex;
+
+use super::{Position, TradeLog, TradeManager};
+
+pub struct SqliteTradeManager {
+    conn: Mutex<Connection>,
+}
+
+impl SqliteTradeManager {
+    pub fn open(db_path: &Path) -> Result<Self> {
+        let conn = Connection::open(db_path)
+            .with_context(|| format!("无法打开 SQLite: {}", db_path.display()))?;
+
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=OFF;")?;
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role_name TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                stock_name TEXT NOT NULL DEFAULT '',
+                entry_date TEXT NOT NULL DEFAULT '',
+                cost_price REAL NOT NULL DEFAULT 0.0,
+                shares INTEGER NOT NULL DEFAULT 0,
+                current_price REAL,
+                stop_loss REAL,
+                target_price REAL,
+                entry_reason TEXT NOT NULL DEFAULT '',
+                sector TEXT NOT NULL DEFAULT '',
+                position_pct REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS trade_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                position_id INTEGER NOT NULL REFERENCES positions(id),
+                action TEXT NOT NULL,
+                price REAL NOT NULL DEFAULT 0.0,
+                shares INTEGER NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );",
+        )?;
+
+        Ok(SqliteTradeManager {
+            conn: Mutex::new(conn),
+        })
+    }
+}
+
+impl TradeManager for SqliteTradeManager {
+    fn list_positions(&self, role_name: &str) -> Result<Vec<Position>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
+             current_price,stop_loss,target_price,entry_reason,sector,position_pct,\
+             created_at,updated_at FROM positions WHERE role_name=?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([role_name], |row| {
+            Ok(Position {
+                id: row.get(0)?,
+                role_name: row.get(1)?,
+                symbol: row.get(2)?,
+                stock_name: row.get(3)?,
+                entry_date: row.get(4)?,
+                cost_price: row.get(5)?,
+                shares: row.get(6)?,
+                current_price: row.get(7)?,
+                stop_loss: row.get(8)?,
+                target_price: row.get(9)?,
+                entry_reason: row.get(10)?,
+                sector: row.get(11)?,
+                position_pct: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn add_position(&self, pos: Position) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO positions (role_name,symbol,stock_name,entry_date,cost_price,shares,\
+             current_price,stop_loss,target_price,entry_reason,sector,position_pct)\
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+            rusqlite::params![
+                pos.role_name,
+                pos.symbol,
+                pos.stock_name,
+                pos.entry_date,
+                pos.cost_price,
+                pos.shares,
+                pos.current_price,
+                pos.stop_loss,
+                pos.target_price,
+                pos.entry_reason,
+                pos.sector,
+                pos.position_pct
+            ],
+        )?;
+        let id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason) VALUES (?1,'Open',?2,?3,?4)",
+            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason],
+        )?;
+        Ok(id)
+    }
+
+    fn update_position(&self, pos: Position) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE positions SET current_price=?1,stop_loss=?2,target_price=?3,\
+             updated_at=datetime('now','localtime') WHERE id=?4",
+            rusqlite::params![pos.current_price, pos.stop_loss, pos.target_price, pos.id],
+        )?;
+        Ok(())
+    }
+
+    fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason) VALUES (?1,'Close',?2,0,?3)",
+            rusqlite::params![id, price, reason],
+        )?;
+        conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
+        Ok(())
+    }
+
+    fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id,position_id,action,price,shares,reason,created_at \
+             FROM trade_logs WHERE position_id=?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([position_id], |row| {
+            Ok(TradeLog {
+                id: row.get(0)?,
+                position_id: row.get(1)?,
+                action: row.get(2)?,
+                price: row.get(3)?,
+                shares: row.get(4)?,
+                reason: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn format_positions(&self, role_name: &str) -> Result<String> {
+        let positions = self.list_positions(role_name)?;
+        if positions.is_empty() {
+            return Ok("暂无持仓".to_string());
+        }
+        let lines: Vec<String> = positions
+            .iter()
+            .map(|p| {
+                let pnl = match p.current_price {
+                    Some(cp) if cp > 0.0 => {
+                        format!("{:+.1}%", (cp - p.cost_price) / p.cost_price * 100.0)
+                    }
+                    _ => "N/A".to_string(),
+                };
+                format!(
+                    "- #{} {} {} | 成本{} | 现价{} | {} | {}股 | {} | {}买入",
+                    p.id,
+                    p.symbol,
+                    p.stock_name,
+                    p.cost_price,
+                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    pnl,
+                    p.shares,
+                    p.sector,
+                    p.entry_date
+                )
+            })
+            .collect();
+        Ok(lines.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::trade::Position;
+
+    fn test_pos(role: &str, symbol: &str, name: &str) -> Position {
+        Position {
+            id: 0,
+            role_name: role.into(),
+            symbol: symbol.into(),
+            stock_name: name.into(),
+            entry_date: "2026-01-15".into(),
+            cost_price: 10.5,
+            shares: 1000,
+            current_price: Some(11.2),
+            stop_loss: Some(9.8),
+            target_price: Some(12.0),
+            entry_reason: "测试".into(),
+            sector: "银行".into(),
+            position_pct: 0.3,
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_add_and_list_positions() {
+        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        tm.add_position(test_pos("zarili", "000001", "平安银行"))
+            .unwrap();
+        let positions = tm.list_positions("zarili").unwrap();
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].symbol, "000001");
+    }
+
+    #[test]
+    fn test_close_position() {
+        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        let id = tm
+            .add_position(test_pos("trader", "600519", "茅台"))
+            .unwrap();
+        tm.close_position(id, 1700.0, "止盈").unwrap();
+        assert!(tm.list_positions("trader").unwrap().is_empty());
+        assert_eq!(tm.get_trade_logs(id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_format_positions() {
+        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        tm.add_position(test_pos("zarili", "000001", "平安银行"))
+            .unwrap();
+        let text = tm.format_positions("zarili").unwrap();
+        assert!(text.contains("000001"));
+        assert!(text.contains("平安银行"));
+    }
+}
