@@ -522,10 +522,10 @@ async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
     ))
 }
 
-/// Proxy download from GitHub Releases
+/// Proxy download from GitHub Releases, fallback to local downloads/
 async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    // Try GitHub first
     let url = format!("https://github.com/oouxx/openatrading/releases/latest/download/{file}");
-
     let client = reqwest::Client::new();
     let mut req = client
         .get(&url)
@@ -533,23 +533,43 @@ async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, S
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
-    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    if let Ok(resp) = req.send().await {
+        if resp.status().is_success() {
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+            let response = axum::response::Response::builder()
+                .status(StatusCode::OK)
+                .header(axum::http::header::CONTENT_TYPE, content_type)
+                .body(axum::body::Body::from(body))
+                .unwrap();
+            return Ok(response);
+        }
+    }
 
-    let status = resp.status();
-    let content_type = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
+    // Fallback to local downloads/
+    let local_path = std::path::Path::new("downloads").join(&file);
+    if local_path.exists() {
+        let content_type = match local_path.extension().and_then(|e| e.to_str()) {
+            Some("dmg") => "application/x-apple-diskimage",
+            Some("deb") => "application/vnd.debian.binary-package",
+            Some("AppImage") => "application/octet-stream",
+            _ => "application/octet-stream",
+        };
+        let data = std::fs::read(&local_path).map_err(|_| StatusCode::NOT_FOUND)?;
+        let response = axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .header(axum::http::header::CONTENT_TYPE, content_type)
+            .body(axum::body::Body::from(data))
+            .unwrap();
+        return Ok(response);
+    }
 
-    let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-
-    Ok((
-        status,
-        [(axum::http::header::CONTENT_TYPE, content_type)],
-        body,
-    ))
+    Err(StatusCode::NOT_FOUND)
 }
 
 // ── Server ────────────────────────────────────────────

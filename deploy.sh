@@ -77,6 +77,43 @@ clone_or_pull() {
   scp $SSH_OPTS .env "$SERVER:$REMOTE_DIR/.env"
 }
 
+# ─── Build CLI + pull Tauri → downloads/ ────────────────
+
+build_downloads() {
+  echo ""
+  echo "=== [downloads] Building CLI binary via Docker ==="
+  ssh $SSH_OPTS "$SERVER" "
+    set -e
+    cd $REMOTE_DIR
+    mkdir -p downloads
+
+    # Build CLI in Docker, copy binary out
+    docker build -t openatrading-cli-temp -f Dockerfile .
+    docker run --rm -v \$PWD/downloads:/out openatrading-cli-temp cp /usr/local/bin/openatrading /out/openatrading-linux-amd64
+    echo '✅ CLI binary copied to downloads/'
+
+    # Try download Tauri from GitHub
+    echo '⬇ Fetching Tauri desktop clients...'
+    ARCH=\$(uname -m)
+    AUTH=''
+    if [ -n \"\${GITHUB_TOKEN:-}\" ]; then
+      AUTH=\"-H 'Authorization: Bearer '\$GITHUB_TOKEN''\"
+    fi
+    LATEST_TAG=\$(curl -fsSL \$AUTH https://api.github.com/repos/oouxx/openatrading/releases/latest 2>/dev/null | grep '\"tag_name\"' | head -1 | cut -d'\"' -f4 || echo '')
+    if [ -n \"\$LATEST_TAG\" ]; then
+      echo \"Latest release: \$LATEST_TAG\"
+      for file in \$(curl -fsSL \$AUTH \"https://api.github.com/repos/oouxx/openatrading/releases/tags/\$LATEST_TAG\" 2>/dev/null | grep '\"browser_download_url\"' | cut -d'\"' -f4 || echo ''); do
+        name=\$(basename \"\$file\")
+        echo \"  ⬇ \$name\"
+        curl -fsSL \$AUTH -o \"downloads/\$name\" \"\$file\" 2>/dev/null || echo \"  ⚠ failed\"
+      done
+    else
+      echo '⚠ Could not fetch GitHub releases (repo private or no releases yet)'
+    fi
+    echo '✅ downloads ready'
+  "
+}
+
 # ─── Gateway ─────────────────────────────────────────────
 
 deploy_gateway() {
@@ -97,6 +134,7 @@ deploy_web() {
 
 clone_or_pull
 ghcr_login
+build_downloads
 
 case "$SERVICE" in
   gateway)
