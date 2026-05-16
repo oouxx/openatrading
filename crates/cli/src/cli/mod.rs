@@ -1,5 +1,6 @@
 pub mod app;
 pub mod config;
+pub mod serve;
 
 use anyhow::Result;
 use app::Cli;
@@ -9,6 +10,7 @@ use std::io::Write;
 
 use crate::cli::app::Commands;
 use crate::cli::config::{cmd_init, AppConfig};
+use crate::cli::serve::cmd_serve;
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 use trending_agent_core::api::Client;
@@ -71,8 +73,14 @@ pub async fn run() -> Result<()> {
         return cmd_init();
     }
 
-    // Load config
     let project_root = std::env::current_dir()?;
+
+    // Handle `serve` subcommand
+    if let Some(Commands::Serve) = cli.command {
+        return cmd_serve(&project_root).await;
+    }
+
+    // Load config
     let app_config = AppConfig::load(&project_root)?;
 
     // Handle --list-roles
