@@ -76,8 +76,11 @@ pub struct Cli {
 pub enum Commands {
     /// 初始化 ~/.atrading/ 配置目录（含内置策略种子文件）
     Init,
-    /// 启动后台服务 (cron + telegram)
-    Serve,
+    /// 后台服务管理 (systemd)
+    Serve {
+        #[command(subcommand)]
+        action: ServeAction,
+    },
     /// 从 GitHub Releases 更新到最新版本
     Update {
         /// 仅检查更新，不下载
@@ -89,6 +92,22 @@ pub enum Commands {
         #[command(subcommand)]
         action: TradeAction,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ServeAction {
+    /// 安装 systemd 服务
+    Install,
+    /// 卸载 systemd 服务
+    Uninstall,
+    /// 启动服务
+    Start,
+    /// 停止服务
+    Stop,
+    /// 查看服务状态
+    Status,
+    /// 前台运行（调试用）
+    Run,
 }
 
 #[derive(Subcommand)]
