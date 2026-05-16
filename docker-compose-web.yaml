@@ -1,9 +1,6 @@
 services:
   backend:
-    image: trending-agent-backend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: ghcr.io/oouxx/openatrading-web:latest
     env_file:
       - .env
     environment:
@@ -13,10 +10,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: trending-agent-frontend:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: ghcr.io/oouxx/openatrading-frontend:latest
     ports:
       - "80:80"
       - "443:443"
