@@ -116,7 +116,7 @@ const marked = new Marked({
     link({ href, tokens }: { href: string; tokens: any[] }) {
       return `<a href="${href}" target="_blank" class="md-link">${this.parser.parseInline(tokens)}</a>`
     },
-    image({ href, title, text }: { href: string; title?: string; text: string }) {
+    image({ href, title, text }: { href: string; title: string | null; text: string }) {
       return `<img src="${href}" alt="${text}"${title ? ` title="${title}"` : ''} class="md-image">`
     },
     checkbox({ checked }: { checked: boolean }) {

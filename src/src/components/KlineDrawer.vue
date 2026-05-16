@@ -8,7 +8,7 @@
       :initial="{ x: 520 }"
       :animate="{ x: 0 }"
       :exit="{ x: 520 }"
-      :transition="{ duration: 0.3, easing: [0.32, 0.72, 0, 1] }"
+      :transition="{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }"
     >
       <!-- Header -->
       <div class="sticky top-0 z-10 p-4 bg-surface-dark border-b border-hairline-dark">
