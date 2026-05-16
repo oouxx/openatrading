@@ -9,6 +9,8 @@ services:
     environment:
       - RUST_BACKTRACE=1
       - TZ=Asia/Shanghai
+    volumes:
+      - ./downloads:/app/downloads
     restart: unless-stopped
 
   frontend:

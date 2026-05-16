@@ -60,6 +60,7 @@ deploy_gateway() {
 deploy_web() {
   echo ""
   echo "=== [web] Building & deploying web services ==="
+  ssh $SSH_OPTS "$SERVER" "mkdir -p $REMOTE_DIR/downloads"
   ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose-web.yaml build"
   ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose-web.yaml up -d"
 }
