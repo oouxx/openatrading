@@ -24,16 +24,21 @@ esac
 
 # ── Fetch latest release ────────────────────────────────
 
+AUTH_HEADER=""
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
+fi
+
 echo "⬇ 正在获取最新版本..."
 RELEASE_URL="https://api.github.com/repos/${REPO}/releases/latest"
-DOWNLOAD_URL=$(curl -fsSL "$RELEASE_URL" | grep "browser_download_url" | grep "$ASSET" | head -1 | cut -d '"' -f 4)
+DOWNLOAD_URL=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$RELEASE_URL" | grep "browser_download_url" | grep "$ASSET" | head -1 | cut -d '"' -f 4)
 
 if [ -z "$DOWNLOAD_URL" ]; then
     echo "❌ 未找到适用于 $ASSET 的二进制文件"
     exit 1
 fi
 
-TAG=$(curl -fsSL "$RELEASE_URL" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
+TAG=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$RELEASE_URL" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
 echo "📦 版本: $TAG"
 echo "📦 平台: $ASSET"
 
@@ -43,7 +48,7 @@ TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "⬇ 正在下载..."
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$BIN_NAME"
+curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$DOWNLOAD_URL" -o "$TMP_DIR/$BIN_NAME"
 
 # ── Install ─────────────────────────────────────────────
 
