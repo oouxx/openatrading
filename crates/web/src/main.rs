@@ -330,7 +330,11 @@ struct AppState {
     api: ApiClient,
 }
 
-fn build_system_prompt(
+fn build_system_prompt(strategy_text: &str) -> String {
+    strategy_text.to_string()
+}
+
+fn build_user_message(
     overview: &OverviewResponse,
     field_items: Option<&str>,
     super_stocks: Option<&str>,
@@ -344,15 +348,7 @@ fn build_system_prompt(
         .unwrap_or_default();
 
     format!(
-        r#"你是一个A股短线交易AI助手（交易副驾驶）。
-
-## 核心原则
-- 红涨绿跌（A股规则），上涨=红色，下跌=绿色
-- 你可以分析市场、解释行情、识别风险，但**禁止给出明确买卖建议**
-- 禁止保证收益、预测具体涨跌点位、使用夸张营销语言
-- 用简洁专业的短线交易者语言回答，直击要点
-
-## 当前市场数据
+        r#"## 当前市场数据
 - 日期：{date}
 - 上涨家数：{rise} 家
 - 下跌家数：{fall} 家
@@ -397,13 +393,17 @@ async fn ai_chat(
     // Fetch super stocks (强势股) — full JSON, skip on failure
     let super_stocks = fetch_super_stock_json(&state.api).await;
 
-    let system_prompt =
-        build_system_prompt(&overview, field_items.as_deref(), super_stocks.as_deref());
+    // Web 端暂使用内置 zarili 策略（二进制嵌入）
+    let strategy_text = trending_agent_core::roles::get_builtin_strategy("zarili")
+        .unwrap_or("你是一个A股短线交易AI助手。");
+    let system_prompt = build_system_prompt(strategy_text);
+    let user_message =
+        build_user_message(&overview, field_items.as_deref(), super_stocks.as_deref());
 
     // Build messages array: system + user
     let prompt = serde_json::json!([
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": req.message}
+        {"role": "user", "content": format!("{}\n\n用户提问：{}", user_message, req.message)}
     ])
     .to_string();
 
