@@ -22,33 +22,40 @@ case "$UNAME_M" in
     *)       echo "❌ 不支持的架构: $UNAME_M"; exit 1 ;;
 esac
 
-# ── Fetch latest release ────────────────────────────────
+# ── Auth header ──────────────────────────────────────────
 
-AUTH_HEADER=""
+AUTH=()
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-    AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
+    AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 fi
+
+# ── Fetch release info ───────────────────────────────────
 
 echo "⬇ 正在获取最新版本..."
 RELEASE_URL="https://api.github.com/repos/${REPO}/releases/latest"
-DOWNLOAD_URL=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$RELEASE_URL" | grep "browser_download_url" | grep "$ASSET" | head -1 | cut -d '"' -f 4)
+RELEASE_JSON=$(curl -fsSL "${AUTH[@]}" "$RELEASE_URL")
 
-if [ -z "$DOWNLOAD_URL" ]; then
+TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
+echo "📦 版本: $TAG"
+
+# Find asset ID by name
+ASSET_ID=$(echo "$RELEASE_JSON" | grep -B 3 "\"name\": \"$ASSET\"" | grep '"id"' | head -1 | grep -o '[0-9]*')
+
+if [ -z "$ASSET_ID" ]; then
     echo "❌ 未找到适用于 $ASSET 的二进制文件"
     exit 1
 fi
+echo "📦 平台: $ASSET (asset #$ASSET_ID)"
 
-TAG=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$RELEASE_URL" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
-echo "📦 版本: $TAG"
-echo "📦 平台: $ASSET"
-
-# ── Download ────────────────────────────────────────────
+# ── Download via asset API (works for private repos) ───
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "⬇ 正在下载..."
-curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$DOWNLOAD_URL" -o "$TMP_DIR/$BIN_NAME"
+curl -fsSL "${AUTH[@]}" -H "Accept: application/octet-stream" \
+    "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}" \
+    -o "$TMP_DIR/$BIN_NAME"
 
 # ── Install ─────────────────────────────────────────────
 
