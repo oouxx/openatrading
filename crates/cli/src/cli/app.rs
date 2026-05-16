@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "trending-agent")]
@@ -10,9 +10,12 @@ trending-agent 是一个 A 股市场异动追踪工具。
 用法:
   trending-agent                           # 默认获取全量数据，输出 Markdown 到 stdout
   trending-agent --json                    # 输出 JSON 到 stdout
-  trending-agent --html --output report.html  # 输出 HTML 到文件
+  trending-agent --html --output report.html   # 输出 HTML 到文件
   trending-agent --data limit_up,overview  # 只获取涨停和市场概览
   trending-agent --data cls_telegraph --ai # 获取财联社电报并 AI 分析
+  trending-agent init                          # 初始化 ~/.atrading/ 配置目录
+  trending-agent --role zarili --ai            # 指定角色运行 AI 分析
+  trending-agent --list-roles                  # 列出所有可用角色
 
 环境变量:
   LLM_API_KEY       LLM API 密钥 (DeepSeek 或 OpenAI-compatible)
@@ -56,4 +59,21 @@ pub struct Cli {
     /// 财联社电报分类（cls_telegraph 数据源使用）
     #[arg(long)]
     pub cls_category: Option<String>,
+
+    /// 指定角色名（对应 config.toml 中 [[roles]].name）
+    #[arg(long)]
+    pub role: Option<String>,
+
+    /// 列出所有可用角色
+    #[arg(long)]
+    pub list_roles: bool,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// 初始化 ~/.atrading/ 配置目录（含内置策略种子文件）
+    Init,
 }
