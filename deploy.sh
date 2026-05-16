@@ -128,6 +128,46 @@ build_downloads() {
   "
 }
 
+# ─── Update system CLI binary ───────────────────────────
+
+update_system_cli() {
+  echo ""
+  echo "=== [cli] Updating system-installed CLI ==="
+  ssh $SSH_OPTS "$SERVER" "
+    set -e
+    cd $REMOTE_DIR
+
+    # Detect server arch
+    SERVER_ARCH=\$(uname -m)
+    case \"\$SERVER_ARCH\" in
+      x86_64)  SRC='downloads/openatrading-x86_64-unknown-linux-gnu' ;;
+      aarch64) SRC='downloads/openatrading-aarch64-unknown-linux-gnu' ;;
+      arm64)   SRC='downloads/openatrading-aarch64-unknown-linux-gnu' ;;
+      *) echo '❌ Unknown arch: \$SERVER_ARCH'; exit 1 ;;
+    esac
+
+    if [ -f \"\$SRC\" ]; then
+      cp \"\$SRC\" /usr/local/bin/openatrading
+      chmod +x /usr/local/bin/openatrading
+      echo \"✅ CLI updated: /usr/local/bin/openatrading (\$SERVER_ARCH)\"
+      /usr/local/bin/openatrading --version 2>/dev/null || true
+    else
+      echo \"⚠ \$SRC not found, skipping CLI update\"
+    fi
+
+    # Restart systemd gateway if installed
+    if systemctl --user is-enabled openatrading 2>/dev/null; then
+      echo '🔄 Restarting gateway...'
+      systemctl --user restart openatrading
+      echo '✅ Gateway restarted'
+      sleep 1
+      systemctl --user status openatrading --no-pager 2>/dev/null || true
+    else
+      echo '⚠ systemd service openatrading not enabled, skip restart'
+    fi
+  "
+}
+
 # ─── Gateway ─────────────────────────────────────────────
 
 deploy_gateway() {
@@ -149,6 +189,13 @@ deploy_web() {
 clone_or_pull
 ghcr_login
 build_downloads
+
+# Update system CLI and restart gateway (always, for gateway/all)
+case "$SERVICE" in
+  gateway|all)
+    update_system_cli
+    ;;
+esac
 
 case "$SERVICE" in
   gateway)

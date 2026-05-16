@@ -119,8 +119,8 @@ db_path = "data.db"
 # ── Cron 调度 ────────────────────────────────────────────
 [cron]
 enabled = true
-collection_schedule = "*/30 9-15 * * 1-5"
-decision_schedule = "0 0 * * 1-5"
+collection_schedule = "0 */30 9-15 * * 1-5 *"
+decision_schedule = "0 0 0 * * 1-5 *"
 
 # ── 社交平台 ─────────────────────────────────────────────
 [social.telegram]

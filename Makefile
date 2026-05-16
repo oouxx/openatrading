@@ -9,6 +9,7 @@ run:
 	cargo run -p trending-agent-cli
 
 run-web:
+	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo run -p trending-agent-web
 
 dev-frontend:
