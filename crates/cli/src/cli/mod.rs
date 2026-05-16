@@ -289,12 +289,12 @@ pub async fn run() -> Result<()> {
     } else if cli.html {
         let json = serde_json::to_string_pretty(&output)?;
         format!(
-            "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Trending Agent</title>\n<style>\nbody{{background:#0d0d1a;color:#e8e8ed;font:14px monospace;padding:24px}}\n</style>\n</head>\n<body>\n<pre>{}</pre>\n</body>\n</html>",
+            "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<title>OpenATrading</title>\n<style>\nbody{{background:#0d0d1a;color:#e8e8ed;font:14px monospace;padding:24px}}\n</style>\n</head>\n<body>\n<pre>{}</pre>\n</body>\n</html>",
             json.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
         )
     } else {
         // Markdown: simple key-value dump
-        let mut md = String::from("# Trending Agent Report\n\n");
+        let mut md = String::from("# OpenATrading Report\n\n");
         let fields: Vec<(&str, &Option<serde_json::Value>)> = vec![
             ("概览", &output.overview),
             ("涨停数据", &output.limit_up),

@@ -82,7 +82,7 @@ pub struct TelegramConfig {
     pub notify_on_trade: bool,
 }
 
-const DEFAULT_CONFIG_TOML: &str = r##"# ── Trending Agent 配置 ──────────────────────────────────
+const DEFAULT_CONFIG_TOML: &str = r##"# ── OpenATrading 配置 ──────────────────────────────────
 # 优先级：项目根 config.toml > 项目根/.atrading/config.toml > ~/.atrading/config.toml
 # 同名角色：高优先级完整覆盖低优先级
 

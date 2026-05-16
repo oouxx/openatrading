@@ -1,4 +1,4 @@
-# Trending Agent
+# OpenATrading
 
 AI-native A 股短线交易决策工作台。「AI 情绪周期分析终端」
 
