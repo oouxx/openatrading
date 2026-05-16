@@ -1,4 +1,3 @@
-use axum::http::HeaderMap;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -508,9 +507,12 @@ async fn get_plates_by_any_stock(
 /// Proxy install.sh from GitHub
 async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
     let url = "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh";
-    let resp = reqwest::get(url)
-        .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let client = reqwest::Client::new();
+    let mut req = client.get(url);
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
     let body = resp.text().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
     Ok((
         StatusCode::OK,
@@ -524,18 +526,13 @@ async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, S
     let url = format!("https://github.com/oouxx/openatrading/releases/latest/download/{file}");
 
     let client = reqwest::Client::new();
-    let mut headers = HeaderMap::new();
-    headers.insert("Accept", "application/octet-stream".parse().unwrap());
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        headers.insert("Authorization", format!("Bearer {token}").parse().unwrap());
-    }
-
-    let resp = client
+    let mut req = client
         .get(&url)
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+        .header("Accept", "application/octet-stream");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let status = resp.status();
     if !status.is_success() {
