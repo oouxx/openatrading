@@ -513,9 +513,10 @@ async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
     let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let status = resp.status();
     let body = resp.text().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
     Ok((
-        StatusCode::OK,
+        status,
         [("content-type", "text/plain; charset=utf-8")],
         body,
     ))
@@ -535,10 +536,6 @@ async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, S
     let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let status = resp.status();
-    if !status.is_success() {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
     let content_type = resp
         .headers()
         .get("content-type")
@@ -549,7 +546,7 @@ async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, S
     let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     Ok((
-        StatusCode::OK,
+        status,
         [(axum::http::header::CONTENT_TYPE, content_type)],
         body,
     ))
