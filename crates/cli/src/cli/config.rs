@@ -86,8 +86,21 @@ impl AppConfig {
     }
 
     fn load_from(config_path: &Path, atrading_dir: &Path) -> Option<AppConfig> {
-        let content = std::fs::read_to_string(config_path).ok()?;
-        let raw: RawConfig = toml::from_str(&content).ok()?;
+        let content = match std::fs::read_to_string(config_path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(e) => {
+                eprintln!("跳过 {}: {e}", config_path.display());
+                return None;
+            }
+        };
+        let raw: RawConfig = match toml::from_str(&content) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("跳过 {} (解析错误): {e}", config_path.display());
+                return None;
+            }
+        };
         let roles = raw
             .roles
             .into_iter()
