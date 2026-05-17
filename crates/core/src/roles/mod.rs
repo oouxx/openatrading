@@ -63,7 +63,15 @@ pub fn list_user_roles(strategies_dir: &Path) -> Vec<(String, String, String)> {
     roles
 }
 
+fn validate_role_name(name: &str) -> Result<()> {
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.is_empty() {
+        anyhow::bail!("无效的角色名: {name}");
+    }
+    Ok(())
+}
+
 pub fn save_role_strategy(strategies_dir: &Path, name: &str, strategy: &str) -> Result<()> {
+    validate_role_name(name)?;
     let role_dir = strategies_dir.join(name);
     fs::create_dir_all(&role_dir)
         .with_context(|| format!("创建目录失败: {}", role_dir.display()))?;
@@ -73,6 +81,7 @@ pub fn save_role_strategy(strategies_dir: &Path, name: &str, strategy: &str) -> 
 }
 
 pub fn delete_role_dir(strategies_dir: &Path, name: &str) -> Result<()> {
+    validate_role_name(name)?;
     let role_dir = strategies_dir.join(name);
     if role_dir.exists() {
         fs::remove_dir_all(&role_dir)
