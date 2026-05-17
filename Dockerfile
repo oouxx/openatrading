@@ -9,6 +9,12 @@ COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml crates/cli/
 COPY src-tauri/Cargo.toml src-tauri/
 
+# Create dummy source files (cargo metadata requires them)
+RUN mkdir -p crates/core/src crates/cli/src src-tauri/src && \
+    echo '' > crates/core/src/lib.rs && \
+    echo 'fn main() {}' > crates/cli/src/main.rs && \
+    echo 'fn main() {}' > src-tauri/src/main.rs
+
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ── Build Stage ──────────────────────────────────────
@@ -23,10 +29,17 @@ WORKDIR /app
 
 # Build dependencies from recipe (cached unless Cargo.toml/Cargo.lock change)
 COPY --from=planner /app/recipe.json recipe.json
+COPY Cargo.toml Cargo.lock ./
+COPY crates/core/Cargo.toml crates/core/
+COPY crates/cli/Cargo.toml crates/cli/
+COPY src-tauri/Cargo.toml src-tauri/
+RUN mkdir -p crates/core/src crates/cli/src src-tauri/src && \
+    echo '' > crates/core/src/lib.rs && \
+    echo 'fn main() {}' > crates/cli/src/main.rs && \
+    echo 'fn main() {}' > src-tauri/src/main.rs
 RUN cargo chef cook --release --recipe-path recipe.json -p trending-agent-cli
 
-# Copy real source and build
-COPY Cargo.toml Cargo.lock ./
+# Copy real source and build final binary
 COPY crates/ crates/
 COPY src-tauri/ src-tauri/
 
