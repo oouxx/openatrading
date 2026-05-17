@@ -125,6 +125,6 @@ const DL_BASE = `${getApiBaseUrl()}/downloads`
 
 function dl(target: string): string {
   const ext = target.includes('apple') ? '.dmg' : target.includes('linux') ? '.deb' : '.msi'
-  return `${DL_BASE}/trending-agent_${target}${ext}`
+  return `${DL_BASE}/OpenATrading_${target}${ext}`
 }
 </script>
