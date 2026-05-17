@@ -1,5 +1,6 @@
 /target
 .env
+config.toml
 test_data.json
 jiuyan_res.json
 pre-commit-usage.md
@@ -32,3 +33,4 @@ certs/
 ./claude/worktrees/
 
 .playwright-mcp
+.superpowers

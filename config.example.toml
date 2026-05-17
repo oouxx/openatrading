@@ -1,0 +1,67 @@
+# ── OpenATrading 配置 ──────────────────────────────────
+# 优先级：项目根 config.toml > 项目根/.atrading/config.toml > ~/.atrading/config.toml
+# 同名角色：高优先级完整覆盖低优先级
+# 复制为 config.toml 后修改
+
+default_role = "zarili"
+
+# ── 角色定义 ────────────────────────────────────────────
+# merge_mode:
+#   base_only   — 仅使用 base.md 策略
+#   supplement  — base.md + supplement.md 合并（用户补充叠加）
+#   override    — 仅使用 supplement.md（完全自定义）
+
+[[roles]]
+name = "zarili"
+display_name = "zarili量价派"
+dir = "strategies/zarili"
+merge_mode = "supplement"
+
+[[roles]]
+name = "trader"
+display_name = "游资操盘手"
+dir = "strategies/trader"
+merge_mode = "base_only"
+
+[[roles]]
+name = "quant"
+display_name = "量化分析师"
+dir = "strategies/quant"
+merge_mode = "supplement"
+
+[[roles]]
+name = "risk_officer"
+display_name = "风控官"
+dir = "strategies/risk_officer"
+merge_mode = "supplement"
+
+# 添加自定义角色：
+# [[roles]]
+# name = "my_role"
+# display_name = "我的策略"
+# dir = "strategies/my_role"
+# merge_mode = "override"
+
+# ── 后台服务 ─────────────────────────────────────────────
+[service]
+# SQLite 数据库路径（相对于项目根/.atrading/）
+db_path = "data.db"
+
+# ── Cron 调度 ────────────────────────────────────────────
+# cron 表达式为 7 字段：秒 分 时 日 月 周 年
+[cron]
+enabled = true
+# 采集：交易时间每 30 分钟
+collection_schedule = "0 */30 9-15 * * 1-5 *"
+# 决策：每天 00:00
+decision_schedule = "0 0 0 * * 1-5 *"
+
+# ── Telegram 通知 ────────────────────────────────────────
+# 填入 bot_token 和 chat_id 即可启用
+[social.telegram]
+enabled = true
+bot_token = "${TELEGRAM_BOT_TOKEN}"
+chat_id = "${TELEGRAM_CHAT_ID}"
+notify_on_collect = true
+notify_on_decision = true
+notify_on_trade = true
