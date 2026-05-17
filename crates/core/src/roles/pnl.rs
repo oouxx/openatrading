@@ -50,7 +50,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
         let return_pct = (equity - initial_capital) / initial_capital * 100.0;
 
         points.push(PnlPoint {
-            date: log.created_at[..10].to_string(),
+            date: log.created_at.chars().take(10).collect::<String>(),
             equity: (equity * 100.0).round() / 100.0,
             cash: (cash * 100.0).round() / 100.0,
             market_value: (market_value * 100.0).round() / 100.0,
@@ -60,16 +60,17 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
 
     // Add final point with current positions mark-to-market
     if current_positions_value > 0.0 {
-        let last = points.last().unwrap();
-        let equity_with_current = last.cash + current_positions_value;
-        let return_pct = (equity_with_current - initial_capital) / initial_capital * 100.0;
-        points.push(PnlPoint {
-            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
-            equity: (equity_with_current * 100.0).round() / 100.0,
-            cash: last.cash,
-            market_value: (current_positions_value * 100.0).round() / 100.0,
-            return_pct: (return_pct * 100.0).round() / 100.0,
-        });
+        if let Some(last) = points.last() {
+            let equity_with_current = last.cash + current_positions_value;
+            let return_pct = (equity_with_current - initial_capital) / initial_capital * 100.0;
+            points.push(PnlPoint {
+                date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+                equity: (equity_with_current * 100.0).round() / 100.0,
+                cash: last.cash,
+                market_value: (current_positions_value * 100.0).round() / 100.0,
+                return_pct: (return_pct * 100.0).round() / 100.0,
+            });
+        }
     }
 
     // Deduplicate by date: keep last entry per day
