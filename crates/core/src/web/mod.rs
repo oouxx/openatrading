@@ -2,6 +2,7 @@ pub mod chat;
 pub mod download;
 pub mod handlers;
 
+use serde::Serialize;
 use std::sync::Arc;
 
 use axum::{
@@ -15,11 +16,19 @@ use crate::llm::openrouter::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::trade::sqlite::SqliteTradeManager;
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RoleEntry {
+    pub name: String,
+    pub display_name: String,
+    pub strategy: String,
+}
+
 pub struct AppState {
     pub llm: LlmClient,
     pub api: ApiClient,
     pub memory: Arc<SqliteMemoryStore>,
     pub trade: Arc<SqliteTradeManager>,
+    pub roles: Vec<RoleEntry>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -56,6 +65,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/plates-by-any-stock/:symbol",
             get(handlers::get_plates_by_any_stock),
         )
+        .route("/api/roles", get(handlers::get_roles))
+        .route(
+            "/api/roles/:name/positions",
+            get(handlers::get_role_positions),
+        )
+        .route("/api/roles/:name/logs", get(handlers::get_role_logs))
         // Proxy downloads from GitHub Releases
         .route("/install.sh", get(download::serve_install_sh))
         .route("/downloads/:file", get(download::serve_download))

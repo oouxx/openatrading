@@ -8,7 +8,7 @@ use crate::llm::openrouter::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::SqliteTradeManager;
-use crate::web::{self, AppState};
+use crate::web::{self, AppState, RoleEntry};
 
 pub struct Gateway {
     pub memory: Arc<SqliteMemoryStore>,
@@ -55,11 +55,21 @@ impl Gateway {
 
         // ── Web ───────────────────────────────
         if let Some(port) = config.web_port {
+            let roles = crate::roles::BUILTIN_STRATEGIES
+                .iter()
+                .map(|(name, display_name, strategy)| RoleEntry {
+                    name: name.to_string(),
+                    display_name: display_name.to_string(),
+                    strategy: strategy.to_string(),
+                })
+                .collect();
+
             let state = Arc::new(AppState {
                 llm: LlmClient::from_env(),
                 api: ApiClient::new(),
                 memory: self.memory.clone(),
                 trade: self.trade.clone(),
+                roles,
             });
 
             let router = web::build_router(state);
