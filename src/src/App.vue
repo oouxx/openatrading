@@ -10,6 +10,9 @@
           <router-link to="/trading" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
             交易终端
           </router-link>
+          <router-link to="/roles" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
+            角色策略
+          </router-link>
         </div>
       </div>
     </header>
