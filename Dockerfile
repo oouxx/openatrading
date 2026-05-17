@@ -7,6 +7,13 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml  crates/cli/
+COPY src-tauri/Cargo.toml   src-tauri/
+
+# 为所有 workspace member 创建 dummy src，让 cargo metadata 能解析
+RUN mkdir -p crates/core/src crates/cli/src src-tauri/src && \
+    echo '' > crates/core/src/lib.rs && \
+    echo 'fn main() {}' > crates/cli/src/main.rs && \
+    echo 'fn main() {}' > src-tauri/src/main.rs
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -14,7 +21,6 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ── Builder Stage ─────────────────────────────────────────────────────────────
 FROM lukemathwalker/cargo-chef:latest-rust-slim-bookworm AS builder
 
-# mold 在 bookworm 官方源里有，直接装
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         libssl-dev \
@@ -24,7 +30,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG GIT_VERSION=v0.0.0-dev
 ENV GIT_VERSION=${GIT_VERSION}
 
-# 全局启用 mold linker
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 
 WORKDIR /app
