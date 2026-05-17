@@ -6,9 +6,9 @@ export function getApiBaseUrl(): string {
   return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBaseUrl()
-  const resp = await fetch(`${base}${path}`)
+  const resp = await fetch(`${base}${path}`, init)
   if (!resp.ok) throw new Error(`${resp.status}`)
   return resp.json()
 }
@@ -333,4 +333,70 @@ export async function fetchSentimentHistory(days = 10) {
   } finally {
     sentimentHistory.loading = false
   }
+}
+
+// ── Role P&L History ───────────────────────────────────
+
+export interface PnlPoint {
+  date: string
+  equity: number
+  cash: number
+  market_value: number
+  return_pct: number
+}
+
+export interface PnlHistoryResponse {
+  points: PnlPoint[]
+  initial_capital: number
+}
+
+// Per-role P&L history cache
+export const rolePnlHistory = reactive<Record<string, { data: PnlPoint[], loading: boolean, error: string }>>({})
+
+export async function fetchRolePnlHistory(name: string, days = 30) {
+  if (!rolePnlHistory[name]) {
+    rolePnlHistory[name] = reactive({ data: [], loading: false, error: '' })
+  }
+  const entry = rolePnlHistory[name]
+  entry.loading = true
+  entry.error = ''
+  try {
+    const res = await fetchJson<PnlHistoryResponse>(`/api/roles/${name}/pnl-history?days=${days}`)
+    entry.data = res.points
+  } catch (e: any) {
+    entry.error = e.message || String(e)
+  } finally {
+    entry.loading = false
+  }
+}
+
+// ── Role CRUD ──────────────────────────────────────────
+
+export async function createRole(name: string, displayName: string, strategy: string) {
+  await fetchJson('/api/roles', {
+    method: 'POST',
+    body: JSON.stringify({ name, display_name: displayName, strategy }),
+  })
+}
+
+export async function updateRoleStrategy(name: string, strategy: string) {
+  await fetchJson(`/api/roles/${name}/strategy`, {
+    method: 'PUT',
+    body: JSON.stringify({ strategy }),
+  })
+}
+
+export async function deleteRole(name: string) {
+  await fetchJson(`/api/roles/${name}`, { method: 'DELETE' })
+}
+
+export async function resetRole(name: string) {
+  await fetchJson(`/api/roles/${name}/reset`, { method: 'POST' })
+}
+
+// Refresh single role's positions
+export async function refreshRole(name: string) {
+  await fetchRolePositions(name)
+  await fetchRoleLogs(name)
+  await fetchRolePnlHistory(name)
 }
