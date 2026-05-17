@@ -19,28 +19,11 @@ pub enum MergeMode {
 pub mod prompt;
 pub mod role;
 
-pub const BUILTIN_STRATEGIES: &[(&str, &str, &str)] = &[
-    (
-        "zarili",
-        "zarili量价派",
-        include_str!("../../strategies/zarili/base.md"),
-    ),
-    (
-        "trader",
-        "游资操盘手",
-        include_str!("../../strategies/trader/base.md"),
-    ),
-    (
-        "quant",
-        "量化分析师",
-        include_str!("../../strategies/quant/base.md"),
-    ),
-    (
-        "risk_officer",
-        "风控官",
-        include_str!("../../strategies/risk_officer/base.md"),
-    ),
-];
+pub const BUILTIN_STRATEGIES: &[(&str, &str, &str)] = &[(
+    "zarili",
+    "zarili量价派",
+    include_str!("../../strategies/zarili/base.md"),
+)];
 
 pub fn get_builtin_strategy(name: &str) -> Option<&'static str> {
     BUILTIN_STRATEGIES
@@ -52,13 +35,6 @@ pub fn get_builtin_strategy(name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_get_builtin_strategy_exists() {
-        let s = get_builtin_strategy("trader");
-        assert!(s.is_some());
-        assert!(s.unwrap().contains("游资操盘手"));
-    }
 
     #[test]
     fn test_get_builtin_strategy_not_found() {
