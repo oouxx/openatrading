@@ -1,0 +1,85 @@
+use crate::trade::TradeLogEntry;
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PnlPoint {
+    pub date: String,
+    pub equity: f64, // total account value
+    pub cash: f64,
+    pub market_value: f64,
+    pub return_pct: f64, // cumulative return %
+}
+
+/// Compute P&L history from trade logs. Starts with 1,000,000 initial capital.
+pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64) -> Vec<PnlPoint> {
+    let initial_capital: f64 = 1_000_000.0;
+    if logs.is_empty() {
+        return vec![];
+    }
+
+    let mut points: Vec<PnlPoint> = vec![];
+    let mut cash = initial_capital;
+    // Track open positions: symbol -> (shares, avg_cost)
+    let mut holdings: std::collections::HashMap<String, (i64, f64)> =
+        std::collections::HashMap::new();
+
+    for log in logs {
+        match log.action.as_str() {
+            "Open" => {
+                let cost = log.price * log.shares as f64;
+                cash -= cost;
+                holdings.insert(log.symbol.clone(), (log.shares, log.price));
+            }
+            "Close" => {
+                let proceeds = log.price * log.shares as f64;
+                cash += proceeds;
+                holdings.remove(&log.symbol);
+            }
+            _ => {}
+        }
+
+        // Mark-to-market: use last known price for open positions
+        let market_value: f64 = holdings
+            .iter()
+            .map(|(_, (shares, avg_cost))| {
+                *avg_cost * *shares as f64 // use cost as proxy when no current price
+            })
+            .sum();
+
+        let equity = cash + market_value;
+        let return_pct = (equity - initial_capital) / initial_capital * 100.0;
+
+        points.push(PnlPoint {
+            date: log.created_at[..10].to_string(),
+            equity: (equity * 100.0).round() / 100.0,
+            cash: (cash * 100.0).round() / 100.0,
+            market_value: (market_value * 100.0).round() / 100.0,
+            return_pct: (return_pct * 100.0).round() / 100.0,
+        });
+    }
+
+    // Add final point with current positions mark-to-market
+    if current_positions_value > 0.0 {
+        let last = points.last().unwrap();
+        let equity_with_current = last.cash + current_positions_value;
+        let return_pct = (equity_with_current - initial_capital) / initial_capital * 100.0;
+        points.push(PnlPoint {
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            equity: (equity_with_current * 100.0).round() / 100.0,
+            cash: last.cash,
+            market_value: (current_positions_value * 100.0).round() / 100.0,
+            return_pct: (return_pct * 100.0).round() / 100.0,
+        });
+    }
+
+    // Deduplicate by date: keep last entry per day
+    let mut daily: Vec<PnlPoint> = vec![];
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for p in points.into_iter().rev() {
+        if seen.insert(p.date.clone()) {
+            daily.push(p);
+        }
+    }
+    daily.reverse();
+    daily
+}
