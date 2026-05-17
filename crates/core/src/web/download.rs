@@ -1,0 +1,116 @@
+use axum::{
+    body::Body,
+    extract::Path,
+    http::{header, StatusCode},
+    response::IntoResponse,
+    response::Response,
+};
+
+/// Proxy install.sh from GitHub
+pub async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
+    let url = "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh";
+    let client = reqwest::Client::new();
+    let mut req = client.get(url);
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let status = resp.status();
+    let body = resp.text().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    Ok((
+        status,
+        [("content-type", "text/plain; charset=utf-8")],
+        body,
+    ))
+}
+
+/// Fetch latest release asset list, cached for 5 min
+pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
+    static CACHE: std::sync::OnceLock<(std::time::Instant, Vec<(i64, String)>)> =
+        std::sync::OnceLock::new();
+
+    let cache = CACHE.get();
+    if let Some((t, assets)) = cache {
+        if t.elapsed() < std::time::Duration::from_secs(300) {
+            return Ok(assets.clone());
+        }
+    }
+
+    let url = "https://api.github.com/repos/oouxx/openatrading/releases/latest";
+    let client = reqwest::Client::new();
+    let mut req = client.get(url).header("User-Agent", "openatrading-web");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.map_err(|_| ())?;
+    let json: serde_json::Value = resp.json().await.map_err(|_| ())?;
+
+    let mut assets = Vec::new();
+    if let Some(arr) = json["assets"].as_array() {
+        for a in arr {
+            if let (Some(id), Some(name)) = (a["id"].as_i64(), a["name"].as_str()) {
+                assets.push((id, name.to_string()));
+            }
+        }
+    }
+
+    let _ = CACHE.set((std::time::Instant::now(), assets.clone()));
+    Ok(assets)
+}
+
+/// Proxy download from GitHub Releases via asset API, fallback to local
+pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    // Try GitHub asset API
+    if let Ok(assets) = fetch_assets().await {
+        if let Some((asset_id, _)) = assets.iter().find(|(_, name)| name == &file) {
+            let url = format!(
+                "https://api.github.com/repos/oouxx/openatrading/releases/assets/{asset_id}"
+            );
+            let client = reqwest::Client::new();
+            let mut req = client
+                .get(&url)
+                .header("Accept", "application/octet-stream")
+                .header("User-Agent", "openatrading-web");
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                req = req.header("Authorization", format!("Bearer {token}"));
+            }
+            if let Ok(resp) = req.send().await {
+                if resp.status().is_success() {
+                    let content_type = resp
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("application/octet-stream")
+                        .to_string();
+                    let body = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type)
+                        .body(Body::from(body))
+                        .unwrap();
+                    return Ok(response);
+                }
+            }
+        }
+    }
+
+    // Fallback to local downloads/
+    let local_path = std::path::Path::new("downloads").join(&file);
+    if local_path.exists() {
+        let content_type = match local_path.extension().and_then(|e| e.to_str()) {
+            Some("dmg") => "application/x-apple-diskimage",
+            Some("deb") => "application/vnd.debian.binary-package",
+            Some("AppImage") => "application/octet-stream",
+            _ => "application/octet-stream",
+        };
+        let data = std::fs::read(&local_path).map_err(|_| StatusCode::NOT_FOUND)?;
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Body::from(data))
+            .unwrap();
+        return Ok(response);
+    }
+
+    Err(StatusCode::NOT_FOUND)
+}
