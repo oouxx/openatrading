@@ -14,7 +14,7 @@ use crate::cli::app::{Commands, GatewayAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
 use crate::cli::gateway_cmd::{
     cmd_gateway_install, cmd_gateway_run, cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop,
-    cmd_gateway_uninstall,
+    cmd_gateway_test_telegram, cmd_gateway_uninstall,
 };
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
@@ -100,6 +100,7 @@ pub async fn run() -> Result<()> {
                 cron_only,
                 web_only,
             } => cmd_gateway_run(&project_root, cron_only, web_only).await,
+            GatewayAction::TestTelegram => cmd_gateway_test_telegram(&project_root).await,
         };
     }
 

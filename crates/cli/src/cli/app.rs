@@ -119,6 +119,8 @@ pub enum GatewayAction {
         #[arg(long)]
         web_only: bool,
     },
+    /// 测试 Telegram 连接
+    TestTelegram,
 }
 
 #[derive(Subcommand)]

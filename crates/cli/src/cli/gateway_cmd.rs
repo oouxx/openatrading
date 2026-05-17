@@ -186,3 +186,46 @@ pub async fn cmd_gateway_run(
         })
         .await
 }
+
+/// 测试 Telegram 连接
+pub async fn cmd_gateway_test_telegram(project_root: &PathBuf) -> Result<()> {
+    let app_config = AppConfig::load(project_root)?;
+
+    match &app_config.social {
+        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+            let tg = sc.telegram.as_ref().unwrap();
+            let bot_token = tg.bot_token.as_ref().filter(|t| !t.is_empty());
+            let chat_id = tg.chat_id.as_ref().filter(|c| !c.is_empty());
+
+            match (bot_token, chat_id) {
+                (Some(token), Some(chat)) => {
+                    println!("📡 正在发送测试消息到 Telegram...");
+                    let url = format!("https://api.telegram.org/bot{token}/sendMessage");
+                    let client = reqwest::Client::new();
+                    let resp = client
+                        .post(&url)
+                        .json(&serde_json::json!({
+                            "chat_id": chat,
+                            "text": "✅ OpenATrading Telegram 连接测试成功！",
+                        }))
+                        .send()
+                        .await?;
+
+                    if resp.status().is_success() {
+                        println!("✅ Telegram 连接成功");
+                    } else {
+                        let body = resp.text().await.unwrap_or_default();
+                        anyhow::bail!("Telegram API 返回错误: {body}");
+                    }
+                }
+                _ => {
+                    anyhow::bail!("Telegram 未配置 bot_token 或 chat_id");
+                }
+            }
+        }
+        _ => {
+            anyhow::bail!("Telegram 未启用，请检查 config.toml 中 [social.telegram] 配置");
+        }
+    }
+    Ok(())
+}
