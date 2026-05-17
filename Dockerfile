@@ -10,17 +10,15 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml crates/cli/
-COPY crates/web/Cargo.toml crates/web/
 COPY src-tauri/Cargo.toml src-tauri/
 
 # Pre-build deps layer
-RUN mkdir -p crates/core/src crates/cli/src crates/web/src src-tauri/src && \
+RUN mkdir -p crates/core/src crates/cli/src src-tauri/src && \
     echo '' > crates/core/src/lib.rs && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
-    echo 'fn main() {}' > crates/web/src/main.rs && \
     echo 'fn main() {}' > src-tauri/src/main.rs && \
     cargo build --release -p trending-agent-cli && \
-    rm -rf crates/cli/src crates/core/src crates/web/src src-tauri/src
+    rm -rf crates/cli/src crates/core/src src-tauri/src
 
 # Copy real source
 COPY crates/ crates/
