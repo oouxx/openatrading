@@ -26,6 +26,4 @@ services:
       - "443:443"
     volumes:
       - /root/certs:/etc/ssl/cloudflare:ro
-    depends_on:
-      - gateway
     restart: unless-stopped
