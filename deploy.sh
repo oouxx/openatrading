@@ -1,22 +1,20 @@
 #!/bin/bash
 set -e
 
-SERVICE="${1:-all}"  # cli | gateway | web | all
+SERVICE="${1:-gateway}"
 SERVER="root@203.0.113.12"
 REMOTE_DIR="/root/openatrading"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
-  echo "Usage: ./deploy.sh [cli|gateway|web|all]"
-  echo "  cli        Build & deploy CLI gateway only"
-  echo "  gateway    Same as cli"
-  echo "  web        Build & deploy frontend only"
-  echo "  all        Build & deploy everything (default)"
+  echo "Usage: ./deploy.sh [gateway|web|all]"
+  echo "  gateway     Build & deploy gateway (default)"
+  echo "  web         Build & deploy frontend only"
+  echo "  all         Build & deploy everything"
   exit 1
 }
 
 case "$SERVICE" in
-  cli) SERVICE=gateway ;;
   gateway|web|all) ;;
   *) usage ;;
 esac
