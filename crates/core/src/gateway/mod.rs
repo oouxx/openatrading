@@ -46,7 +46,9 @@ impl Gateway {
             )
             .await?;
             handles.push(tokio::spawn(async move {
-                let _ = scheduler.start().await;
+                if let Err(e) = scheduler.start().await {
+                    eprintln!("[gateway] cron scheduler error: {e}");
+                }
             }));
             eprintln!("[gateway] cron scheduler started");
         }
@@ -66,7 +68,9 @@ impl Gateway {
             println!("🌐 Web API: http://0.0.0.0:{}", port);
 
             handles.push(tokio::spawn(async move {
-                axum::serve(listener, router).await.unwrap();
+                if let Err(e) = axum::serve(listener, router).await {
+                    eprintln!("[gateway] web server error: {e}");
+                }
             }));
         }
 
