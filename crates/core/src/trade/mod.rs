@@ -31,6 +31,18 @@ pub struct TradeLog {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TradeLogEntry {
+    pub id: i64,
+    pub position_id: i64,
+    pub action: String,
+    pub price: f64,
+    pub shares: i64,
+    pub reason: String,
+    pub created_at: String,
+    pub symbol: String,
+}
+
 pub mod sqlite;
 
 pub trait TradeManager: Send + Sync {
@@ -39,5 +51,6 @@ pub trait TradeManager: Send + Sync {
     fn update_position(&self, pos: Position) -> Result<()>;
     fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()>;
     fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>>;
+    fn get_trade_logs_by_role(&self, role_name: &str, limit: usize) -> Result<Vec<TradeLogEntry>>;
     fn format_positions(&self, role_name: &str) -> Result<String>;
 }

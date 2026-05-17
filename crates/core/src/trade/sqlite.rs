@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{Position, TradeLog, TradeManager};
+use super::{Position, TradeLog, TradeLogEntry, TradeManager};
 
 pub struct SqliteTradeManager {
     conn: Mutex<Connection>,
@@ -147,6 +147,34 @@ impl TradeManager for SqliteTradeManager {
                 shares: row.get(4)?,
                 reason: row.get(5)?,
                 created_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn get_trade_logs_by_role(&self, role_name: &str, limit: usize) -> Result<Vec<TradeLogEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
+             tl.reason, tl.created_at, p.symbol \
+             FROM trade_logs tl \
+             JOIN positions p ON tl.position_id = p.id \
+             WHERE p.role_name = ?1 \
+             ORDER BY tl.created_at DESC \
+             LIMIT ?2",
+        )?;
+        let limit_i64: i64 = limit.try_into().unwrap_or(i64::MAX);
+        let rows = stmt.query_map(rusqlite::params![role_name, limit_i64], |row| {
+            Ok(TradeLogEntry {
+                id: row.get(0)?,
+                position_id: row.get(1)?,
+                action: row.get(2)?,
+                price: row.get(3)?,
+                shares: row.get(4)?,
+                reason: row.get(5)?,
+                created_at: row.get(6)?,
+                symbol: row.get(7)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()

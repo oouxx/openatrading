@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::agents::sentiment::analyze_sentiment;
 use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::api::Client as ApiClient;
+use crate::trade::TradeManager;
 
 use super::AppState;
 
@@ -332,4 +333,63 @@ pub async fn get_plates_by_any_stock(
             StatusCode::SERVICE_UNAVAILABLE
         })?;
     Ok(Json(plates))
+}
+
+/// GET /api/roles
+pub async fn get_roles(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    Ok(Json(state.roles.clone()))
+}
+
+/// GET /api/roles/:name/positions
+pub async fn get_role_positions(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let positions = state.trade.list_positions(&name).map_err(|e| {
+        eprintln!("get_role_positions error: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let result: Vec<serde_json::Value> = positions
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "symbol": p.symbol,
+                "stock_name": p.stock_name,
+                "cost_price": p.cost_price,
+                "current_price": p.current_price,
+                "shares": p.shares,
+                "entry_reason": p.entry_reason,
+                "entry_date": p.entry_date,
+            })
+        })
+        .collect();
+    Ok(Json(result))
+}
+
+/// GET /api/roles/:name/logs
+pub async fn get_role_logs(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let logs = state.trade.get_trade_logs_by_role(&name, 20).map_err(|e| {
+        eprintln!("get_role_logs error: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let result: Vec<serde_json::Value> = logs
+        .iter()
+        .map(|l| {
+            serde_json::json!({
+                "date": &l.created_at[..10],
+                "action": l.action,
+                "symbol": l.symbol,
+                "price": l.price,
+                "shares": l.shares,
+                "reason": l.reason,
+            })
+        })
+        .collect();
+    Ok(Json(result))
 }
