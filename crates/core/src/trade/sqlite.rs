@@ -46,6 +46,13 @@ impl SqliteTradeManager {
             );",
         )?;
 
+        // Migration: add role_name to trade_logs for closed-position traceability
+        conn.execute(
+            "ALTER TABLE trade_logs ADD COLUMN role_name TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .ok();
+
         Ok(SqliteTradeManager {
             conn: Mutex::new(conn),
         })
@@ -106,8 +113,8 @@ impl TradeManager for SqliteTradeManager {
         )?;
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason) VALUES (?1,'Open',?2,?3,?4)",
-            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name) VALUES (?1,'Open',?2,?3,?4,?5)",
+            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name],
         )?;
         Ok(id)
     }
@@ -124,9 +131,14 @@ impl TradeManager for SqliteTradeManager {
 
     fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        // First get the role_name for this position
+        let role_name: String =
+            conn.query_row("SELECT role_name FROM positions WHERE id=?1", [id], |row| {
+                row.get(0)
+            })?;
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason) VALUES (?1,'Close',?2,0,?3)",
-            rusqlite::params![id, price, reason],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name) VALUES (?1,'Close',?2,0,?3,?4)",
+            rusqlite::params![id, price, reason, role_name],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
         Ok(())
@@ -210,6 +222,44 @@ impl TradeManager for SqliteTradeManager {
             })
             .collect();
         Ok(lines.join("\n"))
+    }
+
+    fn delete_positions_by_role(&self, role_name: &str) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM positions WHERE role_name=?1", [role_name])?;
+        Ok(n)
+    }
+
+    fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM trade_logs WHERE role_name=?1", [role_name])?;
+        Ok(n)
+    }
+
+    fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
+             tl.reason, tl.created_at, COALESCE(p.symbol, '') as symbol \
+             FROM trade_logs tl \
+             LEFT JOIN positions p ON tl.position_id = p.id \
+             WHERE tl.role_name = ?1 \
+             ORDER BY tl.created_at ASC",
+        )?;
+        let rows = stmt.query_map([role_name], |row| {
+            Ok(TradeLogEntry {
+                id: row.get(0)?,
+                position_id: row.get(1)?,
+                action: row.get(2)?,
+                price: row.get(3)?,
+                shares: row.get(4)?,
+                reason: row.get(5)?,
+                created_at: row.get(6)?,
+                symbol: row.get(7)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 }
 
