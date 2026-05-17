@@ -38,6 +38,10 @@ impl Gateway {
 
         // ── Cron ──────────────────────────────
         if let Some((cron_config, social)) = config.cron {
+            eprintln!(
+                "[gateway] cron: enabled, collection={}, decision={}",
+                cron_config.collection_schedule, cron_config.decision_schedule
+            );
             let scheduler = cron::start_scheduler(
                 &cron_config,
                 self.memory.clone(),
@@ -50,7 +54,8 @@ impl Gateway {
                     eprintln!("[gateway] cron scheduler error: {e}");
                 }
             }));
-            eprintln!("[gateway] cron scheduler started");
+        } else {
+            eprintln!("[gateway] cron: disabled");
         }
 
         // ── Web ───────────────────────────────

@@ -4875,6 +4875,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "cron",
  "dirs",
  "dotenvy",
  "futures",

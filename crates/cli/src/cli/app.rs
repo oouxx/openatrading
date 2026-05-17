@@ -96,6 +96,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: TradeAction,
     },
+    /// 诊断当前服务状态
+    Doctor {
+        /// 输出 JSON 格式
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -119,8 +125,6 @@ pub enum GatewayAction {
         #[arg(long)]
         web_only: bool,
     },
-    /// 测试 Telegram 连接
-    TestTelegram,
 }
 
 #[derive(Subcommand)]
