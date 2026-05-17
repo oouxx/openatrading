@@ -19,6 +19,7 @@ pub enum MergeMode {
     BaseOnly,
 }
 
+pub mod pnl;
 pub mod prompt;
 pub mod role;
 
