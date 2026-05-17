@@ -117,7 +117,16 @@ pub fn cmd_gateway_status() -> Result<()> {
 }
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
-pub async fn cmd_gateway_run(project_root: &PathBuf) -> Result<()> {
+///
+/// - `cron_only`: 仅运行 cron scheduler，不启动 web server
+/// - `web_only`: 仅运行 web server（端口 8080），不启动 cron scheduler
+/// - 两者均 false（默认）: cron + web 同时运行
+/// - 两者均 true: 等同于默认行为
+pub async fn cmd_gateway_run(
+    project_root: &PathBuf,
+    cron_only: bool,
+    web_only: bool,
+) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
 
     let db_path = project_root
@@ -126,43 +135,54 @@ pub async fn cmd_gateway_run(project_root: &PathBuf) -> Result<()> {
 
     let gateway = Gateway::init(&db_path)?;
 
-    let social: Arc<dyn NotificationSender> = match &app_config.social {
-        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-            let tg = sc.telegram.as_ref().unwrap();
-            if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
-                || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
-            {
-                Arc::new(NoopSender)
-            } else {
-                Arc::new(TelegramSender {
-                    bot_token: tg.bot_token.clone().unwrap_or_default(),
-                    chat_id: tg.chat_id.clone().unwrap_or_default(),
-                    notify_on_collect: tg.notify_on_collect,
-                    notify_on_decision: tg.notify_on_decision,
-                    notify_on_trade: tg.notify_on_trade,
-                })
+    let do_cron = !web_only || cron_only;
+    let do_web = !cron_only || web_only;
+
+    let cron_entry = if do_cron {
+        let social: Arc<dyn NotificationSender> = match &app_config.social {
+            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+                let tg = sc.telegram.as_ref().unwrap();
+                if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
+                    || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
+                {
+                    Arc::new(NoopSender)
+                } else {
+                    Arc::new(TelegramSender {
+                        bot_token: tg.bot_token.clone().unwrap_or_default(),
+                        chat_id: tg.chat_id.clone().unwrap_or_default(),
+                        notify_on_collect: tg.notify_on_collect,
+                        notify_on_decision: tg.notify_on_decision,
+                        notify_on_trade: tg.notify_on_trade,
+                    })
+                }
             }
-        }
-        _ => Arc::new(NoopSender),
+            _ => Arc::new(NoopSender),
+        };
+
+        let cron_cfg = match &app_config.cron {
+            Some(c) => CronConfig {
+                enabled: c.enabled,
+                collection_schedule: c.collection_schedule.clone(),
+                decision_schedule: c.decision_schedule.clone(),
+            },
+            None => CronConfig {
+                enabled: true,
+                collection_schedule: "0 */30 9-15 * * 1-5 *".to_string(),
+                decision_schedule: "0 0 0 * * 1-5 *".to_string(),
+            },
+        };
+
+        Some((cron_cfg, social))
+    } else {
+        None
     };
 
-    let cron_cfg = match &app_config.cron {
-        Some(c) => CronConfig {
-            enabled: c.enabled,
-            collection_schedule: c.collection_schedule.clone(),
-            decision_schedule: c.decision_schedule.clone(),
-        },
-        None => CronConfig {
-            enabled: true,
-            collection_schedule: "0 */30 9-15 * * 1-5 *".to_string(),
-            decision_schedule: "0 0 0 * * 1-5 *".to_string(),
-        },
-    };
+    let web_port = if do_web { Some(8080u16) } else { None };
 
     gateway
         .start(GatewayConfig {
-            cron: Some((cron_cfg, social)),
-            web_port: None,
+            cron: cron_entry,
+            web_port,
         })
         .await
 }
