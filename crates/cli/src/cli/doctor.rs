@@ -48,20 +48,38 @@ async fn check_telegram(app_config: &AppConfig) -> CheckItem {
                 }
             };
 
-            let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-            match reqwest::Client::new()
-                .post(&url)
+            let client = reqwest::Client::new();
+            let send_url = format!("https://api.telegram.org/bot{token}/sendMessage");
+            match client
+                .post(&send_url)
                 .json(&serde_json::json!({
                     "chat_id": chat,
-                    "text": "✅ OpenATrading Telegram 连接测试成功！",
+                    "text": "✅ OpenATrading Telegram 连接测试",
                 }))
                 .send()
                 .await
             {
-                Ok(resp) if resp.status().is_success() => CheckItem {
-                    status: "ok".into(),
-                    message: "Telegram 连接成功".into(),
-                },
+                Ok(resp) if resp.status().is_success() => {
+                    // Delete the test message
+                    if let Ok(body) = resp.json::<serde_json::Value>().await {
+                        if let Some(msg_id) = body["result"]["message_id"].as_i64() {
+                            let del_url =
+                                format!("https://api.telegram.org/bot{token}/deleteMessage");
+                            let _ = client
+                                .post(&del_url)
+                                .json(&serde_json::json!({
+                                    "chat_id": chat,
+                                    "message_id": msg_id,
+                                }))
+                                .send()
+                                .await;
+                        }
+                    }
+                    CheckItem {
+                        status: "ok".into(),
+                        message: "Telegram 连接成功".into(),
+                    }
+                }
                 Ok(resp) => {
                     let body = resp.text().await.unwrap_or_default();
                     CheckItem {
