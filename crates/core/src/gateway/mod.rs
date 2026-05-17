@@ -42,18 +42,13 @@ impl Gateway {
                 "[gateway] cron: enabled, collection={}, decision={}",
                 cron_config.collection_schedule, cron_config.decision_schedule
             );
-            let scheduler = cron::start_scheduler(
+            let _scheduler = cron::start_scheduler(
                 &cron_config,
                 self.memory.clone(),
                 self.trade.clone(),
                 social,
             )
             .await?;
-            handles.push(tokio::spawn(async move {
-                if let Err(e) = scheduler.start().await {
-                    eprintln!("[gateway] cron scheduler error: {e}");
-                }
-            }));
         } else {
             eprintln!("[gateway] cron: disabled");
         }
