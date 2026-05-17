@@ -235,6 +235,86 @@ export async function fetchSentiment() {
   }
 }
 
+// ── Roles / Role Strategy ──────────────────────────────
+
+export interface RoleEntry {
+  name: string
+  display_name: string
+  strategy: string
+}
+
+export interface RolePosition {
+  id: number
+  symbol: string
+  stock_name: string
+  cost_price: number
+  current_price: number
+  shares: number
+  entry_reason: string
+  entry_date: string
+}
+
+export interface RoleLog {
+  date: string
+  action: string
+  symbol: string
+  price: number
+  shares: number
+  reason: string
+}
+
+export const roles = reactive({ data: [] as RoleEntry[], loading: false, error: '' })
+
+export async function fetchRoles() {
+  roles.loading = true
+  roles.error = ''
+  try {
+    roles.data = await fetchJson<RoleEntry[]>('/api/roles')
+  } catch (e: any) {
+    roles.error = e.message || String(e)
+  } finally {
+    roles.loading = false
+  }
+}
+
+// Per-role positions cache
+export const rolePositions = reactive<Record<string, { data: RolePosition[], loading: boolean, error: string }>>({})
+
+export async function fetchRolePositions(name: string) {
+  if (!rolePositions[name]) {
+    rolePositions[name] = reactive({ data: [], loading: false, error: '' })
+  }
+  const entry = rolePositions[name]
+  entry.loading = true
+  entry.error = ''
+  try {
+    entry.data = await fetchJson<RolePosition[]>(`/api/roles/${name}/positions`)
+  } catch (e: any) {
+    entry.error = e.message || String(e)
+  } finally {
+    entry.loading = false
+  }
+}
+
+// Per-role logs cache
+export const roleLogs = reactive<Record<string, { data: RoleLog[], loading: boolean, error: string }>>({})
+
+export async function fetchRoleLogs(name: string) {
+  if (!roleLogs[name]) {
+    roleLogs[name] = reactive({ data: [], loading: false, error: '' })
+  }
+  const entry = roleLogs[name]
+  entry.loading = true
+  entry.error = ''
+  try {
+    entry.data = await fetchJson<RoleLog[]>(`/api/roles/${name}/logs`)
+  } catch (e: any) {
+    entry.error = e.message || String(e)
+  } finally {
+    entry.loading = false
+  }
+}
+
 // ── Sentiment History ──────────────────────────────────
 
 export const sentimentHistory = reactive({
