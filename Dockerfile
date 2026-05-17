@@ -1,28 +1,27 @@
 # ── Planner Stage ────────────────────────────────────
-FROM rust:1.88-slim-bookworm AS planner
+FROM lukemathwalker/cargo-chef:latest-rust-slim-bookworm AS planner
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef --locked
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-COPY crates/ crates/
-COPY src-tauri/ src-tauri/
+COPY crates/core/Cargo.toml crates/core/
+COPY crates/cli/Cargo.toml crates/cli/
+COPY src-tauri/Cargo.toml src-tauri/
 
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ── Build Stage ──────────────────────────────────────
-FROM rust:1.88-slim-bookworm AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-slim-bookworm AS builder
 
 ARG GIT_VERSION=v0.0.0-dev
 ENV GIT_VERSION=${GIT_VERSION}
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef --locked
 
 WORKDIR /app
 
-# Pre-build deps from recipe (cached unless Cargo.toml/Cargo.lock change)
+# Build dependencies from recipe (cached unless Cargo.toml/Cargo.lock change)
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json -p trending-agent-cli
 
