@@ -111,7 +111,14 @@ pub enum GatewayAction {
     /// 查看服务状态
     Status,
     /// 前台运行（调试用）
-    Run,
+    Run {
+        /// 仅运行 cron scheduler
+        #[arg(long)]
+        cron_only: bool,
+        /// 仅运行 web server
+        #[arg(long)]
+        web_only: bool,
+    },
 }
 
 #[derive(Subcommand)]

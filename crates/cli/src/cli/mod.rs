@@ -96,7 +96,10 @@ pub async fn run() -> Result<()> {
             GatewayAction::Start => cmd_gateway_start(),
             GatewayAction::Stop => cmd_gateway_stop(),
             GatewayAction::Status => cmd_gateway_status(),
-            GatewayAction::Run => cmd_gateway_run(&project_root).await,
+            GatewayAction::Run {
+                cron_only,
+                web_only,
+            } => cmd_gateway_run(&project_root, cron_only, web_only).await,
         };
     }
 
