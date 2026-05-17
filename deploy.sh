@@ -177,16 +177,16 @@ update_system_cli() {
 
 deploy_gateway() {
   echo ""
-  echo "=== [gateway] Deploying openatrading gateway (mode: $MODE) ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose $DOCKER_CMD"
+  echo "=== [gateway] Deploying gateway ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build gateway"
 }
 
 # ─── Web ─────────────────────────────────────────────────
 
 deploy_web() {
   echo ""
-  echo "=== [web] Deploying web services (mode: $MODE) ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose -f docker-compose-web.yaml $DOCKER_CMD"
+  echo "=== [web] Deploying frontend ==="
+  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build frontend"
 }
 
 # ─── Execute ────────────────────────────────────────────
@@ -210,8 +210,7 @@ case "$SERVICE" in
     deploy_web
     ;;
   all)
-    deploy_gateway
-    deploy_web
+    ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build"
     ;;
 esac
 

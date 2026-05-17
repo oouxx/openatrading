@@ -10,7 +10,7 @@ run:
 
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	cargo run -p trending-agent-web
+	cargo run -p trending-agent-cli -- gateway run --web-only
 
 dev-frontend:
 	cd src && bun run dev
@@ -102,7 +102,7 @@ help:
 	@echo "Deploy:"
 	@echo "  deploy         deploy all (gateway + web)"
 	@echo "  deploy-gateway deploy gateway only"
-	@echo "  deploy-web     deploy web + frontend"
+	@echo "  deploy-web     deploy frontend only"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"

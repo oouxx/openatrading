@@ -1,9 +1,11 @@
 services:
-  openatrading:
+  gateway:
     image: ghcr.io/oouxx/openatrading:latest
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
     env_file:
       - .env
     environment:
@@ -11,5 +13,19 @@ services:
       - TZ=Asia/Shanghai
     volumes:
       - ~/.atrading:/root/.atrading
-      - .:/app
+      - ./downloads:/app/downloads
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/oouxx/openatrading-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /root/certs:/etc/ssl/cloudflare:ro
+    depends_on:
+      - gateway
     restart: unless-stopped
