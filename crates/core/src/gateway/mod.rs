@@ -2,20 +2,26 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::api::Client as ApiClient;
 use crate::cron::{self, CronConfig};
+use crate::llm::openrouter::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::SqliteTradeManager;
+use crate::web::{self, AppState};
 
 pub struct Gateway {
     pub memory: Arc<SqliteMemoryStore>,
     pub trade: Arc<SqliteTradeManager>,
 }
 
+pub struct GatewayConfig {
+    pub cron: Option<(CronConfig, Arc<dyn NotificationSender>)>,
+    pub web_port: Option<u16>,
+}
+
 impl Gateway {
-    /// 初始化 Gateway，打开 SQLite 数据库
     pub fn init(db_path: &Path) -> Result<Self> {
-        // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
@@ -26,21 +32,59 @@ impl Gateway {
         Ok(Gateway { memory, trade })
     }
 
-    /// 启动 cron scheduler，阻塞至 Ctrl+C
-    pub async fn start(
-        &self,
-        cron_config: &CronConfig,
-        social: Arc<dyn NotificationSender>,
-    ) -> Result<()> {
-        let _scheduler =
-            cron::start_scheduler(cron_config, self.memory.clone(), self.trade.clone(), social)
-                .await?;
+    /// Start configured services, block until Ctrl+C
+    pub async fn start(self, config: GatewayConfig) -> Result<()> {
+        let mut handles = Vec::new();
 
-        eprintln!("[gateway] 已启动 (Ctrl+C 停止)");
+        // ── Cron ──────────────────────────────
+        if let Some((cron_config, social)) = config.cron {
+            let scheduler = cron::start_scheduler(
+                &cron_config,
+                self.memory.clone(),
+                self.trade.clone(),
+                social,
+            )
+            .await?;
+            handles.push(tokio::spawn(async move {
+                let _ = scheduler.start().await;
+            }));
+            eprintln!("[gateway] cron scheduler started");
+        }
 
-        // Block until Ctrl+C
+        // ── Web ───────────────────────────────
+        if let Some(port) = config.web_port {
+            let state = Arc::new(AppState {
+                llm: LlmClient::from_env(),
+                api: ApiClient::new(),
+                memory: self.memory.clone(),
+                trade: self.trade.clone(),
+            });
+
+            let router = web::build_router(state);
+            let addr = format!("0.0.0.0:{}", port);
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
+            println!("🌐 Web API: http://0.0.0.0:{}", port);
+
+            handles.push(tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap();
+            }));
+        }
+
+        if handles.is_empty() {
+            eprintln!("[gateway] nothing to run (no cron, no web)");
+            return Ok(());
+        }
+
+        eprintln!("[gateway] running (Ctrl+C to stop)");
+
+        // Wait for Ctrl+C
         tokio::signal::ctrl_c().await?;
-        eprintln!("\n[gateway] 正在停止...");
+        eprintln!("\n[gateway] shutting down...");
+
+        for h in handles {
+            h.abort();
+        }
+
         Ok(())
     }
 }
