@@ -80,30 +80,6 @@ build_downloads() {
       docker run --rm --entrypoint cp -v \$PWD/downloads:/out openatrading-cli-arm64 /usr/local/bin/openatrading /out/openatrading-aarch64-unknown-linux-gnu && \
       echo '✅ CLI aarch64 done' || echo '⚠ CLI aarch64 skipped (need qemu or arm64 host)'
 
-    # ── Try Tauri from GitHub Releases ────────────────
-    echo '⬇ Fetching Tauri clients from GitHub Releases...'
-    AUTH=''
-    if [ -n \"\${GITHUB_TOKEN:-}\" ]; then
-      AUTH=\"-H 'Authorization: Bearer '\$GITHUB_TOKEN''\"
-    fi
-    RELEASE_JSON=\$(curl -fsSL \$AUTH https://api.github.com/repos/oouxx/openatrading/releases/latest 2>/dev/null || echo '{}')
-    LATEST_TAG=\$(echo \"\$RELEASE_JSON\" | grep '\"tag_name\"' | head -1 | cut -d'\"' -f4 || echo '')
-    if [ -n \"\$LATEST_TAG\" ]; then
-      echo \"Latest release: \$LATEST_TAG\"
-      # Parse asset IDs and names from JSON, download each via asset API
-      echo \"\$RELEASE_JSON\" | grep -E '\"(id|name)\":' | paste - - 2>/dev/null | while read line; do
-        ASSET_ID=\$(echo \"\$line\" | grep -o '\"id\": [0-9]*' | grep -o '[0-9]*')
-        ASSET_NAME=\$(echo \"\$line\" | grep -o '\"name\": \"[^\"]*\"' | cut -d'\"' -f4)
-        if [ -n \"\$ASSET_ID\" ] && [ -n \"\$ASSET_NAME\" ]; then
-          echo \"  ⬇ \$ASSET_NAME\"
-          curl -fsSL \$AUTH -H 'Accept: application/octet-stream' \
-            -o \"downloads/\$ASSET_NAME\" \
-            \"https://api.github.com/repos/oouxx/openatrading/releases/assets/\$ASSET_ID\" 2>/dev/null || echo \"  ⚠ failed\"
-        fi
-      done
-    else
-      echo '⚠ No GitHub releases found'
-    fi
     echo '✅ downloads ready'
     ls -lh downloads/
   "
@@ -127,6 +103,14 @@ update_system_cli() {
       *) echo '❌ Unknown arch: \$SERVER_ARCH'; exit 1 ;;
     esac
 
+    # Stop gateway first (binary is running)
+    NEED_RESTART=false
+    if systemctl --user is-active openatrading 2>/dev/null; then
+      echo '⏸  Stopping gateway...'
+      systemctl --user stop openatrading
+      NEED_RESTART=true
+    fi
+
     if [ -f \"\$SRC\" ]; then
       cp \"\$SRC\" /usr/local/bin/openatrading
       chmod +x /usr/local/bin/openatrading
@@ -136,15 +120,12 @@ update_system_cli() {
       echo \"⚠ \$SRC not found, skipping CLI update\"
     fi
 
-    # Restart systemd gateway if installed
-    if systemctl --user is-enabled openatrading 2>/dev/null; then
+    if \$NEED_RESTART; then
       echo '🔄 Restarting gateway...'
       systemctl --user restart openatrading
       echo '✅ Gateway restarted'
       sleep 1
       systemctl --user status openatrading --no-pager 2>/dev/null || true
-    else
-      echo '⚠ systemd service openatrading not enabled, skip restart'
     fi
   "
 }
