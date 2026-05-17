@@ -53,4 +53,7 @@ pub trait TradeManager: Send + Sync {
     fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>>;
     fn get_trade_logs_by_role(&self, role_name: &str, limit: usize) -> Result<Vec<TradeLogEntry>>;
     fn format_positions(&self, role_name: &str) -> Result<String>;
+    fn delete_positions_by_role(&self, role_name: &str) -> Result<usize>;
+    fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize>;
+    fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>>;
 }
