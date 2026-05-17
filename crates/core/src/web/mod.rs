@@ -18,8 +18,8 @@ use crate::trade::sqlite::SqliteTradeManager;
 pub struct AppState {
     pub llm: LlmClient,
     pub api: ApiClient,
-    pub memory: Option<Arc<SqliteMemoryStore>>,
-    pub trade: Option<Arc<SqliteTradeManager>>,
+    pub memory: Arc<SqliteMemoryStore>,
+    pub trade: Arc<SqliteTradeManager>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
