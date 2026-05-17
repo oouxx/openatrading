@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::agents::sentiment::analyze_sentiment;
@@ -13,6 +13,7 @@ use crate::api::Client as ApiClient;
 use crate::trade::TradeManager;
 
 use super::AppState;
+use crate::roles::pnl::compute_pnl_history;
 
 // ── Response types ────────────────────────────────────
 
@@ -37,6 +38,26 @@ pub struct SentimentHistoryDay {
     pub limit_up_count: u32,
     pub bomb_rate: f64,
     pub rise_ratio: f64,
+}
+
+// ── Role CRUD types ────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateRoleRequest {
+    pub name: String,
+    pub display_name: String,
+    pub strategy: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateStrategyRequest {
+    pub strategy: String,
+}
+
+#[derive(Serialize)]
+pub struct PnlHistoryResponse {
+    pub points: Vec<crate::roles::pnl::PnlPoint>,
+    pub initial_capital: f64,
 }
 
 // ── Handlers ──────────────────────────────────────────
@@ -392,4 +413,95 @@ pub async fn get_role_logs(
         })
         .collect();
     Ok(Json(result))
+}
+
+// ── Role CRUD handlers ─────────────────────────────────
+
+/// POST /api/roles — create a new role
+pub async fn create_role(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateRoleRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    crate::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy).map_err(
+        |e| {
+            eprintln!("create_role error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// PUT /api/roles/:name/strategy — update role strategy
+pub async fn update_role_strategy(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(body): Json<UpdateStrategyRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    crate::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy).map_err(
+        |e| {
+            eprintln!("update_role_strategy error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// DELETE /api/roles/:name — delete role and all its data
+pub async fn delete_role(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    state.trade.delete_trade_logs_by_role(&name).ok();
+    state.trade.delete_positions_by_role(&name).ok();
+    crate::roles::delete_role_dir(&state.strategies_dir, &name).ok();
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// POST /api/roles/:name/reset — reset account to 1,000,000
+pub async fn reset_role(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    state.trade.delete_trade_logs_by_role(&name).map_err(|e| {
+        eprintln!("reset_role error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    state.trade.delete_positions_by_role(&name).map_err(|e| {
+        eprintln!("reset_role error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+/// GET /api/roles/:name/pnl-history?days=30 — P&L curve data
+pub async fn get_role_pnl_history(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let days: usize = params
+        .get("days")
+        .and_then(|d| d.parse().ok())
+        .unwrap_or(30);
+    let all_logs = state.trade.get_all_trade_logs_by_role(&name).map_err(|e| {
+        eprintln!("get_role_pnl_history error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Calculate current positions value
+    let positions = state.trade.list_positions(&name).unwrap_or_default();
+    let current_value: f64 = positions
+        .iter()
+        .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
+        .sum();
+
+    let mut points = compute_pnl_history(&all_logs, current_value);
+    // Filter to last N days
+    let cutoff = points.len().saturating_sub(days);
+    points = points.into_iter().skip(cutoff).collect();
+
+    Ok(Json(PnlHistoryResponse {
+        points,
+        initial_capital: 1_000_000.0,
+    }))
 }
