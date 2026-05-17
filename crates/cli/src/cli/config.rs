@@ -55,6 +55,33 @@ pub struct CronTomlConfig {
 fn default_true() -> bool {
     true
 }
+
+/// Substitute `${VAR}` patterns with environment variable values
+fn substitute_env(mut content: &str) -> std::borrow::Cow<'_, str> {
+    let mut result = String::new();
+    while let Some(start) = content.find("${") {
+        result.push_str(&content[..start]);
+        let rest = &content[start + 2..];
+        if let Some(end) = rest.find('}') {
+            let var = &rest[..end];
+            match std::env::var(var) {
+                Ok(val) => result.push_str(&val),
+                Err(_) => {
+                    result.push_str("${");
+                    result.push_str(var);
+                    result.push('}');
+                }
+            }
+            content = &rest[end + 1..];
+        } else {
+            result.push_str("${");
+            content = rest;
+        }
+    }
+    result.push_str(content);
+    std::borrow::Cow::Owned(result)
+}
+
 fn default_collection_schedule() -> String {
     "*/30 9-15 * * 1-5".to_string()
 }
@@ -177,6 +204,8 @@ impl AppConfig {
                 return None;
             }
         };
+        // Substitute ${VAR} with environment variables
+        let content = substitute_env(&content);
         let raw: RawConfig = match toml::from_str(&content) {
             Ok(r) => r,
             Err(e) => {
