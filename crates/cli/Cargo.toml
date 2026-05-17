@@ -20,3 +20,4 @@ anyhow = { workspace = true }
 reqwest = { workspace = true }
 toml = "0.8"
 dirs = "6"
+cron = "0.12"
