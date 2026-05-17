@@ -2,32 +2,22 @@
 set -e
 
 SERVICE="${1:-all}"  # cli | gateway | web | all
-MODE="${2:-pull}"    # pull | build
 SERVER="root@203.0.113.12"
 REMOTE_DIR="/root/openatrading"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
-  echo "Usage: ./deploy.sh [cli|gateway|web|all] [pull|build]"
+  echo "Usage: ./deploy.sh [cli|gateway|web|all]"
   echo "  cli        Build & deploy CLI gateway only"
   echo "  gateway    Same as cli"
-  echo "  web        Build & deploy web backend + frontend"
+  echo "  web        Build & deploy frontend only"
   echo "  all        Build & deploy everything (default)"
-  echo ""
-  echo "  pull       Pull prebuilt image from ghcr.io (default)"
-  echo "  build      Build image locally on server"
   exit 1
 }
 
 case "$SERVICE" in
   cli) SERVICE=gateway ;;
   gateway|web|all) ;;
-  *) usage ;;
-esac
-
-case "$MODE" in
-  pull) DOCKER_CMD="pull && up -d" ;;
-  build) DOCKER_CMD="build && up -d" ;;
   *) usage ;;
 esac
 
@@ -46,18 +36,6 @@ echo "=== Deploying: $SERVICE → $SERVER ==="
 REPO_URL="git@github.com:oouxx/openatrading.git"
 
 # ─── Clone / pull from GitHub ────────────────────────────
-
-# ─── ghcr.io login ─────────────────────────────────────
-
-ghcr_login() {
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    echo ""
-    echo "=== [auth] Logging into ghcr.io ==="
-    ssh $SSH_OPTS "$SERVER" "echo '$GITHUB_TOKEN' | docker login ghcr.io -u oouxx --password-stdin"
-  else
-    echo "⚠ GITHUB_TOKEN not set, skipping ghcr.io login"
-  fi
-}
 
 # ─── Clone / pull from GitHub ────────────────────────────
 
@@ -192,7 +170,6 @@ deploy_web() {
 # ─── Execute ────────────────────────────────────────────
 
 clone_or_pull
-ghcr_login
 build_downloads
 
 # Update system CLI and restart gateway (always, for gateway/all)
