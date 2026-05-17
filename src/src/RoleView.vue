@@ -210,7 +210,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import {
   roles, fetchRoles,
   rolePositions, fetchRolePositions,
-  roleLogs, fetchRoleLogs,
+  fetchRoleLogs,
   rolePnlHistory, fetchRolePnlHistory,
   createRole, updateRoleStrategy, deleteRole, resetRole,
   type RolePosition, type PnlPoint
