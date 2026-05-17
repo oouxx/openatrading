@@ -3,6 +3,10 @@ name = "trending-agent-core"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "trending_agent_core"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { workspace = true }
 reqwest = { workspace = true }
