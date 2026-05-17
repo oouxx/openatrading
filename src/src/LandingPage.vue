@@ -125,6 +125,8 @@ const DL_BASE = `${getApiBaseUrl()}/downloads`
 
 function dl(target: string): string {
   const ext = target.includes('apple') ? '.dmg' : target.includes('linux') ? '.deb' : '.msi'
-  return `${DL_BASE}/OpenATrading_${target}${ext}`
+  const arch = target.includes('x86_64') ? 'amd64' : target.includes('aarch64') ? 'arm64' : '.aarch64'
+  return `${DL_BASE}/OpenATrading_0.4.10_${arch}${ext}`
 }
 </script>
+ 

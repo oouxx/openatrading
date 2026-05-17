@@ -15,6 +15,9 @@ use crate::api::Client as ApiClient;
 use crate::llm::openrouter::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::trade::sqlite::SqliteTradeManager;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RoleEntry {
@@ -36,6 +39,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     Router::new()
         .route("/api/overview", get(handlers::get_overview))
@@ -76,4 +85,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/downloads/:file", get(download::serve_download))
         .with_state(state)
         .layer(cors)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .level(Level::INFO)
+                        .include_headers(false),
+                )
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
 }

@@ -26,6 +26,7 @@ pub async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
 
 /// Fetch latest release asset list, cached for 5 min
 pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
+    tracing::debug!("fetch_assets: fetching latest release assets from GitHub");
     static CACHE: std::sync::OnceLock<(std::time::Instant, Vec<(i64, String)>)> =
         std::sync::OnceLock::new();
 
@@ -42,8 +43,12 @@ pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
-    let resp = req.send().await.map_err(|_| ())?;
-    let json: serde_json::Value = resp.json().await.map_err(|_| ())?;
+    let resp = req.send().await.map_err(|e| {
+        tracing::warn!("fetch_assets: GitHub API request failed: {e}");
+    })?;
+    let json: serde_json::Value = resp.json().await.map_err(|e| {
+        tracing::warn!("fetch_assets: failed to parse GitHub API response: {e}");
+    })?;
 
     let mut assets = Vec::new();
     if let Some(arr) = json["assets"].as_array() {
@@ -54,6 +59,7 @@ pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
         }
     }
 
+    tracing::debug!("fetch_assets: found {} assets", assets.len());
     let _ = CACHE.set((std::time::Instant::now(), assets.clone()));
     Ok(assets)
 }
@@ -62,6 +68,10 @@ pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
 pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
     // Try GitHub asset API
     if let Ok(assets) = fetch_assets().await {
+        tracing::debug!(
+            "serve_download: looking for {file} in {} assets",
+            assets.len()
+        );
         if let Some((asset_id, _)) = assets.iter().find(|(_, name)| name == &file) {
             let url = format!(
                 "https://api.github.com/repos/oouxx/openatrading/releases/assets/{asset_id}"
@@ -75,6 +85,10 @@ pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoRespons
                 req = req.header("Authorization", format!("Bearer {token}"));
             }
             if let Ok(resp) = req.send().await {
+                tracing::debug!(
+                    "serve_download: GitHub asset API responded with {}",
+                    resp.status()
+                );
                 if resp.status().is_success() {
                     let content_type = resp
                         .headers()
@@ -94,6 +108,7 @@ pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoRespons
         }
     }
 
+    tracing::debug!("serve_download: {file} not found in GitHub assets, trying local fallback");
     // Fallback to local downloads/
     let local_path = std::path::Path::new("downloads").join(&file);
     if local_path.exists() {
@@ -112,5 +127,6 @@ pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoRespons
         return Ok(response);
     }
 
+    tracing::warn!("serve_download: {file} not found (neither GitHub asset nor local file)");
     Err(StatusCode::NOT_FOUND)
 }
