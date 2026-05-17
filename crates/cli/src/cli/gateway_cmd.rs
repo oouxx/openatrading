@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::cli::config::AppConfig;
 use trending_agent_core::cron::CronConfig;
-use trending_agent_core::gateway::Gateway;
+use trending_agent_core::gateway::{Gateway, GatewayConfig};
 use trending_agent_core::social::telegram::TelegramSender;
 use trending_agent_core::social::{NoopSender, NotificationSender};
 
@@ -159,5 +159,10 @@ pub async fn cmd_gateway_run(project_root: &PathBuf) -> Result<()> {
         },
     };
 
-    gateway.start(&cron_cfg, social).await
+    gateway
+        .start(GatewayConfig {
+            cron: Some((cron_cfg, social)),
+            web_port: None,
+        })
+        .await
 }
