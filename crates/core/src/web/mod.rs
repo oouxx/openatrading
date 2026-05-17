@@ -3,10 +3,11 @@ pub mod download;
 pub mod handlers;
 
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -32,6 +33,7 @@ pub struct AppState {
     pub memory: Arc<SqliteMemoryStore>,
     pub trade: Arc<SqliteTradeManager>,
     pub roles: Vec<RoleEntry>,
+    pub strategies_dir: PathBuf,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -80,6 +82,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::get_role_positions),
         )
         .route("/api/roles/:name/logs", get(handlers::get_role_logs))
+        .route("/api/roles", post(handlers::create_role))
+        .route(
+            "/api/roles/:name/strategy",
+            put(handlers::update_role_strategy),
+        )
+        .route("/api/roles/:name", delete(handlers::delete_role))
+        .route("/api/roles/:name/reset", post(handlers::reset_role))
+        .route(
+            "/api/roles/:name/pnl-history",
+            get(handlers::get_role_pnl_history),
+        )
         // Proxy downloads from GitHub Releases
         .route("/install.sh", get(download::serve_install_sh))
         .route("/downloads/:file", get(download::serve_download))

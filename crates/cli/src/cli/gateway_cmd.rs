@@ -232,10 +232,13 @@ pub async fn cmd_gateway_run(
         }
     }
 
+    let strategies_dir = project_root.join(".atrading").join("strategies");
+
     gateway
         .start(GatewayConfig {
             cron: cron_entry,
             web_port,
+            strategies_dir,
         })
         .await
 }

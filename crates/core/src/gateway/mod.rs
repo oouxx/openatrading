@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::api::Client as ApiClient;
@@ -18,6 +18,7 @@ pub struct Gateway {
 pub struct GatewayConfig {
     pub cron: Option<(CronConfig, Arc<dyn NotificationSender>)>,
     pub web_port: Option<u16>,
+    pub strategies_dir: PathBuf,
 }
 
 impl Gateway {
@@ -55,7 +56,8 @@ impl Gateway {
 
         // ── Web ───────────────────────────────
         if let Some(port) = config.web_port {
-            let roles = crate::roles::BUILTIN_STRATEGIES
+            // Load built-in + user roles from filesystem
+            let mut roles: Vec<RoleEntry> = crate::roles::BUILTIN_STRATEGIES
                 .iter()
                 .map(|(name, display_name, strategy)| RoleEntry {
                     name: name.to_string(),
@@ -64,12 +66,26 @@ impl Gateway {
                 })
                 .collect();
 
+            for (name, display_name, strategy) in
+                crate::roles::list_user_roles(&config.strategies_dir)
+            {
+                // Skip if already exists (user override of built-in)
+                if !roles.iter().any(|r| r.name == name) {
+                    roles.push(RoleEntry {
+                        name,
+                        display_name,
+                        strategy,
+                    });
+                }
+            }
+
             let state = Arc::new(AppState {
                 llm: LlmClient::from_env(),
                 api: ApiClient::new(),
                 memory: self.memory.clone(),
                 trade: self.trade.clone(),
                 roles,
+                strategies_dir: config.strategies_dir.clone(),
             });
 
             let router = web::build_router(state);
