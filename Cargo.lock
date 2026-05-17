@@ -4892,7 +4892,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "askama",
+ "async-stream",
  "async-trait",
+ "axum",
  "chrono",
  "dotenvy",
  "futures",
@@ -4908,6 +4910,7 @@ dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "toml 0.8.2",
+ "tower-http 0.5.2",
  "url",
 ]
 

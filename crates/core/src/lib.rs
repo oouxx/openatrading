@@ -10,3 +10,4 @@ pub mod social;
 pub mod templates;
 pub mod trade;
 pub mod utils;
+pub mod web;
