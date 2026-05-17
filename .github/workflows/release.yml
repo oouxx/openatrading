@@ -147,85 +147,206 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   # ── macOS Tauri (x64 + arm64) ────────────────────────
-  build-tauri-macos:
-    strategy:
-      matrix:
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - run: rustup target add ${{ matrix.target }}
-      - run: cd src && bun install
-      - name: Set app version
-        shell: bash
-        run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target ${{ matrix.target }} --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ github.ref_name }}
-          releaseName: 'v__VERSION__'
-          releaseDraft: false
+# ── macOS Tauri (x64 + arm64) ────────────────────────
+build-tauri-macos:
+  strategy:
+    fail-fast: false
+    matrix:
+      target:
+        - x86_64-apple-darwin
+        - aarch64-apple-darwin
+
+  runs-on: macos-latest
+
+  steps:
+    - uses: actions/checkout@v4
+
+    # Bun
+    - uses: oven-sh/setup-bun@v1
+
+    # Rust cache（最重要）
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          src-tauri -> target
+
+    # Bun cache
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          src/node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
+
+    # Rust target
+    - name: Add rust target
+      run: rustup target add ${{ matrix.target }}
+
+    # Frontend install
+    - name: Install frontend deps
+      working-directory: src
+      run: bun install --frozen-lockfile
+
+    # App version
+    - name: Set app version
+      shell: bash
+      run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+    # Build tauri
+    - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: >
+          --target ${{ matrix.target }}
+          --config '{"version":"${{ env.APP_VERSION }}"}'
+
+        tagName: ${{ github.ref_name }}
+        releaseName: "v__VERSION__"
+        releaseDraft: false
 
   # ── Linux Tauri (x64) ───────────────────────────────
-  build-tauri-linux-amd64:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
-      - run: cd src && bun install
-      - name: Set app version
-        shell: bash
-        run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target x86_64-unknown-linux-gnu --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ github.ref_name }}
-          releaseName: 'v__VERSION__'
-          releaseDraft: false
+build-tauri-linux-amd64:
+  runs-on: ubuntu-latest
+
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: oven-sh/setup-bun@v1
+
+    - uses: swatinem/rust-cache@v2
+
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          src/node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          patchelf
+
+    - run: cd src && bun install
+
+    - name: Set app version
+      shell: bash
+      run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+    - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: --target x86_64-unknown-linux-gnu --config '{"version":"${{ env.APP_VERSION }}"}'
+        tagName: ${{ github.ref_name }}
+        releaseName: 'v__VERSION__'
+        releaseDraft: false
 
   # ── Linux Tauri (arm64) ─────────────────────────────
-  build-tauri-linux-arm64:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
-      - run: cd src && bun install
-      - name: Set app version
-        shell: bash
-        run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target aarch64-unknown-linux-gnu --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ github.ref_name }}
-          releaseName: 'v__VERSION__'
-          releaseDraft: false
+build-tauri-linux-arm64:
+  runs-on: ubuntu-24.04-arm
+
+  steps:
+    - uses: actions/checkout@v4
+
+    # Bun
+    - uses: oven-sh/setup-bun@v1
+
+    # Rust cache（最重要）
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          src-tauri -> target
+
+    # Bun cache
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          src/node_modules
+        key: ${{ runner.os }}-bun-arm64-${{ hashFiles('src/bun.lockb') }}
+
+    # Linux deps
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          patchelf
+
+    # Frontend deps
+    - name: Install frontend deps
+      working-directory: src
+      run: bun install --frozen-lockfile
+
+    # Version
+    - name: Set app version
+      shell: bash
+      run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+    # Build
+    - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: >
+          --target aarch64-unknown-linux-gnu
+          --config '{"version":"${{ env.APP_VERSION }}"}'
+
+        tagName: ${{ github.ref_name }}
+        releaseName: "v__VERSION__"
+        releaseDraft: false
 
   # ── Windows Tauri (x64) ─────────────────────────────
-  build-tauri-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - run: cd src && bun install
-      - name: Set app version
-        shell: bash
-        run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target x86_64-pc-windows-msvc --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ github.ref_name }}
-          releaseName: 'v__VERSION__'
-          releaseDraft: false
+build-tauri-windows:
+  runs-on: windows-latest
+
+  steps:
+    - uses: actions/checkout@v4
+
+    # Bun
+    - uses: oven-sh/setup-bun@v1
+
+    # Rust cache（最重要）
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          src-tauri -> target
+
+    # Bun cache
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~\.bun\install\cache
+          src\node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
+
+    # Frontend deps
+    - name: Install frontend deps
+      working-directory: src
+      run: bun install --frozen-lockfile
+
+    # App version
+    - name: Set app version
+      shell: bash
+      run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+    # Build tauri
+    - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: >
+          --target x86_64-pc-windows-msvc
+          --config '{"version":"${{ env.APP_VERSION }}"}'
+
+        tagName: ${{ github.ref_name }}
+        releaseName: "v__VERSION__"
+        releaseDraft: false
