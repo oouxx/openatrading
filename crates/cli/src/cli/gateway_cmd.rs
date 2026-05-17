@@ -187,9 +187,10 @@ pub async fn cmd_gateway_run(
                 let token = tg.bot_token.as_ref().filter(|t| !t.is_empty());
                 let chat = tg.chat_id.as_ref().filter(|c| !c.is_empty());
                 if let (Some(t), Some(c)) = (token, chat) {
-                    let url = format!("https://api.telegram.org/bot{t}/sendMessage");
-                    let resp = reqwest::Client::new()
-                        .post(&url)
+                    let client = reqwest::Client::new();
+                    let send_url = format!("https://api.telegram.org/bot{t}/sendMessage");
+                    let resp = client
+                        .post(&send_url)
                         .json(&serde_json::json!({
                             "chat_id": c,
                             "text": "✅ OpenATrading Gateway 已启动",
@@ -198,6 +199,21 @@ pub async fn cmd_gateway_run(
                         .await;
                     match resp {
                         Ok(r) if r.status().is_success() => {
+                            // Delete the startup notification message
+                            if let Ok(body) = r.json::<serde_json::Value>().await {
+                                if let Some(msg_id) = body["result"]["message_id"].as_i64() {
+                                    let del_url =
+                                        format!("https://api.telegram.org/bot{t}/deleteMessage");
+                                    let _ = client
+                                        .post(&del_url)
+                                        .json(&serde_json::json!({
+                                            "chat_id": c,
+                                            "message_id": msg_id,
+                                        }))
+                                        .send()
+                                        .await;
+                                }
+                            }
                             eprintln!("[gateway] telegram: ✅ connected");
                         }
                         Ok(r) => {
