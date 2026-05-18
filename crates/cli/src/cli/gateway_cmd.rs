@@ -7,6 +7,7 @@ use crate::cli::config::AppConfig;
 use trending_agent_core::cron::CronConfig;
 use trending_agent_core::gateway::{Gateway, GatewayConfig};
 use trending_agent_core::social::telegram::TelegramSender;
+use trending_agent_core::social::telegram_bot::TelegramBotConfig;
 use trending_agent_core::social::{NoopSender, NotificationSender};
 
 const SERVICE_NAME: &str = "openatrading";
@@ -159,6 +160,23 @@ pub async fn cmd_gateway_run(
             _ => Arc::new(NoopSender),
         };
 
+        let telegram_bot_config = match &app_config.social {
+            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+                let tg = sc.telegram.as_ref().unwrap();
+                let token = tg.bot_token.clone().unwrap_or_default();
+                let chat_id = tg.chat_id.clone().unwrap_or_default();
+                if token.is_empty() || chat_id.is_empty() {
+                    None
+                } else {
+                    Some(TelegramBotConfig {
+                        bot_token: token,
+                        chat_id,
+                    })
+                }
+            }
+            _ => None,
+        };
+
         let cron_cfg = match &app_config.cron {
             Some(c) => CronConfig {
                 enabled: c.enabled,
@@ -239,6 +257,7 @@ pub async fn cmd_gateway_run(
             cron: cron_entry,
             web_port,
             strategies_dir,
+            telegram_bot: telegram_bot_config,
         })
         .await
 }
