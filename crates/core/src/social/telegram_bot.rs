@@ -3,8 +3,8 @@ use futures::StreamExt;
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::api::Client as ApiClient;
 use crate::api::xuangubao::MarketOverview;
+use crate::api::Client as ApiClient;
 use crate::llm::openrouter::LlmClient;
 use crate::web::RoleEntry;
 
@@ -67,7 +67,10 @@ impl TelegramBot {
     }
 
     pub async fn register_commands(&self) -> Result<()> {
-        let url = format!("https://api.telegram.org/bot{}/setMyCommands", self.bot_token);
+        let url = format!(
+            "https://api.telegram.org/bot{}/setMyCommands",
+            self.bot_token
+        );
         let client = reqwest::Client::new();
         let resp = client
             .post(&url)
@@ -168,8 +171,11 @@ impl TelegramBot {
                         .iter()
                         .map(|r| format!("• {} — {}", r.name, r.display_name))
                         .collect();
-                    self.send_message(&format!("用法: /ask role_name question\n\n可用角色:\n{}", role_list.join("\n")))
-                        .await?;
+                    self.send_message(&format!(
+                        "用法: /ask role_name question\n\n可用角色:\n{}",
+                        role_list.join("\n")
+                    ))
+                    .await?;
                     return Ok(());
                 }
 
@@ -226,12 +232,7 @@ impl TelegramBot {
         Ok(())
     }
 
-    async fn stream_ask(
-        &self,
-        role: &RoleEntry,
-        question: &str,
-        msg_id: i64,
-    ) -> Result<()> {
+    async fn stream_ask(&self, role: &RoleEntry, question: &str, msg_id: i64) -> Result<()> {
         let overview = self.fetch_market_overview().await;
 
         let market_context = match overview {
@@ -320,15 +321,15 @@ impl TelegramBot {
             result: None,
         });
 
-        let msg_id = body
-            .result
-            .map(|r| r.message_id)
-            .unwrap_or(-1);
+        let msg_id = body.result.map(|r| r.message_id).unwrap_or(-1);
         Ok(msg_id)
     }
 
     async fn edit_message(&self, message_id: i64, text: &str) -> Result<()> {
-        let url = format!("https://api.telegram.org/bot{}/editMessageText", self.bot_token);
+        let url = format!(
+            "https://api.telegram.org/bot{}/editMessageText",
+            self.bot_token
+        );
         let client = reqwest::Client::new();
         client
             .post(&url)
@@ -342,6 +343,4 @@ impl TelegramBot {
             .await?;
         Ok(())
     }
-
-
 }

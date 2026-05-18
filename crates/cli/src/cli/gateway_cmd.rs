@@ -139,6 +139,8 @@ pub async fn cmd_gateway_run(
     let do_cron = !web_only || cron_only;
     let do_web = !cron_only || web_only;
 
+    let mut telegram_bot_config = None;
+
     let cron_entry = if do_cron {
         let social: Arc<dyn NotificationSender> = match &app_config.social {
             Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
@@ -160,7 +162,7 @@ pub async fn cmd_gateway_run(
             _ => Arc::new(NoopSender),
         };
 
-        let telegram_bot_config = match &app_config.social {
+        telegram_bot_config = match &app_config.social {
             Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
                 let tg = sc.telegram.as_ref().unwrap();
                 let token = tg.bot_token.clone().unwrap_or_default();

@@ -48,8 +48,7 @@ impl Gateway {
             })
             .collect();
 
-        for (name, display_name, strategy) in
-            crate::roles::list_user_roles(&config.strategies_dir)
+        for (name, display_name, strategy) in crate::roles::list_user_roles(&config.strategies_dir)
         {
             if !roles.iter().any(|r| r.name == name) {
                 roles.push(RoleEntry {
