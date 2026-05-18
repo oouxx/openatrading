@@ -29,32 +29,61 @@ lint:
 check: fmt lint test
 	@echo "✅ All checks passed"
 
-# ─── Build downloads ─────────────────────────────────
+# Clean build artifacts
+clean:
+	cargo clean
 
-build-downloads:
-	@mkdir -p downloads
-	@echo ""
-	@echo "🔨 Building CLI (all platforms)..."
-	@# Linux x86_64
-	rustup target add x86_64-unknown-linux-gnu 2>/dev/null || true
-	cargo build --release -p trending-agent-cli --target x86_64-unknown-linux-gnu && \
-		cp target/x86_64-unknown-linux-gnu/release/openatrading downloads/openatrading-x86_64-unknown-linux-gnu && \
-		echo "✅ downloads/openatrading-x86_64-unknown-linux-gnu" || echo "⚠ CLI x86_64 skipped"
-	@# Linux aarch64
-	rustup target add aarch64-unknown-linux-gnu 2>/dev/null || true
-	cargo build --release -p trending-agent-cli --target aarch64-unknown-linux-gnu && \
-		cp target/aarch64-unknown-linux-gnu/release/openatrading downloads/openatrading-aarch64-unknown-linux-gnu && \
-		echo "✅ downloads/openatrading-aarch64-unknown-linux-gnu" || echo "⚠ CLI aarch64 skipped (need gcc-aarch64-linux-gnu)"
-	@echo ""
-	@echo "🔨 Building Tauri (macOS only, other platforms use CI)..."
-	@if command -v cargo-tauri &>/dev/null; then \
-		cargo tauri build --target x86_64-apple-darwin 2>&1 | tail -1 || true; \
-		cargo tauri build --target aarch64-apple-darwin 2>&1 | tail -1 || true; \
-	else \
-		echo "⚠ cargo-tauri not installed, skip. Install: cargo install tauri-cli"; \
-	fi
-	@echo ""
-	@ls -lh downloads/
+# Install to /usr/local/bin
+install: release
+	cp target/release/openatrading /usr/local/bin/openatrading
+	@echo "✓ Installed to /usr/local/bin/openatrading"
+
+# Uninstall
+uninstall:
+	rm -f /usr/local/bin/openatrading
+	@echo "✓ Removed /usr/local/bin/openatrading"
+
+
+# ── Cross-compilation targets ──
+
+release-mac-arm:
+	cargo build --release --target aarch64-apple-darwin
+
+release-mac-intel:
+	cargo build --release --target x86_64-apple-darwin
+
+release-linux:
+	cross build --release --target x86_64-unknown-linux-musl
+
+release-linux-arm:
+	cross build --release --target aarch64-unknown-linux-musl
+
+release-windows:
+	cargo build --release --target x86_64-pc-windows-msvc
+
+# Build all platforms (requires cross for ARM Linux)
+release-all: release-mac-arm release-mac-intel release-linux release-linux-arm release-windows
+
+
+# ── Packaging ──
+
+TARGETS = aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-msvc
+
+package:
+	@mkdir -p dist
+	@for target in $(TARGETS); do \
+		if [ -f "target/$$target/release/openatrading" ]; then \
+			echo "Packaging $$target..."; \
+			tar czf "dist/openatrading-$$target.tar.gz" -C "target/$$target/release" openatrading; \
+		elif [ -f "target/$$target/release/openatrading.exe" ]; then \
+			echo "Packaging $$target..."; \
+			cd "target/$$target/release" && zip "../../../dist/openatrading-$$target.zip" openatrading.exe && cd ../../..; \
+		fi \
+	done
+	@cd dist && sha256sum openatrading-* > SHA256SUMS.txt 2>/dev/null || shasum -a 256 openatrading-* > SHA256SUMS.txt
+	@echo "✓ Packages in dist/"
+	@ls -lh dist/
+
 
 # ─── Deploy ──────────────────────────────────────────
 

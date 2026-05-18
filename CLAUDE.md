@@ -47,3 +47,7 @@ make deploy                                # 部署全部（gateway + web）
 - `bun.lock` 不是 `package-lock.json`
 - cron 表达式必须 7 字段（`秒 分 时 日 月 周 年`）
 - 更多细节 → `.claude/context/`
+
+## agent执行
+
+默认使用subagent执行
