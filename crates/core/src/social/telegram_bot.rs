@@ -45,6 +45,7 @@ struct GetUpdatesResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct SendMessageResponse {
     ok: bool,
     result: Option<TgMessageObj>,
