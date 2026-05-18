@@ -28,3 +28,4 @@ impl NotificationSender for NoopSender {
 }
 
 pub mod telegram;
+pub mod telegram_bot;

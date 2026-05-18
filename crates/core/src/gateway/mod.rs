@@ -6,6 +6,7 @@ use crate::api::Client as ApiClient;
 use crate::cron::{self, CronConfig};
 use crate::llm::openrouter::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
+use crate::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 use crate::social::NotificationSender;
 use crate::trade::sqlite::SqliteTradeManager;
 use crate::web::{self, AppState, RoleEntry};
@@ -19,6 +20,7 @@ pub struct GatewayConfig {
     pub cron: Option<(CronConfig, Arc<dyn NotificationSender>)>,
     pub web_port: Option<u16>,
     pub strategies_dir: PathBuf,
+    pub telegram_bot: Option<TelegramBotConfig>,
 }
 
 impl Gateway {
@@ -36,6 +38,27 @@ impl Gateway {
     /// Start configured services, block until Ctrl+C
     pub async fn start(self, config: GatewayConfig) -> Result<()> {
         let mut handles = Vec::new();
+
+        let mut roles: Vec<RoleEntry> = crate::roles::BUILTIN_STRATEGIES
+            .iter()
+            .map(|(name, display_name, strategy)| RoleEntry {
+                name: name.to_string(),
+                display_name: display_name.to_string(),
+                strategy: strategy.to_string(),
+            })
+            .collect();
+
+        for (name, display_name, strategy) in
+            crate::roles::list_user_roles(&config.strategies_dir)
+        {
+            if !roles.iter().any(|r| r.name == name) {
+                roles.push(RoleEntry {
+                    name,
+                    display_name,
+                    strategy,
+                });
+            }
+        }
 
         // ── Cron ──────────────────────────────
         if let Some((cron_config, social)) = config.cron {
@@ -56,35 +79,12 @@ impl Gateway {
 
         // ── Web ───────────────────────────────
         if let Some(port) = config.web_port {
-            // Load built-in + user roles from filesystem
-            let mut roles: Vec<RoleEntry> = crate::roles::BUILTIN_STRATEGIES
-                .iter()
-                .map(|(name, display_name, strategy)| RoleEntry {
-                    name: name.to_string(),
-                    display_name: display_name.to_string(),
-                    strategy: strategy.to_string(),
-                })
-                .collect();
-
-            for (name, display_name, strategy) in
-                crate::roles::list_user_roles(&config.strategies_dir)
-            {
-                // Skip if already exists (user override of built-in)
-                if !roles.iter().any(|r| r.name == name) {
-                    roles.push(RoleEntry {
-                        name,
-                        display_name,
-                        strategy,
-                    });
-                }
-            }
-
             let state = Arc::new(AppState {
                 llm: LlmClient::from_env(),
                 api: ApiClient::new(),
                 memory: self.memory.clone(),
                 trade: self.trade.clone(),
-                roles,
+                roles: roles.clone(),
                 strategies_dir: config.strategies_dir.clone(),
             });
 
@@ -98,6 +98,17 @@ impl Gateway {
                     eprintln!("[gateway] web server error: {e}");
                 }
             }));
+        }
+
+        // ── Telegram Bot ──────────────────────
+        if let Some(bot_config) = config.telegram_bot {
+            let bot = TelegramBot::new(bot_config, roles);
+            handles.push(tokio::spawn(async move {
+                if let Err(e) = bot.start_polling().await {
+                    eprintln!("[gateway] telegram bot error: {e}");
+                }
+            }));
+            eprintln!("[gateway] telegram bot: enabled");
         }
 
         if handles.is_empty() {
