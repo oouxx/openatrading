@@ -1,53 +1,67 @@
-# OpenATrading
+# CLAUDE.md
 
-AI-native A 股短线交易决策工作台。「AI 情绪周期分析终端」
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-## 核心规则
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-- **红涨绿跌**（A 股规则），不可颠倒
-- **AI-first**：AI 是「交易副驾驶」，主动解释/提醒/追问/总结/识别风险
-- **禁止明确买卖建议、预测具体涨跌点位、使用夸张营销语言**
-- 深色金融终端风格（Bloomberg Terminal 方向），禁止白色/SaaS/娱乐化 UI
+## 1. Think Before Coding
 
-## 代码地图
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-| 目录 | 说明 |
-|------|------|
-| `crates/core/` | Rust 共享库：全部业务逻辑（API、LLM、cron、gateway、策略） |
-| `crates/cli/` | CLI 二进制 `openatrading`：数据抓取、AI 分析、gateway 管理 |
-| `crates/web/` | Web 二进制 `trending-agent-web`：axum API + Vue 前端 |
-| `src/` | Vue 3 前端（独立 package.json / tsconfig / bun.lock） |
-| `src-tauri/` | Tauri 桌面应用（非重点维护） |
-| `.claude/context/` | 产品定义、设计系统、工程细节、术语表 |
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-## 常用命令
+## 2. Simplicity First
 
-```bash
-# Rust 整体
-cargo build / cargo test / cargo fmt --all / cargo clippy --all-targets -- -D warnings
+**Minimum code that solves the problem. Nothing speculative.**
 
-# CLI
-cargo run -p trending-agent-cli           # 数据抓取
-cargo run -p trending-agent-cli -- --ai   # AI 分析
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
 
-# Web
-make run-web                               # Web 服务（自动 kill 旧进程）
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-# 前端
-make dev-frontend                          # Vue dev server
+## 3. Surgical Changes
 
-# 部署
-make deploy                                # 部署全部（gateway + web）
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
 ```
 
-## Gotchas
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-- 前端在 `src/` 下，不在项目根
-- CLI 二进制名 `openatrading`，Web 二进制名 `trending-agent-web`
-- `bun.lock` 不是 `package-lock.json`
-- cron 表达式必须 7 字段（`秒 分 时 日 月 周 年`）
-- 更多细节 → `.claude/context/`
+## 5. project-specific guideliness
+read .claude/context/*.md
+---
 
-## agent执行
-
-默认使用subagent执行
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
