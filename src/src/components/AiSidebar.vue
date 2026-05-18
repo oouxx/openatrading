@@ -70,6 +70,8 @@ import { motion } from 'motion-v'
 import { getApiBaseUrl } from '@/stores/data'
 
 const marked = new Marked({
+  breaks: true,
+  gfm: true,
   renderer: {
     heading({ tokens, depth }: { tokens: any[]; depth: number }) {
       const text = this.parser.parseInline(tokens)
