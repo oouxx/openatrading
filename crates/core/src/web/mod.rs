@@ -73,6 +73,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/dapan-abnormal", get(handlers::get_dapan_abnormal))
         .route("/api/market-trend/:symbol", get(handlers::get_market_trend))
         .route("/api/ai/chat", post(chat::ai_chat))
+        .route("/api/ai/roles", get(chat::get_ai_roles))
         .route(
             "/api/plates-by-any-stock/:symbol",
             get(handlers::get_plates_by_any_stock),
