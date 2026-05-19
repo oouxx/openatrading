@@ -44,6 +44,14 @@
 
     <!-- Input -->
     <div class="flex gap-2 p-3 border-t border-hairline flex-shrink-0">
+      <button
+        v-if="messages.length > 0"
+        @click="clearChat"
+        class="px-2 py-2 bg-bg-hover text-ink-muted rounded-button text-caption hover:text-white transition-colors cursor-pointer flex-shrink-0"
+        title="清空对话"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      </button>
       <input
         v-model="input"
         class="flex-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white placeholder-ink-muted outline-none focus:border-ai/50 transition-colors font-mono"
@@ -131,8 +139,19 @@ defineProps<{
   overview?: any
 }>()
 
+interface DisplayMessage {
+  role: 'user' | 'ai'
+  text: string
+  html: string
+}
+
+interface HistoryMessage {
+  role: string
+  content: string
+}
+
 const input = ref('')
-const messages = ref<{ role: 'user' | 'ai'; text: string; html: string }[]>([])
+const messages = ref<DisplayMessage[]>([])
 const streaming = ref(false)
 const msgContainer = ref<HTMLElement>()
 
@@ -143,11 +162,23 @@ const suggestedQuestions = [
   '今天适合短线操作吗？',
 ]
 
+function buildHistory(): HistoryMessage[] {
+  return messages.value.map(m => ({
+    role: m.role === 'ai' ? 'assistant' : 'user',
+    content: m.text,
+  }))
+}
+
+function clearChat() {
+  messages.value = []
+}
+
 async function send(question?: string) {
   const text = (question || input.value).trim()
   if (!text || streaming.value) return
 
   input.value = ''
+  const history = buildHistory()
   messages.value.push({ role: 'user', text, html: '' })
   messages.value.push({ role: 'ai', text: '', html: '' })
   streaming.value = true
@@ -157,7 +188,7 @@ async function send(question?: string) {
     const resp = await fetch(`${getApiBaseUrl()}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, history }),
     })
 
     if (!resp.ok) {

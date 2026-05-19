@@ -92,7 +92,21 @@ fn default_decision_schedule() -> String {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SocialConfig {
     #[serde(default)]
+    pub notify_channel: Option<String>,
+    #[serde(default)]
     pub telegram: Option<TelegramConfig>,
+    #[serde(default)]
+    pub discord: Option<DiscordConfig>,
+    #[serde(default)]
+    pub slack: Option<SlackConfig>,
+    #[serde(default)]
+    pub lark: Option<LarkConfig>,
+    #[serde(default = "default_true")]
+    pub notify_on_collect: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_decision: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_trade: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,12 +115,27 @@ pub struct TelegramConfig {
     pub enabled: bool,
     pub bot_token: Option<String>,
     pub chat_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordConfig {
     #[serde(default = "default_true")]
-    pub notify_on_collect: bool,
+    pub enabled: bool,
+    pub webhook_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SlackConfig {
     #[serde(default = "default_true")]
-    pub notify_on_decision: bool,
+    pub enabled: bool,
+    pub webhook_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LarkConfig {
     #[serde(default = "default_true")]
-    pub notify_on_trade: bool,
+    pub enabled: bool,
+    pub webhook_url: Option<String>,
 }
 
 const DEFAULT_CONFIG_TOML: &str = r##"# ── OpenATrading 配置 ──────────────────────────────────
@@ -150,13 +179,28 @@ collection_schedule = "0 */30 9-15 * * 1-5 *"
 decision_schedule = "0 0 0 * * 1-5 *"
 
 # ── 社交平台 ─────────────────────────────────────────────
+[social]
+notify_channel = "telegram"
+notify_on_collect = true
+notify_on_decision = true
+notify_on_trade = true
+
 [social.telegram]
 enabled = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 chat_id = "${TELEGRAM_CHAT_ID}"
-notify_on_collect = true
-notify_on_decision = true
-notify_on_trade = true
+
+# [social.discord]
+# enabled = true
+# webhook_url = "${DISCORD_WEBHOOK_URL}"
+
+# [social.slack]
+# enabled = true
+# webhook_url = "${SLACK_WEBHOOK_URL}"
+
+# [social.lark]
+# enabled = true
+# webhook_url = "${LARK_WEBHOOK_URL}"
 "##;
 
 impl AppConfig {

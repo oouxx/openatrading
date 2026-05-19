@@ -16,8 +16,16 @@ use super::AppState;
 // ── AI Chat (SSE) ─────────────────────────────────────
 
 #[derive(Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Deserialize)]
 pub struct ChatRequest {
     message: String,
+    #[serde(default)]
+    history: Vec<ChatMessage>,
 }
 
 fn build_system_prompt(strategy_text: &str) -> String {
@@ -140,12 +148,25 @@ pub async fn ai_chat(
     let user_message =
         build_user_message(&overview, field_items.as_deref(), super_stocks.as_deref());
 
-    // Build messages array: system + user
-    let prompt = serde_json::json!([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": format!("{}\n\n用户提问：{}", user_message, req.message)}
-    ])
-    .to_string();
+    let mut messages_vec: Vec<serde_json::Value> = vec![
+        serde_json::json!({"role": "system", "content": system_prompt}),
+        serde_json::json!({"role": "user", "content": user_message}),
+        serde_json::json!({"role": "assistant", "content": "已收到市场数据，请提问。"}),
+    ];
+
+    for msg in &req.history {
+        messages_vec.push(serde_json::json!({
+            "role": msg.role,
+            "content": msg.content,
+        }));
+    }
+
+    messages_vec.push(serde_json::json!({
+        "role": "user",
+        "content": req.message,
+    }));
+
+    let prompt = serde_json::json!(messages_vec).to_string();
 
     // Call LLM streaming
     let mut llm_stream = state
