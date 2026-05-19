@@ -1,19 +1,17 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    response::{sse::Event, Sse},
+    response::{sse::Event, IntoResponse, Sse},
     Json,
 };
 use futures::stream::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::api::Client as ApiClient;
 
 use super::handlers::OverviewResponse;
 use super::AppState;
-
-// ── AI Chat (SSE) ─────────────────────────────────────
 
 #[derive(Deserialize)]
 pub struct ChatMessage {
@@ -25,7 +23,29 @@ pub struct ChatMessage {
 pub struct ChatRequest {
     message: String,
     #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
     history: Vec<ChatMessage>,
+}
+
+#[derive(Serialize)]
+pub struct AiRoleItem {
+    pub name: String,
+    pub display_name: String,
+}
+
+pub async fn get_ai_roles(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let roles: Vec<AiRoleItem> = state
+        .roles
+        .iter()
+        .map(|r| AiRoleItem {
+            name: r.name.clone(),
+            display_name: r.display_name.clone(),
+        })
+        .collect();
+    Ok(Json(roles))
 }
 
 fn build_system_prompt(strategy_text: &str) -> String {
@@ -129,21 +149,22 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    // Fetch market overview for system prompt
     let overview = fetch_overview_data(&state.api).await.map_err(|e| {
         eprintln!("ai_chat: overview error: {}", e);
         StatusCode::SERVICE_UNAVAILABLE
     })?;
 
-    // Fetch field items (韭研公社异动) — full JSON, skip on failure
     let field_items = fetch_field_json(&state.api).await;
-
-    // Fetch super stocks (强势股) — full JSON, skip on failure
     let super_stocks = fetch_super_stock_json(&state.api).await;
 
-    // Web 端暂使用内置 zarili 策略（二进制嵌入）
-    let strategy_text =
-        crate::roles::get_builtin_strategy("zarili").unwrap_or("你是一个A股短线交易AI助手。");
+    let role_name = req.role.as_deref().unwrap_or("zarili");
+    let strategy_text = state
+        .roles
+        .iter()
+        .find(|r| r.name == role_name)
+        .map(|r| r.strategy.as_str())
+        .unwrap_or("你是一个A股短线交易AI助手。");
+
     let system_prompt = build_system_prompt(strategy_text);
     let user_message =
         build_user_message(&overview, field_items.as_deref(), super_stocks.as_deref());
@@ -168,7 +189,6 @@ pub async fn ai_chat(
 
     let prompt = serde_json::json!(messages_vec).to_string();
 
-    // Call LLM streaming
     let mut llm_stream = state
         .llm
         .chat_stream_with_messages(&prompt)
@@ -178,7 +198,6 @@ pub async fn ai_chat(
             StatusCode::SERVICE_UNAVAILABLE
         })?;
 
-    // Convert to SSE stream
     use futures::StreamExt;
 
     let sse_stream = async_stream::stream! {

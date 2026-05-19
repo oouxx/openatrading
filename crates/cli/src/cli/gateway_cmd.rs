@@ -12,6 +12,7 @@ use trending_agent_core::social::slack::SlackSender;
 use trending_agent_core::social::telegram::TelegramSender;
 use trending_agent_core::social::telegram_bot::TelegramBotConfig;
 use trending_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
+use trending_agent_core::web::RoleEntry;
 
 const SERVICE_NAME: &str = "openatrading";
 
@@ -187,6 +188,46 @@ fn create_notification_sender(sc: &crate::cli::config::SocialConfig) -> Box<dyn 
     }
 }
 
+fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
+    let mut roles: Vec<RoleEntry> = Vec::new();
+
+    for entry in &app_config.roles {
+        let strategy = AppConfig::load_strategy(entry).unwrap_or_else(|e| {
+            eprintln!(
+                "[gateway] warning: failed to load strategy for role '{}': {e}",
+                entry.config.name
+            );
+            String::new()
+        });
+
+        if strategy.is_empty() {
+            continue;
+        }
+
+        if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.config.name) {
+            existing.strategy = strategy;
+        } else {
+            roles.push(RoleEntry {
+                name: entry.config.name.clone(),
+                display_name: entry.config.display_name.clone(),
+                strategy,
+            });
+        }
+    }
+
+    if roles.is_empty() {
+        for (name, display_name, strategy) in trending_agent_core::roles::BUILTIN_STRATEGIES {
+            roles.push(RoleEntry {
+                name: name.to_string(),
+                display_name: display_name.to_string(),
+                strategy: strategy.to_string(),
+            });
+        }
+    }
+
+    roles
+}
+
 /// 前台运行（debug/直接使用），Ctrl+C 停止
 ///
 /// - `cron_only`: 仅运行 cron scheduler，不启动 web server
@@ -252,6 +293,9 @@ pub async fn cmd_gateway_run(
 
     let web_port = if do_web { Some(8080u16) } else { None };
 
+    // ── Build roles with merged strategies ──────────
+    let roles = build_roles(&app_config);
+
     // ── Notification channel diagnostics ──────────
     if do_cron {
         if let Some(sc) = &app_config.social {
@@ -272,6 +316,7 @@ pub async fn cmd_gateway_run(
         .start(GatewayConfig {
             cron: cron_entry,
             web_port,
+            roles,
             strategies_dir,
             telegram_bot: telegram_bot_config,
         })

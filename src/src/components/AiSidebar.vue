@@ -4,6 +4,33 @@
     <div ref="msgContainer" class="flex-1 overflow-y-auto p-4 space-y-3">
       <div v-if="messages.length === 0" class="text-center py-8">
         <p class="text-caption text-ink-muted mb-3">AI 交易副驾驶</p>
+
+        <div class="flex justify-center mb-4">
+          <div class="relative">
+            <button
+              @click="showRoleDropdown = !showRoleDropdown"
+              class="flex items-center gap-2 px-3 py-1.5 rounded-card bg-bg-hover text-caption text-white hover:bg-bg-hover/80 transition-colors cursor-pointer"
+            >
+              <span class="text-ai">{{ currentRoleDisplay }}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-ink-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div
+              v-if="showRoleDropdown"
+              class="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-bg border border-hairline rounded-card shadow-lg z-10 min-w-[140px] py-1"
+            >
+              <button
+                v-for="r in aiRoles"
+                :key="r.name"
+                @click="selectRole(r.name)"
+                class="w-full text-left px-3 py-1.5 text-caption hover:bg-bg-hover transition-colors cursor-pointer"
+                :class="r.name === currentRole ? 'text-ai' : 'text-white'"
+              >
+                {{ r.display_name }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <p class="text-caption text-ink-muted text-sm">结合实时行情数据，回答短线市场问题</p>
         <div class="mt-4 space-y-2">
           <motion.button
@@ -45,6 +72,13 @@
     <!-- Input -->
     <div class="flex gap-2 p-3 border-t border-hairline flex-shrink-0">
       <button
+        @click="showRoleDropdown = !showRoleDropdown"
+        class="px-2 py-2 bg-bg-hover text-ai rounded-button text-caption hover:bg-bg-hover/80 transition-colors cursor-pointer flex-shrink-0 text-xs font-mono"
+        :title="'当前角色: ' + currentRoleDisplay"
+      >
+        {{ currentRoleDisplay }}
+      </button>
+      <button
         v-if="messages.length > 0"
         @click="clearChat"
         class="px-2 py-2 bg-bg-hover text-ink-muted rounded-button text-caption hover:text-white transition-colors cursor-pointer flex-shrink-0"
@@ -67,11 +101,27 @@
         发送
       </button>
     </div>
+
+    <!-- Role dropdown (bottom) -->
+    <div
+      v-if="showRoleDropdown && messages.length > 0"
+      class="absolute bottom-16 left-16 right-16 bg-bg border border-hairline rounded-card shadow-lg z-10 py-1"
+    >
+      <button
+        v-for="r in aiRoles"
+        :key="r.name"
+        @click="selectRole(r.name)"
+        class="w-full text-left px-3 py-1.5 text-caption hover:bg-bg-hover transition-colors cursor-pointer"
+        :class="r.name === currentRole ? 'text-ai' : 'text-white'"
+      >
+        {{ r.display_name }}
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, computed } from 'vue'
 import { Marked } from 'marked'
 import hljs from 'highlight.js'
 import { motion } from 'motion-v'
@@ -150,10 +200,23 @@ interface HistoryMessage {
   content: string
 }
 
+interface AiRole {
+  name: string
+  display_name: string
+}
+
 const input = ref('')
 const messages = ref<DisplayMessage[]>([])
 const streaming = ref(false)
 const msgContainer = ref<HTMLElement>()
+const aiRoles = ref<AiRole[]>([])
+const currentRole = ref('zarili')
+const showRoleDropdown = ref(false)
+
+const currentRoleDisplay = computed(() => {
+  const r = aiRoles.value.find(r => r.name === currentRole.value)
+  return r ? r.display_name : currentRole.value
+})
 
 const suggestedQuestions = [
   '今天市场情绪怎么样？',
@@ -161,6 +224,23 @@ const suggestedQuestions = [
   '涨停板块有哪些？',
   '今天适合短线操作吗？',
 ]
+
+onMounted(async () => {
+  try {
+    const resp = await fetch(`${getApiBaseUrl()}/api/ai/roles`)
+    if (resp.ok) {
+      aiRoles.value = await resp.json()
+    }
+  } catch {}
+})
+
+function selectRole(name: string) {
+  currentRole.value = name
+  showRoleDropdown.value = false
+  if (messages.value.length > 0) {
+    clearChat()
+  }
+}
 
 function buildHistory(): HistoryMessage[] {
   return messages.value.map(m => ({
@@ -188,7 +268,7 @@ async function send(question?: string) {
     const resp = await fetch(`${getApiBaseUrl()}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history }),
+      body: JSON.stringify({ message: text, role: currentRole.value, history }),
     })
 
     if (!resp.ok) {

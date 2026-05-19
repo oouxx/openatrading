@@ -19,6 +19,7 @@ pub struct Gateway {
 pub struct GatewayConfig {
     pub cron: Option<(CronConfig, Arc<dyn NotificationSender>)>,
     pub web_port: Option<u16>,
+    pub roles: Vec<RoleEntry>,
     pub strategies_dir: PathBuf,
     pub telegram_bot: Option<TelegramBotConfig>,
 }
@@ -35,29 +36,10 @@ impl Gateway {
         Ok(Gateway { memory, trade })
     }
 
-    /// Start configured services, block until Ctrl+C
     pub async fn start(self, config: GatewayConfig) -> Result<()> {
         let mut handles = Vec::new();
 
-        let mut roles: Vec<RoleEntry> = crate::roles::BUILTIN_STRATEGIES
-            .iter()
-            .map(|(name, display_name, strategy)| RoleEntry {
-                name: name.to_string(),
-                display_name: display_name.to_string(),
-                strategy: strategy.to_string(),
-            })
-            .collect();
-
-        for (name, display_name, strategy) in crate::roles::list_user_roles(&config.strategies_dir)
-        {
-            if !roles.iter().any(|r| r.name == name) {
-                roles.push(RoleEntry {
-                    name,
-                    display_name,
-                    strategy,
-                });
-            }
-        }
+        let roles = config.roles;
 
         // ── Cron ──────────────────────────────
         if let Some((cron_config, social)) = config.cron {
@@ -84,7 +66,7 @@ impl Gateway {
                 memory: self.memory.clone(),
                 trade: self.trade.clone(),
                 roles: roles.clone(),
-                strategies_dir: config.strategies_dir.clone(),
+                strategies_dir: config.strategies_dir,
             });
 
             let router = web::build_router(state);
