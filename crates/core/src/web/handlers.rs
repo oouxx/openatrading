@@ -296,6 +296,19 @@ pub async fn get_super_stock() -> Result<impl IntoResponse, StatusCode> {
     Ok(Json(data))
 }
 
+/// GET /api/index-quotes
+pub async fn get_index_quotes() -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let data = client
+        .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
+        .await
+        .map_err(|e| {
+            eprintln!("index_quotes error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+    Ok(Json(data))
+}
+
 /// GET /api/telegraph — all categories
 pub async fn get_telegraph_all() -> Result<impl IntoResponse, StatusCode> {
     let client = ApiClient::new();
