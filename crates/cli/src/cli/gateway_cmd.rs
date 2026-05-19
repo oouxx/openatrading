@@ -139,38 +139,43 @@ pub async fn cmd_gateway_run(
     let do_cron = !web_only || cron_only;
     let do_web = !cron_only || web_only;
 
-    let social: Arc<dyn NotificationSender> = match &app_config.social {
-        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-            let tg = sc.telegram.as_ref().unwrap();
-            if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
-                || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
-            {
-                Arc::new(NoopSender)
-            } else {
-                Arc::new(TelegramSender {
-                    bot_token: tg.bot_token.clone().unwrap_or_default(),
-                    chat_id: tg.chat_id.clone().unwrap_or_default(),
-                    notify_on_collect: tg.notify_on_collect,
-                    notify_on_decision: tg.notify_on_decision,
-                    notify_on_trade: tg.notify_on_trade,
-                })
+    let mut telegram_bot_config = None;
+
+    let cron_entry = if do_cron {
+        let social: Arc<dyn NotificationSender> = match &app_config.social {
+            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+                let tg = sc.telegram.as_ref().unwrap();
+                if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
+                    || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
+                {
+                    Arc::new(NoopSender)
+                } else {
+                    Arc::new(TelegramSender {
+                        bot_token: tg.bot_token.clone().unwrap_or_default(),
+                        chat_id: tg.chat_id.clone().unwrap_or_default(),
+                        notify_on_collect: tg.notify_on_collect,
+                        notify_on_decision: tg.notify_on_decision,
+                        notify_on_trade: tg.notify_on_trade,
+                    })
+                }
             }
         }
         _ => Arc::new(NoopSender),
     };
 
-    let telegram_bot_config = match &app_config.social {
-        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-            let tg = sc.telegram.as_ref().unwrap();
-            let token = tg.bot_token.clone().unwrap_or_default();
-            let chat_id = tg.chat_id.clone().unwrap_or_default();
-            if token.is_empty() || chat_id.is_empty() {
-                None
-            } else {
-                Some(TelegramBotConfig {
-                    bot_token: token,
-                    chat_id,
-                })
+        telegram_bot_config = match &app_config.social {
+            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+                let tg = sc.telegram.as_ref().unwrap();
+                let token = tg.bot_token.clone().unwrap_or_default();
+                let chat_id = tg.chat_id.clone().unwrap_or_default();
+                if token.is_empty() || chat_id.is_empty() {
+                    None
+                } else {
+                    Some(TelegramBotConfig {
+                        bot_token: token,
+                        chat_id,
+                    })
+                }
             }
         }
         _ => None,

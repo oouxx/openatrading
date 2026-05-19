@@ -1,75 +1,75 @@
-import { reactive } from 'vue'
+import { reactive } from "vue";
 
 // ── Helpers ────────────────────────────────────────────
 
 export function getApiBaseUrl(): string {
-  return localStorage.getItem('trading-agent-api-url') || __API_BASE_URL__
+  return localStorage.getItem("trading-agent-api-url") || __API_BASE_URL__;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = getApiBaseUrl()
-  const resp = await fetch(`${base}${path}`, init)
-  if (!resp.ok) throw new Error(`${resp.status}`)
-  return resp.json()
+  const base = getApiBaseUrl();
+  const resp = await fetch(`${base}${path}`, init);
+  if (!resp.ok) throw new Error(`${resp.status}`);
+  return resp.json();
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toISOString().split("T")[0];
 }
 
 // ── Types ──────────────────────────────────────────────
 
 export interface OverviewData {
-  date: string
-  rise_count: number
-  fall_count: number
-  limit_up_count: number
-  limit_down_count: number
-  bomb_rate: number
-  risk_level: string
-  decision_summary: string
-  market_temperature: number
-  yesterday_limit_up_avg_pcp: number
+  date: string;
+  rise_count: number;
+  fall_count: number;
+  limit_up_count: number;
+  limit_down_count: number;
+  bomb_rate: number;
+  risk_level: string;
+  decision_summary: string;
+  market_temperature: number;
+  yesterday_limit_up_avg_pcp: number;
 }
 
 export interface SentimentHistoryDay {
-  date: string
-  sentiment: number
-  limit_up_count: number
-  bomb_rate: number
-  rise_ratio: number
+  date: string;
+  sentiment: number;
+  limit_up_count: number;
+  bomb_rate: number;
+  rise_ratio: number;
 }
 
 export interface Stock {
-  symbol: string
-  stock_chi_name: string
-  price: number
-  change_percent: number
-  limit_up_days: number
-  turnover_ratio: number
-  total_capital: number
-  break_limit_up_times: number
+  symbol: string;
+  stock_chi_name: string;
+  price: number;
+  change_percent: number;
+  limit_up_days: number;
+  turnover_ratio: number;
+  total_capital: number;
+  break_limit_up_times: number;
   surge_reason: {
-    stock_reason: string
-    related_plates: Array<{ plate_name: string }>
-  } | null
+    stock_reason: string;
+    related_plates: Array<{ plate_name: string }>;
+  } | null;
 }
 
 export interface FieldPlate {
-  name: string
-  count: number
-  reason: string
+  name: string;
+  count: number;
+  reason: string;
   list: Array<{
-    code: string
-    name: string
+    code: string;
+    name: string;
     article?: {
       action_info?: {
-        time?: string
-        num?: string
-        expound?: string
-      }
-    }
-  }>
+        time?: string;
+        num?: string;
+        expound?: string;
+      };
+    };
+  }>;
 }
 
 // ── Overview ───────────────────────────────────────────
@@ -77,18 +77,18 @@ export interface FieldPlate {
 export const overview = reactive({
   data: null as OverviewData | null,
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchOverview() {
-  overview.loading = true
-  overview.error = ''
+  overview.loading = true;
+  overview.error = "";
   try {
-    overview.data = await fetchJson<OverviewData>('/api/overview')
+    overview.data = await fetchJson<OverviewData>("/api/overview");
   } catch (e: any) {
-    overview.error = e.message || String(e)
+    overview.error = e.message || String(e);
   } finally {
-    overview.loading = false
+    overview.loading = false;
   }
 }
 
@@ -97,18 +97,18 @@ export async function fetchOverview() {
 export const limitUp = reactive({
   data: [] as Stock[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchLimitUp() {
-  limitUp.loading = true
-  limitUp.error = ''
+  limitUp.loading = true;
+  limitUp.error = "";
   try {
-    limitUp.data = await fetchJson<Stock[]>('/api/limit-up')
+    limitUp.data = await fetchJson<Stock[]>("/api/limit-up");
   } catch (e: any) {
-    limitUp.error = e.message || String(e)
+    limitUp.error = e.message || String(e);
   } finally {
-    limitUp.loading = false
+    limitUp.loading = false;
   }
 }
 
@@ -117,21 +117,23 @@ export async function fetchLimitUp() {
 export const fieldItems = reactive({
   data: [] as FieldPlate[],
   loading: false,
-  error: '',
+  error: "",
   date: todayStr(),
-})
+});
 
 export async function fetchFieldItems(date?: string) {
-  fieldItems.loading = true
-  fieldItems.error = ''
-  const d = date || fieldItems.date
+  fieldItems.loading = true;
+  fieldItems.error = "";
+  const d = date || fieldItems.date;
   try {
-    fieldItems.data = await fetchJson<FieldPlate[]>(`/api/field-items?date=${d}`)
-    fieldItems.date = d
+    fieldItems.data = await fetchJson<FieldPlate[]>(
+      `/api/field-items?date=${d}`,
+    );
+    fieldItems.date = d;
   } catch (e: any) {
-    fieldItems.error = e.message || String(e)
+    fieldItems.error = e.message || String(e);
   } finally {
-    fieldItems.loading = false
+    fieldItems.loading = false;
   }
 }
 
@@ -140,18 +142,18 @@ export async function fetchFieldItems(date?: string) {
 export const plateAbnormal = reactive({
   data: [] as any[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchPlateAbnormal() {
-  plateAbnormal.loading = true
-  plateAbnormal.error = ''
+  plateAbnormal.loading = true;
+  plateAbnormal.error = "";
   try {
-    plateAbnormal.data = await fetchJson<any[]>('/api/plate-abnormal')
+    plateAbnormal.data = await fetchJson<any[]>("/api/plate-abnormal");
   } catch (e: any) {
-    plateAbnormal.error = e.message || String(e)
+    plateAbnormal.error = e.message || String(e);
   } finally {
-    plateAbnormal.loading = false
+    plateAbnormal.loading = false;
   }
 }
 
@@ -160,18 +162,18 @@ export async function fetchPlateAbnormal() {
 export const timeline = reactive({
   data: [] as any[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchTimeline() {
-  timeline.loading = true
-  timeline.error = ''
+  timeline.loading = true;
+  timeline.error = "";
   try {
-    timeline.data = await fetchJson<any[]>('/api/timeline')
+    timeline.data = await fetchJson<any[]>("/api/timeline");
   } catch (e: any) {
-    timeline.error = e.message || String(e)
+    timeline.error = e.message || String(e);
   } finally {
-    timeline.loading = false
+    timeline.loading = false;
   }
 }
 
@@ -180,18 +182,18 @@ export async function fetchTimeline() {
 export const superStock = reactive({
   data: [] as Stock[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchSuperStock() {
-  superStock.loading = true
-  superStock.error = ''
+  superStock.loading = true;
+  superStock.error = "";
   try {
-    superStock.data = await fetchJson<Stock[]>('/api/super-stock')
+    superStock.data = await fetchJson<Stock[]>("/api/super-stock");
   } catch (e: any) {
-    superStock.error = e.message || String(e)
+    superStock.error = e.message || String(e);
   } finally {
-    superStock.loading = false
+    superStock.loading = false;
   }
 }
 
@@ -200,18 +202,18 @@ export async function fetchSuperStock() {
 export const dapanAbnormal = reactive({
   data: [] as any[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchDapanAbnormal() {
-  dapanAbnormal.loading = true
-  dapanAbnormal.error = ''
+  dapanAbnormal.loading = true;
+  dapanAbnormal.error = "";
   try {
-    dapanAbnormal.data = await fetchJson<any[]>('/api/dapan-abnormal')
+    dapanAbnormal.data = await fetchJson<any[]>("/api/dapan-abnormal");
   } catch (e: any) {
-    dapanAbnormal.error = e.message || String(e)
+    dapanAbnormal.error = e.message || String(e);
   } finally {
-    dapanAbnormal.loading = false
+    dapanAbnormal.loading = false;
   }
 }
 
@@ -220,98 +222,138 @@ export async function fetchDapanAbnormal() {
 export const sentiment = reactive({
   data: null as any,
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchSentiment() {
-  sentiment.loading = true
-  sentiment.error = ''
+  sentiment.loading = true;
+  sentiment.error = "";
   try {
-    sentiment.data = await fetchJson<any>('/api/sentiment')
+    sentiment.data = await fetchJson<any>("/api/sentiment");
   } catch (e: any) {
-    sentiment.error = e.message || String(e)
+    sentiment.error = e.message || String(e);
   } finally {
-    sentiment.loading = false
+    sentiment.loading = false;
   }
 }
 
 // ── Roles / Role Strategy ──────────────────────────────
 
 export interface RoleEntry {
-  name: string
-  display_name: string
-  strategy: string
+  name: string;
+  display_name: string;
+  strategy: string;
 }
 
 export interface RolePosition {
-  id: number
-  symbol: string
-  stock_name: string
-  cost_price: number
-  current_price: number
-  shares: number
-  entry_reason: string
-  entry_date: string
+  id: number;
+  symbol: string;
+  stock_name: string;
+  cost_price: number;
+  current_price: number;
+  shares: number;
+  entry_reason: string;
+  entry_date: string;
 }
 
 export interface RoleLog {
-  date: string
-  action: string
-  symbol: string
-  price: number
-  shares: number
-  reason: string
+  date: string;
+  action: string;
+  symbol: string;
+  price: number;
+  shares: number;
+  reason: string;
 }
 
-export const roles = reactive({ data: [] as RoleEntry[], loading: false, error: '' })
+export const roles = reactive({
+  data: [] as RoleEntry[],
+  loading: false,
+  error: "",
+});
 
 export async function fetchRoles() {
-  roles.loading = true
-  roles.error = ''
+  roles.loading = true;
+  roles.error = "";
   try {
-    roles.data = await fetchJson<RoleEntry[]>('/api/roles')
+    roles.data = await fetchJson<RoleEntry[]>("/api/roles");
   } catch (e: any) {
-    roles.error = e.message || String(e)
+    roles.error = e.message || String(e);
   } finally {
-    roles.loading = false
+    roles.loading = false;
   }
 }
 
 // Per-role positions cache
-export const rolePositions = reactive<Record<string, { data: RolePosition[], loading: boolean, error: string }>>({})
+export const rolePositions = reactive<
+  Record<string, { data: RolePosition[]; loading: boolean; error: string }>
+>({});
 
 export async function fetchRolePositions(name: string) {
   if (!rolePositions[name]) {
-    rolePositions[name] = reactive({ data: [], loading: false, error: '' })
+    rolePositions[name] = reactive({ data: [], loading: false, error: "" });
   }
-  const entry = rolePositions[name]
-  entry.loading = true
-  entry.error = ''
+  const entry = rolePositions[name];
+  entry.loading = true;
+  entry.error = "";
   try {
-    entry.data = await fetchJson<RolePosition[]>(`/api/roles/${name}/positions`)
+    entry.data = await fetchJson<RolePosition[]>(
+      `/api/roles/${name}/positions`,
+    );
   } catch (e: any) {
-    entry.error = e.message || String(e)
+    entry.error = e.message || String(e);
   } finally {
-    entry.loading = false
+    entry.loading = false;
   }
 }
 
 // Per-role logs cache
-export const roleLogs = reactive<Record<string, { data: RoleLog[], loading: boolean, error: string }>>({})
+export const roleLogs = reactive<
+  Record<string, { data: RoleLog[]; loading: boolean; error: string }>
+>({});
 
 export async function fetchRoleLogs(name: string) {
   if (!roleLogs[name]) {
-    roleLogs[name] = reactive({ data: [], loading: false, error: '' })
+    roleLogs[name] = reactive({ data: [], loading: false, error: "" });
   }
-  const entry = roleLogs[name]
-  entry.loading = true
-  entry.error = ''
+  const entry = roleLogs[name];
+  entry.loading = true;
+  entry.error = "";
   try {
-    entry.data = await fetchJson<RoleLog[]>(`/api/roles/${name}/logs`)
+    entry.data = await fetchJson<RoleLog[]>(`/api/roles/${name}/logs`);
   } catch (e: any) {
-    entry.error = e.message || String(e)
+    entry.error = e.message || String(e);
   } finally {
-    entry.loading = false
+    entry.loading = false;
+  }
+}
+
+// ── Index Quotes ──────────────────────────────────────
+
+export interface IndexQuote {
+  symbol: string;
+  name: string;
+  last_px: number;
+  px_change: number;
+  px_change_rate: number;
+  trade_status: string;
+}
+
+export const indexQuotes = reactive({
+  data: [] as IndexQuote[],
+  loading: false,
+  error: "",
+});
+
+export async function fetchIndexQuotes() {
+  indexQuotes.loading = true;
+  indexQuotes.error = "";
+  try {
+    const data = await fetchJson<IndexQuote[]>("/api/index-quotes");
+    indexQuotes.data = data;
+  } catch (e: any) {
+    indexQuotes.error = e.message || String(e);
+  } finally {
+    indexQuotes.loading = false;
   }
 }
 
@@ -320,83 +362,93 @@ export async function fetchRoleLogs(name: string) {
 export const sentimentHistory = reactive({
   data: [] as SentimentHistoryDay[],
   loading: false,
-  error: '',
-})
+  error: "",
+});
 
 export async function fetchSentimentHistory(days = 10) {
-  sentimentHistory.loading = true
-  sentimentHistory.error = ''
+  sentimentHistory.loading = true;
+  sentimentHistory.error = "";
   try {
-    sentimentHistory.data = await fetchJson<SentimentHistoryDay[]>(`/api/sentiment-history?days=${days}`)
+    sentimentHistory.data = await fetchJson<SentimentHistoryDay[]>(
+      `/api/sentiment-history?days=${days}`,
+    );
   } catch (e: any) {
-    sentimentHistory.error = e.message || String(e)
+    sentimentHistory.error = e.message || String(e);
   } finally {
-    sentimentHistory.loading = false
+    sentimentHistory.loading = false;
   }
 }
 
 // ── Role P&L History ───────────────────────────────────
 
 export interface PnlPoint {
-  date: string
-  equity: number
-  cash: number
-  market_value: number
-  return_pct: number
+  date: string;
+  equity: number;
+  cash: number;
+  market_value: number;
+  return_pct: number;
 }
 
 export interface PnlHistoryResponse {
-  points: PnlPoint[]
-  initial_capital: number
+  points: PnlPoint[];
+  initial_capital: number;
 }
 
 // Per-role P&L history cache
-export const rolePnlHistory = reactive<Record<string, { data: PnlPoint[], loading: boolean, error: string }>>({})
+export const rolePnlHistory = reactive<
+  Record<string, { data: PnlPoint[]; loading: boolean; error: string }>
+>({});
 
 export async function fetchRolePnlHistory(name: string, days = 30) {
   if (!rolePnlHistory[name]) {
-    rolePnlHistory[name] = reactive({ data: [], loading: false, error: '' })
+    rolePnlHistory[name] = reactive({ data: [], loading: false, error: "" });
   }
-  const entry = rolePnlHistory[name]
-  entry.loading = true
-  entry.error = ''
+  const entry = rolePnlHistory[name];
+  entry.loading = true;
+  entry.error = "";
   try {
-    const res = await fetchJson<PnlHistoryResponse>(`/api/roles/${name}/pnl-history?days=${days}`)
-    entry.data = res.points
+    const res = await fetchJson<PnlHistoryResponse>(
+      `/api/roles/${name}/pnl-history?days=${days}`,
+    );
+    entry.data = res.points;
   } catch (e: any) {
-    entry.error = e.message || String(e)
+    entry.error = e.message || String(e);
   } finally {
-    entry.loading = false
+    entry.loading = false;
   }
 }
 
 // ── Role CRUD ──────────────────────────────────────────
 
-export async function createRole(name: string, displayName: string, strategy: string) {
-  await fetchJson('/api/roles', {
-    method: 'POST',
+export async function createRole(
+  name: string,
+  displayName: string,
+  strategy: string,
+) {
+  await fetchJson("/api/roles", {
+    method: "POST",
     body: JSON.stringify({ name, display_name: displayName, strategy }),
-  })
+  });
 }
 
 export async function updateRoleStrategy(name: string, strategy: string) {
   await fetchJson(`/api/roles/${name}/strategy`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({ strategy }),
-  })
+  });
 }
 
 export async function deleteRole(name: string) {
-  await fetchJson(`/api/roles/${name}`, { method: 'DELETE' })
+  await fetchJson(`/api/roles/${name}`, { method: "DELETE" });
 }
 
 export async function resetRole(name: string) {
-  await fetchJson(`/api/roles/${name}/reset`, { method: 'POST' })
+  await fetchJson(`/api/roles/${name}/reset`, { method: "POST" });
 }
 
 // Refresh single role's positions
 export async function refreshRole(name: string) {
-  await fetchRolePositions(name)
-  await fetchRoleLogs(name)
-  await fetchRolePnlHistory(name)
+  await fetchRolePositions(name);
+  await fetchRoleLogs(name);
+  await fetchRolePnlHistory(name);
 }
