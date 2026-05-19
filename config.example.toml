@@ -56,12 +56,32 @@ collection_schedule = "0 */30 9-15 * * 1-5 *"
 # 决策：每天 00:00
 decision_schedule = "0 0 0 * * 1-5 *"
 
-# ── Telegram 通知 ────────────────────────────────────────
-# 填入 bot_token 和 chat_id 即可启用
+# ── 社交平台通知 ──────────────────────────────────────────
+# notify_channel: cron 通知发送到哪个渠道 (telegram / discord / slack / lark)
+# notify_on_*: 控制各类事件是否发送通知
+[social]
+notify_channel = "telegram"
+notify_on_collect = true
+notify_on_decision = true
+notify_on_trade = true
+
+# Telegram（同时用于 bot 交互和通知推送）
 [social.telegram]
 enabled = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 chat_id = "${TELEGRAM_CHAT_ID}"
-notify_on_collect = true
-notify_on_decision = true
-notify_on_trade = true
+
+# Discord（Webhook 推送）
+# [social.discord]
+# enabled = true
+# webhook_url = "${DISCORD_WEBHOOK_URL}"
+
+# Slack（Webhook 推送）
+# [social.slack]
+# enabled = true
+# webhook_url = "${SLACK_WEBHOOK_URL}"
+
+# 飞书（Webhook 推送）
+# [social.lark]
+# enabled = true
+# webhook_url = "${LARK_WEBHOOK_URL}"

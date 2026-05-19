@@ -3,12 +3,15 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
-use crate::cli::config::AppConfig;
+use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use trending_agent_core::cron::CronConfig;
 use trending_agent_core::gateway::{Gateway, GatewayConfig};
+use trending_agent_core::social::discord::DiscordSender;
+use trending_agent_core::social::lark::LarkSender;
+use trending_agent_core::social::slack::SlackSender;
 use trending_agent_core::social::telegram::TelegramSender;
 use trending_agent_core::social::telegram_bot::TelegramBotConfig;
-use trending_agent_core::social::{NoopSender, NotificationSender};
+use trending_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
 
 const SERVICE_NAME: &str = "openatrading";
 
@@ -117,6 +120,73 @@ pub fn cmd_gateway_status() -> Result<()> {
     Ok(())
 }
 
+fn create_telegram_sender(tg: &TelegramConfig) -> Option<Box<dyn NotificationSender>> {
+    if !tg.enabled {
+        return None;
+    }
+    let token = tg.bot_token.as_deref().filter(|t| !t.is_empty())?;
+    let chat = tg.chat_id.as_deref().filter(|c| !c.is_empty())?;
+    Some(Box::new(TelegramSender {
+        bot_token: token.to_string(),
+        chat_id: chat.to_string(),
+    }))
+}
+
+fn create_discord_sender(dc: &DiscordConfig) -> Option<Box<dyn NotificationSender>> {
+    if !dc.enabled {
+        return None;
+    }
+    let url = dc.webhook_url.as_deref().filter(|u| !u.is_empty())?;
+    Some(Box::new(DiscordSender {
+        webhook_url: url.to_string(),
+    }))
+}
+
+fn create_slack_sender(sl: &SlackConfig) -> Option<Box<dyn NotificationSender>> {
+    if !sl.enabled {
+        return None;
+    }
+    let url = sl.webhook_url.as_deref().filter(|u| !u.is_empty())?;
+    Some(Box::new(SlackSender {
+        webhook_url: url.to_string(),
+    }))
+}
+
+fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
+    if !lk.enabled {
+        return None;
+    }
+    let url = lk.webhook_url.as_deref().filter(|u| !u.is_empty())?;
+    Some(Box::new(LarkSender {
+        webhook_url: url.to_string(),
+    }))
+}
+
+fn create_notification_sender(sc: &crate::cli::config::SocialConfig) -> Box<dyn NotificationSender> {
+    let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
+
+    let sender: Option<Box<dyn NotificationSender>> = match channel {
+        "telegram" => sc.telegram.as_ref().and_then(create_telegram_sender),
+        "discord" => sc.discord.as_ref().and_then(create_discord_sender),
+        "slack" => sc.slack.as_ref().and_then(create_slack_sender),
+        "lark" => sc.lark.as_ref().and_then(create_lark_sender),
+        other => {
+            eprintln!("[gateway] unknown notify_channel: {other}, falling back to telegram");
+            sc.telegram.as_ref().and_then(create_telegram_sender)
+        }
+    };
+
+    match sender {
+        Some(inner) => Box::new(FilteredSender {
+            inner,
+            notify_on_collect: sc.notify_on_collect,
+            notify_on_decision: sc.notify_on_decision,
+            notify_on_trade: sc.notify_on_trade,
+        }),
+        None => Box::new(NoopSender),
+    }
+}
+
 /// 前台运行（debug/直接使用），Ctrl+C 停止
 ///
 /// - `cron_only`: 仅运行 cron scheduler，不启动 web server
@@ -139,49 +209,28 @@ pub async fn cmd_gateway_run(
     let do_cron = !web_only || cron_only;
     let do_web = !cron_only || web_only;
 
-    let mut telegram_bot_config = None;
-
-    let cron_entry = if do_cron {
-        let social: Arc<dyn NotificationSender> = match &app_config.social {
-            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-                let tg = sc.telegram.as_ref().unwrap();
-                if tg.bot_token.as_ref().map(|t| t.is_empty()).unwrap_or(true)
-                    || tg.chat_id.as_ref().map(|c| c.is_empty()).unwrap_or(true)
-                {
-                    Arc::new(NoopSender)
-                } else {
-                    Arc::new(TelegramSender {
-                        bot_token: tg.bot_token.clone().unwrap_or_default(),
-                        chat_id: tg.chat_id.clone().unwrap_or_default(),
-                        notify_on_collect: tg.notify_on_collect,
-                        notify_on_decision: tg.notify_on_decision,
-                        notify_on_trade: tg.notify_on_trade,
-                    })
-                }
-            }
-        }
-        _ => Arc::new(NoopSender),
-    };
-
-        telegram_bot_config = match &app_config.social {
-            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-                let tg = sc.telegram.as_ref().unwrap();
-                let token = tg.bot_token.clone().unwrap_or_default();
-                let chat_id = tg.chat_id.clone().unwrap_or_default();
-                if token.is_empty() || chat_id.is_empty() {
-                    None
-                } else {
-                    Some(TelegramBotConfig {
-                        bot_token: token,
-                        chat_id,
-                    })
-                }
+    let telegram_bot_config = match &app_config.social {
+        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+            let tg = sc.telegram.as_ref().unwrap();
+            let token = tg.bot_token.clone().unwrap_or_default();
+            let chat_id = tg.chat_id.clone().unwrap_or_default();
+            if token.is_empty() || chat_id.is_empty() {
+                None
+            } else {
+                Some(TelegramBotConfig {
+                    bot_token: token,
+                    chat_id,
+                })
             }
         }
         _ => None,
     };
 
     let cron_entry = if do_cron {
+        let social: Arc<dyn NotificationSender> = match &app_config.social {
+            Some(sc) => Arc::from(create_notification_sender(sc)),
+            None => Arc::new(NoopSender),
+        };
 
         let cron_cfg = match &app_config.cron {
             Some(c) => CronConfig {
@@ -203,56 +252,17 @@ pub async fn cmd_gateway_run(
 
     let web_port = if do_web { Some(8080u16) } else { None };
 
-    // ── Telegram diagnostics ──────────────────
+    // ── Notification channel diagnostics ──────────
     if do_cron {
-        match &app_config.social {
-            Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
-                let tg = sc.telegram.as_ref().unwrap();
-                let token = tg.bot_token.as_ref().filter(|t| !t.is_empty());
-                let chat = tg.chat_id.as_ref().filter(|c| !c.is_empty());
-                if let (Some(t), Some(c)) = (token, chat) {
-                    let client = reqwest::Client::new();
-                    let send_url = format!("https://api.telegram.org/bot{t}/sendMessage");
-                    let resp = client
-                        .post(&send_url)
-                        .json(&serde_json::json!({
-                            "chat_id": c,
-                            "text": "✅ OpenATrading Gateway 已启动",
-                        }))
-                        .send()
-                        .await;
-                    match resp {
-                        Ok(r) if r.status().is_success() => {
-                            // Delete the startup notification message
-                            if let Ok(body) = r.json::<serde_json::Value>().await {
-                                if let Some(msg_id) = body["result"]["message_id"].as_i64() {
-                                    let del_url =
-                                        format!("https://api.telegram.org/bot{t}/deleteMessage");
-                                    let _ = client
-                                        .post(&del_url)
-                                        .json(&serde_json::json!({
-                                            "chat_id": c,
-                                            "message_id": msg_id,
-                                        }))
-                                        .send()
-                                        .await;
-                                }
-                            }
-                            eprintln!("[gateway] telegram: ✅ connected");
-                        }
-                        Ok(r) => {
-                            let body = r.text().await.unwrap_or_default();
-                            eprintln!("[gateway] telegram: ❌ API error: {body}");
-                        }
-                        Err(e) => {
-                            eprintln!("[gateway] telegram: ❌ connection failed: {e}");
-                        }
-                    }
-                } else {
-                    eprintln!("[gateway] telegram: ⚠ not configured");
-                }
+        if let Some(sc) = &app_config.social {
+            let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
+            let sender = create_notification_sender(sc);
+            match sender.send_text("✅ OpenATrading Gateway 已启动").await {
+                Ok(()) => eprintln!("[gateway] {channel}: ✅ connected"),
+                Err(e) => eprintln!("[gateway] {channel}: ❌ connection failed: {e}"),
             }
-            _ => eprintln!("[gateway] telegram: ⚠ not configured"),
+        } else {
+            eprintln!("[gateway] social: ⚠ not configured");
         }
     }
 
