@@ -67,6 +67,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::get_yesterday_limit_up),
         )
         .route("/api/super-stock", get(handlers::get_super_stock))
+        .route("/api/index-quotes", get(handlers::get_index_quotes))
         .route("/api/telegraph", get(handlers::get_telegraph_all))
         .route("/api/telegraph/:category", get(handlers::get_telegraph))
         .route("/api/dapan-abnormal", get(handlers::get_dapan_abnormal))
