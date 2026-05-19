@@ -12,7 +12,7 @@ run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo run -p trending-agent-cli -- gateway run --web-only
 
-dev-frontend:
+run-frontend:
 	cd src && bun run dev
 
 # ─── Quality ──────────────────────────────────────────
@@ -99,11 +99,6 @@ deploy-web:
 	@echo "🚀 Deploying web (frontend only)..."
 	@bash deploy.sh web
 
-# ─── Clean ───────────────────────────────────────────
-
-clean:
-	cargo clean
-
 # ─── Help ────────────────────────────────────────────
 
 help:
@@ -115,8 +110,8 @@ help:
 	@echo "  run-web        Web server"
 	@echo "  dev-frontend   Vue dev server"
 	@echo ""
-	@echo "Build:"
-	@echo "  build-downloads  Build CLI + Tauri → downloads/"
+	@echo "Run:"
+	@echo "  run-frontend   Vue dev server"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test"

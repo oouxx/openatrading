@@ -365,8 +365,8 @@ impl XuanguBaoClient {
     }
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
         let url = format!(
-            "{}/trend?fields=tick_at,close_px&prod_code={symbol}",
-            self.base_url
+            "{}/market/trend?fields=tick_at,close_px&prod_code={symbol}",
+            "https://api-ddc-wscn.xuangubao.com.cn"
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
@@ -411,7 +411,65 @@ impl XuanguBaoClient {
             candles,
         })
     }
+    pub async fn fetch_market_real(&self, symbols: &[&str]) -> Result<Vec<IndexQuote>> {
+        let joined = symbols.join(",");
+        let fields = "prod_name,last_px,px_change,px_change_rate,symbol,trade_status";
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={fields}&prod_code={joined}"
+        );
 
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Market Real API error: {}",
+            resp["message"]
+        );
+
+        let field_names: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let snapshot = resp["data"]["snapshot"]
+            .as_object()
+            .context("missing snapshot")?;
+
+        let mut results = Vec::new();
+        for (symbol, values) in snapshot {
+            let arr = values.as_array().context("snapshot value not array")?;
+            let get_f64 = |name: &str| -> f64 {
+                field_names
+                    .iter()
+                    .position(|f| f == name)
+                    .and_then(|i| arr.get(i))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+            };
+            let get_str = |name: &str| -> String {
+                field_names
+                    .iter()
+                    .position(|f| f == name)
+                    .and_then(|i| arr.get(i))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
+            results.push(IndexQuote {
+                symbol: symbol.clone(),
+                name: get_str("prod_name"),
+                last_px: get_f64("last_px"),
+                px_change: get_f64("px_change"),
+                px_change_rate: get_f64("px_change_rate"),
+                trade_status: get_str("trade_status"),
+            });
+        }
+
+        Ok(results)
+    }
     pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateAbnormalEvent>> {
         let types =
             "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010,11000,11001";
@@ -726,6 +784,16 @@ pub struct RealtimeQuote {
     pub trade_status: String,
     /// 2: update_time
     pub update_time: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexQuote {
+    pub symbol: String,
+    pub name: String,
+    pub last_px: f64,
+    pub px_change: f64,
+    pub px_change_rate: f64,
+    pub trade_status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
