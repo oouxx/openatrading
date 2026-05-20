@@ -40,6 +40,17 @@ impl NotificationSender for NoopSender {
     }
 }
 
+pub struct StdoutSender;
+
+#[async_trait]
+impl NotificationSender for StdoutSender {
+    async fn send_text(&self, text: &str) -> Result<()> {
+        println!("{}", text);
+        println!("{}", "─".repeat(40));
+        Ok(())
+    }
+}
+
 pub struct FilteredSender {
     pub inner: Box<dyn NotificationSender>,
     pub notify_on_collect: bool,

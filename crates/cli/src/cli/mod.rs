@@ -10,6 +10,8 @@ use app::Cli;
 use clap::Parser;
 use serde::Serialize;
 use std::io::Write;
+use std::path::Path;
+use std::sync::Arc;
 
 use crate::cli::app::{Commands, GatewayAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
@@ -23,8 +25,11 @@ use crate::cli::update::{cmd_update, cmd_update_check};
 use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 use trending_agent_core::api::Client;
+use trending_agent_core::cron::run_decision;
+use trending_agent_core::gateway::Gateway;
 use trending_agent_core::llm::openrouter::LlmClient;
 use trending_agent_core::roles::prompt::build_prompt;
+use trending_agent_core::social::{NoopSender, NotificationSender, StdoutSender};
 
 #[derive(Serialize)]
 struct OutputData {
@@ -149,6 +154,11 @@ pub async fn run() -> Result<()> {
 
     // Load config
     let app_config = AppConfig::load(&project_root)?;
+
+    // Handle `decision` subcommand
+    if let Some(Commands::Decision { dry_run, role }) = cli.command {
+        return cmd_decision(&project_root, &app_config, dry_run, role.as_deref()).await;
+    }
 
     // Handle --list-roles
     if cli.list_roles {
@@ -352,6 +362,63 @@ pub async fn run() -> Result<()> {
         if !content.ends_with('\n') {
             stdout.write_all(b"\n")?;
         }
+    }
+
+    Ok(())
+}
+
+async fn cmd_decision(
+    project_root: &Path,
+    app_config: &AppConfig,
+    dry_run: bool,
+    role_filter: Option<&str>,
+) -> Result<()> {
+    let db_path = project_root
+        .join(".atrading")
+        .join(&app_config.service.db_path);
+    let gateway = Gateway::init(&db_path)?;
+
+    let roles = crate::cli::gateway_cmd::build_roles(app_config);
+    let filtered_roles: Vec<_> = if let Some(name) = role_filter {
+        roles.into_iter().filter(|r| r.name == name).collect()
+    } else {
+        roles
+    };
+
+    if filtered_roles.is_empty() {
+        if let Some(name) = role_filter {
+            eprintln!("❌ 未找到角色: {name}");
+        } else {
+            eprintln!("❌ 没有可用角色，请先配置 [[roles]]");
+        }
+        return Ok(());
+    }
+
+    let social: Arc<dyn NotificationSender> = if dry_run {
+        eprintln!("📋 dry-run 模式，仅输出到终端\n");
+        Arc::new(StdoutSender)
+    } else if let Some(sc) = &app_config.social {
+        Arc::from(crate::cli::gateway_cmd::create_notification_sender(sc))
+    } else {
+        eprintln!("⚠️ 未配置社交平台通知，仅输出到终端\n");
+        Arc::new(NoopSender)
+    };
+
+    let llm = LlmClient::from_env();
+    let api = Client::new();
+
+    run_decision(
+        &*gateway.memory,
+        &*gateway.trade,
+        &*social,
+        &llm,
+        &api,
+        &filtered_roles,
+    )
+    .await?;
+
+    if !dry_run {
+        eprintln!("✅ 决策完成，通知已推送");
     }
 
     Ok(())

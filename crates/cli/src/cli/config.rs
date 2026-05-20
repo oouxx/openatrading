@@ -113,6 +113,8 @@ pub struct SocialConfig {
 pub struct TelegramConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub bot_polling: bool,
     pub bot_token: Option<String>,
     pub chat_id: Option<String>,
 }
@@ -187,6 +189,7 @@ notify_on_trade = true
 
 [social.telegram]
 enabled = true
+bot_polling = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 chat_id = "${TELEGRAM_CHAT_ID}"
 

@@ -52,6 +52,9 @@ impl Gateway {
                 self.memory.clone(),
                 self.trade.clone(),
                 social,
+                LlmClient::from_env(),
+                ApiClient::new(),
+                roles.clone(),
             )
             .await?;
         } else {
@@ -83,7 +86,7 @@ impl Gateway {
 
         // ── Telegram Bot ──────────────────────
         if let Some(bot_config) = config.telegram_bot {
-            let bot = TelegramBot::new(bot_config, roles);
+            let bot = TelegramBot::new(bot_config, roles, self.memory.clone(), self.trade.clone());
             handles.push(tokio::spawn(async move {
                 if let Err(e) = bot.start_polling().await {
                     eprintln!("[gateway] telegram bot error: {e}");
