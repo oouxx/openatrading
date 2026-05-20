@@ -163,7 +163,9 @@ fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
     }))
 }
 
-fn create_notification_sender(sc: &crate::cli::config::SocialConfig) -> Box<dyn NotificationSender> {
+pub fn create_notification_sender(
+    sc: &crate::cli::config::SocialConfig,
+) -> Box<dyn NotificationSender> {
     let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
 
     let sender: Option<Box<dyn NotificationSender>> = match channel {
@@ -188,7 +190,7 @@ fn create_notification_sender(sc: &crate::cli::config::SocialConfig) -> Box<dyn 
     }
 }
 
-fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
+pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
 
     for entry in &app_config.roles {
@@ -251,7 +253,13 @@ pub async fn cmd_gateway_run(
     let do_web = !cron_only || web_only;
 
     let telegram_bot_config = match &app_config.social {
-        Some(sc) if sc.telegram.as_ref().map(|t| t.enabled).unwrap_or(false) => {
+        Some(sc)
+            if sc
+                .telegram
+                .as_ref()
+                .map(|t| t.enabled && t.bot_polling)
+                .unwrap_or(false) =>
+        {
             let tg = sc.telegram.as_ref().unwrap();
             let token = tg.bot_token.clone().unwrap_or_default();
             let chat_id = tg.chat_id.clone().unwrap_or_default();

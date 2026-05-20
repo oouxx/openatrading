@@ -49,6 +49,7 @@ pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>> + Sen
 #[cfg(target_arch = "wasm32")]
 pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 
+#[derive(Clone)]
 pub struct LlmClient {
     client: Client,
     api_key: String,

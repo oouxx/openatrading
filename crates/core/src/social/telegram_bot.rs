@@ -7,7 +7,10 @@ use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
+use crate::cron::run_decision;
 use crate::llm::openrouter::LlmClient;
+use crate::memory::MemoryStore;
+use crate::trade::TradeManager;
 use crate::web::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
@@ -29,6 +32,9 @@ pub struct TelegramBot {
     api: ApiClient,
     roles: Vec<RoleEntry>,
     session: Arc<Mutex<Option<ChatSession>>>,
+    client: reqwest::Client,
+    memory: Arc<dyn MemoryStore>,
+    trade: Arc<dyn TradeManager>,
 }
 
 #[derive(Deserialize)]
@@ -51,7 +57,9 @@ struct TgChat {
 #[derive(Deserialize)]
 struct GetUpdatesResponse {
     ok: bool,
-    result: Vec<Update>,
+    error_code: Option<i64>,
+    description: Option<String>,
+    result: Option<Vec<Update>>,
 }
 
 #[derive(Deserialize)]
@@ -67,7 +75,12 @@ struct TgMessageObj {
 }
 
 impl TelegramBot {
-    pub fn new(config: TelegramBotConfig, roles: Vec<RoleEntry>) -> Self {
+    pub fn new(
+        config: TelegramBotConfig,
+        roles: Vec<RoleEntry>,
+        memory: Arc<dyn MemoryStore>,
+        trade: Arc<dyn TradeManager>,
+    ) -> Self {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
@@ -75,6 +88,9 @@ impl TelegramBot {
             api: ApiClient::new(),
             roles,
             session: Arc::new(Mutex::new(None)),
+            client: reqwest::Client::new(),
+            memory,
+            trade,
         }
     }
 
@@ -83,8 +99,8 @@ impl TelegramBot {
             "https://api.telegram.org/bot{}/setMyCommands",
             self.bot_token
         );
-        let client = reqwest::Client::new();
-        let resp = client
+        let resp = self
+            .client
             .post(&url)
             .json(&serde_json::json!({
                 "commands": [
@@ -95,6 +111,10 @@ impl TelegramBot {
                     {
                         "command": "new",
                         "description": "开始新对话，清空当前会话历史"
+                    },
+                    {
+                        "command": "decision",
+                        "description": "手动触发每日决策，可选指定角色: /decision [role_name ...]"
                     }
                 ]
             }))
@@ -114,7 +134,6 @@ impl TelegramBot {
         self.register_commands().await?;
 
         let mut offset: i64 = 0;
-        let client = reqwest::Client::new();
 
         tracing::info!("[telegram-bot] polling started");
 
@@ -124,7 +143,7 @@ impl TelegramBot {
                 self.bot_token, offset
             );
 
-            let resp = match client.get(&url).send().await {
+            let resp = match self.client.get(&url).send().await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::error!("[telegram-bot] getUpdates error: {e}");
@@ -133,32 +152,58 @@ impl TelegramBot {
                 }
             };
 
-            let body = match resp.json::<GetUpdatesResponse>().await {
+            let text = match resp.text().await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::error!("[telegram-bot] read response body error: {e}");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            let body: GetUpdatesResponse = match serde_json::from_str(&text) {
                 Ok(b) => b,
                 Err(e) => {
-                    tracing::error!("[telegram-bot] parse error: {e}");
+                    tracing::error!(
+                        "[telegram-bot] parse error: {e}, body: {}",
+                        &text[..text.len().min(500)]
+                    );
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
                 }
             };
 
             if !body.ok {
-                tracing::error!("[telegram-bot] getUpdates returned ok=false");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                let desc = body.description.as_deref().unwrap_or("unknown");
+                let code = body
+                    .error_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".into());
+                tracing::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
+                if body.error_code == Some(409) {
+                    tracing::warn!(
+                        "[telegram-bot] multiple bot instances detected, backing off for 30s"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                } else {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
                 continue;
             }
 
-            for update in body.result {
-                offset = update.update_id + 1;
+            if let Some(updates) = body.result {
+                for update in updates {
+                    offset = update.update_id + 1;
 
-                if let Some(msg) = update.message {
-                    if let Some(text) = msg.text {
-                        if msg.chat.id.to_string() != self.chat_id {
-                            continue;
-                        }
+                    if let Some(msg) = update.message {
+                        if let Some(text) = msg.text {
+                            if msg.chat.id.to_string() != self.chat_id {
+                                continue;
+                            }
 
-                        if let Err(e) = self.handle_message(&text).await {
-                            tracing::error!("[telegram-bot] handle_message error: {e}");
+                            if let Err(e) = self.handle_message(&text).await {
+                                tracing::error!("[telegram-bot] handle_message error: {e}");
+                            }
                         }
                     }
                 }
@@ -325,6 +370,90 @@ impl TelegramBot {
                     }
                 }
             }
+            "/decision" => {
+                let filtered_roles: Vec<RoleEntry> = if args.is_empty() {
+                    self.roles.clone()
+                } else {
+                    let names: Vec<&str> = args.split_whitespace().collect();
+                    let matched: Vec<RoleEntry> = self
+                        .roles
+                        .iter()
+                        .filter(|r| names.contains(&r.name.as_str()))
+                        .cloned()
+                        .collect();
+                    if matched.is_empty() {
+                        let available: Vec<String> =
+                            self.roles.iter().map(|r| r.name.clone()).collect();
+                        self.send_message(&format!(
+                            "❌ 未找到角色: {}\n可用角色: {}",
+                            args,
+                            available.join(", ")
+                        ))
+                        .await?;
+                        return Ok(());
+                    }
+                    matched
+                };
+
+                let role_names: Vec<&str> =
+                    filtered_roles.iter().map(|r| r.name.as_str()).collect();
+                let msg_id = self
+                    .send_message(&format!(
+                        "📋 正在执行决策: {}，请稍候...",
+                        role_names.join(", ")
+                    ))
+                    .await?;
+
+                struct DecisionNotifier {
+                    client: reqwest::Client,
+                    bot_token: String,
+                    chat_id: String,
+                }
+
+                #[async_trait::async_trait]
+                impl crate::social::NotificationSender for DecisionNotifier {
+                    async fn send_text(&self, text: &str) -> anyhow::Result<()> {
+                        let url =
+                            format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
+                        self.client
+                            .post(&url)
+                            .json(&serde_json::json!({
+                                "chat_id": self.chat_id,
+                                "text": text,
+                                "parse_mode": "Markdown",
+                            }))
+                            .send()
+                            .await?;
+                        Ok(())
+                    }
+                }
+
+                let notifier = DecisionNotifier {
+                    client: self.client.clone(),
+                    bot_token: self.bot_token.clone(),
+                    chat_id: self.chat_id.clone(),
+                };
+
+                match run_decision(
+                    &*self.memory,
+                    &*self.trade,
+                    &notifier,
+                    &self.llm,
+                    &self.api,
+                    &filtered_roles,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
+                            .await?;
+                    }
+                    Err(e) => {
+                        self.edit_message(msg_id, &format!("❌ 决策执行失败: {e}"))
+                            .await?;
+                    }
+                }
+            }
             "/start" | "/help" => {
                 let role_list: Vec<String> = self
                     .roles
@@ -335,7 +464,8 @@ impl TelegramBot {
                     "🤖 *OpenATrading Bot*\n\n\
                      *命令列表:*\n\
                      /ask role\\_name question — 向指定角色提问（开始新会话）\n\
-                     /new — 清空对话历史，开始新会话\n\n\
+                     /new — 清空对话历史，开始新会话\n\
+                     /decision — 手动触发每日决策（可选: /decision role\\_name ...）\n\n\
                      *多轮对话:*\n\
                      首次使用 /ask 指定角色后，直接发送消息即可继续对话\n\n\
                      *可用角色:*\n{}",
@@ -457,8 +587,8 @@ impl TelegramBot {
 
     async fn send_message(&self, text: &str) -> Result<i64> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
-        let client = reqwest::Client::new();
-        let resp = client
+        let resp = self
+            .client
             .post(&url)
             .json(&serde_json::json!({
                 "chat_id": self.chat_id,
@@ -482,8 +612,7 @@ impl TelegramBot {
             "https://api.telegram.org/bot{}/editMessageText",
             self.bot_token
         );
-        let client = reqwest::Client::new();
-        client
+        self.client
             .post(&url)
             .json(&serde_json::json!({
                 "chat_id": self.chat_id,
