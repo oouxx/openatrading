@@ -80,16 +80,6 @@
         </table>
       </motion.div>
 
-      <!-- 炸板记录 -->
-      <div v-if="bombRate > 0" class="bg-surface-dark rounded-card border border-hairline-dark p-card-inner mb-12">
-        <span class="text-caption text-ink-muted">
-          今日炸板率：<b :class="bombRate > 30 ? 'text-up' : bombRate > 20 ? 'text-ai' : 'text-down'">{{ bombRate.toFixed(1) }}%</b>
-          <span v-if="bombRate > 30">（偏高，注意风险）</span>
-          <span v-else-if="bombRate > 20">（正常偏高）</span>
-          <span v-else>（偏低，市场惜售）</span>
-        </span>
-      </div>
-
       <!-- Field Items Section -->
       <div>
         <div class="flex items-center gap-3 mb-6 flex-wrap">
