@@ -50,6 +50,8 @@ pub struct CronTomlConfig {
     pub collection_schedule: String,
     #[serde(default = "default_decision_schedule")]
     pub decision_schedule: String,
+    #[serde(default = "default_monitor_schedule")]
+    pub monitor_schedule: String,
 }
 
 fn default_true() -> bool {
@@ -87,6 +89,9 @@ fn default_collection_schedule() -> String {
 }
 fn default_decision_schedule() -> String {
     "0 0 * * 1-5".to_string()
+}
+fn default_monitor_schedule() -> String {
+    "0 */1 9-15 * * 1-5 *".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -179,6 +184,7 @@ db_path = "data.db"
 enabled = true
 collection_schedule = "0 */30 9-15 * * 1-5 *"
 decision_schedule = "0 0 0 * * 1-5 *"
+monitor_schedule = "0 */1 9-15 * * 1-5 *"
 
 # ── 社交平台 ─────────────────────────────────────────────
 [social]
