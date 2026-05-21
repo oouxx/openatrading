@@ -68,7 +68,7 @@ impl Gateway {
                 api: ApiClient::new(),
                 memory: self.memory.clone(),
                 trade: self.trade.clone(),
-                roles: roles.clone(),
+                roles: Arc::new(tokio::sync::RwLock::new(roles.clone())),
                 strategies_dir: config.strategies_dir,
             });
 
