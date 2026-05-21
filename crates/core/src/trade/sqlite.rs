@@ -53,6 +53,13 @@ impl SqliteTradeManager {
         )
         .ok();
 
+        // Migration: add symbol to trade_logs for closed-position traceability
+        conn.execute(
+            "ALTER TABLE trade_logs ADD COLUMN symbol TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .ok();
+
         Ok(SqliteTradeManager {
             conn: Mutex::new(conn),
         })
@@ -113,8 +120,8 @@ impl TradeManager for SqliteTradeManager {
         )?;
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name) VALUES (?1,'Open',?2,?3,?4,?5)",
-            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Open',?2,?3,?4,?5,?6)",
+            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol],
         )?;
         Ok(id)
     }
@@ -131,14 +138,13 @@ impl TradeManager for SqliteTradeManager {
 
     fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        // First get the role_name for this position
-        let role_name: String =
-            conn.query_row("SELECT role_name FROM positions WHERE id=?1", [id], |row| {
-                row.get(0)
+        let (role_name, symbol): (String, String) =
+            conn.query_row("SELECT role_name, symbol FROM positions WHERE id=?1", [id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
             })?;
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name) VALUES (?1,'Close',?2,0,?3,?4)",
-            rusqlite::params![id, price, reason, role_name],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Close',?2,0,?3,?4,?5)",
+            rusqlite::params![id, price, reason, role_name, symbol],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
         Ok(())
@@ -169,10 +175,11 @@ impl TradeManager for SqliteTradeManager {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
-             tl.reason, tl.created_at, p.symbol \
+             tl.reason, tl.created_at, \
+             CASE WHEN tl.symbol != '' THEN tl.symbol ELSE COALESCE(p.symbol, '') END as symbol \
              FROM trade_logs tl \
-             JOIN positions p ON tl.position_id = p.id \
-             WHERE p.role_name = ?1 \
+             LEFT JOIN positions p ON tl.position_id = p.id \
+             WHERE tl.role_name = ?1 \
              ORDER BY tl.created_at DESC \
              LIMIT ?2",
         )?;
@@ -240,7 +247,8 @@ impl TradeManager for SqliteTradeManager {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
-             tl.reason, tl.created_at, COALESCE(p.symbol, '') as symbol \
+             tl.reason, tl.created_at, \
+             CASE WHEN tl.symbol != '' THEN tl.symbol ELSE COALESCE(p.symbol, '') END as symbol \
              FROM trade_logs tl \
              LEFT JOIN positions p ON tl.position_id = p.id \
              WHERE tl.role_name = ?1 \

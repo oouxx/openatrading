@@ -37,8 +37,8 @@ pub struct AiRoleItem {
 pub async fn get_ai_roles(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let roles: Vec<AiRoleItem> = state
-        .roles
+    let roles_guard = state.roles.read().await;
+    let roles: Vec<AiRoleItem> = roles_guard
         .iter()
         .map(|r| AiRoleItem {
             name: r.name.clone(),
@@ -158,8 +158,8 @@ pub async fn ai_chat(
     let super_stocks = fetch_super_stock_json(&state.api).await;
 
     let role_name = req.role.as_deref().unwrap_or("zarili");
-    let strategy_text = state
-        .roles
+    let roles_guard = state.roles.read().await;
+    let strategy_text = roles_guard
         .iter()
         .find(|r| r.name == role_name)
         .map(|r| r.strategy.as_str())
