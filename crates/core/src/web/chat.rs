@@ -205,7 +205,8 @@ pub async fn ai_chat(
             match chunk {
                 Ok(text) => {
                     if !text.is_empty() {
-                        yield Ok(Event::default().data(text));
+                        let escaped = text.replace('\n', "\\n");
+                        yield Ok(Event::default().data(escaped));
                     }
                 }
                 Err(e) => {

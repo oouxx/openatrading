@@ -59,7 +59,16 @@
         :animate="{ opacity: 1, y: 0 }"
         :transition="{ duration: 0.2, delay: idx * 0.02 }"
       >
-        <div v-if="msg.role === 'ai'" class="md-body" v-html="msg.html"></div>
+        <div v-if="msg.role === 'ai'" class="ai-msg">
+          <MarkdownRender
+            :content="msg.text"
+            :is-dark="true"
+            :max-live-nodes="0"
+            :typewriter="false"
+            :fade="false"
+            :final="!streaming || idx !== messages.length - 1"
+          />
+        </div>
         <div v-else>{{ msg.text }}</div>
       </motion.div>
 
@@ -122,68 +131,10 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, computed } from 'vue'
-import { Marked } from 'marked'
-import hljs from 'highlight.js'
+import MarkdownRender from 'markstream-vue'
+import 'markstream-vue/index.css'
 import { motion } from 'motion-v'
 import { getApiBaseUrl } from '@/stores/data'
-
-const marked = new Marked({
-  breaks: true,
-  gfm: true,
-  renderer: {
-    heading({ tokens, depth }: { tokens: any[]; depth: number }) {
-      const text = this.parser.parseInline(tokens)
-      const cls = depth <= 1 ? 'md-h2' : depth === 2 ? 'md-h3' : 'md-h4'
-      return `<h${depth + 1} class="${cls}">${text}</h${depth + 1}>`
-    },
-    paragraph({ tokens }: { tokens: any[] }) {
-      return `<p class="md-p">${this.parser.parseInline(tokens)}</p>`
-    },
-    list({ items, ordered }: { items: any[]; ordered: boolean }) {
-      const body = items.map(item => this.listitem(item)).join('')
-      return ordered ? `<ol class="md-ol">${body}</ol>` : `<ul class="md-ul">${body}</ul>`
-    },
-    listitem(item: any) {
-      return `<li>${this.parser.parse(item.tokens)}</li>`
-    },
-    blockquote({ tokens }: { tokens: any[] }) {
-      return `<blockquote class="md-blockquote">${this.parser.parse(tokens)}</blockquote>`
-    },
-    code({ text, lang }: { text: string; lang?: string }) {
-      let highlighted: string
-      if (lang && hljs.getLanguage(lang)) {
-        highlighted = hljs.highlight(text, { language: lang }).value
-      } else {
-        highlighted = hljs.highlightAuto(text).value
-      }
-      return `<pre class="md-code-block"><code class="hljs">${highlighted}</code></pre>`
-    },
-    codespan({ text }: { text: string }) {
-      return `<code class="md-inline-code">${text}</code>`
-    },
-    hr() {
-      return '<hr class="md-hr">'
-    },
-    strong({ tokens }: { tokens: any[] }) {
-      return `<strong class="text-white">${this.parser.parseInline(tokens)}</strong>`
-    },
-    em({ tokens }: { tokens: any[] }) {
-      return `<em class="md-em">${this.parser.parseInline(tokens)}</em>`
-    },
-    del({ tokens }: { tokens: any[] }) {
-      return `<del class="md-del">${this.parser.parseInline(tokens)}</del>`
-    },
-    link({ href, tokens }: { href: string; tokens: any[] }) {
-      return `<a href="${href}" target="_blank" class="md-link">${this.parser.parseInline(tokens)}</a>`
-    },
-    image({ href, title, text }: { href: string; title: string | null; text: string }) {
-      return `<img src="${href}" alt="${text}"${title ? ` title="${title}"` : ''} class="md-image">`
-    },
-    checkbox({ checked }: { checked: boolean }) {
-      return `<input type="checkbox" ${checked ? 'checked' : ''} disabled class="md-checkbox">`
-    },
-  },
-})
 
 defineProps<{
   overview?: any
@@ -192,7 +143,6 @@ defineProps<{
 interface DisplayMessage {
   role: 'user' | 'ai'
   text: string
-  html: string
 }
 
 interface HistoryMessage {
@@ -259,8 +209,8 @@ async function send(question?: string) {
 
   input.value = ''
   const history = buildHistory()
-  messages.value.push({ role: 'user', text, html: '' })
-  messages.value.push({ role: 'ai', text: '', html: '' })
+  messages.value.push({ role: 'user', text })
+  messages.value.push({ role: 'ai', text: '' })
   streaming.value = true
   scrollDown()
 
@@ -302,7 +252,8 @@ async function send(question?: string) {
           if (data.startsWith('[ERROR]')) {
             updateLastMessage(data)
           } else {
-            appendToLastMessage(data)
+            const content = data.replace(/\\n/g, '\n')  // 加这一行
+            appendToLastMessage(content)
           }
         }
       }
@@ -318,7 +269,6 @@ function appendToLastMessage(text: string) {
   const last = messages.value[messages.value.length - 1]
   if (last && last.role === 'ai') {
     last.text += text
-    last.html = renderMarkdown(last.text)
     scrollDown()
   }
 }
@@ -327,7 +277,6 @@ function updateLastMessage(text: string) {
   const last = messages.value[messages.value.length - 1]
   if (last && last.role === 'ai') {
     last.text = text
-    last.html = text.startsWith('[') ? text : renderMarkdown(text)
   }
 }
 
@@ -345,94 +294,96 @@ function onKeydown(e: KeyboardEvent) {
     send()
   }
 }
-
-function renderMarkdown(text: string): string {
-  return marked.parse(text) as string
-}
 </script>
 
 <style scoped>
-.md-body :deep(.md-h2) {
+.ai-msg {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ai-msg :deep(.markstream-vue) {
+  font-size: inherit;
+  line-height: inherit;
+}
+.ai-msg :deep(.markstream-vue h1),
+.ai-msg :deep(.markstream-vue h2) {
   font-size: 15px;
   font-weight: 700;
   color: #e8e8ed;
   margin: 10px 0 4px;
+  border: none;
+  padding: 0;
 }
-.md-body :deep(.md-h3) {
+.ai-msg :deep(.markstream-vue h3) {
   font-size: 13px;
   font-weight: 700;
   color: #e8e8ed;
   margin: 8px 0 3px;
+  border: none;
+  padding: 0;
 }
-.md-body :deep(.md-h4) {
+.ai-msg :deep(.markstream-vue h4) {
   font-size: 12px;
   font-weight: 600;
   color: #ccc;
   margin: 6px 0 2px;
 }
-.md-body :deep(.md-p) {
+.ai-msg :deep(.markstream-vue p) {
   margin: 2px 0;
-  line-height: 1.6;
 }
-.md-body :deep(.md-ul) {
+.ai-msg :deep(.markstream-vue ul) {
   list-style: none;
   padding-left: 0;
   margin: 4px 0;
 }
-.md-body :deep(.md-ul li)::before {
+.ai-msg :deep(.markstream-vue ul li)::before {
   content: '•';
   color: #7F77DD;
   margin-right: 6px;
 }
-.md-body :deep(.md-ol) {
+.ai-msg :deep(.markstream-vue ol) {
   padding-left: 18px;
   margin: 4px 0;
 }
-.md-body :deep(.md-ol li) {
+.ai-msg :deep(.markstream-vue ol li) {
   margin: 1px 0;
 }
-.md-body :deep(.md-blockquote) {
+.ai-msg :deep(.markstream-vue blockquote) {
   border-left: 2px solid #7F77DD;
   padding-left: 10px;
   margin: 6px 0;
   color: #aaa;
 }
-.md-body :deep(.md-code-block) {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin: 6px 0;
-  overflow-x: auto;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.md-body :deep(.md-code-block code) {
-  font-family: 'JetBrains Mono', monospace;
-}
-.md-body :deep(.md-inline-code) {
-  background: rgba(127, 119, 221, 0.15);
-  color: #b0a8e8;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-}
-.md-body :deep(.md-hr) {
+.ai-msg :deep(.markstream-vue hr) {
   border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin: 8px 0;
 }
-.md-body :deep(.md-em) {
-  color: #bbb;
-}
-.md-body :deep(.md-del) {
-  color: #888780;
-}
-.md-body :deep(.md-link) {
+.ai-msg :deep(.markstream-vue a) {
   color: #7F77DD;
 }
-.md-body :deep(.md-link:hover) {
+.ai-msg :deep(.markstream-vue a:hover) {
   text-decoration: underline;
+}
+.ai-msg :deep(.markstream-vue table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.ai-msg :deep(.markstream-vue th) {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e8e8ed;
+  font-weight: 600;
+}
+.ai-msg :deep(.markstream-vue td) {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #ccc;
+}
+.ai-msg :deep(.markstream-vue tbody tr:hover) {
+  background: rgba(127, 119, 221, 0.06);
 }
 </style>
