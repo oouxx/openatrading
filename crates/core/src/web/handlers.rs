@@ -12,7 +12,7 @@ use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::api::Client as ApiClient;
 use crate::trade::TradeManager;
 
-use super::AppState;
+use super::{AppState, RoleEntry};
 use crate::roles::pnl::compute_pnl_history;
 
 // ── Response types ────────────────────────────────────
@@ -373,7 +373,8 @@ pub async fn get_plates_by_any_stock(
 pub async fn get_roles(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    Ok(Json(state.roles.clone()))
+    let roles = state.roles.read().await;
+    Ok(Json(roles.clone()))
 }
 
 /// GET /api/roles/:name/positions
@@ -393,7 +394,7 @@ pub async fn get_role_positions(
                 "symbol": p.symbol,
                 "stock_name": p.stock_name,
                 "cost_price": p.cost_price,
-                "current_price": p.current_price,
+                "current_price": p.current_price.unwrap_or(0.0),
                 "shares": p.shares,
                 "entry_reason": p.entry_reason,
                 "entry_date": p.entry_date,
@@ -415,8 +416,9 @@ pub async fn get_role_logs(
     let result: Vec<serde_json::Value> = logs
         .iter()
         .map(|l| {
+            let date: String = l.created_at.chars().take(10).collect();
             serde_json::json!({
-                "date": &l.created_at[..10],
+                "date": date,
                 "action": l.action,
                 "symbol": l.symbol,
                 "price": l.price,
@@ -441,6 +443,19 @@ pub async fn create_role(
             StatusCode::INTERNAL_SERVER_ERROR
         },
     )?;
+    {
+        let mut roles = state.roles.write().await;
+        if let Some(existing) = roles.iter_mut().find(|r| r.name == body.name) {
+            existing.display_name = body.display_name.clone();
+            existing.strategy = body.strategy.clone();
+        } else {
+            roles.push(RoleEntry {
+                name: body.name.clone(),
+                display_name: body.display_name.clone(),
+                strategy: body.strategy.clone(),
+            });
+        }
+    }
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -456,6 +471,12 @@ pub async fn update_role_strategy(
             StatusCode::INTERNAL_SERVER_ERROR
         },
     )?;
+    {
+        let mut roles = state.roles.write().await;
+        if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
+            entry.strategy = body.strategy.clone();
+        }
+    }
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -467,6 +488,10 @@ pub async fn delete_role(
     state.trade.delete_trade_logs_by_role(&name).ok();
     state.trade.delete_positions_by_role(&name).ok();
     crate::roles::delete_role_dir(&state.strategies_dir, &name).ok();
+    {
+        let mut roles = state.roles.write().await;
+        roles.retain(|r| r.name != name);
+    }
     Ok(Json(serde_json::json!({"ok": true})))
 }
 

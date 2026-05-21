@@ -5,6 +5,7 @@ pub mod handlers;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use axum::{
     routing::{delete, get, post, put},
@@ -32,7 +33,7 @@ pub struct AppState {
     pub api: ApiClient,
     pub memory: Arc<SqliteMemoryStore>,
     pub trade: Arc<SqliteTradeManager>,
-    pub roles: Vec<RoleEntry>,
+    pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub strategies_dir: PathBuf,
 }
 
