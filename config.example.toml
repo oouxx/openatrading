@@ -55,6 +55,8 @@ enabled = true
 collection_schedule = "0 */30 9-15 * * 1-5 *"
 # 决策：每天 00:00
 decision_schedule = "0 0 0 * * 1-5 *"
+# 条件单监控：交易时间每 1 分钟检查止损/止盈条件单
+monitor_schedule = "0 */1 9-15 * * 1-5 *"
 
 # ── 社交平台通知 ──────────────────────────────────────────
 # notify_channel: cron 通知发送到哪个渠道 (telegram / discord / slack / lark)
