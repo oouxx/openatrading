@@ -314,10 +314,8 @@ async function selectRole(name: string) {
 
 async function refreshRole(name: string) {
   await fetchRolePnlHistory(name, pnlDays.value === 0 ? 365 : pnlDays.value)
-  if (!rolePositions[name]?.data?.length) {
-    fetchRolePositions(name)
-    fetchRoleLogs(name)
-  }
+  await fetchRolePositions(name)
+  fetchRoleLogs(name)
 }
 
 // ── CRUD ────────────────────────────────────────────────
@@ -325,10 +323,12 @@ async function refreshRole(name: string) {
 async function doCreateRole() {
   if (!createForm.value.name.trim()) return
   try {
-    await createRole(createForm.value.name.trim(), createForm.value.displayName.trim() || createForm.value.name.trim(), createForm.value.strategy)
+    const name = createForm.value.name.trim()
+    await createRole(name, createForm.value.displayName.trim() || createForm.value.name.trim(), createForm.value.strategy)
     showCreateForm.value = false
     createForm.value = { name: '', displayName: '', strategy: '# 新角色\n\n## 策略\n\n' }
     await fetchRoles()
+    await selectRole(name)
   } catch (e: any) {
     alert('创建失败: ' + (e.message || e))
   }
@@ -358,10 +358,16 @@ async function executeConfirm() {
   try {
     if (confirmAction.value === 'reset') {
       await resetRole(selectedRole.value)
+      delete rolePositions[selectedRole.value]
+      delete rolePnlHistory[selectedRole.value]
       await refreshRole(selectedRole.value)
-      await renderChart()
+      await nextTick()
+      renderChart()
     } else if (confirmAction.value === 'delete') {
-      await deleteRole(selectedRole.value)
+      const name = selectedRole.value
+      await deleteRole(name)
+      delete rolePositions[name]
+      delete rolePnlHistory[name]
       selectedRole.value = null
       await fetchRoles()
     }
