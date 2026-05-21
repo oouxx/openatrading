@@ -458,11 +458,13 @@ function initIntradayChart() {
     rightPriceScale: {
       borderVisible: false,
       autoScale: false,
+      scaleMargins: { top: 0, bottom: 0 },
     },
     leftPriceScale: {
       visible: true,
       borderVisible: false,
       autoScale: false,
+      scaleMargins: { top: 0, bottom: 0 },
     },
   })
 
@@ -616,6 +618,18 @@ function renderIntradayChart() {
 
   const preclose = quote.value?.preclose_px
 
+  // Lock price scale range BEFORE setting data to prevent auto-fitting beyond limits
+  if (chart && preclose && preclose > 0) {
+    const limitPct = getLimitPct(props.symbol)
+    const priceRange = preclose * limitPct / 100
+
+    chart.priceScale('left', 0).setAutoScale(false)
+    chart.priceScale('left', 0).setVisibleRange({ from: preclose - priceRange, to: preclose + priceRange })
+
+    chart.priceScale('right', 0).setAutoScale(false)
+    chart.priceScale('right', 0).setVisibleRange({ from: -limitPct, to: limitPct })
+  }
+
   priceSeries.setData(buildPriceData())
   avgPriceSeries.setData(buildVwapData())
   volumeSeries.setData(buildIntradayVolumeData())
@@ -657,14 +671,12 @@ function renderIntradayChart() {
 
   chart!.timeScale().fitContent()
 
+  // Re-affirm visible range after fitContent
   if (chart && preclose && preclose > 0) {
     const limitPct = getLimitPct(props.symbol)
     const priceRange = preclose * limitPct / 100
 
-    chart.priceScale('left', 0).setAutoScale(false)
     chart.priceScale('left', 0).setVisibleRange({ from: preclose - priceRange, to: preclose + priceRange })
-
-    chart.priceScale('right', 0).setAutoScale(false)
     chart.priceScale('right', 0).setVisibleRange({ from: -limitPct, to: limitPct })
   }
 }
