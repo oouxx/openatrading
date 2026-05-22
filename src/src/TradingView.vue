@@ -116,7 +116,7 @@
             :transition="{ type: 'spring', stiffness: 400, damping: 17 }"
             title="AI 交易副驾驶"
         >
-            🤖
+            <img :src="appIcon" alt="AI" class="w-8 h-8" />
         </motion.button>
 
         <!-- AI Chat Dialog -->
@@ -145,7 +145,7 @@
                             class="flex items-center justify-between px-4 py-3 border-b border-hairline flex-shrink-0"
                         >
                             <div class="flex items-center gap-2">
-                                <span class="text-xl">🤖</span>
+                                <img :src="appIcon" alt="AI" class="w-6 h-6" />
                                 <span
                                     class="text-caption-strong text-white font-mono"
                                     >AI 交易副驾驶</span
@@ -267,6 +267,7 @@
 <script setup lang="ts">
 import { ref, computed, provide } from "vue";
 import { motion, AnimatePresence } from "motion-v";
+import appIcon from "@/assets/app-icon.png";
 import {
     overview,
     fetchOverview,
