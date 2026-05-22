@@ -14,7 +14,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
           </router-link>
           <div class="header-title-group">
-            <h1 class="header-title">Neural<span class="text-ai">Command</span></h1>
+            <h1 class="header-title"><img :src="appIcon" alt="" class="w-5 h-5 inline-block align-middle mr-1" /><span class="align-middle">Neural</span><span class="text-ai align-middle">Command</span></h1>
             <div class="ai-status">
               <span class="status-dot" />
               <span class="status-text">AI Online</span>
@@ -144,7 +144,7 @@
                 <div class="greeting-ring">
                   <div class="ring-outer" />
                   <div class="ring-inner" />
-                  <span class="greeting-emoji">◆</span>
+                  <img :src="appIcon" alt="" class="greeting-emoji w-8 h-8" />
                 </div>
                 <h2 class="greeting-title">有什么可以帮你的？</h2>
                 <p class="greeting-sub">AI 交易副驾驶已接入实时行情数据，随时回答短线市场问题</p>
@@ -255,6 +255,7 @@ import MarkdownRender from 'markstream-vue'
 import 'markstream-vue/index.css'
 import { motion } from 'motion-v'
 import { getApiBaseUrl, overview, fetchOverview, indexQuotes, fetchIndexQuotes } from '@/stores/data'
+import appIcon from '@/assets/app-icon.png'
 
 interface DisplayMessage {
   role: 'user' | 'ai'
