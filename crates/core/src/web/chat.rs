@@ -48,11 +48,11 @@ pub async fn get_ai_roles(
     Ok(Json(roles))
 }
 
-fn build_system_prompt(strategy_text: &str) -> String {
+pub fn build_system_prompt(strategy_text: &str) -> String {
     strategy_text.to_string()
 }
 
-fn build_user_message(
+pub fn build_user_message(
     overview: &OverviewResponse,
     field_items: Option<&str>,
     super_stocks: Option<&str>,
@@ -95,7 +95,7 @@ fn build_user_message(
     )
 }
 
-async fn fetch_field_json(api: &ApiClient) -> Option<String> {
+pub async fn fetch_field_json(api: &ApiClient) -> Option<String> {
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     match api.jiuyan.fetch_field(&date, 1).await {
         Ok(plates) if !plates.is_empty() => serde_json::to_string(&plates).ok(),
@@ -103,14 +103,14 @@ async fn fetch_field_json(api: &ApiClient) -> Option<String> {
     }
 }
 
-async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
+pub async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
     match api.xuangubao.fetch_super_stock().await {
         Ok(stocks) if !stocks.is_empty() => serde_json::to_string(&stocks).ok(),
         _ => None,
     }
 }
 
-async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
+pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
     let overview = api.xuangubao.fetch_market_overview().await?;
 
     let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;

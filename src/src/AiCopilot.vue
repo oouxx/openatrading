@@ -14,7 +14,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
           </router-link>
           <div class="header-title-group">
-            <h1 class="header-title"><img :src="appIcon" alt="" class="w-5 h-5 inline-block align-middle mr-1" /><span class="align-middle">Neural</span><span class="text-ai align-middle">Command</span></h1>
+            <h1 class="header-title"><img :src="appIcon" alt="" class="w-5 h-5 inline-block align-middle mr-1" /><span class="align-middle">Open</span><span class="text-ai align-middle">ATrading</span></h1>
             <div class="ai-status">
               <span class="status-dot" />
               <span class="status-text">AI Online</span>

@@ -50,36 +50,16 @@ export async function apiChatStream(
   callbacks: ChatStreamCallbacks,
 ): Promise<void> {
   if (isTauri) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const { listen } = await import("@tauri-apps/api/event");
-    const eventName = `chat-stream-${body.role}`;
-    let buffer = "";
-    const unlisten = await listen<string>(eventName, (event) => {
-      if (event.payload === "[DONE]") {
-        callbacks.onDone();
-        return;
-      }
-      buffer += event.payload;
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-          if (data.startsWith("[ERROR]")) {
-            callbacks.onError(data);
-          } else {
-            callbacks.onData(data.replace(/\\n/g, "\n"));
-          }
-        }
-      }
-    });
+    const { invoke, Channel } = await import("@tauri-apps/api/core");
+    const channel = new Channel<string>();
+    channel.onmessage = (text) => {
+      callbacks.onData(text.replace(/\\n/g, "\n"));
+    };
     try {
-      await invoke("api_chat_stream", { body });
+      await invoke("api_chat_stream", { body, channel });
+      callbacks.onDone();
     } catch (e: any) {
       callbacks.onError(String(e));
-    } finally {
-      unlisten();
     }
     return;
   }
