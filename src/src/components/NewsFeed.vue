@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getApiBaseUrl } from '@/stores/data'
+import { apiFetch } from '@/stores/data'
 
 const source = ref('all')
 const loading = ref(false)
@@ -60,8 +60,7 @@ const newsItems = ref<NewsItem[]>([])
 async function fetchNews() {
   loading.value = true
   try {
-    const base = getApiBaseUrl()
-    const resp = await fetch(`${base}/api/telegraph`)
+    const resp = await apiFetch('/api/telegraph')
     if (resp.ok) {
       const data: any[] = await resp.json()
       newsItems.value = data.map((item: any, idx: number) => ({

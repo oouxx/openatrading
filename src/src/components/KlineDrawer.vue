@@ -106,7 +106,7 @@
 
 <script setup lang="ts">
 import { motion } from 'motion-v'
-import { getApiBaseUrl } from '@/stores/data'
+import { apiFetch } from '@/stores/data'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import {
   createChart,
@@ -217,14 +217,14 @@ function formatTime(ts: number, p: string): string {
 
 async function fetchRealtime() {
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/realtime/${props.symbol}`)
+    const resp = await apiFetch(`/api/realtime/${props.symbol}`)
     if (resp.ok) quote.value = await resp.json()
   } catch (e) { console.error('[KlineDrawer] fetchRealtime error:', e) }
 }
 
 async function fetchPlates() {
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/plates-by-any-stock/${props.symbol}`)
+    const resp = await apiFetch(`/api/plates-by-any-stock/${props.symbol}`)
     if (resp.ok) plates.value = await resp.json()
   } catch (e) { console.error('[KlineDrawer] fetchPlates error:', e) }
 }
@@ -232,7 +232,7 @@ async function fetchPlates() {
 async function fetchKline() {
   const id = ++fetchId
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/kline/${props.symbol}?period=${period.value}&count=256`)
+    const resp = await apiFetch(`/api/kline/${props.symbol}?period=${period.value}&count=256`)
     if (!resp.ok) return
     const data = await resp.json()
     if (id !== fetchId) return

@@ -8,9 +8,11 @@
     "build": "vue-tsc -b && vite build",
     "build:vercel": "vite build",
     "build:cloudflare": "vite build",
+    "build:tauri": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
     "highlight.js": "^11.11.1",
     "lightweight-charts": "^5.2.0",
     "marked": "^18.0.3",

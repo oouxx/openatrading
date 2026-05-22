@@ -143,7 +143,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, inject } from 'vue'
-import { limitUp, fetchLimitUp, getApiBaseUrl } from '@/stores/data'
+import { limitUp, fetchLimitUp, apiFetch } from '@/stores/data'
 import MiniChartPreview from '@/components/MiniChartPreview.vue'
 const openKline = inject<(symbol: string, name: string) => void>('openKline', () => {})
 
@@ -167,7 +167,7 @@ interface PromotionItem {
 
 async function fetchYesterdayLimitUp(): Promise<any[] | null> {
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/yesterday-limit-up`)
+    const resp = await apiFetch('/api/yesterday-limit-up')
     if (resp.ok) return await resp.json()
   } catch { /* ignore */ }
   return null
