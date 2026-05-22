@@ -28,6 +28,8 @@ pub struct CronConfig {
     pub decision_schedule: String,
     #[serde(default = "default_monitor_schedule")]
     pub monitor_schedule: String,
+    #[serde(default = "default_news_schedule")]
+    pub news_schedule: String,
 }
 
 fn default_true() -> bool {
@@ -41,6 +43,9 @@ fn default_decision_schedule() -> String {
 }
 fn default_monitor_schedule() -> String {
     "0 */1 9-15 * * 1-5 *".to_string()
+}
+fn default_news_schedule() -> String {
+    "0 */5 9-15 * * 1-5 *".to_string()
 }
 
 #[derive(Debug, Clone)]
@@ -119,15 +124,31 @@ pub async fn start_scheduler(
 
     let trd_m = trade.clone();
     let soc_m = social.clone();
+    let api_m = api.clone();
     let schedule_m = config.monitor_schedule.clone();
     scheduler
         .add(Job::new_async(schedule_m.as_str(), move |_uuid, _lock| {
             let trd = trd_m.clone();
             let soc = soc_m.clone();
-            let api = api.clone();
+            let api = api_m.clone();
             Box::pin(async move {
                 if let Err(e) = run_monitor(&*trd, &api, &*soc).await {
                     eprintln!("[cron] monitor error: {e}");
+                }
+            })
+        })?)
+        .await?;
+
+    let soc_n = social.clone();
+    let api_n = api.clone();
+    let schedule_n = config.news_schedule.clone();
+    scheduler
+        .add(Job::new_async(schedule_n.as_str(), move |_uuid, _lock| {
+            let soc = soc_n.clone();
+            let api = api_n.clone();
+            Box::pin(async move {
+                if let Err(e) = run_news_push(&api, &*soc).await {
+                    eprintln!("[cron] news_push error: {e}");
                 }
             })
         })?)
@@ -771,5 +792,86 @@ pub async fn run_monitor(
         tracing::info!("[cron] monitor: {} orders triggered", triggered_ids.len());
     }
 
+    Ok(())
+}
+
+static LAST_PUSHED_NEWS_ID: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> Result<()> {
+    let items = api.cls.fetch_telegraph("").await?;
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let last_id = LAST_PUSHED_NEWS_ID.load(std::sync::atomic::Ordering::Relaxed);
+
+    let mut new_items: Vec<&crate::api::cls::TelegramInfo> = items
+        .iter()
+        .filter(|item| {
+            let id = item.id.unwrap_or(0);
+            id > last_id
+        })
+        .collect();
+
+    if new_items.is_empty() {
+        return Ok(());
+    }
+
+    new_items.sort_by_key(|item| item.id.unwrap_or(0));
+
+    let max_id = new_items
+        .iter()
+        .map(|item| item.id.unwrap_or(0))
+        .max()
+        .unwrap_or(last_id);
+    LAST_PUSHED_NEWS_ID.store(max_id, std::sync::atomic::Ordering::Relaxed);
+
+    let important: Vec<&crate::api::cls::TelegramInfo> = new_items
+        .iter()
+        .filter(|item| {
+            let level = item.level.as_deref().unwrap_or("");
+            level == "red" || level == "important"
+        })
+        .copied()
+        .collect();
+
+    if important.is_empty() {
+        return Ok(());
+    }
+
+    for item in &important {
+        let title = item.title.as_deref().unwrap_or("");
+        let brief = item.brief.as_deref().unwrap_or("");
+        let content = item.content.as_deref().unwrap_or("");
+        let text = if !content.is_empty() {
+            content
+        } else if !brief.is_empty() {
+            brief
+        } else {
+            title
+        };
+        let level_tag = match item.level.as_deref().unwrap_or("") {
+            "red" => "🔴",
+            "important" => "⚡",
+            _ => "📰",
+        };
+        let time_str = item
+            .ctime
+            .map(|t| {
+                chrono::DateTime::from_timestamp(t, 0)
+                    .map(|dt| dt.format("%H:%M").to_string())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        let msg = format!("{} {} {}", level_tag, time_str, text);
+        if let Err(e) = social.notify_news(&msg).await {
+            tracing::warn!("[cron] news_push: send failed: {e}");
+        }
+    }
+
+    tracing::info!(
+        "[cron] news_push: pushed {} important items",
+        important.len()
+    );
     Ok(())
 }

@@ -52,6 +52,8 @@ pub struct CronTomlConfig {
     pub decision_schedule: String,
     #[serde(default = "default_monitor_schedule")]
     pub monitor_schedule: String,
+    #[serde(default = "default_news_schedule")]
+    pub news_schedule: String,
 }
 
 fn default_true() -> bool {
@@ -93,6 +95,9 @@ fn default_decision_schedule() -> String {
 fn default_monitor_schedule() -> String {
     "0 */1 9-15 * * 1-5 *".to_string()
 }
+fn default_news_schedule() -> String {
+    "0 */5 9-15 * * 1-5 *".to_string()
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SocialConfig {
@@ -112,6 +117,8 @@ pub struct SocialConfig {
     pub notify_on_decision: bool,
     #[serde(default = "default_true")]
     pub notify_on_trade: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_news: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -192,6 +199,7 @@ notify_channel = "telegram"
 notify_on_collect = true
 notify_on_decision = true
 notify_on_trade = true
+notify_on_news = true
 
 [social.telegram]
 enabled = true

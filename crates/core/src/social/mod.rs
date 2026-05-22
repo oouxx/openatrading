@@ -29,6 +29,10 @@ pub trait NotificationSender: Send + Sync {
         );
         self.send_text(&text).await
     }
+
+    async fn notify_news(&self, text: &str) -> Result<()> {
+        self.send_text(text).await
+    }
 }
 
 pub struct NoopSender;
@@ -56,6 +60,7 @@ pub struct FilteredSender {
     pub notify_on_collect: bool,
     pub notify_on_decision: bool,
     pub notify_on_trade: bool,
+    pub notify_on_news: bool,
 }
 
 #[async_trait]
@@ -83,6 +88,14 @@ impl NotificationSender for FilteredSender {
     async fn notify_trade(&self, log: &TradeLog) -> Result<()> {
         if self.notify_on_trade {
             self.inner.notify_trade(log).await
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn notify_news(&self, text: &str) -> Result<()> {
+        if self.notify_on_news {
+            self.inner.notify_news(text).await
         } else {
             Ok(())
         }
