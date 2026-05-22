@@ -25,7 +25,6 @@ pub async fn run_main_agent(role: Role, client: &Client, api_key: &str) -> Resul
     println!("✅ 技术分析完成: {}", technical.summary);
 
     let overview = client.xuangubao.fetch_market_overview().await?;
-    let _limit_up = client.xuangubao.fetch_limit_up().await?;
 
     let sentiment_prompt = sentiment_prompt(&sentiment);
     let technical_prompt = technical_prompt(&technical);

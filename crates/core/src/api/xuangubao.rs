@@ -359,7 +359,7 @@ impl XuanguBaoClient {
             fall_count: last["fall_count"].as_u64().unwrap_or(0) as u32,
             limit_up_count: last["limit_up_count"].as_u64().unwrap_or(0) as u32,
             limit_down_count: last["limit_down_count"].as_u64().unwrap_or(0) as u32,
-            bomb_rate: last["limit_up_broken_ratio"].as_f64().unwrap_or(0.0) * 100.0,
+            bomb_rate: last["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
             market_temperature: last["market_temperature"].as_f64().unwrap_or(50.0),
         }))
     }

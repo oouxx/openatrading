@@ -71,9 +71,9 @@ pub async fn get_overview() -> Result<impl IntoResponse, StatusCode> {
     })?;
 
     let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-    let risk_level = if ratio < 0.8 && overview.bomb_rate > 30.0 {
+    let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
         "高"
-    } else if ratio < 1.2 || overview.bomb_rate > 20.0 {
+    } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
         "中"
     } else {
         "低"
@@ -114,7 +114,7 @@ pub async fn get_sentiment_history() -> Result<impl IntoResponse, StatusCode> {
             Ok(Some(d)) => {
                 let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
                 let sentiment = d.market_temperature * 0.5
-                    + (1.0 - d.bomb_rate / 100.0) * 25.0
+                    + (1.0 - d.bomb_rate) * 25.0
                     + (rise_ratio / 3.0).min(1.0) * 25.0;
                 days.push(SentimentHistoryDay {
                     date: d.date,
@@ -485,8 +485,8 @@ pub async fn delete_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    state.trade.delete_trade_logs_by_role(&name).ok();
     state.trade.delete_positions_by_role(&name).ok();
+    state.trade.delete_trade_logs_by_role(&name).ok();
     crate::roles::delete_role_dir(&state.strategies_dir, &name).ok();
     {
         let mut roles = state.roles.write().await;

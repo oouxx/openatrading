@@ -155,14 +155,14 @@ impl TradeManager for SqliteTradeManager {
 
     fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let (role_name, symbol): (String, String) = conn.query_row(
-            "SELECT role_name, symbol FROM positions WHERE id=?1",
+        let (role_name, symbol, shares): (String, String, i64) = conn.query_row(
+            "SELECT role_name, symbol, shares FROM positions WHERE id=?1",
             [id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Close',?2,0,?3,?4,?5)",
-            rusqlite::params![id, price, reason, role_name, symbol],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Close',?2,?3,?4,?5,?6)",
+            rusqlite::params![id, price, shares, reason, role_name, symbol],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
         conn.execute(

@@ -42,12 +42,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
-    tracing_subscriber::registry()
+
+    let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 
     Router::new()
         .route("/api/overview", get(handlers::get_overview))

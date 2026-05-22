@@ -28,12 +28,37 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
             "Open" => {
                 let cost = log.price * log.shares as f64;
                 cash -= cost;
-                holdings.insert(log.symbol.clone(), (log.shares, log.price));
+                holdings
+                    .entry(log.symbol.clone())
+                    .and_modify(|(existing_shares, existing_avg)| {
+                        let total_shares = *existing_shares + log.shares;
+                        let total_cost =
+                            *existing_avg * *existing_shares as f64 + log.price * log.shares as f64;
+                        *existing_shares = total_shares;
+                        *existing_avg = total_cost / total_shares as f64;
+                    })
+                    .or_insert((log.shares, log.price));
             }
             "Close" => {
                 let proceeds = log.price * log.shares as f64;
                 cash += proceeds;
-                holdings.remove(&log.symbol);
+                if log.shares == 0 {
+                    holdings.remove(&log.symbol);
+                } else {
+                    holdings
+                        .entry(log.symbol.clone())
+                        .and_modify(|(existing_shares, _)| {
+                            *existing_shares -= log.shares;
+                            if *existing_shares <= 0 {
+                                *existing_shares = 0;
+                            }
+                        });
+                    if let Some((s, _)) = holdings.get(&log.symbol) {
+                        if *s == 0 {
+                            holdings.remove(&log.symbol);
+                        }
+                    }
+                }
             }
             _ => {}
         }
