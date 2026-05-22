@@ -185,6 +185,7 @@ pub fn create_notification_sender(
             notify_on_collect: sc.notify_on_collect,
             notify_on_decision: sc.notify_on_decision,
             notify_on_trade: sc.notify_on_trade,
+            notify_on_news: sc.notify_on_news,
         }),
         None => Box::new(NoopSender),
     }
@@ -287,12 +288,14 @@ pub async fn cmd_gateway_run(
                 collection_schedule: c.collection_schedule.clone(),
                 decision_schedule: c.decision_schedule.clone(),
                 monitor_schedule: c.monitor_schedule.clone(),
+                news_schedule: c.news_schedule.clone(),
             },
             None => CronConfig {
                 enabled: true,
                 collection_schedule: "0 */30 9-15 * * 1-5 *".to_string(),
                 decision_schedule: "0 0 0 * * 1-5 *".to_string(),
                 monitor_schedule: "0 */1 9-15 * * 1-5 *".to_string(),
+                news_schedule: "0 */5 9-15 * * 1-5 *".to_string(),
             },
         };
 
