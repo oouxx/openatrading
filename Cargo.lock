@@ -4994,10 +4994,14 @@ dependencies = [
 name = "trending-agent-tauri"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "futures-util",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
  "trending-agent-core",
 ]
 

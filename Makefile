@@ -1,4 +1,4 @@
-.PHONY: build run run-web test fmt lint check dev-frontend build-downloads deploy deploy-gateway deploy-web clean help
+.PHONY: build run run-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -14,6 +14,12 @@ run-web:
 
 run-frontend:
 	cd src && bun run dev
+
+dev-tauri:
+	cd src-tauri && cargo tauri dev
+
+build-tauri:
+	cd src-tauri && cargo tauri build
 
 # ─── Quality ──────────────────────────────────────────
 
@@ -108,10 +114,9 @@ help:
 	@echo "  build          dev build"
 	@echo "  run            CLI test run"
 	@echo "  run-web        Web server"
-	@echo "  dev-frontend   Vue dev server"
-	@echo ""
-	@echo "Run:"
 	@echo "  run-frontend   Vue dev server"
+	@echo "  dev-tauri      Tauri desktop dev"
+	@echo "  build-tauri    Tauri desktop build"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test"

@@ -2,15 +2,123 @@ import { reactive } from "vue";
 
 // ── Helpers ────────────────────────────────────────────
 
+const isTauri = "__TAURI_INTERNALS__" in window;
+
 export function getApiBaseUrl(): string {
+  if (isTauri) return "";
   return localStorage.getItem("trading-agent-api-url") || __API_BASE_URL__;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      return invoke("api_post", { path, body }) as Promise<T>;
+    }
+    return invoke("api_fetch", { path }) as Promise<T>;
+  }
   const base = getApiBaseUrl();
   const resp = await fetch(`${base}${path}`, init);
   if (!resp.ok) throw new Error(`${resp.status}`);
   return resp.json();
+}
+
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      const data = await invoke("api_post", { path, body });
+      return new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+    }
+    const data = await invoke("api_fetch", { path });
+    return new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+  }
+  const base = getApiBaseUrl();
+  return fetch(`${base}${path}`, init);
+}
+
+export interface ChatStreamCallbacks {
+  onData: (text: string) => void;
+  onDone: () => void;
+  onError: (err: string) => void;
+}
+
+export async function apiChatStream(
+  body: { message: string; role: string; history: Array<{ role: string; content: string }> },
+  callbacks: ChatStreamCallbacks,
+): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { listen } = await import("@tauri-apps/api/event");
+    const eventName = `chat-stream-${body.role}`;
+    let buffer = "";
+    const unlisten = await listen<string>(eventName, (event) => {
+      if (event.payload === "[DONE]") {
+        callbacks.onDone();
+        return;
+      }
+      buffer += event.payload;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
+          if (data.startsWith("[ERROR]")) {
+            callbacks.onError(data);
+          } else {
+            callbacks.onData(data.replace(/\\n/g, "\n"));
+          }
+        }
+      }
+    });
+    try {
+      await invoke("api_chat_stream", { body });
+    } catch (e: any) {
+      callbacks.onError(String(e));
+    } finally {
+      unlisten();
+    }
+    return;
+  }
+  const base = getApiBaseUrl();
+  const resp = await fetch(`${base}/api/ai/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    callbacks.onError(`HTTP ${resp.status}`);
+    return;
+  }
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    callbacks.onError("无法读取响应流");
+    return;
+  }
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const data = line.slice(6);
+        if (data === "[DONE]") continue;
+        if (data.startsWith("[ERROR]")) {
+          callbacks.onError(data);
+        } else {
+          callbacks.onData(data.replace(/\\n/g, "\n"));
+        }
+      }
+    }
+  }
+  callbacks.onDone();
 }
 
 function todayStr(): string {

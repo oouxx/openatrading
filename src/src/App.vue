@@ -9,13 +9,13 @@
           <span v-else class="text-nav-link font-semibold text-white tracking-tight">
             OpenATrading
           </span>
-          <router-link to="/trading" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
+          <router-link to="/trading" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors" exact-active-class="!text-white">
             交易终端
           </router-link>
-          <router-link to="/roles" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
+          <router-link to="/roles" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors" exact-active-class="!text-white">
             角色策略
           </router-link>
-          <router-link to="/copilot" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
+          <router-link to="/copilot" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors" exact-active-class="!text-white">
             AI 副驾驶
           </router-link>
         </div>

@@ -254,7 +254,7 @@ import { ref, nextTick, onMounted, computed } from 'vue'
 import MarkdownRender from 'markstream-vue'
 import 'markstream-vue/index.css'
 import { motion } from 'motion-v'
-import { getApiBaseUrl, overview, fetchOverview, indexQuotes, fetchIndexQuotes } from '@/stores/data'
+import { apiFetch, apiChatStream, overview, fetchOverview, indexQuotes, fetchIndexQuotes } from '@/stores/data'
 import appIcon from '@/assets/app-icon.png'
 
 interface DisplayMessage {
@@ -312,7 +312,7 @@ onMounted(async () => {
   fetchOverview()
   fetchIndexQuotes()
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/ai/roles`)
+    const resp = await apiFetch(`/api/ai/roles`)
     if (resp.ok) aiRoles.value = await resp.json()
   } catch {}
 })
@@ -346,48 +346,14 @@ async function send(question?: string) {
   scrollDown()
 
   try {
-    const resp = await fetch(`${getApiBaseUrl()}/api/ai/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, role: currentRole.value, history }),
-    })
-
-    if (!resp.ok) {
-      updateLastMessage('[错误] AI 服务不可用，请检查 LLM_API_KEY 配置')
-      streaming.value = false
-      return
-    }
-
-    const reader = resp.body?.getReader()
-    if (!reader) {
-      updateLastMessage('[错误] 无法读取响应流')
-      streaming.value = false
-      return
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6)
-          if (data === '[DONE]') continue
-          if (data.startsWith('[ERROR]')) {
-            updateLastMessage(data)
-          } else {
-            appendToLastMessage(data.replace(/\\n/g, '\n'))
-          }
-        }
-      }
-    }
+    await apiChatStream(
+      { message: text, role: currentRole.value, history },
+      {
+        onData: (data) => appendToLastMessage(data),
+        onDone: () => { streaming.value = false },
+        onError: (err) => updateLastMessage(`[错误] ${err}`),
+      },
+    )
   } catch (e: any) {
     updateLastMessage(`[错误] ${e.message || '网络请求失败'}`)
   } finally {

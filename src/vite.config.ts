@@ -3,10 +3,11 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig(async ({ mode }) => {
-  // 从项目根目录加载 .env（Vite 默认只读当前目录的 .env）
   const rootEnv = loadEnv(mode, resolve(__dirname, '..'), '')
 
   const plugins: any[] = [vue()]
+
+  const isTauri = !!process.env.TAURI_ENV_PLATFORM
 
   return {
     resolve: {
@@ -20,7 +21,8 @@ export default defineConfig(async ({ mode }) => {
       __JIUYAN_PHONE__: JSON.stringify(rootEnv.JIUYAN_PHONE || ''),
       __JIUYAN_PASSWORD__: JSON.stringify(rootEnv.JIUYAN_PASSWORD || ''),
       __API_BASE_URL__: JSON.stringify(
-        rootEnv.VITE_API_BASE_URL ?? (mode === 'production' ? '' : 'http://localhost:8080'),
+        rootEnv.VITE_API_BASE_URL
+          ?? (mode === 'production' && isTauri ? 'http://localhost:8080' : ''),
       ),
     },
     server: {
@@ -29,6 +31,10 @@ export default defineConfig(async ({ mode }) => {
           target: 'https://flash-api.xuangubao.cn',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/xgb/, '/api'),
+        },
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
         },
       },
     },
