@@ -154,6 +154,23 @@ pub async fn start_scheduler(
         })?)
         .await?;
 
+    let soc_n2 = social.clone();
+    let api_n2 = api.clone();
+    scheduler
+        .add(Job::new_async(
+            "0 */30 0-8,16-23 * * * *",
+            move |_uuid, _lock| {
+                let soc = soc_n2.clone();
+                let api = api_n2.clone();
+                Box::pin(async move {
+                    if let Err(e) = run_news_push(&api, &*soc).await {
+                        eprintln!("[cron] news_push error: {e}");
+                    }
+                })
+            },
+        )?)
+        .await?;
+
     scheduler.start().await?;
     Ok(scheduler)
 }
