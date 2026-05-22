@@ -15,6 +15,9 @@
           <router-link to="/roles" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
             角色策略
           </router-link>
+          <router-link to="/copilot" class="text-nav-link font-mono text-ink-muted hover:text-white transition-colors">
+            AI 副驾驶
+          </router-link>
         </div>
       </div>
     </header>
