@@ -27,13 +27,15 @@ pub async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
 /// Fetch latest release asset list, cached for 5 min
 pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
     tracing::debug!("fetch_assets: fetching latest release assets from GitHub");
-    static CACHE: std::sync::OnceLock<(std::time::Instant, Vec<(i64, String)>)> =
-        std::sync::OnceLock::new();
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<(i64, String)>)>> =
+        std::sync::Mutex::new(None);
 
-    let cache = CACHE.get();
-    if let Some((t, assets)) = cache {
-        if t.elapsed() < std::time::Duration::from_secs(300) {
-            return Ok(assets.clone());
+    {
+        let cache = CACHE.lock().unwrap();
+        if let Some((t, assets)) = cache.as_ref() {
+            if t.elapsed() < std::time::Duration::from_secs(300) {
+                return Ok(assets.clone());
+            }
         }
     }
 
@@ -60,7 +62,7 @@ pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
     }
 
     tracing::debug!("fetch_assets: found {} assets", assets.len());
-    let _ = CACHE.set((std::time::Instant::now(), assets.clone()));
+    *CACHE.lock().unwrap() = Some((std::time::Instant::now(), assets.clone()));
     Ok(assets)
 }
 

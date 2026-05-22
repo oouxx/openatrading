@@ -193,19 +193,27 @@ fn extract_json_block(text: &str) -> Option<String> {
     let start_marker = "```json";
     let end_marker = "```";
 
-    if let Some(start_idx) = text.find(start_marker) {
-        let content_start = start_idx + start_marker.len();
+    let mut search_from = 0;
+    while let Some(start_idx) = text[search_from..].find(start_marker) {
+        let abs_start = search_from + start_idx;
+        let content_start = abs_start + start_marker.len();
         if let Some(end_idx) = text[content_start..].find(end_marker) {
-            return Some(
-                text[content_start..content_start + end_idx]
-                    .trim()
-                    .to_string(),
-            );
+            let candidate = text[content_start..content_start + end_idx]
+                .trim()
+                .to_string();
+            if candidate.starts_with('{') {
+                return Some(candidate);
+            }
+            search_from = content_start + end_idx + end_marker.len();
+        } else {
+            break;
         }
     }
 
-    if let Some(start_idx) = text.find("```") {
-        let content_start = start_idx + 3;
+    let mut search_from = 0;
+    while let Some(start_idx) = text[search_from..].find("```") {
+        let abs_start = search_from + start_idx;
+        let content_start = abs_start + 3;
         if let Some(end_idx) = text[content_start..].find("```") {
             let candidate = text[content_start..content_start + end_idx]
                 .trim()
@@ -213,6 +221,9 @@ fn extract_json_block(text: &str) -> Option<String> {
             if candidate.starts_with('{') {
                 return Some(candidate);
             }
+            search_from = content_start + end_idx + 3;
+        } else {
+            break;
         }
     }
 

@@ -46,9 +46,35 @@ pub fn cmd_trade_list(project_root: &PathBuf, role: Option<&str>) -> Result<()> 
         .join(".atrading")
         .join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
-    let role_name = role.unwrap_or("zarili");
-    let text = tm.format_positions(role_name)?;
-    println!("{text}");
+    if let Some(role_name) = role {
+        let text = tm.format_positions(role_name)?;
+        println!("{text}");
+    } else {
+        let positions = tm.list_all_positions()?;
+        if positions.is_empty() {
+            println!("暂无持仓");
+        } else {
+            for p in &positions {
+                let pnl = match p.current_price {
+                    Some(cp) if cp > 0.0 => {
+                        format!("{:+.1}%", (cp - p.cost_price) / p.cost_price * 100.0)
+                    }
+                    _ => "N/A".to_string(),
+                };
+                println!(
+                    "- #{} [{}] {} {} | 成本{} | 现价{} | {} | {}股",
+                    p.id,
+                    p.role_name,
+                    p.symbol,
+                    p.stock_name,
+                    p.cost_price,
+                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    pnl,
+                    p.shares,
+                );
+            }
+        }
+    }
     Ok(())
 }
 

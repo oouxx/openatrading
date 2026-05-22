@@ -194,9 +194,10 @@ pub struct JiuYanSession {
 
 impl Clone for JiuYanSession {
     fn clone(&self) -> Self {
+        let creds = self.inner.try_read().ok().and_then(|g| g.credentials.clone());
         Self {
             inner: RwLock::new(InnerSession {
-                credentials: None,
+                credentials: creds,
                 refreshing: AtomicBool::new(false),
             }),
             client: self.client.clone(),
@@ -365,6 +366,9 @@ impl JiuYanSession {
                 if let Some(creds) = &guard.credentials {
                     return Ok(creds.clone());
                 }
+                if !guard.refreshing.load(Ordering::SeqCst) {
+                    anyhow::bail!("login failed: another login attempt finished without credentials");
+                }
             }
         }
 
@@ -376,27 +380,42 @@ impl JiuYanSession {
 
         let timestamp = now_ts();
 
-        let resp: serde_json::Value = self
+        let resp_result = self
             .client
             .post(&url)
             .header("timestamp", &timestamp)
             .json(&body)
             .send()
-            .await?
-            .json()
-            .await?;
+            .await;
 
-        // 检查业务错误 (errCode=0 表示成功)
+        let resp: serde_json::Value = match resp_result {
+            Ok(r) => match r.json().await {
+                Ok(v) => v,
+                Err(e) => {
+                    self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                    return Err(e.into());
+                }
+            },
+            Err(e) => {
+                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                return Err(e.into());
+            }
+        };
+
         if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
             if err_code != "0" {
+                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
                 anyhow::bail!("登录失败: errCode={}, msg={}", err_code, resp["msg"]);
             }
         }
 
-        let session_token = resp["data"]["sessionToken"]
-            .as_str()
-            .context("登录成功但未返回 sessionToken")?
-            .to_string();
+        let session_token = match resp["data"]["sessionToken"].as_str() {
+            Some(s) => s.to_string(),
+            None => {
+                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                anyhow::bail!("登录成功但未返回 sessionToken");
+            }
+        };
 
         // 将 sessionToken 写入 Cookie 格式
         let cookie = format!("SESSION={}", session_token);

@@ -14,7 +14,8 @@ use crate::trade::{ConditionalOrder, Position, TradeManager};
 use crate::web::RoleEntry;
 
 const INITIAL_CAPITAL: f64 = 1_000_000.0;
-const MAX_POSITION_RATIO: f64 = 0.3;
+const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
+const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;
 const MIN_SHARES: i64 = 100;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -210,7 +211,7 @@ pub async fn run_decision(
             o.fall_count,
             o.limit_up_count,
             o.limit_down_count,
-            o.bomb_rate,
+            o.bomb_rate * 100.0,
             o.market_temperature,
         ),
         Err(e) => {
@@ -378,7 +379,7 @@ async fn run_decision_for_role(
                 }
             }
             "sell" => {
-                if let Err(e) = execute_sell(trade, &role.name, instr).await {
+                if let Err(e) = execute_sell(trade, api, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute sell failed for {} {}: {e}",
                         instr.symbol,
@@ -494,16 +495,31 @@ async fn execute_buy(
     let current_positions = trade.list_positions(role_name)?;
     let total_position_value: f64 = current_positions
         .iter()
-        .map(|p| p.cost_price * p.shares as f64)
+        .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
         .sum();
-    let new_position_value = total_position_value + cost;
-    if new_position_value > INITIAL_CAPITAL * MAX_POSITION_RATIO {
+    let same_symbol_value: f64 = current_positions
+        .iter()
+        .filter(|p| p.symbol == instr.symbol)
+        .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
+        .sum();
+
+    if cost + same_symbol_value > INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO {
+        anyhow::bail!(
+            "single stock position {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
+            same_symbol_value,
+            cost,
+            INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO,
+            (MAX_SINGLE_POSITION_RATIO * 100.0) as i32
+        );
+    }
+
+    if total_position_value + cost > INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO {
         anyhow::bail!(
             "total position value {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
             total_position_value,
             cost,
-            INITIAL_CAPITAL * MAX_POSITION_RATIO,
-            (MAX_POSITION_RATIO * 100.0) as i32
+            INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO,
+            (MAX_TOTAL_POSITION_RATIO * 100.0) as i32
         );
     }
 
@@ -599,6 +615,7 @@ async fn execute_buy(
 
 async fn execute_sell(
     trade: &dyn TradeManager,
+    api: &ApiClient,
     role_name: &str,
     instr: &TradeInstruction,
 ) -> Result<()> {
@@ -618,17 +635,17 @@ async fn execute_sell(
     }
 
     for pos in matching {
-        trade.close_position(
-            pos.id,
-            pos.current_price.unwrap_or(pos.cost_price),
-            &instr.reason,
-        )?;
+        let sell_price = match api.xuangubao.fetch_realtime(&pos.symbol).await {
+            Ok(quote) if quote.last_px > 0.0 => quote.last_px,
+            _ => pos.current_price.unwrap_or(pos.cost_price),
+        };
+        trade.close_position(pos.id, sell_price, &instr.reason)?;
         tracing::info!(
             "[cron] SELL {} {} (id={}) @ {:.2} — {}",
             pos.symbol,
             pos.stock_name,
             pos.id,
-            pos.current_price.unwrap_or(pos.cost_price),
+            sell_price,
             instr.reason
         );
     }
