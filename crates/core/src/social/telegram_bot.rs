@@ -497,7 +497,7 @@ impl TelegramBot {
                 o.fall_count,
                 o.limit_up_count,
                 o.limit_down_count,
-                o.bomb_rate,
+                o.bomb_rate * 100.0,
                 o.market_temperature,
             ),
             None => "## 市场数据获取失败\n".to_string(),

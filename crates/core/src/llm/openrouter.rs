@@ -172,40 +172,40 @@ impl LlmClient {
 
         let buf = RefCell::new(String::new());
 
-        let stream = resp.bytes_stream().map(move |chunk| {
-            match chunk {
-                Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes).to_string();
-                    let mut content = String::new();
+        let stream = resp.bytes_stream().map(move |chunk| match chunk {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes).to_string();
+                let mut content = String::new();
 
-                    let mut prev = buf.borrow_mut();
-                    let merged = format!("{}{}", *prev, text);
+                let mut prev = buf.borrow_mut();
+                let merged = format!("{}{}", *prev, text);
 
-                    let mut lines: Vec<&str> = merged.lines().collect();
+                let mut lines: Vec<&str> = merged.lines().collect();
 
-                    if merged.ends_with('\n') {
-                        prev.clear();
-                    } else {
-                        *prev = lines.pop().unwrap_or("").to_string();
-                    }
+                if merged.ends_with('\n') {
+                    prev.clear();
+                } else {
+                    *prev = lines.pop().unwrap_or("").to_string();
+                }
 
-                    for line in lines {
-                        if line.starts_with("data: ") {
-                            let data = line.trim_start_matches("data: ");
-                            if data == "[DONE]" {
-                                if !prev.is_empty() {
-                                    let remaining = prev.clone();
-                                    prev.clear();
-                                    if remaining.starts_with("data: ") {
-                                        let remaining_data = remaining.trim_start_matches("data: ");
-                                        if remaining_data != "[DONE]" {
-                                            if let Ok(chunk) = serde_json::from_str::<StreamChunk>(remaining_data) {
-                                                if let Some(choices) = chunk.choices {
-                                                    for choice in choices {
-                                                        if let Some(delta) = choice.delta {
-                                                            if let Some(c) = delta.content {
-                                                                content.push_str(&c);
-                                                            }
+                for line in lines {
+                    if line.starts_with("data: ") {
+                        let data = line.trim_start_matches("data: ");
+                        if data == "[DONE]" {
+                            if !prev.is_empty() {
+                                let remaining = prev.clone();
+                                prev.clear();
+                                if remaining.starts_with("data: ") {
+                                    let remaining_data = remaining.trim_start_matches("data: ");
+                                    if remaining_data != "[DONE]" {
+                                        if let Ok(chunk) =
+                                            serde_json::from_str::<StreamChunk>(remaining_data)
+                                        {
+                                            if let Some(choices) = chunk.choices {
+                                                for choice in choices {
+                                                    if let Some(delta) = choice.delta {
+                                                        if let Some(c) = delta.content {
+                                                            content.push_str(&c);
                                                         }
                                                     }
                                                 }
@@ -213,30 +213,30 @@ impl LlmClient {
                                         }
                                     }
                                 }
-                                continue;
                             }
-                            if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
-                                if let Some(choices) = chunk.choices {
-                                    for choice in choices {
-                                        if let Some(delta) = choice.delta {
-                                            if let Some(c) = delta.content {
-                                                content.push_str(&c);
-                                            }
+                            continue;
+                        }
+                        if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
+                            if let Some(choices) = chunk.choices {
+                                for choice in choices {
+                                    if let Some(delta) = choice.delta {
+                                        if let Some(c) = delta.content {
+                                            content.push_str(&c);
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    if !content.is_empty() {
-                        Ok(content)
-                    } else {
-                        Ok(String::new())
-                    }
                 }
-                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+
+                if !content.is_empty() {
+                    Ok(content)
+                } else {
+                    Ok(String::new())
+                }
             }
+            Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
         });
 
         Ok(Box::pin(stream))

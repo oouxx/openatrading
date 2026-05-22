@@ -78,7 +78,7 @@
               </div>
               <div class="snap-item">
                 <span class="snap-label">炸板率</span>
-                <span class="snap-value text-ink">{{ overview.data.bomb_rate.toFixed(1) }}%</span>
+                <span class="snap-value text-ink">{{ (overview.data.bomb_rate * 100).toFixed(2) }}%</span>
               </div>
               <div class="snap-item">
                 <span class="snap-label">市场温度</span>

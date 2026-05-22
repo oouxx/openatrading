@@ -206,7 +206,10 @@ const fieldDate = computed({
 })
 
 const stocks = computed(() => limitUp.data)
-const bombRate = computed(() => overview.data?.bomb_rate || 0)
+const bombRate = computed(() => {
+  const r = overview.data?.bomb_rate || 0
+  return r > 1 ? r : r * 100
+})
 const fieldPlates = computed(() => fieldItems.data)
 
 const sortedStocks = computed(() =>
