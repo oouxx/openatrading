@@ -62,9 +62,9 @@ impl Report {
     ) -> Self {
         // 计算风险等级与信号
         let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-        let risk_level = if ratio < 0.8 && overview.bomb_rate > 30.0 {
+        let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
             "高".to_string()
-        } else if ratio < 1.2 || overview.bomb_rate > 20.0 {
+        } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
             "中".to_string()
         } else {
             "低".to_string()

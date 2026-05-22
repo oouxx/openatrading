@@ -194,7 +194,11 @@ pub struct JiuYanSession {
 
 impl Clone for JiuYanSession {
     fn clone(&self) -> Self {
-        let creds = self.inner.try_read().ok().and_then(|g| g.credentials.clone());
+        let creds = self
+            .inner
+            .try_read()
+            .ok()
+            .and_then(|g| g.credentials.clone());
         Self {
             inner: RwLock::new(InnerSession {
                 credentials: creds,
@@ -367,7 +371,9 @@ impl JiuYanSession {
                     return Ok(creds.clone());
                 }
                 if !guard.refreshing.load(Ordering::SeqCst) {
-                    anyhow::bail!("login failed: another login attempt finished without credentials");
+                    anyhow::bail!(
+                        "login failed: another login attempt finished without credentials"
+                    );
                 }
             }
         }
@@ -392,19 +398,31 @@ impl JiuYanSession {
             Ok(r) => match r.json().await {
                 Ok(v) => v,
                 Err(e) => {
-                    self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                    self.inner
+                        .write()
+                        .await
+                        .refreshing
+                        .store(false, Ordering::SeqCst);
                     return Err(e.into());
                 }
             },
             Err(e) => {
-                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                self.inner
+                    .write()
+                    .await
+                    .refreshing
+                    .store(false, Ordering::SeqCst);
                 return Err(e.into());
             }
         };
 
         if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
             if err_code != "0" {
-                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                self.inner
+                    .write()
+                    .await
+                    .refreshing
+                    .store(false, Ordering::SeqCst);
                 anyhow::bail!("登录失败: errCode={}, msg={}", err_code, resp["msg"]);
             }
         }
@@ -412,7 +430,11 @@ impl JiuYanSession {
         let session_token = match resp["data"]["sessionToken"].as_str() {
             Some(s) => s.to_string(),
             None => {
-                self.inner.write().await.refreshing.store(false, Ordering::SeqCst);
+                self.inner
+                    .write()
+                    .await
+                    .refreshing
+                    .store(false, Ordering::SeqCst);
                 anyhow::bail!("登录成功但未返回 sessionToken");
             }
         };

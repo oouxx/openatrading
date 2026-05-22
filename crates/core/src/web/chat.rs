@@ -83,7 +83,7 @@ fn build_user_message(
         fall = overview.fall_count,
         limit_up = overview.limit_up_count,
         limit_down = overview.limit_down_count,
-        bomb_rate = overview.bomb_rate,
+        bomb_rate = overview.bomb_rate * 100.0,
         ratio = format!(
             "{:.2}",
             overview.rise_count as f64 / overview.fall_count.max(1) as f64
@@ -114,9 +114,9 @@ async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse
     let overview = api.xuangubao.fetch_market_overview().await?;
 
     let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-    let risk_level = if ratio < 0.8 && overview.bomb_rate > 30.0 {
+    let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
         "高"
-    } else if ratio < 1.2 || overview.bomb_rate > 20.0 {
+    } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
         "中"
     } else {
         "低"

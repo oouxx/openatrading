@@ -107,7 +107,7 @@ pub struct OverviewMdTemplate {
 impl OverviewMdTemplate {
     pub fn render(overview: &MarketOverview) -> Self {
         let rise_fall_ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-        let bomb_rate = (overview.bomb_rate * 10.0).round() / 10.0;
+        let bomb_rate = (overview.bomb_rate * 100.0).round() / 10.0;
         Self {
             rise_count: overview.rise_count,
             fall_count: overview.fall_count,
@@ -518,7 +518,7 @@ pub struct OverviewHtmlTemplate {
 impl OverviewHtmlTemplate {
     pub fn render(overview: &MarketOverview) -> Self {
         let rise_fall_ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-        let bomb_rate = (overview.bomb_rate * 10.0).round() / 10.0;
+        let bomb_rate = (overview.bomb_rate * 100.0).round() / 10.0;
         Self {
             rise_count: overview.rise_count,
             fall_count: overview.fall_count,
