@@ -83,6 +83,18 @@ impl LlmClient {
 
         let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "deepseek-chat".to_string());
 
+        eprintln!(
+            "[llm] from_env: endpoint={}, model={}, api_key={}..{}",
+            api_endpoint,
+            model,
+            if api_key.is_empty() { "EMPTY" } else { "sk-" },
+            if api_key.len() > 6 {
+                &api_key[api_key.len() - 4..]
+            } else {
+                ""
+            }
+        );
+
         Self {
             client: Client::new(),
             api_key,
@@ -167,6 +179,14 @@ impl LlmClient {
             .body(body)
             .send()
             .await?;
+
+        let status = resp.status();
+        eprintln!("[llm] chat_stream_with_messages response status: {status}");
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            eprintln!("[llm] error response body: {body}");
+            anyhow::bail!("LLM API error {status}: {body}");
+        }
 
         use std::cell::RefCell;
 

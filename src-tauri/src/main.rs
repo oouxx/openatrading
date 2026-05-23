@@ -459,6 +459,8 @@ async fn api_chat_stream(
     channel: tauri::ipc::Channel<String>,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
+    eprintln!("[chat_stream] start, body={}", body);
+
     let llm = state.llm.clone();
     let api = state.api.clone();
     let roles = state.roles.clone();
@@ -467,13 +469,24 @@ async fn api_chat_stream(
         .get("role")
         .and_then(|v| v.as_str())
         .unwrap_or("zarili");
+    eprintln!("[chat_stream] role={role_name}");
 
+    eprintln!("[chat_stream] fetching overview...");
     let overview = trending_agent_core::web::chat::fetch_overview_data(&api)
         .await
-        .map_err(|e| format!("overview error: {e}"))?;
+        .map_err(|e| {
+            eprintln!("[chat_stream] overview error: {e}");
+            format!("overview error: {e}")
+        })?;
+    eprintln!("[chat_stream] overview ok");
 
     let field_items = trending_agent_core::web::chat::fetch_field_json(&api).await;
     let super_stocks = trending_agent_core::web::chat::fetch_super_stock_json(&api).await;
+    eprintln!(
+        "[chat_stream] field_items={}, super_stocks={}",
+        field_items.is_some(),
+        super_stocks.is_some()
+    );
 
     let roles_guard = roles.read().await;
     let strategy_text = roles_guard
@@ -488,6 +501,11 @@ async fn api_chat_stream(
         field_items.as_deref(),
         super_stocks.as_deref(),
     );
+    eprintln!(
+        "[chat_stream] system_prompt len={}, user_message len={}",
+        system_prompt.len(),
+        user_message.len()
+    );
 
     let mut messages_vec: Vec<serde_json::Value> = vec![
         serde_json::json!({"role": "system", "content": system_prompt}),
@@ -496,12 +514,14 @@ async fn api_chat_stream(
     ];
 
     if let Some(history) = body.get("history").and_then(|h| h.as_array()) {
+        eprintln!("[chat_stream] history len={}", history.len());
         for msg in history {
             messages_vec.push(msg.clone());
         }
     }
 
     if let Some(message) = body.get("message").and_then(|m| m.as_str()) {
+        eprintln!("[chat_stream] user message: {message}");
         messages_vec.push(serde_json::json!({
             "role": "user",
             "content": message,
@@ -509,34 +529,57 @@ async fn api_chat_stream(
     }
 
     let prompt = serde_json::json!(messages_vec).to_string();
+    eprintln!(
+        "[chat_stream] calling llm chat_stream_with_messages, prompt len={}",
+        prompt.len()
+    );
 
-    let mut llm_stream = llm
-        .chat_stream_with_messages(&prompt)
-        .await
-        .map_err(|e| format!("llm error: {e}"))?;
+    let mut llm_stream = llm.chat_stream_with_messages(&prompt).await.map_err(|e| {
+        eprintln!("[chat_stream] llm error: {e}");
+        format!("llm error: {e}")
+    })?;
+    eprintln!("[chat_stream] llm stream started");
 
     use futures_util::StreamExt;
 
+    let mut chunk_count = 0u32;
+    let mut empty_count = 0u32;
     while let Some(chunk) = llm_stream.next().await {
         let chunk: Result<String, _> = chunk;
         match chunk {
             Ok(text) if !text.is_empty() => {
-                channel
-                    .send(text)
-                    .map_err(|e| format!("channel error: {e}"))?;
+                chunk_count += 1;
+                if chunk_count <= 3 || chunk_count.is_multiple_of(20) {
+                    eprintln!(
+                        "[chat_stream] chunk #{chunk_count}: {:?}",
+                        &text[..text.len().min(80)]
+                    );
+                }
+                channel.send(text).map_err(|e| {
+                    eprintln!("[chat_stream] channel send error: {e}");
+                    format!("channel error: {e}")
+                })?;
+            }
+            Ok(_) => {
+                empty_count += 1;
             }
             Err(e) => {
+                eprintln!("[chat_stream] stream error: {e}");
                 return Err(format!("stream error: {e}"));
             }
-            _ => {}
         }
     }
 
+    eprintln!("[chat_stream] done, total chunks={chunk_count}, empty chunks={empty_count}");
     Ok(())
 }
 
 fn main() {
     let project_root = find_project_root();
+
+    dotenvy::from_path(project_root.join(".atrading").join(".env")).ok();
+    dotenvy::from_path(project_root.join(".env")).ok();
+
     let db_path = project_root.join(".atrading").join("data.db");
 
     let gateway = Gateway::init(&db_path).expect("failed to init gateway");
