@@ -72,28 +72,28 @@
                 下载桌面客户端
             </h2>
             <p class="text-ink-muted text-center mb-10 text-sm">
-                由 Tauri 构建的原生桌面应用。下载对应平台版本。
+                由 Tauri 构建的原生桌面应用，支持 macOS / Linux / Windows。
             </p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <!-- macOS Intel -->
                 <a
-                    :href="dl('x86_64-apple-darwin')"
+                    :href="dl('macos', 'x86_64')"
                     class="bg-white/5 border border-hairline rounded-card p-6 text-center hover:border-ai/30 hover:bg-white/[0.07] transition-colors group"
                 >
                     <div class="text-3xl mb-3">🍎</div>
                     <h3 class="text-white font-semibold mb-1">macOS Intel</h3>
                     <p class="text-ink-muted text-xs font-mono">
-                        x86_64-apple-darwin
+                        x86_64 .dmg
                     </p>
                     <span
                         class="inline-block mt-3 px-4 py-1.5 bg-ai/10 text-ai text-sm rounded-lg group-hover:bg-ai/20 transition-colors"
                     >
-                        下载 .dmg
+                        下载
                     </span>
                 </a>
                 <!-- macOS Apple Silicon -->
                 <a
-                    :href="dl('aarch64-apple-darwin')"
+                    :href="dl('macos', 'aarch64')"
                     class="bg-white/5 border border-hairline rounded-card p-6 text-center hover:border-ai/30 hover:bg-white/[0.07] transition-colors group"
                 >
                     <div class="text-3xl mb-3">💻</div>
@@ -101,23 +101,39 @@
                         macOS Apple Silicon
                     </h3>
                     <p class="text-ink-muted text-xs font-mono">
-                        aarch64-apple-darwin
+                        aarch64 .dmg
                     </p>
                     <span
                         class="inline-block mt-3 px-4 py-1.5 bg-ai/10 text-ai text-sm rounded-lg group-hover:bg-ai/20 transition-colors"
                     >
-                        下载 .dmg
+                        下载
                     </span>
                 </a>
                 <!-- Linux -->
                 <a
-                    :href="dl('x86_64-unknown-linux-gnu')"
+                    :href="dl('linux', 'x86_64')"
                     class="bg-white/5 border border-hairline rounded-card p-6 text-center hover:border-ai/30 hover:bg-white/[0.07] transition-colors group"
                 >
                     <div class="text-3xl mb-3">🐧</div>
                     <h3 class="text-white font-semibold mb-1">Linux</h3>
                     <p class="text-ink-muted text-xs font-mono">
                         x86_64 .deb / .AppImage
+                    </p>
+                    <span
+                        class="inline-block mt-3 px-4 py-1.5 bg-ai/10 text-ai text-sm rounded-lg group-hover:bg-ai/20 transition-colors"
+                    >
+                        下载
+                    </span>
+                </a>
+                <!-- Windows -->
+                <a
+                    :href="dl('windows', 'x86_64')"
+                    class="bg-white/5 border border-hairline rounded-card p-6 text-center hover:border-ai/30 hover:bg-white/[0.07] transition-colors group"
+                >
+                    <div class="text-3xl mb-3">🪟</div>
+                    <h3 class="text-white font-semibold mb-1">Windows</h3>
+                    <p class="text-ink-muted text-xs font-mono">
+                        x86_64 .msi / .exe
                     </p>
                     <span
                         class="inline-block mt-3 px-4 py-1.5 bg-ai/10 text-ai text-sm rounded-lg group-hover:bg-ai/20 transition-colors"
@@ -133,13 +149,31 @@
             <h2 class="text-2xl font-bold text-white mb-6 text-center">
                 命令行安装
             </h2>
-            <div class="bg-black/50 border border-hairline rounded-card p-6">
-                <p class="text-ink-muted text-sm mb-3">
-                    一键安装 CLI（仅 Linux x86_64 / aarch64）：
-                </p>
-                <pre
-                    class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
-                ><code>curl -fsSL {{ getApiBaseUrl() }}/install.sh | bash</code></pre>
+            <div class="bg-black/50 border border-hairline rounded-card p-6 space-y-4">
+                <div>
+                    <p class="text-ink-muted text-sm mb-2">
+                        一键安装 CLI（Linux / macOS，x86_64 / aarch64）：
+                    </p>
+                    <pre
+                        class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
+                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash</code></pre>
+                </div>
+                <div>
+                    <p class="text-ink-muted text-sm mb-2">
+                        安装桌面客户端：
+                    </p>
+                    <pre
+                        class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
+                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash -s -- --desktop</code></pre>
+                </div>
+                <div>
+                    <p class="text-ink-muted text-sm mb-2">
+                        卸载：
+                    </p>
+                    <pre
+                        class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
+                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash -s -- --uninstall</code></pre>
+                </div>
             </div>
         </section>
 
@@ -159,21 +193,19 @@
 </template>
 
 <script setup lang="ts">
-import { getApiBaseUrl } from "@/stores/data";
+const REPO = "oouxx/openatrading";
+const GH_RELEASE = `https://github.com/${REPO}/releases/latest/download`;
 
-const DL_BASE = `${getApiBaseUrl()}/downloads`;
-
-function dl(target: string): string {
-    const ext = target.includes("apple")
-        ? ".dmg"
-        : target.includes("linux")
-          ? ".deb"
-          : ".msi";
-    const arch = target.includes("x86_64")
-        ? "amd64"
-        : target.includes("aarch64")
-          ? "arm64"
-          : ".aarch64";
-    return `${DL_BASE}/OpenATrading_${arch}${ext}`;
+function dl(platform: string, arch: string): string {
+  switch (platform) {
+    case "macos":
+      return `${GH_RELEASE}/openatrading_${arch}.dmg`;
+    case "linux":
+      return `${GH_RELEASE}/openatrading_${arch === "x86_64" ? "amd64" : arch}.deb`;
+    case "windows":
+      return `${GH_RELEASE}/openatrading_x64-setup.exe`;
+    default:
+      return "#";
+  }
 }
 </script>
