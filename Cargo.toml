@@ -8,7 +8,7 @@ members = [
 
 [workspace.dependencies]
 tokio = { version = "1", default-features = false, features = ["rt", "sync", "macros", "time", "io-util", "signal"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "stream", "rustls-tls", "http2", "charset"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "stream", "rustls-tls", "http2", "charset", "gzip", "brotli", "deflate"] }
 scraper = "0.26"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

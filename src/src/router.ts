@@ -3,6 +3,7 @@ import LandingPage from './LandingPage.vue'
 import TradingView from './TradingView.vue'
 import RoleView from './RoleView.vue'
 import AiCopilot from './AiCopilot.vue'
+import ReplayView from './ReplayView.vue'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -13,5 +14,6 @@ export default createRouter({
     { path: '/trading', component: TradingView },
     { path: '/roles', component: RoleView },
     { path: '/copilot', component: AiCopilot },
+    { path: '/replay', component: ReplayView },
   ],
 })
