@@ -1,0 +1,258 @@
+name: Release (Self-Hosted)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.6.0), auto-filled from pushed tag"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  # ── CLI — Linux x86_64 (native, ~2GB peak) ───────────
+  build-cli-linux-amd64:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - run: cargo build --release -p trending-agent-cli
+        env:
+          GIT_VERSION: ${{ env.RELEASE_TAG }}
+      - name: Rename binary
+        run: cp target/release/openatrading openatrading-x86_64-unknown-linux-gnu
+      - name: Upload CLI binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: openatrading-x86_64-unknown-linux-gnu
+          tag_name: ${{ env.RELEASE_TAG }}
+      - name: Clean build artifacts
+        run: cargo clean
+
+  # ── CLI — macOS (GitHub-hosted) ──────────────────────
+  build-cli-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Add rust target
+        run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release -p trending-agent-cli --target ${{ matrix.target }}
+        env:
+          GIT_VERSION: ${{ env.RELEASE_TAG }}
+      - name: Rename binary
+        run: cp target/${{ matrix.target }}/release/openatrading openatrading-${{ matrix.target }}
+      - name: Upload CLI binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: openatrading-${{ matrix.target }}
+          tag_name: ${{ env.RELEASE_TAG }}
+
+  # ── Docker — amd64 only, sequential with cleanup ─────
+  build-docker:
+    runs-on: [self-hosted, Linux, X64]
+    needs: build-cli-linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          docker system prune -af --volumes 2>/dev/null || true
+          rm -rf ~/.cache/act 2>/dev/null || true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_VERSION=${{ env.RELEASE_TAG }}
+
+      - name: Clean docker cache
+        run: docker system prune -af --volumes 2>/dev/null || true
+
+  build-docker-web:
+    runs-on: [self-hosted, Linux, X64]
+    needs: build-docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: docker system prune -af --volumes 2>/dev/null || true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Clean docker cache
+        run: docker system prune -af --volumes 2>/dev/null || true
+
+  build-docker-frontend:
+    runs-on: [self-hosted, Linux, X64]
+    needs: build-docker-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: docker system prune -af --volumes 2>/dev/null || true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Clean docker cache
+        run: docker system prune -af --volumes 2>/dev/null || true
+
+  # ── Tauri — macOS (GitHub-hosted) ────────────────────
+  build-tauri-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Add rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install frontend deps
+        working-directory: src
+        run: bun install --frozen-lockfile
+
+      - name: Set app version
+        run: echo "APP_VERSION=${TAG#v}" >> $GITHUB_ENV
+        env:
+          TAG: ${{ env.RELEASE_TAG }}
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            --target ${{ matrix.target }}
+            --config '{"version":"${{ env.APP_VERSION }}"}'
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "v__VERSION__"
+          releaseDraft: false
+
+  # ── Tauri — Windows (GitHub-hosted) ──────────────────
+  build-tauri-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Install frontend deps
+        working-directory: src
+        run: bun install --frozen-lockfile
+
+      - name: Set app version
+        shell: bash
+        run: echo "APP_VERSION=${TAG#v}" >> $GITHUB_ENV
+        env:
+          TAG: ${{ env.RELEASE_TAG }}
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            --target x86_64-pc-windows-msvc
+            --config '{"version":"${{ env.APP_VERSION }}"}'
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "v__VERSION__"
+          releaseDraft: false
