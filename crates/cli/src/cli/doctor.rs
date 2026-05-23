@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
@@ -100,7 +100,7 @@ async fn check_telegram(app_config: &AppConfig) -> CheckItem {
     }
 }
 
-pub async fn cmd_doctor(project_root: &PathBuf, json: bool) -> Result<()> {
+pub async fn cmd_doctor(project_root: &Path, json: bool) -> Result<()> {
     // ── Config ────────────────────────────────────
     let (app_config, config_item) = match AppConfig::load(project_root) {
         Ok(cfg) => (

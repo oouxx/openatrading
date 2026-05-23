@@ -443,6 +443,7 @@ pub struct ReportMdTemplate {
 }
 
 impl ReportMdTemplate {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_report(
         date: &str,
         overview: &MarketOverview,
@@ -854,6 +855,7 @@ pub struct ReportHtmlTemplate {
 }
 
 impl ReportHtmlTemplate {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_report(
         date: &str,
         overview: &MarketOverview,

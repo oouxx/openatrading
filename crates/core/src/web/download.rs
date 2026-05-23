@@ -14,12 +14,7 @@ use axum::{
 ///   "openatrading-x86_64-unknown-linux-gnu"  -> unchanged (CLI binary, no version)
 fn strip_version(name: &str) -> String {
     let parts: Vec<&str> = name.splitn(3, '_').collect();
-    if parts.len() == 3
-        && parts[1]
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
-    {
+    if parts.len() == 3 && parts[1].chars().next().is_some_and(|c| c.is_ascii_digit()) {
         format!("{}_{}", parts[0], parts[2])
     } else {
         name.to_string()
@@ -44,11 +39,12 @@ pub async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
     ))
 }
 
+type AssetCache = std::sync::Mutex<Option<(std::time::Instant, Vec<(i64, String)>)>>;
+
 /// Fetch latest release asset list, cached for 5 min
 pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
     tracing::debug!("fetch_assets: fetching latest release assets from GitHub");
-    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<(i64, String)>)>> =
-        std::sync::Mutex::new(None);
+    static CACHE: AssetCache = std::sync::Mutex::new(None);
 
     {
         let cache = CACHE.lock().unwrap();

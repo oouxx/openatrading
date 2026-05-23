@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
@@ -34,10 +34,10 @@ fn systemctl(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn generate_unit_file(project_root: &PathBuf) -> Result<String> {
+fn generate_unit_file(project_root: &Path) -> Result<String> {
     let current_exe = std::env::current_exe().context("无法获取当前二进制路径")?;
     let work_dir = if project_root.is_absolute() {
-        project_root.clone()
+        project_root.to_path_buf()
     } else {
         std::env::current_dir()?.join(project_root)
     };
@@ -68,7 +68,7 @@ WantedBy=default.target
 }
 
 /// 安装 systemd 服务
-pub fn cmd_gateway_install(project_root: &PathBuf) -> Result<()> {
+pub fn cmd_gateway_install(project_root: &Path) -> Result<()> {
     let unit = generate_unit_file(project_root)?;
     let path = service_file_path();
 
@@ -237,11 +237,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 /// - `web_only`: 仅运行 web server（端口 8080），不启动 cron scheduler
 /// - 两者均 false（默认）: cron + web 同时运行
 /// - 两者均 true: 等同于默认行为
-pub async fn cmd_gateway_run(
-    project_root: &PathBuf,
-    cron_only: bool,
-    web_only: bool,
-) -> Result<()> {
+pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: bool) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
 
     let db_path = project_root

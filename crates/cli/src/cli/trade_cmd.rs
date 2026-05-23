@@ -1,12 +1,12 @@
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::cli::config::AppConfig;
 use trending_agent_core::trade::sqlite::SqliteTradeManager;
 use trending_agent_core::trade::{Position, TradeManager};
 
 pub fn cmd_trade_add(
-    project_root: &PathBuf,
+    project_root: &Path,
     role: &str,
     symbol: &str,
     price: f64,
@@ -40,7 +40,7 @@ pub fn cmd_trade_add(
     Ok(())
 }
 
-pub fn cmd_trade_list(project_root: &PathBuf, role: Option<&str>) -> Result<()> {
+pub fn cmd_trade_list(project_root: &Path, role: Option<&str>) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
     let db_path = project_root
         .join(".atrading")
@@ -78,7 +78,7 @@ pub fn cmd_trade_list(project_root: &PathBuf, role: Option<&str>) -> Result<()> 
     Ok(())
 }
 
-pub fn cmd_trade_close(project_root: &PathBuf, id: i64, price: f64) -> Result<()> {
+pub fn cmd_trade_close(project_root: &Path, id: i64, price: f64) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
     let db_path = project_root
         .join(".atrading")
