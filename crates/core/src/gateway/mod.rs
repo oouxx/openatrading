@@ -9,6 +9,7 @@ use crate::memory::sqlite::SqliteMemoryStore;
 use crate::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 use crate::social::NotificationSender;
 use crate::trade::sqlite::SqliteTradeManager;
+use crate::web::cache;
 use crate::web::{self, AppState, RoleEntry};
 
 pub struct Gateway {
@@ -73,6 +74,7 @@ impl Gateway {
                 trade: self.trade.clone(),
                 roles: Arc::new(tokio::sync::RwLock::new(roles.clone())),
                 strategies_dir: config.strategies_dir,
+                cache: cache::new_cache(),
             });
 
             let router = web::build_router(state);
