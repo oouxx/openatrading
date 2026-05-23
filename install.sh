@@ -13,7 +13,7 @@ usage() {
   echo "  ./install.sh --uninstall  卸载 openatrading"
   echo ""
   echo "环境变量:"
-  echo "  DL_SERVER   下载服务器地址 (默认: https://atrading.oouxx.com)"
+  echo "  DL_SERVER   下载服务器地址 (默认: https://trading.96112901.xyz)"
   echo "  INSTALL_DIR CLI 安装目录 (默认: /usr/local/bin)"
   exit 0
 }
