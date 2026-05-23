@@ -596,6 +596,7 @@ fn main() {
         trade,
         roles: Arc::new(RwLock::new(roles)),
         strategies_dir,
+        cache: trending_agent_core::web::cache::new_cache(),
     });
 
     tauri::Builder::default()

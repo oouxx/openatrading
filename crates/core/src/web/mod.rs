@@ -1,7 +1,8 @@
+pub mod cache;
 pub mod chat;
 pub mod download;
 pub mod handlers;
-
+use cache::AppCache;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -35,6 +36,7 @@ pub struct AppState {
     pub trade: Arc<SqliteTradeManager>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub strategies_dir: PathBuf,
+    pub cache: Arc<AppCache>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {

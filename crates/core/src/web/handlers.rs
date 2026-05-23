@@ -12,6 +12,7 @@ use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::api::Client as ApiClient;
 use crate::trade::TradeManager;
 
+use super::cache::{self, CachePolicy};
 use super::{AppState, RoleEntry};
 use crate::roles::pnl::compute_pnl_history;
 
@@ -63,100 +64,154 @@ pub struct PnlHistoryResponse {
 // ── Handlers ──────────────────────────────────────────
 
 /// GET /api/overview — market overview + risk level + decision summary
-pub async fn get_overview() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let overview = client.fetch_market_overview().await.map_err(|e| {
-        eprintln!("overview error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
+pub async fn get_overview(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "overview",
+        CachePolicy::overview(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let overview = client.fetch_market_overview().await.map_err(|e| {
+                eprintln!("overview error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
 
-    let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-    let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
-        "高"
-    } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
-        "中"
-    } else {
-        "低"
-    };
+            let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+            let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
+                "高"
+            } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
+                "中"
+            } else {
+                "低"
+            };
 
-    let decision_summary = format!(
-        "风险等级：{}；上涨{}家，下跌{}家，涨停{}只，跌停{}只",
-        risk_level,
-        overview.rise_count,
-        overview.fall_count,
-        overview.limit_up_count,
-        overview.limit_down_count,
-    );
+            let decision_summary = format!(
+                "风险等级：{}；上涨{}家，下跌{}家，涨停{}只，跌停{}只",
+                risk_level,
+                overview.rise_count,
+                overview.fall_count,
+                overview.limit_up_count,
+                overview.limit_down_count,
+            );
 
-    Ok(Json(OverviewResponse {
-        date: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
-        rise_count: overview.rise_count,
-        fall_count: overview.fall_count,
-        limit_up_count: overview.limit_up_count,
-        limit_down_count: overview.limit_down_count,
-        bomb_rate: overview.bomb_rate,
-        risk_level: risk_level.to_string(),
-        decision_summary,
-        market_temperature: overview.market_temperature,
-        yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
-    }))
+            let resp = OverviewResponse {
+                date: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+                rise_count: overview.rise_count,
+                fall_count: overview.fall_count,
+                limit_up_count: overview.limit_up_count,
+                limit_down_count: overview.limit_down_count,
+                bomb_rate: overview.bomb_rate,
+                risk_level: risk_level.to_string(),
+                decision_summary,
+                market_temperature: overview.market_temperature,
+                yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
+            };
+
+            Ok(serde_json::to_string(&resp).unwrap_or_default())
+        },
+    )
+    .await?;
+
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/sentiment-history
-pub async fn get_sentiment_history() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let trading_days = XuanguBaoClient::last_n_trading_days(10);
+pub async fn get_sentiment_history(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "sentiment_history",
+        CachePolicy::daily(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let trading_days = XuanguBaoClient::last_n_trading_days(10);
 
-    let mut days: Vec<SentimentHistoryDay> = Vec::with_capacity(trading_days.len());
+            let mut days: Vec<SentimentHistoryDay> = Vec::with_capacity(trading_days.len());
 
-    for date in &trading_days {
-        match client.fetch_market_overview_for_date(date).await {
-            Ok(Some(d)) => {
-                let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-                let sentiment = d.market_temperature * 0.5
-                    + (1.0 - d.bomb_rate) * 25.0
-                    + (rise_ratio / 3.0).min(1.0) * 25.0;
-                days.push(SentimentHistoryDay {
-                    date: d.date,
-                    sentiment: (sentiment * 10.0).round() / 10.0,
-                    limit_up_count: d.limit_up_count,
-                    bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
-                    rise_ratio: (rise_ratio * 100.0).round() / 100.0,
-                });
+            for date in &trading_days {
+                match client.fetch_market_overview_for_date(date).await {
+                    Ok(Some(d)) => {
+                        let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
+                        let sentiment = d.market_temperature * 0.5
+                            + (1.0 - d.bomb_rate) * 25.0
+                            + (rise_ratio / 3.0).min(1.0) * 25.0;
+                        days.push(SentimentHistoryDay {
+                            date: d.date,
+                            sentiment: (sentiment * 10.0).round() / 10.0,
+                            limit_up_count: d.limit_up_count,
+                            bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
+                            rise_ratio: (rise_ratio * 100.0).round() / 100.0,
+                        });
+                    }
+                    Ok(None) => {
+                        eprintln!("sentiment_history: no data for {date}");
+                    }
+                    Err(e) => {
+                        eprintln!("sentiment_history error for {date}: {e}");
+                    }
+                }
             }
-            Ok(None) => {
-                eprintln!("sentiment_history: no data for {date}");
-            }
-            Err(e) => {
-                eprintln!("sentiment_history error for {date}: {e}");
-            }
-        }
-    }
 
-    // Reverse so most recent is last
-    days.reverse();
+            days.reverse();
+            Ok(serde_json::to_string(&days).unwrap_or_default())
+        },
+    )
+    .await?;
 
-    Ok(Json(days))
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/limit-up
-pub async fn get_limit_up() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_limit_up().await.map_err(|e| {
-        eprintln!("limit_up error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_limit_up(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "limit_up",
+        CachePolicy::snapshot(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_limit_up().await.map_err(|e| {
+                eprintln!("limit_up error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/limit-down
-pub async fn get_limit_down() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_limit_down().await.map_err(|e| {
-        eprintln!("limit_down error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_limit_down(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "limit_down",
+        CachePolicy::snapshot(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_limit_down().await.map_err(|e| {
+                eprintln!("limit_down error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/plate-abnormal?count=30
@@ -170,14 +225,27 @@ fn default_plate_count() -> i32 {
 }
 
 pub async fn get_plate_abnormal(
+    State(state): State<Arc<AppState>>,
     Query(q): Query<PlateAbnormalQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_plate_abnormal(q.count).await.map_err(|e| {
-        eprintln!("plate_abnormal error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+    let cache_key = format!("plate_abnormal_{}", q.count);
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        &cache_key,
+        CachePolicy::snapshot(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_plate_abnormal(q.count).await.map_err(|e| {
+                eprintln!("plate_abnormal error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/field-items?date=YYYY-MM-DD
@@ -187,47 +255,77 @@ pub struct FieldItemsQuery {
 }
 
 pub async fn get_field_items(
+    State(state): State<Arc<AppState>>,
     Query(q): Query<FieldItemsQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(vec![]));
+        return Ok(Json(serde_json::json!([])));
     }
     let date = q
         .date
         .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-    let client = ApiClient::new();
-    let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
-        eprintln!("field_items error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+    let cache_key = format!("field_items_{}", date);
+    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+        let client = ApiClient::new();
+        let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
+            eprintln!("field_items error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+        Ok(serde_json::to_string(&data).unwrap_or_default())
+    })
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/timeline
-pub async fn get_timeline() -> Result<impl IntoResponse, StatusCode> {
+pub async fn get_timeline(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
     if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(vec![]));
+        return Ok(Json(serde_json::json!([])));
     }
     let month = chrono::Local::now().format("%Y-%m").to_string();
-    let client = ApiClient::new();
-    let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
-        eprintln!("timeline error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+    let cache_key = format!("timeline_{}", month);
+    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+        let client = ApiClient::new();
+        let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
+            eprintln!("timeline error: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+        Ok(serde_json::to_string(&data).unwrap_or_default())
+    })
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/sentiment
-pub async fn get_sentiment() -> Result<impl IntoResponse, StatusCode> {
+pub async fn get_sentiment(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
     if std::env::var("JIUYAN_PHONE").is_err() {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let client = ApiClient::new();
-    let data = analyze_sentiment(&client).await.map_err(|e| {
-        eprintln!("sentiment error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "sentiment",
+        CachePolicy::snapshot(),
+        || async {
+            let client = ApiClient::new();
+            let data = analyze_sentiment(&client).await.map_err(|e| {
+                eprintln!("sentiment error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/kline/:symbol
@@ -246,6 +344,7 @@ fn default_kline_count() -> u32 {
 }
 
 pub async fn get_kline(
+    State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
     Query(q): Query<KlineQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -255,118 +354,247 @@ pub async fn get_kline(
         "minute" => KlinePeriod::Minute,
         _ => KlinePeriod::Day,
     };
-    let client = XuanguBaoClient::new();
-    let data = client
-        .fetch_kline(&symbol, period, q.count)
-        .await
-        .map_err(|e| {
-            eprintln!("kline error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    Ok(Json(data))
+    let cache_key = format!("kline_{}_{}_{}", symbol, q.period, q.count);
+    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+        let client = XuanguBaoClient::new();
+        let data = client
+            .fetch_kline(&symbol, period, q.count)
+            .await
+            .map_err(|e| {
+                eprintln!("kline error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+        Ok(serde_json::to_string(&data).unwrap_or_default())
+    })
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/realtime/:symbol
-pub async fn get_realtime(Path(symbol): Path<String>) -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_realtime(&symbol).await.map_err(|e| {
-        eprintln!("realtime error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_realtime(
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cache_key = format!("realtime_{}", symbol);
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        &cache_key,
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_realtime(&symbol).await.map_err(|e| {
+                eprintln!("realtime error: {}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/yesterday-limit-up
-pub async fn get_yesterday_limit_up() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_yesterday_limit_up().await.map_err(|e| {
-        eprintln!("yesterday_limit_up error: {:#}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_yesterday_limit_up(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "yesterday_limit_up",
+        CachePolicy::snapshot(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_yesterday_limit_up().await.map_err(|e| {
+                eprintln!("yesterday_limit_up error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/super-stock
-pub async fn get_super_stock() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client.fetch_super_stock().await.map_err(|e| {
-        eprintln!("super_stock error: {:#}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_super_stock(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "super_stock",
+        CachePolicy::snapshot(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_super_stock().await.map_err(|e| {
+                eprintln!("super_stock error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/index-quotes
-pub async fn get_index_quotes() -> Result<impl IntoResponse, StatusCode> {
-    let client = XuanguBaoClient::new();
-    let data = client
-        .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
-        .await
-        .map_err(|e| {
-            eprintln!("index_quotes error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    Ok(Json(data))
+pub async fn get_index_quotes(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "index_quotes",
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client
+                .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
+                .await
+                .map_err(|e| {
+                    eprintln!("index_quotes error: {}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/telegraph — all categories
-pub async fn get_telegraph_all() -> Result<impl IntoResponse, StatusCode> {
-    let client = ApiClient::new();
-    let data = client.cls.fetch_telegraph("").await.map_err(|e| {
-        eprintln!("telegraph error: {:#}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_telegraph_all(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "telegraph_all",
+        CachePolicy::telegraph(),
+        || async {
+            let client = ApiClient::new();
+            let data = client.cls.fetch_telegraph("").await.map_err(|e| {
+                eprintln!("telegraph error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/telegraph/:category
-pub async fn get_telegraph(Path(category): Path<String>) -> Result<impl IntoResponse, StatusCode> {
-    let client = ApiClient::new();
-    let data = client.cls.fetch_telegraph(&category).await.map_err(|e| {
-        eprintln!("telegraph error: {:#}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_telegraph(
+    State(state): State<Arc<AppState>>,
+    Path(category): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cache_key = format!("telegraph_{}", category);
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        &cache_key,
+        CachePolicy::telegraph(),
+        || async {
+            let client = ApiClient::new();
+            let data = client.cls.fetch_telegraph(&category).await.map_err(|e| {
+                eprintln!("telegraph error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/dapan-abnormal
-pub async fn get_dapan_abnormal() -> Result<impl IntoResponse, StatusCode> {
-    let client = ApiClient::new();
-    let data = client.xuangubao.fetch_dapan_abnormal().await.map_err(|e| {
-        eprintln!("dapan_abnormal error: {:#}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    Ok(Json(data))
+pub async fn get_dapan_abnormal(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "dapan_abnormal",
+        CachePolicy::snapshot(),
+        || async {
+            let client = ApiClient::new();
+            let data = client.xuangubao.fetch_dapan_abnormal().await.map_err(|e| {
+                eprintln!("dapan_abnormal error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/market-trend/:symbol
-pub async fn get_market_trend(Path(symbol): Path<String>) -> Result<impl IntoResponse, StatusCode> {
-    let client = ApiClient::new();
-    let data = client
-        .xuangubao
-        .fetch_market_trend(&symbol)
-        .await
-        .map_err(|e| {
-            eprintln!("market_trend error: {:#}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    Ok(Json(data))
+pub async fn get_market_trend(
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cache_key = format!("market_trend_{}", symbol);
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        &cache_key,
+        CachePolicy::realtime(),
+        || async {
+            let client = ApiClient::new();
+            let data = client
+                .xuangubao
+                .fetch_market_trend(&symbol)
+                .await
+                .map_err(|e| {
+                    eprintln!("market_trend error: {:#}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 pub async fn get_plates_by_any_stock(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let plates = state
-        .api
-        .xuangubao
-        .plates_by_any_stock(&symbol)
-        .await
-        .map_err(|e| {
-            eprintln!("get_plates_by_any_stock: error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    Ok(Json(plates))
+    let cache_key = format!("plates_{}", symbol);
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        &cache_key,
+        CachePolicy::snapshot(),
+        || async {
+            let plates = state
+                .api
+                .xuangubao
+                .plates_by_any_stock(&symbol)
+                .await
+                .map_err(|e| {
+                    eprintln!("get_plates_by_any_stock: error: {}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            Ok(serde_json::to_string(&plates).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/roles
