@@ -12,6 +12,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
 
 jobs:
   build-cli-amd64:
@@ -145,31 +147,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-    runs-on: macos-latest
+        include:
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v1
+
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: |
             src-tauri -> target
+          cache-on-failure: true
+
       - uses: actions/cache@v4
         with:
           path: |
             ~/.bun/install/cache
             src/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
-      - name: Add rust target
-        run: rustup target add ${{ matrix.target }}
+          key: ${{ matrix.runner }}-bun-${{ hashFiles('src/bun.lockb') }}
+
       - name: Install frontend deps
         working-directory: src
         run: bun install --frozen-lockfile
+
       - name: Set app version
         shell: bash
         run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -185,14 +194,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v1
+
       - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+          cache-on-failure: true
+
       - uses: actions/cache@v4
         with:
           path: |
             ~/.bun/install/cache
             src/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
+          key: ubuntu-bun-${{ hashFiles('src/bun.lockb') }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -201,10 +218,15 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf
-      - run: cd src && bun install
+
+      - name: Install frontend deps
+        working-directory: src
+        run: bun install --frozen-lockfile
+
       - name: Set app version
         shell: bash
         run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -218,17 +240,22 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v1
+
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: |
             src-tauri -> target
+          cache-on-failure: true
+
       - uses: actions/cache@v4
         with:
           path: |
             ~/.bun/install/cache
             src/node_modules
-          key: ${{ runner.os }}-bun-arm64-${{ hashFiles('src/bun.lockb') }}
+          key: ubuntu-arm64-bun-${{ hashFiles('src/bun.lockb') }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -237,12 +264,15 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf
+
       - name: Install frontend deps
         working-directory: src
         run: bun install --frozen-lockfile
+
       - name: Set app version
         shell: bash
         run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -258,23 +288,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v1
+
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: |
             src-tauri -> target
+          cache-on-failure: true
+
       - uses: actions/cache@v4
         with:
           path: |
             ~\.bun\install\cache
             src\node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('src/bun.lockb') }}
+          key: windows-bun-${{ hashFiles('src/bun.lockb') }}
+
       - name: Install frontend deps
         working-directory: src
         run: bun install --frozen-lockfile
+
       - name: Set app version
         shell: bash
         run: echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
