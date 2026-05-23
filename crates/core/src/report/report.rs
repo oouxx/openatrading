@@ -49,6 +49,7 @@ pub struct Report {
 }
 
 impl Report {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         overview: MarketOverview,
         limit_up: Vec<Stock>,

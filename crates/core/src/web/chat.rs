@@ -84,7 +84,7 @@ pub fn build_user_message(
         limit_up = overview.limit_up_count,
         limit_down = overview.limit_down_count,
         bomb_rate = overview.bomb_rate * 100.0,
-        ratio = format!(
+        ratio = format_args!(
             "{:.2}",
             overview.rise_count as f64 / overview.fall_count.max(1) as f64
         ),
