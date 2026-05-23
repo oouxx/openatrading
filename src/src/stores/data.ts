@@ -52,13 +52,21 @@ export async function apiChatStream(
   if (isTauri) {
     const { invoke, Channel } = await import("@tauri-apps/api/core");
     const channel = new Channel<string>();
+    let chunkCount = 0;
     channel.onmessage = (text) => {
+      chunkCount++;
+      if (chunkCount <= 3 || chunkCount % 20 === 0) {
+        console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80));
+      }
       callbacks.onData(text.replace(/\\n/g, "\n"));
     };
+    console.log("[chat_stream] invoking api_chat_stream, body=", body);
     try {
       await invoke("api_chat_stream", { body, channel });
+      console.log(`[chat_stream] invoke resolved, total chunks=${chunkCount}`);
       callbacks.onDone();
     } catch (e: any) {
+      console.error("[chat_stream] invoke rejected:", e);
       callbacks.onError(String(e));
     }
     return;

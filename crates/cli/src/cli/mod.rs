@@ -79,7 +79,14 @@ const ALL_DATA_SOURCES: &[&str] = &[
 ];
 
 pub async fn run() -> Result<()> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/"));
+
+    dotenvy::from_path(home.join(".atrading").join(".env")).ok();
     dotenvy::dotenv().ok();
+
     let cli = Cli::parse();
 
     // Handle --version
