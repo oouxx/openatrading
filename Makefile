@@ -1,4 +1,4 @@
-.PHONY: build run run-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help
+.PHONY: build run run-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major version
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -105,6 +105,67 @@ deploy-web:
 	@echo "🚀 Deploying web (frontend only)..."
 	@bash deploy.sh web
 
+# ─── Release ──────────────────────────────────────────
+
+VERSION_FILES := Cargo.toml crates/core/Cargo.toml crates/cli/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
+
+version:
+	@echo "Current: $$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
+
+release-patch: _bump-patch release
+release-minor: _bump-minor release
+release-major: _bump-major release
+
+_bump-patch:
+	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	IIFS=$$IFS; IFS='.'; read -r major minor patch <<< "$$v"; IFS=$$IIFS; \
+	new="$${major}.$${minor}.$$((patch + 1))"; \
+	echo "⬆  $$v → $$new (patch)"; \
+	for f in $(VERSION_FILES); do \
+		if [ "$$f" = "src-tauri/tauri.conf.json" ]; then \
+			sed -i '' "s/\"version\": \"[0-9][^\"]*\"/\"version\": \"$$new\"/" $$f; \
+		else \
+			sed -i '' "s/^version = \"[0-9][^\"]*\"/version = \"$$new\"/" $$f; \
+		fi; \
+	done
+
+_bump-minor:
+	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	IFS='.'; read -r major minor patch <<< "$$v"; IFS=$$IIFS; \
+	new="$${major}.$$((minor + 1)).0"; \
+	echo "⬆  $$v → $$new (minor)"; \
+	for f in $(VERSION_FILES); do \
+		if [ "$$f" = "src-tauri/tauri.conf.json" ]; then \
+			sed -i '' "s/\"version\": \"[0-9][^\"]*\"/\"version\": \"$$new\"/" $$f; \
+		else \
+			sed -i '' "s/^version = \"[0-9][^\"]*\"/version = \"$$new\"/" $$f; \
+		fi; \
+	done
+
+_bump-major:
+	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	IFS='.'; read -r major minor patch <<< "$$v"; IFS=$$IIFS; \
+	new="$$((major + 1)).0.0"; \
+	echo "⬆  $$v → $$new (major)"; \
+	for f in $(VERSION_FILES); do \
+		if [ "$$f" = "src-tauri/tauri.conf.json" ]; then \
+			sed -i '' "s/\"version\": \"[0-9][^\"]*\"/\"version\": \"$$new\"/" $$f; \
+		else \
+			sed -i '' "s/^version = \"[0-9][^\"]*\"/version = \"$$new\"/" $$f; \
+		fi; \
+	done
+
+release: check
+	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	tag="v$$v"; \
+	git diff --quiet || { echo "❌ 有未提交的改动，请先 commit"; exit 1; }; \
+	git tag -l "$$tag" | grep -q "$$tag" && { echo "❌ Tag $$tag 已存在"; exit 1; }; \
+	echo "🚀 发版 $$tag"; \
+	git add -A && git commit -m "release $$tag" --allow-empty; \
+	git tag "$$tag"; \
+	git push origin main --tags; \
+	echo "✅ 已推送 $$tag，等待 GitHub Actions 构建"
+
 # ─── Help ────────────────────────────────────────────
 
 help:
@@ -123,6 +184,13 @@ help:
 	@echo "  fmt            cargo fmt"
 	@echo "  lint           cargo clippy"
 	@echo "  check          fmt + lint + test"
+	@echo ""
+	@echo "Release:"
+	@echo "  version        显示当前版本"
+	@echo "  release-patch  发版 patch (0.1.0 -> 0.1.1)"
+	@echo "  release-minor  发版 minor (0.1.0 -> 0.2.0)"
+	@echo "  release-major  发版 major (0.1.0 -> 1.0.0)"
+	@echo "  release        用当前版本号发版 (不 bump)"
 	@echo ""
 	@echo "Deploy:"
 	@echo "  deploy         deploy all (gateway + web)"
