@@ -6,6 +6,26 @@ use axum::{
     response::Response,
 };
 
+/// Strip version from tauri-action asset names:
+///   "openatrading_0.1.0_aarch64.dmg"       -> "openatrading_aarch64.dmg"
+///   "openatrading_0.1.0_amd64.deb"          -> "openatrading_amd64.deb"
+///   "openatrading_0.1.0_x64-setup.exe"      -> "openatrading_x64-setup.exe"
+///   "openatrading_0.1.0_amd64.AppImage"     -> "openatrading_amd64.AppImage"
+///   "openatrading-x86_64-unknown-linux-gnu"  -> unchanged (CLI binary, no version)
+fn strip_version(name: &str) -> String {
+    let parts: Vec<&str> = name.splitn(3, '_').collect();
+    if parts.len() == 3
+        && parts[1]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+    {
+        format!("{}_{}", parts[0], parts[2])
+    } else {
+        name.to_string()
+    }
+}
+
 /// Proxy install.sh from GitHub
 pub async fn serve_install_sh() -> Result<impl IntoResponse, StatusCode> {
     let url = "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh";
@@ -67,14 +87,25 @@ pub async fn fetch_assets() -> Result<Vec<(i64, String)>, ()> {
 }
 
 /// Proxy download from GitHub Releases via asset API, fallback to local
+///
+/// Supports both exact match and version-stripped match:
+///   request "openatrading_aarch64.dmg" matches "openatrading_0.1.0_aarch64.dmg"
+///   request "openatrading_amd64.deb" matches "openatrading_0.1.0_amd64.deb"
+///   request "openatrading_x64-setup.exe" matches "openatrading_0.1.0_x64-setup.exe"
 pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
-    // Try GitHub asset API
     if let Ok(assets) = fetch_assets().await {
         tracing::debug!(
             "serve_download: looking for {file} in {} assets",
             assets.len()
         );
-        if let Some((asset_id, _)) = assets.iter().find(|(_, name)| name == &file) {
+
+        let matched = assets
+            .iter()
+            .find(|(_, name)| name == &file)
+            .or_else(|| assets.iter().find(|(_, name)| strip_version(name) == file));
+
+        if let Some((asset_id, matched_name)) = matched {
+            tracing::debug!("serve_download: matched {file} -> {matched_name}");
             let url = format!(
                 "https://api.github.com/repos/oouxx/openatrading/releases/assets/{asset_id}"
             );
@@ -102,6 +133,10 @@ pub async fn serve_download(Path(file): Path<String>) -> Result<impl IntoRespons
                     let response = Response::builder()
                         .status(StatusCode::OK)
                         .header(header::CONTENT_TYPE, content_type)
+                        .header(
+                            header::CONTENT_DISPOSITION,
+                            format!("attachment; filename=\"{matched_name}\""),
+                        )
                         .body(Body::from(body))
                         .unwrap();
                     return Ok(response);

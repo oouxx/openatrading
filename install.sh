@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="oouxx/openatrading"
+DL_SERVER="${DL_SERVER:-https://atrading.oouxx.com}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # ── Usage ─────────────────────────────────────────────────
@@ -11,6 +11,10 @@ usage() {
   echo "  ./install.sh              安装 openatrading CLI"
   echo "  ./install.sh --desktop    下载桌面客户端 (Tauri)"
   echo "  ./install.sh --uninstall  卸载 openatrading"
+  echo ""
+  echo "环境变量:"
+  echo "  DL_SERVER   下载服务器地址 (默认: https://atrading.oouxx.com)"
+  echo "  INSTALL_DIR CLI 安装目录 (默认: /usr/local/bin)"
   exit 0
 }
 
@@ -40,52 +44,35 @@ if [ "$ARCH" = "unsupported" ]; then
   exit 1
 fi
 
-# ── Auth header ──────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────
 
-AUTH=()
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-fi
-
-# ── Fetch release info ───────────────────────────────────
-
-fetch_release() {
-  echo "⬇ 正在获取最新版本..."
-  RELEASE_URL="https://api.github.com/repos/${REPO}/releases/latest"
-  RELEASE_JSON=$(curl -fsSL "${AUTH[@]}" "$RELEASE_URL")
-  TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
-  VERSION="${TAG#v}"
-  echo "📦 版本: $TAG"
-}
-
-find_asset_url() {
-  local name="$1"
-  ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for a in data.get('assets', []):
-    if a['name'] == '$name':
-        print(a['url'])
-        break
-" 2>/dev/null || true)
-
-  if [ -z "$ASSET_URL" ]; then
-    ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for a in data.get('assets', []):
-    if '$name' in a['name']:
-        print(a['url'])
-        break
-" 2>/dev/null || true)
+download_file() {
+  local filename="$1"
+  local out="$2"
+  local url="${DL_SERVER}/downloads/${filename}"
+  echo "⬇ 正在下载 ${filename}..."
+  local http_code
+  http_code=$(curl -fsSL -w "%{http_code}" -o "$out" "$url")
+  if [ "$http_code" != "200" ]; then
+    echo "❌ 下载失败 (HTTP $http_code): $filename"
+    echo "   URL: $url"
+    rm -f "$out"
+    return 1
   fi
 }
 
-download_asset() {
-  local url="$1"
+try_download() {
+  local filename="$1"
   local out="$2"
-  echo "⬇ 正在下载 $out..."
-  curl -fsSL "${AUTH[@]}" -H "Accept: application/octet-stream" "$url" -o "$out"
+  if ! download_file "$filename" "$out"; then
+    return 1
+  fi
+  if [ ! -s "$out" ]; then
+    echo "❌ 下载文件为空: $filename"
+    rm -f "$out"
+    return 1
+  fi
+  return 0
 }
 
 # ── Uninstall ─────────────────────────────────────────────
@@ -126,23 +113,18 @@ fi
 # ── Desktop install ───────────────────────────────────────
 
 if [ "$MODE" = "desktop" ]; then
-  fetch_release
-
   TMP_DIR=$(mktemp -d)
   trap 'rm -rf "$TMP_DIR"' EXIT
 
   if [ "$UNAME_S" = "Darwin" ]; then
-    ASSET_NAME="openatrading_${VERSION}_${ARCH}.dmg"
-    find_asset_url "$ASSET_NAME"
+    ASSET_NAME="openatrading_${ARCH}.dmg"
 
-    if [ -z "$ASSET_URL" ]; then
-      echo "❌ 未找到 macOS 桌面客户端: $ASSET_NAME"
-      echo "   可用 assets:"
-      echo "$RELEASE_JSON" | grep '"name"' | head -20
+    if ! try_download "$ASSET_NAME" "$TMP_DIR/$ASSET_NAME"; then
+      echo ""
+      echo "❌ 未找到 macOS 桌面客户端 (${ARCH})"
+      echo "   请访问 ${DL_SERVER} 查看可用版本"
       exit 1
     fi
-
-    download_asset "$ASSET_URL" "$TMP_DIR/$ASSET_NAME"
 
     echo "📦 挂载 DMG..."
     hdiutil attach "$TMP_DIR/$ASSET_NAME" -quiet
@@ -159,65 +141,51 @@ if [ "$MODE" = "desktop" ]; then
 
   elif [ "$UNAME_S" = "Linux" ]; then
     if [ "$ARCH" = "x86_64" ]; then
-      ASSET_NAME="openatrading_${VERSION}_amd64.deb"
-      find_asset_url "$ASSET_NAME"
-
-      if [ -z "$ASSET_URL" ]; then
-        ASSET_NAME="openatrading_${VERSION}_amd64.AppImage"
-        find_asset_url "$ASSET_NAME"
-      fi
+      DEB_NAME="openatrading_amd64.deb"
+      APPIMG_NAME="openatrading_amd64.AppImage"
     else
-      ASSET_NAME="openatrading_${VERSION}_${ARCH}.deb"
-      find_asset_url "$ASSET_NAME"
-
-      if [ -z "$ASSET_URL" ]; then
-        ASSET_NAME="openatrading_${VERSION}_${ARCH}.AppImage"
-        find_asset_url "$ASSET_NAME"
-      fi
+      DEB_NAME="openatrading_${ARCH}.deb"
+      APPIMG_NAME="openatrading_${ARCH}.AppImage"
     fi
 
-    if [ -z "$ASSET_URL" ]; then
-      echo "❌ 未找到 Linux 桌面客户端"
-      echo "   可用 assets:"
-      echo "$RELEASE_JSON" | grep '"name"' | head -20
-      exit 1
-    fi
-
-    download_asset "$ASSET_URL" "$TMP_DIR/$ASSET_NAME"
-
-    if [[ "$ASSET_NAME" == *.deb ]]; then
+    if try_download "$DEB_NAME" "$TMP_DIR/$DEB_NAME"; then
       echo "📦 安装 .deb..."
-      sudo dpkg -i "$TMP_DIR/$ASSET_NAME" || sudo apt-get install -f -y
+      sudo dpkg -i "$TMP_DIR/$DEB_NAME" || sudo apt-get install -f -y
       echo ""
       echo "✅ 桌面客户端已安装"
-    elif [[ "$ASSET_NAME" == *.AppImage ]]; then
-      chmod +x "$TMP_DIR/$ASSET_NAME"
+    elif try_download "$APPIMG_NAME" "$TMP_DIR/$APPIMG_NAME"; then
+      chmod +x "$TMP_DIR/$APPIMG_NAME"
       mkdir -p "$HOME/Applications"
-      mv "$TMP_DIR/$ASSET_NAME" "$HOME/Applications/"
+      mv "$TMP_DIR/$APPIMG_NAME" "$HOME/Applications/"
       echo ""
-      echo "✅ 桌面客户端已安装到 ~/Applications/$ASSET_NAME"
-    fi
-
-  elif [ "$UNAME_S" = "MINGW"* ] || [ "$UNAME_S" = "MSYS"* ] || [ "$UNAME_S" = "CYGWIN"* ]; then
-    ASSET_NAME="openatrading_${VERSION}_x64-setup.nsis.zip"
-    find_asset_url "$ASSET_NAME"
-
-    if [ -z "$ASSET_URL" ]; then
-      ASSET_NAME="openatrading_${VERSION}_x64_en-US.msi"
-      find_asset_url "$ASSET_NAME"
-    fi
-
-    if [ -z "$ASSET_URL" ]; then
-      echo "❌ 未找到 Windows 桌面客户端"
+      echo "✅ 桌面客户端已安装到 ~/Applications/$APPIMG_NAME"
+    else
+      echo ""
+      echo "❌ 未找到 Linux 桌面客户端 (${ARCH})"
+      echo "   请访问 ${DL_SERVER} 查看可用版本"
       exit 1
     fi
 
-    download_asset "$ASSET_URL" "$TMP_DIR/$ASSET_NAME"
-    echo ""
-    echo "✅ 已下载到 $TMP_DIR/$ASSET_NAME"
-    echo "   请手动运行安装程序"
-    # Keep tmp dir for Windows
-    trap - EXIT
+  elif [[ "$UNAME_S" == MINGW* ]] || [[ "$UNAME_S" == MSYS* ]] || [[ "$UNAME_S" == CYGWIN* ]]; then
+    EXE_NAME="openatrading_x64-setup.exe"
+    MSI_NAME="openatrading_x64_en-US.msi"
+
+    if try_download "$EXE_NAME" "$TMP_DIR/$EXE_NAME"; then
+      echo ""
+      echo "✅ 已下载到 $TMP_DIR/$EXE_NAME"
+      echo "   请手动运行安装程序"
+      trap - EXIT
+    elif try_download "$MSI_NAME" "$TMP_DIR/$MSI_NAME"; then
+      echo ""
+      echo "✅ 已下载到 $TMP_DIR/$MSI_NAME"
+      echo "   请手动运行安装程序"
+      trap - EXIT
+    else
+      echo ""
+      echo "❌ 未找到 Windows 桌面客户端"
+      echo "   请访问 ${DL_SERVER} 查看可用版本"
+      exit 1
+    fi
   else
     echo "❌ 不支持的操作系统: $UNAME_S"
     exit 1
@@ -228,8 +196,6 @@ fi
 
 # ── CLI install ───────────────────────────────────────────
 
-fetch_release
-
 if [ "$UNAME_S" = "Linux" ]; then
   CLI_ASSET="openatrading-${ARCH}-unknown-linux-gnu"
 elif [ "$UNAME_S" = "Darwin" ]; then
@@ -239,21 +205,17 @@ else
   exit 1
 fi
 
-find_asset_url "$CLI_ASSET"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-if [ -z "$ASSET_URL" ]; then
+if ! try_download "$CLI_ASSET" "$TMP_DIR/openatrading"; then
+  echo ""
   echo "❌ 未找到 CLI 二进制: $CLI_ASSET"
-  echo "   可用 assets:"
-  echo "$RELEASE_JSON" | grep '"name"' | head -20
+  echo "   请访问 ${DL_SERVER} 查看可用版本"
   exit 1
 fi
 
 echo "📦 平台: $CLI_ASSET"
-
-TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"' EXIT
-
-download_asset "$ASSET_URL" "$TMP_DIR/openatrading"
 
 if [ -w "$INSTALL_DIR" ]; then
   mv "$TMP_DIR/openatrading" "$INSTALL_DIR/openatrading"

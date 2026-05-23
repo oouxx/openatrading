@@ -156,7 +156,7 @@
                     </p>
                     <pre
                         class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
-                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash</code></pre>
+                    ><code>curl -fsSL {{ getApiBaseUrl() }}/install.sh | bash</code></pre>
                 </div>
                 <div>
                     <p class="text-ink-muted text-sm mb-2">
@@ -164,7 +164,7 @@
                     </p>
                     <pre
                         class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
-                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash -s -- --desktop</code></pre>
+                    ><code>curl -fsSL {{ getApiBaseUrl() }}/install.sh | bash -s -- --desktop</code></pre>
                 </div>
                 <div>
                     <p class="text-ink-muted text-sm mb-2">
@@ -172,7 +172,7 @@
                     </p>
                     <pre
                         class="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto"
-                    ><code>curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash -s -- --uninstall</code></pre>
+                    ><code>curl -fsSL {{ getApiBaseUrl() }}/install.sh | bash -s -- --uninstall</code></pre>
                 </div>
             </div>
         </section>
@@ -193,17 +193,18 @@
 </template>
 
 <script setup lang="ts">
-const REPO = "oouxx/openatrading";
-const GH_RELEASE = `https://github.com/${REPO}/releases/latest/download`;
+import { getApiBaseUrl } from "@/stores/data";
+
+const DL_BASE = `${getApiBaseUrl()}/downloads`;
 
 function dl(platform: string, arch: string): string {
   switch (platform) {
     case "macos":
-      return `${GH_RELEASE}/openatrading_${arch}.dmg`;
+      return `${DL_BASE}/openatrading_${arch}.dmg`;
     case "linux":
-      return `${GH_RELEASE}/openatrading_${arch === "x86_64" ? "amd64" : arch}.deb`;
+      return `${DL_BASE}/openatrading_${arch === "x86_64" ? "amd64" : arch}.deb`;
     case "windows":
-      return `${GH_RELEASE}/openatrading_x64-setup.exe`;
+      return `${DL_BASE}/openatrading_x64-setup.exe`;
     default:
       return "#";
   }
