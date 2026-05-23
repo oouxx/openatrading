@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::Datelike;
+use chrono::{Datelike, Local};
 use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
@@ -484,6 +484,62 @@ impl XuanguBaoClient {
         anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
         Ok(resp.data)
     }
+    /// Cursor-paginate to fetch ALL events for the latest trading day (09:30–15:00).
+    /// Returns events sorted by event_timestamp ascending.
+    pub async fn fetch_day_events(&self) -> Result<Vec<PlateAbnormalEvent>> {
+        let day_close_ts = Self::latest_trading_day_close_ts();
+        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60; // ~09:30
+
+        let mut all_events: Vec<PlateAbnormalEvent> = Vec::new();
+        let mut cursor = day_close_ts;
+
+        loop {
+            let url = format!(
+                "{}/event/history?timestamp={cursor}&count=10000&types=11000,11001",
+                self.base_url
+            );
+            let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
+                self.client.get(&url).send().await?.json().await?;
+            anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+
+            if resp.data.is_empty() {
+                break;
+            }
+
+            let oldest_ts = resp
+                .data
+                .iter()
+                .map(|e| e.event_timestamp)
+                .min()
+                .unwrap_or(0);
+
+            all_events.extend(resp.data);
+
+            if oldest_ts <= day_open_ts {
+                break;
+            }
+            cursor = oldest_ts;
+        }
+
+        // Filter to 09:30–15:00 window, sort ascending
+        all_events.retain(|e| e.event_timestamp >= day_open_ts);
+        all_events.sort_by_key(|e| e.event_timestamp);
+        Ok(all_events)
+    }
+
+    /// Unix timestamp for 15:00 on the latest trading day (China time, UTC+8).
+    fn latest_trading_day_close_ts() -> i64 {
+        let days = Self::last_n_trading_days(1);
+        let date_str = days.first().map(|s| s.as_str()).unwrap_or("2026-01-01");
+        // Parse YYYY-MM-DD, compute 15:00:00 in local time (assumes system TZ = UTC+8)
+        let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .unwrap()
+            .and_hms_opt(15, 0, 0)
+            .unwrap();
+        let local_dt = naive.and_local_timezone(Local).unwrap();
+        local_dt.timestamp()
+    }
+
     // ---大盘异动---------------------------------------
     pub async fn fetch_dapan_abnormal(&self) -> Result<Vec<DapanAbnormal>> {
         let url =

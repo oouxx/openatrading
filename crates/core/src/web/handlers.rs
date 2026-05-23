@@ -771,3 +771,102 @@ pub async fn get_role_pnl_history(
         initial_capital: 1_000_000.0,
     }))
 }
+
+// ── Replay handlers ────────────────────────────────────
+
+/// GET /api/replay/events — full-day events + snapshots for the latest trading day
+pub async fn get_replay_events(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "replay_events",
+        CachePolicy::replay(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let events = client.fetch_day_events().await.map_err(|e| {
+                eprintln!("replay events error: {e}");
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+
+            let date = XuanguBaoClient::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default();
+
+            let data = crate::service::replay::build_replay_data(&date, &events);
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
+}
+
+/// POST /api/replay/analyze — SSE stream of AI analysis
+pub async fn ai_replay_analyze(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let llm = state.llm.clone();
+
+    // Load events (try cache first, then fetch)
+    let events = match cache::get(&state.cache, "replay_events") {
+        Some(cached) => {
+            let v: serde_json::Value = serde_json::from_str(&cached).unwrap_or_default();
+            v["events"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|e| serde_json::from_value(e.clone()).ok())
+                .collect::<Vec<crate::api::xuangubao::PlateAbnormalEvent>>()
+        }
+        None => {
+            let client = XuanguBaoClient::new();
+            client.fetch_day_events().await.map_err(|e| {
+                eprintln!("replay analyze fetch error: {e}");
+                StatusCode::SERVICE_UNAVAILABLE
+            })?
+        }
+    };
+
+    let date = XuanguBaoClient::last_n_trading_days(1)
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    let snapshots = crate::service::replay::build_replay_data(&date, &events).snapshots;
+    let prompt = crate::service::replay::build_analysis_prompt(&date, &snapshots);
+
+    let mut llm_stream = llm.chat_stream(&prompt).await.map_err(|e| {
+        eprintln!("replay analyze llm error: {e}");
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+
+    use futures::StreamExt;
+    let stream = async_stream::stream! {
+        while let Some(chunk) = llm_stream.next().await {
+            match chunk {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        yield Ok::<_, std::convert::Infallible>(
+                            axum::response::sse::Event::default().data(text)
+                        );
+                    }
+                }
+                Err(e) => {
+                    yield Ok(axum::response::sse::Event::default().data(format!("[ERROR] {e}")));
+                    break;
+                }
+            }
+        }
+        yield Ok(axum::response::sse::Event::default().data("[DONE]"));
+    };
+
+    Ok(axum::response::Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keepalive"),
+    ))
+}

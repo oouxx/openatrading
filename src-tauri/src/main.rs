@@ -178,6 +178,19 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
         }
+        "/api/replay/events" => {
+            let client = XuanguBaoClient::new();
+            let events = client
+                .fetch_day_events()
+                .await
+                .map_err(|e| format!("{e}"))?;
+            let date = XuanguBaoClient::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default();
+            let data = trending_agent_core::service::replay::build_replay_data(&date, &events);
+            Ok(serde_json::to_value(data).unwrap_or_default())
+        }
         _ => {
             if path.strip_prefix("/api/field-items").is_some() {
                 let date = extract_query(path, "date")
@@ -574,6 +587,51 @@ async fn api_chat_stream(
     Ok(())
 }
 
+#[tauri::command]
+async fn api_replay_analyze(
+    channel: tauri::ipc::Channel<String>,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let llm = state.llm.clone();
+
+    let client = XuanguBaoClient::new();
+    let events = client
+        .fetch_day_events()
+        .await
+        .map_err(|e| format!("fetch error: {e}"))?;
+    let date = XuanguBaoClient::last_n_trading_days(1)
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    let snapshots =
+        trending_agent_core::service::replay::build_replay_data(&date, &events).snapshots;
+    let prompt = trending_agent_core::service::replay::build_analysis_prompt(&date, &snapshots);
+
+    let mut llm_stream = llm
+        .chat_stream(&prompt)
+        .await
+        .map_err(|e| format!("llm error: {e}"))?;
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = llm_stream.next().await {
+        match chunk {
+            Ok(text) if !text.is_empty() => {
+                channel
+                    .send(text)
+                    .map_err(|e| format!("channel error: {e}"))?;
+            }
+            Err(e) => {
+                channel
+                    .send(format!("[ERROR] {e}"))
+                    .map_err(|e| format!("channel error: {e}"))?;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let project_root = find_project_root();
 
@@ -604,7 +662,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             api_fetch,
             api_post,
-            api_chat_stream
+            api_chat_stream,
+            api_replay_analyze
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

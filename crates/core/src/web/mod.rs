@@ -100,6 +100,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::get_role_pnl_history),
         )
         // Proxy downloads from GitHub Releases
+        .route("/api/replay/events", get(handlers::get_replay_events))
+        .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
         .route("/install.sh", get(download::serve_install_sh))
         .route("/downloads/:file", get(download::serve_download))
         .with_state(state)
