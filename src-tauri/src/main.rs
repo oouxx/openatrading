@@ -12,16 +12,54 @@ use trending_agent_core::trade::TradeManager;
 use trending_agent_core::web::{AppState, RoleEntry};
 
 fn find_project_root() -> PathBuf {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/"));
-
-    if home.join(".atrading").exists() {
-        return home;
+    // Walk up from current_dir looking for .env first (workspace root),
+    // then Cargo.toml as fallback (crate root).
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // First pass: look for .env (workspace root marker)
+    let mut current = cwd.as_path();
+    loop {
+        if current.join(".env").exists() {
+            return current.to_path_buf();
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
     }
+    // Second pass: fall back to any Cargo.toml directory
+    let mut current = cwd.as_path();
+    loop {
+        if current.join("Cargo.toml").exists() {
+            return current.to_path_buf();
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+    cwd
+}
 
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+fn load_env(project_root: &PathBuf) {
+    // Load from ~/.atrading/.env (global config for secrets, highest priority)
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        let home_env = PathBuf::from(home).join(".atrading").join(".env");
+        if home_env.exists() {
+            dotenvy::from_path(&home_env).ok();
+            eprintln!("[env] loaded {}", home_env.display());
+        }
+    }
+    // Load from project root
+    let project_env = project_root.join(".env");
+    if project_env.exists() {
+        dotenvy::from_path(&project_env).ok();
+        eprintln!("[env] loaded {}", project_env.display());
+    }
+    let atrading_env = project_root.join(".atrading").join(".env");
+    if atrading_env.exists() && atrading_env != project_env {
+        dotenvy::from_path(&atrading_env).ok();
+        eprintln!("[env] loaded {}", atrading_env.display());
+    }
 }
 
 fn build_roles() -> Vec<RoleEntry> {
@@ -180,7 +218,10 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         }
         "/api/replay/events" => {
             let client = XuanguBaoClient::new();
-            let timestamp = XuanguBaoClient::latest_trading_day_close_ts();
+            let has_cursor = extract_query(path, "cursor").is_some();
+            let timestamp = extract_query(path, "cursor")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_else(XuanguBaoClient::latest_trading_day_close_ts);
             let raw = client
                 .fetch_events_page(timestamp, 50)
                 .await
@@ -190,13 +231,21 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map(trending_agent_core::api::xuangubao::ReplayEvent::from)
                 .collect();
             let next_cursor = events.last().map(|e| e.event_timestamp);
-            let date = XuanguBaoClient::last_n_trading_days(1)
-                .first()
-                .cloned()
-                .unwrap_or_default();
-            let market_phase = trending_agent_core::web::cache::current_market_phase()
-                .as_str()
-                .to_string();
+            let date = if has_cursor {
+                String::new()
+            } else {
+                XuanguBaoClient::last_n_trading_days(1)
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let market_phase = if has_cursor {
+                String::new()
+            } else {
+                trending_agent_core::web::cache::current_market_phase()
+                    .as_str()
+                    .to_string()
+            };
             let page = trending_agent_core::api::xuangubao::ReplayPage {
                 date,
                 market_phase,
@@ -205,7 +254,29 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             };
             Ok(serde_json::to_value(page).unwrap_or_default())
         }
+        "/api/replay/index" => {
+            use trending_agent_core::api::xuangubao::fetch_index_trends;
+            let client = XuanguBaoClient::new();
+            let data = fetch_index_trends(&client)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            Ok(serde_json::to_value(data).unwrap_or_default())
+        }
         _ => {
+            if path.strip_prefix("/api/replay/news").is_some() {
+                let client = XuanguBaoClient::new();
+                let tailmark = extract_query(path, "tailmark").and_then(|s| s.parse().ok());
+                let msg_id_mark = extract_query(path, "msgIdMark");
+                let (items, next_tail, next_msg) = client
+                    .fetch_news_stream(tailmark, msg_id_mark.as_deref())
+                    .await
+                    .map_err(|e| format!("{e}"))?;
+                return Ok(serde_json::json!({
+                    "items": items,
+                    "tailmark": next_tail,
+                    "msgIdMark": next_msg,
+                }));
+            }
             if path.strip_prefix("/api/field-items").is_some() {
                 let date = extract_query(path, "date")
                     .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
@@ -647,9 +718,7 @@ async fn api_replay_analyze(
 
 fn main() {
     let project_root = find_project_root();
-
-    dotenvy::from_path(project_root.join(".atrading").join(".env")).ok();
-    dotenvy::from_path(project_root.join(".env")).ok();
+    load_env(&project_root);
 
     let db_path = project_root.join(".atrading").join("data.db");
 
