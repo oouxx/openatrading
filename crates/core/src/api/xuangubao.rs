@@ -1,6 +1,11 @@
 use anyhow::{Context, Result};
-use chrono::{Datelike, Local};
+use chrono::{Datelike, FixedOffset};
 use serde::{Deserialize, Serialize};
+
+/// UTC+8 Beijing time — all A-share market clock calculations should use this.
+fn beijing_tz() -> FixedOffset {
+    FixedOffset::east_opt(8 * 3600).unwrap()
+}
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
 
@@ -37,7 +42,9 @@ pub struct LimitTimeline {
 pub struct RelatedStock {
     pub symbol: String,
     pub name: String,
+    #[serde(default)]
     pub mtm: f64,
+    #[serde(default)]
     pub pcp: f64,
 }
 
@@ -490,19 +497,43 @@ impl XuanguBaoClient {
         let day_close_ts = Self::latest_trading_day_close_ts();
         let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60; // ~09:30
 
+        let date_str = Self::last_n_trading_days(1)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        eprintln!(
+            "[replay] fetch_day_events: date={date_str} open_ts={day_open_ts} close_ts={day_close_ts}"
+        );
+
         let mut all_events: Vec<PlateAbnormalEvent> = Vec::new();
         let mut cursor = day_close_ts;
+        let mut page = 0u32;
 
         loop {
+            page += 1;
             let url = format!(
                 "{}/event/history?timestamp={cursor}&count=10000&types=11000,11001",
                 self.base_url
             );
-            let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
-                self.client.get(&url).send().await?.json().await?;
+            let raw_text = self.client.get(&url).send().await?.text().await?;
+            // Log first 500 chars of raw response for debugging
+            let preview: String = raw_text.chars().take(500).collect();
+            eprintln!("[replay] page {page} raw response preview: {preview}...");
+            let resp: ApiResponse<Vec<PlateAbnormalEvent>> = serde_json::from_str(&raw_text)
+                .map_err(|e| {
+                    eprintln!("[replay] page {page} deserialize error: {e}");
+                    // Print a chunk of the raw JSON near the error position
+                    let col = e.column();
+                    let start = col.saturating_sub(200);
+                    let end = (col + 200).min(raw_text.len());
+                    eprintln!("[replay] raw JSON near error: {}", &raw_text[start..end]);
+                    anyhow::anyhow!("failed to deserialize page {page}: {e}")
+                })?;
             anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
 
-            if resp.data.is_empty() {
+            let batch_size = resp.data.len();
+            if batch_size == 0 {
+                eprintln!("[replay] page {page}: empty, stopping");
                 break;
             }
 
@@ -513,31 +544,44 @@ impl XuanguBaoClient {
                 .min()
                 .unwrap_or(0);
 
+            eprintln!(
+                "[replay] page {page}: cursor={cursor} received={batch_size} oldest_ts={oldest_ts} total={}",
+                all_events.len() + batch_size
+            );
+
             all_events.extend(resp.data);
 
             if oldest_ts <= day_open_ts {
+                eprintln!("[replay] oldest_ts <= day_open_ts, pagination complete");
                 break;
             }
             cursor = oldest_ts;
         }
 
-        // Filter to 09:30–15:00 window, sort ascending
+        let before_filter = all_events.len();
         all_events.retain(|e| e.event_timestamp >= day_open_ts);
         all_events.sort_by_key(|e| e.event_timestamp);
+
+        let plate_events = all_events.iter().filter(|e| e.event_type == 11001).count();
+        let stock_events = all_events.iter().filter(|e| e.event_type == 11000).count();
+        eprintln!(
+            "[replay] fetch_day_events done: {before_filter} raw → {} filtered (plate={plate_events}, stock={stock_events})",
+            all_events.len()
+        );
+
         Ok(all_events)
     }
 
-    /// Unix timestamp for 15:00 on the latest trading day (China time, UTC+8).
+    /// Unix timestamp for 15:00 on the latest trading day (Beijing time, UTC+8).
     fn latest_trading_day_close_ts() -> i64 {
         let days = Self::last_n_trading_days(1);
         let date_str = days.first().map(|s| s.as_str()).unwrap_or("2026-01-01");
-        // Parse YYYY-MM-DD, compute 15:00:00 in local time (assumes system TZ = UTC+8)
         let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
             .unwrap()
             .and_hms_opt(15, 0, 0)
             .unwrap();
-        let local_dt = naive.and_local_timezone(Local).unwrap();
-        local_dt.timestamp()
+        let dt = naive.and_local_timezone(beijing_tz()).unwrap();
+        dt.timestamp()
     }
 
     // ---大盘异动---------------------------------------
@@ -859,4 +903,320 @@ pub struct PlateAndReason {
     pub plate_name: String,
     #[serde(default)]
     pub reason: String,
+}
+
+// ─── 行情回放 ────────────────────────────────────────────
+
+/// Events + pre-computed time snapshots for the replay frontend.
+#[derive(Debug, Serialize)]
+pub struct ReplayData {
+    pub date: String,
+    pub events: Vec<PlateAbnormalEvent>,
+    pub snapshots: Vec<TimeSnapshot>,
+    pub market_phase: String,
+}
+
+/// Aggregated view of a 5‑minute window.
+#[derive(Debug, Serialize)]
+pub struct TimeSnapshot {
+    pub timestamp: i64,
+    pub time_label: String,
+    pub emotion_score: f64,
+    pub bull_count: u32,
+    pub bear_count: u32,
+    pub top_plates: Vec<TopPlate>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct TopPlate {
+    pub plate_name: String,
+    pub pcp: f64,
+    pub good_or_bad: i32,
+    pub related_stocks: Vec<RelatedStock>,
+}
+
+struct PlateAccumulator {
+    pcp: f64,
+    good_or_bad: i32,
+    related_stocks: Vec<RelatedStock>,
+}
+
+/// Build replay data: sort events, generate 5‑min snapshots.
+pub fn build_replay_data(date: &str, events: &[PlateAbnormalEvent]) -> ReplayData {
+    let t0 = std::time::Instant::now();
+    let snapshots = build_replay_snapshots(events);
+    let market_phase = crate::web::cache::current_market_phase().as_str();
+    eprintln!(
+        "[replay] build_replay_data: date={date} events={} snapshots={} phase={market_phase} elapsed={:.0}ms",
+        events.len(),
+        snapshots.len(),
+        t0.elapsed().as_millis(),
+    );
+    ReplayData {
+        date: date.to_string(),
+        events: events.to_vec(),
+        snapshots,
+        market_phase: market_phase.to_string(),
+    }
+}
+
+/// Slice events into 5‑minute buckets across 09:30–15:00, computing
+/// cumulative emotion scores and top plates per bucket.
+fn build_replay_snapshots(events: &[PlateAbnormalEvent]) -> Vec<TimeSnapshot> {
+    if events.is_empty() {
+        return vec![];
+    }
+
+    let start_ts = events.first().unwrap().event_timestamp;
+    let end_ts = events.last().unwrap().event_timestamp;
+    let bucket_secs: i64 = 5 * 60;
+
+    let first_bucket = (start_ts / bucket_secs) * bucket_secs;
+    let last_bucket = (end_ts / bucket_secs) * bucket_secs;
+
+    let mut snapshots: Vec<TimeSnapshot> = Vec::new();
+    let mut bull_acc = 0u32;
+    let mut bear_acc = 0u32;
+    let mut plate_map: std::collections::HashMap<String, PlateAccumulator> =
+        std::collections::HashMap::new();
+    let mut ev_idx = 0usize;
+
+    let mut bucket_start = first_bucket;
+    while bucket_start <= last_bucket {
+        let bucket_end = bucket_start + bucket_secs;
+
+        let mut bucket_bull = 0u32;
+        let mut bucket_bear = 0u32;
+        while ev_idx < events.len() && events[ev_idx].event_timestamp < bucket_end {
+            let ev = &events[ev_idx];
+            match ev.good_or_bad {
+                1 => bucket_bull += 1,
+                2 => bucket_bear += 1,
+                _ => {}
+            }
+            if ev.event_type == 11001 {
+                if let Some(ref pd) = ev.plate_abnormal_event_data {
+                    if let (Some(ref name), Some(pcp)) = (&pd.plate_name, pd.pcp) {
+                        let acc =
+                            plate_map
+                                .entry(name.clone())
+                                .or_insert_with(|| PlateAccumulator {
+                                    pcp,
+                                    good_or_bad: ev.good_or_bad,
+                                    related_stocks: pd.related_stocks.clone(),
+                                });
+                        if pcp.abs() > acc.pcp.abs() {
+                            acc.pcp = pcp;
+                            acc.good_or_bad = ev.good_or_bad;
+                        }
+                        if acc.related_stocks.len() < pd.related_stocks.len() {
+                            acc.related_stocks = pd.related_stocks.clone();
+                        }
+                    }
+                }
+            }
+            ev_idx += 1;
+        }
+
+        bull_acc += bucket_bull;
+        bear_acc += bucket_bear;
+
+        let emotion = if bull_acc + bear_acc > 0 {
+            bull_acc as f64 / (bull_acc + bear_acc) as f64 * 100.0
+        } else {
+            50.0
+        };
+
+        let mut top: Vec<TopPlate> = plate_map
+            .drain()
+            .map(|(plate_name, acc)| TopPlate {
+                plate_name,
+                pcp: acc.pcp,
+                good_or_bad: acc.good_or_bad,
+                related_stocks: acc.related_stocks,
+            })
+            .collect();
+        top.sort_by(|a, b| b.pcp.abs().partial_cmp(&a.pcp.abs()).unwrap());
+        top.truncate(5);
+
+        let time_label = unix_to_hhmm(bucket_start);
+
+        snapshots.push(TimeSnapshot {
+            timestamp: bucket_start,
+            time_label,
+            emotion_score: (emotion * 10.0).round() / 10.0,
+            bull_count: bull_acc,
+            bear_count: bear_acc,
+            top_plates: top,
+        });
+
+        bucket_start = bucket_end;
+    }
+
+    snapshots
+}
+
+fn unix_to_hhmm(ts: i64) -> String {
+    let secs_since_midnight = ts.rem_euclid(86400);
+    let h = secs_since_midnight / 3600;
+    let m = (secs_since_midnight % 3600) / 60;
+    format!("{h:02}:{m:02}")
+}
+
+/// Assemble the text prompt for AI analysis from snapshot data.
+pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
+    let mut table = String::from("时间       情绪温度  多/空  主线板块\n");
+
+    for s in snapshots.iter().step_by(2) {
+        let top_names: Vec<String> = s.top_plates.iter().map(|p| p.plate_name.clone()).collect();
+        table.push_str(&format!(
+            "{}      {:.0}       {}/{:<2}  {}\n",
+            s.time_label,
+            s.emotion_score,
+            s.bull_count,
+            s.bear_count,
+            top_names.join("、"),
+        ));
+    }
+
+    format!(
+        r#"你是一位经验丰富的A股短线交易复盘专家。请根据以下{date}行情回放数据，对全天行情进行结构化分析。
+
+{content}
+
+请从以下维度输出分析报告（Markdown格式）：
+1. **全天情绪节奏**：情绪高点/低点出现时间，整体多空趋势
+2. **主线板块**：全天最强板块，持续时长，是否有切换
+3. **关键时间节点**：情绪突变点分析，可能的原因推断
+4. **板块轮动特征**：资金从哪个板块流向哪个板块
+5. **复盘结论**：当日适合什么策略，哪类股票机会更大，有什么风险需要注意
+
+要求：分析具体、有数据支撑，避免泛泛而谈。"#,
+        date = date,
+        content = table,
+    )
+}
+
+// ─── 指数走势（三指数并发） ──────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct IndexTrendData {
+    pub sh: Vec<IndexTick>,
+    pub sz: Vec<IndexTick>,
+    pub cyb: Vec<IndexTick>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct IndexTick {
+    pub tick_at: i64,
+    pub close_px: f64,
+}
+
+pub async fn fetch_index_trends(client: &XuanguBaoClient) -> Result<IndexTrendData> {
+    let (sh, sz, cyb) = tokio::try_join!(
+        client.fetch_index_trend("000001.SS"),
+        client.fetch_index_trend("399001.SZ"),
+        client.fetch_index_trend("399006.SZ"),
+    )?;
+    Ok(IndexTrendData { sh, sz, cyb })
+}
+
+impl XuanguBaoClient {
+    async fn fetch_index_trend(&self, prod_code: &str) -> Result<Vec<IndexTick>> {
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields=tick_at,close_px&prod_code={prod_code}"
+        );
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Trend API error: {}",
+            resp["message"]
+        );
+        let candle = &resp["data"]["candle"][prod_code];
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let tick_at_idx = fields.iter().position(|f| f == "tick_at");
+        let close_idx = fields.iter().position(|f| f == "close_px");
+        let lines = candle["lines"].as_array().cloned().unwrap_or_default();
+        let ticks: Vec<IndexTick> = lines
+            .iter()
+            .filter_map(|line| {
+                let arr = line.as_array()?;
+                let tick_at = tick_at_idx.and_then(|i| arr.get(i)?.as_f64())? as i64;
+                let close_px = close_idx.and_then(|i| arr.get(i)?.as_f64())?;
+                Some(IndexTick { tick_at, close_px })
+            })
+            .collect();
+        Ok(ticks)
+    }
+
+    pub async fn fetch_news_stream(
+        &self,
+        tailmark: i64,
+        msg_id_mark: i64,
+    ) -> Result<Vec<NewsItem>> {
+        let url = format!(
+            "https://api.xuangubao.com.cn/api/pc/msgs?subjids=9,723,10,35,469&limit=50&tailmark={tailmark}&msgIdMark={msg_id_mark}"
+        );
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        let items = resp["NewMsgs"].as_array().cloned().unwrap_or_default();
+        let result: Vec<NewsItem> = items
+            .iter()
+            .filter_map(|v| {
+                let id = v["Id"].as_str()?.parse::<i64>().ok()?;
+                let title = v["Title"].as_str()?.to_string();
+                let summary = v["Summary"].as_str().unwrap_or("").to_string();
+                let timestamp = v["CreatedAtInSec"].as_i64()?;
+                Some(NewsItem {
+                    id,
+                    timestamp,
+                    title,
+                    content: summary,
+                })
+            })
+            .collect();
+        Ok(result)
+    }
+
+    pub async fn fetch_day_news(&self) -> Result<Vec<NewsItem>> {
+        let now_ts = chrono::Local::now().timestamp();
+        let mut all_items: Vec<NewsItem> = Vec::new();
+        let mut tailmark = now_ts;
+        let mut msg_id_mark: i64 = 0;
+        let day_start_ts = now_ts - 24 * 3600;
+
+        loop {
+            let batch = self.fetch_news_stream(tailmark, msg_id_mark).await?;
+            if batch.is_empty() {
+                break;
+            }
+            let oldest_ts = batch.iter().map(|i| i.timestamp).min().unwrap_or(0);
+            let oldest_id = batch.iter().map(|i| i.id).min().unwrap_or(0);
+            all_items.extend(batch);
+            if oldest_ts <= day_start_ts {
+                break;
+            }
+            tailmark = oldest_ts;
+            msg_id_mark = oldest_id;
+        }
+
+        all_items.retain(|i| i.timestamp >= day_start_ts);
+        all_items.sort_by_key(|i| i.timestamp);
+        Ok(all_items)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NewsItem {
+    pub id: i64,
+    pub timestamp: i64,
+    pub title: String,
+    #[serde(default)]
+    pub content: String,
 }

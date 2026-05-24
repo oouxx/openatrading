@@ -778,14 +778,17 @@ pub async fn get_role_pnl_history(
 pub async fn get_replay_events(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let cache_hit = cache::get(&state.cache, "replay_events").is_some();
+
     let cached = cache::get_or_fetch(
         &state.cache,
         "replay_events",
         CachePolicy::replay(),
         || async {
+            eprintln!("[replay] GET /api/replay/events cache miss, fetching...");
             let client = XuanguBaoClient::new();
             let events = client.fetch_day_events().await.map_err(|e| {
-                eprintln!("replay events error: {e}");
+                eprintln!("[replay] events error: {e}");
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
 
@@ -794,7 +797,66 @@ pub async fn get_replay_events(
                 .cloned()
                 .unwrap_or_default();
 
-            let data = crate::service::replay::build_replay_data(&date, &events);
+            let data = crate::api::xuangubao::build_replay_data(&date, &events);
+            let json = serde_json::to_string(&data).unwrap_or_default();
+            eprintln!("[replay] cached response size: {} bytes", json.len());
+            Ok(json)
+        },
+    )
+    .await?;
+
+    if cache_hit {
+        eprintln!(
+            "[replay] GET /api/replay/events cache hit ({} bytes)",
+            cached.len()
+        );
+    }
+
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
+}
+
+/// GET /api/replay/index — three-index trend data
+pub async fn get_replay_index(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "replay_index",
+        CachePolicy::replay(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = crate::api::xuangubao::fetch_index_trends(&client)
+                .await
+                .map_err(|e| {
+                    eprintln!("[replay] index trend error: {e}");
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
+}
+
+/// GET /api/replay/news — 7×24 news stream for the day
+pub async fn get_replay_news(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "replay_news",
+        CachePolicy::replay(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client.fetch_day_news().await.map_err(|e| {
+                eprintln!("[replay] news error: {e}");
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
         },
     )
@@ -809,26 +871,33 @@ pub async fn get_replay_events(
 pub async fn ai_replay_analyze(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    eprintln!("[replay] POST /api/replay/analyze start");
     let llm = state.llm.clone();
 
     // Load events (try cache first, then fetch)
-    let events = match cache::get(&state.cache, "replay_events") {
+    let (events, from_cache) = match cache::get(&state.cache, "replay_events") {
         Some(cached) => {
             let v: serde_json::Value = serde_json::from_str(&cached).unwrap_or_default();
-            v["events"]
+            let evts: Vec<crate::api::xuangubao::PlateAbnormalEvent> = v["events"]
                 .as_array()
                 .cloned()
                 .unwrap_or_default()
                 .iter()
                 .filter_map(|e| serde_json::from_value(e.clone()).ok())
-                .collect::<Vec<crate::api::xuangubao::PlateAbnormalEvent>>()
+                .collect();
+            eprintln!("[replay] analyze events from cache: {} events", evts.len());
+            (evts, true)
         }
         None => {
+            eprintln!("[replay] analyze events cache miss, fetching...");
             let client = XuanguBaoClient::new();
-            client.fetch_day_events().await.map_err(|e| {
-                eprintln!("replay analyze fetch error: {e}");
-                StatusCode::SERVICE_UNAVAILABLE
-            })?
+            (
+                client.fetch_day_events().await.map_err(|e| {
+                    eprintln!("[replay] analyze fetch error: {e}");
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?,
+                false,
+            )
         }
     };
 
@@ -836,20 +905,27 @@ pub async fn ai_replay_analyze(
         .first()
         .cloned()
         .unwrap_or_default();
-    let snapshots = crate::service::replay::build_replay_data(&date, &events).snapshots;
-    let prompt = crate::service::replay::build_analysis_prompt(&date, &snapshots);
+    let snapshots = crate::api::xuangubao::build_replay_data(&date, &events).snapshots;
+    let prompt = crate::api::xuangubao::build_analysis_prompt(&date, &snapshots);
+    eprintln!(
+        "[replay] analyze prompt: {} chars, {} snapshots, from_cache={from_cache}",
+        prompt.len(),
+        snapshots.len()
+    );
 
     let mut llm_stream = llm.chat_stream(&prompt).await.map_err(|e| {
-        eprintln!("replay analyze llm error: {e}");
+        eprintln!("[replay] analyze llm error: {e}");
         StatusCode::SERVICE_UNAVAILABLE
     })?;
 
     use futures::StreamExt;
     let stream = async_stream::stream! {
+        let mut chunk_count = 0u32;
         while let Some(chunk) = llm_stream.next().await {
             match chunk {
                 Ok(text) => {
                     if !text.is_empty() {
+                        chunk_count += 1;
                         yield Ok::<_, std::convert::Infallible>(
                             axum::response::sse::Event::default().data(text)
                         );
@@ -857,10 +933,12 @@ pub async fn ai_replay_analyze(
                 }
                 Err(e) => {
                     yield Ok(axum::response::sse::Event::default().data(format!("[ERROR] {e}")));
+                    eprintln!("[replay] analyze stream error after {chunk_count} chunks: {e}");
                     break;
                 }
             }
         }
+        eprintln!("[replay] analyze stream done: {chunk_count} chunks sent");
         yield Ok(axum::response::sse::Event::default().data("[DONE]"));
     };
 
