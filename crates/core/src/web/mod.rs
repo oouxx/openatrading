@@ -103,6 +103,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/replay/events", get(handlers::get_replay_events))
         .route("/api/replay/index", get(handlers::get_replay_index))
         .route("/api/replay/news", get(handlers::get_replay_news))
+        .route("/api/replay/snapshots", get(handlers::get_replay_snapshots))
         .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
         .route("/install.sh", get(download::serve_install_sh))
         .route("/downloads/:file", get(download::serve_download))

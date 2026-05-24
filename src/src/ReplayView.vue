@@ -120,7 +120,10 @@
             :events="displayEvents"
             :currentTime="currentTs"
             :isPlaying="isPlaying"
+            :hasMore="eventsNextCursor !== null"
+            :loadingMore="eventsLoadingMore"
             @seekTo="seekTo"
+            @loadMore="loadMoreEvents"
           />
         </div>
 
@@ -130,6 +133,9 @@
             :news="displayNews"
             :currentTime="currentTs"
             :isPlaying="isPlaying"
+            :hasMore="hasMoreNews"
+            :newsLoading="newsLoadingMore"
+            @loadMore="loadMoreNews"
           />
         </div>
       </div>
@@ -162,20 +168,6 @@ interface RelatedStock {
   pcp: number
 }
 
-interface Snapshot {
-  timestamp: number
-  time_label: string
-  emotion_score: number
-  bull_count: number
-  bear_count: number
-  top_plates: Array<{
-    plate_name: string
-    pcp: number
-    good_or_bad: number
-    related_stocks: RelatedStock[]
-  }>
-}
-
 interface RawEvent {
   id: number
   event_type: number
@@ -189,8 +181,8 @@ interface RawEvent {
 interface ReplayData {
   date: string
   events: RawEvent[]
-  snapshots: Snapshot[]
   market_phase: string
+  next_cursor: number | null
 }
 
 interface DisplayEvent {
@@ -201,6 +193,7 @@ interface DisplayEvent {
   _plate_name: string
   _pcp: number
   _highlight: boolean
+  _future: boolean
   event_timestamp: number
   _related_stocks: RelatedStock[]
 }
@@ -217,10 +210,12 @@ interface IndexTrendData {
 }
 
 interface NewsItem {
-  id: number
-  timestamp: number
-  title: string
-  content: string
+  Id: number
+  CreatedAtInSec: number
+  UpdatedAtInSec: number
+  Title: string
+  Content: string
+  Summary: string
 }
 
 interface NewsPage {
@@ -236,8 +231,15 @@ interface DisplayNews extends NewsItem {
 
 const data = ref<ReplayData | null>(null)
 const dataLoading = ref(true)
+const eventsNextCursor = ref<number | null>(null)
+const eventsLoadingMore = ref(false)
 const indexTrendData = ref<IndexTrendData | null>(null)
 const newsData = ref<NewsItem[]>([])
+const newsTailmark = ref<number | null>(null)
+const newsMsgIdMark = ref<string | null>(null)
+const newsLoadingMore = ref(false)
+
+const hasMoreNews = computed(() => newsTailmark.value !== null)
 
 const isIntraday = computed(() => {
   return data.value?.market_phase === 'morningopen' || data.value?.market_phase === 'afternoonopen'
@@ -283,19 +285,16 @@ const currentLabel = computed(() => tsToHhmm(currentTs.value))
 
 // ── Derived Data ────────────────────────────────────────
 
-const currentSnapshot = computed(() => {
-  const snap = data.value?.snapshots
-  if (!snap?.length) return null
-  for (let i = snap.length - 1; i >= 0; i--) {
-    if (snap[i].timestamp <= currentTs.value) return snap[i]
-  }
-  return null
-})
-
 const currentEmotion = computed(() => {
-  if (!currentSnapshot.value) return 0
-  const bull = currentSnapshot.value.bull_count
-  const bear = currentSnapshot.value.bear_count
+  const events = data.value?.events
+  if (!events?.length) return 50
+  let bull = 0
+  let bear = 0
+  for (const ev of events) {
+    if (ev.event_timestamp > currentTs.value) break
+    if (ev.good_or_bad === 1) bull++
+    else if (ev.good_or_bad === 2) bear++
+  }
   const total = bull + bear
   if (total === 0) return 50
   return Math.round((bull / total) * 100)
@@ -315,15 +314,15 @@ const emotionGradient = computed(() => {
 const displayEvents = computed<DisplayEvent[]>(() => {
   const events = data.value?.events ?? []
   return events
-    .filter((e) => e.event_type === 11001)
     .map((e) => ({
       id: e.id,
       target: e.plate_name ?? '',
       good_or_bad: e.good_or_bad,
-      _time_label: tsToHhmm(e.event_timestamp),
+      _time_label: tsToHhmmss(e.event_timestamp),
       _plate_name: e.plate_name ?? '',
       _pcp: e.pcp ?? 0,
       _highlight: false,
+      _future: false,
       event_timestamp: e.event_timestamp,
       _related_stocks: e.related_stocks ?? [],
     }))
@@ -332,7 +331,7 @@ const displayEvents = computed<DisplayEvent[]>(() => {
 const displayNews = computed<DisplayNews[]>(() => {
   return newsData.value.map((n) => ({
     ...n,
-    _time_label: tsToHhmmss(n.timestamp),
+    _time_label: tsToHhmmss(n.CreatedAtInSec),
     _future: false,
   }))
 })
@@ -394,6 +393,7 @@ async function fetchData() {
 
     if (eventsData.status === 'fulfilled') {
       data.value = eventsData.value
+      eventsNextCursor.value = eventsData.value.next_cursor
       if (data.value?.events.length) {
         currentTs.value = rangeMin.value
       }
@@ -409,6 +409,8 @@ async function fetchData() {
 
     if (newsResult.status === 'fulfilled') {
       newsData.value = newsResult.value.items
+      newsTailmark.value = newsResult.value.tailmark
+      newsMsgIdMark.value = newsResult.value.msgIdMark
     } else {
       console.error('Failed to load news:', newsResult.reason)
     }
@@ -419,32 +421,66 @@ async function fetchData() {
   }
 }
 
-// ── Playback Logic ──────────────────────────────────────
-
-function findNextEvent(): RawEvent | null {
-  const events = data.value?.events
-  if (!events?.length) return null
-  for (const ev of events) {
-    if (ev.event_timestamp > currentTs.value) return ev
+async function loadMoreEvents() {
+  if (eventsLoadingMore.value || !eventsNextCursor.value || !data.value) return
+  eventsLoadingMore.value = true
+  try {
+    const page = await fetchJson<ReplayData>(`/api/replay/events?cursor=${eventsNextCursor.value}`)
+    data.value.events = [...data.value.events, ...page.events]
+    // data.value.events.sort((a, b) => a.event_timestamp - b.event_timestamp)
+    eventsNextCursor.value = page.next_cursor
+  } catch (e: any) {
+    console.error('Failed to load more events:', e)
+  } finally {
+    eventsLoadingMore.value = false
   }
-  return null
 }
 
+async function loadMoreNews() {
+  if (newsLoadingMore.value || !newsTailmark.value) return
+  newsLoadingMore.value = true
+  try {
+    const params = new URLSearchParams()
+    params.set('tailmark', String(newsTailmark.value))
+    if (newsMsgIdMark.value) params.set('msgIdMark', newsMsgIdMark.value)
+    const page = await fetchJson<NewsPage>(`/api/replay/news?${params}`)
+    const newItems = page.items.filter(
+      (n) => !newsData.value.some((existing) => existing.Id === n.Id),
+    )
+    newsData.value = [...newsData.value, ...newItems]
+    newsTailmark.value = page.tailmark
+    newsMsgIdMark.value = page.msgIdMark
+  } catch (e: any) {
+    console.error('Failed to load more news:', e)
+  } finally {
+    newsLoadingMore.value = false
+  }
+}
+
+// ── Playback Logic ──────────────────────────────────────
+
+/** Advance currentTs by market-time seconds, scaled by speed.
+ *  1× = real-time: 200ms tick × 0.2s step = 1s market / 1s real. */
 function advancePlayback() {
-  const step = speed.value
-  for (let i = 0; i < step; i++) {
-    const ev = findNextEvent()
-    if (ev) {
-      currentTs.value = ev.event_timestamp
-      speakEvent(ev)
-      checkEmotionAlert()
-    } else {
-      isPlaying.value = false
-      isEnded.value = true
-      stopSpeech()
-      return
+  const tickSecs = 0.2 // market seconds per tick at 1×
+  const step = tickSecs * speed.value
+  currentTs.value = Math.min(currentTs.value + step, rangeMax.value)
+  if (currentTs.value >= rangeMax.value) {
+    isPlaying.value = false
+    isEnded.value = true
+    stopSpeech()
+    return
+  }
+  // Check for notable events at this timestamp for speech
+  const events = data.value?.events
+  if (events) {
+    for (const ev of events) {
+      if (ev.event_timestamp > currentTs.value - step && ev.event_timestamp <= currentTs.value) {
+        speakEvent(ev)
+      }
     }
   }
+  checkEmotionAlert()
 }
 
 function togglePlay() {
@@ -466,7 +502,7 @@ function togglePlay() {
 
 function startTimer() {
   stopTimer()
-  const tickMs = 300
+  const tickMs = 200
   timer = setInterval(advancePlayback, tickMs)
 }
 

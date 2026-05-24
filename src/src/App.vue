@@ -26,10 +26,12 @@
       </div>
     </header>
 
-    <router-view :key="$route.fullPath" />
+    <router-view :key="route.fullPath" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
+const route = useRoute()
 const isTauri = '__TAURI_INTERNALS__' in window
 </script>

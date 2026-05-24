@@ -493,79 +493,41 @@ impl XuanguBaoClient {
     }
     /// Cursor-paginate to fetch ALL events for the latest trading day (09:30–15:00).
     /// Returns events sorted by event_timestamp ascending.
-    pub async fn fetch_day_events(&self) -> Result<Vec<PlateAbnormalEvent>> {
-        let day_close_ts = Self::latest_trading_day_close_ts();
-        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60; // ~09:30
-
-        let date_str = Self::last_n_trading_days(1)
-            .first()
-            .cloned()
-            .unwrap_or_default();
-        eprintln!(
-            "[replay] fetch_day_events: date={date_str} open_ts={day_open_ts} close_ts={day_close_ts}"
+    pub async fn fetch_events_page(
+        &self,
+        timestamp: i64,
+        count: u32,
+    ) -> Result<Vec<PlateAbnormalEvent>> {
+        let url = format!(
+            "{}/event/history?timestamp={timestamp}&count={count}&types=11000,11001",
+            self.base_url
         );
+        let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
+            self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+        Ok(resp.data)
+    }
 
-        let mut all_events: Vec<PlateAbnormalEvent> = Vec::new();
-        let mut cursor = day_close_ts;
-        let mut page = 0u32;
+    pub async fn fetch_all_day_events(&self) -> Result<Vec<PlateAbnormalEvent>> {
+        let day_close_ts = Self::latest_trading_day_close_ts();
+        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
 
-        loop {
-            page += 1;
-            let url = format!(
-                "{}/event/history?timestamp={cursor}&count=10000&types=11000,11001",
-                self.base_url
-            );
-            let raw_text = self.client.get(&url).send().await?.text().await?;
-            // Log first 500 chars of raw response for debugging
-            let preview: String = raw_text.chars().take(500).collect();
-            eprintln!("[replay] page {page} raw response preview: {preview}...");
-            let resp: ApiResponse<Vec<PlateAbnormalEvent>> = serde_json::from_str(&raw_text)
-                .map_err(|e| {
-                    eprintln!("[replay] page {page} deserialize error: {e}");
-                    // Print a chunk of the raw JSON near the error position
-                    let col = e.column();
-                    let start = col.saturating_sub(200);
-                    let end = (col + 200).min(raw_text.len());
-                    eprintln!("[replay] raw JSON near error: {}", &raw_text[start..end]);
-                    anyhow::anyhow!("failed to deserialize page {page}: {e}")
-                })?;
-            anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+        let url = format!(
+            "{}/event/history?timestamp={day_close_ts}&count=200&types=11000,11001",
+            self.base_url
+        );
+        let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
+            self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
 
-            let batch_size = resp.data.len();
-            if batch_size == 0 {
-                eprintln!("[replay] page {page}: empty, stopping");
-                break;
-            }
-
-            let oldest_ts = resp
-                .data
-                .iter()
-                .map(|e| e.event_timestamp)
-                .min()
-                .unwrap_or(0);
-
-            eprintln!(
-                "[replay] page {page}: cursor={cursor} received={batch_size} oldest_ts={oldest_ts} total={}",
-                all_events.len() + batch_size
-            );
-
-            all_events.extend(resp.data);
-
-            if oldest_ts <= day_open_ts {
-                eprintln!("[replay] oldest_ts <= day_open_ts, pagination complete");
-                break;
-            }
-            cursor = oldest_ts;
-        }
-
-        let before_filter = all_events.len();
+        let mut all_events = resp.data;
         all_events.retain(|e| e.event_timestamp >= day_open_ts);
         all_events.sort_by_key(|e| e.event_timestamp);
 
         let plate_events = all_events.iter().filter(|e| e.event_type == 11001).count();
         let stock_events = all_events.iter().filter(|e| e.event_type == 11000).count();
         eprintln!(
-            "[replay] fetch_day_events done: {before_filter} raw → {} filtered (plate={plate_events}, stock={stock_events})",
+            "[replay] fetch_all_day_events done: {} events (plate={plate_events}, stock={stock_events})",
             all_events.len()
         );
 
@@ -573,7 +535,7 @@ impl XuanguBaoClient {
     }
 
     /// Unix timestamp for 15:00 on the latest trading day (Beijing time, UTC+8).
-    fn latest_trading_day_close_ts() -> i64 {
+    pub fn latest_trading_day_close_ts() -> i64 {
         let days = Self::last_n_trading_days(1);
         let date_str = days.first().map(|s| s.as_str()).unwrap_or("2026-01-01");
         let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
@@ -907,10 +869,8 @@ pub struct PlateAndReason {
 
 // ─── 行情回放 ────────────────────────────────────────────
 
-const REPLAY_PAGE_SIZE: usize = 200;
-
 /// Lightweight event for the replay frontend — strips unused PlateAbnormalEvent fields.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReplayEvent {
     pub id: i64,
     pub event_type: i32,
@@ -943,75 +903,18 @@ impl From<&PlateAbnormalEvent> for ReplayEvent {
     }
 }
 
-/// Paginated replay response. First request (no cursor) includes snapshots + metadata.
+/// Paginated replay response.
 #[derive(Debug, Serialize)]
 pub struct ReplayPage {
     pub date: String,
-    pub snapshots: Vec<TimeSnapshot>,
     pub market_phase: String,
     pub events: Vec<ReplayEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<i64>,
 }
 
-/// Return one page of events. `cursor` is the event_timestamp to start after.
-fn paginate_events(events: &[ReplayEvent], cursor: Option<i64>) -> (&[ReplayEvent], Option<i64>) {
-    let start = cursor
-        .map(|c| events.partition_point(|e| e.event_timestamp <= c))
-        .unwrap_or(0);
-    let page = &events[start..(start + REPLAY_PAGE_SIZE).min(events.len())];
-    let next = if start + REPLAY_PAGE_SIZE < events.len() {
-        page.last().map(|e| e.event_timestamp)
-    } else {
-        None
-    };
-    (page, next)
-}
-
-/// Build replay data: compute snapshots from full events, return paginated first page.
-pub fn build_replay_page(date: &str, events: &[PlateAbnormalEvent]) -> ReplayPage {
-    let t0 = std::time::Instant::now();
-    let snapshots = build_replay_snapshots(events);
-    let market_phase = crate::web::cache::current_market_phase()
-        .as_str()
-        .to_string();
-    let all: Vec<ReplayEvent> = events.iter().map(ReplayEvent::from).collect();
-    let (page, next_cursor) = paginate_events(&all, None);
-    eprintln!(
-        "[replay] build_replay_page: date={date} total_events={} snapshots={} phase={market_phase} page={} next={next_cursor:?} elapsed={:.0}ms",
-        all.len(),
-        snapshots.len(),
-        page.len(),
-        t0.elapsed().as_millis(),
-    );
-    ReplayPage {
-        date: date.to_string(),
-        snapshots,
-        market_phase,
-        events: page.to_vec(),
-        next_cursor,
-    }
-}
-
-/// Build a continuation page from cached full events.
-pub fn build_replay_continuation(events: &[PlateAbnormalEvent], cursor: i64) -> ReplayPage {
-    let all: Vec<ReplayEvent> = events.iter().map(ReplayEvent::from).collect();
-    let (page, next_cursor) = paginate_events(&all, Some(cursor));
-    eprintln!(
-        "[replay] build_replay_continuation: cursor={cursor} page={} next={next_cursor:?}",
-        page.len()
-    );
-    ReplayPage {
-        date: String::new(),
-        snapshots: vec![],
-        market_phase: String::new(),
-        events: page.to_vec(),
-        next_cursor,
-    }
-}
-
 /// Aggregated view of a 5‑minute window.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TimeSnapshot {
     pub timestamp: i64,
     pub time_label: String,
@@ -1021,7 +924,7 @@ pub struct TimeSnapshot {
     pub top_plates: Vec<TopPlate>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TopPlate {
     pub plate_name: String,
     pub pcp: f64,
