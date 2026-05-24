@@ -87,10 +87,10 @@ fn substitute_env(mut content: &str) -> std::borrow::Cow<'_, str> {
 }
 
 fn default_collection_schedule() -> String {
-    "*/30 9-15 * * 1-5".to_string()
+    "0 */30 9-15 * * 1-5 *".to_string()
 }
 fn default_decision_schedule() -> String {
-    "0 0 * * 1-5".to_string()
+    "0 0 0 * * 1-5 *".to_string()
 }
 fn default_monitor_schedule() -> String {
     "0 */1 9-15 * * 1-5 *".to_string()

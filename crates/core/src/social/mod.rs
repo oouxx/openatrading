@@ -10,7 +10,7 @@ pub trait NotificationSender: Send + Sync {
 
     async fn notify_collect(&self, summary: &CollectSummary) -> Result<()> {
         let text = format!(
-            "📊 *采集完成*\n时间: {}\n数据源: {}\n快照: {} 条",
+            "📊 采集完成\n时间: {}\n数据源: {}\n快照: {} 条",
             summary.timestamp.format("%H:%M:%S"),
             summary.sources.join(", "),
             summary.snapshot_count,
@@ -24,7 +24,7 @@ pub trait NotificationSender: Send + Sync {
 
     async fn notify_trade(&self, log: &TradeLog) -> Result<()> {
         let text = format!(
-            "💹 *持仓变动*\n操作: {}\n价格: {}\n股数: {}\n理由: {}",
+            "💹 持仓变动\n操作: {}\n价格: {}\n股数: {}\n理由: {}",
             log.action, log.price, log.shares, log.reason,
         );
         self.send_text(&text).await
