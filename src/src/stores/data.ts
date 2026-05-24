@@ -19,7 +19,9 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     return invoke("api_fetch", { path }) as Promise<T>;
   }
   const base = getApiBaseUrl();
-  const resp = await fetch(`${base}${path}`, init);
+  const headers: Record<string, string> = {};
+  if (init?.body) headers["Content-Type"] = "application/json";
+  const resp = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
   if (!resp.ok) throw new Error(`${resp.status}`);
   return resp.json();
 }
