@@ -929,16 +929,42 @@ pub async fn ai_replay_analyze(
         .unwrap_or_default();
 
     let system_prompt = format!(
-        r#"你是一位经验丰富的A股短线交易复盘专家。请先调用 get_replay_snapshots 获取{date}的行情快照数据，然后对全天行情进行结构化分析。
+        r#"你是A股短线复盘专家。先调用 get_replay_snapshots 获取{date}快照，再输出报告。
 
-请从以下维度输出分析报告（Markdown格式）：
-1. **全天情绪节奏**：情绪高点/低点出现时间，整体多空趋势
-2. **主线板块**：全天最强板块，持续时长，是否有切换
-3. **关键时间节点**：情绪突变点分析，可能的原因推断
-4. **板块轮动特征**：资金从哪个板块流向哪个板块
-5. **复盘结论**：当日适合什么策略，哪类股票机会更大，有什么风险需要注意
+## 格式规则（必须遵守）
+- 使用标准 Markdown，禁止 emoji、禁止 ╭╮╯╰┌┐ 字符画、禁止 📊⚠✅❌⭐
+- 禁止在段落中使用 | 分隔数据，数据必须用 Markdown 表格
+- 每个 ## 小节之间空一行
+- 每条要点独占一行，以 - 开头
+- 数据引用格式："09:30 情绪52，多4空3"
 
-要求：分析具体、有数据支撑，避免泛泛而谈。"#,
+## 报告模板（严格按此结构输出）
+
+## 一、情绪节奏
+- 开盘情绪（09:30-10:00）：数据
+- 盘中变化（10:00-14:00）：数据
+- 尾盘走势（14:00-15:00）：数据
+- 全天趋势判断：单边多/单边空/震荡/反转
+
+## 二、主线板块
+| 板块 | 涨幅 | 特征 |
+|------|------|------|
+| xxx | +x% | 描述 |
+
+- 主线切换情况：
+
+## 三、关键节点
+- HH:MM 情绪温度从X变为Y，原因分析
+- （至少列出2个关键转折点）
+
+## 四、轮动特征
+- 资金流向判断：
+- 高低切换迹象：
+
+## 五、复盘结论
+- 日内策略评价：
+- 次日关注方向：
+- 风险提示："#,
         date = date,
     );
 
@@ -975,6 +1001,7 @@ pub async fn ai_replay_analyze(
         let mut chunk_count = 0u32;
         let mut tool_calls: Vec<crate::llm::openrouter::ToolCall> = Vec::new();
         let mut tool_call_index: Option<usize> = None;
+        let mut reasoning_content = String::new();
 
         while let Some(chunk) = llm_stream.next().await {
             match chunk {
@@ -985,6 +1012,9 @@ pub async fn ai_replay_analyze(
                             axum::response::sse::Event::default().data(text)
                         );
                     }
+                }
+                Ok(crate::llm::openrouter::StreamEvent::ReasoningText(rc)) => {
+                    reasoning_content.push_str(&rc);
                 }
                 Ok(crate::llm::openrouter::StreamEvent::ToolCallDelta(tc)) => {
                     if let Some(idx) = tool_call_index {
@@ -1046,18 +1076,24 @@ pub async fn ai_replay_analyze(
                     Err(_) => break,
                 };
 
-                updated_messages.push(serde_json::json!({
-                    "role": "assistant",
-                    "content": null,
-                    "tool_calls": tool_calls.iter().map(|tc| serde_json::json!({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function_name,
-                            "arguments": tc.arguments,
-                        }
-                    })).collect::<Vec<_>>()
-                }));
+                updated_messages.push({
+                    let mut msg = serde_json::json!({
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": tool_calls.iter().map(|tc| serde_json::json!({
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function_name,
+                                "arguments": tc.arguments,
+                            }
+                        })).collect::<Vec<_>>()
+                    });
+                    if !reasoning_content.is_empty() {
+                        msg["reasoning_content"] = serde_json::json!(reasoning_content);
+                    }
+                    msg
+                });
 
                 updated_messages.push(serde_json::json!({
                     "role": "tool",

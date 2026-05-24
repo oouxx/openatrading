@@ -53,30 +53,42 @@ watch(
 </script>
 
 <style>
-/* Markdown content styling */
 .custom-scroll :deep(h2) {
-  font-size: 1.1em;
-  font-weight: 700;
-  color: #fff;
-  margin: 1em 0 0.4em;
+  font-size: 1.1em; font-weight: 700; color: #fff;
+  margin: 1em 0 0.4em; padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .custom-scroll :deep(h3) {
-  font-size: 1em;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 1em; font-weight: 600; color: rgba(255,255,255,0.9);
   margin: 0.8em 0 0.3em;
 }
-.custom-scroll :deep(strong) {
-  color: #fff;
+.custom-scroll :deep(h4) {
+  font-size: 0.9em; font-weight: 600; color: rgba(255,255,255,0.7);
+  margin: 0.6em 0 0.2em;
 }
-.custom-scroll :deep(ul) {
-  padding-left: 1.2em;
-  margin: 0.3em 0;
+.custom-scroll :deep(strong) { color: #fff; }
+.custom-scroll :deep(ul) { padding-left: 1.2em; margin: 0.3em 0; }
+.custom-scroll :deep(li) { margin: 0.15em 0; }
+.custom-scroll :deep(p) { margin: 0.3em 0; }
+.custom-scroll :deep(table) {
+  width: 100%; border-collapse: collapse; margin: 0.5em 0;
+  font-size: 0.85em;
 }
-.custom-scroll :deep(li) {
-  margin: 0.15em 0;
+.custom-scroll :deep(th) {
+  text-align: left; padding: 0.3em 0.6em;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.6); font-weight: 600;
 }
-.custom-scroll :deep(p) {
-  margin: 0.3em 0;
+.custom-scroll :deep(td) {
+  padding: 0.25em 0.6em;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.custom-scroll :deep(code) {
+  background: rgba(255,255,255,0.06); padding: 0.1em 0.3em;
+  border-radius: 3px; font-size: 0.9em;
+}
+.custom-scroll :deep(hr) {
+  border: none; border-top: 1px solid rgba(255,255,255,0.08);
+  margin: 0.8em 0;
 }
 </style>
