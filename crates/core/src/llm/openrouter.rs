@@ -43,6 +43,8 @@ struct StreamChoice {
 #[derive(Debug, Deserialize)]
 struct Delta {
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
@@ -68,6 +70,7 @@ pub struct ToolCall {
 
 pub enum StreamEvent {
     Text(String),
+    ReasoningText(String),
     ToolCallStart(ToolCall),
     ToolCallDelta(ToolCall),
 }
@@ -434,6 +437,12 @@ impl LlmClient {
                     if let Some(content) = delta.content {
                         if !content.is_empty() {
                             events.push(StreamEvent::Text(content));
+                        }
+                    }
+
+                    if let Some(rc) = delta.reasoning_content {
+                        if !rc.is_empty() {
+                            events.push(StreamEvent::ReasoningText(rc));
                         }
                     }
 
