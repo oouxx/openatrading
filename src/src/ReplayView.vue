@@ -178,15 +178,12 @@ interface Snapshot {
 
 interface RawEvent {
   id: number
-  target: string
   event_type: number
   event_timestamp: number
   good_or_bad: number
-  plate_abnormal_event_data?: {
-    plate_name?: string
-    pcp?: number
-    related_stocks?: RelatedStock[]
-  }
+  plate_name?: string
+  pcp?: number
+  related_stocks?: RelatedStock[]
 }
 
 interface ReplayData {
@@ -224,6 +221,12 @@ interface NewsItem {
   timestamp: number
   title: string
   content: string
+}
+
+interface NewsPage {
+  items: NewsItem[]
+  tailmark: number | null
+  msgIdMark: string | null
 }
 
 interface DisplayNews extends NewsItem {
@@ -315,14 +318,14 @@ const displayEvents = computed<DisplayEvent[]>(() => {
     .filter((e) => e.event_type === 11001)
     .map((e) => ({
       id: e.id,
-      target: e.target,
+      target: e.plate_name ?? '',
       good_or_bad: e.good_or_bad,
-      _time_label: tsToHhmmss(e.event_timestamp),
-      _plate_name: e.plate_abnormal_event_data?.plate_name ?? e.target,
-      _pcp: e.plate_abnormal_event_data?.pcp ?? 0,
+      _time_label: tsToHhmm(e.event_timestamp),
+      _plate_name: e.plate_name ?? '',
+      _pcp: e.pcp ?? 0,
       _highlight: false,
       event_timestamp: e.event_timestamp,
-      _related_stocks: e.plate_abnormal_event_data?.related_stocks ?? [],
+      _related_stocks: e.related_stocks ?? [],
     }))
 })
 
@@ -343,8 +346,8 @@ function speakEvent(ev: RawEvent) {
   if (ev.id === lastSpokenEventId) return
   lastSpokenEventId = ev.id
   if (speed.value >= 5) return
-  const plateName = ev.plate_abnormal_event_data?.plate_name ?? ev.target
-  const pcp = ev.plate_abnormal_event_data?.pcp ?? 0
+  const plateName = ev.plate_name ?? ''
+  const pcp = ev.pcp ?? 0
   const pcpStr = `${(Math.abs(pcp) * 100).toFixed(1)}%`
   if (ev.good_or_bad === 1) {
     speak(`${plateName}拉升，涨幅${pcpStr}`)
@@ -386,7 +389,7 @@ async function fetchData() {
     const [eventsData, indexData, newsResult] = await Promise.allSettled([
       fetchJson<ReplayData>('/api/replay/events'),
       fetchJson<IndexTrendData>('/api/replay/index'),
-      fetchJson<NewsItem[]>('/api/replay/news'),
+      fetchJson<NewsPage>('/api/replay/news'),
     ])
 
     if (eventsData.status === 'fulfilled') {
@@ -405,7 +408,7 @@ async function fetchData() {
     }
 
     if (newsResult.status === 'fulfilled') {
-      newsData.value = newsResult.value
+      newsData.value = newsResult.value.items
     } else {
       console.error('Failed to load news:', newsResult.reason)
     }

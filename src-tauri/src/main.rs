@@ -188,8 +188,8 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .first()
                 .cloned()
                 .unwrap_or_default();
-            let data = trending_agent_core::api::xuangubao::build_replay_data(&date, &events);
-            Ok(serde_json::to_value(data).unwrap_or_default())
+            let page = trending_agent_core::api::xuangubao::build_replay_page(&date, &events);
+            Ok(serde_json::to_value(page).unwrap_or_default())
         }
         _ => {
             if path.strip_prefix("/api/field-items").is_some() {
@@ -603,8 +603,7 @@ async fn api_replay_analyze(
         .first()
         .cloned()
         .unwrap_or_default();
-    let snapshots =
-        trending_agent_core::api::xuangubao::build_replay_data(&date, &events).snapshots;
+    let snapshots = trending_agent_core::api::xuangubao::build_replay_snapshots(&events);
     let prompt = trending_agent_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
 
     let mut llm_stream = llm

@@ -155,10 +155,14 @@ impl CachePolicy {
     /// Replay data: cache after close until next open; no cache during trading.
     pub fn replay() -> Self {
         if is_trading_hours() {
-            CachePolicy::TradingTtl(Duration::from_secs(60))
+            CachePolicy::Never
         } else {
-            CachePolicy::NonTradingUntilOpen
+            CachePolicy::TradingTtl(Duration::from_secs(60))
         }
+    }
+
+    pub fn never() -> Self {
+        CachePolicy::Never
     }
 
     pub fn telegraph() -> Self {

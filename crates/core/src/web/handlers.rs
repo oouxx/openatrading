@@ -774,15 +774,33 @@ pub async fn get_role_pnl_history(
 
 // ── Replay handlers ────────────────────────────────────
 
-/// GET /api/replay/events — full-day events + snapshots for the latest trading day
+/// GET /api/replay/events — cursor-paginated replay data
+/// No cursor → first page (includes snapshots + metadata).
+/// ?cursor=TS → continuation page (events only).
+#[derive(serde::Deserialize)]
+pub struct ReplayEventsQuery {
+    cursor: Option<i64>,
+}
+
 pub async fn get_replay_events(
     State(state): State<Arc<AppState>>,
+    Query(q): Query<ReplayEventsQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cache_hit = cache::get(&state.cache, "replay_events").is_some();
+    // Continuation page: read cached full events, return next slice
+    if let Some(cursor) = q.cursor {
+        let cached = cache::get(&state.cache, "replay_events_full").ok_or(StatusCode::NOT_FOUND)?;
+        let events: Vec<crate::api::xuangubao::PlateAbnormalEvent> =
+            serde_json::from_str(&cached).unwrap_or_default();
+        let page = crate::api::xuangubao::build_replay_continuation(&events, cursor);
+        return Ok(Json(serde_json::to_value(page).unwrap_or_default()));
+    }
 
-    let cached = cache::get_or_fetch(
+    // First page: fetch all events, compute snapshots, cache full events, return page
+    let cache_hit = cache::get(&state.cache, "replay_events_full").is_some();
+
+    let response_json = cache::get_or_fetch(
         &state.cache,
-        "replay_events",
+        "replay_events_p1",
         CachePolicy::replay(),
         || async {
             eprintln!("[replay] GET /api/replay/events cache miss, fetching...");
@@ -792,28 +810,34 @@ pub async fn get_replay_events(
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
 
+            // Cache the raw full events for continuation requests
+            let full_json = serde_json::to_string(&events).unwrap_or_default();
+            cache::set(
+                &state.cache,
+                "replay_events_full",
+                &full_json,
+                CachePolicy::replay(),
+            );
+
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
                 .cloned()
                 .unwrap_or_default();
 
-            let data = crate::api::xuangubao::build_replay_data(&date, &events);
-            let json = serde_json::to_string(&data).unwrap_or_default();
-            eprintln!("[replay] cached response size: {} bytes", json.len());
+            let page = crate::api::xuangubao::build_replay_page(&date, &events);
+            let json = serde_json::to_string(&page).unwrap_or_default();
+            eprintln!("[replay] first page size: {} bytes", json.len());
             Ok(json)
         },
     )
     .await?;
 
     if cache_hit {
-        eprintln!(
-            "[replay] GET /api/replay/events cache hit ({} bytes)",
-            cached.len()
-        );
+        eprintln!("[replay] GET /api/replay/events cache hit");
     }
 
     Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+        serde_json::from_str::<serde_json::Value>(&response_json).unwrap_or_default(),
     ))
 }
 
@@ -843,28 +867,33 @@ pub async fn get_replay_index(
     ))
 }
 
-/// GET /api/replay/news — 7×24 news stream for the day
-pub async fn get_replay_news(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
-        &state.cache,
-        "replay_news",
-        CachePolicy::replay(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = client.fetch_day_news().await.map_err(|e| {
-                eprintln!("[replay] news error: {e}");
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
-        },
-    )
-    .await?;
+/// GET /api/replay/news — cursor-paginated 7×24 news
+/// ?tailmark=N&msgIdMark=S → older page; no params → latest page
+#[derive(serde::Deserialize)]
+pub struct ReplayNewsQuery {
+    tailmark: Option<i64>,
+    #[serde(rename = "msgIdMark")]
+    msg_id_mark: Option<String>,
+}
 
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+pub async fn get_replay_news(
+    State(_state): State<Arc<AppState>>,
+    Query(q): Query<ReplayNewsQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let (items, next_tail, next_msg) = client
+        .fetch_news_stream(q.tailmark, q.msg_id_mark.as_deref())
+        .await
+        .map_err(|e| {
+            eprintln!("[replay] news error: {e}");
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "tailmark": next_tail,
+        "msgIdMark": next_msg,
+    })))
 }
 
 /// POST /api/replay/analyze — SSE stream of AI analysis
@@ -905,7 +934,7 @@ pub async fn ai_replay_analyze(
         .first()
         .cloned()
         .unwrap_or_default();
-    let snapshots = crate::api::xuangubao::build_replay_data(&date, &events).snapshots;
+    let snapshots = crate::api::xuangubao::build_replay_snapshots(&events);
     let prompt = crate::api::xuangubao::build_analysis_prompt(&date, &snapshots);
     eprintln!(
         "[replay] analyze prompt: {} chars, {} snapshots, from_cache={from_cache}",

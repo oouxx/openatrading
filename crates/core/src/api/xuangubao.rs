@@ -907,13 +907,107 @@ pub struct PlateAndReason {
 
 // ─── 行情回放 ────────────────────────────────────────────
 
-/// Events + pre-computed time snapshots for the replay frontend.
+const REPLAY_PAGE_SIZE: usize = 200;
+
+/// Lightweight event for the replay frontend — strips unused PlateAbnormalEvent fields.
+#[derive(Debug, Serialize, Clone)]
+pub struct ReplayEvent {
+    pub id: i64,
+    pub event_type: i32,
+    pub event_timestamp: i64,
+    pub good_or_bad: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pcp: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_stocks: Vec<RelatedStock>,
+}
+
+impl From<&PlateAbnormalEvent> for ReplayEvent {
+    fn from(ev: &PlateAbnormalEvent) -> Self {
+        let (plate_name, pcp, related_stocks) = ev
+            .plate_abnormal_event_data
+            .as_ref()
+            .map(|p| (p.plate_name.clone(), p.pcp, p.related_stocks.clone()))
+            .unwrap_or_default();
+        ReplayEvent {
+            id: ev.id,
+            event_type: ev.event_type,
+            event_timestamp: ev.event_timestamp,
+            good_or_bad: ev.good_or_bad,
+            plate_name,
+            pcp,
+            related_stocks,
+        }
+    }
+}
+
+/// Paginated replay response. First request (no cursor) includes snapshots + metadata.
 #[derive(Debug, Serialize)]
-pub struct ReplayData {
+pub struct ReplayPage {
     pub date: String,
-    pub events: Vec<PlateAbnormalEvent>,
     pub snapshots: Vec<TimeSnapshot>,
     pub market_phase: String,
+    pub events: Vec<ReplayEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<i64>,
+}
+
+/// Return one page of events. `cursor` is the event_timestamp to start after.
+fn paginate_events(events: &[ReplayEvent], cursor: Option<i64>) -> (&[ReplayEvent], Option<i64>) {
+    let start = cursor
+        .map(|c| events.partition_point(|e| e.event_timestamp <= c))
+        .unwrap_or(0);
+    let page = &events[start..(start + REPLAY_PAGE_SIZE).min(events.len())];
+    let next = if start + REPLAY_PAGE_SIZE < events.len() {
+        page.last().map(|e| e.event_timestamp)
+    } else {
+        None
+    };
+    (page, next)
+}
+
+/// Build replay data: compute snapshots from full events, return paginated first page.
+pub fn build_replay_page(date: &str, events: &[PlateAbnormalEvent]) -> ReplayPage {
+    let t0 = std::time::Instant::now();
+    let snapshots = build_replay_snapshots(events);
+    let market_phase = crate::web::cache::current_market_phase()
+        .as_str()
+        .to_string();
+    let all: Vec<ReplayEvent> = events.iter().map(ReplayEvent::from).collect();
+    let (page, next_cursor) = paginate_events(&all, None);
+    eprintln!(
+        "[replay] build_replay_page: date={date} total_events={} snapshots={} phase={market_phase} page={} next={next_cursor:?} elapsed={:.0}ms",
+        all.len(),
+        snapshots.len(),
+        page.len(),
+        t0.elapsed().as_millis(),
+    );
+    ReplayPage {
+        date: date.to_string(),
+        snapshots,
+        market_phase,
+        events: page.to_vec(),
+        next_cursor,
+    }
+}
+
+/// Build a continuation page from cached full events.
+pub fn build_replay_continuation(events: &[PlateAbnormalEvent], cursor: i64) -> ReplayPage {
+    let all: Vec<ReplayEvent> = events.iter().map(ReplayEvent::from).collect();
+    let (page, next_cursor) = paginate_events(&all, Some(cursor));
+    eprintln!(
+        "[replay] build_replay_continuation: cursor={cursor} page={} next={next_cursor:?}",
+        page.len()
+    );
+    ReplayPage {
+        date: String::new(),
+        snapshots: vec![],
+        market_phase: String::new(),
+        events: page.to_vec(),
+        next_cursor,
+    }
 }
 
 /// Aggregated view of a 5‑minute window.
@@ -941,28 +1035,9 @@ struct PlateAccumulator {
     related_stocks: Vec<RelatedStock>,
 }
 
-/// Build replay data: sort events, generate 5‑min snapshots.
-pub fn build_replay_data(date: &str, events: &[PlateAbnormalEvent]) -> ReplayData {
-    let t0 = std::time::Instant::now();
-    let snapshots = build_replay_snapshots(events);
-    let market_phase = crate::web::cache::current_market_phase().as_str();
-    eprintln!(
-        "[replay] build_replay_data: date={date} events={} snapshots={} phase={market_phase} elapsed={:.0}ms",
-        events.len(),
-        snapshots.len(),
-        t0.elapsed().as_millis(),
-    );
-    ReplayData {
-        date: date.to_string(),
-        events: events.to_vec(),
-        snapshots,
-        market_phase: market_phase.to_string(),
-    }
-}
-
 /// Slice events into 5‑minute buckets across 09:30–15:00, computing
 /// cumulative emotion scores and top plates per bucket.
-fn build_replay_snapshots(events: &[PlateAbnormalEvent]) -> Vec<TimeSnapshot> {
+pub fn build_replay_snapshots(events: &[PlateAbnormalEvent]) -> Vec<TimeSnapshot> {
     if events.is_empty() {
         return vec![];
     }
@@ -1158,65 +1233,67 @@ impl XuanguBaoClient {
 
     pub async fn fetch_news_stream(
         &self,
-        tailmark: i64,
-        msg_id_mark: i64,
-    ) -> Result<Vec<NewsItem>> {
-        let url = format!(
-            "https://api.xuangubao.com.cn/api/pc/msgs?subjids=9,723,10,35,469&limit=50&tailmark={tailmark}&msgIdMark={msg_id_mark}"
+        tailmark: Option<i64>,
+        msg_id_mark: Option<&str>,
+    ) -> Result<(Vec<NewsItem>, Option<i64>, Option<String>)> {
+        let mut url = String::from(
+            "https://api.xuangubao.com.cn/api/pc/msgs?subjids=9,723,10,35,469&limit=50",
         );
+        if let Some(tm) = tailmark {
+            url.push_str(&format!("&tailmark={tm}"));
+        }
+        if let Some(mid) = msg_id_mark {
+            url.push_str(&format!("&msgIdMark={mid}"));
+        }
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         let items = resp["NewMsgs"].as_array().cloned().unwrap_or_default();
+        // Debug: log first and last item timestamps
+        if let (Some(first), Some(last)) = (items.first(), items.last()) {
+            eprintln!(
+                "[replay] fetch_news_stream raw: first_ts={:?} last_ts={:?} first_id={:?}",
+                first["CreatedAtInSec"].as_i64(),
+                last["CreatedAtInSec"].as_i64(),
+                first["Id"].as_str(),
+            );
+        }
         let result: Vec<NewsItem> = items
             .iter()
             .filter_map(|v| {
                 let id = v["Id"].as_str()?.parse::<i64>().ok()?;
                 let title = v["Title"].as_str()?.to_string();
                 let summary = v["Summary"].as_str().unwrap_or("").to_string();
-                let timestamp = v["CreatedAtInSec"].as_i64()?;
+                let created_at_in_sec = v["CreatedAtInSec"].as_i64()?;
+                let updated_at_in_sec = v["UpdatedAtInSec"].as_i64().unwrap_or(created_at_in_sec);
                 Some(NewsItem {
                     id,
-                    timestamp,
+                    created_at_in_sec,
+                    updated_at_in_sec,
                     title,
-                    content: summary,
+                    content: String::new(),
+                    summary,
                 })
             })
             .collect();
-        Ok(result)
-    }
-
-    pub async fn fetch_day_news(&self) -> Result<Vec<NewsItem>> {
-        let now_ts = chrono::Local::now().timestamp();
-        let mut all_items: Vec<NewsItem> = Vec::new();
-        let mut tailmark = now_ts;
-        let mut msg_id_mark: i64 = 0;
-        let day_start_ts = now_ts - 24 * 3600;
-
-        loop {
-            let batch = self.fetch_news_stream(tailmark, msg_id_mark).await?;
-            if batch.is_empty() {
-                break;
-            }
-            let oldest_ts = batch.iter().map(|i| i.timestamp).min().unwrap_or(0);
-            let oldest_id = batch.iter().map(|i| i.id).min().unwrap_or(0);
-            all_items.extend(batch);
-            if oldest_ts <= day_start_ts {
-                break;
-            }
-            tailmark = oldest_ts;
-            msg_id_mark = oldest_id;
-        }
-
-        all_items.retain(|i| i.timestamp >= day_start_ts);
-        all_items.sort_by_key(|i| i.timestamp);
-        Ok(all_items)
+        let next_tail = resp["TailMark"]
+            .as_str()
+            .and_then(|s| s.parse::<i64>().ok());
+        let next_msg = resp["TailMsgId"].as_str().map(|s| s.to_string());
+        eprintln!(
+            "[replay] fetch_news_stream: tailmark={tailmark:?} → {} items, next_tail={next_tail:?}",
+            result.len()
+        );
+        Ok((result, next_tail, next_msg))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct NewsItem {
     pub id: i64,
-    pub timestamp: i64,
+    pub created_at_in_sec: i64,
+    pub updated_at_in_sec: i64,
     pub title: String,
     #[serde(default)]
     pub content: String,
+    pub summary: String,
 }
