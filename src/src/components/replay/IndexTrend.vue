@@ -98,8 +98,10 @@ function initChart(key: string) {
       timeVisible: true,
       secondsVisible: false,
       tickMarkFormatter: (t: any) => {
-        const d = new Date((t as number) * 1000)
-        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        const secs = ((t as number) % 86400 + 86400 + 8 * 3600) % 86400
+        const h = Math.floor(secs / 3600)
+        const m = Math.floor((secs % 3600) / 60)
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
       },
     },
     crosshair: { mode: 0 },
@@ -131,6 +133,11 @@ function updateCharts() {
       value: t.close_px,
     }))
     series.setData(data)
+
+    const chartObj = charts[idx.key]
+    const firstTick = idx.ticks[0].tick_at
+    const lastTick = idx.ticks[idx.ticks.length - 1].tick_at
+    chartObj.timeScale().setVisibleRange({ from: firstTick, to: lastTick })
 
     const lastVal = idx.ticks[idx.ticks.length - 1].close_px
     const firstVal = idx.ticks[0].close_px

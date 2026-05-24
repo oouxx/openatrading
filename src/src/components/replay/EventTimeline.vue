@@ -13,10 +13,7 @@
         v-for="ev in visibleEvents"
         :key="ev.id"
         class="px-2 py-2.5 border-b border-hairline-dark transition-all duration-300 cursor-pointer"
-        :class="[
-          ev._highlight ? 'bg-white/[0.06]' : '',
-          ev._future ? 'opacity-40' : '',
-        ]"
+        :class="ev._future ? 'opacity-40' : ''"
         @click="$emit('seekTo', ev.event_timestamp)"
       >
         <div class="flex items-center gap-2 mb-1">
@@ -116,22 +113,12 @@ const showBackToLatest = ref(false)
 let userScrolled = false
 
 const visibleEvents = computed(() => {
-  let list = props.events.map((e) => ({
-    ...e,
-    _future: props.currentTime > 0 && e.event_timestamp > props.currentTime,
-  }))
-  if (props.currentTime > 0) {
-    list = list.filter((e) => e.event_timestamp <= props.currentTime || e._future)
-  }
-  const played = list.filter((e) => !e._future)
-  if (played.length > 0) {
-    const latest = played[played.length - 1]
-    list = list.map((e) => ({
+  return props.events
+    .map((e) => ({
       ...e,
-      _highlight: e.id === latest.id,
+      _future: props.currentTime > 0 && e.event_timestamp > props.currentTime,
     }))
-  }
-  return list.slice(-100)
+    .slice(-100)
 })
 
 function onScroll() {

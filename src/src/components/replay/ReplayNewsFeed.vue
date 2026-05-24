@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref } from 'vue'
 
 interface NewsItem {
   Id: number
@@ -56,8 +56,6 @@ interface NewsItem {
 
 const props = defineProps<{
   news: NewsItem[]
-  currentTime: number
-  isPlaying: boolean
   hasMore: boolean
   newsLoading: boolean
 }>()
@@ -71,14 +69,7 @@ const showBackToLatest = ref(false)
 let userScrolled = false
 
 const visibleNews = computed(() => {
-  let list = props.news
-  if (props.currentTime > 0) {
-    list = list.filter((n) => n.CreatedAtInSec <= props.currentTime)
-  }
-  return list.map((n) => ({
-    ...n,
-    _future: false,
-  }))
+  return props.news
 })
 
 function onScroll() {
@@ -103,24 +94,4 @@ function scrollToLatest() {
   }
 }
 
-watch(
-  () => props.currentTime,
-  async () => {
-    if (userScrolled) return
-    await nextTick()
-    if (listRef.value) {
-      listRef.value.scrollTop = listRef.value.scrollHeight
-    }
-  },
-)
-
-watch(
-  () => props.isPlaying,
-  (playing) => {
-    if (playing) {
-      userScrolled = false
-      showBackToLatest.value = false
-    }
-  },
-)
 </script>
