@@ -12,7 +12,7 @@
       <div
         v-for="ev in visibleEvents"
         :key="ev.id"
-        class="px-2 py-3 border-b border-hairline-dark transition-all duration-300 cursor-pointer"
+        class="px-2 py-2.5 border-b border-hairline-dark transition-all duration-300 cursor-pointer"
         :class="[
           ev._highlight ? 'bg-white/[0.06]' : '',
           ev._future ? 'opacity-40' : '',
@@ -25,16 +25,18 @@
             class="shrink-0 px-1.5 py-0.5 border font-medium text-[11px]"
             :class="ev.good_or_bad === 1
               ? 'border-up/60 text-up'
-              : 'border-down/60 text-down'"
+              : ev.good_or_bad === 2
+                ? 'border-down/60 text-down'
+                : 'border-white/20 text-white/50'"
           >{{ ev._plate_name }}</span>
+          <span
+            class="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold"
+            :class="ev.good_or_bad === 1 ? 'bg-up/15 text-up' : ev.good_or_bad === 2 ? 'bg-down/15 text-down' : 'bg-white/5 text-white/40'"
+          >{{ ev.good_or_bad === 1 ? '利好' : ev.good_or_bad === 2 ? '利空' : '-' }}</span>
           <span
             class="font-mono text-xs ml-auto shrink-0"
             :class="ev._pcp >= 0 ? 'text-up' : 'text-down'"
           >{{ ev._pcp >= 0 ? '+' : '' }}{{ (ev._pcp * 100).toFixed(2) }}%</span>
-          <span
-            class="text-[10px] shrink-0"
-            :class="ev.good_or_bad === 1 ? 'text-up' : 'text-down'"
-          >{{ ev.good_or_bad === 1 ? '板块拉升' : '板块跳水' }}</span>
         </div>
         <div v-if="ev._related_stocks.length > 0" class="mt-1.5 space-y-0.5 pl-2">
           <div
@@ -42,26 +44,24 @@
             :key="stock.symbol"
             class="flex items-center gap-2 text-[11px]"
           >
-            <span
-              class="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
-              :class="ev.good_or_bad === 1
-                ? 'bg-up/15 text-up'
-                : 'bg-down/15 text-down'"
-            >{{ circleNum(si + 1) }}</span>
-            <span class="text-white/70 truncate">{{ stock.name }}</span>
-            <span class="text-white/30 ml-auto shrink-0">
-              涨速 <span :class="stock.mtm >= 0 ? 'text-up' : 'text-down'">{{ stock.mtm >= 0 ? '+' : '' }}{{ (stock.mtm * 100).toFixed(2) }}%</span>
-              <span v-if="stock.mtm >= 0" class="text-up">↑</span>
-              <span v-else class="text-down">↓</span>
+            <span class="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold bg-white/5 text-white/50">{{ si + 1 }}</span>
+            <span class="text-white/70 truncate flex-1">{{ stock.name }}</span>
+            <span class="font-mono shrink-0 whitespace-nowrap" :class="stock.mtm >= 0 ? 'text-up' : 'text-down'">
+              涨速{{ stock.mtm >= 0 ? '+' : '' }}{{ (stock.mtm * 100).toFixed(2) }}%
             </span>
-            <span
-              class="font-mono shrink-0"
-              :class="stock.pcp >= 0 ? 'text-up' : 'text-down'"
-            >{{ stock.pcp >= 0 ? '+' : '' }}{{ (stock.pcp * 100).toFixed(2) }}%</span>
+            <span class="font-mono shrink-0 whitespace-nowrap" :class="stock.pcp >= 0 ? 'text-up' : 'text-down'">
+              涨幅{{ stock.pcp >= 0 ? '+' : '' }}{{ (stock.pcp * 100).toFixed(2) }}%
+            </span>
           </div>
         </div>
       </div>
-      <div v-if="visibleEvents.length === 0" class="text-white/20 text-xs py-8 text-center">
+      <div v-if="loadingMore" class="text-white/20 text-xs py-4 text-center">
+        加载中...
+      </div>
+      <div v-else-if="!hasMore && visibleEvents.length > 0" class="text-white/10 text-[10px] py-3 text-center">
+        — 已加载全部 —
+      </div>
+      <div v-else-if="visibleEvents.length === 0" class="text-white/20 text-xs py-8 text-center">
         暂无事件
       </div>
     </div>
@@ -102,20 +102,18 @@ const props = defineProps<{
   events: DisplayEvent[]
   currentTime: number
   isPlaying: boolean
+  hasMore: boolean
+  loadingMore: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   seekTo: [ts: number]
+  loadMore: []
 }>()
 
 const listRef = ref<HTMLElement>()
 const showBackToLatest = ref(false)
 let userScrolled = false
-
-function circleNum(n: number): string {
-  const chars = ['①', '②', '③', '④', '⑤']
-  return chars[n - 1] || String(n)
-}
 
 const visibleEvents = computed(() => {
   let list = props.events.map((e) => ({
@@ -143,6 +141,7 @@ function onScroll() {
   if (atBottom) {
     userScrolled = false
     showBackToLatest.value = false
+    if (props.hasMore && !props.loadingMore) emit('loadMore')
   } else if (props.isPlaying) {
     userScrolled = true
     showBackToLatest.value = true

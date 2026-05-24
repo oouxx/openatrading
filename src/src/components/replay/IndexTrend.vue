@@ -1,16 +1,16 @@
 <template>
-  <div class="space-y-2">
-    <div v-for="idx in indices" :key="idx.key" class="border-b border-hairline-dark pb-2 last:border-b-0 last:pb-0">
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-xs text-white/60">{{ idx.label }}</span>
+  <div class="h-full flex flex-col">
+    <div v-for="idx in indices" :key="idx.key" class="flex-1 flex flex-col min-h-0 border-b border-hairline-dark pb-1 last:border-b-0 last:pb-0">
+      <div class="flex items-center justify-between px-1 shrink-0">
+        <span class="text-[10px] text-white/60">{{ idx.label }}</span>
         <div class="flex items-center gap-2">
-          <span class="font-mono text-sm text-white">{{ idx.lastPx }}</span>
-          <span class="font-mono text-xs" :class="idx.changeRate >= 0 ? 'text-up' : 'text-down'">
+          <span class="font-mono text-xs text-white">{{ idx.lastPx }}</span>
+          <span class="font-mono text-[10px]" :class="idx.changeRate >= 0 ? 'text-up' : 'text-down'">
             {{ idx.changeRate >= 0 ? '+' : '' }}{{ idx.changeRate.toFixed(2) }}%
           </span>
         </div>
       </div>
-      <div :ref="(el) => setChartRef(idx.key, el as HTMLElement)" class="w-full" style="height: 80px"></div>
+      <div :ref="(el) => setChartRef(idx.key, el as HTMLElement)" class="w-full flex-1 min-h-0"></div>
     </div>
   </div>
 </template>
@@ -42,12 +42,24 @@ function setChartRef(key: string, el: HTMLElement | null) {
   chartRefs[key] = el
 }
 
+/** Filter ticks to A-share market hours (09:30–15:00 Beijing = 01:30–07:00 UTC). */
+function filterMarketHours(ticks: IndexTick[]): IndexTick[] {
+  if (!ticks.length) return ticks
+  const dayStart = ticks[0].tick_at - (ticks[0].tick_at % 86400)
+  const openCutoff = dayStart + 5400 // 01:30 UTC = 09:30 Beijing
+  const closeCutoff = dayStart + 7 * 3600 // 07:00 UTC = 15:00 Beijing
+  return ticks.filter((t) => t.tick_at >= openCutoff && t.tick_at <= closeCutoff)
+}
+
 const indices = computed(() => {
   if (!props.trendData) return []
+  const sh = filterMarketHours(props.trendData.sh)
+  const sz = filterMarketHours(props.trendData.sz)
+  const cyb = filterMarketHours(props.trendData.cyb)
   return [
-    { key: 'sh', label: '上证综指', ticks: props.trendData.sh, ...computeLast(props.trendData.sh) },
-    { key: 'sz', label: '深证成指', ticks: props.trendData.sz, ...computeLast(props.trendData.sz) },
-    { key: 'cyb', label: '创业板指', ticks: props.trendData.cyb, ...computeLast(props.trendData.cyb) },
+    { key: 'sh', label: '上证综指', ticks: sh, ...computeLast(sh) },
+    { key: 'sz', label: '深证成指', ticks: sz, ...computeLast(sz) },
+    { key: 'cyb', label: '创业板指', ticks: cyb, ...computeLast(cyb) },
   ]
 })
 
@@ -74,13 +86,21 @@ function initChart(key: string) {
       horzLines: { color: 'rgba(255,255,255,0.04)' },
     },
     rightPriceScale: {
-      visible: false,
+      visible: true,
       borderVisible: false,
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+      entireTextOnly: true,
     },
     timeScale: {
-      visible: false,
+      visible: true,
       fixLeftEdge: true,
       fixRightEdge: true,
+      timeVisible: true,
+      secondsVisible: false,
+      tickMarkFormatter: (t: any) => {
+        const d = new Date((t as number) * 1000)
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      },
     },
     crosshair: { mode: 0 },
     handleScroll: false,

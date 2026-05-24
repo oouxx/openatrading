@@ -180,15 +180,29 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         }
         "/api/replay/events" => {
             let client = XuanguBaoClient::new();
-            let events = client
-                .fetch_day_events()
+            let timestamp = XuanguBaoClient::latest_trading_day_close_ts();
+            let raw = client
+                .fetch_events_page(timestamp, 50)
                 .await
                 .map_err(|e| format!("{e}"))?;
+            let events: Vec<trending_agent_core::api::xuangubao::ReplayEvent> = raw
+                .iter()
+                .map(trending_agent_core::api::xuangubao::ReplayEvent::from)
+                .collect();
+            let next_cursor = events.last().map(|e| e.event_timestamp);
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
                 .cloned()
                 .unwrap_or_default();
-            let page = trending_agent_core::api::xuangubao::build_replay_page(&date, &events);
+            let market_phase = trending_agent_core::web::cache::current_market_phase()
+                .as_str()
+                .to_string();
+            let page = trending_agent_core::api::xuangubao::ReplayPage {
+                date,
+                market_phase,
+                events,
+                next_cursor,
+            };
             Ok(serde_json::to_value(page).unwrap_or_default())
         }
         _ => {
@@ -596,7 +610,7 @@ async fn api_replay_analyze(
 
     let client = XuanguBaoClient::new();
     let events = client
-        .fetch_day_events()
+        .fetch_all_day_events()
         .await
         .map_err(|e| format!("fetch error: {e}"))?;
     let date = XuanguBaoClient::last_n_trading_days(1)

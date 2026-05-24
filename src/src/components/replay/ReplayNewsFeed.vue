@@ -11,18 +11,23 @@
     >
       <div
         v-for="item in visibleNews"
-        :key="item.id"
+        :key="item.Id"
         class="px-2 py-2.5 border-b border-hairline-dark transition-opacity duration-300"
-        :class="item._future ? 'opacity-40' : ''"
       >
         <div class="text-[10px] font-mono text-white/30 mb-0.5">{{ item._time_label }}</div>
-        <p class="text-xs text-white/80 leading-relaxed line-clamp-2">{{ item.title }}</p>
+        <p class="text-xs text-white/80 leading-relaxed line-clamp-2">{{ item.Title }}</p>
         <p
-          v-if="item.content && item.content !== item.title"
-          class="text-[11px] text-white/40 leading-relaxed mt-0.5 line-clamp-2"
-        >{{ item.content }}</p>
+          v-if="item.Summary && item.Summary !== item.Title"
+          class="text-[11px] text-white/40 leading-relaxed mt-0.5"
+        >{{ item.Summary }}</p>
       </div>
-      <div v-if="visibleNews.length === 0" class="text-white/20 text-xs py-8 text-center">
+      <div v-if="newsLoading" class="text-white/20 text-xs py-4 text-center">
+        加载中...
+      </div>
+      <div v-else-if="!hasMore && visibleNews.length > 0" class="text-white/10 text-[10px] py-3 text-center">
+        — 已加载全部 —
+      </div>
+      <div v-else-if="visibleNews.length === 0 && !newsLoading" class="text-white/20 text-xs py-8 text-center">
         暂无资讯
       </div>
     </div>
@@ -40,10 +45,11 @@
 import { computed, ref, watch, nextTick } from 'vue'
 
 interface NewsItem {
-  id: number
-  timestamp: number
-  title: string
-  content: string
+  Id: number
+  CreatedAtInSec: number
+  Title: string
+  Content: string
+  Summary: string
   _time_label: string
   _future: boolean
 }
@@ -52,6 +58,12 @@ const props = defineProps<{
   news: NewsItem[]
   currentTime: number
   isPlaying: boolean
+  hasMore: boolean
+  newsLoading: boolean
+}>()
+
+const emit = defineEmits<{
+  loadMore: []
 }>()
 
 const listRef = ref<HTMLElement>()
@@ -59,9 +71,13 @@ const showBackToLatest = ref(false)
 let userScrolled = false
 
 const visibleNews = computed(() => {
-  return props.news.map((n) => ({
+  let list = props.news
+  if (props.currentTime > 0) {
+    list = list.filter((n) => n.CreatedAtInSec <= props.currentTime)
+  }
+  return list.map((n) => ({
     ...n,
-    _future: props.currentTime > 0 && n.timestamp > props.currentTime,
+    _future: false,
   }))
 })
 
@@ -72,6 +88,7 @@ function onScroll() {
   if (atBottom) {
     userScrolled = false
     showBackToLatest.value = false
+    if (props.hasMore) emit('loadMore')
   } else if (props.isPlaying) {
     userScrolled = true
     showBackToLatest.value = true

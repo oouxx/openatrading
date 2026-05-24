@@ -37,17 +37,50 @@ struct StreamChunk {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: Option<Delta>,
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Delta {
     content: Option<String>,
+    tool_calls: Option<Vec<ToolCallDelta>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCallDelta {
+    index: Option<usize>,
+    id: Option<String>,
+    function: Option<FunctionDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FunctionDelta {
+    name: Option<String>,
+    arguments: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolCall {
+    pub id: String,
+    pub function_name: String,
+    pub arguments: String,
+}
+
+pub enum StreamEvent {
+    Text(String),
+    ToolCallStart(ToolCall),
+    ToolCallDelta(ToolCall),
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
 #[cfg(target_arch = "wasm32")]
 pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent>> + Send>>;
+#[cfg(target_arch = "wasm32")]
+pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent>>>>;
 
 #[derive(Clone)]
 pub struct LlmClient {
@@ -327,6 +360,118 @@ impl LlmClient {
                 }
             }
             Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+        });
+
+        Ok(Box::pin(stream))
+    }
+
+    pub async fn chat_stream_with_tools(
+        &self,
+        messages: &serde_json::Value,
+        tools: &serde_json::Value,
+    ) -> Result<ToolStreamResult> {
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": 4096,
+            "temperature": 0.7,
+            "stream": true,
+            "tools": tools,
+        });
+
+        let resp = self
+            .client
+            .post(&self.api_endpoint)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        eprintln!("[llm] chat_stream_with_tools response status: {status}");
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            eprintln!("[llm] error response body: {body}");
+            anyhow::bail!("LLM API error {status}: {body}");
+        }
+
+        use std::cell::RefCell;
+        let buf = RefCell::new(String::new());
+
+        let stream = resp.bytes_stream().map(move |chunk| {
+            let text = String::from_utf8_lossy(&chunk?).to_string();
+            let mut events: Vec<StreamEvent> = Vec::new();
+
+            let mut prev = buf.borrow_mut();
+            let merged = format!("{}{}", *prev, text);
+
+            let mut lines: Vec<&str> = merged.lines().collect();
+            if merged.ends_with('\n') {
+                prev.clear();
+            } else {
+                *prev = lines.pop().unwrap_or("").to_string();
+            }
+
+            for line in lines {
+                if !line.starts_with("data: ") {
+                    continue;
+                }
+                let data = line.trim_start_matches("data: ");
+                if data == "[DONE]" {
+                    continue;
+                }
+                let chunk: StreamChunk = match serde_json::from_str(data) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let Some(choices) = chunk.choices else {
+                    continue;
+                };
+                for choice in choices {
+                    let Some(delta) = choice.delta else { continue };
+
+                    if let Some(content) = delta.content {
+                        if !content.is_empty() {
+                            events.push(StreamEvent::Text(content));
+                        }
+                    }
+
+                    if let Some(tc_deltas) = delta.tool_calls {
+                        for tc in tc_deltas {
+                            let id = tc.id.unwrap_or_default();
+                            let func = tc.function.unwrap_or(FunctionDelta {
+                                name: None,
+                                arguments: None,
+                            });
+                            let name = func.name.unwrap_or_default();
+                            let args = func.arguments.unwrap_or_default();
+
+                            if !id.is_empty() && !name.is_empty() {
+                                events.push(StreamEvent::ToolCallStart(ToolCall {
+                                    id,
+                                    function_name: name,
+                                    arguments: args,
+                                }));
+                            } else if !args.is_empty() {
+                                events.push(StreamEvent::ToolCallDelta(ToolCall {
+                                    id: String::new(),
+                                    function_name: String::new(),
+                                    arguments: args,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+
+            if events.is_empty() {
+                Ok(StreamEvent::Text(String::new()))
+            } else if events.len() == 1 {
+                Ok(events.into_iter().next().unwrap())
+            } else {
+                Ok(events.into_iter().next().unwrap())
+            }
         });
 
         Ok(Box::pin(stream))
