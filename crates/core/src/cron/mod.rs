@@ -352,7 +352,7 @@ async fn run_decision_for_role(
             let err_msg = format!("❌ LLM 调用失败: {e}");
             let decision = Decision {
                 role_name: role.display_name.clone(),
-                summary: format!("*{} 决策*\n{}", role.display_name, err_msg),
+                summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
                 trade_suggestions: vec![],
             };
             let _ = social.notify_decision(&decision).await;
@@ -398,7 +398,7 @@ async fn run_decision_for_role(
                     let cond_text = if sl_text.is_empty() && tp_text.is_empty() {
                         String::new()
                     } else {
-                        format!(" [{} {}]", sl_text, tp_text)
+                        format!(" ({} {})", sl_text, tp_text)
                     };
                     executed_trades.push(format!(
                         "✅ 买入 {} {} {}股 — {}{}",
@@ -466,7 +466,7 @@ async fn run_decision_for_role(
     };
 
     let summary = format!(
-        "*{} 决策*\n\n📊 分析：{}\n\n💹 操作：\n{}",
+        "【{} 决策】\n\n📊 分析：{}\n\n💹 操作：\n{}",
         role.display_name, analysis, trade_section
     );
 
@@ -788,7 +788,7 @@ pub async fn run_monitor(
 
         let _ = social
             .send_text(&format!(
-                "🔔 *条件单触发*\n{} {} {}\n当前价: {:.2}\n触发价: {:.2}\n已自动{}",
+                "🔔 条件单触发\n{} {} {}\n当前价: {:.2}\n触发价: {:.2}\n已自动{}",
                 order.condition_type,
                 order.symbol,
                 order.stock_name,

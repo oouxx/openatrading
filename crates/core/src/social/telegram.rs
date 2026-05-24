@@ -12,12 +12,13 @@ impl TelegramSender {
     pub async fn send_message(&self, text: &str) -> Result<()> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let client = reqwest::Client::new();
+        // Send as plain text to avoid Markdown parse errors from special chars in Chinese text
+        let stripped = text.replace(['*', '_'], "");
         client
             .post(&url)
             .json(&serde_json::json!({
                 "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": "Markdown",
+                "text": stripped,
             }))
             .send()
             .await?;
