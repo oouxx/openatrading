@@ -30,6 +30,19 @@ pub enum MarketPhase {
     Weekend,
 }
 
+impl MarketPhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MarketPhase::PreOpen => "preopen",
+            MarketPhase::MorningOpen => "morningopen",
+            MarketPhase::MorningBreak => "morningbreak",
+            MarketPhase::AfternoonOpen => "afternoonopen",
+            MarketPhase::Closed => "closed",
+            MarketPhase::Weekend => "weekend",
+        }
+    }
+}
+
 pub fn current_market_phase() -> MarketPhase {
     let now = Local::now();
     let weekday = now.weekday();

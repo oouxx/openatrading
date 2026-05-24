@@ -188,7 +188,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .first()
                 .cloned()
                 .unwrap_or_default();
-            let data = trending_agent_core::service::replay::build_replay_data(&date, &events);
+            let data = trending_agent_core::api::xuangubao::build_replay_data(&date, &events);
             Ok(serde_json::to_value(data).unwrap_or_default())
         }
         _ => {
@@ -604,8 +604,8 @@ async fn api_replay_analyze(
         .cloned()
         .unwrap_or_default();
     let snapshots =
-        trending_agent_core::service::replay::build_replay_data(&date, &events).snapshots;
-    let prompt = trending_agent_core::service::replay::build_analysis_prompt(&date, &snapshots);
+        trending_agent_core::api::xuangubao::build_replay_data(&date, &events).snapshots;
+    let prompt = trending_agent_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
 
     let mut llm_stream = llm
         .chat_stream(&prompt)

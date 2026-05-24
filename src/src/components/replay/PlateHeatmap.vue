@@ -26,31 +26,28 @@ const props = defineProps<{
 
 const chartRef = ref<HTMLElement>()
 let instance: echarts.ECharts | null = null
-let prevPlateNames: string[] = []
 
 function buildOption() {
   const plates = props.topPlates
   if (plates.length === 0) return {}
 
-  const data: Array<{
-    name: string
-    value: number
-    pcp: number
-    good_or_bad: number
-    related_stocks: RelatedStock[]
-    isNew: boolean
-  }> = plates.map((p) => ({
-    name: p.plate_name,
-    value: Math.abs(p.pcp),
-    pcp: p.pcp,
-    good_or_bad: p.good_or_bad,
-    related_stocks: p.related_stocks,
-    isNew: !prevPlateNames.includes(p.plate_name),
-  }))
-
   const maxPcp = Math.max(...plates.map((p) => Math.abs(p.pcp)), 0.001)
-  const newNames = data.filter((d) => d.isNew).map((d) => d.name)
-  prevPlateNames = plates.map((p) => p.plate_name)
+
+  const data = plates.map((p) => {
+    const alpha = 0.3 + (Math.abs(p.pcp) / maxPcp) * 0.7
+    const color =
+      p.pcp >= 0
+        ? `rgba(245, 34, 45, ${alpha})`
+        : `rgba(82, 196, 26, ${alpha})`
+    return {
+      name: p.plate_name,
+      value: Math.abs(p.pcp),
+      pcp: p.pcp,
+      good_or_bad: p.good_or_bad,
+      related_stocks: p.related_stocks,
+      itemStyle: { color, borderColor: '#0D1117', borderWidth: 2, gapWidth: 1 },
+    }
+  })
 
   return {
     tooltip: {
@@ -58,9 +55,8 @@ function buildOption() {
         const d = p.data
         if (!d) return ''
         const tag = d.good_or_bad === 1 ? '利好' : d.good_or_bad === 2 ? '利空' : '中性'
-        const pcpStr = (d.pcp * 100).toFixed(2)
-        let html = `<b>${d.name}</b><br/>涨跌幅: ${pcpStr}%<br/>多空: ${tag}`
-        if (d.related_stocks && d.related_stocks.length > 0) {
+        let html = `<b>${d.name}</b><br/>涨跌幅: ${(d.pcp * 100).toFixed(2)}%<br/>多空: ${tag}`
+        if (d.related_stocks?.length) {
           const stocks = d.related_stocks
             .slice(0, 5)
             .map((s: RelatedStock) => `${s.name}(${(s.pcp * 100).toFixed(1)}%)`)
@@ -80,26 +76,13 @@ function buildOption() {
           show: true,
           formatter: (p: any) => {
             const d = p.data
-            const tag = d.good_or_bad === 1 ? '多' : d.good_or_bad === 2 ? '空' : ''
-            return `${d.name}\n${(d.pcp * 100).toFixed(1)}% ${tag}`
+            const tag = d?.good_or_bad === 1 ? '多' : d?.good_or_bad === 2 ? '空' : ''
+            return `${d?.name}\n${((d?.pcp ?? 0) * 100).toFixed(1)}% ${tag}`
           },
           fontSize: 11,
           color: '#fff',
         },
         data,
-        levels: [
-          {
-            itemStyle: { borderColor: '#0D1117', borderWidth: 2, gapWidth: 1 },
-          },
-          {
-            colorMappingBy: 'value' as const,
-            color: data.map((d) =>
-              d.pcp >= 0
-                ? `rgba(245, 34, 45, ${0.3 + (Math.abs(d.pcp) / maxPcp) * 0.7})`
-                : `rgba(82, 196, 26, ${0.3 + (Math.abs(d.pcp) / maxPcp) * 0.7})`,
-            ),
-          },
-        ],
         animationDurationUpdate: 600,
         animationEasingUpdate: 'cubicInOut',
       },

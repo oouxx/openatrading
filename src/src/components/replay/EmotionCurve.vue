@@ -68,22 +68,8 @@ function updateData() {
   }))
   lineSeries.setData(data)
 
-  const last = toShow[toShow.length - 1]
-  const lastColor = emotionColor(last.emotion_score)
-
-  lineSeries.applyOptions({
-    color: lastColor,
-  })
-
-  lineSeries.setMarkers([
-    {
-      time: last.timestamp as any,
-      position: 'inBar',
-      color: lastColor,
-      shape: 'circle',
-      size: 2,
-    },
-  ])
+  const lastColor = emotionColor(toShow[toShow.length - 1].emotion_score)
+  lineSeries.applyOptions({ color: lastColor })
 }
 
 onMounted(() => {

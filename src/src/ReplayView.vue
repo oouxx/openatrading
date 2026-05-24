@@ -4,13 +4,19 @@
     <div class="flex items-center justify-between px-4 py-2 border-b border-hairline-dark bg-black">
       <div>
         <span class="text-sm font-bold">{{ data?.date || '--' }}</span>
-        <span class="text-xs text-white/30 ml-2">上证指数 · 行情回放</span>
+        <span class="text-xs text-white/30 ml-2">行情回放</span>
       </div>
       <div class="flex items-center gap-2">
         <span
           v-if="isIntraday"
           class="text-[10px] px-2 py-0.5 rounded-full bg-ai/20 text-ai animate-pulse"
         >盘中</span>
+        <button
+          @click="toggleMute"
+          class="w-8 h-8 flex items-center justify-center rounded-button bg-white/10 hover:bg-white/20 text-white text-sm"
+        >
+          {{ muted ? '🔇' : '🔊' }}
+        </button>
         <button
           v-if="isEnded || isPaused"
           class="px-4 py-1.5 rounded-button bg-ai text-white text-xs font-bold hover:opacity-90"
@@ -38,12 +44,11 @@
         <div class="skeleton w-12 h-4 rounded"></div>
         <div class="skeleton w-14 h-6 rounded"></div>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="skeleton h-[280px] rounded-lg"></div>
-        <div class="skeleton h-[280px] rounded-lg"></div>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="skeleton h-[400px] rounded-lg"></div>
+        <div class="skeleton h-[400px] rounded-lg"></div>
+        <div class="skeleton h-[400px] rounded-lg"></div>
       </div>
-      <div class="skeleton h-[200px] rounded-lg"></div>
-      <div class="skeleton h-[120px] rounded-lg"></div>
     </div>
 
     <template v-else-if="data">
@@ -76,31 +81,56 @@
         <button @click="reset" class="text-xs text-white/40 hover:text-white/60 px-2 py-1">重置</button>
       </div>
 
-      <!-- Main Layout -->
-      <div class="grid grid-cols-2 gap-0 border-b border-hairline-dark">
-        <!-- Left: Emotion Curve -->
-        <div class="border-r border-hairline-dark p-3">
-          <p class="text-xs text-white/30 mb-2">情绪温度</p>
-          <EmotionCurve :snapshots="data.snapshots" :currentTime="currentTs" />
+      <!-- Main Layout - Three columns -->
+      <div class="grid grid-cols-3 gap-0 border-b border-hairline-dark" style="height: calc(100vh - 140px)">
+        <!-- Left: Index Trends + Emotion -->
+        <div class="border-r border-hairline-dark flex flex-col p-3 overflow-hidden">
+          <div class="flex-1 overflow-hidden">
+            <IndexTrend :trendData="indexTrendData" />
+          </div>
+          <!-- Emotion Temperature Bar -->
+          <div class="mt-2 pt-2 border-t border-hairline-dark">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-white/30">情绪温度</span>
+              <span
+                class="font-mono text-sm font-bold"
+                :class="emotionColor"
+              >{{ currentEmotion }}</span>
+            </div>
+            <div class="h-2 rounded-full bg-white/5 overflow-hidden relative">
+              <div
+                class="h-full rounded-full transition-all duration-500"
+                :style="{
+                  width: `${currentEmotion}%`,
+                  background: emotionGradient,
+                }"
+              ></div>
+            </div>
+            <div class="flex justify-between mt-0.5">
+              <span class="text-[9px] text-down">冷</span>
+              <span class="text-[9px] text-yellow-400">中</span>
+              <span class="text-[9px] text-up">热</span>
+            </div>
+          </div>
         </div>
-        <!-- Right: Event Timeline -->
-        <div class="p-3" style="height: 332px">
-          <p class="text-xs text-white/30 mb-2">异动事件</p>
-          <EventTimeline :events="displayEvents" :currentTime="currentTs" />
+
+        <!-- Middle: Event Timeline -->
+        <div class="border-r border-hairline-dark p-3 overflow-hidden">
+          <EventTimeline
+            :events="displayEvents"
+            :currentTime="currentTs"
+            :isPlaying="isPlaying"
+            @seekTo="seekTo"
+          />
         </div>
-      </div>
 
-      <!-- Plate Heatmap -->
-      <div class="border-b border-hairline-dark p-3">
-        <p class="text-xs text-white/30 mb-2">板块热力图</p>
-        <PlateHeatmap :topPlates="currentPlates" />
-      </div>
-
-      <!-- Bull/Bear Bar -->
-      <div class="flex items-center gap-4 p-3">
-        <div class="flex-1">
-          <p class="text-xs text-white/30 mb-2">多空比</p>
-          <BullBearChart :bullCount="currentBull" :bearCount="currentBear" />
+        <!-- Right: News Feed -->
+        <div class="p-3 overflow-hidden">
+          <ReplayNewsFeed
+            :news="displayNews"
+            :currentTime="currentTs"
+            :isPlaying="isPlaying"
+          />
         </div>
       </div>
     </template>
@@ -116,12 +146,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import EmotionCurve from './components/replay/EmotionCurve.vue'
-import PlateHeatmap from './components/replay/PlateHeatmap.vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import IndexTrend from './components/replay/IndexTrend.vue'
 import EventTimeline from './components/replay/EventTimeline.vue'
-import BullBearChart from './components/replay/BullBearChart.vue'
+import ReplayNewsFeed from './components/replay/ReplayNewsFeed.vue'
 import AiAnalysis from './components/replay/AiAnalysis.vue'
+import { useSpeech } from './composables/useSpeech'
+
+const { muted, speak, stop: stopSpeech, toggleMute } = useSpeech()
 
 interface RelatedStock {
   symbol: string
@@ -153,6 +185,7 @@ interface RawEvent {
   plate_abnormal_event_data?: {
     plate_name?: string
     pcp?: number
+    related_stocks?: RelatedStock[]
   }
 }
 
@@ -172,10 +205,36 @@ interface DisplayEvent {
   _pcp: number
   _highlight: boolean
   event_timestamp: number
+  _related_stocks: RelatedStock[]
+}
+
+interface IndexTick {
+  tick_at: number
+  close_px: number
+}
+
+interface IndexTrendData {
+  sh: IndexTick[]
+  sz: IndexTick[]
+  cyb: IndexTick[]
+}
+
+interface NewsItem {
+  id: number
+  timestamp: number
+  title: string
+  content: string
+}
+
+interface DisplayNews extends NewsItem {
+  _time_label: string
+  _future: boolean
 }
 
 const data = ref<ReplayData | null>(null)
 const dataLoading = ref(true)
+const indexTrendData = ref<IndexTrendData | null>(null)
+const newsData = ref<NewsItem[]>([])
 
 const isIntraday = computed(() => {
   return data.value?.market_phase === 'morningopen' || data.value?.market_phase === 'afternoonopen'
@@ -190,27 +249,34 @@ const currentTs = ref(0)
 const speed = ref(1)
 let timer: ReturnType<typeof setInterval> | null = null
 
-const MIN_TS = 9 * 3600 + 30 * 60
-const MAX_TS = 15 * 3600
-
 const rangeMin = computed(() => {
-  if (!data.value?.snapshots.length) return MIN_TS
-  const ts = data.value.snapshots[0].timestamp
-  return ts - (ts % 86400) + MIN_TS
+  const events = data.value?.events
+  if (!events?.length) return 0
+  return events[0].event_timestamp
 })
 
 const rangeMax = computed(() => {
-  if (!data.value?.events.length) return MAX_TS
-  const last = data.value.events[data.value.events.length - 1].event_timestamp
-  return last - (last % 86400) + Math.max(last % 86400, MAX_TS)
+  const events = data.value?.events
+  if (!events?.length) return 0
+  return events[events.length - 1].event_timestamp
 })
 
-const currentLabel = computed(() => {
-  const secs = currentTs.value % 86400
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
+function tsToHhmm(ts: number): string {
+  const beijingSecs = ((ts % 86400) + 86400 + 8 * 3600) % 86400
+  const h = Math.floor(beijingSecs / 3600)
+  const m = Math.floor((beijingSecs % 3600) / 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-})
+}
+
+function tsToHhmmss(ts: number): string {
+  const beijingSecs = ((ts % 86400) + 86400 + 8 * 3600) % 86400
+  const h = Math.floor(beijingSecs / 3600)
+  const m = Math.floor((beijingSecs % 3600) / 60)
+  const s = Math.floor(beijingSecs % 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+const currentLabel = computed(() => tsToHhmm(currentTs.value))
 
 // ── Derived Data ────────────────────────────────────────
 
@@ -223,9 +289,25 @@ const currentSnapshot = computed(() => {
   return null
 })
 
-const currentBull = computed(() => currentSnapshot.value?.bull_count ?? 0)
-const currentBear = computed(() => currentSnapshot.value?.bear_count ?? 0)
-const currentPlates = computed(() => currentSnapshot.value?.top_plates ?? [])
+const currentEmotion = computed(() => {
+  if (!currentSnapshot.value) return 0
+  const bull = currentSnapshot.value.bull_count
+  const bear = currentSnapshot.value.bear_count
+  const total = bull + bear
+  if (total === 0) return 50
+  return Math.round((bull / total) * 100)
+})
+
+const emotionColor = computed(() => {
+  const e = currentEmotion.value
+  if (e > 60) return 'text-up'
+  if (e < 40) return 'text-down'
+  return 'text-yellow-400'
+})
+
+const emotionGradient = computed(() => {
+  return 'linear-gradient(90deg, #52C41A, #FAAD14, #F5222D)'
+})
 
 const displayEvents = computed<DisplayEvent[]>(() => {
   const events = data.value?.events ?? []
@@ -235,31 +317,97 @@ const displayEvents = computed<DisplayEvent[]>(() => {
       id: e.id,
       target: e.target,
       good_or_bad: e.good_or_bad,
-      _time_label: unixToHhmm(e.event_timestamp),
+      _time_label: tsToHhmmss(e.event_timestamp),
       _plate_name: e.plate_abnormal_event_data?.plate_name ?? e.target,
       _pcp: e.plate_abnormal_event_data?.pcp ?? 0,
       _highlight: false,
       event_timestamp: e.event_timestamp,
+      _related_stocks: e.plate_abnormal_event_data?.related_stocks ?? [],
     }))
 })
 
+const displayNews = computed<DisplayNews[]>(() => {
+  return newsData.value.map((n) => ({
+    ...n,
+    _time_label: tsToHhmmss(n.timestamp),
+    _future: false,
+  }))
+})
+
+// ── Speech ──────────────────────────────────────────────
+
+let lastSpokenEventId = 0
+let lastEmotionAlert = 0
+
+function speakEvent(ev: RawEvent) {
+  if (ev.id === lastSpokenEventId) return
+  lastSpokenEventId = ev.id
+  if (speed.value >= 5) return
+  const plateName = ev.plate_abnormal_event_data?.plate_name ?? ev.target
+  const pcp = ev.plate_abnormal_event_data?.pcp ?? 0
+  const pcpStr = `${(Math.abs(pcp) * 100).toFixed(1)}%`
+  if (ev.good_or_bad === 1) {
+    speak(`${plateName}拉升，涨幅${pcpStr}`)
+  } else if (ev.good_or_bad === 2) {
+    speak(`${plateName}跳水，跌幅${pcpStr}`)
+  }
+}
+
+function checkEmotionAlert() {
+  const e = currentEmotion.value
+  const now = Date.now()
+  if (now - lastEmotionAlert < 30000) return
+  if (e > 70) {
+    speak('市场情绪偏热，注意风险')
+    lastEmotionAlert = now
+  } else if (e < 30) {
+    speak('市场情绪偏冷，观望为主')
+    lastEmotionAlert = now
+  }
+}
+
 // ── Fetch ───────────────────────────────────────────────
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const isTauri = '__TAURI_INTERNALS__' in window
+  if (isTauri) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return invoke('api_fetch', { path })
+  }
+  const base = localStorage.getItem('trading-agent-api-url') || ''
+  const resp = await fetch(`${base}${path}`)
+  if (!resp.ok) throw new Error(`${resp.status}`)
+  return resp.json()
+}
 
 async function fetchData() {
   dataLoading.value = true
   try {
-    const isTauri = '__TAURI_INTERNALS__' in window
-    if (isTauri) {
-      const { invoke } = await import('@tauri-apps/api/core')
-      data.value = await invoke('api_fetch', { path: '/api/replay/events' })
+    const [eventsData, indexData, newsResult] = await Promise.allSettled([
+      fetchJson<ReplayData>('/api/replay/events'),
+      fetchJson<IndexTrendData>('/api/replay/index'),
+      fetchJson<NewsItem[]>('/api/replay/news'),
+    ])
+
+    if (eventsData.status === 'fulfilled') {
+      data.value = eventsData.value
+      if (data.value?.events.length) {
+        currentTs.value = rangeMin.value
+      }
     } else {
-      const base = localStorage.getItem('trading-agent-api-url') || ''
-      const resp = await fetch(`${base}/api/replay/events`)
-      if (!resp.ok) throw new Error(`${resp.status}`)
-      data.value = await resp.json()
+      console.error('Failed to load replay events:', eventsData.reason)
     }
-    if (data.value?.events.length) {
-      currentTs.value = rangeMin.value
+
+    if (indexData.status === 'fulfilled') {
+      indexTrendData.value = indexData.value
+    } else {
+      console.error('Failed to load index trends:', indexData.reason)
+    }
+
+    if (newsResult.status === 'fulfilled') {
+      newsData.value = newsResult.value
+    } else {
+      console.error('Failed to load news:', newsResult.reason)
     }
   } catch (e: any) {
     console.error('Failed to load replay data:', e)
@@ -270,11 +418,11 @@ async function fetchData() {
 
 // ── Playback Logic ──────────────────────────────────────
 
-function findNextEventTime(): number | null {
+function findNextEvent(): RawEvent | null {
   const events = data.value?.events
   if (!events?.length) return null
   for (const ev of events) {
-    if (ev.event_timestamp > currentTs.value) return ev.event_timestamp
+    if (ev.event_timestamp > currentTs.value) return ev
   }
   return null
 }
@@ -282,12 +430,15 @@ function findNextEventTime(): number | null {
 function advancePlayback() {
   const step = speed.value
   for (let i = 0; i < step; i++) {
-    const t = findNextEventTime()
-    if (t) {
-      currentTs.value = t
+    const ev = findNextEvent()
+    if (ev) {
+      currentTs.value = ev.event_timestamp
+      speakEvent(ev)
+      checkEmotionAlert()
     } else {
       isPlaying.value = false
       isEnded.value = true
+      stopSpeech()
       return
     }
   }
@@ -296,6 +447,8 @@ function advancePlayback() {
 function togglePlay() {
   if (isEnded.value) {
     reset()
+    isPlaying.value = true
+    startTimer()
     return
   }
   isPlaying.value = !isPlaying.value
@@ -304,6 +457,7 @@ function togglePlay() {
     startTimer()
   } else {
     stopTimer()
+    stopSpeech()
   }
 }
 
@@ -326,6 +480,7 @@ function seekTo(ts: number) {
   isPlaying.value = false
   isEnded.value = false
   stopTimer()
+  stopSpeech()
 }
 
 function reset() {
@@ -333,8 +488,15 @@ function reset() {
   isPlaying.value = false
   isPaused.value = false
   isEnded.value = false
+  lastSpokenEventId = 0
+  lastEmotionAlert = 0
   stopTimer()
+  stopSpeech()
 }
+
+watch(speed, (s) => {
+  if (s >= 5) stopSpeech()
+})
 
 // ── AI Analysis ─────────────────────────────────────────
 
@@ -404,15 +566,6 @@ async function startAiAnalysis() {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────
-
-function unixToHhmm(ts: number): string {
-  const secs = ((ts % 86400) + 86400) % 86400
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
 // ── Lifecycle ───────────────────────────────────────────
 
 onMounted(() => {
@@ -421,6 +574,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopTimer()
+  stopSpeech()
 })
 </script>
 

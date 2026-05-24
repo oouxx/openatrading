@@ -6,7 +6,6 @@ pub mod llm;
 pub mod memory;
 pub mod report;
 pub mod roles;
-pub mod service;
 pub mod social;
 pub mod templates;
 pub mod trade;
