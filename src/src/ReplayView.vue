@@ -12,13 +12,6 @@
           class="text-[10px] px-2 py-0.5 rounded-full bg-ai/20 text-ai animate-pulse"
         >盘中</span>
         <button
-          @click="toggleMute"
-          class="w-8 h-8 flex items-center justify-center rounded-button bg-white/10 hover:bg-white/20 text-white text-sm"
-        >
-          {{ muted ? '🔇' : '🔊' }}
-        </button>
-        <button
-          v-if="isEnded || isPaused"
           class="px-4 py-1.5 rounded-button bg-ai text-white text-xs font-bold hover:opacity-90"
           @click="startAiAnalysis"
         >
@@ -52,37 +45,8 @@
     </div>
 
     <template v-else-if="data">
-      <!-- Controls -->
-      <div class="px-4 py-2 flex items-center gap-3 border-b border-hairline-dark">
-        <button
-          @click="togglePlay"
-          class="w-8 h-8 flex items-center justify-center rounded-button bg-white/10 hover:bg-white/20 text-white text-sm"
-        >
-          {{ isPlaying ? '⏸' : '▶' }}
-        </button>
-        <input
-          type="range"
-          :min="rangeMin"
-          :max="rangeMax"
-          :value="currentTs"
-          @input="seekTo(Number(($event.target as HTMLInputElement).value))"
-          class="flex-1 h-1 accent-ai"
-        />
-        <span class="font-mono text-xs text-white/60 w-12 text-right">{{ currentLabel }}</span>
-        <select
-          v-model="speed"
-          class="bg-surface-dark border border-hairline-dark rounded text-xs text-white/80 px-2 py-1"
-        >
-          <option :value="1">1×</option>
-          <option :value="2">2×</option>
-          <option :value="5">5×</option>
-          <option :value="10">10×</option>
-        </select>
-        <button @click="reset" class="text-xs text-white/40 hover:text-white/60 px-2 py-1">重置</button>
-      </div>
-
       <!-- Main Layout - Three columns -->
-      <div class="grid grid-cols-3 gap-0 border-b border-hairline-dark" style="height: calc(100vh - 140px)">
+      <div class="grid grid-cols-3 gap-0 border-b border-hairline-dark" style="height: calc(100vh - 108px)">
         <!-- Left: Index Trends + Emotion -->
         <div class="border-r border-hairline-dark flex flex-col p-3 overflow-hidden">
           <div class="flex-1 overflow-hidden">
@@ -131,8 +95,6 @@
         <div class="p-3 overflow-hidden">
           <ReplayNewsFeed
             :news="displayNews"
-            :currentTime="currentTs"
-            :isPlaying="isPlaying"
             :hasMore="hasMoreNews"
             :newsLoading="newsLoadingMore"
             @loadMore="loadMoreNews"
@@ -152,14 +114,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import IndexTrend from './components/replay/IndexTrend.vue'
 import EventTimeline from './components/replay/EventTimeline.vue'
 import ReplayNewsFeed from './components/replay/ReplayNewsFeed.vue'
 import AiAnalysis from './components/replay/AiAnalysis.vue'
-import { useSpeech } from './composables/useSpeech'
-
-const { muted, speak, stop: stopSpeech, toggleMute } = useSpeech()
+import { overview, fetchOverview } from './stores/data'
 
 interface RelatedStock {
   symbol: string
@@ -238,40 +198,21 @@ const newsData = ref<NewsItem[]>([])
 const newsTailmark = ref<number | null>(null)
 const newsMsgIdMark = ref<string | null>(null)
 const newsLoadingMore = ref(false)
-
 const hasMoreNews = computed(() => newsTailmark.value !== null)
 
 const isIntraday = computed(() => {
   return data.value?.market_phase === 'morningopen' || data.value?.market_phase === 'afternoonopen'
 })
 
-// ── Playback State ──────────────────────────────────────
-
 const isPlaying = ref(false)
-const isPaused = ref(false)
-const isEnded = ref(false)
-const currentTs = ref(0)
-const speed = ref(1)
-let timer: ReturnType<typeof setInterval> | null = null
 
-const rangeMin = computed(() => {
-  const events = data.value?.events
-  if (!events?.length) return 0
-  return events[0].event_timestamp
-})
-
-const rangeMax = computed(() => {
+const currentTs = computed(() => {
   const events = data.value?.events
   if (!events?.length) return 0
   return events[events.length - 1].event_timestamp
 })
 
-function tsToHhmm(ts: number): string {
-  const beijingSecs = ((ts % 86400) + 86400 + 8 * 3600) % 86400
-  const h = Math.floor(beijingSecs / 3600)
-  const m = Math.floor((beijingSecs % 3600) / 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
+function seekTo(_ts: number) {}
 
 function tsToHhmmss(ts: number): string {
   const beijingSecs = ((ts % 86400) + 86400 + 8 * 3600) % 86400
@@ -281,23 +222,10 @@ function tsToHhmmss(ts: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-const currentLabel = computed(() => tsToHhmm(currentTs.value))
-
 // ── Derived Data ────────────────────────────────────────
 
 const currentEmotion = computed(() => {
-  const events = data.value?.events
-  if (!events?.length) return 50
-  let bull = 0
-  let bear = 0
-  for (const ev of events) {
-    if (ev.event_timestamp > currentTs.value) break
-    if (ev.good_or_bad === 1) bull++
-    else if (ev.good_or_bad === 2) bear++
-  }
-  const total = bull + bear
-  if (total === 0) return 50
-  return Math.round((bull / total) * 100)
+  return Math.round(overview.data?.market_temperature ?? 50)
 })
 
 const emotionColor = computed(() => {
@@ -336,38 +264,6 @@ const displayNews = computed<DisplayNews[]>(() => {
   }))
 })
 
-// ── Speech ──────────────────────────────────────────────
-
-let lastSpokenEventId = 0
-let lastEmotionAlert = 0
-
-function speakEvent(ev: RawEvent) {
-  if (ev.id === lastSpokenEventId) return
-  lastSpokenEventId = ev.id
-  if (speed.value >= 5) return
-  const plateName = ev.plate_name ?? ''
-  const pcp = ev.pcp ?? 0
-  const pcpStr = `${(Math.abs(pcp) * 100).toFixed(1)}%`
-  if (ev.good_or_bad === 1) {
-    speak(`${plateName}拉升，涨幅${pcpStr}`)
-  } else if (ev.good_or_bad === 2) {
-    speak(`${plateName}跳水，跌幅${pcpStr}`)
-  }
-}
-
-function checkEmotionAlert() {
-  const e = currentEmotion.value
-  const now = Date.now()
-  if (now - lastEmotionAlert < 30000) return
-  if (e > 70) {
-    speak('市场情绪偏热，注意风险')
-    lastEmotionAlert = now
-  } else if (e < 30) {
-    speak('市场情绪偏冷，观望为主')
-    lastEmotionAlert = now
-  }
-}
-
 // ── Fetch ───────────────────────────────────────────────
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -394,9 +290,6 @@ async function fetchData() {
     if (eventsData.status === 'fulfilled') {
       data.value = eventsData.value
       eventsNextCursor.value = eventsData.value.next_cursor
-      if (data.value?.events.length) {
-        currentTs.value = rangeMin.value
-      }
     } else {
       console.error('Failed to load replay events:', eventsData.reason)
     }
@@ -456,86 +349,6 @@ async function loadMoreNews() {
     newsLoadingMore.value = false
   }
 }
-
-// ── Playback Logic ──────────────────────────────────────
-
-/** Advance currentTs by market-time seconds, scaled by speed.
- *  1× = real-time: 200ms tick × 0.2s step = 1s market / 1s real. */
-function advancePlayback() {
-  const tickSecs = 0.2 // market seconds per tick at 1×
-  const step = tickSecs * speed.value
-  currentTs.value = Math.min(currentTs.value + step, rangeMax.value)
-  if (currentTs.value >= rangeMax.value) {
-    isPlaying.value = false
-    isEnded.value = true
-    stopSpeech()
-    return
-  }
-  // Check for notable events at this timestamp for speech
-  const events = data.value?.events
-  if (events) {
-    for (const ev of events) {
-      if (ev.event_timestamp > currentTs.value - step && ev.event_timestamp <= currentTs.value) {
-        speakEvent(ev)
-      }
-    }
-  }
-  checkEmotionAlert()
-}
-
-function togglePlay() {
-  if (isEnded.value) {
-    reset()
-    isPlaying.value = true
-    startTimer()
-    return
-  }
-  isPlaying.value = !isPlaying.value
-  isPaused.value = !isPlaying.value
-  if (isPlaying.value) {
-    startTimer()
-  } else {
-    stopTimer()
-    stopSpeech()
-  }
-}
-
-function startTimer() {
-  stopTimer()
-  const tickMs = 200
-  timer = setInterval(advancePlayback, tickMs)
-}
-
-function stopTimer() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-}
-
-function seekTo(ts: number) {
-  currentTs.value = Number(ts)
-  isPaused.value = true
-  isPlaying.value = false
-  isEnded.value = false
-  stopTimer()
-  stopSpeech()
-}
-
-function reset() {
-  currentTs.value = rangeMin.value
-  isPlaying.value = false
-  isPaused.value = false
-  isEnded.value = false
-  lastSpokenEventId = 0
-  lastEmotionAlert = 0
-  stopTimer()
-  stopSpeech()
-}
-
-watch(speed, (s) => {
-  if (s >= 5) stopSpeech()
-})
 
 // ── AI Analysis ─────────────────────────────────────────
 
@@ -608,13 +421,10 @@ async function startAiAnalysis() {
 // ── Lifecycle ───────────────────────────────────────────
 
 onMounted(() => {
+  fetchOverview()
   fetchData()
 })
 
-onUnmounted(() => {
-  stopTimer()
-  stopSpeech()
-})
 </script>
 
 <style scoped>
