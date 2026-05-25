@@ -216,7 +216,7 @@ import {
   type RolePosition, type PnlPoint
 } from '@/stores/data'
 import Sparkline from '@/components/Sparkline.vue'
-import { createChart, ColorType } from 'lightweight-charts'
+import { createChart, ColorType, AreaSeries, LineSeries } from 'lightweight-charts'
 
 // ── State ──────────────────────────────────────────────
 
@@ -426,7 +426,7 @@ function renderChart() {
     value: p.return_pct,
   }))
 
-  const returnSeries = chart.addAreaSeries({
+  const returnSeries = chart.addSeries(AreaSeries, {
     lineColor: points.length && points[points.length - 1].return_pct >= 0 ? '#FF5C5C' : '#1D9E75',
     topColor: points.length && points[points.length - 1].return_pct >= 0 ? 'rgba(255,92,92,0.15)' : 'rgba(29,158,117,0.15)',
     bottomColor: 'rgba(0,0,0,0)',
@@ -440,7 +440,7 @@ function renderChart() {
     value: p.market_value,
   }))
 
-  chart.addLineSeries({
+  chart.addSeries(LineSeries, {
     color: '#7F77DD',
     lineWidth: 1,
     priceScaleId: 'right',
@@ -452,7 +452,7 @@ function renderChart() {
     value: p.cash,
   }))
 
-  chart.addLineSeries({
+  chart.addSeries(LineSeries, {
     color: '#888780',
     lineWidth: 1,
     lineStyle: 2,
