@@ -254,6 +254,15 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             };
             Ok(serde_json::to_value(page).unwrap_or_default())
         }
+        "/api/replay/snapshots" => {
+            let client = XuanguBaoClient::new();
+            let events = client
+                .fetch_all_day_events()
+                .await
+                .map_err(|e| format!("{e}"))?;
+            let snapshots = trending_agent_core::api::xuangubao::build_replay_snapshots(&events);
+            Ok(serde_json::to_value(snapshots).unwrap_or_default())
+        }
         "/api/replay/index" => {
             use trending_agent_core::api::xuangubao::fetch_index_trends;
             let client = XuanguBaoClient::new();
@@ -468,7 +477,8 @@ async fn dispatch_post(
             let name = body
                 .get("name")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "角色名不能为空".to_string())?
                 .to_string();
             let display_name = body
                 .get("display_name")
@@ -533,6 +543,21 @@ async fn dispatch_post(
                             .map_err(|e| format!("{e}"))?;
                         Ok(serde_json::json!({"ok": true}))
                     }
+                    "delete" => {
+                        state
+                            .trade
+                            .delete_positions_by_role(name)
+                            .map_err(|e| format!("{e}"))?;
+                        state
+                            .trade
+                            .delete_trade_logs_by_role(name)
+                            .map_err(|e| format!("{e}"))?;
+                        trending_agent_core::roles::delete_role_dir(&state.strategies_dir, name)
+                            .map_err(|e| format!("{e}"))?;
+                        let mut roles = state.roles.write().await;
+                        roles.retain(|r| r.name != name);
+                        Ok(serde_json::json!({"ok": true}))
+                    }
                     _ => Err(format!("unknown roles action: {action}")),
                 }
             } else {
@@ -547,7 +572,25 @@ fn extract_query(path: &str, key: &str) -> Option<String> {
     for pair in query_part.split('&') {
         let mut kv = pair.splitn(2, '=');
         if kv.next() == Some(key) {
-            return kv.next().map(|s| s.to_string());
+            let raw = kv.next()?;
+            // Simple percent-decode: %XX -> char
+            let decoded = raw.replace('+', " ");
+            let mut result = String::with_capacity(decoded.len());
+            let mut chars = decoded.chars();
+            while let Some(c) = chars.next() {
+                if c == '%' {
+                    let hex: String = chars.by_ref().take(2).collect();
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        result.push(byte as char);
+                    } else {
+                        result.push('%');
+                        result.push_str(&hex);
+                    }
+                } else {
+                    result.push(c);
+                }
+            }
+            return Some(result);
         }
     }
     None

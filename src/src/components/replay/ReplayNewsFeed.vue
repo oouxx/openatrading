@@ -80,9 +80,6 @@ function onScroll() {
     userScrolled = false
     showBackToLatest.value = false
     if (props.hasMore) emit('loadMore')
-  } else if (props.isPlaying) {
-    userScrolled = true
-    showBackToLatest.value = true
   }
 }
 

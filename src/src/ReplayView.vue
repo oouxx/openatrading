@@ -44,6 +44,15 @@
       </div>
     </div>
 
+    <!-- Error State -->
+    <div v-else-if="dataError" class="flex items-center justify-center" style="height: calc(100vh - 108px)">
+      <div class="text-center">
+        <p class="text-up text-sm mb-2">数据加载失败</p>
+        <p class="text-white/30 text-xs mb-4">{{ dataError }}</p>
+        <button @click="fetchData()" class="px-4 py-1.5 border border-hairline-dark rounded text-xs text-white/60 hover:text-white transition-colors">重试</button>
+      </div>
+    </div>
+
     <template v-else-if="data">
       <!-- Main Layout - Three columns -->
       <div class="grid grid-cols-3 gap-0 border-b border-hairline-dark" style="height: calc(100vh - 108px)">
@@ -190,6 +199,7 @@ interface DisplayNews extends NewsItem {
 }
 
 const data = ref<ReplayData | null>(null)
+const dataError = ref<string | null>(null)
 const dataLoading = ref(true)
 const eventsNextCursor = ref<number | null>(null)
 const eventsLoadingMore = ref(false)
@@ -280,6 +290,7 @@ async function fetchJson<T>(path: string): Promise<T> {
 
 async function fetchData() {
   dataLoading.value = true
+  dataError.value = null
   try {
     const [eventsData, indexData, newsResult] = await Promise.allSettled([
       fetchJson<ReplayData>('/api/replay/events'),
@@ -308,6 +319,7 @@ async function fetchData() {
       console.error('Failed to load news:', newsResult.reason)
     }
   } catch (e: any) {
+    dataError.value = e.message || String(e)
     console.error('Failed to load replay data:', e)
   } finally {
     dataLoading.value = false
@@ -366,9 +378,9 @@ async function startAiAnalysis() {
     const { invoke, Channel } = await import('@tauri-apps/api/core')
     const channel = new Channel<string>()
     channel.onmessage = (text) => {
-      aiLoading.value = false
       if (text.startsWith('[ERROR]')) {
         aiText.value += `\n\n> ⚠️ ${text}`
+        aiLoading.value = false
         return
       }
       aiText.value += text
@@ -406,7 +418,6 @@ async function startAiAnalysis() {
             aiText.value += `\n\n> ⚠️ ${d}`
             continue
           }
-          aiLoading.value = false
           aiText.value += d
         }
       }
