@@ -1,7 +1,6 @@
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
@@ -10,7 +9,7 @@ use crate::llm::openrouter::LlmClient;
 use crate::memory::MemoryStore;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
 use crate::social::NotificationSender;
-use crate::trade::{ConditionalOrder, Position, TradeManager};
+use crate::trade::{Position, TradeManager};
 use crate::web::RoleEntry;
 
 const INITIAL_CAPITAL: f64 = 1_000_000.0;
@@ -26,8 +25,6 @@ pub struct CronConfig {
     pub collection_schedule: String,
     #[serde(default = "default_decision_schedule")]
     pub decision_schedule: String,
-    #[serde(default = "default_monitor_schedule")]
-    pub monitor_schedule: String,
     #[serde(default = "default_news_schedule")]
     pub news_schedule: String,
 }
@@ -40,9 +37,6 @@ fn default_collection_schedule() -> String {
 }
 fn default_decision_schedule() -> String {
     "0 0 0 * * 1-5 *".to_string()
-}
-fn default_monitor_schedule() -> String {
-    "0 */1 9-15 * * 1-5 *".to_string()
 }
 fn default_news_schedule() -> String {
     "0 */5 9-15 * * 1-5 *".to_string()
@@ -117,23 +111,6 @@ pub async fn start_scheduler(
             Box::pin(async move {
                 if let Err(e) = run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles).await {
                     eprintln!("[cron] decision error: {e}");
-                }
-            })
-        })?)
-        .await?;
-
-    let trd_m = trade.clone();
-    let soc_m = social.clone();
-    let api_m = api.clone();
-    let schedule_m = config.monitor_schedule.clone();
-    scheduler
-        .add(Job::new_async(schedule_m.as_str(), move |_uuid, _lock| {
-            let trd = trd_m.clone();
-            let soc = soc_m.clone();
-            let api = api_m.clone();
-            Box::pin(async move {
-                if let Err(e) = run_monitor(&*trd, &api, &*soc).await {
-                    eprintln!("[cron] monitor error: {e}");
                 }
             })
         })?)
@@ -387,22 +364,9 @@ async fn run_decision_for_role(
                     executed_trades
                         .push(format!("❌ 买入 {} {} 失败: {e}", instr.symbol, instr.name));
                 } else {
-                    let sl_text = instr
-                        .stop_loss_price
-                        .map(|p| format!("止损{:.2}", p))
-                        .unwrap_or_default();
-                    let tp_text = instr
-                        .take_profit_price
-                        .map(|p| format!("止盈{:.2}", p))
-                        .unwrap_or_default();
-                    let cond_text = if sl_text.is_empty() && tp_text.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({} {})", sl_text, tp_text)
-                    };
                     executed_trades.push(format!(
-                        "✅ 买入 {} {} {}股 — {}{}",
-                        instr.symbol, instr.name, instr.shares, instr.reason, cond_text
+                        "✅ 买入 {} {} {}股 — {}",
+                        instr.symbol, instr.name, instr.shares, instr.reason
                     ));
                     let log = crate::trade::TradeLog {
                         id: 0,
@@ -572,8 +536,8 @@ async fn execute_buy(
         cost_price: price,
         shares: instr.shares,
         current_price: Some(price),
-        stop_loss: instr.stop_loss_price,
-        target_price: instr.take_profit_price,
+        stop_loss: None,
+        target_price: None,
         entry_reason: instr.reason.clone(),
         sector: String::new(),
         position_pct: cost / INITIAL_CAPITAL,
@@ -591,62 +555,6 @@ async fn execute_buy(
         instr.reason,
         position_id
     );
-
-    if let Some(sl) = instr.stop_loss_price {
-        if sl > 0.0 && sl < price {
-            let order = ConditionalOrder {
-                id: 0,
-                role_name: role_name.to_string(),
-                position_id,
-                symbol: instr.symbol.clone(),
-                stock_name: instr.name.clone(),
-                condition_type: "stop_loss".to_string(),
-                trigger_price: sl,
-                direction: "below".to_string(),
-                shares: 0,
-                status: "pending".to_string(),
-                reason: format!("止损 {:.2}", sl),
-                created_at: String::new(),
-                triggered_at: None,
-                triggered_price: None,
-            };
-            trade.add_conditional_order(order)?;
-            tracing::info!(
-                "[cron] conditional order created: stop_loss {} @ {:.2} for position {}",
-                instr.symbol,
-                sl,
-                position_id
-            );
-        }
-    }
-
-    if let Some(tp) = instr.take_profit_price {
-        if tp > price {
-            let order = ConditionalOrder {
-                id: 0,
-                role_name: role_name.to_string(),
-                position_id,
-                symbol: instr.symbol.clone(),
-                stock_name: instr.name.clone(),
-                condition_type: "take_profit".to_string(),
-                trigger_price: tp,
-                direction: "above".to_string(),
-                shares: 0,
-                status: "pending".to_string(),
-                reason: format!("止盈 {:.2}", tp),
-                created_at: String::new(),
-                triggered_at: None,
-                triggered_price: None,
-            };
-            trade.add_conditional_order(order)?;
-            tracing::info!(
-                "[cron] conditional order created: take_profit {} @ {:.2} for position {}",
-                instr.symbol,
-                tp,
-                position_id
-            );
-        }
-    }
 
     Ok(())
 }
@@ -686,127 +594,6 @@ async fn execute_sell(
             sell_price,
             instr.reason
         );
-    }
-
-    Ok(())
-}
-
-pub async fn run_monitor(
-    trade: &dyn TradeManager,
-    api: &ApiClient,
-    social: &dyn NotificationSender,
-) -> Result<()> {
-    let pending_orders = trade.list_pending_conditional_orders()?;
-    if pending_orders.is_empty() {
-        return Ok(());
-    }
-
-    tracing::info!(
-        "[cron] monitor: checking {} pending orders",
-        pending_orders.len()
-    );
-
-    let mut symbol_quotes: HashMap<String, f64> = HashMap::new();
-
-    for order in &pending_orders {
-        if !symbol_quotes.contains_key(&order.symbol) {
-            match api.xuangubao.fetch_realtime(&order.symbol).await {
-                Ok(quote) => {
-                    symbol_quotes.insert(order.symbol.clone(), quote.last_px);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "[cron] monitor: fetch realtime for {} failed: {e}",
-                        order.symbol
-                    );
-                    continue;
-                }
-            }
-        }
-    }
-
-    let mut triggered_ids: Vec<i64> = Vec::new();
-
-    for order in &pending_orders {
-        let current_price = match symbol_quotes.get(&order.symbol) {
-            Some(p) => *p,
-            None => continue,
-        };
-
-        let triggered = match order.direction.as_str() {
-            "below" => current_price <= order.trigger_price,
-            "above" => current_price >= order.trigger_price,
-            _ => false,
-        };
-
-        if !triggered {
-            continue;
-        }
-
-        tracing::info!(
-            "[cron] monitor: {} order triggered for {} (id={}) — current {:.2} {} trigger {:.2}",
-            order.condition_type,
-            order.symbol,
-            order.id,
-            current_price,
-            order.direction,
-            order.trigger_price
-        );
-
-        if let Err(e) = trade.close_position(order.position_id, current_price, &order.reason) {
-            tracing::error!(
-                "[cron] monitor: close position {} failed: {e}",
-                order.position_id
-            );
-            continue;
-        }
-
-        if let Err(e) = trade.mark_order_triggered(order.id, current_price) {
-            tracing::warn!(
-                "[cron] monitor: mark order {} triggered failed: {e}",
-                order.id
-            );
-        }
-
-        trade
-            .cancel_conditional_orders_for_position(order.position_id)
-            .ok();
-
-        let log = crate::trade::TradeLog {
-            id: 0,
-            position_id: order.position_id,
-            action: "Close".into(),
-            price: current_price,
-            shares: 0,
-            reason: format!(
-                "条件单触发: {} @ {:.2} (触发价 {:.2})",
-                order.condition_type, current_price, order.trigger_price
-            ),
-            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-        let _ = social.notify_trade(&log).await;
-
-        let _ = social
-            .send_text(&format!(
-                "🔔 条件单触发\n{} {} {}\n当前价: {:.2}\n触发价: {:.2}\n已自动{}",
-                order.condition_type,
-                order.symbol,
-                order.stock_name,
-                current_price,
-                order.trigger_price,
-                if order.condition_type == "stop_loss" {
-                    "止损卖出"
-                } else {
-                    "止盈卖出"
-                },
-            ))
-            .await;
-
-        triggered_ids.push(order.id);
-    }
-
-    if !triggered_ids.is_empty() {
-        tracing::info!("[cron] monitor: {} orders triggered", triggered_ids.len());
     }
 
     Ok(())

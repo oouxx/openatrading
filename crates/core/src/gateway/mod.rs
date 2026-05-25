@@ -45,10 +45,9 @@ impl Gateway {
         // ── Cron ──────────────────────────────
         if let Some((cron_config, social)) = config.cron {
             eprintln!(
-                "[gateway] cron: enabled, collection={}, decision={}, monitor={}, news={}",
+                "[gateway] cron: enabled, collection={}, decision={}, news={}",
                 cron_config.collection_schedule,
                 cron_config.decision_schedule,
-                cron_config.monitor_schedule,
                 cron_config.news_schedule
             );
             let _scheduler = cron::start_scheduler(

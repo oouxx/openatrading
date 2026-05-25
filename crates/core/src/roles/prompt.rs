@@ -113,9 +113,7 @@ pub fn build_decision_prompt(
       "symbol": "股票代码，如 000001.SZ",
       "name": "股票名称",
       "shares": 100,
-      "reason": "操作理由（简短）",
-      "stop_loss_price": 10.5,
-      "take_profit_price": 12.0
+      "reason": "操作理由（简短）"
     }}
   ]
 }}
@@ -123,13 +121,12 @@ pub fn build_decision_prompt(
 
 规则：
 - action 只能是 buy（开仓）、sell（清仓）、hold（持有不动）
-- buy: 必须填写 symbol、name、shares（100的整数倍）、reason、stop_loss_price（止损价，低于成本价）、take_profit_price（止盈价，高于成本价）。系统会自动设置条件单，盘中触及止损/止盈价时自动卖出
-- sell: 必须填写 symbol、name、reason；shares 填 0（系统自动清全部持仓）；不需要填 stop_loss_price 和 take_profit_price
+- buy: 必须填写 symbol、name、shares（100的整数倍）、reason
+- sell: 必须填写 symbol、name、reason；shares 填 0（系统自动清全部持仓）
 - hold: 只需填写 symbol、name、reason；表示维持当前持仓不变
 - 如果没有任何操作建议，trades 输出空数组 []
 - shares 数量要合理，初始资金 1,000,000 元，注意仓位控制
-- 不要建议买入 ST 股票
-- stop_loss_price 和 take_profit_price 必须合理，止损价一般设在关键支撑位下方，止盈价设在压力位上方"#,
+- 不要建议买入 ST 股票"#,
             strategy = strategy_text,
         ),
         user: format!(
@@ -159,10 +156,6 @@ pub struct TradeInstruction {
     pub shares: i64,
     #[serde(default)]
     pub reason: String,
-    #[serde(default, rename = "stop_loss_price")]
-    pub stop_loss_price: Option<f64>,
-    #[serde(default, rename = "take_profit_price")]
-    pub take_profit_price: Option<f64>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -331,44 +324,5 @@ mod tests {
         let output = parse_decision_output(raw).unwrap();
         assert_eq!(output.trades[0].action, "sell");
         assert_eq!(output.trades[0].shares, 0);
-    }
-
-    #[test]
-    fn test_parse_decision_output_buy_with_stop_loss_take_profit() {
-        let raw = r#"```json
-{
-  "analysis": "量能放大，可适当建仓",
-  "trades": [
-    {
-      "action": "buy",
-      "symbol": "000001.SZ",
-      "name": "平安银行",
-      "shares": 1000,
-      "reason": "突破5日线",
-      "stop_loss_price": 10.5,
-      "take_profit_price": 12.0
-    }
-  ]
-}
-```"#;
-        let output = parse_decision_output(raw).unwrap();
-        assert_eq!(output.trades[0].action, "buy");
-        assert_eq!(output.trades[0].stop_loss_price, Some(10.5));
-        assert_eq!(output.trades[0].take_profit_price, Some(12.0));
-    }
-
-    #[test]
-    fn test_parse_decision_output_buy_without_stop_loss() {
-        let raw = r#"```json
-{
-  "analysis": "观望",
-  "trades": [
-    {"action": "buy", "symbol": "000001.SZ", "name": "平安银行", "shares": 100, "reason": "测试"}
-  ]
-}
-```"#;
-        let output = parse_decision_output(raw).unwrap();
-        assert_eq!(output.trades[0].stop_loss_price, None);
-        assert_eq!(output.trades[0].take_profit_price, None);
     }
 }

@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{ConditionalOrder, Position, TradeLog, TradeLogEntry, TradeManager};
+use super::{Position, TradeLog, TradeLogEntry, TradeManager};
 
 pub struct SqliteTradeManager {
     conn: Mutex<Connection>,
@@ -43,23 +43,6 @@ impl SqliteTradeManager {
                 shares INTEGER NOT NULL DEFAULT 0,
                 reason TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-            );
-
-            CREATE TABLE IF NOT EXISTS conditional_orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                role_name TEXT NOT NULL,
-                position_id INTEGER NOT NULL,
-                symbol TEXT NOT NULL,
-                stock_name TEXT NOT NULL DEFAULT '',
-                condition_type TEXT NOT NULL,
-                trigger_price REAL NOT NULL,
-                direction TEXT NOT NULL,
-                shares INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'pending',
-                reason TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-                triggered_at TEXT,
-                triggered_price REAL
             );",
         )?;
 
@@ -165,10 +148,6 @@ impl TradeManager for SqliteTradeManager {
             rusqlite::params![id, price, shares, reason, role_name, symbol],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
-        conn.execute(
-            "UPDATE conditional_orders SET status='cancelled' WHERE position_id=?1 AND status='pending'",
-            [id],
-        )?;
         Ok(())
     }
 
@@ -330,79 +309,6 @@ impl TradeManager for SqliteTradeManager {
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
-
-    fn add_conditional_order(&self, order: ConditionalOrder) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO conditional_orders \
-             (role_name,position_id,symbol,stock_name,condition_type,trigger_price,direction,shares,status,reason)\
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            rusqlite::params![
-                order.role_name,
-                order.position_id,
-                order.symbol,
-                order.stock_name,
-                order.condition_type,
-                order.trigger_price,
-                order.direction,
-                order.shares,
-                order.status,
-                order.reason,
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
-    }
-
-    fn list_pending_conditional_orders(&self) -> Result<Vec<ConditionalOrder>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id,role_name,position_id,symbol,stock_name,condition_type,\
-             trigger_price,direction,shares,status,reason,created_at,\
-             triggered_at,triggered_price \
-             FROM conditional_orders WHERE status='pending' ORDER BY id",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(ConditionalOrder {
-                id: row.get(0)?,
-                role_name: row.get(1)?,
-                position_id: row.get(2)?,
-                symbol: row.get(3)?,
-                stock_name: row.get(4)?,
-                condition_type: row.get(5)?,
-                trigger_price: row.get(6)?,
-                direction: row.get(7)?,
-                shares: row.get(8)?,
-                status: row.get(9)?,
-                reason: row.get(10)?,
-                created_at: row.get(11)?,
-                triggered_at: row.get(12)?,
-                triggered_price: row.get(13)?,
-            })
-        })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Into::into)
-    }
-
-    fn mark_order_triggered(&self, id: i64, price: f64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE conditional_orders SET status='triggered', \
-             triggered_at=datetime('now','localtime'), triggered_price=?1 \
-             WHERE id=?2",
-            rusqlite::params![price, id],
-        )?;
-        Ok(())
-    }
-
-    fn cancel_conditional_orders_for_position(&self, position_id: i64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE conditional_orders SET status='cancelled' \
-             WHERE position_id=?1 AND status='pending'",
-            [position_id],
-        )?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -459,76 +365,5 @@ mod tests {
         let text = tm.format_positions("zarili").unwrap();
         assert!(text.contains("000001"));
         assert!(text.contains("平安银行"));
-    }
-
-    fn test_order(
-        position_id: i64,
-        symbol: &str,
-        condition_type: &str,
-        trigger_price: f64,
-        direction: &str,
-    ) -> ConditionalOrder {
-        ConditionalOrder {
-            id: 0,
-            role_name: "zarili".into(),
-            position_id,
-            symbol: symbol.into(),
-            stock_name: "测试股".into(),
-            condition_type: condition_type.into(),
-            trigger_price,
-            direction: direction.into(),
-            shares: 0,
-            status: "pending".into(),
-            reason: format!("{} {:.2}", condition_type, trigger_price),
-            created_at: String::new(),
-            triggered_at: None,
-            triggered_price: None,
-        }
-    }
-
-    #[test]
-    fn test_conditional_order_lifecycle() {
-        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
-        let pos_id = tm
-            .add_position(test_pos("zarili", "000001", "平安银行"))
-            .unwrap();
-
-        let sl_id = tm
-            .add_conditional_order(test_order(pos_id, "000001", "stop_loss", 9.8, "below"))
-            .unwrap();
-        let tp_id = tm
-            .add_conditional_order(test_order(pos_id, "000001", "take_profit", 12.0, "above"))
-            .unwrap();
-
-        let pending = tm.list_pending_conditional_orders().unwrap();
-        assert_eq!(pending.len(), 2);
-
-        tm.mark_order_triggered(sl_id, 9.75).unwrap();
-        let pending = tm.list_pending_conditional_orders().unwrap();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].id, tp_id);
-
-        tm.cancel_conditional_orders_for_position(pos_id).unwrap();
-        let pending = tm.list_pending_conditional_orders().unwrap();
-        assert!(pending.is_empty());
-    }
-
-    #[test]
-    fn test_close_position_cancels_orders() {
-        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
-        let pos_id = tm
-            .add_position(test_pos("zarili", "000001", "平安银行"))
-            .unwrap();
-        tm.add_conditional_order(test_order(pos_id, "000001", "stop_loss", 9.8, "below"))
-            .unwrap();
-        tm.add_conditional_order(test_order(pos_id, "000001", "take_profit", 12.0, "above"))
-            .unwrap();
-
-        assert_eq!(tm.list_pending_conditional_orders().unwrap().len(), 2);
-
-        tm.close_position(pos_id, 11.0, "手动卖出").unwrap();
-
-        let pending = tm.list_pending_conditional_orders().unwrap();
-        assert!(pending.is_empty());
     }
 }

@@ -283,14 +283,12 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 enabled: c.enabled,
                 collection_schedule: c.collection_schedule.clone(),
                 decision_schedule: c.decision_schedule.clone(),
-                monitor_schedule: c.monitor_schedule.clone(),
                 news_schedule: c.news_schedule.clone(),
             },
             None => CronConfig {
                 enabled: true,
                 collection_schedule: "0 */30 9-15 * * 1-5 *".to_string(),
                 decision_schedule: "0 0 0 * * 1-5 *".to_string(),
-                monitor_schedule: "0 */1 9-15 * * 1-5 *".to_string(),
                 news_schedule: "0 */5 9-15 * * 1-5 *".to_string(),
             },
         };
