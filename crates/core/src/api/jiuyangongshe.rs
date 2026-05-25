@@ -10,7 +10,7 @@ const BASE_URL: &str = "https://app.jiuyangongshe.com/jystock-app/api/v1";
 fn now_ts() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis()
         .to_string()
 }

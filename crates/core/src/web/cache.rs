@@ -92,24 +92,22 @@ fn next_open_timestamp() -> i64 {
             let secs = (open_pm - time).num_seconds();
             now.timestamp() + secs
         }
-        MarketPhase::Closed => {
-            let tomorrow = (now + chrono::Duration::days(1))
-                .date_naive()
-                .and_hms_opt(9, 30, 0)
-                .unwrap();
-            tomorrow.and_utc().timestamp()
-        }
-        MarketPhase::Weekend => {
-            let days_to_mon = match now.weekday() {
-                Weekday::Sat => 2,
-                Weekday::Sun => 1,
-                _ => 0,
-            };
-            let monday = (now + chrono::Duration::days(days_to_mon))
-                .date_naive()
-                .and_hms_opt(9, 30, 0)
-                .unwrap();
-            monday.and_utc().timestamp()
+        MarketPhase::Closed | MarketPhase::Weekend => {
+            // Find the next trading day (skip weekends)
+            let mut days_ahead = 1i64;
+            loop {
+                let next = now + chrono::Duration::days(days_ahead);
+                if next.weekday() != Weekday::Sat && next.weekday() != Weekday::Sun {
+                    let open = next
+                        .date_naive()
+                        .and_hms_opt(9, 30, 0)
+                        .unwrap()
+                        .and_utc()
+                        .timestamp();
+                    return open;
+                }
+                days_ahead += 1;
+            }
         }
         MarketPhase::MorningOpen | MarketPhase::AfternoonOpen => 0,
     }
@@ -184,7 +182,8 @@ impl CachePolicy {
                 if ts > now {
                     Some(ts)
                 } else {
-                    None
+                    // Fallback: short TTL if we can't compute the next open
+                    Some(now + 60)
                 }
             }
         }

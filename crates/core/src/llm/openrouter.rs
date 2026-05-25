@@ -169,7 +169,16 @@ impl LlmClient {
             .json()
             .await?;
 
-        Ok(resp.choices[0].message.content.clone())
+        let content = resp
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
+        if content.is_empty() {
+            anyhow::bail!("LLM returned empty response");
+        }
+        Ok(content)
     }
 
     /// 非流式发送 messages JSON，返回完整回复文本
@@ -194,7 +203,16 @@ impl LlmClient {
             .json()
             .await?;
 
-        Ok(resp.choices[0].message.content.clone())
+        let content = resp
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
+        if content.is_empty() {
+            anyhow::bail!("LLM returned empty response");
+        }
+        Ok(content)
     }
 
     pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {

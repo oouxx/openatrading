@@ -762,9 +762,11 @@ pub async fn get_role_pnl_history(
         .sum();
 
     let mut points = compute_pnl_history(&all_logs, current_value);
-    // Filter to last N days
-    let cutoff = points.len().saturating_sub(days);
-    points = points.into_iter().skip(cutoff).collect();
+    // days=0 means return all points
+    if days > 0 {
+        let cutoff = points.len().saturating_sub(days);
+        points = points.into_iter().skip(cutoff).collect();
+    }
 
     Ok(Json(PnlHistoryResponse {
         points,

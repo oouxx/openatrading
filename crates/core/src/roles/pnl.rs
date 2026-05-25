@@ -1,6 +1,8 @@
 use crate::trade::TradeLogEntry;
 use serde::Serialize;
 
+pub const INITIAL_CAPITAL: f64 = 1_000_000.0;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PnlPoint {
     pub date: String,
@@ -12,7 +14,7 @@ pub struct PnlPoint {
 
 /// Compute P&L history from trade logs. Starts with 1,000,000 initial capital.
 pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64) -> Vec<PnlPoint> {
-    let initial_capital: f64 = 1_000_000.0;
+    let initial_capital: f64 = INITIAL_CAPITAL;
     if logs.is_empty() {
         return vec![];
     }

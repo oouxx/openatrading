@@ -320,7 +320,7 @@ impl XuanguBaoClient {
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
     pub fn last_n_trading_days(n: usize) -> Vec<String> {
         let mut dates = Vec::with_capacity(n);
-        let mut current = chrono::Local::now().date_naive();
+        let mut current = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
         // If today is a weekend, start from Friday
         while dates.len() < n {
             match current.weekday() {
