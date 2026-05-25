@@ -7,12 +7,12 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use crate::api::Client as ApiClient;
 use crate::llm::openrouter::LlmClient;
 use crate::memory::MemoryStore;
+use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
 use crate::social::NotificationSender;
 use crate::trade::{Position, TradeManager};
 use crate::web::RoleEntry;
 
-const INITIAL_CAPITAL: f64 = 1_000_000.0;
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
 const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;
 const MIN_SHARES: i64 = 100;
@@ -78,12 +78,31 @@ pub async fn start_scheduler(
         return Ok(scheduler);
     }
 
+    // Helper to add a job, logging errors instead of failing the whole gateway
+    macro_rules! add_job {
+        ($sched:expr, $schedule:expr, $name:literal, $task:expr) => {
+            match Job::new_async($schedule, $task) {
+                Ok(job) => {
+                    if let Err(e) = $sched.add(job).await {
+                        eprintln!("[cron] {}: failed to add job: {e}", $name);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[cron] {}: invalid cron '{}': {e}", $name, $schedule);
+                }
+            }
+        };
+    }
+
     let mem_c = memory.clone();
     let soc_c = social.clone();
     let api_c = api.clone();
     let schedule = config.collection_schedule.clone();
-    scheduler
-        .add(Job::new_async(schedule.as_str(), move |_uuid, _lock| {
+    add_job!(
+        scheduler,
+        schedule.as_str(),
+        "collection",
+        move |_uuid, _lock| {
             let mem = mem_c.clone();
             let soc = soc_c.clone();
             let api = api_c.clone();
@@ -92,16 +111,19 @@ pub async fn start_scheduler(
                     eprintln!("[cron] collection error: {e}");
                 }
             })
-        })?)
-        .await?;
+        }
+    );
 
     let mem_d = memory.clone();
     let trd = trade.clone();
     let soc_d = social.clone();
     let api_d = api.clone();
     let schedule_d = config.decision_schedule.clone();
-    scheduler
-        .add(Job::new_async(schedule_d.as_str(), move |_uuid, _lock| {
+    add_job!(
+        scheduler,
+        schedule_d.as_str(),
+        "decision",
+        move |_uuid, _lock| {
             let mem = mem_d.clone();
             let trd = trd.clone();
             let soc = soc_d.clone();
@@ -113,14 +135,17 @@ pub async fn start_scheduler(
                     eprintln!("[cron] decision error: {e}");
                 }
             })
-        })?)
-        .await?;
+        }
+    );
 
     let soc_n = social.clone();
     let api_n = api.clone();
     let schedule_n = config.news_schedule.clone();
-    scheduler
-        .add(Job::new_async(schedule_n.as_str(), move |_uuid, _lock| {
+    add_job!(
+        scheduler,
+        schedule_n.as_str(),
+        "news_push",
+        move |_uuid, _lock| {
             let soc = soc_n.clone();
             let api = api_n.clone();
             Box::pin(async move {
@@ -128,25 +153,25 @@ pub async fn start_scheduler(
                     eprintln!("[cron] news_push error: {e}");
                 }
             })
-        })?)
-        .await?;
+        }
+    );
 
     let soc_n2 = social.clone();
     let api_n2 = api.clone();
-    scheduler
-        .add(Job::new_async(
-            "0 */30 0-8,16-23 * * * *",
-            move |_uuid, _lock| {
-                let soc = soc_n2.clone();
-                let api = api_n2.clone();
-                Box::pin(async move {
-                    if let Err(e) = run_news_push(&api, &*soc).await {
-                        eprintln!("[cron] news_push error: {e}");
-                    }
-                })
-            },
-        )?)
-        .await?;
+    add_job!(
+        scheduler,
+        "0 */30 0-8,16-23 * * * *",
+        "news_push_offhours",
+        move |_uuid, _lock| {
+            let soc = soc_n2.clone();
+            let api = api_n2.clone();
+            Box::pin(async move {
+                if let Err(e) = run_news_push(&api, &*soc).await {
+                    eprintln!("[cron] news_push error: {e}");
+                }
+            })
+        }
+    );
 
     scheduler.start().await?;
     Ok(scheduler)
@@ -600,10 +625,20 @@ async fn execute_sell(
 }
 
 static LAST_PUSHED_NEWS_TIME: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static NEWS_TIME_INITIALIZED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> Result<()> {
     let items = api.cls.fetch_telegraph("").await?;
     if items.is_empty() {
+        return Ok(());
+    }
+
+    // On first run, seed with current time to avoid flooding old news
+    if !NEWS_TIME_INITIALIZED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let now = chrono::Utc::now().timestamp();
+        LAST_PUSHED_NEWS_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
+        tracing::info!("[cron] news_push: initialized, skipping existing items");
         return Ok(());
     }
 

@@ -448,8 +448,10 @@ async fn dispatch_roles_get(
                 .sum();
             let mut points =
                 trending_agent_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
-            let cutoff = points.len().saturating_sub(days);
-            points = points.into_iter().skip(cutoff).collect();
+            if days > 0 {
+                let cutoff = points.len().saturating_sub(days);
+                points = points.into_iter().skip(cutoff).collect();
+            }
             Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
         }
         _ => Err(format!("unknown roles action: {action}")),
