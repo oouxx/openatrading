@@ -51,7 +51,11 @@ FROM debian:bookworm-20240612-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY --from=builder /usr/local/bin/openatrading /usr/local/bin/openatrading
 

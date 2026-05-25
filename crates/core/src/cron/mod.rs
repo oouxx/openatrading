@@ -812,7 +812,7 @@ pub async fn run_monitor(
     Ok(())
 }
 
-static LAST_PUSHED_NEWS_ID: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static LAST_PUSHED_NEWS_TIME: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
 pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> Result<()> {
     let items = api.cls.fetch_telegraph("").await?;
@@ -820,13 +820,14 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         return Ok(());
     }
 
-    let last_id = LAST_PUSHED_NEWS_ID.load(std::sync::atomic::Ordering::Relaxed);
+    let last_time = LAST_PUSHED_NEWS_TIME.load(std::sync::atomic::Ordering::Relaxed);
 
+    // Filter new items by ctime (CLS API returns items in mixed order, use timestamp)
     let mut new_items: Vec<&crate::api::cls::TelegramInfo> = items
         .iter()
         .filter(|item| {
-            let id = item.id.unwrap_or(0);
-            id > last_id
+            let ts = item.ctime.unwrap_or(0);
+            ts > last_time
         })
         .collect();
 
@@ -834,20 +835,21 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         return Ok(());
     }
 
-    new_items.sort_by_key(|item| item.id.unwrap_or(0));
+    new_items.sort_by_key(|item| item.ctime.unwrap_or(0));
 
-    let max_id = new_items
+    let max_time = new_items
         .iter()
-        .map(|item| item.id.unwrap_or(0))
+        .map(|item| item.ctime.unwrap_or(0))
         .max()
-        .unwrap_or(last_id);
-    LAST_PUSHED_NEWS_ID.store(max_id, std::sync::atomic::Ordering::Relaxed);
+        .unwrap_or(last_time);
+    LAST_PUSHED_NEWS_TIME.store(max_time, std::sync::atomic::Ordering::Relaxed);
 
+    // Push items with level A (most important) or B (important)
     let important: Vec<&crate::api::cls::TelegramInfo> = new_items
         .iter()
         .filter(|item| {
             let level = item.level.as_deref().unwrap_or("");
-            level == "red" || level == "important"
+            level == "A" || level == "B"
         })
         .copied()
         .collect();
@@ -868,8 +870,8 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
             title
         };
         let level_tag = match item.level.as_deref().unwrap_or("") {
-            "red" => "🔴",
-            "important" => "⚡",
+            "A" => "🔴",
+            "B" => "⚡",
             _ => "📰",
         };
         let time_str = item
@@ -887,7 +889,7 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
     }
 
     tracing::info!(
-        "[cron] news_push: pushed {} important items",
+        "[cron] news_push: pushed {} important items (A/B level)",
         important.len()
     );
     Ok(())
