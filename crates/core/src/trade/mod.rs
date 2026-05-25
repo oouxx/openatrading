@@ -43,24 +43,6 @@ pub struct TradeLogEntry {
     pub symbol: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConditionalOrder {
-    pub id: i64,
-    pub role_name: String,
-    pub position_id: i64,
-    pub symbol: String,
-    pub stock_name: String,
-    pub condition_type: String,
-    pub trigger_price: f64,
-    pub direction: String,
-    pub shares: i64,
-    pub status: String,
-    pub reason: String,
-    pub created_at: String,
-    pub triggered_at: Option<String>,
-    pub triggered_price: Option<f64>,
-}
-
 pub mod sqlite;
 
 pub trait TradeManager: Send + Sync {
@@ -76,8 +58,4 @@ pub trait TradeManager: Send + Sync {
     fn delete_positions_by_role(&self, role_name: &str) -> Result<usize>;
     fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize>;
     fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>>;
-    fn add_conditional_order(&self, order: ConditionalOrder) -> Result<i64>;
-    fn list_pending_conditional_orders(&self) -> Result<Vec<ConditionalOrder>>;
-    fn mark_order_triggered(&self, id: i64, price: f64) -> Result<()>;
-    fn cancel_conditional_orders_for_position(&self, position_id: i64) -> Result<()>;
 }
