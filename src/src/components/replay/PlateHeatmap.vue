@@ -95,14 +95,17 @@ function update() {
   instance.setOption(buildOption(), true)
 }
 
+const onResize = () => instance?.resize()
+
 onMounted(() => {
   if (!chartRef.value) return
   instance = echarts.init(chartRef.value)
   update()
-  window.addEventListener('resize', () => instance?.resize())
+  window.addEventListener('resize', onResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
   instance?.dispose()
 })
 

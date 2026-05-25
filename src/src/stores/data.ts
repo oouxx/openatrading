@@ -13,7 +13,10 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
     if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
-      const body = init.body ? JSON.parse(String(init.body)) : {};
+      let body = {};
+      if (init.body) {
+        try { body = JSON.parse(String(init.body)); } catch { /* use empty */ }
+      }
       return invoke("api_post", { path, body }) as Promise<T>;
     }
     return invoke("api_fetch", { path }) as Promise<T>;

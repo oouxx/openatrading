@@ -265,7 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide } from "vue";
+import { ref, computed, provide, onUnmounted } from "vue";
 import { motion, AnimatePresence } from "motion-v";
 import appIcon from "@/assets/app-icon.png";
 import {
@@ -304,6 +304,9 @@ function onGlobalKeydown(e: KeyboardEvent) {
 if (typeof window !== "undefined") {
     window.addEventListener("keydown", onGlobalKeydown);
 }
+onUnmounted(() => {
+    window.removeEventListener("keydown", onGlobalKeydown);
+})
 
 // ── Settings ──────────────────────────────────────────
 

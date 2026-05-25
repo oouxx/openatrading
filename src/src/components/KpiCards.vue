@@ -99,7 +99,7 @@ const props = defineProps<{
 }>()
 
 const bombPct = computed(() => {
-  return props.overview.bomb_rate > 1 ? props.overview.bomb_rate : props.overview.bomb_rate * 100
+  return props.overview.bomb_rate * 100
 })
 
 const sentimentTemp = computed(() => {

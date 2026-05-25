@@ -472,7 +472,7 @@ onMounted(async () => {
     fetchRolePnlHistory(role.name, 30)
   }
   if (roles.data.length && !selectedRole.value) {
-    selectRole(roles.data[0].name)
+    await selectRole(roles.data[0].name)
   }
 })
 </script>
