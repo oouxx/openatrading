@@ -81,9 +81,9 @@ pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>> + Sen
 pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent>> + Send>>;
+pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>> + Send>>;
 #[cfg(target_arch = "wasm32")]
-pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent>>>>;
+pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>>>>;
 
 #[derive(Clone)]
 pub struct LlmClient {
@@ -492,13 +492,7 @@ impl LlmClient {
                 }
             }
 
-            if events.is_empty() {
-                Ok(StreamEvent::Text(String::new()))
-            } else if events.len() == 1 {
-                Ok(events.into_iter().next().unwrap())
-            } else {
-                Ok(events.into_iter().next().unwrap())
-            }
+            Ok(events)
         });
 
         Ok(Box::pin(stream))
