@@ -5030,6 +5030,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "teloxide",
+ "thiserror 2.0.18",
  "tokio",
  "toml 0.8.2",
  "tower-http 0.5.2",

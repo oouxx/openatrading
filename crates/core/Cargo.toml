@@ -32,6 +32,7 @@ async-stream = "0.3"
 tracing = { version = "0.1"}
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 moka = { version = "0.12.15", features = ["sync"] }
+thiserror = "2"
 [features]
 telegram = ["dep:teloxide"]
 
