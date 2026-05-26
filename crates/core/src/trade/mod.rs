@@ -43,6 +43,21 @@ pub struct TradeLogEntry {
     pub symbol: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ClosedPosition {
+    pub position_id: i64,
+    pub symbol: String,
+    pub stock_name: String,
+    pub entry_date: String,
+    pub exit_date: String,
+    pub entry_price: f64,
+    pub exit_price: f64,
+    pub shares: i64,
+    pub pnl_pct: f64,
+    pub entry_reason: String,
+    pub exit_reason: String,
+}
+
 pub mod sqlite;
 
 pub trait TradeManager: Send + Sync {
@@ -58,4 +73,5 @@ pub trait TradeManager: Send + Sync {
     fn delete_positions_by_role(&self, role_name: &str) -> Result<usize>;
     fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize>;
     fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>>;
+    fn get_closed_positions(&self, role_name: &str, limit: usize) -> Result<Vec<ClosedPosition>>;
 }

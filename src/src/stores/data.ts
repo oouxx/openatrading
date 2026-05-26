@@ -547,6 +547,43 @@ export async function resetRole(name: string) {
   await fetchJson(`/api/roles/${name}/reset`, { method: "POST" });
 }
 
+// ── Role History (Closed Positions) ─────────────────────
+
+export interface ClosedPosition {
+  position_id: number
+  symbol: string
+  stock_name: string
+  entry_date: string
+  exit_date: string
+  entry_price: number
+  exit_price: number
+  shares: number
+  pnl_pct: number
+  entry_reason: string
+  exit_reason: string
+}
+
+// Per-role history cache
+export const roleHistory = reactive<
+  Record<string, { data: ClosedPosition[]; loading: boolean; error: string }>
+>({});
+
+export async function fetchRoleHistory(name: string, limit = 100) {
+  if (!roleHistory[name]) {
+    roleHistory[name] = reactive({ data: [], loading: false, error: "" });
+  }
+  const entry = roleHistory[name];
+  entry.loading = true;
+  entry.error = "";
+  try {
+    entry.data = await fetchJson<ClosedPosition[]>(`/api/roles/${name}/history?limit=${limit}`);
+  } catch (e: any) {
+    entry.error = e.message || String(e);
+  } finally {
+    entry.loading = false;
+  }
+}
+
 // Refresh single role's positions
 export async function refreshRole(name: string) {
   await fetchRolePositions(name);

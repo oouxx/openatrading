@@ -468,6 +468,16 @@ async fn dispatch_roles_get(
             }
             Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
         }
+        "history" => {
+            let limit: usize = extract_query(rest, "limit")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100);
+            let positions = state
+                .trade
+                .get_closed_positions(name, limit)
+                .map_err(|e| format!("{e}"))?;
+            Ok(serde_json::to_value(positions).unwrap_or_default())
+        }
         _ => Err(format!("unknown roles action: {action}")),
     }
 }

@@ -774,6 +774,26 @@ pub async fn get_role_pnl_history(
     }))
 }
 
+/// GET /api/roles/:name/history — closed positions history
+pub async fn get_role_history(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let limit: usize = params
+        .get("limit")
+        .and_then(|d| d.parse().ok())
+        .unwrap_or(100);
+    let positions = state
+        .trade
+        .get_closed_positions(&name, limit)
+        .map_err(|e| {
+            eprintln!("get_role_history error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(positions))
+}
+
 // ── Replay handlers ────────────────────────────────────
 
 /// GET /api/replay/events — cursor-paginated replay data
