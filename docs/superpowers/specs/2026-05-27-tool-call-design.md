@@ -117,10 +117,25 @@ println!("{}", result.final_text);
 // 后台发生了: LLM调用 tool_call → execute → LLM 总结 → 返回
 ```
 
+## Decision 模式开关
+
+Cron decision 当前使用"全量 prompt"模式（把所有数据塞进一个 prompt 让 LLM 输出 JSON）。Tool call 模式是让 LLM 通过工具调用自行获取数据。
+
+两者通过环境变量切换，方便对比：
+
+```
+DECISION_MODE=prompt   # 全量 prompt 模式（当前默认）
+DECISION_MODE=tool     # tool call 模式
+```
+
+不设置或值为 `prompt` → 走现有全量 prompt 逻辑。值为 `tool` → 走 AgentLoop + tools。
+
+后续 tool call 模式验证稳定后，移除 `prompt` 模式。
+
 ## 迁移路径
 
 1. 实现 tool.rs + agent.rs
 2. 修复 openrouter.rs 的 B11
-3. 移除旧的 ToolDef/default_tools，迁移到新模块
-4. AI Copilot 聊天接入 AgentLoop（后续 PR）
-5. Cron decision 接入 AgentLoop（后续 PR）
+3. `run_decision` 中根据 `DECISION_MODE` 选择 prompt 或 tool call 路径
+4. 保留旧的 ToolDef/default_tools（prompt 模式仍需要），后续移除
+5. AI Copilot 聊天接入 AgentLoop（后续 PR）
