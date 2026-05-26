@@ -2,7 +2,6 @@ use crate::api::jiuyangongshe::CommunityArticle;
 use crate::api::taoguba::TaogubaRecommend;
 use crate::api::Client;
 use anyhow::Result;
-use chrono::Local;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,7 +60,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
         },
     );
 
-    let today = Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::beijing_now().format("%Y-%m-%d").to_string();
     let articles: Vec<CommunityArticle> = jiuyan_articles
         .into_iter()
         .filter(|a| a.create_time.starts_with(&today))
@@ -150,7 +149,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
 }
 
 pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentResult {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::beijing_now().format("%Y-%m-%d").to_string();
     articles.retain(|a| a.create_time.starts_with(&today));
 
     if articles.is_empty() {

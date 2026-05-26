@@ -97,7 +97,7 @@ pub async fn get_overview(
             );
 
             let resp = OverviewResponse {
-                date: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+                date: crate::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
                 rise_count: overview.rise_count,
                 fall_count: overview.fall_count,
                 limit_up_count: overview.limit_up_count,
@@ -263,7 +263,7 @@ pub async fn get_field_items(
     }
     let date = q
         .date
-        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        .unwrap_or_else(|| crate::beijing_now().format("%Y-%m-%d").to_string());
     let cache_key = format!("field_items_{}", date);
     let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
@@ -286,7 +286,7 @@ pub async fn get_timeline(
     if std::env::var("JIUYAN_PHONE").is_err() {
         return Ok(Json(serde_json::json!([])));
     }
-    let month = chrono::Local::now().format("%Y-%m").to_string();
+    let month = crate::beijing_now().format("%Y-%m").to_string();
     let cache_key = format!("timeline_{}", month);
     let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();

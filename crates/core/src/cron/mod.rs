@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -217,7 +217,7 @@ async fn run_collection(
     }
 
     let summary = CollectSummary {
-        timestamp: chrono::Local::now().naive_local(),
+        timestamp: crate::beijing_now().naive_local(),
         sources,
         snapshot_count,
     };
@@ -246,7 +246,7 @@ pub async fn run_decision(
              - 跌停家数：{}\n\
              - 炸板率：{:.1}%\n\
              - 市场温度：{:.1}\n",
-            chrono::Local::now().format("%Y-%m-%d %H:%M"),
+            crate::beijing_now().format("%Y-%m-%d %H:%M"),
             o.rise_count,
             o.fall_count,
             o.limit_up_count,
@@ -400,7 +400,7 @@ async fn run_decision_for_role(
                         price: 0.0,
                         shares: instr.shares,
                         reason: instr.reason.clone(),
-                        created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        created_at: crate::beijing_now().format("%Y-%m-%d %H:%M:%S").to_string(),
                     };
                     let _ = social.notify_trade(&log).await;
                 }
@@ -426,7 +426,7 @@ async fn run_decision_for_role(
                         price: 0.0,
                         shares: 0,
                         reason: instr.reason.clone(),
-                        created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        created_at: crate::beijing_now().format("%Y-%m-%d %H:%M:%S").to_string(),
                     };
                     let _ = social.notify_trade(&log).await;
                 }
@@ -550,7 +550,7 @@ async fn execute_buy(
         );
     }
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::beijing_now().format("%Y-%m-%d").to_string();
 
     let pos = Position {
         id: 0,
@@ -699,8 +699,13 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         let time_str = item
             .ctime
             .map(|t| {
-                chrono::DateTime::from_timestamp(t, 0)
-                    .map(|dt| dt.format("%H:%M").to_string())
+                Utc::timestamp_opt(&Utc, t, 0)
+                    .single()
+                    .map(|dt| {
+                        dt.with_timezone(&crate::beijing_now().timezone())
+                            .format("%H:%M")
+                            .to_string()
+                    })
                     .unwrap_or_default()
             })
             .unwrap_or_default();
