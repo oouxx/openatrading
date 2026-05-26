@@ -160,6 +160,47 @@
             </table>
           </div>
 
+          <!-- History Positions -->
+          <div class="bg-bg-surface border border-hairline rounded-card p-5 mb-6">
+            <h3 class="text-white font-semibold text-sm mb-3">历史持仓</h3>
+            <div v-if="roleHistory[selectedRole]?.loading" class="text-caption text-ink-muted py-4 text-center">
+              加载中...
+            </div>
+            <div v-else-if="!roleHistory[selectedRole]?.data?.length" class="text-caption text-ink-muted py-4 text-center">
+              暂无历史交易
+            </div>
+            <table v-else class="w-full text-caption">
+              <thead>
+                <tr class="text-ink-muted text-left">
+                  <th class="pb-2 font-normal">代码</th>
+                  <th class="pb-2 font-normal">名称</th>
+                  <th class="pb-2 font-normal text-right">盈亏%</th>
+                  <th class="pb-2 font-normal text-right">买入价/卖出价</th>
+                  <th class="pb-2 font-normal text-right">股数</th>
+                  <th class="pb-2 font-normal">买入日</th>
+                  <th class="pb-2 font-normal">卖出日</th>
+                  <th class="pb-2 font-normal">理由</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="h in roleHistory[selectedRole].data" :key="h.position_id" class="border-t border-hairline">
+                  <td class="py-2 font-mono text-white/70">{{ h.symbol }}</td>
+                  <td class="py-2 text-white/70">{{ h.stock_name }}</td>
+                  <td class="py-2 text-right font-mono" :class="h.pnl_pct >= 0 ? 'text-up' : 'text-down'">
+                    {{ h.pnl_pct >= 0 ? '+' : '' }}{{ h.pnl_pct.toFixed(1) }}%
+                  </td>
+                  <td class="py-2 text-right font-mono text-white/50">
+                    {{ h.entry_price.toFixed(2) }} / {{ h.exit_price.toFixed(2) }}
+                  </td>
+                  <td class="py-2 text-right font-mono text-white/70">{{ h.shares }}</td>
+                  <td class="py-2 text-white/50">{{ h.entry_date }}</td>
+                  <td class="py-2 text-white/50">{{ h.exit_date }}</td>
+                  <td class="py-2 text-white/50 max-w-[150px] truncate" :title="h.exit_reason">{{ h.exit_reason }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <!-- Strategy Section -->
           <div class="bg-bg-surface border border-hairline rounded-card p-5">
             <h3 class="text-white font-semibold text-sm mb-3">策略</h3>
@@ -212,8 +253,9 @@ import {
   rolePositions, fetchRolePositions,
   fetchRoleLogs,
   rolePnlHistory, fetchRolePnlHistory,
+  roleHistory, fetchRoleHistory,
   createRole, updateRoleStrategy, deleteRole, resetRole,
-  type RolePosition, type PnlPoint
+  type RolePosition, type PnlPoint, type ClosedPosition
 } from '@/stores/data'
 import Sparkline from '@/components/Sparkline.vue'
 import { createChart, ColorType, AreaSeries, LineSeries } from 'lightweight-charts'
@@ -315,6 +357,7 @@ async function selectRole(name: string) {
 async function refreshRole(name: string) {
   await fetchRolePnlHistory(name, pnlDays.value === 0 ? 365 : pnlDays.value)
   await fetchRolePositions(name)
+  await fetchRoleHistory(name)
   fetchRoleLogs(name)
 }
 
@@ -360,6 +403,7 @@ async function executeConfirm() {
       await resetRole(selectedRole.value)
       delete rolePositions[selectedRole.value]
       delete rolePnlHistory[selectedRole.value]
+      delete roleHistory[selectedRole.value]
       await refreshRole(selectedRole.value)
       await nextTick()
       renderChart()
@@ -368,6 +412,7 @@ async function executeConfirm() {
       await deleteRole(name)
       delete rolePositions[name]
       delete rolePnlHistory[name]
+      delete roleHistory[name]
       selectedRole.value = null
       await fetchRoles()
     }

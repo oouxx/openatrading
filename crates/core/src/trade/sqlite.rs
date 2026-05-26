@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{Position, TradeLog, TradeLogEntry, TradeManager};
+use super::{ClosedPosition, Position, TradeLog, TradeLogEntry, TradeManager};
 
 pub struct SqliteTradeManager {
     conn: Mutex<Connection>,
@@ -56,6 +56,13 @@ impl SqliteTradeManager {
         // Migration: add symbol to trade_logs for closed-position traceability
         conn.execute(
             "ALTER TABLE trade_logs ADD COLUMN symbol TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .ok();
+
+        // Migration: add stock_name to trade_logs for historical position display
+        conn.execute(
+            "ALTER TABLE trade_logs ADD COLUMN stock_name TEXT NOT NULL DEFAULT ''",
             [],
         )
         .ok();
@@ -120,8 +127,8 @@ impl TradeManager for SqliteTradeManager {
         )?;
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Open',?2,?3,?4,?5,?6)",
-            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Open',?2,?3,?4,?5,?6,?7)",
+            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol, pos.stock_name],
         )?;
         Ok(id)
     }
@@ -138,14 +145,15 @@ impl TradeManager for SqliteTradeManager {
 
     fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let (role_name, symbol, shares): (String, String, i64) = conn.query_row(
-            "SELECT role_name, symbol, shares FROM positions WHERE id=?1",
-            [id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
+        let (role_name, symbol, shares, stock_name): (String, String, i64, String) = conn
+            .query_row(
+                "SELECT role_name, symbol, shares, stock_name FROM positions WHERE id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol) VALUES (?1,'Close',?2,?3,?4,?5,?6)",
-            rusqlite::params![id, price, shares, reason, role_name, symbol],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Close',?2,?3,?4,?5,?6,?7)",
+            rusqlite::params![id, price, shares, reason, role_name, symbol, stock_name],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
         Ok(())
@@ -304,6 +312,47 @@ impl TradeManager for SqliteTradeManager {
                 reason: row.get(5)?,
                 created_at: row.get(6)?,
                 symbol: row.get(7)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn get_closed_positions(&self, role_name: &str, limit: usize) -> Result<Vec<ClosedPosition>> {
+        let conn = self.conn.lock().unwrap();
+        // Pair Close logs with their corresponding Open logs by position_id
+        let mut stmt = conn.prepare(
+            "SELECT c.position_id, c.symbol, COALESCE(o.stock_name, c.stock_name, '') as stock_name,
+             o.created_at as entry_date, c.created_at as exit_date,
+             o.price as entry_price, c.price as exit_price,
+             c.shares, o.reason as entry_reason, c.reason as exit_reason
+             FROM trade_logs c
+             JOIN trade_logs o ON o.position_id = c.position_id AND o.action = 'Open'
+             WHERE c.action = 'Close' AND c.role_name = ?1
+             ORDER BY c.created_at DESC
+             LIMIT ?2",
+        )?;
+        let limit_i64: i64 = limit.try_into().unwrap_or(i64::MAX);
+        let rows = stmt.query_map(rusqlite::params![role_name, limit_i64], |row| {
+            let entry_price: f64 = row.get(6)?;
+            let exit_price: f64 = row.get(7)?;
+            let pnl_pct = if entry_price > 0.0 {
+                (exit_price - entry_price) / entry_price * 100.0
+            } else {
+                0.0
+            };
+            Ok(ClosedPosition {
+                position_id: row.get(0)?,
+                symbol: row.get(1)?,
+                stock_name: row.get(2)?,
+                entry_date: row.get::<_, String>(3)?.chars().take(10).collect(),
+                exit_date: row.get::<_, String>(4)?.chars().take(10).collect(),
+                entry_price,
+                exit_price,
+                shares: row.get(8)?,
+                pnl_pct: (pnl_pct * 100.0).round() / 100.0,
+                entry_reason: row.get(9)?,
+                exit_reason: row.get(10)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
