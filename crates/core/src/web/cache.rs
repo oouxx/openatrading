@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, NaiveTime, Weekday};
+use chrono::{Datelike, NaiveTime, Weekday};
 use moka::sync::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,7 +44,7 @@ impl MarketPhase {
 }
 
 pub fn current_market_phase() -> MarketPhase {
-    let now = Local::now();
+    let now = crate::beijing_now();
     let weekday = now.weekday();
 
     if weekday == Weekday::Sat || weekday == Weekday::Sun {
@@ -78,7 +78,7 @@ fn is_trading_hours() -> bool {
 }
 
 fn next_open_timestamp() -> i64 {
-    let now = Local::now();
+    let now = crate::beijing_now();
     let time = now.time();
     let open_am = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
     let open_pm = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
@@ -172,7 +172,7 @@ impl CachePolicy {
     }
 
     fn compute_expires_at(&self) -> Option<i64> {
-        let now = Local::now().timestamp();
+        let now = crate::beijing_now().timestamp();
         match self {
             CachePolicy::Never => None,
             CachePolicy::Always(ttl) => Some(now + ttl.as_secs() as i64),
@@ -193,7 +193,7 @@ impl CachePolicy {
 pub fn get(cache: &AppCache, key: &str) -> Option<String> {
     let entry = cache.get(key)?;
     if let Some(expires_at) = entry.expires_at {
-        if Local::now().timestamp() > expires_at {
+        if crate::beijing_now().timestamp() > expires_at {
             cache.invalidate(key);
             return None;
         }
@@ -266,7 +266,7 @@ mod tests {
             "test_key".to_string(),
             CachedEntry {
                 data: "test_value".to_string(),
-                expires_at: Some(Local::now().timestamp() - 1),
+                expires_at: Some(crate::beijing_now().timestamp() - 1),
             },
         );
         assert_eq!(get(&cache, "test_key"), None);

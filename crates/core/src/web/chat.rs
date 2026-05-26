@@ -96,7 +96,7 @@ pub fn build_user_message(
 }
 
 pub async fn fetch_field_json(api: &ApiClient) -> Option<String> {
-    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let date = crate::beijing_now().format("%Y-%m-%d").to_string();
     match api.jiuyan.fetch_field(&date, 1).await {
         Ok(plates) if !plates.is_empty() => serde_json::to_string(&plates).ok(),
         _ => None,
@@ -132,7 +132,7 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
     );
 
     Ok(OverviewResponse {
-        date: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+        date: crate::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
         rise_count: overview.rise_count,
         fall_count: overview.fall_count,
         limit_up_count: overview.limit_up_count,

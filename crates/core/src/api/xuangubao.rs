@@ -502,10 +502,15 @@ impl XuanguBaoClient {
             "{}/event/history?timestamp={timestamp}&count={count}&types=11000,11001",
             self.base_url
         );
-        let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
-            self.client.get(&url).send().await?.json().await?;
-        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
-        Ok(resp.data)
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        let code = resp["code"].as_i64().unwrap_or(0);
+        anyhow::ensure!(code == 20000, "API 返回错误码: {code}");
+        let data = resp["data"].as_array().cloned().unwrap_or_default();
+        let events: Vec<PlateAbnormalEvent> = data
+            .iter()
+            .filter_map(|v| serde_json::from_value(v.clone()).ok())
+            .collect();
+        Ok(events)
     }
 
     pub async fn fetch_all_day_events(&self) -> Result<Vec<PlateAbnormalEvent>> {
@@ -534,10 +539,22 @@ impl XuanguBaoClient {
         Ok(all_events)
     }
 
-    /// Unix timestamp for 15:00 on the latest trading day (Beijing time, UTC+8).
+    /// Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
+    /// If today's market hasn't closed yet, returns the previous trading day's close.
     pub fn latest_trading_day_close_ts() -> i64 {
-        let days = Self::last_n_trading_days(1);
-        let date_str = days.first().map(|s| s.as_str()).unwrap_or("2026-01-01");
+        let days = Self::last_n_trading_days(2);
+        let now_beijing = chrono::Utc::now().with_timezone(&beijing_tz());
+        let today_str = now_beijing.format("%Y-%m-%d").to_string();
+
+        // If today is a trading day and it's before 15:00, use yesterday's close
+        let date_str = if days.first().map(|s| s.as_str()) == Some(&today_str)
+            && now_beijing.time() < chrono::NaiveTime::from_hms_opt(15, 0, 0).unwrap()
+        {
+            days.get(1).map(|s| s.as_str()).unwrap_or("2026-01-01")
+        } else {
+            days.first().map(|s| s.as_str()).unwrap_or("2026-01-01")
+        };
+
         let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
             .unwrap()
             .and_hms_opt(15, 0, 0)

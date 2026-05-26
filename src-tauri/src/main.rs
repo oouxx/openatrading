@@ -115,7 +115,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 overview.limit_down_count,
             );
             Ok(serde_json::json!({
-                "date": chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+                "date": trending_agent_core::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
                 "rise_count": overview.rise_count,
                 "fall_count": overview.fall_count,
                 "limit_up_count": overview.limit_up_count,
@@ -177,7 +177,9 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Ok(serde_json::json!([]));
             }
-            let month = chrono::Local::now().format("%Y-%m").to_string();
+            let month = trending_agent_core::beijing_now()
+                .format("%Y-%m")
+                .to_string();
             let data = state
                 .api
                 .jiuyan
@@ -287,8 +289,11 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 }));
             }
             if path.strip_prefix("/api/field-items").is_some() {
-                let date = extract_query(path, "date")
-                    .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+                let date = extract_query(path, "date").unwrap_or_else(|| {
+                    trending_agent_core::beijing_now()
+                        .format("%Y-%m-%d")
+                        .to_string()
+                });
                 if std::env::var("JIUYAN_PHONE").is_err() {
                     return Ok(serde_json::json!([]));
                 }

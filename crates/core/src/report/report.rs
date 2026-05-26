@@ -3,7 +3,6 @@ use std::fs;
 use std::io::Write;
 
 use askama::Template;
-use chrono::Local;
 use serde::{Deserialize, Serialize};
 
 use crate::agents::sentiment::SentimentResult;
@@ -100,7 +99,7 @@ impl Report {
         }
 
         Self {
-            date: Local::now().format("%Y-%m-%d %H:%M").to_string(),
+            date: crate::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
             overview,
             limit_up,
             plate_abnormal,
@@ -394,7 +393,11 @@ impl Reporter {
 
     /// 写入 Markdown 文件
     pub fn save_markdown(&self, dir: &str) -> anyhow::Result<String> {
-        let filename = format!("{}/report_{}.md", dir, Local::now().format("%Y%m%d_%H%M"));
+        let filename = format!(
+            "{}/report_{}.md",
+            dir,
+            crate::beijing_now().format("%Y%m%d_%H%M")
+        );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_markdown())?;
         Ok(filename)
@@ -402,7 +405,11 @@ impl Reporter {
 
     /// 写入 HTML 文件
     pub fn save_html(&self, dir: &str) -> anyhow::Result<String> {
-        let filename = format!("{}/report_{}.html", dir, Local::now().format("%Y%m%d_%H%M"));
+        let filename = format!(
+            "{}/report_{}.html",
+            dir,
+            crate::beijing_now().format("%Y%m%d_%H%M")
+        );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_html())?;
         Ok(filename)
@@ -410,7 +417,11 @@ impl Reporter {
 
     /// 写入纯文本文件
     pub fn save_text(&self, dir: &str) -> anyhow::Result<String> {
-        let filename = format!("{}/report_{}.txt", dir, Local::now().format("%Y%m%d_%H%M"));
+        let filename = format!(
+            "{}/report_{}.txt",
+            dir,
+            crate::beijing_now().format("%Y%m%d_%H%M")
+        );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_text())?;
         Ok(filename)
@@ -418,7 +429,11 @@ impl Reporter {
 
     /// 写入 JSON 文件
     pub fn save_json(&self, dir: &str) -> anyhow::Result<String> {
-        let filename = format!("{}/report_{}.json", dir, Local::now().format("%Y%m%d_%H%M"));
+        let filename = format!(
+            "{}/report_{}.json",
+            dir,
+            crate::beijing_now().format("%Y%m%d_%H%M")
+        );
         fs::create_dir_all(dir)?;
         let json = serde_json::to_string_pretty(&self.report)?;
         fs::write(&filename, json)?;

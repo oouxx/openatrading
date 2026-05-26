@@ -492,7 +492,7 @@ impl TelegramBot {
                  - 跌停家数：{}\n\
                  - 炸板率：{:.1}%\n\
                  - 市场温度：{:.1}\n",
-                chrono::Local::now().format("%Y-%m-%d %H:%M"),
+                crate::beijing_now().format("%Y-%m-%d %H:%M"),
                 o.rise_count,
                 o.fall_count,
                 o.limit_up_count,

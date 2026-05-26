@@ -721,7 +721,7 @@ mod tests {
         let session = JiuYanSession::new();
         session.login().await.expect("登录失败");
 
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::beijing_now().format("%Y-%m-%d").to_string();
         let body = serde_json::json!({
             "date": today,
             "pc": 1
@@ -792,7 +792,7 @@ mod tests {
         }
 
         let session = JiuYanSession::new();
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::beijing_now().format("%Y-%m-%d").to_string();
         let body = serde_json::json!({
             "date": today,
             "pc": 1

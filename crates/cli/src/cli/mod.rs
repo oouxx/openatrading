@@ -221,7 +221,9 @@ pub async fn run() -> Result<()> {
                 }
             }
             "field_item" => {
-                let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+                let date = trending_agent_core::beijing_now()
+                    .format("%Y-%m-%d")
+                    .to_string();
                 if let Ok(data) = client.jiuyan.fetch_field(&date, 1).await {
                     output.field_item = Some(serde_json::to_value(&data)?);
                 }
@@ -232,7 +234,9 @@ pub async fn run() -> Result<()> {
                 }
             }
             "timeline" => {
-                let month = chrono::Local::now().format("%Y-%m").to_string();
+                let month = trending_agent_core::beijing_now()
+                    .format("%Y-%m")
+                    .to_string();
                 if let Ok(data) = client.jiuyan.fetch_timeline(&month).await {
                     output.timeline = Some(serde_json::to_value(&data)?);
                 }
