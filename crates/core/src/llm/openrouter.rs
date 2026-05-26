@@ -87,10 +87,10 @@ pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<StreamEven
 
 #[derive(Clone)]
 pub struct LlmClient {
-    client: Client,
-    api_key: String,
-    api_endpoint: String,
-    model: String,
+    pub client: Client,
+    pub api_key: String,
+    pub api_endpoint: String,
+    pub model: String,
 }
 
 impl LlmClient {
@@ -502,5 +502,25 @@ impl LlmClient {
         });
 
         Ok(Box::pin(stream))
+    }
+
+    /// Non-streaming chat with tool support. Returns raw response for agent loop.
+    pub async fn chat_with_tools(&self, body_json: &str) -> Result<super::agent::ToolChatResponse> {
+        let resp = self
+            .client
+            .post(&self.api_endpoint)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .body(body_json.to_string())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("LLM API error {status}: {body}");
+        }
+        let response: super::agent::ToolChatResponse = resp.json().await?;
+        Ok(response)
     }
 }
