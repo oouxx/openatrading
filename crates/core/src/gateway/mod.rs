@@ -50,7 +50,7 @@ impl Gateway {
                 cron_config.decision_schedule,
                 cron_config.news_schedule
             );
-            let _scheduler = cron::start_scheduler(
+            cron::start_scheduler(
                 &cron_config,
                 self.memory.clone(),
                 self.trade.clone(),

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
-use tokio_cron_scheduler::{Job, JobScheduler};
+use tokio::time::{sleep, Duration as TokioDuration};
 
 use crate::api::Client as ApiClient;
 use crate::llm::openrouter::LlmClient;
@@ -71,110 +72,125 @@ pub async fn start_scheduler(
     llm: LlmClient,
     api: ApiClient,
     roles: Vec<RoleEntry>,
-) -> Result<JobScheduler> {
-    let scheduler = JobScheduler::new().await?;
-
+) -> Result<()> {
     if !config.enabled {
-        return Ok(scheduler);
+        return Ok(());
     }
 
-    // Helper to add a job, logging errors instead of failing the whole gateway
-    macro_rules! add_job {
-        ($sched:expr, $schedule:expr, $name:literal, $task:expr) => {
-            match Job::new_async($schedule, $task) {
-                Ok(job) => {
-                    if let Err(e) = $sched.add(job).await {
-                        eprintln!("[cron] {}: failed to add job: {e}", $name);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[cron] {}: invalid cron '{}': {e}", $name, $schedule);
-                }
+    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+
+    // Spawn a background task that sleeps until the next cron fire time (Beijing time)
+    fn spawn_cron<F>(name: &str, cron_expr: &str, beijing_tz: chrono::FixedOffset, task: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        let schedule = match cron::Schedule::from_str(cron_expr) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[cron] {name}: invalid cron '{cron_expr}': {e}");
+                return;
             }
         };
+
+        let _name = name.to_string();
+        tokio::spawn(async move {
+            loop {
+                let now_beijing = Utc::now().with_timezone(&beijing_tz);
+                let next = match schedule.upcoming(beijing_tz).next() {
+                    Some(t) => t,
+                    None => {
+                        sleep(TokioDuration::from_secs(60)).await;
+                        continue;
+                    }
+                };
+                let wait_secs = (next - now_beijing).num_seconds().max(1) as u64;
+                // Cap max sleep to 60s to handle system time jumps
+                sleep(TokioDuration::from_secs(wait_secs.min(60))).await;
+                if Utc::now().with_timezone(&beijing_tz) >= next {
+                    task();
+                }
+            }
+        });
     }
 
-    let mem_c = memory.clone();
-    let soc_c = social.clone();
-    let api_c = api.clone();
-    let schedule = config.collection_schedule.clone();
-    add_job!(
-        scheduler,
-        schedule.as_str(),
-        "collection",
-        move |_uuid, _lock| {
-            let mem = mem_c.clone();
-            let soc = soc_c.clone();
-            let api = api_c.clone();
-            Box::pin(async move {
+    // Collection
+    {
+        let mem = memory.clone();
+        let soc = social.clone();
+        let api = api.clone();
+        let cron_s = config.collection_schedule.clone();
+        spawn_cron("collection", &cron_s, beijing_tz, move || {
+            let mem = mem.clone();
+            let soc = soc.clone();
+            let api = api.clone();
+            tokio::spawn(async move {
                 if let Err(e) = run_collection(&*mem, &api, &*soc).await {
                     eprintln!("[cron] collection error: {e}");
                 }
-            })
-        }
-    );
+            });
+        });
+    }
 
-    let mem_d = memory.clone();
-    let trd = trade.clone();
-    let soc_d = social.clone();
-    let api_d = api.clone();
-    let schedule_d = config.decision_schedule.clone();
-    add_job!(
-        scheduler,
-        schedule_d.as_str(),
-        "decision",
-        move |_uuid, _lock| {
-            let mem = mem_d.clone();
+    // Decision
+    {
+        let mem = memory.clone();
+        let trd = trade.clone();
+        let soc = social.clone();
+        let api = api.clone();
+        let roles = roles.clone();
+        let cron_s = config.decision_schedule.clone();
+        spawn_cron("decision", &cron_s, beijing_tz, move || {
+            let mem = mem.clone();
             let trd = trd.clone();
-            let soc = soc_d.clone();
+            let soc = soc.clone();
             let llm = llm.clone();
-            let api = api_d.clone();
+            let api = api.clone();
             let roles = roles.clone();
-            Box::pin(async move {
+            tokio::spawn(async move {
                 if let Err(e) = run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles).await {
                     eprintln!("[cron] decision error: {e}");
                 }
-            })
-        }
-    );
+            });
+        });
+    }
 
-    let soc_n = social.clone();
-    let api_n = api.clone();
-    let schedule_n = config.news_schedule.clone();
-    add_job!(
-        scheduler,
-        schedule_n.as_str(),
-        "news_push",
-        move |_uuid, _lock| {
-            let soc = soc_n.clone();
-            let api = api_n.clone();
-            Box::pin(async move {
+    // News push (trading hours)
+    {
+        let soc = social.clone();
+        let api = api.clone();
+        let cron_s = config.news_schedule.clone();
+        spawn_cron("news_push", &cron_s, beijing_tz, move || {
+            let soc = soc.clone();
+            let api = api.clone();
+            tokio::spawn(async move {
                 if let Err(e) = run_news_push(&api, &*soc).await {
                     eprintln!("[cron] news_push error: {e}");
                 }
-            })
-        }
-    );
+            });
+        });
+    }
 
-    let soc_n2 = social.clone();
-    let api_n2 = api.clone();
-    add_job!(
-        scheduler,
-        "0 */30 0-8,16-23 * * * *",
-        "news_push_offhours",
-        move |_uuid, _lock| {
-            let soc = soc_n2.clone();
-            let api = api_n2.clone();
-            Box::pin(async move {
-                if let Err(e) = run_news_push(&api, &*soc).await {
-                    eprintln!("[cron] news_push error: {e}");
-                }
-            })
-        }
-    );
+    // News push (off-hours, 24/7)
+    {
+        let soc = social.clone();
+        let api = api.clone();
+        spawn_cron(
+            "news_push_offhours",
+            "0 */30 0-8,16-23 * * * *",
+            beijing_tz,
+            move || {
+                let soc = soc.clone();
+                let api = api.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = run_news_push(&api, &*soc).await {
+                        eprintln!("[cron] news_push error: {e}");
+                    }
+                });
+            },
+        );
+    }
 
-    scheduler.start().await?;
-    Ok(scheduler)
+    Ok(())
 }
 
 async fn run_collection(
@@ -644,7 +660,6 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
 
     let last_time = LAST_PUSHED_NEWS_TIME.load(std::sync::atomic::Ordering::Relaxed);
 
-    // Filter new items by ctime (CLS API returns items in mixed order, use timestamp)
     let mut new_items: Vec<&crate::api::cls::TelegramInfo> = items
         .iter()
         .filter(|item| {
@@ -680,6 +695,7 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         return Ok(());
     }
 
+    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
     for item in &important {
         let title = item.title.as_deref().unwrap_or("");
         let brief = item.brief.as_deref().unwrap_or("");
@@ -699,13 +715,8 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         let time_str = item
             .ctime
             .map(|t| {
-                Utc::timestamp_opt(&Utc, t, 0)
-                    .single()
-                    .map(|dt| {
-                        dt.with_timezone(&crate::beijing_now().timezone())
-                            .format("%H:%M")
-                            .to_string()
-                    })
+                chrono::DateTime::from_timestamp(t, 0)
+                    .map(|dt| dt.with_timezone(&beijing_tz).format("%H:%M").to_string())
                     .unwrap_or_default()
             })
             .unwrap_or_default();
