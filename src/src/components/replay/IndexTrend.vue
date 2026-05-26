@@ -76,6 +76,8 @@ function initChart(key: string) {
   if (!el || charts[key]) return
 
   const chart = createChart(el, {
+    width: el.clientWidth,
+    height: el.clientHeight,
     layout: {
       background: { type: ColorType.Solid, color: 'transparent' },
       textColor: 'rgba(255,255,255,0.3)',
@@ -135,6 +137,10 @@ function updateCharts() {
     series.setData(data)
 
     const chartObj = charts[idx.key]
+    const container = chartRefs[idx.key]
+    if (container) {
+      chartObj.resize(container.clientWidth, container.clientHeight)
+    }
     const firstTick = idx.ticks[0].tick_at
     const lastTick = idx.ticks[idx.ticks.length - 1].tick_at
     chartObj.timeScale().setVisibleRange({ from: firstTick, to: lastTick })
@@ -159,12 +165,20 @@ watch(
   { deep: true },
 )
 
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(async () => {
   await nextTick()
   updateCharts()
+  resizeObserver = new ResizeObserver(() => updateCharts())
+  for (const key of Object.keys(chartRefs)) {
+    const el = chartRefs[key]
+    if (el) resizeObserver.observe(el)
+  }
 })
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
   for (const key of Object.keys(charts)) {
     charts[key]?.remove()
     delete charts[key]
