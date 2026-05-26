@@ -350,6 +350,13 @@ async fn run_decision_for_role(
         "暂无持仓".to_string()
     };
 
+    let decision_mode = std::env::var("DECISION_MODE").unwrap_or_else(|_| "prompt".to_string());
+    tracing::info!(
+        "[cron] decision for '{}': mode={}",
+        role.name,
+        decision_mode
+    );
+
     let prompt = build_decision_prompt(
         &role.strategy,
         market_context,
