@@ -434,7 +434,12 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let tools = Arc::new(crate::llm::tool::ToolSet::new());
+                let tools = Arc::new(
+                    crate::llm::tool::ToolSet::new()
+                        .add(crate::llm::tools::GetLimitUp)
+                        .add(crate::llm::tools::GetLimitDown)
+                        .add(crate::llm::tools::GetMarketOverview),
+                );
                 match run_decision(
                     &*self.memory,
                     &*self.trade,

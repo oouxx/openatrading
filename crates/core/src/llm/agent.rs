@@ -69,7 +69,7 @@ pub async fn agent_loop(
                 let fn_args: serde_json::Value =
                     serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::Value::Null);
 
-                let result = match tools.call(fn_name, &fn_args) {
+                let result = match tools.call(fn_name, &fn_args).await {
                     Ok(output) => output,
                     Err(e) => format!("Error: {e}"),
                 };
