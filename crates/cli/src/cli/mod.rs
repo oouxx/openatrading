@@ -418,6 +418,8 @@ async fn cmd_decision(
     let llm = LlmClient::from_env();
     let api = Client::new();
 
+    let tools = Arc::new(trending_agent_core::llm::tool::ToolSet::new());
+
     run_decision(
         &*gateway.memory,
         &*gateway.trade,
@@ -425,6 +427,7 @@ async fn cmd_decision(
         &llm,
         &api,
         &filtered_roles,
+        &tools,
     )
     .await?;
 
