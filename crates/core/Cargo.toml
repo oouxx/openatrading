@@ -38,3 +38,4 @@ telegram = ["dep:teloxide"]
 
 [dev-dependencies]
 toml = "0.8"
+tokio = { workspace = true, features = ["rt", "macros"] }
