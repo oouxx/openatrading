@@ -91,7 +91,9 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
             let equity_with_current = last.cash + current_positions_value;
             let return_pct = (equity_with_current - initial_capital) / initial_capital * 100.0;
             points.push(PnlPoint {
-                date: crate::beijing_now().format("%Y-%m-%d").to_string(),
+                date: crate::utils::time::beijing_now()
+                    .format("%Y-%m-%d")
+                    .to_string(),
                 equity: (equity_with_current * 100.0).round() / 100.0,
                 cash: last.cash,
                 market_value: (current_positions_value * 100.0).round() / 100.0,

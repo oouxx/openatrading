@@ -17,7 +17,7 @@ pub fn cmd_trade_add(
         .join(".atrading")
         .join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
-    let now = trending_agent_core::beijing_now()
+    let now = trending_agent_core::utils::time::beijing_now()
         .format("%Y-%m-%d")
         .to_string();
     let pos = Position {

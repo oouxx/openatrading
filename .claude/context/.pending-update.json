@@ -1,0 +1,4 @@
+{
+  "last_session_date": "2026-05-27 08:16",
+  "changed_files": "crates/cli/src/cli/mod.rs\ncrates/cli/src/cli/trade_cmd.rs\ncrates/core/src/agents/sentiment.rs\ncrates/core/src/api/jiuyangongshe.rs\ncrates/core/src/cron/mod.rs\ncrates/core/src/lib.rs\ncrates/core/src/report/report.rs\ncrates/core/src/roles/pnl.rs\ncrates/core/src/social/telegram_bot.rs\ncrates/core/src/utils/mod.rs\ncrates/core/src/web/cache.rs\ncrates/core/src/web/chat.rs\ncrates/core/src/web/handlers.rs\nsrc-tauri/src/main.rs"
+}
