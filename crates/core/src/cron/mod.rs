@@ -9,6 +9,7 @@ use crate::api::Client as ApiClient;
 use crate::llm::agent::agent_loop;
 use crate::llm::openrouter::LlmClient;
 use crate::llm::tool::ToolSet;
+use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -139,7 +140,12 @@ pub async fn start_scheduler(
         let api = api.clone();
         let roles = roles.clone();
         let cron_s = config.decision_schedule.clone();
-        let tools = Arc::new(ToolSet::new()); // empty ToolSet → prompt mode
+        let tools = Arc::new(
+            ToolSet::new()
+                .add(GetLimitUp)
+                .add(GetLimitDown)
+                .add(GetMarketOverview),
+        );
         spawn_cron("decision", &cron_s, beijing_tz, move || {
             let mem = mem.clone();
             let trd = trd.clone();

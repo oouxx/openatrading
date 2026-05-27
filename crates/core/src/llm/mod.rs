@@ -1,3 +1,4 @@
 pub mod agent;
-pub mod openrouter;
+mod openrouter;
 pub mod tool;
+pub mod tools;

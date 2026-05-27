@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
@@ -9,14 +11,14 @@ pub enum ToolError {
     ExecutionFailed(String),
 }
 
-/// A tool that can be called by an LLM.
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
-    /// JSON Schema for the tool's parameters (OpenAI format)
     fn parameters(&self) -> serde_json::Value;
-    /// Execute the tool. `arguments` is the JSON value from the LLM's tool call.
-    fn execute(&self, arguments: &serde_json::Value) -> Result<String, ToolError>;
+    fn execute(
+        &self,
+        arguments: &serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>>;
 }
 
 /// Registry of tools, keyed by name.
@@ -60,16 +62,253 @@ impl ToolSet {
             .collect()
     }
 
-    /// Look up and execute a tool by name.
-    pub fn call(&self, name: &str, arguments: &serde_json::Value) -> Result<String, ToolError> {
+    pub async fn call(
+        &self,
+        name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<String, ToolError> {
         let tool = self
             .tools
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
-        tool.execute(arguments)
+        tool.execute(arguments).await
     }
 
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }
+}
+
+pub trait ExtractParam: Sized {
+    fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError>;
+}
+
+impl ExtractParam for String {
+    fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
+        args.get(name)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+            })
+    }
+}
+
+impl ExtractParam for i64 {
+    fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
+        args.get(name)
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| {
+                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+            })
+    }
+}
+
+impl ExtractParam for f64 {
+    fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
+        args.get(name)
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| {
+                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+            })
+    }
+}
+
+impl ExtractParam for bool {
+    fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
+        args.get(name)
+            .and_then(|v| v.as_bool())
+            .ok_or_else(|| {
+                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+            })
+    }
+}
+
+pub trait SchemaType {
+    fn schema_type() -> &'static str;
+}
+
+impl SchemaType for String {
+    fn schema_type() -> &'static str {
+        "string"
+    }
+}
+impl SchemaType for i64 {
+    fn schema_type() -> &'static str {
+        "integer"
+    }
+}
+impl SchemaType for f64 {
+    fn schema_type() -> &'static str {
+        "number"
+    }
+}
+impl SchemaType for bool {
+    fn schema_type() -> &'static str {
+        "boolean"
+    }
+}
+
+#[macro_export]
+macro_rules! define_tool {
+    (
+        $struct_name:ident,
+        $tool_name:literal,
+        $tool_desc:literal,
+        params: {
+            $( $pname:ident : $ptype:ty => $pdesc:literal ),* $(,)?
+        },
+        client: $client_type:ty,
+        method: $method:ident
+    ) => {
+        pub struct $struct_name;
+
+        impl $crate::llm::tool::Tool for $struct_name {
+            fn name(&self) -> &str {
+                $tool_name
+            }
+
+            fn description(&self) -> &str {
+                $tool_desc
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                let mut properties = serde_json::Map::new();
+                let mut required = Vec::new();
+                $(
+                    properties.insert(
+                        stringify!($pname).to_string(),
+                        serde_json::json!({
+                            "type": <$ptype as $crate::llm::tool::SchemaType>::schema_type(),
+                            "description": $pdesc,
+                        }),
+                    );
+                    required.push(stringify!($pname).to_string());
+                )*
+                serde_json::json!({
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                })
+            }
+
+            fn execute(&self, arguments: &serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, $crate::llm::tool::ToolError>> + Send + '_>> {
+                $(
+                    let $pname: $ptype = match <$ptype as $crate::llm::tool::ExtractParam>::extract(arguments, stringify!($pname)) {
+                        Ok(v) => v,
+                        Err(e) => return Box::pin(async move { Err(e) }),
+                    };
+                )*
+                Box::pin(async move {
+                    let __client = <$client_type>::new();
+                    let __result = __client.$method($($pname),*).await
+                        .map_err(|e| $crate::llm::tool::ToolError::ExecutionFailed(e.to_string()))?;
+                    Ok(serde_json::to_string(&__result).unwrap_or_default())
+                })
+            }
+        }
+    };
+
+    (
+        $struct_name:ident,
+        $tool_name:literal,
+        $tool_desc:literal,
+        params: {
+            $( $pname:ident : $ptype:ty => $pdesc:literal ),* $(,)?
+        },
+        $func:path
+    ) => {
+        pub struct $struct_name;
+
+        impl $crate::llm::tool::Tool for $struct_name {
+            fn name(&self) -> &str {
+                $tool_name
+            }
+
+            fn description(&self) -> &str {
+                $tool_desc
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                let mut properties = serde_json::Map::new();
+                let mut required = Vec::new();
+                $(
+                    properties.insert(
+                        stringify!($pname).to_string(),
+                        serde_json::json!({
+                            "type": <$ptype as $crate::llm::tool::SchemaType>::schema_type(),
+                            "description": $pdesc,
+                        }),
+                    );
+                    required.push(stringify!($pname).to_string());
+                )*
+                serde_json::json!({
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                })
+            }
+
+            fn execute(&self, arguments: &serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, $crate::llm::tool::ToolError>> + Send + '_>> {
+                $(
+                    let $pname: $ptype = match <$ptype as $crate::llm::tool::ExtractParam>::extract(arguments, stringify!($pname)) {
+                        Ok(v) => v,
+                        Err(e) => return Box::pin(async move { Err(e) }),
+                    };
+                )*
+                Box::pin(async move {
+                    let __result = $func($($pname),*).await
+                        .map_err(|e| $crate::llm::tool::ToolError::ExecutionFailed(e.to_string()))?;
+                    Ok(serde_json::to_string(&__result).unwrap_or_default())
+                })
+            }
+        }
+    };
+
+    (
+        $struct_name:ident,
+        $tool_name:literal,
+        $tool_desc:literal,
+        params: {
+            $( $pname:ident : $ptype:ty => $pdesc:literal ),* $(,)?
+        },
+        handler: $handler:expr
+    ) => {
+        pub struct $struct_name;
+
+        impl $crate::llm::tool::Tool for $struct_name {
+            fn name(&self) -> &str {
+                $tool_name
+            }
+
+            fn description(&self) -> &str {
+                $tool_desc
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                let mut properties = serde_json::Map::new();
+                let mut required = Vec::new();
+                $(
+                    properties.insert(
+                        stringify!($pname).to_string(),
+                        serde_json::json!({
+                            "type": <$ptype as $crate::llm::tool::SchemaType>::schema_type(),
+                            "description": $pdesc,
+                        }),
+                    );
+                    required.push(stringify!($pname).to_string());
+                )*
+                serde_json::json!({
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                })
+            }
+
+            fn execute(&self, arguments: &serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, $crate::llm::tool::ToolError>> + Send + '_>> {
+                let f = $handler;
+                Box::pin(async move { f(arguments).await })
+            }
+        }
+    };
 }

@@ -418,7 +418,12 @@ async fn cmd_decision(
     let llm = LlmClient::from_env();
     let api = Client::new();
 
-    let tools = Arc::new(trending_agent_core::llm::tool::ToolSet::new());
+    let tools = Arc::new(
+        trending_agent_core::llm::tool::ToolSet::new()
+            .add(trending_agent_core::llm::tools::GetLimitUp)
+            .add(trending_agent_core::llm::tools::GetLimitDown)
+            .add(trending_agent_core::llm::tools::GetMarketOverview),
+    );
 
     run_decision(
         &*gateway.memory,
