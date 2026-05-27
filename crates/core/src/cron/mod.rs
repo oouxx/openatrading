@@ -1,12 +1,14 @@
 use anyhow::Result;
-use chrono::{NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration as TokioDuration};
 
 use crate::api::Client as ApiClient;
+use crate::llm::agent::agent_loop;
 use crate::llm::openrouter::LlmClient;
+use crate::llm::tool::ToolSet;
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -79,7 +81,6 @@ pub async fn start_scheduler(
 
     let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
 
-    // Spawn a background task that sleeps until the next cron fire time (Beijing time)
     fn spawn_cron<F>(name: &str, cron_expr: &str, beijing_tz: chrono::FixedOffset, task: F)
     where
         F: Fn() + Send + 'static,
@@ -104,7 +105,6 @@ pub async fn start_scheduler(
                     }
                 };
                 let wait_secs = (next - now_beijing).num_seconds().max(1) as u64;
-                // Cap max sleep to 60s to handle system time jumps
                 sleep(TokioDuration::from_secs(wait_secs.min(60))).await;
                 if Utc::now().with_timezone(&beijing_tz) >= next {
                     task();
@@ -139,6 +139,7 @@ pub async fn start_scheduler(
         let api = api.clone();
         let roles = roles.clone();
         let cron_s = config.decision_schedule.clone();
+        let tools = Arc::new(ToolSet::new()); // empty ToolSet → prompt mode
         spawn_cron("decision", &cron_s, beijing_tz, move || {
             let mem = mem.clone();
             let trd = trd.clone();
@@ -146,8 +147,10 @@ pub async fn start_scheduler(
             let llm = llm.clone();
             let api = api.clone();
             let roles = roles.clone();
+            let tools = tools.clone();
             tokio::spawn(async move {
-                if let Err(e) = run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles).await {
+                if let Err(e) = run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &tools).await
+                {
                     eprintln!("[cron] decision error: {e}");
                 }
             });
@@ -249,6 +252,7 @@ pub async fn run_decision(
     llm: &LlmClient,
     api: &ApiClient,
     roles: &[RoleEntry],
+    tools: &Arc<ToolSet>,
 ) -> Result<()> {
     tracing::info!("[cron] decision: starting");
 
@@ -281,8 +285,17 @@ pub async fn run_decision(
     update_all_position_prices(trade, api).await;
 
     for role in roles {
-        if let Err(e) =
-            run_decision_for_role(trade, social, llm, api, role, &market_context, &historical).await
+        if let Err(e) = run_decision_for_role(
+            trade,
+            social,
+            llm,
+            api,
+            role,
+            &market_context,
+            &historical,
+            tools,
+        )
+        .await
         {
             tracing::error!("[cron] decision failed for role '{}': {e}", role.name);
         }
@@ -340,6 +353,7 @@ async fn run_decision_for_role(
     role: &RoleEntry,
     market_context: &str,
     historical: &str,
+    tools: &Arc<ToolSet>,
 ) -> Result<()> {
     let positions = trade.format_positions(&role.name)?;
     let has_positions = positions != "暂无持仓";
@@ -350,38 +364,74 @@ async fn run_decision_for_role(
         "暂无持仓".to_string()
     };
 
-    let decision_mode = std::env::var("DECISION_MODE").unwrap_or_else(|_| "prompt".to_string());
-    tracing::info!(
-        "[cron] decision for '{}': mode={}",
-        role.name,
-        decision_mode
+    // Build market context as user message for tool call mode
+    let market_user_message = format!(
+        "{}\n\n## 当前持仓\n{}\n\n## 近5日历史数据\n{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况，给出今日复盘和明日操作建议。",
+        market_context, position_context, historical, role.display_name
     );
 
-    let prompt = build_decision_prompt(
-        &role.strategy,
-        market_context,
-        &position_context,
-        historical,
-        &role.display_name,
-    );
-
-    let messages = vec![
-        serde_json::json!({"role": "system", "content": prompt.system}),
-        serde_json::json!({"role": "user", "content": prompt.user}),
-    ];
-    let messages_json = serde_json::json!(messages).to_string();
-
-    let reply = match llm.chat_with_messages(&messages_json).await {
-        Ok(r) => r,
-        Err(e) => {
-            let err_msg = format!("❌ LLM 调用失败: {e}");
-            let decision = Decision {
-                role_name: role.display_name.clone(),
-                summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
-                trade_suggestions: vec![],
-            };
-            let _ = social.notify_decision(&decision).await;
-            return Err(e);
+    let reply = if !tools.is_empty() {
+        tracing::info!(
+            "[cron] decision for '{}': tool mode ({} tools)",
+            role.name,
+            tools.to_openai_tools().len()
+        );
+        match agent_loop(llm, tools, &role.strategy, &market_user_message).await {
+            Ok(result) => {
+                tracing::info!(
+                    "[cron] decision for '{}': tool mode done in {} rounds",
+                    role.name,
+                    result.rounds
+                );
+                result.final_text
+            }
+            Err(e) => {
+                tracing::error!(
+                    "[cron] agent loop failed for '{}': {e}, falling back to prompt",
+                    role.name
+                );
+                // Fallback to full prompt mode
+                let prompt = build_decision_prompt(
+                    &role.strategy,
+                    market_context,
+                    &position_context,
+                    historical,
+                    &role.display_name,
+                );
+                let messages = vec![
+                    serde_json::json!({"role": "system", "content": prompt.system}),
+                    serde_json::json!({"role": "user", "content": prompt.user}),
+                ];
+                let messages_json = serde_json::json!(messages).to_string();
+                llm.chat_with_messages(&messages_json).await?
+            }
+        }
+    } else {
+        tracing::info!("[cron] decision for '{}': prompt mode", role.name);
+        let prompt = build_decision_prompt(
+            &role.strategy,
+            market_context,
+            &position_context,
+            historical,
+            &role.display_name,
+        );
+        let messages = vec![
+            serde_json::json!({"role": "system", "content": prompt.system}),
+            serde_json::json!({"role": "user", "content": prompt.user}),
+        ];
+        let messages_json = serde_json::json!(messages).to_string();
+        match llm.chat_with_messages(&messages_json).await {
+            Ok(r) => r,
+            Err(e) => {
+                let err_msg = format!("❌ LLM 调用失败: {e}");
+                let decision = Decision {
+                    role_name: role.display_name.clone(),
+                    summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
+                    trade_suggestions: vec![],
+                };
+                let _ = social.notify_decision(&decision).await;
+                return Err(e);
+            }
         }
     };
 
