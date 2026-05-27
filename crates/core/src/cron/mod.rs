@@ -236,7 +236,7 @@ async fn run_collection(
     }
 
     let summary = CollectSummary {
-        timestamp: crate::beijing_now().naive_local(),
+        timestamp: crate::utils::time::beijing_now().naive_local(),
         sources,
         snapshot_count,
     };
@@ -266,7 +266,7 @@ pub async fn run_decision(
              - 跌停家数：{}\n\
              - 炸板率：{:.1}%\n\
              - 市场温度：{:.1}\n",
-            crate::beijing_now().format("%Y-%m-%d %H:%M"),
+            crate::utils::time::beijing_now().format("%Y-%m-%d %H:%M"),
             o.rise_count,
             o.fall_count,
             o.limit_up_count,
@@ -473,7 +473,9 @@ async fn run_decision_for_role(
                         price: 0.0,
                         shares: instr.shares,
                         reason: instr.reason.clone(),
-                        created_at: crate::beijing_now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        created_at: crate::utils::time::beijing_now()
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string(),
                     };
                     let _ = social.notify_trade(&log).await;
                 }
@@ -499,7 +501,9 @@ async fn run_decision_for_role(
                         price: 0.0,
                         shares: 0,
                         reason: instr.reason.clone(),
-                        created_at: crate::beijing_now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        created_at: crate::utils::time::beijing_now()
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string(),
                     };
                     let _ = social.notify_trade(&log).await;
                 }
@@ -623,7 +627,9 @@ async fn execute_buy(
         );
     }
 
-    let today = crate::beijing_now().format("%Y-%m-%d").to_string();
+    let today = crate::utils::time::beijing_now()
+        .format("%Y-%m-%d")
+        .to_string();
 
     let pos = Position {
         id: 0,

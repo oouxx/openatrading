@@ -221,7 +221,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "field_item" => {
-                let date = trending_agent_core::beijing_now()
+                let date = trending_agent_core::utils::time::beijing_now()
                     .format("%Y-%m-%d")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_field(&date, 1).await {
@@ -234,7 +234,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "timeline" => {
-                let month = trending_agent_core::beijing_now()
+                let month = trending_agent_core::utils::time::beijing_now()
                     .format("%Y-%m")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_timeline(&month).await {

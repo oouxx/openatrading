@@ -99,7 +99,9 @@ impl Report {
         }
 
         Self {
-            date: crate::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
+            date: crate::utils::time::beijing_now()
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
             overview,
             limit_up,
             plate_abnormal,
@@ -396,7 +398,7 @@ impl Reporter {
         let filename = format!(
             "{}/report_{}.md",
             dir,
-            crate::beijing_now().format("%Y%m%d_%H%M")
+            crate::utils::time::beijing_now().format("%Y%m%d_%H%M")
         );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_markdown())?;
@@ -408,7 +410,7 @@ impl Reporter {
         let filename = format!(
             "{}/report_{}.html",
             dir,
-            crate::beijing_now().format("%Y%m%d_%H%M")
+            crate::utils::time::beijing_now().format("%Y%m%d_%H%M")
         );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_html())?;
@@ -420,7 +422,7 @@ impl Reporter {
         let filename = format!(
             "{}/report_{}.txt",
             dir,
-            crate::beijing_now().format("%Y%m%d_%H%M")
+            crate::utils::time::beijing_now().format("%Y%m%d_%H%M")
         );
         fs::create_dir_all(dir)?;
         fs::write(&filename, self.report.render_text())?;
@@ -432,7 +434,7 @@ impl Reporter {
         let filename = format!(
             "{}/report_{}.json",
             dir,
-            crate::beijing_now().format("%Y%m%d_%H%M")
+            crate::utils::time::beijing_now().format("%Y%m%d_%H%M")
         );
         fs::create_dir_all(dir)?;
         let json = serde_json::to_string_pretty(&self.report)?;
