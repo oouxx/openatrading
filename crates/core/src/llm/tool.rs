@@ -307,7 +307,8 @@ macro_rules! define_tool {
 
             fn execute(&self, arguments: &serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, $crate::llm::tool::ToolError>> + Send + '_>> {
                 let f = $handler;
-                Box::pin(async move { f(arguments).await })
+                let __args = arguments.clone();
+                Box::pin(async move { f(&__args).await })
             }
         }
     };
@@ -412,8 +413,9 @@ mod tests {
         "echo_handler",
         "echo back arguments",
         params: {},
-        handler: |args: &serde_json::Value| async move {
-            Ok(args.to_string())
+        handler: |args: &serde_json::Value| {
+            let owned = args.clone();
+            async move { Ok(owned.to_string()) }
         }
     }
 
@@ -570,7 +572,7 @@ mod tests {
     #[tokio::test]
     async fn test_extract_param_missing() {
         let v = serde_json::json!({});
-        let err = ExtractParam::<String>::extract(&v, "missing").unwrap_err();
+        let err: ToolError = String::extract(&v, "missing").unwrap_err();
         assert!(matches!(err, ToolError::ExecutionFailed(_)));
     }
 
