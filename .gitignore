@@ -29,11 +29,11 @@ deploy-ali.sh
 # cert
 certs/
 
-# claude
-./claude/worktrees/
-.claude/context/.pending-update.json
 
 .playwright-mcp
 .superpowers
 
 .atrading/
+
+# claude
+.claude/worktrees/
