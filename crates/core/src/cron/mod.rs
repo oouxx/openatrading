@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;

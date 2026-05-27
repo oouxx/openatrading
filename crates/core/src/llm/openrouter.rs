@@ -37,7 +37,6 @@ struct StreamChunk {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: Option<Delta>,
-    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +49,6 @@ struct Delta {
 
 #[derive(Debug, Deserialize)]
 struct ToolCallDelta {
-    index: Option<usize>,
     id: Option<String>,
     function: Option<FunctionDelta>,
 }
