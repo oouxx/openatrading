@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://trading.96112901.xyz/api/:path*"
+    },
+    {
+      "source": "/install.sh",
+      "destination": "https://trading.96112901.xyz/install.sh"
+    },
+    {
+      "source": "/downloads/:path*",
+      "destination": "https://trading.96112901.xyz/downloads/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
