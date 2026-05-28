@@ -1,5 +1,5 @@
 use crate::api::xuangubao::XuanguBaoClient;
-use crate::define_tool;
+use crate::llm::define_tool;
 
 define_tool! {
     GetLimitUp,
@@ -30,7 +30,7 @@ define_tool! {
 
 #[cfg(test)]
 mod tests {
-    use crate::llm::tool::Tool;
+    use crate::llm::Tool;
     use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
 
     #[tokio::test]
@@ -93,7 +93,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_toolset_with_real_tools() {
-        use crate::llm::tool::ToolSet;
+        use crate::llm::ToolSet;
         use std::sync::Arc;
 
         let tools = Arc::new(

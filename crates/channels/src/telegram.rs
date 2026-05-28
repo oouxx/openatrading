@@ -2,15 +2,15 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use super::NotificationSender;
+use crate::Channel;
 
-pub struct TelegramSender {
-    pub bot_token: String,
-    pub chat_id: String,
+pub struct TelegramChannel {
+    bot_token: String,
+    chat_id: String,
     client: Arc<reqwest::Client>,
 }
 
-impl TelegramSender {
+impl TelegramChannel {
     pub fn new(bot_token: String, chat_id: String) -> Self {
         Self {
             bot_token,
@@ -18,8 +18,11 @@ impl TelegramSender {
             client: Arc::new(reqwest::Client::new()),
         }
     }
+}
 
-    pub async fn send_message(&self, text: &str) -> Result<()> {
+#[async_trait]
+impl Channel for TelegramChannel {
+    async fn send_text(&self, text: &str) -> Result<()> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let stripped = text.replace(['*', '_'], "");
         let resp = self
@@ -39,12 +42,5 @@ impl TelegramSender {
             anyhow::bail!("telegram sendMessage returned {}: {}", status, body);
         }
         Ok(())
-    }
-}
-
-#[async_trait]
-impl NotificationSender for TelegramSender {
-    async fn send_text(&self, text: &str) -> Result<()> {
-        self.send_message(text).await
     }
 }
