@@ -1,20 +1,51 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use super::NotificationSender;
 
+const SLACK_API_BASE: &str = "https://slack.com/api";
+
 pub struct SlackSender {
-    pub webhook_url: String,
+    bot_token: String,
+    channel: String,
+    client: Arc<reqwest::Client>,
 }
 
 impl SlackSender {
+    pub fn new(bot_token: String, channel: String) -> Self {
+        Self {
+            bot_token,
+            channel,
+            client: Arc::new(reqwest::Client::new()),
+        }
+    }
+
     pub async fn send_message(&self, text: &str) -> Result<()> {
-        let client = reqwest::Client::new();
-        client
-            .post(&self.webhook_url)
-            .json(&serde_json::json!({ "text": text }))
+        let url = format!("{}/chat.postMessage", SLACK_API_BASE);
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.bot_token))
+            .json(&serde_json::json!({
+                "channel": self.channel,
+                "text": text,
+            }))
             .send()
-            .await?;
+            .await
+            .context("slack bot send message failed")?;
+
+        let status = resp.status();
+        if status.is_client_error() || status.is_server_error() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("slack bot returned {}: {}", status, body);
+        }
+
+        let body: serde_json::Value = resp.json().await.unwrap_or_default();
+        if body["ok"].as_bool() != Some(true) {
+            let error = body["error"].as_str().unwrap_or("unknown");
+            anyhow::bail!("slack bot api error: {}", error);
+        }
         Ok(())
     }
 }
