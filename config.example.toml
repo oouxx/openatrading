@@ -77,17 +77,21 @@ bot_polling = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 chat_id = "${TELEGRAM_CHAT_ID}"
 
-# Discord（Webhook 推送）
-# [social.discord]
-# enabled = true
-# webhook_url = "${DISCORD_WEBHOOK_URL}"
+# Discord（Bot 推送）
+[social.discord]
+enabled = true
+bot_token = "${DISCORD_BOT_TOKEN}"
+channel_id = "${DISCORD_CHANNEL_ID}"
 
-# Slack（Webhook 推送）
-# [social.slack]
-# enabled = true
-# webhook_url = "${SLACK_WEBHOOK_URL}"
+# Slack（Bot 推送）
+[social.slack]
+enabled = true
+bot_token = "${SLACK_BOT_TOKEN}"
+channel = "${SLACK_CHANNEL}"
 
-# 飞书（Webhook 推送）
-# [social.lark]
-# enabled = true
-# webhook_url = "${LARK_WEBHOOK_URL}"
+# 飞书（Bot 推送）
+[social.lark]
+enabled = true
+app_id = "${LARK_APP_ID}"
+app_secret = "${LARK_APP_SECRET}"
+receive_id = "${LARK_RECEIVE_ID}"

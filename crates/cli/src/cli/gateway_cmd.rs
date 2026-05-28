@@ -127,40 +127,48 @@ fn create_telegram_sender(tg: &TelegramConfig) -> Option<Box<dyn NotificationSen
     }
     let token = tg.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let chat = tg.chat_id.as_deref().filter(|c| !c.is_empty())?;
-    Some(Box::new(TelegramSender {
-        bot_token: token.to_string(),
-        chat_id: chat.to_string(),
-    }))
+    Some(Box::new(TelegramSender::new(
+        token.to_string(),
+        chat.to_string(),
+    )))
 }
 
 fn create_discord_sender(dc: &DiscordConfig) -> Option<Box<dyn NotificationSender>> {
     if !dc.enabled {
         return None;
     }
-    let url = dc.webhook_url.as_deref().filter(|u| !u.is_empty())?;
-    Some(Box::new(DiscordSender {
-        webhook_url: url.to_string(),
-    }))
+    let bot_token = dc.bot_token.as_deref().filter(|t| !t.is_empty())?;
+    let channel_id = dc.channel_id.as_deref().filter(|c| !c.is_empty())?;
+    Some(Box::new(DiscordSender::new(
+        bot_token.to_string(),
+        channel_id.to_string(),
+    )))
 }
 
 fn create_slack_sender(sl: &SlackConfig) -> Option<Box<dyn NotificationSender>> {
     if !sl.enabled {
         return None;
     }
-    let url = sl.webhook_url.as_deref().filter(|u| !u.is_empty())?;
-    Some(Box::new(SlackSender {
-        webhook_url: url.to_string(),
-    }))
+    let bot_token = sl.bot_token.as_deref().filter(|t| !t.is_empty())?;
+    let channel = sl.channel.as_deref().filter(|c| !c.is_empty())?;
+    Some(Box::new(SlackSender::new(
+        bot_token.to_string(),
+        channel.to_string(),
+    )))
 }
 
 fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
     if !lk.enabled {
         return None;
     }
-    let url = lk.webhook_url.as_deref().filter(|u| !u.is_empty())?;
-    Some(Box::new(LarkSender {
-        webhook_url: url.to_string(),
-    }))
+    let app_id = lk.app_id.as_deref().filter(|a| !a.is_empty())?;
+    let app_secret = lk.app_secret.as_deref().filter(|s| !s.is_empty())?;
+    let receive_id = lk.receive_id.as_deref().filter(|r| !r.is_empty())?;
+    Some(Box::new(LarkSender::new(
+        app_id.to_string(),
+        app_secret.to_string(),
+        receive_id.to_string(),
+    )))
 }
 
 pub fn create_notification_sender(

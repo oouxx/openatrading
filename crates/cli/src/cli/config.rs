@@ -130,21 +130,25 @@ pub struct TelegramConfig {
 pub struct DiscordConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    pub webhook_url: Option<String>,
+    pub bot_token: Option<String>,
+    pub channel_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SlackConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    pub webhook_url: Option<String>,
+    pub bot_token: Option<String>,
+    pub channel: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LarkConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    pub webhook_url: Option<String>,
+    pub app_id: Option<String>,
+    pub app_secret: Option<String>,
+    pub receive_id: Option<String>,
 }
 
 const DEFAULT_CONFIG_TOML: &str = r##"# ── OpenATrading 配置 ──────────────────────────────────
@@ -203,15 +207,19 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 
 # [social.discord]
 # enabled = true
-# webhook_url = "${DISCORD_WEBHOOK_URL}"
+# bot_token = "${DISCORD_BOT_TOKEN}"
+# channel_id = "${DISCORD_CHANNEL_ID}"
 
 # [social.slack]
 # enabled = true
-# webhook_url = "${SLACK_WEBHOOK_URL}"
+# bot_token = "${SLACK_BOT_TOKEN}"
+# channel = "${SLACK_CHANNEL}"
 
 # [social.lark]
 # enabled = true
-# webhook_url = "${LARK_WEBHOOK_URL}"
+# app_id = "${LARK_APP_ID}"
+# app_secret = "${LARK_APP_SECRET}"
+# receive_id = "${LARK_RECEIVE_ID}"
 "##;
 
 impl AppConfig {
