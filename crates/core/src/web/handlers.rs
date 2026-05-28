@@ -486,7 +486,11 @@ pub async fn get_telegraph_all(
         || async {
             let client = ApiClient::new();
             let data = client.cls.fetch_telegraph("").await.map_err(|e| {
-                eprintln!("telegraph error: {:#}", e);
+                eprintln!("[telegraph] fetch failed: {:#}", e);
+                eprintln!("[telegraph] error chain:");
+                for cause in e.chain() {
+                    eprintln!("[telegraph]   caused by: {}", cause);
+                }
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
@@ -511,7 +515,7 @@ pub async fn get_telegraph(
         || async {
             let client = ApiClient::new();
             let data = client.cls.fetch_telegraph(&category).await.map_err(|e| {
-                eprintln!("telegraph error: {:#}", e);
+                eprintln!("[telegraph/{}] fetch failed: {:#}", category, e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
