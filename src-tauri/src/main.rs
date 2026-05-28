@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use trending_agent_core::api::Client as ApiClient;
 use trending_agent_core::gateway::Gateway;
-use trending_agent_core::llm::openrouter::LlmClient;
+use trending_agent_core::llm::LlmClient;
 use trending_agent_core::roles::BUILTIN_STRATEGIES;
 use trending_agent_core::trade::TradeManager;
 use trending_agent_core::web::{AppState, RoleEntry};

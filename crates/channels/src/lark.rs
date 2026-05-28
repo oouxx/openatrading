@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::NotificationSender;
+use crate::Channel;
 
 const LARK_API_BASE: &str = "https://open.feishu.cn/open-apis";
 const LARK_MAX_CONTENT_LEN: usize = 28000;
@@ -13,7 +13,7 @@ struct CachedToken {
     expires_at: tokio::time::Instant,
 }
 
-pub struct LarkSender {
+pub struct LarkChannel {
     app_id: String,
     app_secret: String,
     receive_id: String,
@@ -21,7 +21,7 @@ pub struct LarkSender {
     cached_token: Arc<RwLock<Option<CachedToken>>>,
 }
 
-impl LarkSender {
+impl LarkChannel {
     pub fn new(app_id: String, app_secret: String, receive_id: String) -> Self {
         Self {
             app_id,
@@ -90,13 +90,6 @@ impl LarkSender {
         *cache = None;
     }
 
-    pub async fn send_message(&self, text: &str) -> Result<()> {
-        for chunk in split_lark_chunks(text, LARK_MAX_CONTENT_LEN) {
-            self.send_chunk(chunk).await?;
-        }
-        Ok(())
-    }
-
     async fn send_chunk(&self, text: &str) -> Result<()> {
         let token = self.get_tenant_access_token().await?;
 
@@ -141,9 +134,12 @@ impl LarkSender {
 }
 
 #[async_trait]
-impl NotificationSender for LarkSender {
+impl Channel for LarkChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
-        self.send_message(text).await
+        for chunk in split_lark_chunks(text, LARK_MAX_CONTENT_LEN) {
+            self.send_chunk(chunk).await?;
+        }
+        Ok(())
     }
 }
 

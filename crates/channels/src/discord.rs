@@ -2,31 +2,24 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use super::NotificationSender;
+use crate::Channel;
 
 const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 const DISCORD_MAX_MESSAGE_LEN: usize = 2000;
 
-pub struct DiscordSender {
+pub struct DiscordChannel {
     bot_token: String,
     channel_id: String,
     client: Arc<reqwest::Client>,
 }
 
-impl DiscordSender {
+impl DiscordChannel {
     pub fn new(bot_token: String, channel_id: String) -> Self {
         Self {
             bot_token,
             channel_id,
             client: Arc::new(reqwest::Client::new()),
         }
-    }
-
-    pub async fn send_message(&self, text: &str) -> Result<()> {
-        for chunk in split_chunks(text, DISCORD_MAX_MESSAGE_LEN) {
-            self.send_chunk(chunk).await?;
-        }
-        Ok(())
     }
 
     async fn send_chunk(&self, text: &str) -> Result<()> {
@@ -53,9 +46,12 @@ impl DiscordSender {
 }
 
 #[async_trait]
-impl NotificationSender for DiscordSender {
+impl Channel for DiscordChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
-        self.send_message(text).await
+        for chunk in split_chunks(text, DISCORD_MAX_MESSAGE_LEN) {
+            self.send_chunk(chunk).await?;
+        }
+        Ok(())
     }
 }
 

@@ -7,8 +7,8 @@ use tokio::time::{sleep, Duration as TokioDuration};
 
 use crate::api::Client as ApiClient;
 use crate::llm::agent::agent_loop;
-use crate::llm::openrouter::LlmClient;
-use crate::llm::tool::ToolSet;
+use crate::llm::LlmClient;
+use crate::llm::ToolSet;
 use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;

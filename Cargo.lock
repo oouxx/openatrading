@@ -4989,6 +4989,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "trending-agent-channels"
+version = "0.6.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "trending-agent-cli"
 version = "0.6.2"
 dependencies = [
@@ -5036,7 +5048,22 @@ dependencies = [
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
+ "trending-agent-channels",
+ "trending-agent-provider",
  "url",
+]
+
+[[package]]
+name = "trending-agent-provider"
+version = "0.6.2"
+dependencies = [
+ "anyhow",
+ "futures",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
