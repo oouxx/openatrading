@@ -6,10 +6,11 @@ use std::sync::Arc;
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use trending_agent_core::cron::CronConfig;
 use trending_agent_core::gateway::{Gateway, GatewayConfig};
-use trending_agent_core::social::discord::DiscordSender;
-use trending_agent_core::social::lark::LarkSender;
-use trending_agent_core::social::slack::SlackSender;
-use trending_agent_core::social::telegram::TelegramSender;
+use trending_agent_core::social::channel_to_sender;
+use trending_agent_core::social::channels::discord::DiscordChannel;
+use trending_agent_core::social::channels::lark::LarkChannel;
+use trending_agent_core::social::channels::slack::SlackChannel;
+use trending_agent_core::social::channels::telegram::TelegramChannel;
 use trending_agent_core::social::telegram_bot::TelegramBotConfig;
 use trending_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
 use trending_agent_core::web::RoleEntry;
@@ -127,10 +128,10 @@ fn create_telegram_sender(tg: &TelegramConfig) -> Option<Box<dyn NotificationSen
     }
     let token = tg.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let chat = tg.chat_id.as_deref().filter(|c| !c.is_empty())?;
-    Some(Box::new(TelegramSender::new(
+    Some(channel_to_sender(Box::new(TelegramChannel::new(
         token.to_string(),
         chat.to_string(),
-    )))
+    ))))
 }
 
 fn create_discord_sender(dc: &DiscordConfig) -> Option<Box<dyn NotificationSender>> {
@@ -139,10 +140,10 @@ fn create_discord_sender(dc: &DiscordConfig) -> Option<Box<dyn NotificationSende
     }
     let bot_token = dc.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let channel_id = dc.channel_id.as_deref().filter(|c| !c.is_empty())?;
-    Some(Box::new(DiscordSender::new(
+    Some(channel_to_sender(Box::new(DiscordChannel::new(
         bot_token.to_string(),
         channel_id.to_string(),
-    )))
+    ))))
 }
 
 fn create_slack_sender(sl: &SlackConfig) -> Option<Box<dyn NotificationSender>> {
@@ -151,10 +152,10 @@ fn create_slack_sender(sl: &SlackConfig) -> Option<Box<dyn NotificationSender>> 
     }
     let bot_token = sl.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let channel = sl.channel.as_deref().filter(|c| !c.is_empty())?;
-    Some(Box::new(SlackSender::new(
+    Some(channel_to_sender(Box::new(SlackChannel::new(
         bot_token.to_string(),
         channel.to_string(),
-    )))
+    ))))
 }
 
 fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
@@ -164,11 +165,11 @@ fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
     let app_id = lk.app_id.as_deref().filter(|a| !a.is_empty())?;
     let app_secret = lk.app_secret.as_deref().filter(|s| !s.is_empty())?;
     let receive_id = lk.receive_id.as_deref().filter(|r| !r.is_empty())?;
-    Some(Box::new(LarkSender::new(
+    Some(channel_to_sender(Box::new(LarkChannel::new(
         app_id.to_string(),
         app_secret.to_string(),
         receive_id.to_string(),
-    )))
+    ))))
 }
 
 pub fn create_notification_sender(

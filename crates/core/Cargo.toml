@@ -8,6 +8,8 @@ name = "trending_agent_core"
 path = "src/lib.rs"
 
 [dependencies]
+trending-agent-channels = { path = "../channels" }
+trending-agent-provider = { path = "../provider" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 scraper = { workspace = true }
@@ -19,9 +21,9 @@ futures = { workspace = true }
 dotenvy = { workspace = true }
 askama = { workspace = true }
 regex = { workspace = true }
-url = { workspace = true}
-md5 = { workspace = true}
-sha1 = { workspace = true}
+url = { workspace = true }
+md5 = { workspace = true }
+sha1 = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 cron = "0.12"
 async-trait = "0.1"
@@ -33,6 +35,7 @@ tracing = { version = "0.1"}
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 moka = { version = "0.12.15", features = ["sync"] }
 thiserror = "2"
+
 [features]
 telegram = ["dep:teloxide"]
 

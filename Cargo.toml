@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/cli",
+    "crates/channels",
+    "crates/provider",
     "src-tauri",
 ]
 
@@ -21,5 +23,6 @@ regex = "1"
 sha1 = "0.10"
 md5 = "0.7"
 url = "2"
+
 [profile.release]
 opt-level = 3

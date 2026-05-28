@@ -5,7 +5,7 @@ use crate::agents::technical::{
     analyze_technical, build_prompt as technical_prompt, TechnicalResult,
 };
 use crate::api::Client;
-use crate::llm::openrouter::LlmClient;
+use crate::llm::LlmClient;
 use crate::roles::role::Role;
 use anyhow::Result;
 

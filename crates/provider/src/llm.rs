@@ -92,17 +92,12 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    /// Create from env vars:
-    /// - `LLM_API_ENDPOINT` default: DeepSeek (auto-switches to OpenRouter if only OPENROUTER_API_KEY set)
-    /// - `LLM_API_KEY` priority: LLM_API_KEY > DEEPSEEK_API_KEY > OPENROUTER_API_KEY
-    /// - `LLM_MODEL` default: deepseek-chat
     pub fn from_env() -> Self {
         let api_key = std::env::var("LLM_API_KEY")
             .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
             .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
             .unwrap_or_default();
 
-        // If using OpenRouter key but no LLM_API_ENDPOINT set, use OpenRouter endpoint
         let default_endpoint = if std::env::var("OPENROUTER_API_KEY").is_ok()
             && std::env::var("DEEPSEEK_API_KEY").is_err()
             && std::env::var("LLM_API_KEY").is_err()
@@ -179,7 +174,6 @@ impl LlmClient {
         Ok(content)
     }
 
-    /// 非流式发送 messages JSON，返回完整回复文本
     pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
         let body = serde_json::json!({
             "model": self.model,
@@ -496,8 +490,7 @@ impl LlmClient {
         Ok(Box::pin(stream))
     }
 
-    /// Non-streaming chat with tool support. Returns raw response for agent loop.
-    pub async fn chat_with_tools(&self, body_json: &str) -> Result<super::agent::ToolChatResponse> {
+    pub async fn chat_with_tools(&self, body_json: &str) -> Result<ToolChatResponse> {
         let resp = self
             .client
             .post(&self.api_endpoint)
@@ -512,7 +505,38 @@ impl LlmClient {
             let body = resp.text().await.unwrap_or_default();
             anyhow::bail!("LLM API error {status}: {body}");
         }
-        let response: super::agent::ToolChatResponse = resp.json().await?;
+        let response: ToolChatResponse = resp.json().await?;
         Ok(response)
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ToolCallMessage {
+    pub role: Option<String>,
+    pub content: Option<String>,
+    pub tool_calls: Option<Vec<ToolCallItem>>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ToolCallItem {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: Option<String>,
+    pub function: ToolCallFunction,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ToolCallFunction {
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ToolChatChoice {
+    pub message: ToolCallMessage,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ToolChatResponse {
+    pub choices: Vec<ToolChatChoice>,
 }

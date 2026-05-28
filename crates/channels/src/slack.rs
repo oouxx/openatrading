@@ -2,17 +2,17 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use super::NotificationSender;
+use crate::Channel;
 
 const SLACK_API_BASE: &str = "https://slack.com/api";
 
-pub struct SlackSender {
+pub struct SlackChannel {
     bot_token: String,
     channel: String,
     client: Arc<reqwest::Client>,
 }
 
-impl SlackSender {
+impl SlackChannel {
     pub fn new(bot_token: String, channel: String) -> Self {
         Self {
             bot_token,
@@ -20,8 +20,11 @@ impl SlackSender {
             client: Arc::new(reqwest::Client::new()),
         }
     }
+}
 
-    pub async fn send_message(&self, text: &str) -> Result<()> {
+#[async_trait]
+impl Channel for SlackChannel {
+    async fn send_text(&self, text: &str) -> Result<()> {
         let url = format!("{}/chat.postMessage", SLACK_API_BASE);
         let resp = self
             .client
@@ -47,12 +50,5 @@ impl SlackSender {
             anyhow::bail!("slack bot api error: {}", error);
         }
         Ok(())
-    }
-}
-
-#[async_trait]
-impl NotificationSender for SlackSender {
-    async fn send_text(&self, text: &str) -> Result<()> {
-        self.send_message(text).await
     }
 }

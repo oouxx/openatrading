@@ -4,6 +4,13 @@ use async_trait::async_trait;
 use crate::cron::{CollectSummary, Decision};
 use crate::trade::TradeLog;
 
+pub use trending_agent_channels as channels;
+pub use trending_agent_channels::discord::DiscordChannel;
+pub use trending_agent_channels::lark::LarkChannel;
+pub use trending_agent_channels::slack::SlackChannel;
+pub use trending_agent_channels::telegram::TelegramChannel;
+pub use trending_agent_channels::{Channel, NoopChannel, StdoutChannel};
+
 #[async_trait]
 pub trait NotificationSender: Send + Sync {
     async fn send_text(&self, text: &str) -> Result<()>;
@@ -102,8 +109,19 @@ impl NotificationSender for FilteredSender {
     }
 }
 
-pub mod discord;
-pub mod lark;
-pub mod slack;
-pub mod telegram;
+struct ChannelAdapter {
+    channel: Box<dyn Channel>,
+}
+
+#[async_trait]
+impl NotificationSender for ChannelAdapter {
+    async fn send_text(&self, text: &str) -> Result<()> {
+        self.channel.send_text(text).await
+    }
+}
+
+pub fn channel_to_sender(channel: Box<dyn Channel>) -> Box<dyn NotificationSender> {
+    Box::new(ChannelAdapter { channel })
+}
+
 pub mod telegram_bot;

@@ -15,7 +15,7 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::api::Client as ApiClient;
-use crate::llm::openrouter::LlmClient;
+use crate::llm::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::trade::sqlite::SqliteTradeManager;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
