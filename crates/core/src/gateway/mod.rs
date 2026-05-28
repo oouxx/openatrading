@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::api::Client as ApiClient;
 use crate::cron::{self, CronConfig};
-use crate::llm::openrouter::LlmClient;
+use crate::llm::LlmClient;
 use crate::memory::sqlite::SqliteMemoryStore;
 use crate::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 use crate::social::NotificationSender;

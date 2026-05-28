@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
 use crate::cron::run_decision;
-use crate::llm::openrouter::LlmClient;
+use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
 use crate::web::RoleEntry;
@@ -435,7 +435,7 @@ impl TelegramBot {
                 };
 
                 let tools = Arc::new(
-                    crate::llm::tool::ToolSet::new()
+                    crate::llm::ToolSet::new()
                         .add(crate::llm::tools::GetLimitUp)
                         .add(crate::llm::tools::GetLimitDown)
                         .add(crate::llm::tools::GetMarketOverview),

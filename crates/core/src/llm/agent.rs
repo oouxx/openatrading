@@ -1,8 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use super::openrouter::LlmClient;
-use super::tool::ToolSet;
+use super::{LlmClient, ToolSet};
 
 const MAX_ROUNDS: usize = 5;
 
@@ -94,37 +93,4 @@ pub async fn agent_loop(
         final_text: "已达到最大轮次，分析未完成。".to_string(),
         rounds: MAX_ROUNDS,
     })
-}
-
-// ── Non-streaming chat_with_tools response types ──────────
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ToolCallMessage {
-    pub role: Option<String>,
-    pub content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCallItem>>,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ToolCallItem {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub call_type: Option<String>,
-    pub function: ToolCallFunction,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ToolCallFunction {
-    pub name: String,
-    pub arguments: String,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ToolChatChoice {
-    pub message: ToolCallMessage,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ToolChatResponse {
-    pub choices: Vec<ToolChatChoice>,
 }
