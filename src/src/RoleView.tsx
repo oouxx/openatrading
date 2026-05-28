@@ -25,6 +25,10 @@ export default function RoleView() {
   const [newDisplayName, setNewDisplayName] = useState('')
   const [newStrategy, setNewStrategy] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState<string | null>(null)
+  const [editingStrategy, setEditingStrategy] = useState(false)
+  const [editStrategyText, setEditStrategyText] = useState('')
+  const [pnlDays, setPnlDays] = useState(30)
 
   useEffect(() => {
     store.fetchRoles()
@@ -58,10 +62,68 @@ export default function RoleView() {
     store.fetchRoles()
   }, [selectedRole])
 
+  const resetRole = useCallback(async (name: string) => {
+    await store.resetRole(name)
+    setShowResetConfirm(null)
+    if (selectedRole === name) {
+      store.refreshRole(name)
+    }
+  }, [selectedRole])
+
+  const saveStrategy = useCallback(async () => {
+    if (!selectedRole) return
+    await store.updateRoleStrategy(selectedRole, editStrategyText)
+    setEditingStrategy(false)
+    store.fetchRoles()
+  }, [selectedRole, editStrategyText])
+
+  const startEditStrategy = useCallback(() => {
+    const role = roles.find((r) => r.name === selectedRole)
+    if (role) {
+      setEditStrategyText(role.strategy)
+      setEditingStrategy(true)
+    }
+  }, [roles, selectedRole])
+
   const positions = selectedRole ? store.rolePositions[selectedRole]?.data || [] : []
   const logs = selectedRole ? store.roleLogs[selectedRole]?.data || [] : []
   const pnlHistory = selectedRole ? store.rolePnlHistory[selectedRole]?.data || [] : []
   const history = selectedRole ? store.roleHistory[selectedRole]?.data || [] : []
+
+  const currentRole = useMemo(() => roles.find((r) => r.name === selectedRole), [roles, selectedRole])
+
+  const rolePnl = useMemo(() => {
+    const result: Record<string, number> = {}
+    roles.forEach((r) => {
+      const pos = store.rolePositions[r.name]?.data
+      if (!pos?.length) { result[r.name] = 0; return }
+      const totalValue = pos.reduce((s, p) => s + p.current_price * p.shares, 0)
+      const totalCost = pos.reduce((s, p) => s + p.cost_price * p.shares, 0)
+      result[r.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0
+    })
+    return result
+  }, [roles, store.rolePositions])
+
+  const rolePositionCounts = useMemo(() => {
+    const result: Record<string, number> = {}
+    roles.forEach((r) => {
+      result[r.name] = store.rolePositions[r.name]?.data?.length || 0
+    })
+    return result
+  }, [roles, store.rolePositions])
+
+  // Pre-fetch data for all roles to show in sidebar
+  useEffect(() => {
+    roles.forEach((r) => {
+      store.fetchRolePositions(r.name)
+      store.fetchRolePnlHistory(r.name)
+    })
+  }, [roles.length])
+
+  const filteredPnlHistory = useMemo(() => {
+    if (pnlDays === 0) return pnlHistory
+    return pnlHistory.slice(-pnlDays)
+  }, [pnlHistory, pnlDays])
 
   const totalPnl = useMemo(() => {
     if (!positions.length) return 0
@@ -90,8 +152,17 @@ export default function RoleView() {
         </div>
 
         <div className="flex gap-6">
-          <div className="w-[260px] flex-shrink-0">
+          <div className="w-[320px] flex-shrink-0">
             <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
+              {store.roles.loading ? (
+                <div className="flex items-center gap-2 px-4 py-8 justify-center">
+                  <div className="w-2 h-2 rounded-full bg-ai animate-pulse" />
+                  <span className="text-caption text-ink-muted">加载中...</span>
+                </div>
+              ) : store.roles.error ? (
+                <div className="text-up text-caption px-4 py-8 text-center">{store.roles.error}</div>
+              ) : (
+                <>
               {roles.map((role: RoleEntry) => (
                 <div
                   key={role.name}
@@ -100,23 +171,40 @@ export default function RoleView() {
                   }`}
                   onClick={() => setSelectedRole(role.name)}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-white font-semibold">{role.display_name}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowDeleteConfirm(role.name)
-                      }}
-                      className="text-ink-muted hover:text-up text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ×
-                    </button>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-ai flex-shrink-0" />
+                      <span className="text-sm text-white font-semibold truncate">{role.display_name}</span>
+                    </div>
                   </div>
-                  <p className="text-caption text-ink-muted mt-1 line-clamp-2">{role.strategy.substring(0, 60)}...</p>
+                  <div className="flex items-center justify-between text-caption">
+                    <span className={`font-mono ${(rolePnl[role.name] || 0) >= 0 ? 'text-up' : 'text-down'}`}>
+                      {rolePnl[role.name] !== undefined && rolePositionCounts[role.name] > 0
+                        ? `${rolePnl[role.name] >= 0 ? '+' : ''}${rolePnl[role.name].toFixed(1)}%`
+                        : '空仓'}
+                    </span>
+                    <span className="text-ink-muted">{rolePositionCounts[role.name] || 0}支</span>
+                  </div>
+                  <div className="mt-2 flex justify-center">
+                    {store.rolePnlHistory[role.name]?.data?.length > 0 ? (
+                      <Sparkline
+                        points={store.rolePnlHistory[role.name].data}
+                        width={220}
+                        height={28}
+                      />
+                    ) : (
+                      <span className="text-ink-muted text-xs">暂无数据</span>
+                    )}
+                  </div>
                 </div>
               ))}
-              {roles.length === 0 && (
-                <div className="p-6 text-center text-caption text-ink-muted">暂无角色，点击右上角创建</div>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="w-full p-3 border border-dashed border-hairline text-ink-muted hover:text-ai hover:border-ai/30 transition-colors text-sm text-center cursor-pointer"
+              >
+                + 新增角色
+              </button>
+              </>
               )}
             </div>
           </div>
@@ -128,6 +216,90 @@ export default function RoleView() {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* 操作栏 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-white">{currentRole?.display_name}</h2>
+                    <div className="flex items-center gap-4 mt-1 text-caption text-ink-muted">
+                      <span>累计 <span className={`font-mono ${(rolePnl[selectedRole] || 0) >= 0 ? 'text-up' : 'text-down'}`}>
+                        {(rolePnl[selectedRole] || 0) >= 0 ? '+' : ''}{(rolePnl[selectedRole] || 0).toFixed(1)}%
+                      </span></span>
+                      <span>持仓 {rolePositionCounts[selectedRole] || 0} 支</span>
+                      <span>初始资金 ¥1,000,000</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => editingStrategy ? setEditingStrategy(false) : startEditStrategy()}
+                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-white hover:border-white/20 transition-colors cursor-pointer"
+                    >
+                      {editingStrategy ? '取消编辑' : '编辑策略'}
+                    </button>
+                    <button
+                      onClick={() => setShowResetConfirm(selectedRole)}
+                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-up hover:border-up/30 transition-colors cursor-pointer"
+                    >
+                      重置账户
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(selectedRole)}
+                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-up hover:border-up/30 transition-colors cursor-pointer"
+                    >
+                      删除角色
+                    </button>
+                  </div>
+                </div>
+
+                {/* 盈利曲线 */}
+                <div className="bg-bg-surface border border-hairline rounded-card p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-semibold text-sm">盈利曲线</h3>
+                    <div className="flex gap-1">
+                      {[7, 30, 0].map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => {
+                            setPnlDays(d)
+                            if (selectedRole) store.fetchRolePnlHistory(selectedRole, d || 30)
+                          }}
+                          className={`px-2 py-0.5 rounded text-xs transition-colors cursor-pointer ${
+                            pnlDays === d ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white'
+                          }`}
+                        >
+                          {d === 0 ? '全部' : d + '日'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Sparkline points={filteredPnlHistory} width={600} height={60} />
+                </div>
+
+                {/* 编辑策略 */}
+                {editingStrategy && (
+                  <div className="bg-bg-surface border border-ai/30 rounded-card p-5">
+                    <textarea
+                      value={editStrategyText}
+                      onChange={(e) => setEditStrategyText(e.target.value)}
+                      className="w-full bg-bg border border-hairline rounded px-3 py-2 text-caption text-white font-mono outline-none focus:border-ai/50 resize-y"
+                      rows={8}
+                    />
+                    <div className="flex justify-end gap-2 mt-3">
+                      <button
+                        onClick={() => setEditingStrategy(false)}
+                        className="px-4 py-1.5 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={saveStrategy}
+                        className="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors cursor-pointer"
+                      >
+                        保存策略
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-4">
                   <div className="bg-bg-surface rounded-card border border-hairline p-card-inner">
                     <p className="text-caption text-ink-muted mb-2">持仓市值</p>
@@ -354,6 +526,40 @@ export default function RoleView() {
                     className="px-4 py-2 bg-up/20 text-up rounded-button text-caption font-mono hover:bg-up/30 transition-colors cursor-pointer"
                   >
                     删除
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showResetConfirm && (
+          <>
+            <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowResetConfirm(null)} />
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="pointer-events-auto bg-bg-surface border border-hairline rounded-card p-6 w-[360px]">
+                <h2 className="text-lg font-bold text-white mb-2">确认重置</h2>
+                <p className="text-caption text-ink-muted mb-4">重置角色 <b className="text-white">{showResetConfirm}</b>？此操作将清空该角色的所有持仓和历史记录。</p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowResetConfirm(null)}
+                    className="px-4 py-2 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => resetRole(showResetConfirm)}
+                    className="px-4 py-2 bg-up/20 text-up rounded-button text-caption font-mono hover:bg-up/30 transition-colors cursor-pointer"
+                  >
+                    重置
                   </button>
                 </div>
               </div>

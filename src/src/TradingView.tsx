@@ -5,9 +5,11 @@ import KpiCards from '@/components/KpiCards'
 import TabBar from '@/components/TabBar'
 import NewsFeed from '@/components/NewsFeed'
 import AiSidebar from '@/components/AiSidebar'
-import SentimentHistory from '@/components/SentimentHistory'
 import MiniChartPreview from '@/components/MiniChartPreview'
 import KlineDrawer from '@/components/KlineDrawer'
+import TimelineTab from '@/components/tabs/TimelineTab'
+import SentimentChipTab from '@/components/tabs/SentimentChipTab'
+import MarketIntelTab from '@/components/tabs/MarketIntelTab'
 
 function formatCap(v: number) {
   if (v >= 1e12) return (v / 1e12).toFixed(1) + '万亿'
@@ -31,6 +33,10 @@ export default function TradingView() {
   const [klineTarget, setKlineTarget] = useState<{ symbol: string; name: string } | null>(null)
 
   useEffect(() => {
+    refreshData()
+  }, [])
+
+  const refreshData = useCallback(() => {
     store.fetchOverview()
     store.fetchLimitUp()
     store.fetchFieldItems()
@@ -42,16 +48,6 @@ export default function TradingView() {
   const limitUpStocks = store.limitUp.data
   const fieldItems = store.fieldItems.data
   const indexQuotes = store.indexQuotes.data
-  const sentimentHistory = store.sentimentHistory.data
-
-  const sentimentChartData = useMemo(
-    () =>
-      sentimentHistory.map((d) => ({
-        date: d.date,
-        value: d.sentiment,
-      })),
-    [sentimentHistory],
-  )
 
   const indexCards = useMemo(() => {
     if (!indexQuotes.length) return []
@@ -71,6 +67,48 @@ export default function TradingView() {
   return (
     <div className="min-h-screen bg-bg pt-14">
       <div className="max-w-[1600px] mx-auto px-6 py-4">
+        {/* 错误状态 */}
+        {store.overview.error && (
+          <div className="py-4">
+            <div className="bg-up/5 border border-up/20 rounded-card px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-up text-sm">⚠</span>
+                <span className="text-caption text-up">{store.overview.error}</span>
+              </div>
+              <button
+                onClick={refreshData}
+                className="text-caption text-up underline cursor-pointer"
+              >
+                重试
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 加载状态 */}
+        {store.overview.loading && !store.overview.data && (
+          <div className="flex flex-col items-center justify-center py-32 gap-4">
+            <div className="w-3 h-3 rounded-full bg-ai animate-pulse" />
+            <span className="text-caption font-mono text-ink-muted">加载市场数据...</span>
+          </div>
+        )}
+
+        {store.overview.data && (
+          <>
+        {/* 指数加载状态 */}
+        {store.indexQuotes.loading && !store.indexQuotes.data.length && (
+          <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
+            <span className="text-caption font-mono text-ink-muted">加载指数数据...</span>
+          </div>
+        )}
+
+        {/* 指数错误状态 */}
+        {!store.indexQuotes.loading && store.indexQuotes.error && (
+          <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
+            <span className="text-caption text-up">{store.indexQuotes.error}</span>
+          </div>
+        )}
+
         {indexCards.length > 0 && (
           <div className="flex gap-4 mb-6">
             {indexCards.map((idx) => (
@@ -152,22 +190,15 @@ export default function TradingView() {
             )}
 
             {activeTab === 'timeline' && (
-              <div className="bg-bg-surface rounded-card border border-hairline p-card-inner">
-                <p className="text-caption text-ink-muted">时间线功能开发中...</p>
-              </div>
+              <TimelineTab />
             )}
 
             {activeTab === 'sentiment-chip' && (
-              <div className="space-y-4">
-                <SentimentHistory data={sentimentChartData} />
-              </div>
+              <SentimentChipTab />
             )}
 
             {activeTab === 'market-intel' && (
-              <div className="space-y-4">
-                <SentimentHistory data={sentimentChartData} />
-                <NewsFeed variant="tab" />
-              </div>
+              <MarketIntelTab />
             )}
 
             {activeTab === 'news' && (
@@ -212,6 +243,8 @@ export default function TradingView() {
             </motion.div>
           )}
         </AnimatePresence>
+      </>
+        )}
       </div>
 
       <AnimatePresence>
