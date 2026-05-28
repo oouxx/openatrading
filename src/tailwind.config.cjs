@@ -1,12 +1,11 @@
 module.exports = {
   content: [
-    './src/**/*.{vue,js,ts,jsx,tsx}',
+    './src/**/*.{js,ts,jsx,tsx}',
     './index.html',
   ],
   theme: {
     extend: {
       colors: {
-        // Backgrounds
         canvas: {
           DEFAULT: '#0d0d1a',
           parchment: '#111124',
@@ -16,13 +15,11 @@ module.exports = {
           2: '#1a1a35',
           3: '#0f0f20',
         },
-        // Text
         ink: {
           DEFAULT: '#e8e8ed',
           muted: '#888780',
           dim: 'rgba(255,255,255,0.06)',
         },
-        // Semantic: A-share 红涨绿跌
         up: {
           DEFAULT: '#FF5C5C',
           muted: 'rgba(255,92,92,0.15)',
@@ -31,13 +28,11 @@ module.exports = {
           DEFAULT: '#1D9E75',
           muted: 'rgba(29,158,117,0.15)',
         },
-        // AI purple
         ai: {
           DEFAULT: '#7F77DD',
           focus: '#9990f0',
           muted: 'rgba(127,119,221,0.15)',
         },
-        // Legacy aliases (keep for gradual migration)
         primary: {
           DEFAULT: '#7F77DD',
           focus: '#9990f0',

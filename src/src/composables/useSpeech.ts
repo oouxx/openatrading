@@ -1,10 +1,10 @@
-import { ref } from 'vue'
+import { useState } from 'react'
 
 export function useSpeech() {
-  const muted = ref(false)
+  const [muted, setMuted] = useState(false)
 
   function speak(text: string) {
-    if (muted.value) return
+    if (muted) return
     if (!window.speechSynthesis) return
     const utter = new SpeechSynthesisUtterance(text)
     utter.lang = 'zh-CN'
@@ -18,8 +18,10 @@ export function useSpeech() {
   }
 
   function toggleMute() {
-    muted.value = !muted.value
-    if (muted.value) stop()
+    setMuted((m) => {
+      if (!m) stop()
+      return !m
+    })
   }
 
   return { muted, speak, stop, toggleMute }
