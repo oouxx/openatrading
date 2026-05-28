@@ -18,6 +18,7 @@ pub struct News {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClsTelegraphResp {
+    #[serde(alias = "errno")]
     pub error: i32,
     pub data: TelegraphData,
 }
@@ -77,26 +78,36 @@ const ROOT_URL: &str = "https://www.cls.cn";
 
 impl ClsClient {
     pub async fn fetch_telegraph(&self, category: &str) -> Result<Vec<TelegramInfo>> {
-        let mut api_url = format!("{}/nodeapi/updateTelegraphList", ROOT_URL);
-        if !category.is_empty() {
-            api_url = format!("{}/v1/roll/get_roll_list", ROOT_URL);
-        }
+        let api_url = if !category.is_empty() {
+            format!("{}/v1/roll/get_roll_list", ROOT_URL)
+        } else {
+            format!("{}/api/cache", ROOT_URL)
+        };
         let mut params = BTreeMap::new();
-        params.insert("category".to_string(), category.to_string());
-        params.insert("hasFirstVipArticle".to_string(), "1".to_string());
+        if !category.is_empty() {
+            params.insert("category".to_string(), category.to_string());
+            params.insert("hasFirstVipArticle".to_string(), "1".to_string());
+        } else {
+            params.insert("name".to_string(), "telegraph".to_string());
+        }
         let querystr = get_search_params(params);
         let url = format!("{}?{}", api_url, querystr);
-        let resp: ClsTelegraphResp = self.client.get(&url).send().await?.json().await?;
-        Ok(resp.data.roll_data)
+        eprintln!("[cls::telegraph] GET {}", url);
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let body_text = resp.text().await?;
+        eprintln!("[cls::telegraph] status={}, body={}", status, &body_text[..body_text.len().min(500)]);
+        let resp_data: ClsTelegraphResp = serde_json::from_str(&body_text)?;
+        Ok(resp_data.data.roll_data)
     }
 }
 
 fn get_search_params(more_params: BTreeMap<String, String>) -> String {
     // 默认参数
     let mut params = BTreeMap::from([
-        ("appName".to_string(), "CailianpressWeb".to_string()),
+        ("app".to_string(), "CailianpressWeb".to_string()),
         ("os".to_string(), "web".to_string()),
-        ("sv".to_string(), "7.7.5".to_string()),
+        ("sv".to_string(), "8.7.9".to_string()),
     ]);
 
     // 合并额外参数
