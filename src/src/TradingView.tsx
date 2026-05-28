@@ -10,6 +10,7 @@ import KlineDrawer from '@/components/KlineDrawer'
 import TimelineTab from '@/components/tabs/TimelineTab'
 import SentimentChipTab from '@/components/tabs/SentimentChipTab'
 import MarketIntelTab from '@/components/tabs/MarketIntelTab'
+import PromotionTab from '@/components/tabs/PromotionTab'
 
 function formatCap(v: number) {
   if (v >= 1e12) return (v / 1e12).toFixed(1) + '万亿'
@@ -53,9 +54,8 @@ export default function TradingView() {
     if (!indexQuotes.length) return []
     return indexQuotes.map((q: IndexQuote) => ({
       name: q.name,
-      value: q.last_px?.toFixed(2) || '--',
-      change: q.px_change?.toFixed(2) || '--',
-      changeRate: q.px_change_rate,
+      lastPx: q.last_px,
+      pxChangeRate: q.px_change_rate,
       isUp: q.px_change_rate >= 0,
     }))
   }, [indexQuotes])
@@ -110,13 +110,13 @@ export default function TradingView() {
         )}
 
         {indexCards.length > 0 && (
-          <div className="flex gap-4 mb-6">
+          <div className="grid grid-cols-3 gap-4 mb-6">
             {indexCards.map((idx) => (
-              <div key={idx.name} className="bg-bg-surface rounded-card border border-hairline px-4 py-2 flex items-center gap-3">
-                <span className="text-caption text-ink-muted">{idx.name}</span>
-                <span className={`font-mono text-sm font-semibold ${idx.isUp ? 'text-up' : 'text-down'}`}>{idx.value}</span>
-                <span className={`font-mono text-caption ${idx.isUp ? 'text-up' : 'text-down'}`}>
-                  {idx.isUp ? '+' : ''}{idx.change} ({idx.isUp ? '+' : ''}{(idx.changeRate * 100).toFixed(2)}%)
+              <div key={idx.name} className="bg-bg-surface rounded-card border border-hairline p-card-inner flex flex-col gap-1">
+                <span className="text-caption text-ink-muted font-mono">{idx.name}</span>
+                <span className="text-xl font-mono text-white tabular-nums">{idx.lastPx.toFixed(2)}</span>
+                <span className={`text-caption font-mono tabular-nums ${idx.isUp ? 'text-up' : 'text-down'}`}>
+                  {idx.isUp ? '+' : ''}{idx.pxChangeRate.toFixed(2)}%
                 </span>
               </div>
             ))}
@@ -256,46 +256,6 @@ export default function TradingView() {
           />
         )}
       </AnimatePresence>
-    </div>
-  )
-}
-
-function PromotionTab({ stocks, onOpenKline }: { stocks: Stock[]; onOpenKline: (s: string, n: string) => void }) {
-  const grouped = useMemo(() => {
-    const map = new Map<number, Stock[]>()
-    stocks.forEach((s) => {
-      const days = s.limit_up_days || 1
-      if (!map.has(days)) map.set(days, [])
-      map.get(days)!.push(s)
-    })
-    return Array.from(map.entries()).sort((a, b) => b[0] - a[0])
-  }, [stocks])
-
-  return (
-    <div className="space-y-4">
-      {grouped.map(([days, list]) => (
-        <div key={days} className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-          <div className="px-4 py-3 border-b border-hairline flex items-center gap-2">
-            <span className="text-ai font-semibold text-sm">{days}连板</span>
-            <span className="text-caption text-ink-muted">{list.length}只</span>
-          </div>
-          <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {list.map((s) => (
-              <div
-                key={s.symbol}
-                className="bg-bg rounded-card border border-hairline p-3 cursor-pointer hover:border-ai/30 transition-colors"
-                onClick={() => onOpenKline(s.symbol, s.stock_chi_name)}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-white text-sm font-semibold">{s.stock_chi_name}</span>
-                  <span className={`font-mono text-xs ${pctClass(s.change_percent)}`}>{formatPct(s.change_percent)}</span>
-                </div>
-                <span className="text-caption text-ink-muted font-mono">{s.symbol.replace(/\.[A-Z]+$/, '')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   )
 }

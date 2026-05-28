@@ -252,6 +252,7 @@ interface DataState {
   roleHistory: Record<string, { data: ClosedPosition[]; loading: boolean; error: string }>
   indexQuotes: { data: IndexQuote[]; loading: boolean; error: string }
   sentimentHistory: { data: SentimentHistoryDay[]; loading: boolean; error: string }
+  yesterdayLimitUp: { data: Stock[]; loading: boolean; error: string }
 
   fetchOverview: () => Promise<void>
   fetchLimitUp: () => Promise<void>
@@ -268,6 +269,7 @@ interface DataState {
   fetchRoleHistory: (name: string, limit?: number) => Promise<void>
   fetchIndexQuotes: () => Promise<void>
   fetchSentimentHistory: (days?: number) => Promise<void>
+  fetchYesterdayLimitUp: () => Promise<void>
   createRole: (name: string, displayName: string, strategy: string) => Promise<void>
   updateRoleStrategy: (name: string, strategy: string) => Promise<void>
   deleteRole: (name: string) => Promise<void>
@@ -291,6 +293,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   roleHistory: {},
   indexQuotes: { data: [], loading: false, error: '' },
   sentimentHistory: { data: [], loading: false, error: '' },
+  yesterdayLimitUp: { data: [], loading: false, error: '' },
 
   fetchOverview: async () => {
     set((s) => ({ overview: { ...s.overview, loading: true, error: '' } }))
@@ -488,6 +491,16 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({ sentimentHistory: { data, loading: false, error: '' } })
     } catch (e: unknown) {
       set((s) => ({ sentimentHistory: { ...s.sentimentHistory, loading: false, error: (e as Error).message || String(e) } }))
+    }
+  },
+
+  fetchYesterdayLimitUp: async () => {
+    set((s) => ({ yesterdayLimitUp: { ...s.yesterdayLimitUp, loading: true, error: '' } }))
+    try {
+      const data = await fetchJson<Stock[]>('/api/yesterday-limit-up')
+      set({ yesterdayLimitUp: { data, loading: false, error: '' } })
+    } catch (e: unknown) {
+      set((s) => ({ yesterdayLimitUp: { ...s.yesterdayLimitUp, loading: false, error: (e as Error).message || String(e) } }))
     }
   },
 
