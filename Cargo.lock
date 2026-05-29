@@ -5002,7 +5002,7 @@ dependencies = [
 
 [[package]]
 name = "trending-agent-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5021,7 +5021,7 @@ dependencies = [
 
 [[package]]
 name = "trending-agent-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -5068,7 +5068,7 @@ dependencies = [
 
 [[package]]
 name = "trending-agent-tauri"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "dotenvy",

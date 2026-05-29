@@ -62,6 +62,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 5. project-specific guideliness
 check .claude/context/*.md
+
+## 6. ui风格
+check .claude/context/claude-ui.md
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
