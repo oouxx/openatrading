@@ -7,9 +7,9 @@ use tokio::time::{sleep, Duration as TokioDuration};
 
 use crate::api::Client as ApiClient;
 use crate::llm::agent::agent_loop;
+use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
 use crate::llm::LlmClient;
 use crate::llm::ToolSet;
-use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -142,9 +142,9 @@ pub async fn start_scheduler(
         let cron_s = config.decision_schedule.clone();
         let tools = Arc::new(
             ToolSet::new()
-                .add(GetLimitUp)
-                .add(GetLimitDown)
-                .add(GetMarketOverview),
+                .with_tool(GetLimitUp)
+                .with_tool(GetLimitDown)
+                .with_tool(GetMarketOverview),
         );
         spawn_cron("decision", &cron_s, beijing_tz, move || {
             let mem = mem.clone();
@@ -351,6 +351,7 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
     tracing::info!("[cron] position prices updated: {updated} ok, {failed} failed");
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_decision_for_role(
     trade: &dyn TradeManager,
     social: &dyn NotificationSender,

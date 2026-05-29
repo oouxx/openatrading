@@ -23,10 +23,7 @@ impl DiscordChannel {
     }
 
     async fn send_chunk(&self, text: &str) -> Result<()> {
-        let url = format!(
-            "{}/channels/{}/messages",
-            DISCORD_API_BASE, self.channel_id
-        );
+        let url = format!("{}/channels/{}/messages", DISCORD_API_BASE, self.channel_id);
         let resp = self
             .client
             .post(&url)

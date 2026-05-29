@@ -30,8 +30,8 @@ define_tool! {
 
 #[cfg(test)]
 mod tests {
-    use crate::llm::Tool;
     use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
+    use crate::llm::Tool;
 
     #[tokio::test]
     async fn test_get_limit_up_tool_schema() {
@@ -73,7 +73,11 @@ mod tests {
     async fn test_get_limit_down_tool_call() {
         let tool = GetLimitDown;
         let result = tool.execute(&serde_json::json!({})).await;
-        assert!(result.is_ok(), "fetch_limit_down failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "fetch_limit_down failed: {:?}",
+            result.err()
+        );
         let json: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
         assert!(json.is_array(), "expected JSON array, got: {}", json);
     }
@@ -83,7 +87,11 @@ mod tests {
     async fn test_get_market_overview_tool_call() {
         let tool = GetMarketOverview;
         let result = tool.execute(&serde_json::json!({})).await;
-        assert!(result.is_ok(), "fetch_market_overview failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "fetch_market_overview failed: {:?}",
+            result.err()
+        );
         let json: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
         assert!(json.is_object(), "expected JSON object, got: {}", json);
         assert!(json.get("limit_up_count").is_some());
@@ -98,9 +106,9 @@ mod tests {
 
         let tools = Arc::new(
             ToolSet::new()
-                .add(GetLimitUp)
-                .add(GetLimitDown)
-                .add(GetMarketOverview),
+                .with_tool(GetLimitUp)
+                .with_tool(GetLimitDown)
+                .with_tool(GetMarketOverview),
         );
 
         assert_eq!(tools.to_openai_tools().len(), 3);
