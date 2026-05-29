@@ -1,0 +1,626 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>涨停晋级分析 — openatrading</title>
+<style>
+  :root {
+    --bg: oklch(98% 0.004 95); --surface: oklch(100% 0.002 95);
+    --fg: oklch(20% 0.018 70); --muted: oklch(48% 0.012 70);
+    --border: oklch(90% 0.006 95); --accent: oklch(52% 0.10 28);
+    --up: oklch(48% 0.16 22); --down: oklch(48% 0.14 155);
+    --warn: oklch(55% 0.16 55);
+    --font-display: 'Iowan Old Style','Charter',Georgia,'Noto Serif SC',serif;
+    --font-body: -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+    --font-mono: 'JetBrains Mono','IBM Plex Mono','SF Mono',ui-monospace,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font-body);background:var(--bg);color:var(--fg);min-height:100vh;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);z-index:20;flex-shrink:0}
+  .topbar .logo{font-family:var(--font-display);font-size:1.1rem;font-weight:500;color:var(--fg);letter-spacing:-0.01em;text-decoration:none}
+  .topbar .logo span{color:var(--accent)}
+  .trading-badge{font-family:var(--font-display);font-size:.85rem;font-weight:500;color:var(--fg);background:oklch(96% 0.004 95);padding:5px 14px;border-radius:20px;display:flex;align-items:center;gap:8px}
+  .trading-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .topbar-actions{display:flex;gap:8px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:none;font-family:var(--font-body);font-size:.78rem;font-weight:500;cursor:pointer;transition:all .15s;text-decoration:none;white-space:nowrap}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+  .btn-ghost:hover{background:oklch(95% 0.005 95);color:var(--fg)}
+  .main-wrap{max-width:1500px;margin:0 auto;padding:24px;width:100%;flex:1}
+
+  .stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center}
+  .stat-card.hl{border-color:var(--accent);background:oklch(96% 0.02 28 / 0.05)}
+  .stat-card .sl{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  .stat-card .sv{font-family:var(--font-mono);font-size:1.4rem;font-weight:600;color:var(--fg)}
+  .stat-card .ss{font-size:.65rem;color:var(--muted);margin-top:2px}
+
+  .content-grid{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start}
+
+  /* Left */
+  .filter-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .filter-panel .ph{padding:12px 14px;border-bottom:1px solid var(--border);font-family:var(--font-display);font-size:.8rem;font-weight:500}
+  .filter-body{padding:10px 12px}
+  .fg{margin-bottom:14px}
+  .fgl{font-size:.64rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  .fcs{display:flex;flex-wrap:wrap;gap:5px}
+  .fc{padding:4px 12px;border-radius:16px;border:1px solid var(--border);font-size:.7rem;cursor:pointer;background:transparent;color:var(--muted);transition:all .12s}
+  .fc:hover{border-color:var(--accent);color:var(--fg)}
+  .fc.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .fc.on.promo{background:var(--up);border-color:var(--up)}
+  .fc.on.fail{background:var(--down);border-color:var(--down)}
+  .fc.on.new{background:oklch(55% 0.14 240);border-color:oklch(55% 0.14 240)}
+  .lv-row{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:6px;font-size:.7rem;margin-bottom:1px;cursor:pointer;transition:background .1s}
+  .lv-row:hover{background:oklch(97% 0.004 95)}
+  .lv-row.active{background:oklch(94% 0.02 28 / 0.08)}
+  .lv-rate{font-family:var(--font-mono);font-size:.66rem;font-weight:500}
+  .lv-rate.good{color:var(--up)}.lv-rate.mid{color:var(--warn)}.lv-rate.low{color:var(--down)}
+
+  /* Table */
+  .table-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .table-panel .ph{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .table-panel .ph h3{font-family:var(--font-display);font-size:.85rem;font-weight:500}
+  .tw{overflow:auto;max-height:62vh}
+  table{width:100%;border-collapse:collapse;font-size:.77rem}
+  th{text-align:left;padding:9px 10px;font-size:.66rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border);background:oklch(97% 0.003 95);position:sticky;top:0;z-index:1;white-space:nowrap}
+  td{padding:7px 10px;border-bottom:1px solid oklch(96% 0.003 95);white-space:nowrap}
+  tr{cursor:pointer;transition:background .1s}
+  tr:hover td{background:oklch(97% 0.004 95)}
+  tr.selected td{background:oklch(94% 0.02 28 / 0.08)}
+  .nc{font-weight:500;color:var(--accent);text-decoration:underline;text-decoration-color:oklch(80% 0.04 28);text-underline-offset:3px;cursor:pointer}
+  .nc:hover{color:oklch(46% 0.12 28)}
+  .cc{font-size:.68rem;color:var(--muted);margin-left:3px}
+  .st{font-size:.64rem;color:var(--muted);background:oklch(96% 0.003 95);padding:2px 7px;border-radius:4px}
+  .pchain{display:inline-flex;align-items:center;gap:4px}
+  .cs{font-family:var(--font-mono);font-size:.7rem;font-weight:600;padding:2px 7px;border-radius:4px}
+  .cs.y{background:oklch(92% 0.02 240 / 0.15);color:oklch(50% 0.10 240)}
+  .cs.tu{background:oklch(90% 0.04 22 / 0.18);color:var(--up)}
+  .cs.tn{background:oklch(90% 0.04 240 / 0.18);color:oklch(55% 0.14 240)}
+  .cs.to{background:oklch(90% 0.04 155 / 0.18);color:var(--down)}
+  .ca{color:var(--muted);font-size:.6rem}
+  .rt{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:600}
+  .rt.promo{background:oklch(90% 0.04 22 / 0.18);color:var(--up)}
+  .rt.fail{background:oklch(90% 0.04 155 / 0.2);color:var(--down)}
+  .rt.new{background:oklch(90% 0.04 240 / 0.18);color:oklch(55% 0.14 240)}
+  .val{font-family:var(--font-mono);font-weight:500;font-size:.73rem}
+  .val.up{color:var(--up)}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border-radius:16px;border:1px solid var(--border);width:820px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.2);overflow:hidden}
+  .modal .mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .mh .mht{font-family:var(--font-display);font-size:.95rem;font-weight:500;display:flex;align-items:center;gap:8px}
+  .mh .mhc{font-size:.7rem;color:var(--muted);font-family:var(--font-mono)}
+  .mh .mclose{background:none;border:none;font-size:1.4rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:6px;line-height:1}
+  .mh .mclose:hover{background:oklch(95% 0.005 95);color:var(--fg)}
+  .mtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;gap:0;overflow-x:auto}
+  .mtab{padding:10px 18px;border:none;background:transparent;font-family:var(--font-body);font-size:.75rem;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .12s;white-space:nowrap}
+  .mtab:hover{color:var(--fg)}
+  .mtab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .mbody{flex:1;overflow-y:auto;padding:20px;min-height:280px}
+
+  /* Overview cards */
+  .overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+  .ov-card{background:oklch(97% 0.003 95);border-radius:10px;padding:12px 14px;text-align:center}
+  .ov-card .ovl{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+  .ov-card .ovv{font-family:var(--font-mono);font-size:1rem;font-weight:600;color:var(--fg)}
+  .ov-card .ovv.up{color:var(--up)}.ov-card .ovv.down{color:var(--down)}
+  .analysis-block{background:oklch(97% 0.003 95);border-radius:10px;padding:14px 18px;margin-bottom:10px}
+  .analysis-block h4{font-family:var(--font-display);font-size:.82rem;font-weight:500;color:var(--fg);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .analysis-block p{font-size:.76rem;color:var(--muted);line-height:1.7}
+
+  .mbody svg{width:100%}
+  .minfo{display:flex;flex-wrap:wrap;gap:8px;padding:8px 20px 14px;font-size:.68rem;color:var(--muted);border-top:1px solid var(--border);flex-shrink:0}
+  .minfo span{background:oklch(96% 0.003 95);padding:3px 8px;border-radius:4px}
+
+  .hidden{display:none!important}
+
+  @media(max-width:768px){
+    .content-grid{grid-template-columns:1fr}.filter-panel{order:2}.table-panel{order:1}
+    .stats-row{grid-template-columns:repeat(3,1fr)}.main-wrap{padding:12px}
+    .modal{border-radius:12px}.mtab{padding:8px 12px;font-size:.7rem}.mbody{padding:12px}
+    .overview-grid{grid-template-columns:repeat(2,1fr)}
+  }
+  @media(max-width:500px){.stats-row{grid-template-columns:repeat(2,1fr)}.main-wrap{padding:8px}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="index.html" class="logo">open<span>a</span>trading</a>
+  <div class="trading-badge"><span class="dot"></span>昨日 <strong>01-17</strong> → 今日 <strong>01-20</strong></div>
+  <div class="topbar-actions"><button class="btn btn-ghost" onclick="location.href='index.html'">← 返回总览</button></div>
+</header>
+
+<div class="main-wrap">
+  <div class="stats-row" id="statsRow"></div>
+  <div class="content-grid">
+    <div class="filter-panel">
+      <div class="ph">筛选 & 统计</div>
+      <div class="filter-body">
+        <div class="fg"><div class="fgl">结果类型</div>
+          <div class="fcs" id="rfChips">
+            <span class="fc on" data-filter="all" onclick="setFilter('all',this)">全部</span>
+            <span class="fc promo" data-filter="promoted" onclick="setFilter('promoted',this)">晋级</span>
+            <span class="fc fail" data-filter="failed" onclick="setFilter('failed',this)">断板</span>
+            <span class="fc new" data-filter="new" onclick="setFilter('new',this)">新进</span>
+          </div>
+        </div>
+        <div class="fg"><div class="fgl">各板级晋级率</div><div id="levelStats"></div></div>
+      </div>
+    </div>
+    <div class="table-panel">
+      <div class="ph"><h3>涨停对比明细</h3><span style="font-size:.68rem;color:var(--muted)" id="tableCount"></span></div>
+      <div class="tw"><table><thead><tr><th>名称</th><th>板块</th><th>晋级链</th><th>结果</th><th>封板</th><th>封单</th></tr></thead><tbody id="tableBody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal"><div class="mh"><span><span class="mht" id="mTitle">—</span><span class="mhc" id="mCode"></span></span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div class="mtabs">
+      <button class="mtab active" data-tab="overview" onclick="switchMTab('overview')">概况</button>
+      <button class="mtab" data-tab="intraday" onclick="switchMTab('intraday')">分时</button>
+      <button class="mtab" data-tab="daily" onclick="switchMTab('daily')">日K</button>
+      <button class="mtab" data-tab="weekly" onclick="switchMTab('weekly')">周K</button>
+      <button class="mtab" data-tab="monthly" onclick="switchMTab('monthly')">月K</button>
+    </div>
+    <div class="mbody" id="mBody"></div>
+    <div class="minfo" id="mInfo"></div>
+  </div>
+</div>
+
+<script>
+const SECTORS={semiconductor:'半导体',ai_compute:'AI算力',new_energy:'新能源',consumer:'白酒消费',pharma:'医药生物',military:'军工',auto:'汽车链',robot:'机器人',real_estate:'地产'};
+
+// Extended stock data with market cap, float cap, vol ratio, amount, volume, sector reason, limit reason
+const stocks=[{
+  name:'中视传媒',code:'600088',sector:'ai_compute',yBoard:3,tBoard:4,tTime:'09:31',seal:4.5,turnover:6.8,breaks:0,result:'promoted',basePrice:18.5,
+  marketCap:186.5,floatCap:92.3,volRatio:4.2,amount:8.56,vol:4620,
+  sectorReason:'公司旗下拥有视频AI内容生成平台，受益于Sora类多模态大模型概念炒作，与AI算力板块高度联动。',
+  limitReason:'受隔夜美股AI龙头大涨提振，叠加公司近期公告与头部大模型厂商达成数据合作，集合竞价即封涨停，盘中无开板，封单4.5亿且筹码锁定良好。'
+},{
+  name:'智度股份',code:'000676',sector:'ai_compute',yBoard:4,tBoard:5,tTime:'09:30',seal:5.8,turnover:4.2,breaks:0,result:'promoted',basePrice:12.8,
+  marketCap:158.2,floatCap:78.5,volRatio:6.8,amount:12.35,vol:9650,
+  sectorReason:'公司子公司深耕AI营销与精准投放，属于AI应用落地核心标的，与AI算力板块同频共振。',
+  limitReason:'市场最高连板标的，四进五成功晋级。游资锁仓意愿极强，开盘秒板全天无漏水，换手率仅4.2%显示筹码高度集中，是目前短线情绪核心风向标。'
+},{
+  name:'精伦电子',code:'600355',sector:'robot',yBoard:5,tBoard:6,tTime:'09:33',seal:2.2,turnover:16.5,breaks:1,result:'promoted',basePrice:8.2,
+  marketCap:98.6,floatCap:45.2,volRatio:8.5,amount:18.20,vol:22200,
+  sectorReason:'公司智能控制模块可用于人形机器人关节驱动，属于机器人赛道核心零部件环节。',
+  limitReason:'六板高标，盘中炸板一次但快速回封。换手16.5%较为充分，筹码成本上移后封单重新堆积。目前是人形机器人概念的最高板，但高位分歧加大需警惕。'
+},{
+  name:'贵州茅台',code:'600519',sector:'consumer',yBoard:2,tBoard:3,tTime:'09:30',seal:28.5,turnover:0.8,breaks:0,result:'promoted',basePrice:1680,
+  marketCap:21120,floatCap:21120,volRatio:1.8,amount:65.40,vol:389,
+  sectorReason:'白酒绝对龙头，消费板块核心资产，外资重仓股，与白酒消费板块完全绑定。',
+  limitReason:'春节前消费旺季预期+北向资金连续大额流入，机构与外资合力封板。封单28.5亿为全场最大，换手仅0.8%显示惜售情绪浓厚，属于典型的机构趋势板。'
+},{
+  name:'深科技',code:'000021',sector:'semiconductor',yBoard:2,tBoard:3,tTime:'09:32',seal:3.6,turnover:5.8,breaks:0,result:'promoted',basePrice:22.5,
+  marketCap:352,floatCap:168,volRatio:3.5,amount:11.20,vol:4980,
+  sectorReason:'公司为国内存储封测龙头，深度绑定长江存储产业链，是半导体国产替代核心标的。',
+  limitReason:'存储芯片涨价周期+国产替代政策催化，三连板确认中期趋势。封单3.6亿且盘中无开板，技术上突破年线压制，板块内多只个股联动涨停形成板块效应。'
+},{
+  name:'昆仑万维',code:'300418',sector:'ai_compute',yBoard:2,tBoard:3,tTime:'09:35',seal:6.2,turnover:8.2,breaks:0,result:'promoted',basePrice:48,
+  marketCap:583,floatCap:285,volRatio:5.2,amount:22.80,vol:4750,
+  sectorReason:'公司旗下拥有AI大模型及AIGC产品矩阵，是AI应用端龙头，与AI算力板块高度共振。',
+  limitReason:'AI应用端集体爆发，公司近期发布新一代多模态模型性能超预期，资金追捧下三连板。封单6.2亿，龙虎榜显示机构净买入2.3亿。'
+},{
+  name:'沃森生物',code:'300142',sector:'pharma',yBoard:2,tBoard:3,tTime:'09:42',seal:2.5,turnover:7.4,breaks:1,result:'promoted',basePrice:15.2,
+  marketCap:244,floatCap:122,volRatio:3.8,amount:9.65,vol:6350,
+  sectorReason:'公司为国内mRNA疫苗及创新药研发企业，属于医药生物板块的创新药细分领域。',
+  limitReason:'创新药出海利好+公司mRNA平台获海外专利授权，三连板但盘中炸板一次，回封后封单偏薄仅2.5亿，需关注次日竞价强弱。'
+},{
+  name:'连城数控',code:'002129',sector:'new_energy',yBoard:2,tBoard:3,tTime:'09:50',seal:3.1,turnover:4.8,breaks:0,result:'promoted',basePrice:35,
+  marketCap:420,floatCap:205,volRatio:2.9,amount:7.85,vol:2240,
+  sectorReason:'公司为光伏硅片设备龙头，受益于光伏产业链扩产周期，与新能源板块紧密关联。',
+  limitReason:'光伏组件排产超预期+海外订单增长，三连板稳步推进。封单3.1亿，换手4.8%适中，属于机构与游资合力品种。'
+},{
+  name:'巨轮智能',code:'002031',sector:'robot',yBoard:2,tBoard:3,tTime:'10:00',seal:1.9,turnover:14.2,breaks:1,result:'promoted',basePrice:5.8,
+  marketCap:112,floatCap:58,volRatio:10.2,amount:15.60,vol:26900,
+  sectorReason:'公司RV减速器已批量供货，是人形机器人关节核心部件，属于机器人板块的零部件细分龙头。',
+  limitReason:'机器人概念持续活跃，三连板但盘中炸板一次且换手14.2%偏高，封单仅1.9亿，属于资金博弈激烈品种。需关注次日能否缩量加速。'
+},{
+  name:'北方华创',code:'002371',sector:'semiconductor',yBoard:1,tBoard:2,tTime:'09:31',seal:5.2,turnover:4.1,breaks:0,result:'promoted',basePrice:312,
+  marketCap:1652,floatCap:820,volRatio:2.8,amount:18.40,vol:590,
+  sectorReason:'国内半导体设备龙头，覆盖刻蚀、薄膜沉积、清洗等关键工艺，是半导体国产替代最核心标的。',
+  limitReason:'半导体设备国产替代加速+大基金三期预期，二连板加速。封单5.2亿，龙虎榜显示北上资金净买入，属于机构主导的趋势加速板。'
+},{
+  name:'卓胜微',code:'300782',sector:'semiconductor',yBoard:1,tBoard:2,tTime:'09:33',seal:2.8,turnover:9.4,breaks:0,result:'promoted',basePrice:95,
+  marketCap:507,floatCap:248,volRatio:4.5,amount:14.20,vol:1495,
+  sectorReason:'射频前端芯片龙头，受益于5G终端渗透率提升及国产替代，与半导体板块高度绑定。',
+  limitReason:'消费电子复苏+射频芯片国产化加速，二连板。虽封单2.8亿不算大，但换手9.4%后筹码已充分交换，后续缩量加速可期。'
+},{
+  name:'景嘉微',code:'300474',sector:'ai_compute',yBoard:1,tBoard:2,tTime:'09:36',seal:3.1,turnover:7.8,breaks:0,result:'promoted',basePrice:65,
+  marketCap:298,floatCap:148,volRatio:5.6,amount:16.80,vol:2585,
+  sectorReason:'国产GPU龙头，产品可用于AI推理和图形渲染，是AI算力板块的硬件核心标的。',
+  limitReason:'国产GPU替代英伟达预期持续升温+公司新一代GPU流片成功，二连板。封单3.1亿，AI算力板块整体强势为其提供板块保护。'
+},{
+  name:'阳光电源',code:'300274',sector:'new_energy',yBoard:1,tBoard:2,tTime:'09:40',seal:4.2,turnover:3.5,breaks:0,result:'promoted',basePrice:88,
+  marketCap:1307,floatCap:645,volRatio:2.2,amount:11.50,vol:1307,
+  sectorReason:'全球逆变器龙头，储能业务高速增长，是新能源板块的核心权重。',
+  limitReason:'储能出海数据超预期+国内大储招标放量，二连板机构主导。封单4.2亿换手仅3.5%显示机构惜售，属于趋势加速形态。'
+},{
+  name:'宁德时代',code:'300750',sector:'new_energy',yBoard:1,tBoard:2,tTime:'09:44',seal:9.8,turnover:1.8,breaks:0,result:'promoted',basePrice:225,
+  marketCap:9950,floatCap:4950,volRatio:1.5,amount:42.60,vol:1893,
+  sectorReason:'全球动力电池绝对龙头，新能源板块总龙头，与新能源全产业链深度绑定。',
+  limitReason:'宁德时代连续涨停极为罕见，本次由固态电池技术突破+海外大单落地双重催化驱动。封单9.8亿为新能源板块最大，换手仅1.8%显示机构完全锁仓，龙虎榜显示北上+机构合计净买入超15亿。'
+},{
+  name:'洋河股份',code:'002304',sector:'consumer',yBoard:1,tBoard:2,tTime:'09:48',seal:3.5,turnover:3.2,breaks:1,result:'promoted',basePrice:105,
+  marketCap:1582,floatCap:1582,volRatio:2.5,amount:8.90,vol:848,
+  sectorReason:'白酒二线龙头，苏酒代表品牌，受益于春节消费旺季和白酒板块整体回暖。',
+  limitReason:'春节消费旺季+白酒板块集体走强，二连板但盘中炸板一次后回封。封单3.5亿适中，换手3.2%较低，后续需白酒板块持续配合。'
+},{
+  name:'百济神州',code:'688235',sector:'pharma',yBoard:1,tBoard:2,tTime:'09:52',seal:4.8,turnover:2.6,breaks:0,result:'promoted',basePrice:128,
+  marketCap:1742,floatCap:860,volRatio:2.1,amount:10.40,vol:813,
+  sectorReason:'国内创新药龙头，BTK抑制剂泽布替尼全球销售持续放量，属于医药生物板块的创新药旗帜。',
+  limitReason:'海外临床数据超预期+创新药出海政策利好，二连板机构加仓明显。封单4.8亿、换手2.6%显示机构锁仓意愿强，是医药板块的机构趋势板。'
+},{
+  name:'凯莱英',code:'002821',sector:'pharma',yBoard:1,tBoard:2,tTime:'09:56',seal:2.2,turnover:6.1,breaks:1,result:'promoted',basePrice:108,
+  marketCap:398,floatCap:195,volRatio:3.5,amount:12.80,vol:1185,
+  sectorReason:'国内CDMO龙头，为全球制药企业提供研发生产外包服务，与医药生物板块绑定。',
+  limitReason:'海外CDMO需求回暖+公司获得跨国药企大额订单，二连板但盘中炸板一次。封单2.2亿偏薄，需关注次日竞价情况。'
+},{
+  name:'中兵红箭',code:'000519',sector:'military',yBoard:1,tBoard:2,tTime:'10:00',seal:1.8,turnover:8.3,breaks:0,result:'promoted',basePrice:15,
+  marketCap:208,floatCap:105,volRatio:4.8,amount:14.50,vol:9670,
+  sectorReason:'兵器工业集团旗下超硬材料龙头，人造金刚石可用于军工和半导体加工，属于军工板块。',
+  limitReason:'军工订单回暖+培育钻石概念重获关注，二连板。换手8.3%后封单1.8亿不算强，但军工板块整体活跃提供支撑。'
+},{
+  name:'长安汽车',code:'000625',sector:'auto',yBoard:1,tBoard:2,tTime:'10:06',seal:5.6,turnover:2.4,breaks:0,result:'promoted',basePrice:28,
+  marketCap:2780,floatCap:1385,volRatio:2.0,amount:15.80,vol:5643,
+  sectorReason:'国内自主品牌汽车龙头，深度布局新能源和智能驾驶，与汽车链板块深度绑定。',
+  limitReason:'华为智选车合作深化+自主品牌出海加速，二连板机构主导。封单5.6亿，换手2.4%显示筹码稳定，属于机构趋势加速板。'
+},{
+  name:'三花智控',code:'002050',sector:'robot',yBoard:1,tBoard:2,tTime:'10:12',seal:3.8,turnover:5.2,breaks:0,result:'promoted',basePrice:32,
+  marketCap:855,floatCap:420,volRatio:3.2,amount:13.60,vol:4250,
+  sectorReason:'热管理龙头，产品可用于人形机器人热控系统，与机器人板块有直接关联。',
+  limitReason:'人形机器人量产预期+公司确认进入特斯拉Optimus供应链，二连板。封单3.8亿、换手5.2%属于健康换手板，机器人板块内联动效应明显。'
+},{
+  name:'鸣志电器',code:'603728',sector:'robot',yBoard:1,tBoard:2,tTime:'10:16',seal:1.5,turnover:13.8,breaks:2,result:'promoted',basePrice:18,
+  marketCap:75.6,floatCap:38.2,volRatio:9.5,amount:16.80,vol:9330,
+  sectorReason:'步进电机及控制系统供应商，可用于机器人关节驱动，属于机器人板块核心零部件。',
+  limitReason:'二连板但盘中炸板两次，换手13.8%极高，封单仅1.5亿。游资博弈激烈，筹码松动明显，属于高波动品种。虽最终回封但次日需要观察竞价强度。'
+},{
+  name:'双环传动',code:'002472',sector:'auto',yBoard:1,tBoard:2,tTime:'10:20',seal:2.1,turnover:6.5,breaks:0,result:'promoted',basePrice:25,
+  marketCap:212,floatCap:108,volRatio:3.8,amount:10.20,vol:4080,
+  sectorReason:'精密传动齿轮龙头，产品覆盖新能源车和机器人减速器，横跨汽车链和机器人两大板块。',
+  limitReason:'新能源车+机器人双概念加持，二连板。换手6.5%适中，封单2.1亿尚可，双概念叠加使其具备较好的辨识度。'
+},{
+  name:'绿的谐波',code:'688017',sector:'robot',yBoard:1,tBoard:2,tTime:'10:24',seal:2.9,turnover:7.2,breaks:0,result:'promoted',basePrice:42,
+  marketCap:75.8,floatCap:38.5,volRatio:5.8,amount:13.40,vol:3190,
+  sectorReason:'谐波减速器龙头，人形机器人关节核心供应商，是机器人板块的高辨识度标的。',
+  limitReason:'谐波减速器供不应求+机器人量产在即，二连板。在机器人板块中辨识度极高，封单2.9亿，换手7.2%属于正常的板块龙头换手水平。'
+},{
+  name:'皇庭国际',code:'000056',sector:'real_estate',yBoard:4,tBoard:0,tTime:'—',seal:0,turnover:18.2,breaks:0,result:'failed',basePrice:4.5,
+  marketCap:52.8,floatCap:26.5,volRatio:0.6,amount:3.85,vol:8560,
+  sectorReason:'深圳本地地产股，商业地产运营为主，属于地产板块但基本面缺乏亮点。',
+  limitReason:'四进五失败。地产板块整体退潮+公司基本面缺乏持续催化，开盘后迅速跳水，最终收跌。四板高位后资金接力意愿不足，属于板块退潮期的典型断板案例。'
+},{
+  name:'埃夫特',code:'688165',sector:'robot',yBoard:3,tBoard:0,tTime:'—',seal:0,turnover:22.5,breaks:0,result:'failed',basePrice:11,
+  marketCap:57.4,floatCap:28.8,volRatio:0.5,amount:4.20,vol:3820,
+  sectorReason:'工业机器人本体制造商，属于机器人板块但偏传统工业机器人，与人形机器人概念关联度较弱。',
+  limitReason:'三进四失败。机器人板块内部分化，资金从传统工业机器人流向人形机器人核心零部件，公司辨识度不足导致断板。高换手22.5%显示大量资金出逃。'
+},{
+  name:'卫星化学',code:'002648',sector:'ai_compute',yBoard:2,tBoard:0,tTime:'—',seal:0,turnover:15.8,breaks:0,result:'failed',basePrice:38,
+  marketCap:1282,floatCap:640,volRatio:0.7,amount:6.50,vol:1710,
+  sectorReason:'公司C3产业链与AI算力用到的冷却液材料有一定关联，但并非AI算力核心标的，板块归属偏边缘。',
+  limitReason:'二进三失败。AI算力板块热度虽在，但资金向更纯正的GPU/服务器/光模块标的集中，公司作为边缘品种被资金抛弃。'
+},{
+  name:'大华股份',code:'002236',sector:'ai_compute',yBoard:2,tBoard:0,tTime:'—',seal:0,turnover:19.1,breaks:0,result:'failed',basePrice:52,
+  marketCap:1728,floatCap:860,volRatio:0.8,amount:8.20,vol:1577,
+  sectorReason:'安防AI龙头，视频AI分析能力在AI板块中属于应用层，与AI算力板块有一定联动但非核心。',
+  limitReason:'二进三失败。公司体量较大且为机构重仓股，短线连板后机构减仓明显。AI板块热点轮动至纯算力标的，公司作为AI应用层被边缘化。'
+},{
+  name:'华大基因',code:'300676',sector:'pharma',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:12.4,breaks:0,result:'failed',basePrice:42,
+  marketCap:174,floatCap:88,volRatio:0.6,amount:5.20,vol:1240,
+  sectorReason:'基因检测龙头，属于医药生物板块的精准医疗细分领域。',
+  limitReason:'首板次日即断板。医药板块热点集中在创新药出海方向，基因检测方向缺乏持续催化，资金次日即离场。'
+},{
+  name:'中微公司',code:'688012',sector:'semiconductor',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:14.6,breaks:0,result:'failed',basePrice:128,
+  marketCap:792,floatCap:395,volRatio:0.7,amount:7.80,vol:609,
+  sectorReason:'半导体刻蚀设备龙头，是半导体设备国产替代核心标的。',
+  limitReason:'首板次日即断板。虽然公司质地优良，但体量偏大且机构重仓，短线连板后机构减仓压力大。半导体板块热点轮动至存储方向，设备方向暂歇。'
+},{
+  name:'科大讯飞',code:'002230',sector:'ai_compute',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:16.2,breaks:0,result:'failed',basePrice:62,
+  marketCap:1435,floatCap:720,volRatio:0.6,amount:9.40,vol:1516,
+  sectorReason:'国内AI语音和NLP龙头，AI应用层代表，属于AI算力板块的下游应用端。',
+  limitReason:'首板次日断板。讯飞体量过大，短线连板难度高。AI板块热点集中在算力基础设施层，应用层资金关注度下降。'
+},{
+  name:'赣锋锂业',code:'002460',sector:'new_energy',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:11.8,breaks:0,result:'failed',basePrice:58,
+  marketCap:1170,floatCap:585,volRatio:0.5,amount:6.80,vol:1172,
+  sectorReason:'锂资源龙头，与新能源板块的电池产业链深度绑定。',
+  limitReason:'首板次日断板。锂价仍在磨底阶段，行业基本面缺乏反转信号，首板更多是超跌反弹而非趋势反转，资金次日即获利了结。'
+},{
+  name:'舍得酒业',code:'600702',sector:'consumer',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:13.5,breaks:0,result:'failed',basePrice:72,
+  marketCap:242,floatCap:242,volRatio:0.5,amount:5.80,vol:806,
+  sectorReason:'次高端白酒品牌，属于白酒消费板块。',
+  limitReason:'首板次日断板。白酒板块热点集中在茅台五粮液等龙头，次高端品牌缺乏独立催化，资金偏向龙头导致其断板。'
+},{
+  name:'中国卫通',code:'601698',sector:'military',yBoard:1,tBoard:0,tTime:'—',seal:0,turnover:10.2,breaks:0,result:'failed',basePrice:8.5,
+  marketCap:358,floatCap:180,volRatio:0.6,amount:4.50,vol:5290,
+  sectorReason:'卫星通信运营商，属于军工/航天板块的卫星互联网细分。',
+  limitReason:'首板次日断板。卫星互联网概念缺乏持续消息催化，首板更多是脉冲行情，次日资金迅速撤离。'
+},{
+  name:'中芯国际',code:'688981',sector:'semiconductor',yBoard:0,tBoard:1,tTime:'09:32',seal:3.8,turnover:5.2,breaks:0,result:'new',basePrice:51.5,
+  marketCap:4100,floatCap:2020,volRatio:2.5,amount:22.60,vol:4388,
+  sectorReason:'国内晶圆代工龙头，半导体产业链核心枢纽，是半导体板块最具代表性的标的。',
+  limitReason:'半导体国产替代加速+成熟制程需求回暖+大基金三期预期，今日首板涨停。封单3.8亿，换手5.2%适中，机构参与度较高。作为半导体板块龙头，其涨停对板块带动效应显著。'
+},{
+  name:'长电科技',code:'600584',sector:'semiconductor',yBoard:0,tBoard:1,tTime:'09:38',seal:2.1,turnover:8.1,breaks:1,result:'new',basePrice:42,
+  marketCap:752,floatCap:378,volRatio:3.8,amount:15.40,vol:3667,
+  sectorReason:'国内封测龙头，先进封装技术受益于AI芯片需求爆发，与半导体板块紧密关联。',
+  limitReason:'先进封装（Chiplet）概念持续发酵+AI芯片对先进封装需求暴增，今日首板。盘中炸板一次后回封，封单2.1亿，先进封装是半导体板块当前最强细分方向之一。'
+},{
+  name:'通富微电',code:'002156',sector:'semiconductor',yBoard:0,tBoard:1,tTime:'09:45',seal:1.5,turnover:12.3,breaks:0,result:'new',basePrice:28,
+  marketCap:425,floatCap:215,volRatio:5.2,amount:18.60,vol:6643,
+  sectorReason:'封测企业，与AMD深度绑定，受益于先进封装需求增长，属于半导体板块。',
+  limitReason:'AMD产业链+先进封装双概念驱动，今日首板。换手12.3%偏高，封单1.5亿偏薄，属于资金博弈型首板，次日需高开确认。'
+},{
+  name:'韦尔股份',code:'603501',sector:'semiconductor',yBoard:0,tBoard:1,tTime:'10:02',seal:4.2,turnover:3.8,breaks:0,result:'new',basePrice:108,
+  marketCap:1312,floatCap:655,volRatio:2.2,amount:12.80,vol:1185,
+  sectorReason:'CIS图像传感器龙头，受益于手机和汽车智能化趋势，属于半导体板块的设计端核心标的。',
+  limitReason:'消费电子复苏+CIS涨价预期，今日首板。封单4.2亿换手3.8%，机构主导迹象明显，属于机构趋势型首板。'
+},{
+  name:'浪潮信息',code:'000977',sector:'ai_compute',yBoard:0,tBoard:1,tTime:'09:35',seal:6.5,turnover:9.4,breaks:0,result:'new',basePrice:42,
+  marketCap:618,floatCap:310,volRatio:4.5,amount:24.60,vol:5857,
+  sectorReason:'国内AI服务器龙头，是AI算力基础设施的核心供应商，与AI算力板块完全绑定。',
+  limitReason:'全球AI算力军备竞赛持续升温+公司AI服务器出货量翻倍增长，今日首板。封单6.5亿、换手9.4%充分换手后封死，龙虎榜显示游资+机构合力买入，辨识度极高。'
+},{
+  name:'中科曙光',code:'603019',sector:'ai_compute',yBoard:0,tBoard:1,tTime:'09:42',seal:3.2,turnover:6.7,breaks:1,result:'new',basePrice:58,
+  marketCap:848,floatCap:425,volRatio:3.5,amount:16.40,vol:2828,
+  sectorReason:'国产算力龙头，自研AI训练服务器+液冷方案，属于AI算力板块的核心基础设施标的。',
+  limitReason:'国产算力替代英伟达预期+公司AI服务器获运营商大单，今日首板。盘中炸板一次后回封，封单3.2亿，国产算力是当前AI板块最强主线。'
+},{
+  name:'寒武纪',code:'688256',sector:'ai_compute',yBoard:0,tBoard:1,tTime:'09:55',seal:5.8,turnover:4.1,breaks:0,result:'new',basePrice:168,
+  marketCap:702,floatCap:350,volRatio:3.2,amount:18.20,vol:1083,
+  sectorReason:'国产AI芯片龙头，思元系列AI加速器是国产替代英伟达的核心产品，与AI算力板块深度绑定。',
+  limitReason:'国产AI芯片替代英伟达逻辑持续强化+公司思元590性能超预期，今日首板。封单5.8亿换手仅4.1%，筹码锁定极好，属于板块内辨识度最高的首板之一。'
+},{
+  name:'海光信息',code:'688041',sector:'ai_compute',yBoard:0,tBoard:1,tTime:'10:08',seal:2.8,turnover:7.2,breaks:0,result:'new',basePrice:78,
+  marketCap:1814,floatCap:908,volRatio:2.8,amount:14.60,vol:1872,
+  sectorReason:'国产x86 CPU龙头，海光DCU可用于AI训练和推理，属于AI算力板块的核心芯片标的。',
+  limitReason:'国产算力需求爆发+公司DCU产品性能持续提升，今日首板。市值偏大但封单2.8亿、换手7.2%合理，属于机构参与度较高的稳健型首板。'
+},{
+  name:'隆基绿能',code:'601012',sector:'new_energy',yBoard:0,tBoard:1,tTime:'09:50',seal:1.8,turnover:5.6,breaks:0,result:'new',basePrice:22,
+  marketCap:1668,floatCap:835,volRatio:2.0,amount:10.20,vol:4636,
+  sectorReason:'全球光伏硅片及组件龙头，新能源板块的核心权重股。',
+  limitReason:'光伏组件排产超预期+海外出口数据强劲，今日首板。封单1.8亿不算大，但换手5.6%适中。光伏板块整体回暖为其提供支撑，属于板块共振型首板。'
+},{
+  name:'通威股份',code:'600438',sector:'new_energy',yBoard:0,tBoard:1,tTime:'09:58',seal:1.2,turnover:8.9,breaks:2,result:'new',basePrice:26,
+  marketCap:1170,floatCap:585,volRatio:3.8,amount:14.80,vol:5692,
+  sectorReason:'硅料+电池片双龙头，光伏产业链核心企业，与新能源板块深度绑定。',
+  limitReason:'硅料价格企稳+电池片盈利修复预期，今日首板。但盘中炸板两次，封单仅1.2亿偏薄，换手8.9%，显示资金分歧较大。'
+},{
+  name:'五粮液',code:'000858',sector:'consumer',yBoard:0,tBoard:1,tTime:'10:12',seal:7.5,turnover:2.1,breaks:0,result:'new',basePrice:152,
+  marketCap:5900,floatCap:5900,volRatio:1.6,amount:18.20,vol:1197,
+  sectorReason:'白酒第二大龙头，浓香代表，与白酒消费板块深度绑定，外资和机构核心配置品种。',
+  limitReason:'春节消费旺季+白酒动销数据超预期+北向资金大额流入，今日首板。封单7.5亿全场前列，换手仅2.1%显示机构锁仓，属于消费白马趋势型首板。'
+},{
+  name:'泸州老窖',code:'000568',sector:'consumer',yBoard:0,tBoard:1,tTime:'10:20',seal:3.6,turnover:3.4,breaks:0,result:'new',basePrice:188,
+  marketCap:2768,floatCap:2768,volRatio:2.0,amount:12.40,vol:660,
+  sectorReason:'高端白酒品牌，国窖1573品牌力持续提升，与白酒消费板块绑定。',
+  limitReason:'高端白酒动销旺盛+春节旺季备货行情，今日首板。封单3.6亿、换手3.4%，白酒板块今日多股联动，板块效应显著。'
+},{
+  name:'山西汾酒',code:'600809',sector:'consumer',yBoard:0,tBoard:1,tTime:'10:28',seal:2.4,turnover:4.5,breaks:0,result:'new',basePrice:265,
+  marketCap:3234,floatCap:3234,volRatio:2.2,amount:10.60,vol:400,
+  sectorReason:'清香型白酒龙头，全国化进程加速，属于白酒消费板块的高成长标的。',
+  limitReason:'清香全国化逻辑持续兑现+春节备货超预期，今日首板。封单2.4亿，白酒板块今日三股涨停形成集群效应。'
+},{
+  name:'恒瑞医药',code:'600276',sector:'pharma',yBoard:0,tBoard:1,tTime:'09:38',seal:2.8,turnover:3.6,breaks:0,result:'new',basePrice:45,
+  marketCap:2872,floatCap:1435,volRatio:2.5,amount:16.20,vol:3600,
+  sectorReason:'国内创新药龙头，PD-1等多款重磅产品持续放量，属于医药生物板块的创新药旗帜。',
+  limitReason:'创新药出海政策利好+公司多款新药获批临床，今日首板。封单2.8亿、换手3.6%适中，机构参与度较高，属于医药板块的龙头首板。'
+},{
+  name:'迈瑞医疗',code:'300760',sector:'pharma',yBoard:0,tBoard:1,tTime:'09:52',seal:4.5,turnover:2.8,breaks:0,result:'new',basePrice:298,
+  marketCap:3616,floatCap:1810,volRatio:1.8,amount:14.20,vol:477,
+  sectorReason:'国内医疗器械绝对龙头，监护仪、超声等产品全球领先，属于医药生物板块的器械龙头。',
+  limitReason:'医疗设备更新政策利好+海外市场拓展加速，今日首板。封单4.5亿、换手2.8%，机构主导特征明显，属于稳健的趋势型首板。'
+},{
+  name:'药明康德',code:'603259',sector:'pharma',yBoard:0,tBoard:1,tTime:'10:05',seal:3.1,turnover:5.9,breaks:1,result:'new',basePrice:58,
+  marketCap:1710,floatCap:855,volRatio:3.5,amount:18.60,vol:3207,
+  sectorReason:'全球CRO/CDMO龙头，为全球药企提供研发外包服务，与医药生物板块绑定。',
+  limitReason:'海外CRO需求回暖+生物安全法案担忧缓解，今日首板。盘中炸板一次后回封，封单3.1亿，换手5.9%后筹码交换较充分。'
+},{
+  name:'中航沈飞',code:'600760',sector:'military',yBoard:0,tBoard:1,tTime:'09:40',seal:1.6,turnover:6.2,breaks:0,result:'new',basePrice:48,
+  marketCap:1324,floatCap:662,volRatio:3.2,amount:12.80,vol:2667,
+  sectorReason:'战斗机总装龙头，是军工板块的整机核心标的。',
+  limitReason:'军工订单预期回暖+周边安全形势催化，今日首板。封单1.6亿不算大但军工板块整体活跃提供支撑。'
+},{
+  name:'中国船舶',code:'600150',sector:'military',yBoard:0,tBoard:1,tTime:'09:48',seal:2.3,turnover:4.8,breaks:0,result:'new',basePrice:32,
+  marketCap:1430,floatCap:715,volRatio:2.8,amount:9.80,vol:3062,
+  sectorReason:'中国船舶制造龙头，军民船订单饱满，属于军工/船舶板块核心标的。',
+  limitReason:'全球造船周期上行+军船订单放量，今日首板。封单2.3亿、换手4.8%，造船周期逻辑较为扎实，属于基本面驱动的首板。'
+},{
+  name:'航发动力',code:'600893',sector:'military',yBoard:0,tBoard:1,tTime:'10:10',seal:1.9,turnover:5.1,breaks:0,result:'new',basePrice:38,
+  marketCap:1012,floatCap:506,volRatio:2.5,amount:8.50,vol:2237,
+  sectorReason:'航空发动机龙头，是军工板块的核心动力标的。',
+  limitReason:'航发产业链景气度提升+国产大飞机量产预期，今日首板。封单1.9亿适中，军工板块今日多股联动形成板块效应。'
+},{
+  name:'比亚迪',code:'002594',sector:'auto',yBoard:0,tBoard:1,tTime:'10:15',seal:8.2,turnover:1.5,breaks:0,result:'new',basePrice:284,
+  marketCap:8268,floatCap:4130,volRatio:1.4,amount:22.40,vol:789,
+  sectorReason:'国内新能源车绝对龙头，汽车链板块总龙头，与新能源汽车全产业链深度绑定。',
+  limitReason:'1月销量超预期+海外出口数据强劲+智能驾驶技术突破，今日首板。封单8.2亿、换手仅1.5%，机构完全锁仓。龙虎榜显示北上资金净买入超8亿，属于标志性的龙头首板。'
+},{
+  name:'赛力斯',code:'601127',sector:'auto',yBoard:0,tBoard:1,tTime:'10:22',seal:3.4,turnover:7.8,breaks:0,result:'new',basePrice:98,
+  marketCap:1480,floatCap:740,volRatio:4.5,amount:20.60,vol:2102,
+  sectorReason:'华为智选车深度合作伙伴，问界系列销量持续攀升，属于汽车链板块的华为产业链核心。',
+  limitReason:'问界M9交付超预期+华为智选车生态扩容，今日首板。封单3.4亿、换手7.8%，华为产业链热度持续提供加持。'
+},{
+  name:'拓普集团',code:'601689',sector:'auto',yBoard:0,tBoard:1,tTime:'10:30',seal:1.7,turnover:9.2,breaks:1,result:'new',basePrice:68,
+  marketCap:1150,floatCap:575,volRatio:3.8,amount:16.40,vol:2412,
+  sectorReason:'汽车底盘及热管理龙头，深度绑定特斯拉及国内头部新能源车企，属于汽车链板块的核心零部件标的。',
+  limitReason:'特斯拉Cybertruck量产加速+公司热管理业务高增长，今日首板。盘中炸板一次后回封，封单1.7亿偏薄。'
+},{
+  name:'埃斯顿',code:'002747',sector:'robot',yBoard:0,tBoard:1,tTime:'09:55',seal:1.8,turnover:8.5,breaks:0,result:'new',basePrice:22,
+  marketCap:192,floatCap:96,volRatio:5.5,amount:15.20,vol:6909,
+  sectorReason:'国产工业机器人龙头，产品覆盖六轴机器人及协作机器人，属于机器人板块。',
+  limitReason:'人形机器人量产预期+公司协作机器人出货量大增，今日首板。换手8.5%后封单1.8亿，机器人板块今日多股涨停形成集群效应。'
+},{
+  name:'新时达',code:'002527',sector:'robot',yBoard:0,tBoard:1,tTime:'10:08',seal:1.1,turnover:14.6,breaks:2,result:'new',basePrice:12,
+  marketCap:79.5,floatCap:40.2,volRatio:8.5,amount:14.80,vol:12333,
+  sectorReason:'机器人控制系统及伺服驱动供应商，属于机器人板块的核心零部件标的。',
+  limitReason:'机器人板块热度扩散，今日首板。但盘中炸板两次、换手14.6%极高、封单仅1.1亿，属于典型的小盘游资博弈品种，次日波动风险较大。'
+},{
+  name:'汇川技术',code:'300124',sector:'robot',yBoard:0,tBoard:1,tTime:'10:18',seal:3.2,turnover:4.3,breaks:0,result:'new',basePrice:55,
+  marketCap:1468,floatCap:735,volRatio:2.5,amount:10.80,vol:1964,
+  sectorReason:'工业自动化和机器人伺服系统龙头，是机器人板块的核心权重标的。',
+  limitReason:'机器人+工业自动化双轮驱动，今日首板。封单3.2亿、换手4.3%适中，属于机构参与度较高的机器人板块优质首板。'
+},{
+  name:'机器人',code:'300024',sector:'robot',yBoard:0,tBoard:1,tTime:'10:25',seal:2.6,turnover:6.8,breaks:0,result:'new',basePrice:16,
+  marketCap:248,floatCap:125,volRatio:4.8,amount:13.20,vol:8250,
+  sectorReason:'工业机器人及自动化成套设备供应商，股票名即为"机器人"，是机器人板块最具辨识度的标的。',
+  limitReason:'机器人板块集体爆发+公司名字自带辨识度吸引资金，今日首板。封单2.6亿、换手6.8%正常，板块效应显著。'
+},{
+  name:'江淮汽车',code:'600418',sector:'auto',yBoard:0,tBoard:1,tTime:'10:32',seal:2.2,turnover:5.4,breaks:1,result:'new',basePrice:18,
+  marketCap:393,floatCap:198,volRatio:3.5,amount:11.60,vol:6444,
+  sectorReason:'与华为合作打造高端智能电动车，属于汽车链板块的华为产业链标的。',
+  limitReason:'华为智选车合作深化+新车型规划曝光，今日首板。盘中炸板一次后回封，封单2.2亿，华为汽车产业链热度持续。'
+},{
+  name:'绿地谐波',code:'688017',sector:'robot',yBoard:0,tBoard:1,tTime:'09:42',seal:2.5,turnover:11.2,breaks:0,result:'new',basePrice:30,
+  marketCap:54.2,floatCap:27.5,volRatio:6.5,amount:12.80,vol:4267,
+  sectorReason:'谐波减速器专业制造商，人形机器人关节核心供应商，属于机器人板块的精密零部件方向。',
+  limitReason:'谐波减速器供需缺口持续扩大+人形机器人量产在即，今日首板。换手11.2%偏高但封单2.5亿尚可，机器人板块今日最强细分方向之一。'
+}];
+
+let filter='all',selectedCode=null,activeLv=null,mTab='overview';
+let klineCache={};
+
+function seededRand(seed){let s=seed;return function(){s=(s*16807+0)%2147483647;return(s-1)/2147483646;}}
+function genIntraday(stock){
+  const rand=seededRand(stock.code.split('').reduce((a,c)=>a+c.charCodeAt(0),0));
+  const pts=[],AM_S=570,AM_E=690,PM_S=780,PM_E=900;
+  const openPrice=stock.basePrice*(1+(rand()-.5)*.02);
+  const limitPrice=openPrice*1.1;let price=openPrice;pts.push({t:AM_S,p:price});
+  const isLimitUp=stock.tBoard>0;
+  const failed=stock.result==='failed';
+  const earlySeal=isLimitUp&&(stock.tTime||'99:99')<='09:45';
+  const midSeal=isLimitUp&&(stock.tTime||'99:99')>'09:45'&&(stock.tTime||'99:99')<='10:30';
+  const lateSeal=isLimitUp&&(stock.tTime||'99:99')>'10:30';
+  let sealMin=earlySeal?AM_S+8+Math.floor(rand()*15):midSeal?AM_S+30+Math.floor(rand()*30):lateSeal?AM_S+60+Math.floor(rand()*60):-1;
+  for(let m=AM_S+1;m<=AM_E;m++){
+    if(earlySeal&&m>=sealMin){price=limitPrice*(.995+rand()*.005);if(rand()<.03&&stock.breaks>0)price=limitPrice*.97}
+    else if(midSeal&&m>=sealMin){price=limitPrice*(.994+rand()*.006)}
+    else if(lateSeal&&m>=sealMin){price=limitPrice*(.993+rand()*.007)}
+    else if(failed){const drift=(rand()-.6)*.015;price=openPrice*(1+drift*(m-AM_S)/120);price=Math.min(price,openPrice*1.05)}
+    else{const drift=(rand()-.45)*.01;price=Math.max(openPrice*.95,Math.min(openPrice*1.06,price+drift*price))}
+    pts.push({t:m,p:price});
+  }
+  let middayPrice=pts[pts.length-1].p;
+  for(let m=PM_S;m<=PM_E;m++){
+    if(isLimitUp&&sealMin>0&&m>=PM_S){price=limitPrice*(.994+rand()*.006);if(rand()<.02)price=limitPrice*.975}
+    else if(failed){const drift=(rand()-.55)*.02;price=middayPrice*(1+drift*(m-PM_S)/120);price=Math.min(price,middayPrice*1.03)}
+    else{price=middayPrice*(1+(rand()-.5)*.008)};pts.push({t:m,p:price});
+  }return pts;
+}
+function genDailyKline(stock){
+  const rand=seededRand(stock.code.split('').reverse().reduce((a,c)=>a+c.charCodeAt(0),0));
+  const days=60,klines=[];let price=stock.basePrice*(.7+rand()*.3);
+  const trend=stock.result==='promoted'?.002:stock.result==='failed'?-.001:.001;
+  for(let i=0;i<days;i++){const vol=.02+.04*rand();const drift=(rand()-.48+trend)*vol;const open=price;price=price*(1+drift);klines.push({o:open,h:Math.max(open,price)*(1+rand()*.015),l:Math.min(open,price)*(1-rand()*.015),c:price})}return klines;
+}
+function genWeeklyKline(daily){const w=[];for(let i=0;i<daily.length;i+=5){const s=daily.slice(i,i+5);if(s.length)w.push({o:s[0].o,h:Math.max(...s.map(k=>k.h)),l:Math.min(...s.map(k=>k.l)),c:s[s.length-1].c})}return w}
+function genMonthlyKline(daily){const m=[];for(let i=0;i<daily.length;i+=21){const s=daily.slice(i,i+21);if(s.length)m.push({o:s[0].o,h:Math.max(...s.map(k=>k.h)),l:Math.min(...s.map(k=>k.l)),c:s[s.length-1].c})}return m}
+function getKlineData(stock){if(klineCache[stock.code])return klineCache[stock.code];const d=genDailyKline(stock);const data={intraday:genIntraday(stock),daily:d,weekly:genWeeklyKline(d),monthly:genMonthlyKline(d)};klineCache[stock.code]=data;return data}
+
+function drawCandleSvg(klines,W,H,pad){
+  pad=pad||{t:20,r:10,b:30,l:50};const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const av=klines.flatMap(k=>[k.h,k.l]);const min=Math.min(...av)*.995,max=Math.max(...av)*1.005,rng=max-min||1;
+  function x(i){return pad.l+(i/(klines.length-1))*pw}function y(v){return pad.t+(1-(v-min)/rng)*ph}
+  let rects='',ll='';const bw=Math.max(2,Math.min(8,pw/klines.length*.6));
+  klines.forEach((k,i)=>{const cx=x(i),oy=y(k.o),cy=y(k.c),hy=y(k.h),ly=y(k.l);const up=k.c>=k.o,cl=up?'var(--up)':'var(--down)';ll+=`<line x1="${cx.toFixed(1)}" y1="${hy.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${ly.toFixed(1)}" stroke="${cl}" stroke-width="1"/>`;const rh=Math.max(1,Math.abs(cy-oy));rects+=`<rect x="${(cx-bw/2).toFixed(1)}" y="${Math.min(oy,cy).toFixed(1)}" width="${bw.toFixed(1)}" height="${rh.toFixed(1)}" fill="${up?'var(--up)':'var(--down)'}" ${up?'':'opacity="0.8"'}/>`});
+  let ma5='',ma10='',ma20='';
+  for(let i=4;i<klines.length;i++){const a=klines.slice(i-4,i+1).reduce((s,k)=>s+k.c,0)/5;ma5+=`${i===4?'M':'L'}${x(i).toFixed(1)},${y(a).toFixed(1)} `}
+  for(let i=9;i<klines.length;i++){const a=klines.slice(i-9,i+1).reduce((s,k)=>s+k.c,0)/10;ma10+=`${i===9?'M':'L'}${x(i).toFixed(1)},${y(a).toFixed(1)} `}
+  for(let i=19;i<klines.length;i++){const a=klines.slice(i-19,i+1).reduce((s,k)=>s+k.c,0)/20;ma20+=`${i===19?'M':'L'}${x(i).toFixed(1)},${y(a).toFixed(1)} `}
+  let yGl='';for(let i=0;i<=4;i++){const v=min+rng*i/4;yGl+=`<line x1="${pad.l}" y1="${y(v).toFixed(1)}" x2="${W-pad.r}" y2="${y(v).toFixed(1)}" stroke="var(--border)" stroke-width=".5" stroke-dasharray="3,3"/><text x="${pad.l-6}" y="${y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${v.toFixed(1)}</text>`}
+  let lg='';if(ma5)lg+=`<text x="${W-pad.r-120}" y="14" font-size="8" fill="oklch(55% 0.16 55)">MA5</text>`;if(ma10)lg+=`<text x="${W-pad.r-70}" y="14" font-size="8" fill="oklch(55% 0.14 240)">MA10</text>`;if(ma20)lg+=`<text x="${W-pad.r-18}" y="14" font-size="8" fill="oklch(40% 0.02 280)">MA20</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}">${yGl}${ll}${rects}<path d="${ma5}" fill="none" stroke="oklch(55% 0.16 55)" stroke-width="1" stroke-dasharray="2,2" opacity=".7"/><path d="${ma10}" fill="none" stroke="oklch(55% 0.14 240)" stroke-width="1" stroke-dasharray="4,2" opacity=".7"/><path d="${ma20}" fill="none" stroke="oklch(40% 0.02 280)" stroke-width="1.2" opacity=".7"/>${lg}</svg>`;
+}
+function drawIntradaySvg(pts,W,H,limitPrice){
+  const pad={t:16,r:14,b:30,l:48};const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const ap=pts.map(p=>p.p);const min=Math.min(...ap)*.998,max=Math.max(...ap)*1.002,rng=max-min||1;
+  function x(i){return pad.l+(i/(pts.length-1))*pw}function y(v){return pad.t+(1-(v-min)/rng)*ph}
+  let path='';pts.forEach((p,i)=>{path+=`${i===0?'M':'L'}${x(i).toFixed(1)},${y(p.p).toFixed(1)} `});
+  const isUp=pts[pts.length-1].p>=pts[0].p,lc=isUp?'var(--up)':'var(--down)';
+  let area=path+`L${x(pts.length-1).toFixed(1)},${y(min)} L${x(0).toFixed(1)},${y(min)} Z`;
+  let lim='';if(limitPrice){const ly=y(limitPrice);lim=`<line x1="${pad.l}" y1="${ly.toFixed(1)}" x2="${W-pad.r}" y2="${ly.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="5,3" opacity=".6"/><text x="${W-pad.r-4}" y="${ly-4}" text-anchor="end" font-size="8" fill="var(--accent)">涨停</text>`}
+  let yL='';for(let i=0;i<=3;i++){const v=min+rng*i/3;yL+=`<text x="${pad.l-6}" y="${y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${v.toFixed(2)}</text>`}
+  let xL='';const times=['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'],tm={};times.forEach(t=>{const[h,m]=t.split(':').map(Number);tm[h*60+m]=t});
+  pts.forEach((p,i)=>{if(tm[p.t]&&(i%Math.floor(pts.length/8)===0||i===pts.length-1))xL+=`<text x="${x(i).toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="8" fill="var(--muted)">${tm[p.t]}</text>`});
+  return `<svg viewBox="0 0 ${W} ${H}">${yL}<path d="${area}" fill="${lc}" opacity=".06"/><path d="${path}" fill="none" stroke="${lc}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>${lim}${xL}</svg>`;
+}
+
+function fmtMktCap(v){if(v>=10000)return(v/10000).toFixed(2)+'万亿';if(v>=1)return v.toFixed(0)+'亿';return v.toFixed(2)+'亿'}
+function fmtVol(v){if(v>=10000)return(v/10000).toFixed(1)+'万手';return v+'手'}
+
+function renderOverview(stock){
+  if(!stock)return'';
+  const chgPct=stock.tBoard>0?((stock.basePrice*(1+0.1)-stock.basePrice)/stock.basePrice*100).toFixed(1):'0.0';
+  const up=stock.tBoard>0;
+  return`<div class="overview-grid">
+    <div class="ov-card"><div class="ovl">总市值</div><div class="ovv">${fmtMktCap(stock.marketCap)}</div></div>
+    <div class="ov-card"><div class="ovl">流通市值</div><div class="ovv">${fmtMktCap(stock.floatCap)}</div></div>
+    <div class="ov-card"><div class="ovl">量比</div><div class="ovv ${stock.volRatio>3?'up':''}">${stock.volRatio.toFixed(1)}</div></div>
+    <div class="ov-card"><div class="ovl">成交额</div><div class="ovv">${stock.amount.toFixed(1)}亿</div></div>
+    <div class="ov-card"><div class="ovl">成交量</div><div class="ovv">${fmtVol(stock.volume)}</div></div>
+    <div class="ov-card"><div class="ovl">今日涨幅</div><div class="ovv ${up?'up':'down'}">${up?'+':''}${chgPct}%</div></div>
+    <div class="ov-card"><div class="ovl">换手率</div><div class="ovv">${stock.turnover.toFixed(1)}%</div></div>
+    <div class="ov-card"><div class="ovl">封单金额</div><div class="ovv">${stock.tBoard>0?stock.seal.toFixed(1)+'亿':'—'}</div></div>
+  </div>
+  <div class="analysis-block">
+    <h4>📂 所属板块：${SECTORS[stock.sector]||stock.sector}</h4>
+    <p>${stock.sectorReason}</p>
+  </div>
+  <div class="analysis-block">
+    <h4>📈 今日涨停原因分析</h4>
+    <p>${stock.limitReason}</p>
+  </div>`;
+}
+
+function renderModalContent(){
+  const body=document.getElementById('mBody'),info=document.getElementById('mInfo');
+  if(!selectedCode){body.innerHTML='';info.innerHTML='';return}
+  const stock=stocks.find(s=>s.code===selectedCode);if(!stock)return;
+  if(mTab==='overview'){
+    body.innerHTML=renderOverview(stock);
+  }else{
+    const data=getKlineData(stock);const W=720,H=300;let svg='';
+    if(mTab==='intraday'){const op=data.intraday[0].p;const lp=stock.tBoard>0?op*1.1:null;svg=drawIntradaySvg(data.intraday,W,H,lp)}
+    else if(mTab==='daily')svg=drawCandleSvg(data.daily.slice(-50),W,H);
+    else if(mTab==='weekly')svg=drawCandleSvg(data.weekly.slice(-35),W,H);
+    else svg=drawCandleSvg(data.monthly,W,H);
+    body.innerHTML=svg;
+  }
+  const data=getKlineData(stock),lastD=data.daily[data.daily.length-1],prevD=data.daily[data.daily.length-2];
+  info.innerHTML=`<span>昨收: ¥${prevD?.c.toFixed(2)||'—'}</span><span>60日涨跌: ${((lastD.c-data.daily[0].c)/data.daily[0].c*100).toFixed(1)}%</span><span>市值: ${fmtMktCap(stock.marketCap)}</span><span>量比: ${stock.volRatio.toFixed(1)}</span>`;
+}
+function switchMTab(tab){mTab=tab;document.querySelectorAll('.mtab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));renderModalContent()}
+function openModal(code){selectedCode=code;const s=stocks.find(st=>st.code===code);document.getElementById('mTitle').textContent=s?.name||'—';document.getElementById('mCode').textContent=s?.code||'';mTab='overview';document.querySelectorAll('.mtab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='overview'));document.getElementById('modalOverlay').classList.remove('hidden');renderTable();renderModalContent()}
+function closeModal(){document.getElementById('modalOverlay').classList.add('hidden');selectedCode=null;renderTable()}
+function setFilter(f,el){filter=f;if(f!=='all')activeLv=null;document.querySelectorAll('#rfChips .fc').forEach(c=>c.classList.remove('on'));if(el)el.classList.add('on');renderAll()}
+function toggleLevelFilter(lv){if(activeLv===lv){activeLv=null}else{activeLv=lv;filter='all';document.querySelectorAll('#rfChips .fc').forEach(c=>c.classList.remove('on'));document.querySelector('#rfChips [data-filter="all"]')?.classList.add('on')}renderAll()}
+function getFiltered(){let list=filter==='all'?[...stocks]:stocks.filter(s=>s.result===filter);if(activeLv){const lv=parseInt(activeLv);list=list.filter(s=>s.yBoard===lv||(lv===4&&s.yBoard>=4)||(s.result==='new'&&lv===0))}return list}
+function getLevelStat(yB){const g=stocks.filter(s=>s.yBoard===yB||(yB===4&&s.yBoard>=4));const p=g.filter(s=>s.result==='promoted').length;const t=g.length;return{total:t,promoted:p,failed:t-p,rate:t>0?(p/t*100).toFixed(1):'—'}}
+function getCounts(){let pr=0,fa=0,nw=0;stocks.forEach(s=>{if(s.result==='promoted')pr++;else if(s.result==='failed')fa++;else nw++});const ty=pr+fa;return{pr,fa,nw,ty,or:ty>0?(pr/ty*100).toFixed(1):'—'}}
+function renderStats(){
+  const c=getCounts(),l1=getLevelStat(1),l2=getLevelStat(2),l3=getLevelStat(3);
+  document.getElementById('statsRow').innerHTML=[{l:'今日涨停',v:c.pr+c.nw,s:`晋级${c.pr}+新进${c.nw}`,hl:1},{l:'1→2 晋级率',v:l1.rate+'%',s:`${l1.promoted}/${l1.total}`,cl:+l1.rate>=50?'var(--up)':'var(--warn)'},{l:'2→3 晋级率',v:l2.rate+'%',s:`${l2.promoted}/${l2.total}`,cl:+l2.rate>=50?'var(--up)':'var(--warn)'},{l:'3→4+ 晋级率',v:l3.rate+'%',s:`${l3.promoted}/${l3.total}`,cl:+l3.rate>=50?'var(--up)':'var(--warn)'},{l:'整体晋级率',v:c.or+'%',s:`${c.pr}/${c.ty}`,cl:+c.or>=40?'var(--up)':'var(--down)'},{l:'断板/新进',v:`🔻${c.fa} 🔷${c.nw}`,s:`断板率${c.ty>0?(c.fa/c.ty*100).toFixed(1):'—'}%`}].map(c=>`<div class="stat-card${c.hl?' hl':''}"><div class="sl">${c.l}</div><div class="sv"${c.cl?` style="color:${c.cl}"`:''}>${c.v}</div><div class="ss">${c.s}</div></div>`).join('')}
+function renderLevelStats(){document.getElementById('levelStats').innerHTML=[1,2,3,4].map(b=>{const st=getLevelStat(b);const lb=b===1?'首板':b===2?'二板':b===3?'三板':'四板+';const rc=+st.rate>=50?'good':+st.rate>=30?'mid':'low';return`<div class="lv-row${activeLv===String(b)?' active':''}" onclick="toggleLevelFilter('${b}')"><span>${lb} →</span><span class="lv-rate ${rc}">${st.rate}%</span></div>`}).join('')}
+function renderTable(){
+  const list=getFiltered();document.getElementById('tableCount').textContent=`${list.length} 只`;
+  const tb=document.getElementById('tableBody');
+  tb.innerHTML=list.map(s=>{
+    let ch='';if(s.result==='promoted'){const yl=s.yBoard===1?'首':s.yBoard===2?'二':s.yBoard===3?'三':`${s.yBoard}`;const tl=s.tBoard===2?'二':s.tBoard===3?'三':s.tBoard>=4?`${s.tBoard}`:`${s.tBoard}`;ch=`<span class="pchain"><span class="cs y">${yl}板</span><span class="ca">→</span><span class="cs tu">${tl}板</span></span>`}else if(s.result==='failed'){const yl=s.yBoard===1?'首':s.yBoard===2?'二':s.yBoard===3?'三':`${s.yBoard}`;ch=`<span class="pchain"><span class="cs y">${yl}板</span><span class="ca">→</span><span class="cs to">断</span></span>`}else{ch=`<span class="pchain"><span style="font-size:.65rem;color:var(--muted)">—</span><span class="ca">→</span><span class="cs tn">首板</span></span>`}
+    let rh='';if(s.result==='promoted')rh='<span class="rt promo">晋级</span>';else if(s.result==='failed')rh='<span class="rt fail">断板</span>';else rh='<span class="rt new">新进</span>';
+    const sh=s.tBoard>0?`<span class="val up">${s.seal.toFixed(1)}亿</span>`:'<span style="color:var(--muted)">—</span>';
+    return`<tr class="${selectedCode===s.code?'selected':''}"><td><span class="nc" onclick="event.stopPropagation();openModal('${s.code}')">${s.name}</span><span class="cc">${s.code}</span></td><td><span class="st">${SECTORS[s.sector]||s.sector}</span></td><td>${ch}</td><td>${rh}</td><td style="font-family:var(--font-mono);font-size:.73rem">${s.tTime}</td><td>${sh}</td></tr>`
+  }).join('')||'<tr><td colspan="6" style="text-align:center;padding:36px;color:var(--muted)">无匹配数据</td></tr>';
+}
+function renderAll(){renderStats();renderLevelStats();renderTable();if(selectedCode)renderModalContent()}
+document.getElementById('modalOverlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+renderAll();
+</script>
+</body>
+</html>
