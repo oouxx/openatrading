@@ -7,13 +7,15 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml  crates/cli/
-COPY src-tauri/Cargo.toml   src-tauri/
+COPY crates/channels/Cargo.toml crates/channels/
+COPY crates/provider/Cargo.toml crates/provider/
 
 # 为所有 workspace member 创建 dummy src，让 cargo metadata 能解析
-RUN mkdir -p crates/core/src crates/cli/src src-tauri/src && \
+RUN mkdir -p crates/core/src crates/cli/src crates/channels/src crates/provider/src && \
     echo '' > crates/core/src/lib.rs && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
-    echo 'fn main() {}' > src-tauri/src/main.rs
+    echo '' > crates/channels/src/lib.rs && \
+    echo '' > crates/provider/src/lib.rs
 
 RUN cargo chef prepare --recipe-path recipe.json
 

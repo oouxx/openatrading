@@ -1,4 +1,4 @@
 {
-  "last_session_date": "2026-05-29 07:01",
-  "changed_files": "crates/core/src/api/cls.rs\ncrates/core/src/web/handlers.rs"
+  "last_session_date": "2026-05-29 07:11",
+  "changed_files": ".github/workflows/release-self-hosted.yml\n.github/workflows/release.yml\nDockerfile\nDockerfile.frontend"
 }
