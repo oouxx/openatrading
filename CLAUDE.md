@@ -1,70 +1,81 @@
 # CLAUDE.md
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+行为准则，用于减少 LLM 编码常见错误。与项目专属说明合并使用。
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+**权衡取舍：** 这些准则偏向谨慎而非速度。对于简单任务，酌情判断。
 
-## 1. Think Before Coding
+---
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+## 1. 先思考，再写代码
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+**不要假设。不要掩盖困惑。要暴露权衡。**
 
-## 2. Simplicity First
+在实现之前：
 
-**Minimum code that solves the problem. Nothing speculative.**
+- 明确说明你的假设。若不确定，先询问。
+- 若存在多种理解方式，逐一列出——不要默默选一个。
+- 若有更简单的方案，说出来。必要时推回去。
+- 若有不清楚的地方，停下来。指出困惑所在。询问。
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+---
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+## 2. 简洁优先
 
-## 3. Surgical Changes
+**用最少的代码解决问题。不写投机性代码。**
 
-**Touch only what you must. Clean up only your own mess.**
+- 不添加超出需求的功能。
+- 单次使用的代码不做抽象。
+- 不引入未被要求的"灵活性"或"可配置性"。
+- 不对不可能发生的场景做错误处理。
+- 如果写了 200 行而 50 行就够，重写。
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
+自问："高级工程师会说这太复杂了吗？" 如果是，简化。
 
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+---
 
-The test: Every changed line should trace directly to the user's request.
+## 3. 外科手术式修改
 
-## 4. Goal-Driven Execution
+**只动必须动的地方。只清理自己制造的混乱。**
 
-**Define success criteria. Loop until verified.**
+编辑已有代码时：
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+- 不"顺手优化"旁边的代码、注释或格式。
+- 不重构没有问题的东西。
+- 保持现有风格，即使你会做不同的选择。
+- 发现无关的死代码，提及——但不要删除。
 
-For multi-step tasks, state a brief plan:
+当你的改动产生孤儿时：
+
+- 删除**你的改动**造成的无用 import/变量/函数。
+- 不删除原本就存在的死代码，除非被明确要求。
+
+检验标准：每一行改动都应能直接追溯到用户的请求。
+
+---
+
+## 4. 目标驱动执行
+
+**定义成功标准。循环直到验证通过。**
+
+将任务转化为可验证的目标：
+
+- "添加校验" → "为非法输入写测试，然后让测试通过"
+- "修复 bug" → "写一个能复现 bug 的测试，然后让测试通过"
+- "重构 X" → "确保重构前后测试均通过"
+
+多步骤任务，先说明简要计划：
+
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. [步骤] → 验证：[检查项]
+2. [步骤] → 验证：[检查项]
+3. [步骤] → 验证：[检查项]
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+清晰的成功标准让你能自主循环推进；模糊标准（"让它跑起来"）则需要持续澄清。
 
-## 5. project-specific guideliness
+## 5. 项目规范
 check .claude/context/*.md
 
 ## 6. ui风格
 check .claude/context/claude-ui.md
 ---
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
