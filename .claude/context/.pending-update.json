@@ -1,4 +1,4 @@
 {
-  "last_session_date": "2026-05-29 08:20",
-  "changed_files": "Makefile\ncrates/cli/Cargo.toml\ncrates/core/Cargo.toml\nsrc-tauri/Cargo.toml\nsrc-tauri/tauri.conf.json"
+  "last_session_date": "2026-05-29 15:58",
+  "changed_files": "docs/preview.png"
 }
