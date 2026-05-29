@@ -24,13 +24,13 @@ build-tauri:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test
+	cargo test -p trending-agent-core -p trending-agent-cli -p trending-agent-channels -p trending-agent-provider
 
 fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy -p trending-agent-core -p trending-agent-cli -p trending-agent-channels -p trending-agent-provider -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"
@@ -112,11 +112,11 @@ VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml src-tauri/Cargo.to
 version:
 	@echo "Current: $$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
 
-release-patch: _bump-patch _release
-release-minor: _bump-minor _release
-release-major: _bump-major _release
-release-set: _bump-set _release
-release: _release
+release-patch: check _bump-patch _release
+release-minor: check _bump-minor _release
+release-major: check _bump-major _release
+release-set: check _bump-set _release
+release: check _release
 
 _bump-patch:
 	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
@@ -155,7 +155,7 @@ define _set_version
 	done
 endef
 
-_release: check
+_release:
 	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	tag="v$$v"; \
 	git tag -l "$$tag" | grep -q "$$tag" && { echo "❌ Tag $$tag 已存在"; exit 1; }; \

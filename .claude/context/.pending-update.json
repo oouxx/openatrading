@@ -1,4 +1,4 @@
 {
-  "last_session_date": "2026-05-29 08:16",
-  "changed_files": "crates/channels/src/discord.rs\ncrates/channels/src/lark.rs\ncrates/channels/src/lib.rs\ncrates/channels/src/slack.rs\ncrates/channels/src/telegram.rs\ncrates/cli/Cargo.toml\ncrates/cli/src/cli/config.rs\ncrates/cli/src/cli/gateway_cmd.rs\ncrates/cli/src/cli/mod.rs\ncrates/core/Cargo.toml\ncrates/core/src/agents/main.rs\ncrates/core/src/api/cls.rs\ncrates/core/src/cron/mod.rs\ncrates/core/src/gateway/mod.rs\ncrates/core/src/llm/agent.rs\ncrates/core/src/llm/mod.rs\ncrates/core/src/llm/tools.rs\ncrates/core/src/social/mod.rs\ncrates/core/src/social/telegram_bot.rs\ncrates/core/src/web/mod.rs\ncrates/provider/src/lib.rs\ncrates/provider/src/llm.rs\ncrates/provider/src/tool.rs\nsrc-tauri/Cargo.toml\nsrc-tauri/src/main.rs\nsrc-tauri/tauri.conf.json"
+  "last_session_date": "2026-05-29 08:20",
+  "changed_files": "Makefile\ncrates/cli/Cargo.toml\ncrates/core/Cargo.toml\nsrc-tauri/Cargo.toml\nsrc-tauri/tauri.conf.json"
 }
