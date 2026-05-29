@@ -1,0 +1,231 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openatrading — AI 自动交易策略平台</title>
+<style>
+  :root {
+    --bg:      oklch(98% 0.004 95);
+    --surface: oklch(100% 0.002 95);
+    --fg:      oklch(20% 0.018 70);
+    --muted:   oklch(48% 0.012 70);
+    --border:  oklch(90% 0.006 95);
+    --accent:  oklch(52% 0.10 28);
+    --accent-hover: oklch(46% 0.12 28);
+    --up:      oklch(48% 0.16 22);
+    --font-display: 'Iowan Old Style', 'Charter', Georgia, 'Noto Serif SC', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-body); background: var(--bg); color: var(--fg); line-height: 1.6; min-height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 32px; background: var(--surface);
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+  }
+  .logo { font-family: var(--font-display); font-size: 1.2rem; font-weight: 500; color: var(--fg); letter-spacing: -0.01em; text-decoration: none; }
+  .logo span { color: var(--accent); }
+  .topbar-nav { display: flex; gap: 24px; align-items: center; }
+  .topbar-nav a { text-decoration: none; color: var(--muted); font-size: 0.84rem; font-weight: 500; transition: color 0.15s; }
+  .topbar-nav a:hover, .topbar-nav a.active { color: var(--fg); }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; }
+  .hero {
+    max-width: 1100px; margin: 0 auto; padding: 80px 32px 56px; text-align: center;
+  }
+  .hero h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 5vw, 3.8rem); font-weight: 500; line-height: 1.12; color: var(--fg); margin-bottom: 16px; }
+  .hero h1 span { color: var(--accent); }
+  .hero .subtitle { color: var(--muted); font-size: 1.15rem; max-width: 640px; margin: 0 auto 40px; }
+  .hero-flow { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 40px; font-size: 0.85rem; color: var(--muted); }
+  .flow-node { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .flow-node .icon { font-size: 1.3rem; }
+  .flow-arrow { font-size: 1.2rem; color: var(--accent); font-weight: 700; }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-hero { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border-radius: 10px; font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; border: none; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .stats-bar { max-width: 1000px; margin: 0 auto 48px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 0 32px; }
+  .stat-item { text-align: center; padding: 20px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .stat-item .num { font-family: var(--font-mono); font-size: 1.8rem; font-weight: 600; color: var(--fg); }
+  .stat-item .label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-item .num.up { color: var(--up); }
+  .section { max-width: 1200px; margin: 0 auto; padding: 0 32px 64px; }
+  .section-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; color: var(--fg); margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+  .screen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+  .screen-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: box-shadow 0.2s, transform 0.2s; cursor: pointer; text-decoration: none; color: inherit; display: block; }
+  .screen-card:hover { box-shadow: 0 6px 32px rgba(0,0,0,0.08); transform: translateY(-2px); }
+  .screen-card-body { padding: 22px 18px; }
+  .screen-card-body h4 { font-family: var(--font-display); font-size: 1rem; font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 7px; font-size: 0.66rem; font-weight: 500; background: var(--accent); color: #fff; letter-spacing: 0.02em; }
+  .badge.tg { background: oklch(55% 0.14 240); }
+  .badge.new { background: oklch(55% 0.16 55); }
+  .screen-card-body .desc { font-size: 0.8rem; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+  .screen-card-body .tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tag { font-size: 0.68rem; color: var(--muted); background: oklch(96% 0.003 95); padding: 3px 10px; border-radius: 5px; }
+
+  /* ── Install Section ── */
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .install-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 24px; }
+  .install-card h4 { font-family: var(--font-display); font-size: 1rem; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .install-card .desc { font-size: 0.78rem; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+  .download-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .dl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border); font-family: var(--font-body); font-size: 0.78rem; font-weight: 500; cursor: pointer; text-decoration: none; background: var(--bg); color: var(--fg); transition: all 0.15s; }
+  .dl-btn:hover { border-color: var(--accent); background: oklch(96% 0.02 28 / 0.06); color: var(--accent); }
+  .dl-btn .os-icon { font-size: 1.1rem; }
+  .code-block { background: oklch(96% 0.003 95); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--fg); position: relative; overflow-x: auto; line-height: 1.8; white-space: pre-wrap; }
+  .code-block .copy-btn { position: absolute; top: 10px; right: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 0.68rem; cursor: pointer; color: var(--muted); transition: all 0.12s; }
+  .code-block .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .note-text { font-size: 0.7rem; color: var(--muted); margin-top: 10px; }
+  .note-text a { color: var(--accent); }
+
+  .footer { text-align: center; padding: 40px 32px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer .links { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+  @media (max-width: 768px) {
+    .topbar { padding: 12px 16px; } .topbar-nav { gap: 14px; } .topbar-nav a { font-size: 0.72rem; }
+    .hero { padding: 56px 16px 40px; } .hero-flow { gap: 8px; } .flow-node { padding: 10px 14px; font-size: 0.75rem; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .screen-grid { grid-template-columns: 1fr; } .install-grid { grid-template-columns: 1fr; }
+    .section { padding: 0 16px 48px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a href="index.html" class="logo">open<span>a</span>trading</a>
+  <nav class="topbar-nav">
+    <a href="#" class="active">总览</a>
+    <a href="role-strategy.html">角色策略</a>
+    <a href="ai-chat.html">AI 问答</a>
+    <a href="market-replay.html">行情回放</a>
+    <a href="breakout-analysis.html">晋级分析</a>
+    <a href="dragon-tiger.html">龙虎榜</a>
+    <div class="avatar">OA</div>
+  </nav>
+</header>
+<section class="hero">
+  <h1>AI 自动交易<span>策略引擎</span></h1>
+  <p class="subtitle">每个角色运行独立策略，AI 自动决策并执行交易。在 Telegram 中与角色对话、查看持仓、调整参数 — 所有盈亏实时追踪。</p>
+  <div class="hero-flow">
+    <div class="flow-node"><span class="icon">📝</span> 角色策略</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><span class="icon">🧠</span> AI 决策</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><span class="icon">📈</span> 自动交易</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><span class="icon">📊</span> 盈亏展示</div>
+  </div>
+  <div class="hero-actions">
+    <a href="role-strategy.html" class="btn-hero btn-primary">管理角色策略 →</a>
+    <a href="#install" class="btn-hero btn-outline">📦 下载安装</a>
+  </div>
+</section>
+<div class="stats-bar">
+  <div class="stat-item"><div class="num">6</div><div class="label">核心页面</div></div>
+  <div class="stat-item"><div class="num">A 股</div><div class="label">全市场覆盖</div></div>
+  <div class="stat-item"><div class="num up">+12.8%</div><div class="label">本月 AI 策略收益</div></div>
+  <div class="stat-item"><div class="num">8</div><div class="label">活跃角色</div></div>
+</div>
+<div class="section">
+  <h2 class="section-title">核心功能</h2>
+  <div class="screen-grid">
+    <a href="role-strategy.html" class="screen-card">
+      <div class="screen-card-body">
+        <h4>角色策略管理 <span class="badge">核心</span></h4>
+        <p class="desc">每个角色独立运行 AI 交易策略 — 趋势跟踪、网格交易、套利… 一键新增/删除/编辑角色，AI 自动执行并展示盈亏曲线。</p>
+        <div class="tags"><span class="tag">📝 策略编辑</span><span class="tag">🤖 AI 执行</span><span class="tag">📊 盈亏曲线</span></div>
+      </div>
+    </a>
+    <a href="ai-chat.html" class="screen-card">
+      <div class="screen-card-body">
+        <h4>AI 行情问答 <span class="badge">A 股专版</span></h4>
+        <p class="desc">流式 Markdown 输出，大盘研判、北向资金、个股分析与板块轮动。支持自然语言交互。</p>
+        <div class="tags"><span class="tag">🤖 流式对话</span><span class="tag">📈 实时行情</span><span class="tag">📝 分析报告</span></div>
+      </div>
+    </a>
+    <a href="market-replay.html" class="screen-card">
+      <div class="screen-card-body">
+        <h4>行情回放 & 短线精灵</h4>
+        <p class="desc">板块信号时间轴回放，涨速/涨幅实时排名，利好利空事件标注。逐分钟复盘全天行情。</p>
+        <div class="tags"><span class="tag">⏪ 时间轴</span><span class="tag">⚡ 异动标注</span><span class="tag">📋 事件日志</span></div>
+      </div>
+    </a>
+    <a href="breakout-analysis.html" class="screen-card">
+      <div class="screen-card-body">
+        <h4>涨停晋级分析</h4>
+        <p class="desc">昨今对比晋级追踪，个股概况（市值/量比/涨停原因），分时 & 日K/周K/月K 图表。</p>
+        <div class="tags"><span class="tag">🔥 连板追踪</span><span class="tag">📈 晋级率</span><span class="tag">📊 K 线</span></div>
+      </div>
+    </a>
+    <a href="dragon-tiger.html" class="screen-card">
+      <div class="screen-card-body">
+        <h4>龙虎榜分析 <span class="badge new">新增</span></h4>
+        <p class="desc">机构/游资动向透视，营业部买卖明细，净买入排行，上榜原因归类。跟踪主力资金足迹。</p>
+        <div class="tags"><span class="tag">🐉 龙虎榜</span><span class="tag">🏦 营业部</span><span class="tag">💰 净买入</span></div>
+      </div>
+    </a>
+    <div class="screen-card" style="border-color: oklch(55% 0.14 240 / 0.4); background: oklch(98% 0.003 240 / 0.3);">
+      <div class="screen-card-body">
+        <h4>Telegram Bot 交互 <span class="badge tg">Beta</span></h4>
+        <p class="desc">在 Telegram 中与你的交易角色直接对话 — 查看持仓盈亏、接收交易信号、调整策略参数，所有操作实时同步。</p>
+        <div class="tags"><span class="tag">💬 对话交互</span><span class="tag">📲 实时推送</span><span class="tag">⚙️ 参数调整</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section" id="install">
+  <h2 class="section-title">📦 下载安装</h2>
+  <div class="install-grid">
+    <div class="install-card">
+      <h4>🖥️ 桌面端</h4>
+      <p class="desc">支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。</p>
+      <div class="download-btns">
+        <a href="https://openatrading.com/download/macos" class="dl-btn"><span class="os-icon">🍎</span> macOS .dmg</a>
+        <a href="https://openatrading.com/download/windows" class="dl-btn"><span class="os-icon">🪟</span> Windows .exe</a>
+        <a href="https://openatrading.com/download/linux" class="dl-btn"><span class="os-icon">🐧</span> Linux .AppImage</a>
+      </div>
+      <p class="note-text">或访问 <a href="https://openatrading.com/download">openatrading.com/download</a> 选择对应平台版本。首次启动自动下载历史行情数据，约需 2–5 分钟。</p>
+    </div>
+    <div class="install-card">
+      <h4>⌨️ CLI 命令行</h4>
+      <p class="desc">适用于 Linux/macOS 环境，支持嵌入量化策略 pipeline、定时任务及 CI/CD 流程。</p>
+      <div class="code-block" id="cliCode">
+        <button class="copy-btn" onclick="copyCode('cliCode')">复制</button>
+# 下载 CLI 二进制（Linux x86_64）
+curl -fsSL https://openatrading.com/cli/install.sh | bash
+
+# 或手动下载指定平台
+# https://openatrading.com/cli
+
+# 验证安装
+oa --version
+
+# 启动 Telegram Bot
+oa bot start --token YOUR_TELEGRAM_TOKEN
+      </div>
+      <p class="note-text">完整 CLI 文档：<a href="https://openatrading.com/docs/cli">openatrading.com/docs/cli</a></p>
+    </div>
+  </div>
+</div>
+<div class="footer">
+  <div class="links">
+    <a href="#">GitHub</a><a href="#">文档</a><a href="#">API 参考</a><a href="https://openatrading.com/download">下载</a>
+  </div>
+  openatrading · AI 自动交易策略引擎 · 设计系统 Claude (Anthropic)
+</div>
+<script>
+function copyCode(blockId) {
+  const block = document.getElementById(blockId);
+  const text = Array.from(block.childNodes).filter(n => n.nodeType === 3 || (n.nodeType === 1 && !n.classList.contains('copy-btn'))).map(n => n.textContent).join('');
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    const btn = block.querySelector('.copy-btn'); const orig = btn.textContent;
+    btn.textContent = '已复制 ✓'; setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+}
+</script>
+</body>
+</html>

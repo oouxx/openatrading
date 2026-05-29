@@ -1,0 +1,276 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>龙虎榜分析 — openatrading</title>
+<style>
+  :root {
+    --bg: oklch(98% 0.004 95); --surface: oklch(100% 0.002 95);
+    --fg: oklch(20% 0.018 70); --muted: oklch(48% 0.012 70);
+    --border: oklch(90% 0.006 95); --accent: oklch(52% 0.10 28);
+    --up: oklch(48% 0.16 22); --down: oklch(48% 0.14 155);
+    --warn: oklch(55% 0.16 55);
+    --font-display: 'Iowan Old Style','Charter',Georgia,'Noto Serif SC',serif;
+    --font-body: -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+    --font-mono: 'JetBrains Mono','IBM Plex Mono','SF Mono',ui-monospace,Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font-body);background:var(--bg);color:var(--fg);min-height:100vh;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);z-index:20;flex-shrink:0}
+  .topbar .logo{font-family:var(--font-display);font-size:1.1rem;font-weight:500;color:var(--fg);letter-spacing:-0.01em;text-decoration:none}
+  .topbar .logo span{color:var(--accent)}
+  .topbar-nav{display:flex;gap:24px;align-items:center}
+  .topbar-nav a{text-decoration:none;color:var(--muted);font-size:.82rem;font-weight:500;transition:color .15s}
+  .topbar-nav a:hover{color:var(--fg)}
+  .topbar-nav a.active{color:var(--fg);font-weight:600}
+  .trading-badge{font-family:var(--font-display);font-size:.85rem;font-weight:500;color:var(--fg);background:oklch(96% 0.004 95);padding:5px 14px;border-radius:20px;display:flex;align-items:center;gap:8px}
+  .trading-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .main-wrap{max-width:1500px;margin:0 auto;padding:24px;width:100%;flex:1}
+
+  .stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center}
+  .stat-card.hl{border-color:var(--accent);background:oklch(96% 0.02 28 / 0.05)}
+  .stat-card .sl{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  .stat-card .sv{font-family:var(--font-mono);font-size:1.4rem;font-weight:600;color:var(--fg)}
+  .stat-card .ss{font-size:.65rem;color:var(--muted);margin-top:2px}
+
+  .content-grid{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start}
+
+  .filter-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .filter-panel .ph{padding:12px 14px;border-bottom:1px solid var(--border);font-family:var(--font-display);font-size:.8rem;font-weight:500}
+  .filter-body{padding:10px 12px}
+  .fg{margin-bottom:14px}
+  .fgl{font-size:.64rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  .fcs{display:flex;flex-wrap:wrap;gap:5px}
+  .fc{padding:4px 12px;border-radius:16px;border:1px solid var(--border);font-size:.7rem;cursor:pointer;background:transparent;color:var(--muted);transition:all .12s}
+  .fc:hover{border-color:var(--accent);color:var(--fg)}
+  .fc.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .fc.on.inst{background:var(--up);border-color:var(--up)}
+  .fc.on.retail{background:var(--down);border-color:var(--down)}
+
+  .table-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .table-panel .ph{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .table-panel .ph h3{font-family:var(--font-display);font-size:.85rem;font-weight:500}
+  .tw{overflow:auto;max-height:62vh}
+  table{width:100%;border-collapse:collapse;font-size:.77rem}
+  th{text-align:left;padding:9px 10px;font-size:.66rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border);background:oklch(97% 0.003 95);position:sticky;top:0;z-index:1;white-space:nowrap}
+  td{padding:7px 10px;border-bottom:1px solid oklch(96% 0.003 95);white-space:nowrap}
+  tr{cursor:pointer;transition:background .1s}
+  tr:hover td{background:oklch(97% 0.004 95)}
+  tr.selected td{background:oklch(94% 0.02 28 / 0.08)}
+  .nc{font-weight:500;color:var(--accent);cursor:pointer}
+  .nc:hover{text-decoration:underline}
+  .cc{font-size:.68rem;color:var(--muted);margin-left:3px}
+  .reason-tag{font-size:.64rem;color:var(--muted);max-width:180px;white-space:normal;display:inline-block}
+  .net-buy{font-family:var(--font-mono);font-weight:600;font-size:.76rem}
+  .net-buy.up{color:var(--up)}.net-buy.down{color:var(--down)}
+  .val{font-family:var(--font-mono);font-weight:500;font-size:.73rem}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--surface);border-radius:16px;border:1px solid var(--border);width:700px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.2);overflow:hidden}
+  .modal .mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .mh .mht{font-family:var(--font-display);font-size:.95rem;font-weight:500}
+  .mh .mclose{background:none;border:none;font-size:1.4rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:6px}
+  .mh .mclose:hover{background:oklch(95% 0.005 95)}
+  .mbody{flex:1;overflow-y:auto;padding:20px}
+  .detail-section{margin-bottom:16px}
+  .detail-section h4{font-family:var(--font-display);font-size:.82rem;font-weight:500;margin-bottom:8px;color:var(--fg)}
+  .dept-table{width:100%;border-collapse:collapse;font-size:.73rem}
+  .dept-table th{background:oklch(97% 0.003 95);padding:7px 10px;font-size:.68rem;text-align:left}
+  .dept-table td{padding:6px 10px;border-bottom:1px solid oklch(96% 0.003 95)}
+  .hidden{display:none!important}
+
+  @media(max-width:768px){.content-grid{grid-template-columns:1fr}.filter-panel{order:2}.table-panel{order:1}.stats-row{grid-template-columns:repeat(3,1fr)}.main-wrap{padding:12px}}
+  @media(max-width:500px){.stats-row{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a href="index.html" class="logo">open<span>a</span>trading</a>
+  <nav class="topbar-nav">
+    <a href="index.html">总览</a>
+    <a href="role-strategy.html">角色策略</a>
+    <a href="ai-chat.html">AI 问答</a>
+    <a href="market-replay.html">行情回放</a>
+    <a href="breakout-analysis.html">晋级分析</a>
+    <a href="dragon-tiger.html" class="active">龙虎榜</a>
+  </nav>
+  <div class="trading-badge"><span class="dot"></span>最近交易日 <strong>2025-01-20</strong></div>
+</header>
+<div class="main-wrap">
+  <div class="stats-row" id="statsRow"></div>
+  <div class="content-grid">
+    <div class="filter-panel">
+      <div class="ph">筛选</div>
+      <div class="filter-body">
+        <div class="fg"><div class="fgl">上榜类型</div>
+          <div class="fcs" id="typeChips">
+            <span class="fc on" data-type="all" onclick="setType('all',this)">全部</span>
+            <span class="fc inst" data-type="inst" onclick="setType('inst',this)">机构</span>
+            <span class="fc retail" data-type="retail" onclick="setType('retail',this)">游资</span>
+          </div>
+        </div>
+        <div class="fg"><div class="fgl">净买卖</div>
+          <div class="fcs" id="dirChips">
+            <span class="fc on" data-dir="all" onclick="setDir('all',this)">全部</span>
+            <span class="fc" data-dir="buy" onclick="setDir('buy',this)">净买入</span>
+            <span class="fc" data-dir="sell" onclick="setDir('sell',this)">净卖出</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="table-panel">
+      <div class="ph"><h3>龙虎榜上榜个股</h3><span style="font-size:.68rem;color:var(--muted)" id="tableCount"></span></div>
+      <div class="tw"><table><thead><tr><th>名称</th><th>净买入(万)</th><th>买方营业部</th><th>卖方营业部</th><th>上榜原因</th></tr></thead><tbody id="tableBody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal"><div class="mh"><span class="mht" id="mTitle"></span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div class="mbody" id="mBody"></div></div>
+</div>
+
+<script>
+// 龙虎榜数据
+const dragonTigerData = [
+  { name:'贵州茅台', code:'600519', netBuy:48500, type:'inst', reason:'连续三个交易日内涨幅偏离值累计达20%',
+    buyDepts:[{name:'沪股通专用', amount:28500},{name:'机构专用', amount:15200},{name:'中信证券总部', amount:4800}],
+    sellDepts:[{name:'机构专用', amount:8200},{name:'华泰证券总部', amount:3500},{name:'招商证券', amount:2100}] },
+  { name:'宁德时代', code:'300750', netBuy:39200, type:'inst', reason:'日涨幅达到15%的前五只证券',
+    buyDepts:[{name:'深股通专用', amount:24800},{name:'机构专用', amount:10200},{name:'中金公司', amount:4200}],
+    sellDepts:[{name:'机构专用', amount:5100},{name:'国泰君安', amount:1800}] },
+  { name:'智度股份', code:'000676', netBuy:15800, type:'retail', reason:'连续三个交易日内涨幅偏离值累计达20%',
+    buyDepts:[{name:'东方财富拉萨团结路', amount:6800},{name:'华鑫证券上海分公司', amount:5200},{name:'国盛证券宁波桑田路', amount:3800}],
+    sellDepts:[{name:'东方财富拉萨东环路', amount:4200},{name:'招商证券深圳益田路', amount:1800}] },
+  { name:'精伦电子', code:'600355', netBuy:7800, type:'retail', reason:'日换手率达到20%的前五只证券',
+    buyDepts:[{name:'国泰君安上海江苏路', amount:4200},{name:'中信证券上海溧阳路', amount:2100},{name:'东方财富拉萨团结路', amount:1500}],
+    sellDepts:[{name:'华泰证券北京雍和宫', amount:2400},{name:'中泰证券', amount:1200}] },
+  { name:'中芯国际', code:'688981', netBuy:28600, type:'inst', reason:'日涨幅达到15%的前五只证券',
+    buyDepts:[{name:'沪股通专用', amount:18500},{name:'机构专用', amount:7600},{name:'中信证券', amount:2500}],
+    sellDepts:[{name:'机构专用', amount:4200},{name:'海通证券', amount:1900}] },
+  { name:'皇庭国际', code:'000056', netBuy:-3200, type:'retail', reason:'日跌幅偏离值达7%',
+    buyDepts:[{name:'东方财富拉萨东环路', amount:1800},{name:'招商证券', amount:1200}],
+    sellDepts:[{name:'中金公司上海分公司', amount:3800},{name:'华鑫证券', amount:2400}] },
+  { name:'埃夫特', code:'688165', netBuy:-5800, type:'retail', reason:'日跌幅达到15%的前五只证券',
+    buyDepts:[{name:'东方财富拉萨团结路', amount:2200},{name:'国金证券', amount:800}],
+    sellDepts:[{name:'机构专用', amount:4200},{name:'中信证券', amount:4600}] },
+  { name:'浪潮信息', code:'000977', netBuy:21300, type:'inst', reason:'日涨幅偏离值达7%',
+    buyDepts:[{name:'深股通专用', amount:15200},{name:'机构专用', amount:4800},{name:'中泰证券', amount:1300}],
+    sellDepts:[{name:'机构专用', amount:2200},{name:'东方证券', amount:800}] },
+  { name:'中科曙光', code:'603019', netBuy:18600, type:'inst', reason:'日涨幅偏离值达7%',
+    buyDepts:[{name:'沪股通专用', amount:12800},{name:'机构专用', amount:4200},{name:'华泰证券', amount:1600}],
+    sellDepts:[{name:'机构专用', amount:2400},{name:'招商证券', amount:600}] },
+  { name:'巨轮智能', code:'002031', netBuy:6200, type:'retail', reason:'日换手率达到20%的前五只证券',
+    buyDepts:[{name:'东方财富拉萨团结路', amount:3800},{name:'国盛证券宁波桑田路', amount:1500},{name:'华泰证券', amount:900}],
+    sellDepts:[{name:'招商证券深圳益田路', amount:2000},{name:'中信证券', amount:1000}] },
+  { name:'鸣志电器', code:'603728', netBuy:2100, type:'retail', reason:'日振幅达到15%的前五只证券',
+    buyDepts:[{name:'东方财富拉萨东环路', amount:1600},{name:'中泰证券', amount:500}],
+    sellDepts:[{name:'华鑫证券上海分公司', amount:2800},{name:'国金证券', amount:400}] },
+  { name:'新时达', code:'002527', netBuy:-1500, type:'retail', reason:'日振幅达到15%的前五只证券',
+    buyDepts:[{name:'东方财富拉萨团结路', amount:1800},{name:'招商证券', amount:600}],
+    sellDepts:[{name:'机构专用', amount:2800},{name:'中信证券', amount:1100}] },
+];
+
+let typeFilter = 'all', dirFilter = 'all', selectedCode = null;
+
+function getFiltered() {
+  let d = [...dragonTigerData];
+  if (typeFilter !== 'all') d = d.filter(s => s.type === typeFilter);
+  if (dirFilter === 'buy') d = d.filter(s => s.netBuy > 0);
+  else if (dirFilter === 'sell') d = d.filter(s => s.netBuy < 0);
+  return d;
+}
+
+function renderStats() {
+  const all = dragonTigerData;
+  const inst = all.filter(s => s.type === 'inst');
+  const retail = all.filter(s => s.type === 'retail');
+  const totalNetInst = inst.reduce((s,i) => s + i.netBuy, 0);
+  const totalNetRetail = retail.reduce((s,i) => s + i.netBuy, 0);
+  const totalNet = totalNetInst + totalNetRetail;
+  document.getElementById('statsRow').innerHTML = [
+    {l:'上榜家数', v:all.length, s:`机构${inst.length} · 游资${retail.length}`, hl:1},
+    {l:'机构净买入', v:(totalNetInst/10000).toFixed(2)+'亿', s:`${inst.length}家机构`, cl:totalNetInst>=0?'var(--up)':'var(--down)'},
+    {l:'游资净买入', v:(totalNetRetail/10000).toFixed(2)+'亿', s:`${retail.length}家游资`, cl:totalNetRetail>=0?'var(--up)':'var(--down)'},
+    {l:'总净买入', v:(totalNet/10000).toFixed(2)+'亿', s:'机构+游资合计', cl:totalNet>=0?'var(--up)':'var(--down)'},
+    {l:'净买入家数', v:all.filter(s=>s.netBuy>0).length, s:`净买入占比${(all.filter(s=>s.netBuy>0).length/all.length*100).toFixed(0)}%`},
+    {l:'净卖出家数', v:all.filter(s=>s.netBuy<0).length, s:`净卖出占比${(all.filter(s=>s.netBuy<0).length/all.length*100).toFixed(0)}%`},
+  ].map(c => `<div class="stat-card${c.hl?' hl':''}"><div class="sl">${c.l}</div><div class="sv"${c.cl?` style="color:${c.cl}"`:''}>${c.v}</div><div class="ss">${c.s}</div></div>`).join('');
+}
+
+function renderTable() {
+  const list = getFiltered();
+  document.getElementById('tableCount').textContent = `${list.length} 只`;
+  const tb = document.getElementById('tableBody');
+  tb.innerHTML = list.map(s => {
+    const up = s.netBuy >= 0;
+    const buySummary = s.buyDepts.slice(0,2).map(d => d.name).join('、') + (s.buyDepts.length > 2 ? ` 等${s.buyDepts.length}家` : '');
+    const sellSummary = s.sellDepts.slice(0,2).map(d => d.name).join('、') + (s.sellDepts.length > 2 ? ` 等${s.sellDepts.length}家` : '');
+    return `<tr class="${selectedCode === s.code ? 'selected' : ''}" onclick="openModal('${s.code}')">
+      <td><span class="nc">${s.name}</span><span class="cc">${s.code}</span></td>
+      <td><span class="net-buy ${up?'up':'down'}">${up?'+':''}${(s.netBuy/10000).toFixed(2)}亿</span></td>
+      <td style="font-size:.7rem;max-width:180px;white-space:normal;">${buySummary}</td>
+      <td style="font-size:.7rem;max-width:180px;white-space:normal;">${sellSummary}</td>
+      <td><span class="reason-tag">${s.reason}</span></td></tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;padding:36px;color:var(--muted)">无匹配数据</td></tr>';
+}
+
+function openModal(code) {
+  selectedCode = code;
+  const s = dragonTigerData.find(d => d.code === code);
+  if (!s) return;
+  document.getElementById('mTitle').textContent = `${s.name} (${s.code}) 龙虎榜明细`;
+  const up = s.netBuy >= 0;
+  document.getElementById('mBody').innerHTML = `
+    <div class="detail-section">
+      <h4>上榜原因</h4>
+      <p style="font-size:.78rem;color:var(--muted)">${s.reason}</p>
+    </div>
+    <div class="detail-section">
+      <h4 style="color:var(--up)">买方营业部</h4>
+      <table class="dept-table"><thead><tr><th>营业部名称</th><th>买入金额(万)</th></tr></thead><tbody>
+        ${s.buyDepts.map(d => `<tr><td>${d.name}</td><td class="val up">${d.amount.toLocaleString()}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="detail-section">
+      <h4 style="color:var(--down)">卖方营业部</h4>
+      <table class="dept-table"><thead><tr><th>营业部名称</th><th>卖出金额(万)</th></tr></thead><tbody>
+        ${s.sellDepts.map(d => `<tr><td>${d.name}</td><td class="val down">${d.amount.toLocaleString()}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="detail-section" style="text-align:center;font-size:.85rem;font-weight:600;color:${up?'var(--up)':'var(--down)'}">
+      净买入：${up?'+':''}${(s.netBuy/10000).toFixed(2)}亿
+    </div>`;
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.add('hidden');
+  selectedCode = null;
+  renderTable();
+}
+
+function setType(type, el) {
+  typeFilter = type;
+  document.querySelectorAll('#typeChips .fc').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  renderAll();
+}
+function setDir(dir, el) {
+  dirFilter = dir;
+  document.querySelectorAll('#dirChips .fc').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  renderAll();
+}
+
+function renderAll() { renderStats(); renderTable(); }
+
+document.getElementById('modalOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,733 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>行情回放 — openatrading</title>
+<style>
+  :root {
+    --bg:      oklch(98% 0.004 95);
+    --surface: oklch(100% 0.002 95);
+    --fg:      oklch(20% 0.018 70);
+    --muted:   oklch(48% 0.012 70);
+    --border:  oklch(90% 0.006 95);
+    --accent:  oklch(52% 0.10 28);
+    --accent-hover: oklch(46% 0.12 28);
+    --up:      oklch(48% 0.16 22);
+    --down:    oklch(48% 0.14 155);
+    --font-display: 'Iowan Old Style', 'Charter', Georgia, 'Noto Serif SC', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-body); background: var(--bg); color: var(--fg);
+    min-height: 100vh; display: flex; flex-direction: column;
+    height: 100vh; overflow: hidden;
+  }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; background: var(--surface);
+    border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0;
+  }
+  .topbar .logo {
+    font-family: var(--font-display); font-size: 1.1rem; font-weight: 500;
+    color: var(--fg); letter-spacing: -0.01em; text-decoration: none;
+  }
+  .topbar .logo span { color: var(--accent); }
+  .trading-day-badge {
+    font-family: var(--font-display); font-size: 0.85rem; font-weight: 500;
+    color: var(--fg); background: oklch(96% 0.004 95);
+    padding: 5px 14px; border-radius: 20px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .trading-day-badge .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 7px; border: none;
+    font-family: var(--font-body); font-size: 0.78rem; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+    text-decoration: none; white-space: nowrap;
+  }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: oklch(95% 0.005 95); color: var(--fg); }
+
+  .main-layout { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Left Panel ── */
+  .panel-left {
+    width: 340px; min-width: 340px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .panel-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .panel-section h4 {
+    font-family: var(--font-display); font-size: 0.82rem; font-weight: 500;
+    color: var(--fg); margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-section h4 .sub { font-size: 0.7rem; color: var(--muted); font-weight: 400; }
+
+  .sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .sector-card {
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; position: relative;
+    background: var(--surface); display: flex; align-items: center; justify-content: space-between;
+  }
+  .sector-card:hover { border-color: var(--accent); }
+  .sector-card.selected { border-color: var(--accent); background: oklch(95% 0.02 28 / 0.06); }
+  .sector-name { font-size: 0.78rem; font-weight: 500; }
+  .sector-change {
+    font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600;
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .sector-change.up { background: oklch(90% 0.04 22 / 0.25); color: var(--up); }
+  .sector-change.down { background: oklch(90% 0.04 155 / 0.25); color: var(--down); }
+  .sector-signal {
+    position: absolute; top: -4px; right: -4px;
+    font-size: 0.55rem; padding: 2px 5px; border-radius: 8px;
+    font-weight: 700; letter-spacing: 0.04em;
+  }
+  .sector-signal.good { background: var(--up); color: #fff; }
+  .sector-signal.bad  { background: var(--down); color: #fff; }
+
+  .signal-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 6px; border-radius: 4px;
+    border-bottom: 1px solid oklch(96% 0.003 95);
+    font-size: 0.72rem; cursor: pointer; transition: background 0.1s;
+  }
+  .signal-item:hover { background: oklch(97% 0.004 95); }
+  .signal-item.flash { background: oklch(94% 0.03 28 / 0.08); }
+  .signal-dot {
+    width: 7px; height: 7px; border-radius: 50%; margin-top: 3px; flex-shrink: 0;
+  }
+  .signal-dot.good { background: var(--up); }
+  .signal-dot.bad  { background: var(--down); }
+  .signal-time { font-family: var(--font-mono); font-size: 0.68rem; color: var(--muted); min-width: 42px; }
+  .signal-target { font-weight: 600; }
+
+  /* ── Center Ranking ── */
+  .panel-center { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .ranking-area { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .ranking-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0 10px; position: sticky; top: 0; background: var(--bg); z-index: 2;
+  }
+  .ranking-header h3 { font-family: var(--font-display); font-size: 0.95rem; font-weight: 500; }
+  .ranking-header .tabs { display: flex; gap: 3px; }
+  .tab-btn {
+    padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border);
+    font-size: 0.72rem; cursor: pointer; background: transparent;
+    color: var(--muted); transition: all 0.12s;
+  }
+  .tab-btn:hover { border-color: var(--accent); color: var(--fg); }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .stock-table { width: 100%; border-collapse: collapse; }
+  .stock-table th {
+    text-align: left; padding: 8px 10px; font-size: 0.68rem;
+    font-weight: 500; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.03em; border-bottom: 1px solid var(--border);
+    position: sticky; top: 48px; background: var(--bg); z-index: 1;
+  }
+  .stock-table td {
+    padding: 7px 10px; border-bottom: 1px solid oklch(96% 0.003 95);
+    font-size: 0.78rem;
+  }
+  .stock-table tr { transition: background 0.15s; }
+  .stock-table tbody tr:hover { background: oklch(97% 0.004 95); }
+  .stock-table .rank { width: 32px; font-family: var(--font-mono); font-weight: 600; color: var(--muted); }
+  .stock-table .rank.top3 { color: var(--accent); }
+  .stock-table .name { font-weight: 500; }
+  .stock-table .code { font-size: 0.7rem; color: var(--muted); margin-left: 4px; }
+  .stock-table .sector-tag {
+    font-size: 0.65rem; color: var(--muted);
+    background: oklch(96% 0.003 95); padding: 2px 6px; border-radius: 4px;
+  }
+  .stock-table .val { font-family: var(--font-mono); font-weight: 500; }
+  .stock-table .val.up { color: var(--up); } .stock-table .val.down { color: var(--down); }
+  .speed-bar-wrap {
+    width: 80px; height: 4px; background: oklch(94% 0.004 95);
+    border-radius: 2px; display: inline-block; vertical-align: middle; margin-left: 6px;
+  }
+  .speed-bar { height: 100%; border-radius: 2px; }
+  .speed-bar.up { background: var(--up); } .speed-bar.down { background: var(--down); }
+
+  .mini-chart { width: 100%; height: 50px; margin-top: 6px; }
+
+  /* ── Bottom Timeline ── */
+  .timeline-panel {
+    flex: 0 0 130px; background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 8px 20px 12px;
+  }
+  .playback-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .play-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: none; background: var(--accent); color: #fff;
+    cursor: pointer; font-size: 0.9rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .play-btn:hover { background: var(--accent-hover); }
+  .step-btn {
+    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; cursor: pointer; color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; transition: all 0.12s;
+  }
+  .step-btn:hover { border-color: var(--accent); color: var(--fg); }
+  .speed-group { display: flex; gap: 3px; }
+  .speed-btn {
+    padding: 3px 10px; border-radius: 5px; border: 1px solid var(--border);
+    background: transparent; font-family: var(--font-mono); font-size: 0.68rem;
+    cursor: pointer; color: var(--muted); transition: all 0.12s;
+  }
+  .speed-btn:hover { border-color: var(--accent); color: var(--fg); }
+  .speed-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .time-display {
+    font-family: var(--font-mono); font-size: 0.9rem; font-weight: 600;
+    color: var(--fg); margin-left: auto;
+  }
+  .timeline-labels {
+    display: flex; justify-content: space-between;
+    font-size: 0.62rem; color: var(--muted); padding: 0 2px;
+  }
+  .timeline-track {
+    flex: 1; position: relative; cursor: pointer;
+    background: oklch(95% 0.004 95); border-radius: 6px;
+    min-height: 32px; overflow: visible;
+  }
+  .timeline-track svg { width: 100%; height: 100%; }
+  .timeline-scrubber {
+    position: absolute; top: -6px; width: 3px; height: calc(100% + 12px);
+    background: var(--accent); z-index: 5; pointer-events: none;
+    border-radius: 2px; box-shadow: 0 0 8px rgba(0,0,0,0.2);
+  }
+  .timeline-scrubber::after {
+    content: '▼'; position: absolute; top: -12px; left: 50%;
+    transform: translateX(-50%); font-size: 10px; color: var(--accent);
+  }
+  .legend-inline { font-size: 0.62rem; color: var(--muted); margin-top: 2px; }
+  .legend-inline span { margin-right: 8px; }
+
+  .no-data { text-align: center; padding: 24px; color: var(--muted); font-size: 0.8rem; }
+
+  @media (max-width: 1024px) { .panel-left { width: 280px; min-width: 280px; } }
+  @media (max-width: 768px)  { .panel-left { display: none; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="index.html" class="logo">open<span>a</span>trading</a>
+  <div class="trading-day-badge">
+    <span class="dot"></span>
+    最近交易日：<strong>2025-01-20 星期一</strong>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" onclick="location.href='index.html'">← 返回总览</button>
+  </div>
+</header>
+
+<div class="main-layout">
+
+  <!-- ── Left — 板块 + 信号 ── -->
+  <aside class="panel-left">
+    <div class="panel-section">
+      <h4>板块涨跌 <span class="sub" id="sectorTimeLabel">09:30</span></h4>
+      <div class="sector-grid" id="sectorGrid"></div>
+    </div>
+    <div class="panel-section">
+      <h4 id="selectedSectorTitle">板块日内走势</h4>
+      <div class="mini-chart"><svg id="sectorMiniChart" viewBox="0 0 300 50" width="100%" height="50"></svg></div>
+      <div class="legend-inline">
+        <span style="color:var(--muted)">— 昨收基准线</span>
+        <span style="color:var(--up)">● 利好</span>
+        <span style="color:var(--down)">● 利空</span>
+      </div>
+    </div>
+    <div class="panel-section" style="flex:1;overflow-y:auto;">
+      <h4>板块信号时间线</h4>
+      <div id="signalTimeline"></div>
+    </div>
+  </aside>
+
+  <!-- ── Center — 涨速 / 涨幅排名 ── -->
+  <div class="panel-center">
+    <div class="ranking-area">
+      <div class="ranking-header">
+        <h3 id="rankingTitle">全市场 · 涨速排名</h3>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="setRankMode('speed')">涨速</button>
+          <button class="tab-btn" onclick="setRankMode('change')">涨幅</button>
+          <button class="tab-btn" onclick="setRankMode('sector')">当前板块</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="stock-table">
+          <thead><tr><th>#</th><th>名称</th><th>板块</th><th>涨速</th><th>涨幅</th></tr></thead>
+          <tbody id="rankingBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bottom Timeline ── -->
+<div class="timeline-panel">
+  <div class="playback-bar">
+    <button class="step-btn" onclick="stepTime(-1)">⏮</button>
+    <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+    <button class="step-btn" onclick="stepTime(1)">⏭</button>
+    <div class="speed-group">
+      <button class="speed-btn" data-speed="1" onclick="setSpeed(1,this)">1×</button>
+      <button class="speed-btn active" data-speed="5" onclick="setSpeed(5,this)">5×</button>
+      <button class="speed-btn" data-speed="15" onclick="setSpeed(15,this)">15×</button>
+      <button class="speed-btn" data-speed="60" onclick="setSpeed(60,this)">60×</button>
+    </div>
+    <span class="time-display" id="timeDisplay">09:30</span>
+    <button class="btn btn-ghost" onclick="goToOpen()">开盘</button>
+    <button class="btn btn-ghost" onclick="goToClose()">收盘</button>
+  </div>
+  <div class="timeline-labels">
+    <span>09:30</span><span>10:00</span><span>10:30</span><span>11:00</span><span>11:30</span>
+    <span>13:00</span><span>13:30</span><span>14:00</span><span>14:30</span><span>15:00</span>
+  </div>
+  <div class="timeline-track" id="timelineTrack" onclick="seekTimeline(event)">
+    <svg id="timelineSvg"></svg>
+    <div class="timeline-scrubber" id="timelineScrubber"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// Rust data model mirrors
+// ═══════════════════════════════════════
+/*
+pub struct StockAbnormalEventData {
+    pub symbol: Option<String>,   // 股票代码 e.g. "600519"
+    pub name: Option<String>,     // 股票名称 e.g. "贵州茅台"
+    pub pcp: Option<f64>,         // 涨幅 %
+    pub mtm: Option<f64>,         // 涨速 %
+}
+pub struct PlateAbnormalEventData {
+    pub plate_id: Option<String>,
+    pub plate_name: Option<String>,
+    pub mtm: Option<f64>,         // 板块涨跌幅 %
+}
+pub struct AbnormalEvent {
+    pub id: i64,
+    pub target: String,
+    pub event_type: i32,
+    pub event_timestamp: i64,
+    pub stock_abnormal_event_data: Option<StockAbnormalEventData>,
+    pub plate_abnormal_event_data: Option<PlateAbnormalEventData>,
+    pub good_or_bad: i32,         // 1=利好, -1=利空, 0=中性
+}
+*/
+
+const EVENT_TYPE_LABELS = {
+  1:'大单成交',2:'异动拉升',3:'异动跳水',4:'触及涨停',5:'触及跌停',
+  6:'封板',7:'开板',8:'主力资金',9:'板块利好',10:'板块利空',
+};
+
+const SECTORS = [
+  { id:'semiconductor', name:'半导体' },
+  { id:'ai_compute',    name:'AI 算力' },
+  { id:'new_energy',    name:'新能源' },
+  { id:'consumer',      name:'白酒消费' },
+  { id:'pharma',        name:'医药生物' },
+  { id:'military',      name:'军工' },
+  { id:'bank',          name:'银行' },
+  { id:'real_estate',   name:'地产' },
+];
+
+const STOCK_POOL = {
+  semiconductor: [['中芯国际','688981'],['北方华创','002371'],['韦尔股份','603501'],['卓胜微','300782'],['长电科技','600584'],['通富微电','002156']],
+  ai_compute:    [['浪潮信息','000977'],['中科曙光','603019'],['寒武纪','688256'],['海光信息','688041'],['景嘉微','300474']],
+  new_energy:    [['宁德时代','300750'],['比亚迪','002594'],['隆基绿能','601012'],['阳光电源','300274'],['通威股份','600438']],
+  consumer:      [['贵州茅台','600519'],['五粮液','000858'],['泸州老窖','000568'],['山西汾酒','600809'],['洋河股份','002304']],
+  pharma:        [['药明康德','603259'],['恒瑞医药','600276'],['迈瑞医疗','300760'],['百济神州','688235'],['凯莱英','002821']],
+  military:      [['中航沈飞','600760'],['航发动力','600893'],['中国船舶','600150'],['中兵红箭','000519']],
+  bank:          [['工商银行','601398'],['招商银行','600036'],['建设银行','601939'],['农业银行','601288']],
+  real_estate:   [['万科A','000002'],['保利发展','600048'],['招商蛇口','001979'],['金地集团','600383']],
+};
+
+// ── Trading minutes ──
+const AM = [9*60+30, 11*60+30], PM = [13*60, 15*60];
+const TRADING_MINUTES = [];
+for (let m = AM[0]; m <= AM[1]; m++) TRADING_MINUTES.push(m);
+for (let m = PM[0]; m <= PM[1]; m++) TRADING_MINUTES.push(m);
+
+function minToTime(m) { const h=Math.floor(m/60), mn=m%60; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; }
+
+// Base date: 2025-01-20 (Monday)
+const BASE_TS = new Date('2025-01-20T00:00:00+08:00').getTime();
+function minuteToTimestamp(minute) {
+  return Math.floor((BASE_TS + minute * 60000) / 1000);
+}
+function timestampToMinute(ts) {
+  return Math.round((ts * 1000 - BASE_TS) / 60000);
+}
+
+// ── Global state ──
+let allEvents = [];
+let selectedSector = 'semiconductor';
+let currentMinute = AM[0];
+let isPlaying = false;
+let playSpeed = 5;
+let playInterval = null;
+let rankMode = 'speed';
+let idCounter = 1;
+
+// ── Generate mock AbnormalEvent[] ──
+function generateEvents() {
+  idCounter = 1;
+  const events = [];
+
+  // 1. Plate abnormal events
+  SECTORS.forEach(sector => {
+    const count = 3 + Math.floor(Math.random() * 5);
+    const usedMin = new Set();
+    for (let i = 0; i < count; i++) {
+      let min;
+      do { min = TRADING_MINUTES[Math.floor(Math.random() * TRADING_MINUTES.length)]; }
+      while (usedMin.has(min) && usedMin.size < TRADING_MINUTES.length);
+      usedMin.add(min);
+      const gob = Math.random() > 0.45 ? 1 : -1;
+      const mtm = +(gob * (0.5 + Math.random() * 4.0)).toFixed(2);
+      events.push({
+        id: idCounter++,
+        target: sector.id,
+        event_type: gob === 1 ? 9 : 10,
+        event_timestamp: minuteToTimestamp(min),
+        stock_abnormal_event_data: null,
+        plate_abnormal_event_data: { plate_id: sector.id, plate_name: sector.name, mtm },
+        good_or_bad: gob,
+      });
+    }
+  });
+
+  // 2. Stock abnormal events — each stock gets 1-5 events throughout the day
+  Object.entries(STOCK_POOL).forEach(([sectorId, list]) => {
+    list.forEach(([name, symbol]) => {
+      const count = 1 + Math.floor(Math.random() * 5);
+      const usedMin = new Set();
+      for (let i = 0; i < count; i++) {
+        let min;
+        do { min = TRADING_MINUTES[Math.floor(Math.random() * TRADING_MINUTES.length)]; }
+        while (usedMin.has(min) && usedMin.size < TRADING_MINUTES.length);
+        usedMin.add(min);
+        const gob = Math.random() > 0.4 ? 1 : -1;
+        const pcpSign = gob === 1 ? 1 : -1;
+        // pcp = 涨幅, 0.3% ~ 9.5%
+        const pcp = +(pcpSign * (0.3 + Math.random() * 9.2)).toFixed(2);
+        // mtm = 涨速, typically smaller than pcp, -3% ~ +3%
+        const mtm = +((Math.random() - 0.5) * 6).toFixed(2);
+        const typeRand = Math.random();
+        let eventType;
+        if (typeRand < 0.30) eventType = 1;
+        else if (typeRand < 0.55) eventType = gob === 1 ? 2 : 3;
+        else if (typeRand < 0.70) eventType = gob === 1 ? 4 : 5;
+        else if (typeRand < 0.82) eventType = gob === 1 ? 6 : 7;
+        else eventType = 8;
+        events.push({
+          id: idCounter++,
+          target: symbol,
+          event_type: eventType,
+          event_timestamp: minuteToTimestamp(min),
+          stock_abnormal_event_data: { symbol, name, pcp, mtm },
+          plate_abnormal_event_data: null,
+          good_or_bad: gob,
+        });
+      }
+    });
+  });
+
+  events.sort((a, b) => a.event_timestamp - b.event_timestamp);
+  allEvents = events;
+}
+
+// ── Derived helpers ──
+function getPlateEvents() { return allEvents.filter(e => e.plate_abnormal_event_data != null); }
+function getStockEvents() { return allEvents.filter(e => e.stock_abnormal_event_data != null); }
+
+function eventsUpToTs(ts) { return allEvents.filter(e => e.event_timestamp <= ts); }
+
+function getSectorChangeAt(minute) {
+  const ts = minuteToTimestamp(minute);
+  const plateEvts = getPlateEvents().filter(e =>
+    e.plate_abnormal_event_data.plate_id === selectedSector && e.event_timestamp <= ts
+  );
+  if (plateEvts.length === 0) return 0;
+  return plateEvts[plateEvts.length - 1].plate_abnormal_event_data.mtm;
+}
+
+function getStockStateAt(minute) {
+  const ts = minuteToTimestamp(minute);
+  const stockEvts = getStockEvents().filter(e => e.event_timestamp <= ts);
+  const latestBySymbol = new Map();
+  stockEvts.forEach(e => {
+    const sd = e.stock_abnormal_event_data;
+    latestBySymbol.set(sd.symbol, { pcp: sd.pcp, mtm: sd.mtm });
+  });
+  // Fill in all stocks from pool, default 0/0
+  const result = [];
+  Object.entries(STOCK_POOL).forEach(([sectorId, list]) => {
+    list.forEach(([name, symbol]) => {
+      const data = latestBySymbol.get(symbol);
+      result.push({
+        name, symbol, sectorId,
+        pcp: data ? data.pcp : 0,
+        mtm: data ? data.mtm : 0,
+      });
+    });
+  });
+  return result;
+}
+
+// ── Rendering ──
+function updateAll() {
+  renderSectors();
+  renderSectorMiniChart();
+  renderSignalTimeline();
+  renderRanking();
+  renderScrubber();
+  renderTimeDisplay();
+}
+
+function renderSectors() {
+  const grid = document.getElementById('sectorGrid');
+  document.getElementById('sectorTimeLabel').textContent = minToTime(currentMinute);
+  const ts = minuteToTimestamp(currentMinute);
+  grid.innerHTML = SECTORS.map(s => {
+    const plateEvts = getPlateEvents().filter(e =>
+      e.plate_abnormal_event_data.plate_id === s.id && e.event_timestamp <= ts
+    );
+    const chg = plateEvts.length > 0 ? plateEvts[plateEvts.length-1].plate_abnormal_event_data.mtm : 0;
+    const up = chg >= 0;
+    const sel = s.id === selectedSector ? ' selected' : '';
+    const nowEvt = getPlateEvents().find(e =>
+      e.plate_abnormal_event_data.plate_id === s.id && e.event_timestamp === ts
+    );
+    const sigHtml = nowEvt
+      ? (nowEvt.good_or_bad === 1 ? '<span class="sector-signal good">利好</span>' : '<span class="sector-signal bad">利空</span>')
+      : '';
+    return `<div class="sector-card${sel}" onclick="selectSector('${s.id}')">
+      ${sigHtml}
+      <span class="sector-name">${s.name}</span>
+      <span class="sector-change ${up?'up':'down'}">${up?'+':''}${chg.toFixed(2)}%</span>
+    </div>`;
+  }).join('');
+}
+
+function renderSectorMiniChart() {
+  const svg = document.getElementById('sectorMiniChart');
+  document.getElementById('selectedSectorTitle').innerHTML =
+    `${SECTORS.find(s=>s.id===selectedSector)?.name||''} 日内走势 <span class="sub">昨收基准线</span>`;
+  const W=300, H=50, padL=30, padR=10, padT=5, padB=8;
+  const pw=W-padL-padR, ph=H-padT-padB;
+
+  const points = TRADING_MINUTES.map(m => {
+    const ts = minuteToTimestamp(m);
+    const plateEvts = getPlateEvents().filter(e =>
+      e.plate_abnormal_event_data.plate_id === selectedSector && e.event_timestamp <= ts
+    );
+    const chg = plateEvts.length > 0 ? plateEvts[plateEvts.length-1].plate_abnormal_event_data.mtm : 0;
+    const hit = getPlateEvents().some(e =>
+      e.plate_abnormal_event_data.plate_id === selectedSector && e.event_timestamp === ts
+    );
+    const hitEvt = getPlateEvents().find(e =>
+      e.plate_abnormal_event_data.plate_id === selectedSector && e.event_timestamp === ts
+    );
+    return { minute: m, change: chg, hasEvent: hit, gob: hitEvt ? hitEvt.good_or_bad : 0 };
+  });
+
+  const changes = points.map(p => p.change);
+  const minC = Math.min(...changes, -4);
+  const maxC = Math.max(...changes, 4);
+  const range = maxC - minC || 1;
+  function x(i) { return padL + (i/(points.length-1))*pw; }
+  function y(v) { return padT + (1-(v-minC)/range)*ph; }
+
+  let pathD = '';
+  points.forEach((p, i) => { pathD += `${i===0?'M':'L'}${x(i).toFixed(1)},${y(p.change).toFixed(1)} `; });
+  const lineColor = points[points.length-1].change >= points[0].change ? 'var(--up)' : 'var(--down)';
+  const zeroY = y(0);
+
+  let dots = '';
+  points.forEach((p, i) => {
+    if (p.hasEvent) {
+      const col = p.gob === 1 ? 'var(--up)' : 'var(--down)';
+      dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.change).toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1"/>`;
+    }
+  });
+  const curIdx = TRADING_MINUTES.indexOf(currentMinute);
+  const curX = curIdx >= 0 ? x(curIdx) : padL;
+
+  svg.innerHTML = `
+    <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--muted)" stroke-width="0.5" stroke-dasharray="4,3"/>
+    <path d="${pathD}" fill="none" stroke="${lineColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+    <line x1="${curX.toFixed(1)}" y1="${padT}" x2="${curX.toFixed(1)}" y2="${H-padB}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.7"/>
+    <circle cx="${curX.toFixed(1)}" cy="${y(points[curIdx]?.change||0).toFixed(1)}" r="4" fill="#fff" stroke="var(--accent)" stroke-width="2"/>
+  `;
+}
+
+function renderSignalTimeline() {
+  const plateEvts = getPlateEvents().sort((a,b) => a.event_timestamp - b.event_timestamp);
+  const el = document.getElementById('signalTimeline');
+  el.innerHTML = plateEvts.map(e => {
+    const pd = e.plate_abnormal_event_data;
+    const min = timestampToMinute(e.event_timestamp);
+    const isPast = min <= currentMinute;
+    const isNow = min === currentMinute;
+    const flash = isNow ? ' flash' : '';
+    const dim = !isPast ? ' style="opacity:0.35"' : '';
+    const label = e.good_or_bad === 1 ? '利好 🟢' : '利空 🔴';
+    const timeStr = minToTime(min);
+    return `<div class="signal-item${flash}"${dim} onclick="jumpToMinute(${min})">
+      <div class="signal-dot ${e.good_or_bad===1?'good':'bad'}"></div>
+      <div class="signal-time">${timeStr}</div>
+      <div><span class="signal-target">${pd.plate_name}</span> ${label} <span style="color:var(--muted)">${e.good_or_bad===1?'+':''}${pd.mtm.toFixed(2)}%</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderRanking() {
+  let list = getStockStateAt(currentMinute);
+
+  if (rankMode === 'sector') {
+    list = list.filter(s => s.sectorId === selectedSector);
+    document.getElementById('rankingTitle').textContent =
+      (SECTORS.find(s=>s.id===selectedSector)?.name||'') + ' · 涨速排名';
+  } else if (rankMode === 'speed') {
+    list.sort((a,b) => b.mtm - a.mtm);
+    document.getElementById('rankingTitle').textContent = '全市场 · 涨速排名';
+  } else {
+    list.sort((a,b) => b.pcp - a.pcp);
+    document.getElementById('rankingTitle').textContent = '全市场 · 涨幅排名';
+  }
+
+  const maxSpeed = Math.max(1, ...list.map(s => Math.abs(s.mtm)));
+  const tbody = document.getElementById('rankingBody');
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="no-data">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.slice(0, 40).map((st, i) => {
+    const rankCls = i < 3 ? ' top3' : '';
+    const upSp = st.mtm >= 0;
+    const upCh = st.pcp >= 0;
+    const barW = Math.min(80, (Math.abs(st.mtm) / maxSpeed) * 80);
+    return `<tr>
+      <td class="rank${rankCls}">${i+1}</td>
+      <td><span class="name">${st.name}</span><span class="code">${st.symbol}</span></td>
+      <td><span class="sector-tag">${SECTORS.find(s=>s.id===st.sectorId)?.name||''}</span></td>
+      <td class="val ${upSp?'up':'down'}">${upSp?'+':''}${st.mtm.toFixed(2)}%
+        <span class="speed-bar-wrap"><span class="speed-bar ${upSp?'up':'down'}" style="width:${barW}px"></span></span>
+      </td>
+      <td class="val ${upCh?'up':'down'}">${upCh?'+':''}${st.pcp.toFixed(2)}%</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderScrubber() {
+  const idx = TRADING_MINUTES.indexOf(currentMinute);
+  const pct = (idx / (TRADING_MINUTES.length - 1)) * 100;
+  document.getElementById('timelineScrubber').style.left = pct + '%';
+
+  const track = document.getElementById('timelineTrack');
+  const svg = document.getElementById('timelineSvg');
+  const W = track.clientWidth || 800, H = track.clientHeight || 32;
+  const plateEvts = getPlateEvents();
+  let dots = '';
+  plateEvts.forEach(e => {
+    const min = timestampToMinute(e.event_timestamp);
+    const si = TRADING_MINUTES.indexOf(min);
+    if (si >= 0) {
+      const sx = (si / (TRADING_MINUTES.length - 1)) * W;
+      const col = e.good_or_bad === 1 ? 'var(--up)' : 'var(--down)';
+      dots += `<circle cx="${sx.toFixed(1)}" cy="${H/2}" r="3.5" fill="${col}" stroke="#fff" stroke-width="1"/>`;
+    }
+  });
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = dots;
+}
+
+function renderTimeDisplay() {
+  document.getElementById('timeDisplay').textContent = minToTime(currentMinute);
+}
+
+// ── Actions ──
+function selectSector(id) { selectedSector = id; updateAll(); }
+
+function setRankMode(mode) {
+  rankMode = mode;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const i = mode === 'speed' ? 0 : mode === 'change' ? 1 : 2;
+  document.querySelectorAll('.tab-btn')[i].classList.add('active');
+  updateAll();
+}
+
+function jumpToMinute(min) {
+  stopPlay();
+  currentMinute = Math.max(AM[0], Math.min(PM[1], min));
+  updateAll();
+}
+function goToOpen() { stopPlay(); currentMinute = AM[0]; updateAll(); }
+function goToClose() { stopPlay(); currentMinute = PM[1]; updateAll(); }
+function stepTime(dir) {
+  stopPlay();
+  const idx = TRADING_MINUTES.indexOf(currentMinute) + dir;
+  if (idx >= 0 && idx < TRADING_MINUTES.length) currentMinute = TRADING_MINUTES[idx];
+  updateAll();
+}
+function togglePlay() { isPlaying ? stopPlay() : startPlay(); }
+function startPlay() {
+  isPlaying = true;
+  document.getElementById('playBtn').textContent = '⏸';
+  playInterval = setInterval(() => {
+    const idx = TRADING_MINUTES.indexOf(currentMinute) + playSpeed;
+    currentMinute = idx >= TRADING_MINUTES.length ? TRADING_MINUTES[0] : TRADING_MINUTES[idx];
+    updateAll();
+  }, 120);
+}
+function stopPlay() {
+  isPlaying = false;
+  document.getElementById('playBtn').textContent = '▶';
+  clearInterval(playInterval);
+}
+function setSpeed(sp, el) {
+  playSpeed = sp;
+  document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (isPlaying) { stopPlay(); startPlay(); }
+}
+function seekTimeline(e) {
+  stopPlay();
+  const rect = document.getElementById('timelineTrack').getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  const idx = Math.floor(pct * (TRADING_MINUTES.length - 1));
+  currentMinute = TRADING_MINUTES[Math.max(0, Math.min(TRADING_MINUTES.length-1, idx))];
+  updateAll();
+}
+
+function init() {
+  generateEvents();
+  updateAll();
+  window.addEventListener('resize', () => renderScrubber());
+}
+init();
+</script>
+</body>
+</html>
