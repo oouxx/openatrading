@@ -38,7 +38,7 @@ impl ToolSet {
         }
     }
 
-    pub fn add(mut self, tool: impl Tool + 'static) -> Self {
+    pub fn with_tool(mut self, tool: impl Tool + 'static) -> Self {
         self.tools.insert(tool.name().to_string(), Arc::new(tool));
         self
     }
@@ -93,31 +93,25 @@ impl ExtractParam for String {
 
 impl ExtractParam for i64 {
     fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
-        args.get(name)
-            .and_then(|v| v.as_i64())
-            .ok_or_else(|| {
-                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
-            })
+        args.get(name).and_then(|v| v.as_i64()).ok_or_else(|| {
+            ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+        })
     }
 }
 
 impl ExtractParam for f64 {
     fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
-        args.get(name)
-            .and_then(|v| v.as_f64())
-            .ok_or_else(|| {
-                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
-            })
+        args.get(name).and_then(|v| v.as_f64()).ok_or_else(|| {
+            ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+        })
     }
 }
 
 impl ExtractParam for bool {
     fn extract(args: &serde_json::Value, name: &str) -> Result<Self, ToolError> {
-        args.get(name)
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| {
-                ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
-            })
+        args.get(name).and_then(|v| v.as_bool()).ok_or_else(|| {
+            ToolError::ExecutionFailed(format!("missing or invalid parameter: {name}"))
+        })
     }
 }
 

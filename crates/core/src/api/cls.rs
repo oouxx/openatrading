@@ -96,7 +96,11 @@ impl ClsClient {
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
         let body_text = resp.text().await?;
-        eprintln!("[cls::telegraph] status={}, body={}", status, &body_text[..body_text.len().min(500)]);
+        eprintln!(
+            "[cls::telegraph] status={}, body={}",
+            status,
+            &body_text[..body_text.len().min(500)]
+        );
         let resp_data: ClsTelegraphResp = serde_json::from_str(&body_text)?;
         Ok(resp_data.data.roll_data)
     }

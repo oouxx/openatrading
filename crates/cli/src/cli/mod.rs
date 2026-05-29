@@ -420,9 +420,9 @@ async fn cmd_decision(
 
     let tools = Arc::new(
         trending_agent_core::llm::ToolSet::new()
-            .add(trending_agent_core::llm::tools::GetLimitUp)
-            .add(trending_agent_core::llm::tools::GetLimitDown)
-            .add(trending_agent_core::llm::tools::GetMarketOverview),
+            .with_tool(trending_agent_core::llm::tools::GetLimitUp)
+            .with_tool(trending_agent_core::llm::tools::GetLimitDown)
+            .with_tool(trending_agent_core::llm::tools::GetMarketOverview),
     );
 
     run_decision(

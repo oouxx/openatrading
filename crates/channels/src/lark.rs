@@ -93,10 +93,7 @@ impl LarkChannel {
     async fn send_chunk(&self, text: &str) -> Result<()> {
         let token = self.get_tenant_access_token().await?;
 
-        let url = format!(
-            "{}/im/v1/messages?receive_id_type=chat_id",
-            LARK_API_BASE
-        );
+        let url = format!("{}/im/v1/messages?receive_id_type=chat_id", LARK_API_BASE);
         let content = serde_json::json!({ "text": text }).to_string();
         let resp = self
             .client
