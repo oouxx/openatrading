@@ -1,6 +1,6 @@
 [package]
 name = "trading-agent-provider"
-version = "0.6.2"
+version = "0.9.2"
 edition = "2021"
 
 [dependencies]
