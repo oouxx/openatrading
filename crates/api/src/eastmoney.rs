@@ -217,11 +217,6 @@ impl LhbClient {
     // ── public API ───────────────────────────────────────────────────────────
 
     /// 龙虎榜详情列表（按日期范围）
-    ///
-    /// ```
-    /// let client = LhbClient::new();
-    /// let rows = client.lhb_detail("20240101", "20240115").await?;
-    /// ```
     pub async fn lhb_detail(
         &self,
         start_date: &str,
