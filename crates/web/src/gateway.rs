@@ -2,15 +2,16 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::api::Client as ApiClient;
-use crate::cron::{self, CronConfig};
-use crate::llm::LlmClient;
-use crate::memory::sqlite::SqliteMemoryStore;
-use crate::social::telegram_bot::{TelegramBot, TelegramBotConfig};
-use crate::social::NotificationSender;
-use crate::trade::sqlite::SqliteTradeManager;
-use crate::web::cache;
-use crate::web::{self, AppState, RoleEntry};
+use trending_agent_core::api::Client as ApiClient;
+use trending_agent_core::cron::{self, CronConfig};
+use trending_agent_core::llm::LlmClient;
+use trending_agent_core::memory::sqlite::SqliteMemoryStore;
+use trending_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
+use trending_agent_core::social::NotificationSender;
+use trending_agent_core::trade::sqlite::SqliteTradeManager;
+
+use crate::cache;
+use crate::{self as web, AppState, RoleEntry};
 
 pub struct Gateway {
     pub memory: Arc<SqliteMemoryStore>,

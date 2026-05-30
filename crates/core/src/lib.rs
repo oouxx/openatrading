@@ -1,7 +1,6 @@
 pub mod agents;
 pub mod api;
 pub mod cron;
-pub mod gateway;
 pub mod llm;
 pub mod memory;
 pub mod report;
@@ -10,4 +9,11 @@ pub mod social;
 pub mod templates;
 pub mod trade;
 pub mod utils;
-pub mod web;
+
+// Re-export RoleEntry since it's used across web, cli, and social modules
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoleEntry {
+    pub name: String,
+    pub display_name: String,
+    pub strategy: String,
+}

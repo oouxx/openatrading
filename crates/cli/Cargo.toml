@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 trending-agent-core = { path = "../core" }
+trending-agent-web = { path = "../web" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 futures = { workspace = true }
 serde = { workspace = true }

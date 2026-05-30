@@ -7,14 +7,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::agents::sentiment::analyze_sentiment;
-use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use crate::api::Client as ApiClient;
-use crate::trade::TradeManager;
+use trending_agent_core::agents::sentiment::analyze_sentiment;
+use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use trending_agent_core::api::Client as ApiClient;
+use trending_agent_core::trade::TradeManager;
 
-use super::cache::{self, CachePolicy};
-use super::{AppState, RoleEntry};
-use crate::roles::pnl::compute_pnl_history;
+use crate::cache::{self, CachePolicy};
+use crate::{AppState, RoleEntry};
+use trending_agent_core::roles::pnl::compute_pnl_history;
 
 // ── Response types ────────────────────────────────────
 
@@ -57,7 +57,7 @@ pub struct UpdateStrategyRequest {
 
 #[derive(Serialize)]
 pub struct PnlHistoryResponse {
-    pub points: Vec<crate::roles::pnl::PnlPoint>,
+    pub points: Vec<trending_agent_core::roles::pnl::PnlPoint>,
     pub initial_capital: f64,
 }
 
@@ -97,7 +97,7 @@ pub async fn get_overview(
             );
 
             let resp = OverviewResponse {
-                date: crate::utils::time::beijing_now()
+                date: trending_agent_core::utils::time::beijing_now()
                     .format("%Y-%m-%d %H:%M")
                     .to_string(),
                 rise_count: overview.rise_count,
@@ -264,7 +264,7 @@ pub async fn get_field_items(
         return Ok(Json(serde_json::json!([])));
     }
     let date = q.date.unwrap_or_else(|| {
-        crate::utils::time::beijing_now()
+        trending_agent_core::utils::time::beijing_now()
             .format("%Y-%m-%d")
             .to_string()
     });
@@ -290,7 +290,7 @@ pub async fn get_timeline(
     if std::env::var("JIUYAN_PHONE").is_err() {
         return Ok(Json(serde_json::json!([])));
     }
-    let month = crate::utils::time::beijing_now()
+    let month = trending_agent_core::utils::time::beijing_now()
         .format("%Y-%m")
         .to_string();
     let cache_key = format!("timeline_{}", month);
@@ -675,7 +675,7 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy).map_err(
+    trending_agent_core::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy).map_err(
         |e| {
             eprintln!("create_role error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -703,7 +703,7 @@ pub async fn update_role_strategy(
     Path(name): Path<String>,
     Json(body): Json<UpdateStrategyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy).map_err(
+    trending_agent_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy).map_err(
         |e| {
             eprintln!("update_role_strategy error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -725,7 +725,7 @@ pub async fn delete_role(
 ) -> Result<impl IntoResponse, StatusCode> {
     state.trade.delete_positions_by_role(&name).ok();
     state.trade.delete_trade_logs_by_role(&name).ok();
-    crate::roles::delete_role_dir(&state.strategies_dir, &name).ok();
+    trending_agent_core::roles::delete_role_dir(&state.strategies_dir, &name).ok();
     {
         let mut roles = state.roles.write().await;
         roles.retain(|r| r.name != name);
@@ -823,15 +823,15 @@ pub async fn get_replay_events(
                     eprintln!("[replay] events error: {:#}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            let events: Vec<crate::api::xuangubao::ReplayEvent> = all_events
+            let events: Vec<trending_agent_core::api::xuangubao::ReplayEvent> = all_events
                 .iter()
-                .map(crate::api::xuangubao::ReplayEvent::from)
+                .map(trending_agent_core::api::xuangubao::ReplayEvent::from)
                 .collect();
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
                 .cloned()
                 .unwrap_or_default();
-            let page = crate::api::xuangubao::ReplayPage {
+            let page = trending_agent_core::api::xuangubao::ReplayPage {
                 date,
                 market_phase: String::new(),
                 events,
@@ -856,7 +856,7 @@ pub async fn get_replay_index(
         CachePolicy::replay(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = crate::api::xuangubao::fetch_index_trends(&client)
+            let data = trending_agent_core::api::xuangubao::fetch_index_trends(&client)
                 .await
                 .map_err(|e| {
                     eprintln!("[replay] index trend error: {e}");
@@ -942,7 +942,7 @@ pub async fn get_replay_snapshots(
                 eprintln!("[replay] snapshots fetch error: {e}");
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            let snaps = crate::api::xuangubao::build_replay_snapshots(&events);
+            let snaps = trending_agent_core::api::xuangubao::build_replay_snapshots(&events);
             Ok(serde_json::to_string(&snaps).unwrap_or_default())
         },
     )
@@ -970,7 +970,7 @@ pub async fn ai_replay_analyze(
         eprintln!("[replay] analyze fetch error: {e}");
         StatusCode::SERVICE_UNAVAILABLE
     })?;
-    let snapshots = crate::api::xuangubao::build_replay_snapshots(&events);
+    let snapshots = trending_agent_core::api::xuangubao::build_replay_snapshots(&events);
 
     // Build a compact data table for the prompt
     let mut data_table = String::from("时间    情绪 多  空  主线板块(前3)\n");
