@@ -86,4 +86,6 @@ check .claude/context/claude-ui.md
 前端 bun
 后端 rust
 
+## 8. 执行完任务自动提交代码
+
 ---
