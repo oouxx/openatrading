@@ -19,7 +19,9 @@ impl SinaClient {
 }
 
 impl Default for SinaClient {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,35 +68,49 @@ impl SinaClient {
 
         // Extract JSON from JavaScript: var LHBData = {...};
         let re = Regex::new(r"var\s+LHBData\s*=\s*(\{.*?\});").unwrap();
-        let cap = re.captures(&body).context("LHBData not found in response")?;
+        let cap = re
+            .captures(&body)
+            .context("LHBData not found in response")?;
         let json_str = cap.get(1).unwrap().as_str();
 
-        let parsed: SinaLhbResponse = serde_json::from_str(json_str)
-            .context("failed to parse LHBData JSON")?;
+        let parsed: SinaLhbResponse =
+            serde_json::from_str(json_str).context("failed to parse LHBData JSON")?;
 
-        let entries = parsed.data.into_iter().map(|raw| {
-            let inst_buy = parse_amount(&raw.jgbuy);
-            let inst_sell = parse_amount(&raw.jgsell);
-            let dept_buy = parse_amount(&raw.deptbuy);
-            let dept_sell = parse_amount(&raw.deptsell);
-            let net = (inst_buy + dept_buy) - (inst_sell + dept_sell);
+        let entries = parsed
+            .data
+            .into_iter()
+            .map(|raw| {
+                let inst_buy = parse_amount(&raw.jgbuy);
+                let inst_sell = parse_amount(&raw.jgsell);
+                let dept_buy = parse_amount(&raw.deptbuy);
+                let dept_sell = parse_amount(&raw.deptsell);
+                let net = (inst_buy + dept_buy) - (inst_sell + dept_sell);
 
-            DragonTigerEntry {
-                stock_code: raw.stock_code.clone(),
-                stock_name: raw.stock_name.clone(),
-                trade_date: raw.trade_date.clone(),
-                reason: raw.reason.clone(),
-                close_price: raw.close_price.parse().ok(),
-                change_pct: raw.change_pct.trim_end_matches('%').parse().ok(),
-                inst_buy_amount: if inst_buy > 0.0 { Some(inst_buy) } else { None },
-                inst_sell_amount: if inst_sell > 0.0 { Some(inst_sell) } else { None },
-                dept_buy_amount: if dept_buy > 0.0 { Some(dept_buy) } else { None },
-                dept_sell_amount: if dept_sell > 0.0 { Some(dept_sell) } else { None },
-                net_buy: net,
-                buy_depts: vec![],
-                sell_depts: vec![],
-            }
-        }).collect();
+                DragonTigerEntry {
+                    stock_code: raw.stock_code.clone(),
+                    stock_name: raw.stock_name.clone(),
+                    trade_date: raw.trade_date.clone(),
+                    reason: raw.reason.clone(),
+                    close_price: raw.close_price.parse().ok(),
+                    change_pct: raw.change_pct.trim_end_matches('%').parse().ok(),
+                    inst_buy_amount: if inst_buy > 0.0 { Some(inst_buy) } else { None },
+                    inst_sell_amount: if inst_sell > 0.0 {
+                        Some(inst_sell)
+                    } else {
+                        None
+                    },
+                    dept_buy_amount: if dept_buy > 0.0 { Some(dept_buy) } else { None },
+                    dept_sell_amount: if dept_sell > 0.0 {
+                        Some(dept_sell)
+                    } else {
+                        None
+                    },
+                    net_buy: net,
+                    buy_depts: vec![],
+                    sell_depts: vec![],
+                }
+            })
+            .collect();
 
         Ok(entries)
     }

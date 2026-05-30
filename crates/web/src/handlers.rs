@@ -675,12 +675,15 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    trading_agent_core::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy).map_err(
-        |e| {
-            eprintln!("create_role error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        },
-    )?;
+    trading_agent_core::roles::save_role_strategy(
+        &state.strategies_dir,
+        &body.name,
+        &body.strategy,
+    )
+    .map_err(|e| {
+        eprintln!("create_role error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == body.name) {
@@ -703,12 +706,11 @@ pub async fn update_role_strategy(
     Path(name): Path<String>,
     Json(body): Json<UpdateStrategyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    trading_agent_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy).map_err(
-        |e| {
+    trading_agent_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy)
+        .map_err(|e| {
             eprintln!("update_role_strategy error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        },
-    )?;
+        })?;
     {
         let mut roles = state.roles.write().await;
         if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
@@ -816,13 +818,10 @@ pub async fn get_replay_events(
         CachePolicy::replay(),
         || async {
             let client = XuanguBaoClient::new();
-            let all_events = client
-                .fetch_all_day_events()
-                .await
-                .map_err(|e| {
-                    eprintln!("[replay] events error: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
+            let all_events = client.fetch_all_day_events().await.map_err(|e| {
+                eprintln!("[replay] events error: {:#}", e);
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
             let events: Vec<trading_agent_core::api::xuangubao::ReplayEvent> = all_events
                 .iter()
                 .map(trading_agent_core::api::xuangubao::ReplayEvent::from)
