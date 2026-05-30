@@ -4,7 +4,7 @@ use askama::Template;
 
 use crate::agents::sentiment::HotArticle;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
-use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
+use crate::api::xuangubao::{MarketOverview, PlateOrStockAbnormalEvent, Stock};
 use crate::report::report::RoleAnalysis;
 
 #[derive(Debug)]
@@ -192,7 +192,7 @@ pub struct PlateAbnormalMdTemplate {
 }
 
 impl PlateAbnormalMdTemplate {
-    pub fn render(events: &[PlateAbnormalEvent]) -> Option<Self> {
+    pub fn render(events: &[PlateOrStockAbnormalEvent]) -> Option<Self> {
         if events.is_empty() {
             return None;
         }
@@ -448,7 +448,7 @@ impl ReportMdTemplate {
         date: &str,
         overview: &MarketOverview,
         limit_up: &[Stock],
-        plate_abnormal: &[PlateAbnormalEvent],
+        plate_abnormal: &[PlateOrStockAbnormalEvent],
         field_items: &[FieldPlate],
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],
@@ -604,7 +604,7 @@ pub struct PlateAbnormalHtmlTemplate {
 }
 
 impl PlateAbnormalHtmlTemplate {
-    pub fn render(events: &[PlateAbnormalEvent]) -> Option<Self> {
+    pub fn render(events: &[PlateOrStockAbnormalEvent]) -> Option<Self> {
         if events.is_empty() {
             return None;
         }
@@ -860,7 +860,7 @@ impl ReportHtmlTemplate {
         date: &str,
         overview: &MarketOverview,
         limit_up: &[Stock],
-        plate_abnormal: &[PlateAbnormalEvent],
+        plate_abnormal: &[PlateOrStockAbnormalEvent],
         field_items: &[FieldPlate],
         timeline: &[TimelineDay],
         analyses: &[RoleAnalysis],

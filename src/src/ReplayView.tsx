@@ -56,8 +56,9 @@ export default function ReplayView() {
   const [allEvents, setAllEvents] = useState<DisplayEvent[]>([])
   const [currentMinute, setCurrentMinute] = useState(AM[0])
   const [isPlaying, setIsPlaying] = useState(false)
-  const [playSpeed, setPlaySpeed] = useState(4)
+  const [playSpeed, setPlaySpeed] = useState(1)
   const [filter, setFilter] = useState<'all' | 'good' | 'bad'>('all')
+  const [minPct, setMinPct] = useState(2)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
@@ -109,7 +110,7 @@ export default function ReplayView() {
         if (idx >= TRADING_MINUTES.length) stop()
         return idx >= TRADING_MINUTES.length ? prev : TRADING_MINUTES[idx]
       })
-    }, 150)
+    }, 300)
   }, [playSpeed, stop])
 
   const toggle = () => { isPlaying ? stop() : start() }
@@ -132,14 +133,14 @@ export default function ReplayView() {
   // Voice
   useEffect(() => {
     if (!voiceOn || !window.speechSynthesis) return
-    const nowEv = allEvents.find(e => e.minute === currentMinute)
+    const nowEv = filtered.find(e => e.minute === currentMinute)
     if (nowEv && nowEv.id !== lastAnnouncedTs.current) {
       lastAnnouncedTs.current = nowEv.id
       const isGood = nowEv.goodOrBad === 1
       const pct = (Math.abs(nowEv.pcp) * 100).toFixed(1)
       const text = `${minToTime(currentMinute)}，${nowEv.plateName}${isGood ? '利好' : '利空'}，${isGood ? '上涨' : '下跌'}百分之${pct}`
       const u = new SpeechSynthesisUtterance(text)
-      u.lang = 'zh-CN'; u.rate = 1.1; u.pitch = 1
+      u.lang = 'zh-CN'; u.rate = 0.85; u.pitch = 1
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(u)
     }
@@ -168,7 +169,11 @@ export default function ReplayView() {
   }
   if (error) return <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error}</p></div>
 
-  const filtered = allEvents.filter(e => filter === 'all' || (filter === 'good' && e.goodOrBad === 1) || (filter === 'bad' && e.goodOrBad === 2))
+  const filtered = allEvents.filter(e => {
+    if (Math.abs(e.pcp) * 100 < minPct) return false
+    if (filter === 'all') return true
+    return (filter === 'good' && e.goodOrBad === 1) || (filter === 'bad' && e.goodOrBad === 2)
+  })
   const nowTs = currentMinute
 
   return (
@@ -192,6 +197,17 @@ export default function ReplayView() {
             }`}
           >{label}</button>
         ))}
+        <span className="w-px h-5 bg-hairline mx-1" />
+        <span className="text-[10px] text-ink-muted">振幅≥</span>
+        <div className="flex gap-0.5">
+          {[0, 1, 2, 3, 5].map(p => (
+            <button key={p}
+              onClick={() => setMinPct(p)}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors ${minPct === p ? 'bg-ai text-white' : 'border border-hairline text-ink-muted hover:text-white'}`}>
+              {p}%
+            </button>
+          ))}
+        </div>
         <span className="w-px h-5 bg-hairline mx-1" />
         <button onClick={() => step(-1)} className="w-[26px] h-[26px] rounded-md border border-hairline bg-transparent text-ink-muted cursor-pointer flex items-center justify-center text-[11px] hover:border-ai hover:text-white transition-colors">⏮</button>
         <button onClick={toggle} className="w-[34px] h-[34px] rounded-full bg-ai text-white cursor-pointer flex items-center justify-center text-sm hover:opacity-90 transition-opacity flex-shrink-0">{isPlaying ? '⏸' : '▶'}</button>

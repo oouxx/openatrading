@@ -7,12 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::agents::sentiment::SentimentResult;
 use crate::api::jiuyangongshe::{FieldPlate, TimelineDay};
-use crate::api::xuangubao::{MarketOverview, PlateAbnormalEvent, Stock};
+use crate::api::xuangubao::{MarketOverview, PlateOrStockAbnormalEvent, Stock};
 use crate::roles::role::Role;
 use crate::templates::{ReportHtmlTemplate, ReportMdTemplate};
 // NOTE: New fields for extended risk/opportunity insights
 use crate::api::taoguba::TgbUserSummary;
-use crate::api::xuangubao::XuanGubaoExtra;
 
 // ─── 单个角色的分析结果 ───────────────────────────────────────
 
@@ -31,7 +30,7 @@ pub struct Report {
     pub overview: MarketOverview,
     pub limit_up: Vec<Stock>,
     /// 选股宝板块异动数据
-    pub plate_abnormal: Vec<PlateAbnormalEvent>,
+    pub plate_abnormal: Vec<PlateOrStockAbnormalEvent>,
     /// 韭研公社异动数据（按板块分组）
     pub field_items: Vec<FieldPlate>,
     /// 韭研公社时间线数据（按日期分组）
@@ -44,7 +43,6 @@ pub struct Report {
     pub opportunity_signals: Vec<String>,
     pub decision_summary: String,
     pub taoguba_users: Vec<TgbUserSummary>,
-    pub xuangubao_extra: XuanGubaoExtra,
 }
 
 impl Report {
@@ -52,13 +50,12 @@ impl Report {
     pub fn new(
         overview: MarketOverview,
         limit_up: Vec<Stock>,
-        plate_abnormal: Vec<PlateAbnormalEvent>,
+        plate_abnormal: Vec<PlateOrStockAbnormalEvent>,
         field_items: Vec<FieldPlate>,
         timeline: Vec<TimelineDay>,
         analyses: Vec<RoleAnalysis>,
         sentiment: Option<SentimentResult>,
         taoguba_users: Vec<TgbUserSummary>,
-        xuangubao_extra: XuanGubaoExtra,
     ) -> Self {
         // 计算风险等级与信号
         let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
@@ -113,7 +110,6 @@ impl Report {
             opportunity_signals,
             decision_summary,
             taoguba_users,
-            xuangubao_extra,
         }
     }
 
