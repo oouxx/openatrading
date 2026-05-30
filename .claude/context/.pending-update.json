@@ -1,4 +1,0 @@
-{
-  "last_session_date": "2026-05-30 11:20",
-  "changed_files": ".vscode/launch.json\ncrates/api/src/cls.rs\ncrates/api/src/sina.rs\ncrates/api/src/utils.rs\ncrates/cli/src/cli/gateway_cmd.rs\ncrates/cli/src/cli/mod.rs\ncrates/web/src/gateway.rs\ncrates/web/src/handlers.rs\ncrates/web/src/lib.rs\nsrc-tauri/src/main.rs"
-}
