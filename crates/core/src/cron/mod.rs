@@ -855,43 +855,100 @@ mod tests {
 
     // ── Integration tests with mock traits ──────────────
 
-    use async_trait::async_trait;
     use crate::memory::MarketSnapshot;
+    use async_trait::async_trait;
 
     struct MockMemoryStore;
     impl MemoryStore for MockMemoryStore {
-        fn save_snapshot(&self, _source: &str, _json: &str) -> Result<i64> { Ok(1) }
-        fn query_recent(&self, _days: u32) -> Result<Vec<MarketSnapshot>> { Ok(vec![]) }
-        fn query_by_source(&self, _source: &str, _days: u32) -> Result<Vec<MarketSnapshot>> { Ok(vec![]) }
-        fn cleanup_old(&self) -> Result<()> { Ok(()) }
-        fn get_historical_context(&self, _days: u32) -> Result<String> { Ok("".into()) }
+        fn save_snapshot(&self, _source: &str, _json: &str) -> Result<i64> {
+            Ok(1)
+        }
+        fn query_recent(&self, _days: u32) -> Result<Vec<MarketSnapshot>> {
+            Ok(vec![])
+        }
+        fn query_by_source(&self, _source: &str, _days: u32) -> Result<Vec<MarketSnapshot>> {
+            Ok(vec![])
+        }
+        fn cleanup_old(&self) -> Result<()> {
+            Ok(())
+        }
+        fn get_historical_context(&self, _days: u32) -> Result<String> {
+            Ok("".into())
+        }
     }
 
     struct MockTradeManager;
     impl TradeManager for MockTradeManager {
-        fn list_positions(&self, _role: &str) -> Result<Vec<Position>> { Ok(vec![]) }
-        fn list_all_positions(&self) -> Result<Vec<Position>> { Ok(vec![]) }
-        fn add_position(&self, _pos: Position) -> Result<i64> { Ok(1) }
-        fn close_position(&self, _id: i64, _price: f64, _reason: &str) -> Result<()> { Ok(()) }
-        fn update_position(&self, _pos: Position) -> Result<()> { Ok(()) }
-        fn update_position_price(&self, _id: i64, _price: f64) -> Result<()> { Ok(()) }
-        fn format_positions(&self, _role: &str) -> Result<String> { Ok("暂无持仓".into()) }
-        fn get_trade_logs(&self, _position_id: i64) -> Result<Vec<crate::trade::TradeLog>> { Ok(vec![]) }
-        fn get_trade_logs_by_role(&self, _role: &str, _limit: usize) -> Result<Vec<crate::trade::TradeLogEntry>> { Ok(vec![]) }
-        fn get_all_trade_logs_by_role(&self, _role: &str) -> Result<Vec<crate::trade::TradeLogEntry>> { Ok(vec![]) }
-        fn delete_positions_by_role(&self, _role: &str) -> Result<usize> { Ok(0) }
-        fn delete_trade_logs_by_role(&self, _role: &str) -> Result<usize> { Ok(0) }
-        fn get_closed_positions(&self, _role: &str, _limit: usize) -> Result<Vec<crate::trade::ClosedPosition>> { Ok(vec![]) }
+        fn list_positions(&self, _role: &str) -> Result<Vec<Position>> {
+            Ok(vec![])
+        }
+        fn list_all_positions(&self) -> Result<Vec<Position>> {
+            Ok(vec![])
+        }
+        fn add_position(&self, _pos: Position) -> Result<i64> {
+            Ok(1)
+        }
+        fn close_position(&self, _id: i64, _price: f64, _reason: &str) -> Result<()> {
+            Ok(())
+        }
+        fn update_position(&self, _pos: Position) -> Result<()> {
+            Ok(())
+        }
+        fn update_position_price(&self, _id: i64, _price: f64) -> Result<()> {
+            Ok(())
+        }
+        fn format_positions(&self, _role: &str) -> Result<String> {
+            Ok("暂无持仓".into())
+        }
+        fn get_trade_logs(&self, _position_id: i64) -> Result<Vec<crate::trade::TradeLog>> {
+            Ok(vec![])
+        }
+        fn get_trade_logs_by_role(
+            &self,
+            _role: &str,
+            _limit: usize,
+        ) -> Result<Vec<crate::trade::TradeLogEntry>> {
+            Ok(vec![])
+        }
+        fn get_all_trade_logs_by_role(
+            &self,
+            _role: &str,
+        ) -> Result<Vec<crate::trade::TradeLogEntry>> {
+            Ok(vec![])
+        }
+        fn delete_positions_by_role(&self, _role: &str) -> Result<usize> {
+            Ok(0)
+        }
+        fn delete_trade_logs_by_role(&self, _role: &str) -> Result<usize> {
+            Ok(0)
+        }
+        fn get_closed_positions(
+            &self,
+            _role: &str,
+            _limit: usize,
+        ) -> Result<Vec<crate::trade::ClosedPosition>> {
+            Ok(vec![])
+        }
     }
 
     struct MockNotifier;
     #[async_trait]
     impl NotificationSender for MockNotifier {
-        async fn send_text(&self, _text: &str) -> Result<()> { Ok(()) }
-        async fn notify_collect(&self, _summary: &CollectSummary) -> Result<()> { Ok(()) }
-        async fn notify_decision(&self, _decision: &Decision) -> Result<()> { Ok(()) }
-        async fn notify_trade(&self, _log: &crate::trade::TradeLog) -> Result<()> { Ok(()) }
-        async fn notify_news(&self, _msg: &str) -> Result<()> { Ok(()) }
+        async fn send_text(&self, _text: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn notify_collect(&self, _summary: &CollectSummary) -> Result<()> {
+            Ok(())
+        }
+        async fn notify_decision(&self, _decision: &Decision) -> Result<()> {
+            Ok(())
+        }
+        async fn notify_trade(&self, _log: &crate::trade::TradeLog) -> Result<()> {
+            Ok(())
+        }
+        async fn notify_news(&self, _msg: &str) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
