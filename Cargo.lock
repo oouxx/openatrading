@@ -4997,7 +4997,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-cli"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5017,7 +5017,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -5056,7 +5056,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-tauri"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "dotenvy",
