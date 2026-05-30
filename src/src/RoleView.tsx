@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useDataStore, type RoleEntry, type RolePosition, type RoleLog, type ClosedPosition } from '@/stores/data'
-import Sparkline from '@/components/Sparkline'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { useDataStore, type RoleEntry, type RolePosition, type ClosedPosition } from '@/stores/data'
 
 function formatPct(v: number) {
   return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%'
@@ -11,29 +11,208 @@ function pctClass(v: number) {
   return v >= 0 ? 'text-up' : 'text-down'
 }
 
-function formatMoney(v: number) {
-  if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿'
-  if (v >= 1e4) return (v / 1e4).toFixed(2) + '万'
-  return v.toFixed(0)
+// ── Sidebar ───────────────────────────────────────────
+
+function Sidebar({
+  roles, selectedRole, onSelect, onDelete, onCreate, rolePnl, rolePositionCounts,
+  search, setSearch, totalCount,
+}: {
+  roles: RoleEntry[]
+  selectedRole: string | null
+  onSelect: (name: string) => void
+  onDelete: (name: string) => void
+  onCreate: () => void
+  rolePnl: Record<string, number>
+  rolePositionCounts: Record<string, number>
+  search: string
+  setSearch: (s: string) => void
+  totalCount: number
+}) {
+  const filtered = roles.filter((r) => {
+    const displayName = (r as any).display_name || r.name
+    return displayName.toLowerCase().includes(search.toLowerCase())
+  })
+
+  return (
+    <aside className="w-[260px] min-w-[260px] bg-bg-surface border-r border-hairline flex flex-col overflow-y-auto">
+      <div className="px-4 py-4 border-b border-hairline flex items-center justify-between gap-2">
+        <h2 className="text-[15px] font-medium text-white">角色列表</h2>
+        <span className="text-[11px] text-ink-muted">{totalCount} 个</span>
+      </div>
+      <div className="px-4 py-2.5 border-b border-hairline">
+        <input
+          type="text"
+          placeholder="搜索角色…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-2.5 py-1.5 rounded-lg border border-hairline text-xs bg-bg text-white outline-none focus:border-ai transition-colors"
+        />
+      </div>
+      <div className="flex-1 overflow-y-auto py-2">
+        {filtered.map((role) => {
+          const displayName = (role as any).display_name || role.name
+          const pnl = rolePnl[role.name] || 0
+          const count = rolePositionCounts[role.name] || 0
+          return (
+            <div
+              key={role.name}
+              className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors gap-2.5 border-l-[3px] ${
+                selectedRole === role.name
+                  ? 'bg-ai/10 border-l-ai'
+                  : 'border-l-transparent hover:bg-bg-hover'
+              }`}
+              onClick={() => onSelect(role.name)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-white truncate">{displayName}</div>
+                <div className="text-[11px] text-ink-muted flex gap-2.5 mt-0.5">
+                  <span>{count} 持仓</span>
+                  <span className={`font-semibold font-mono text-[11px] ${pnl >= 0 ? 'text-down' : 'text-up'}`}>
+                    {count > 0 ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '空仓'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete(role.name)
+                }}
+                className="opacity-0 w-6 h-6 rounded-md border-none bg-transparent text-ink-muted cursor-pointer flex items-center justify-center text-base hover:bg-up/10 hover:text-up transition-all flex-shrink-0"
+                style={{ opacity: selectedRole === role.name ? 1 : undefined }}
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
+        <button
+          onClick={onCreate}
+          className="w-full px-4 py-2.5 text-left text-xs text-ink-muted hover:text-ai hover:bg-bg-hover transition-colors cursor-pointer"
+        >
+          + 新建角色
+        </button>
+      </div>
+    </aside>
+  )
 }
+
+// ── Stats Row ──────────────────────────────────────────
+
+function StatsRow({ positions, history }: { positions: RolePosition[]; history: ClosedPosition[] }) {
+  const currentPnl = positions.reduce((s, p) => s + (p.current_price - p.cost_price) * p.shares, 0)
+  const histPnlAccurate = history.reduce((s, h) => s + (h.exit_price - h.entry_price) * h.shares, 0)
+  const totalTrades = positions.length + history.length
+  const winTrades = [...positions.filter(p => (p.current_price - p.cost_price) * p.shares > 0), ...history.filter(h => h.pnl_pct > 0)].length
+  const winRate = totalTrades > 0 ? ((winTrades / totalTrades) * 100).toFixed(1) : '—'
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <StatCard label="当前持仓盈亏" value={`${currentPnl >= 0 ? '+' : ''}¥${Math.abs(currentPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} positive={currentPnl >= 0} negative={currentPnl < 0} />
+      <StatCard label="历史累计盈亏" value={`${histPnlAccurate >= 0 ? '+' : ''}¥${Math.abs(histPnlAccurate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} positive={histPnlAccurate >= 0} negative={histPnlAccurate < 0} />
+      <StatCard label="总交易次数" value={String(totalTrades)} />
+      <StatCard label="胜率" value={`${winRate}%`} />
+    </div>
+  )
+}
+
+function StatCard({ label, value, positive, negative }: { label: string; value: string; positive?: boolean; negative?: boolean }) {
+  return (
+    <div className="bg-bg-surface border border-hairline rounded-[10px] px-4 py-3.5">
+      <div className="text-[11px] text-ink-muted uppercase tracking-wider">{label}</div>
+      <div className={`font-mono text-lg font-semibold mt-1 ${positive ? 'text-down' : negative ? 'text-up' : 'text-white'}`}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+// ── P&L Chart (SVG) ────────────────────────────────────
+
+function PnlChart({ history }: { history: ClosedPosition[] }) {
+  const sorted = [...history].sort((a, b) => a.entry_date.localeCompare(b.entry_date))
+  if (sorted.length === 0) {
+    return <div className="text-center py-12 text-xs text-ink-muted">暂无交易数据，无法生成盈利曲线</div>
+  }
+  let cumulative = 0
+  const points: { date: string; value: number }[] = [{ date: sorted[0].entry_date, value: 0 }]
+  sorted.forEach((t) => {
+    cumulative += (t.exit_price - t.entry_price) * t.shares
+    points.push({ date: t.exit_date, value: cumulative })
+  })
+  const values = points.map((p) => p.value)
+  const minVal = Math.min(0, ...values) - 100
+  const maxVal = Math.max(0, ...values) + 100
+  const range = maxVal - minVal || 1
+  const W = 700; const H = 260; const padL = 50; const padR = 20; const padT = 20; const padB = 30
+  const plotW = W - padL - padR; const plotH = H - padT - padB
+  const x = (i: number) => padL + (i / (points.length - 1)) * plotW
+  const y = (v: number) => padT + (1 - (v - minVal) / range) * plotH
+  const zeroY = y(0)
+
+  let pathD = ''; let areaD = ''
+  points.forEach((p, i) => {
+    const cmd = i === 0 ? 'M' : 'L'
+    const xv = x(i).toFixed(1); const yv = y(p.value).toFixed(1)
+    pathD += `${cmd}${xv},${yv} `
+    areaD += `${cmd}${xv},${yv} `
+  })
+  areaD += `L${x(points.length - 1).toFixed(1)},${zeroY} L${x(0).toFixed(1)},${zeroY} Z`
+
+  const circles = points.filter((_p, idx) => idx > 0 || _p.value !== 0).map((p) => {
+    const idx = points.indexOf(p)
+    return `<circle cx="${x(idx).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3" fill="var(--color-accent)" stroke="#fff" stroke-width="1.5"/>`
+  }).join('')
+
+  // Y labels
+  let yLabels = ''
+  for (let i = 0; i <= 4; i++) {
+    const val = minVal + (range * i / 4)
+    const ly = y(val)
+    yLabels += `<text x="${padL - 8}" y="${ly + 3}" text-anchor="end" font-size="9" fill="#888780">¥${val.toFixed(0)}</text>`
+    yLabels += `<line x1="${padL}" y1="${ly}" x2="${W - padR}" y2="${ly}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5" stroke-dasharray="3,3"/>`
+  }
+
+  const labelStep = Math.max(1, Math.floor(points.length / 5))
+  const xLabels = points.filter((_, i) => i % labelStep === 0 || i === points.length - 1).map((p) => {
+    const idx = points.indexOf(p)
+    return `<text x="${x(idx).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#888780">${p.date.slice(5)}</text>`
+  }).join('')
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 280 }} dangerouslySetInnerHTML={{ __html: `
+      ${yLabels}
+      <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="oklch(70%_0.02_250)" stroke-width="1" stroke-dasharray="6,4"/>
+      <path d="${areaD}" fill="var(--color-accent)" opacity="0.08"/>
+      <path d="${pathD}" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${circles}
+      ${xLabels}
+    `}} />
+  )
+}
+
+// ── Main Component ────────────────────────────────────
+
+const TABS = [
+  { id: 'strategy', label: '策略文档' },
+  { id: 'holdings', label: '持仓管理' },
+  { id: 'performance', label: '盈利分析' },
+]
 
 export default function RoleView() {
   const store = useDataStore()
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [tab, setTab] = useState('strategy')
+  const [holdingView, setHoldingView] = useState<'current' | 'history'>('current')
   const [showCreate, setShowCreate] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newDisplayName, setNewDisplayName] = useState('')
-  const [newStrategy, setNewStrategy] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState<string | null>(null)
-  const [editingStrategy, setEditingStrategy] = useState(false)
+  const [newName, setNewName] = useState('')
   const [editStrategyText, setEditStrategyText] = useState('')
-  const [pnlDays, setPnlDays] = useState(30)
+  const [saveFeedback, setSaveFeedback] = useState(false)
+  const mdEditorRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    store.fetchRoles()
-  }, [])
-
+  useEffect(() => { store.fetchRoles() }, [])
   const roles = store.roles.data
 
   useEffect(() => {
@@ -45,52 +224,31 @@ export default function RoleView() {
     }
   }, [selectedRole])
 
-  const createRole = useCallback(async () => {
-    if (!newName.trim()) return
-    await store.createRole(newName.trim(), newDisplayName.trim() || newName.trim(), newStrategy.trim())
-    setShowCreate(false)
-    setNewName('')
-    setNewDisplayName('')
-    setNewStrategy('')
-    store.fetchRoles()
-  }, [newName, newDisplayName, newStrategy])
+  useEffect(() => {
+    roles.forEach((r) => {
+      store.fetchRolePositions(r.name)
+      store.fetchRolePnlHistory(r.name)
+    })
+  }, [roles.length])
 
-  const deleteRole = useCallback(async (name: string) => {
-    await store.deleteRole(name)
-    setShowDeleteConfirm(null)
-    if (selectedRole === name) setSelectedRole(null)
-    store.fetchRoles()
-  }, [selectedRole])
-
-  const resetRole = useCallback(async (name: string) => {
-    await store.resetRole(name)
-    setShowResetConfirm(null)
-    if (selectedRole === name) {
-      store.refreshRole(name)
+  // Select first role on load
+  useEffect(() => {
+    if (roles.length > 0 && !selectedRole) {
+      setSelectedRole(roles[0].name)
     }
-  }, [selectedRole])
+  }, [roles])
 
-  const saveStrategy = useCallback(async () => {
-    if (!selectedRole) return
-    await store.updateRoleStrategy(selectedRole, editStrategyText)
-    setEditingStrategy(false)
-    store.fetchRoles()
-  }, [selectedRole, editStrategyText])
-
-  const startEditStrategy = useCallback(() => {
-    const role = roles.find((r) => r.name === selectedRole)
-    if (role) {
-      setEditStrategyText(role.strategy)
-      setEditingStrategy(true)
+  // Load strategy into editor when role changes
+  useEffect(() => {
+    if (selectedRole) {
+      const role = roles.find((r) => r.name === selectedRole)
+      if (role) setEditStrategyText(role.strategy)
     }
-  }, [roles, selectedRole])
+  }, [selectedRole, roles])
 
+  const currentRole = roles.find((r) => r.name === selectedRole)
   const positions = selectedRole ? store.rolePositions[selectedRole]?.data || [] : []
-  const logs = selectedRole ? store.roleLogs[selectedRole]?.data || [] : []
-  const pnlHistory = selectedRole ? store.rolePnlHistory[selectedRole]?.data || [] : []
   const history = selectedRole ? store.roleHistory[selectedRole]?.data || [] : []
-
-  const currentRole = useMemo(() => roles.find((r) => r.name === selectedRole), [roles, selectedRole])
 
   const rolePnl = useMemo(() => {
     const result: Record<string, number> = {}
@@ -106,467 +264,305 @@ export default function RoleView() {
 
   const rolePositionCounts = useMemo(() => {
     const result: Record<string, number> = {}
-    roles.forEach((r) => {
-      result[r.name] = store.rolePositions[r.name]?.data?.length || 0
-    })
+    roles.forEach((r) => { result[r.name] = store.rolePositions[r.name]?.data?.length || 0 })
     return result
   }, [roles, store.rolePositions])
 
-  // Pre-fetch data for all roles to show in sidebar
-  useEffect(() => {
-    roles.forEach((r) => {
-      store.fetchRolePositions(r.name)
-      store.fetchRolePnlHistory(r.name)
-    })
-  }, [roles.length])
+  const createRole = useCallback(async () => {
+    const name = newName.trim()
+    if (!name) return
+    const id = 'r_' + Date.now().toString(36)
+    await store.createRole(id, name, `# ${name}\n\n在此编写策略文档…`)
+    setShowCreate(false)
+    setNewName('')
+    await store.fetchRoles()
+    setTimeout(() => setSelectedRole(id), 100)
+  }, [newName])
 
-  const filteredPnlHistory = useMemo(() => {
-    if (pnlDays === 0) return pnlHistory
-    return pnlHistory.slice(-pnlDays)
-  }, [pnlHistory, pnlDays])
+  const deleteRole = useCallback(async (name: string) => {
+    await store.deleteRole(name)
+    setShowDeleteConfirm(null)
+    if (selectedRole === name) setSelectedRole(null)
+    store.fetchRoles()
+  }, [selectedRole])
 
-  const totalPnl = useMemo(() => {
-    if (!positions.length) return 0
-    return positions.reduce((sum, p) => {
-      const pnl = (p.current_price - p.cost_price) * p.shares
-      return sum + pnl
-    }, 0)
-  }, [positions])
+  const resetRole = useCallback(async (name: string) => {
+    await store.resetRole(name)
+    setShowResetConfirm(null)
+    store.refreshRole(name)
+  }, [])
 
-  const totalValue = useMemo(() => {
-    if (!positions.length) return 0
-    return positions.reduce((sum, p) => sum + p.current_price * p.shares, 0)
-  }, [positions])
+  const saveStrategy = useCallback(async () => {
+    if (!selectedRole) return
+    await store.updateRoleStrategy(selectedRole, editStrategyText)
+    setSaveFeedback(true)
+    setTimeout(() => setSaveFeedback(false), 1500)
+    store.fetchRoles()
+  }, [selectedRole, editStrategyText])
 
   return (
-    <div className="min-h-screen bg-bg pt-14">
-      <div className="max-w-[1600px] mx-auto px-6 py-4">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-display-md text-white">角色策略</h1>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-4 py-2 bg-ai/20 text-ai rounded-button text-caption font-mono hover:bg-ai/30 transition-colors cursor-pointer"
-          >
-            + 新建角色
-          </button>
-        </div>
+    <div className="min-h-screen bg-bg pt-11 flex flex-col" style={{ height: 'calc(100vh - 44px)' }}>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <Sidebar
+          roles={roles}
+          selectedRole={selectedRole}
+          onSelect={setSelectedRole}
+          onDelete={(name) => setShowDeleteConfirm(name)}
+          onCreate={() => setShowCreate(true)}
+          rolePnl={rolePnl}
+          rolePositionCounts={rolePositionCounts}
+          search={search}
+          setSearch={setSearch}
+          totalCount={roles.length}
+        />
 
-        <div className="flex gap-6">
-          <div className="w-[320px] flex-shrink-0">
-            <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-              {store.roles.loading ? (
-                <div className="flex items-center gap-2 px-4 py-8 justify-center">
-                  <div className="w-2 h-2 rounded-full bg-ai animate-pulse" />
-                  <span className="text-caption text-ink-muted">加载中...</span>
-                </div>
-              ) : store.roles.error ? (
-                <div className="text-up text-caption px-4 py-8 text-center">{store.roles.error}</div>
-              ) : (
-                <>
-              {roles.map((role: RoleEntry) => (
-                <div
-                  key={role.name}
-                  className={`px-4 py-3 cursor-pointer transition-colors border-b border-hairline last:border-b-0 ${
-                    selectedRole === role.name ? 'bg-ai/10 border-l-2 border-l-ai' : 'hover:bg-bg-hover'
-                  }`}
-                  onClick={() => setSelectedRole(role.name)}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-ai flex-shrink-0" />
-                      <span className="text-sm text-white font-semibold truncate">{role.display_name}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-caption">
-                    <span className={`font-mono ${(rolePnl[role.name] || 0) >= 0 ? 'text-up' : 'text-down'}`}>
-                      {rolePnl[role.name] !== undefined && rolePositionCounts[role.name] > 0
-                        ? `${rolePnl[role.name] >= 0 ? '+' : ''}${rolePnl[role.name].toFixed(1)}%`
-                        : '空仓'}
-                    </span>
-                    <span className="text-ink-muted">{rolePositionCounts[role.name] || 0}支</span>
-                  </div>
-                  <div className="mt-2 flex justify-center">
-                    {store.rolePnlHistory[role.name]?.data?.length > 0 ? (
-                      <Sparkline
-                        points={store.rolePnlHistory[role.name].data}
-                        width={220}
-                        height={28}
-                      />
-                    ) : (
-                      <span className="text-ink-muted text-xs">暂无数据</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={() => setShowCreate(true)}
-                className="w-full p-3 border border-dashed border-hairline text-ink-muted hover:text-ai hover:border-ai/30 transition-colors text-sm text-center cursor-pointer"
-              >
-                + 新增角色
-              </button>
-              </>
-              )}
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-5">
+          {!selectedRole ? (
+            <div className="flex-1 flex items-center justify-center text-xs text-ink-muted">
+              ← 选择或创建一个角色
             </div>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            {!selectedRole ? (
-              <div className="bg-bg-surface rounded-card border border-hairline p-12 text-center">
-                <p className="text-ink-muted text-caption">← 选择一个角色查看详情</p>
+          ) : (
+            <>
+              {/* Header + Tabs */}
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h1 className="text-2xl font-medium text-white leading-tight">{currentRole?.display_name || currentRole?.name}</h1>
+                <div className="flex gap-1 bg-bg-hover rounded-[10px] p-1">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                        tab === t.id ? 'bg-bg-surface text-white shadow-sm' : 'text-ink-muted hover:text-white'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {/* 操作栏 */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-white">{currentRole?.display_name}</h2>
-                    <div className="flex items-center gap-4 mt-1 text-caption text-ink-muted">
-                      <span>累计 <span className={`font-mono ${(rolePnl[selectedRole] || 0) >= 0 ? 'text-up' : 'text-down'}`}>
-                        {(rolePnl[selectedRole] || 0) >= 0 ? '+' : ''}{(rolePnl[selectedRole] || 0).toFixed(1)}%
-                      </span></span>
-                      <span>持仓 {rolePositionCounts[selectedRole] || 0} 支</span>
-                      <span>初始资金 ¥1,000,000</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => editingStrategy ? setEditingStrategy(false) : startEditStrategy()}
-                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-white hover:border-white/20 transition-colors cursor-pointer"
-                    >
-                      {editingStrategy ? '取消编辑' : '编辑策略'}
-                    </button>
-                    <button
-                      onClick={() => setShowResetConfirm(selectedRole)}
-                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-up hover:border-up/30 transition-colors cursor-pointer"
-                    >
-                      重置账户
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(selectedRole)}
-                      className="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-up hover:border-up/30 transition-colors cursor-pointer"
-                    >
-                      删除角色
-                    </button>
-                  </div>
-                </div>
 
-                {/* 盈利曲线 */}
-                <div className="bg-bg-surface border border-hairline rounded-card p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-semibold text-sm">盈利曲线</h3>
-                    <div className="flex gap-1">
-                      {[7, 30, 0].map((d) => (
-                        <button
-                          key={d}
-                          onClick={() => {
-                            setPnlDays(d)
-                            if (selectedRole) store.fetchRolePnlHistory(selectedRole, d || 30)
-                          }}
-                          className={`px-2 py-0.5 rounded text-xs transition-colors cursor-pointer ${
-                            pnlDays === d ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white'
-                          }`}
-                        >
-                          {d === 0 ? '全部' : d + '日'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <Sparkline points={filteredPnlHistory} width={600} height={60} />
-                </div>
+              {/* Stats */}
+              <StatsRow positions={positions} history={history} />
 
-                {/* 编辑策略 */}
-                {editingStrategy && (
-                  <div className="bg-bg-surface border border-ai/30 rounded-card p-5">
+              {/* Tab: Strategy */}
+              {tab === 'strategy' && (
+                <div className="bg-bg-surface border border-hairline rounded-xl overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="text-base font-medium text-white">策略文档（Markdown）</h3>
+                    <button
+                      onClick={saveStrategy}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
+                        saveFeedback ? 'bg-down text-white border-none' : 'bg-ink-dim text-ink-muted hover:text-white border border-hairline'
+                      }`}
+                    >
+                      {saveFeedback ? '✓ 已保存' : '保存策略'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-0" style={{ minHeight: 300 }}>
                     <textarea
+                      ref={mdEditorRef}
                       value={editStrategyText}
                       onChange={(e) => setEditStrategyText(e.target.value)}
-                      className="w-full bg-bg border border-hairline rounded px-3 py-2 text-caption text-white font-mono outline-none focus:border-ai/50 resize-y"
-                      rows={8}
+                      className="w-full min-h-[300px] p-5 border-0 border-r lg:border-r border-b lg:border-b-0 border-hairline font-mono text-xs leading-relaxed resize-y outline-none bg-bg text-white"
+                      placeholder="在此编写策略文档，支持 Markdown 格式…"
+                      style={{ background: 'rgb(var(--color-bg-rgb) / 0.8)' }}
                     />
-                    <div className="flex justify-end gap-2 mt-3">
+                    <div className="p-5 overflow-y-auto min-h-[300px] text-[13px] leading-relaxed markdown-preview">
+                      {editStrategyText ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{editStrategyText}</ReactMarkdown>
+                      ) : (
+                        <p className="text-ink-muted">预览区域</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: Holdings */}
+              {tab === 'holdings' && (
+                <div className="bg-bg-surface border border-hairline rounded-xl overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="text-base font-medium text-white">持仓明细</h3>
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => setEditingStrategy(false)}
-                        className="px-4 py-1.5 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
+                        onClick={() => setHoldingView('current')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
+                          holdingView === 'current' ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white'
+                        }`}
                       >
-                        取消
+                        当前持仓
                       </button>
                       <button
-                        onClick={saveStrategy}
-                        className="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors cursor-pointer"
+                        onClick={() => setHoldingView('history')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
+                          holdingView === 'history' ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white'
+                        }`}
                       >
-                        保存策略
+                        历史持仓
                       </button>
                     </div>
                   </div>
-                )}
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-bg-surface rounded-card border border-hairline p-card-inner">
-                    <p className="text-caption text-ink-muted mb-2">持仓市值</p>
-                    <p className="font-mono text-lg text-white">{formatMoney(totalValue)}</p>
-                  </div>
-                  <div className="bg-bg-surface rounded-card border border-hairline p-card-inner">
-                    <p className="text-caption text-ink-muted mb-2">浮动盈亏</p>
-                    <p className={`font-mono text-lg ${pctClass(totalPnl)}`}>{totalPnl >= 0 ? '+' : ''}{formatMoney(totalPnl)}</p>
-                  </div>
-                  <div className="bg-bg-surface rounded-card border border-hairline p-card-inner">
-                    <p className="text-caption text-ink-muted mb-2">净值曲线</p>
-                    {pnlHistory.length > 0 ? (
-                      <Sparkline points={pnlHistory} width={200} height={32} />
+                  <div className="overflow-x-auto">
+                    {holdingView === 'current' ? (
+                      positions.length > 0 ? (
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr>
+                              <Th>股票</Th><Th>成本</Th><Th>现价</Th><Th>盈亏</Th><Th>盈亏%</Th><Th>数量</Th><Th>入场日期</Th><Th>入场理由</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {positions.map((p: RolePosition) => {
+                              const pnlPct = (p.current_price - p.cost_price) / p.cost_price
+                              const pnl = (p.current_price - p.cost_price) * p.shares
+                              return (
+                                <tr key={p.id}>
+                                  <Td bold>{p.stock_name}</Td>
+                                  <Td>{p.cost_price.toFixed(2)}</Td>
+                                  <Td>{p.current_price.toFixed(2)}</Td>
+                                  <Td className={pctClass(pnlPct)}>{pnl >= 0 ? '+' : ''}¥{Math.abs(pnl).toLocaleString(undefined, { maximumFractionDigits: 2 })}</Td>
+                                  <Td className={pctClass(pnlPct)}>{formatPct(pnlPct)}</Td>
+                                  <Td>{p.shares}</Td>
+                                  <Td muted>{p.entry_date}</Td>
+                                  <Td reason>{p.entry_reason}</Td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      ) : <div className="text-center py-12 text-xs text-ink-muted">空仓</div>
                     ) : (
-                      <p className="text-caption text-ink-muted">暂无数据</p>
+                      history.length > 0 ? (
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr>
+                              <Th>股票</Th><Th>入场价</Th><Th>出场价</Th><Th>盈亏</Th><Th>盈亏%</Th><Th>数量</Th><Th>持有期</Th><Th>出场理由</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {history.map((h: ClosedPosition) => {
+                              const pnl = (h.exit_price - h.entry_price) * h.shares
+                              return (
+                                <tr key={h.position_id}>
+                                  <Td bold>{h.stock_name}</Td>
+                                  <Td>{h.entry_price.toFixed(2)}</Td>
+                                  <Td>{h.exit_price.toFixed(2)}</Td>
+                                  <Td className={pctClass(h.pnl_pct)}>{pnl >= 0 ? '+' : ''}¥{Math.abs(pnl).toLocaleString(undefined, { maximumFractionDigits: 2 })}</Td>
+                                  <Td className={pctClass(h.pnl_pct)}>{formatPct(h.pnl_pct)}</Td>
+                                  <Td>{h.shares}</Td>
+                                  <Td muted>{h.entry_date} → {h.exit_date}</Td>
+                                  <Td reason>{h.exit_reason}</Td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      ) : <div className="text-center py-12 text-xs text-ink-muted">暂无历史持仓记录</div>
                     )}
                   </div>
                 </div>
+              )}
 
-                <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-                  <div className="px-4 py-3 border-b border-hairline">
-                    <span className="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">
-                      当前持仓 · {positions.length}
+              {/* Tab: Performance */}
+              {tab === 'performance' && (
+                <div className="bg-bg-surface border border-hairline rounded-xl overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-hairline">
+                    <h3 className="text-base font-medium text-white">累计盈利曲线</h3>
+                  </div>
+                  <PnlChart history={history} />
+                  <div className="flex gap-5 px-5 py-3 border-t border-hairline text-[11px] text-ink-muted">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full inline-block bg-ai" />
+                      累计盈亏
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'oklch(70% 0.02 250)' }} />
+                      基准线
                     </span>
                   </div>
-                  {positions.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th>股票</th>
-                            <th>成本</th>
-                            <th>现价</th>
-                            <th>盈亏</th>
-                            <th>数量</th>
-                            <th>入场日期</th>
-                            <th>入场理由</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {positions.map((p: RolePosition) => {
-                            const pnlPct = (p.current_price - p.cost_price) / p.cost_price
-                            return (
-                              <tr key={p.id}>
-                                <td>
-                                  <span className="text-white">{p.stock_name}</span>
-                                  <span className="text-ink-muted ml-2 text-xs">{p.symbol.replace(/\.[A-Z]+$/, '')}</span>
-                                </td>
-                                <td>{p.cost_price.toFixed(2)}</td>
-                                <td className="text-white">{p.current_price.toFixed(2)}</td>
-                                <td className={pctClass(pnlPct)}>{formatPct(pnlPct)}</td>
-                                <td>{p.shares}</td>
-                                <td className="text-ink-muted">{p.entry_date}</td>
-                                <td className="max-w-[200px] truncate text-ink-muted text-xs">{p.entry_reason}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center text-caption text-ink-muted">空仓</div>
-                  )}
                 </div>
+              )}
 
-                <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-                  <div className="px-4 py-3 border-b border-hairline">
-                    <span className="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">
-                      交易日志 · {logs.length}
-                    </span>
-                  </div>
-                  {logs.length > 0 ? (
-                    <div className="max-h-[300px] overflow-y-auto">
-                      {logs.map((log: RoleLog, idx: number) => (
-                        <div key={idx} className="px-4 py-2 border-b border-hairline-dark last:border-b-0">
-                          <div className="flex items-center gap-3">
-                            <span className="text-caption text-ink-muted font-mono">{log.date}</span>
-                            <span className={`text-caption font-mono ${log.action === 'buy' ? 'text-up' : 'text-down'}`}>
-                              {log.action === 'buy' ? '买入' : '卖出'}
-                            </span>
-                            <span className="text-caption text-white">{log.symbol.replace(/\.[A-Z]+$/, '')}</span>
-                            <span className="text-caption font-mono text-ink-muted">@ {log.price.toFixed(2)} × {log.shares}</span>
-                          </div>
-                          <p className="text-caption text-ink-muted mt-1 text-xs">{log.reason}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center text-caption text-ink-muted">暂无交易记录</div>
-                  )}
-                </div>
-
-                {history.length > 0 && (
-                  <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-                    <div className="px-4 py-3 border-b border-hairline">
-                      <span className="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">
-                        已平仓 · {history.length}
-                      </span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th>股票</th>
-                            <th>入场价</th>
-                            <th>出场价</th>
-                            <th>盈亏</th>
-                            <th>持仓天数</th>
-                            <th>出场理由</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {history.map((h: ClosedPosition) => (
-                            <tr key={h.position_id}>
-                              <td>
-                                <span className="text-white">{h.stock_name}</span>
-                              </td>
-                              <td>{h.entry_price.toFixed(2)}</td>
-                              <td>{h.exit_price.toFixed(2)}</td>
-                              <td className={pctClass(h.pnl_pct)}>{formatPct(h.pnl_pct)}</td>
-                              <td className="text-ink-muted">
-                                {Math.ceil((new Date(h.exit_date).getTime() - new Date(h.entry_date).getTime()) / 86400000)}天
-                              </td>
-                              <td className="max-w-[200px] truncate text-ink-muted text-xs">{h.exit_reason}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+              {/* Action Buttons */}
+              <div className="flex gap-2 mt-auto">
+                <button
+                  onClick={() => setShowResetConfirm(selectedRole)}
+                  className="px-2.5 py-1 rounded-md border border-hairline text-[11px] text-ink-muted hover:text-up hover:border-up/30 transition-colors cursor-pointer"
+                >
+                  重置账户
+                </button>
               </div>
-            )}
-          </div>
-        </div>
+            </>
+          )}
+        </main>
       </div>
 
-      <AnimatePresence>
-        {showCreate && (
-          <>
-            <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCreate(false)} />
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="pointer-events-auto bg-bg-surface border border-hairline rounded-card p-6 w-[480px] max-w-[90vw]">
-                <h2 className="text-lg font-bold text-white mb-4">新建角色</h2>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-caption text-ink-muted block mb-1">角色标识（英文）</label>
-                    <input
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white outline-none focus:border-ai/50 font-mono"
-                      placeholder="e.g. momentum_trader"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-caption text-ink-muted block mb-1">显示名称</label>
-                    <input
-                      value={newDisplayName}
-                      onChange={(e) => setNewDisplayName(e.target.value)}
-                      className="w-full bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white outline-none focus:border-ai/50"
-                      placeholder="e.g. 动量交易者"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-caption text-ink-muted block mb-1">策略描述</label>
-                    <textarea
-                      value={newStrategy}
-                      onChange={(e) => setNewStrategy(e.target.value)}
-                      className="w-full bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white outline-none focus:border-ai/50 resize-y"
-                      rows={4}
-                      placeholder="描述该角色的交易策略..."
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 mt-4">
-                  <button
-                    onClick={() => setShowCreate(false)}
-                    className="px-4 py-2 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={createRole}
-                    className="px-4 py-2 bg-ai/20 text-ai rounded-button text-caption font-mono hover:bg-ai/30 transition-colors cursor-pointer"
-                  >
-                    创建
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Create Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.3)' }} onClick={() => setShowCreate(false)}>
+          <div className="bg-bg-surface rounded-[14px] border border-hairline p-6 w-[380px] max-w-[90vw] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-white mb-4">新建角色</h3>
+            <label className="text-xs text-ink-muted block mb-1">角色名称</label>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-hairline text-sm bg-bg text-white outline-none focus:border-ai transition-colors mb-3"
+              placeholder="例如：套利策略 v2"
+              onKeyDown={(e) => e.key === 'Enter' && createRole()}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowCreate(false)} className="px-3.5 py-1.5 rounded-lg bg-ink-dim text-xs text-ink-muted hover:text-white cursor-pointer transition-colors">取消</button>
+              <button onClick={createRole} className="px-3.5 py-1.5 rounded-lg bg-ai text-white text-xs font-medium hover:opacity-90 cursor-pointer transition-opacity">创建</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <>
-            <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowDeleteConfirm(null)} />
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="pointer-events-auto bg-bg-surface border border-hairline rounded-card p-6 w-[360px]">
-                <h2 className="text-lg font-bold text-white mb-2">确认删除</h2>
-                <p className="text-caption text-ink-muted mb-4">删除角色 <b className="text-white">{showDeleteConfirm}</b>？此操作不可撤销。</p>
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowDeleteConfirm(null)}
-                    className="px-4 py-2 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => deleteRole(showDeleteConfirm)}
-                    className="px-4 py-2 bg-up/20 text-up rounded-button text-caption font-mono hover:bg-up/30 transition-colors cursor-pointer"
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Delete Confirm */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.3)' }} onClick={() => setShowDeleteConfirm(null)}>
+          <div className="bg-bg-surface rounded-[14px] border border-hairline p-6 w-[360px] max-w-[90vw] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-white mb-2">删除角色</h3>
+            <p className="text-xs text-ink-muted mb-4">确定删除此角色？此操作不可恢复。</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowDeleteConfirm(null)} className="px-3.5 py-1.5 rounded-lg bg-ink-dim text-xs text-ink-muted hover:text-white cursor-pointer transition-colors">取消</button>
+              <button onClick={() => deleteRole(showDeleteConfirm)} className="px-3.5 py-1.5 rounded-lg border border-up text-xs text-up hover:bg-up hover:text-white cursor-pointer transition-colors">删除</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <AnimatePresence>
-        {showResetConfirm && (
-          <>
-            <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowResetConfirm(null)} />
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="pointer-events-auto bg-bg-surface border border-hairline rounded-card p-6 w-[360px]">
-                <h2 className="text-lg font-bold text-white mb-2">确认重置</h2>
-                <p className="text-caption text-ink-muted mb-4">重置角色 <b className="text-white">{showResetConfirm}</b>？此操作将清空该角色的所有持仓和历史记录。</p>
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowResetConfirm(null)}
-                    className="px-4 py-2 text-caption text-ink-muted hover:text-white transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => resetRole(showResetConfirm)}
-                    className="px-4 py-2 bg-up/20 text-up rounded-button text-caption font-mono hover:bg-up/30 transition-colors cursor-pointer"
-                  >
-                    重置
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Reset Confirm */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.3)' }} onClick={() => setShowResetConfirm(null)}>
+          <div className="bg-bg-surface rounded-[14px] border border-hairline p-6 w-[360px] max-w-[90vw] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-white mb-2">重置账户</h3>
+            <p className="text-xs text-ink-muted mb-4">重置将清空该角色的所有持仓和历史记录。</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowResetConfirm(null)} className="px-3.5 py-1.5 rounded-lg bg-ink-dim text-xs text-ink-muted hover:text-white cursor-pointer transition-colors">取消</button>
+              <button onClick={() => resetRole(showResetConfirm)} className="px-3.5 py-1.5 rounded-lg border border-up text-xs text-up hover:bg-up hover:text-white cursor-pointer transition-colors">重置</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+// ── Table helpers ──────────────────────────────────────
+
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="text-left px-3.5 py-2.5 font-medium text-[11px] uppercase tracking-wider text-ink-muted border-b border-hairline bg-ink-dim whitespace-nowrap">{children}</th>
+}
+function Td({ children, className, bold, muted, reason }: { children: React.ReactNode; className?: string; bold?: boolean; muted?: boolean; reason?: boolean }) {
+  let cls = 'px-3.5 py-2.5 border-b border-hairline text-white whitespace-nowrap'
+  if (bold) cls += ' font-semibold font-mono text-xs'
+  if (muted) cls += ' text-[11px] text-ink-muted'
+  if (reason) cls += ' max-w-[260px] whitespace-normal text-[11px] text-ink-muted leading-relaxed'
+  if (className) cls += ' ' + className
+  return <td className={cls}>{children}</td>
 }

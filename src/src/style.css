@@ -3,21 +3,55 @@
 @tailwind utilities;
 
 @layer base {
+  *, *::before, *::after {
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
+  }
+
+  :root {
+    --color-bg-rgb: 13 13 26;
+    --color-surface-rgb: 17 17 36;
+    --color-surface-hover-rgb: 26 26 53;
+    --color-fg-rgb: 232 232 237;
+    --color-muted-rgb: 136 135 128;
+    --color-border-rgb: 255 255 255;
+    --color-accent-rgb: 127 119 221;
+    --color-accent-hover-rgb: 153 144 240;
+    --color-up-rgb: 255 92 92;
+    --color-down-rgb: 29 158 117;
+    --color-tag-bg: rgba(255, 255, 255, 0.05);
+    --color-header-bg: #000000;
+  }
+
+  [data-theme="light"] {
+    --color-bg-rgb: 250 250 245;
+    --color-surface-rgb: 255 255 255;
+    --color-surface-hover-rgb: 245 245 240;
+    --color-fg-rgb: 45 45 42;
+    --color-muted-rgb: 107 107 102;
+    --color-border-rgb: 0 0 0;
+    --color-accent-rgb: 191 101 52;
+    --color-accent-hover-rgb: 168 85 41;
+    --color-up-rgb: 186 43 36;
+    --color-down-rgb: 22 108 80;
+    --color-tag-bg: rgba(0, 0, 0, 0.04);
+    --color-header-bg: #ffffff;
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #0d0d1a;
-    color: #e8e8ed;
+    background: rgb(var(--color-bg-rgb));
+    color: rgb(var(--color-fg-rgb));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #111124; }
-  ::-webkit-scrollbar-thumb { background: #555560; border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: rgb(var(--color-surface-rgb)); }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--color-muted-rgb)); border-radius: 3px; }
 
-  ::selection { background: rgba(127, 119, 221, 0.2); color: #e8e8ed; }
+  ::selection { background: rgba(127, 119, 221, 0.2); color: rgb(var(--color-fg-rgb)); }
 }
 
 @layer components {

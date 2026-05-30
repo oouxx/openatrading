@@ -16,126 +16,267 @@ function dl(platform: string, arch: string): string {
   }
 }
 
+const features = [
+  {
+    to: '/roles',
+    title: '角色策略管理',
+    badge: '核心',
+    desc: '每个角色独立运行 AI 交易策略 — 趋势跟踪、网格交易、套利… 一键新增/删除/编辑角色，AI 自动执行并展示盈亏曲线。',
+    tags: ['📝 策略编辑', '🤖 AI 执行', '📊 盈亏曲线'],
+  },
+  {
+    to: '/copilot',
+    title: 'AI 行情问答',
+    badge: 'A 股专版',
+    desc: '流式 Markdown 输出，大盘研判、北向资金、个股分析与板块轮动。支持自然语言交互。',
+    tags: ['🤖 流式对话', '📈 实时行情', '📝 分析报告'],
+  },
+  {
+    to: '/replay',
+    title: '行情回放 & 短线精灵',
+    desc: '板块信号时间轴回放，涨速/涨幅实时排名，利好利空事件标注。逐分钟复盘全天行情。',
+    tags: ['⏪ 时间轴', '⚡ 异动标注', '📋 事件日志'],
+  },
+  {
+    to: '/trading',
+    title: '涨停晋级分析',
+    desc: '昨今对比晋级追踪，个股概况（市值/量比/涨停原因），分时 & 日K/周K/月K 图表。',
+    tags: ['🔥 连板追踪', '📈 晋级率', '📊 K 线'],
+  },
+  {
+    to: '/trading',
+    title: '龙虎榜分析',
+    badge: '新增',
+    badgeColor: '#oklch(55%_0.16_55)',
+    desc: '机构/游资动向透视，营业部买卖明细，净买入排行，上榜原因归类。跟踪主力资金足迹。',
+    tags: ['🐉 龙虎榜', '🏦 营业部', '💰 净买入'],
+  },
+]
+
 export default function LandingPage() {
+  const apiBase = getApiBaseUrl()
+
   return (
     <div className="min-h-screen bg-bg">
-      <section className="pt-24 pb-16 px-6 max-w-4xl mx-auto text-center">
-        <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-          Open<span className="text-ai">ATrading</span>
+      {/* Hero */}
+      <section className="max-w-[1100px] mx-auto px-8 pt-20 pb-14 text-center">
+        <h1 className="font-medium text-white mb-4 leading-tight" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.8rem)' }}>
+          AI 自动交易<span className="text-ai">策略引擎</span>
         </h1>
-        <p className="text-xl text-ink-muted mb-8 max-w-2xl mx-auto leading-relaxed">
-          AI-native A 股短线交易决策工作台。多角色 AI
-          投资策略、实时市场采集、Telegram 交互、持仓管理。
+        <p className="text-ink-muted text-lg max-w-[640px] mx-auto mb-10 leading-relaxed">
+          每个角色运行独立策略，AI 自动决策并执行交易。在 Telegram 中与角色对话、查看持仓、调整参数 — 所有盈亏实时追踪。
         </p>
-        <div className="flex gap-4 justify-center">
-          <Link
-            to="/trading"
-            className="px-6 py-2.5 bg-ai/20 text-ai rounded-lg font-mono font-medium hover:bg-ai/30 transition-colors"
-          >
-            打开交易终端 →
-          </Link>
-          <a
-            href="#download"
-            className="px-6 py-2.5 bg-white/5 text-white/80 rounded-lg font-mono hover:bg-white/10 transition-colors"
-          >
-            下载桌面客户端
-          </a>
-        </div>
-      </section>
 
-      <section className="py-16 px-6 max-w-5xl mx-auto">
-        <h2 className="text-2xl font-bold text-white mb-10 text-center">核心能力</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white/5 border border-hairline rounded-card p-6">
-            <div className="text-ai text-2xl mb-3">🤖</div>
-            <h3 className="text-white font-semibold mb-2">多角色 AI 策略</h3>
-            <p className="text-ink-muted text-sm leading-relaxed">
-              游资操盘手、量化分析师、风控官、Zarili 量价派 —
-              每个角色拥有独立的投资策略体系，AI
-              严格遵守策略进行交易决策分析。
-            </p>
-          </div>
-          <div className="bg-white/5 border border-hairline rounded-card p-6">
-            <div className="text-ai text-2xl mb-3">⏱</div>
-            <h3 className="text-white font-semibold mb-2">自动采集 & 决策</h3>
-            <p className="text-ink-muted text-sm leading-relaxed">
-              交易时间每 30 分钟采集市场数据，收盘后自动 AI
-              决策分析。Cron 调度 + SQLite 历史存储，10
-              日数据回溯对比。
-            </p>
-          </div>
-          <div className="bg-white/5 border border-hairline rounded-card p-6">
-            <div className="text-ai text-2xl mb-3">📡</div>
-            <h3 className="text-white font-semibold mb-2">Telegram 交互</h3>
-            <p className="text-ink-muted text-sm leading-relaxed">
-              采集通知、决策推送、持仓变动实时推送。支持双向对话 —
-              随时查询持仓、手动触发分析、多轮交易讨论。
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section id="download" className="py-16 px-6 max-w-5xl mx-auto">
-        <h2 className="text-2xl font-bold text-white mb-4 text-center">下载桌面客户端</h2>
-        <p className="text-ink-muted text-center mb-10 text-sm">
-          由 Tauri 构建的原生桌面应用，支持 macOS / Linux / Windows。
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="flex items-center justify-center gap-4 flex-wrap mb-10 text-sm text-ink-muted">
           {[
-            { emoji: '🍎', title: 'macOS Intel', sub: 'x86_64 .dmg', platform: 'macos', arch: 'x86_64' },
-            { emoji: '💻', title: 'macOS Apple Silicon', sub: 'aarch64 .dmg', platform: 'macos', arch: 'aarch64' },
-            { emoji: '🐧', title: 'Linux', sub: 'x86_64 .deb / .AppImage', platform: 'linux', arch: 'x86_64' },
-            { emoji: '🪟', title: 'Windows', sub: 'x86_64 .msi / .exe', platform: 'windows', arch: 'x86_64' },
-          ].map((item) => (
-            <a
-              key={item.title}
-              href={dl(item.platform, item.arch)}
-              className="bg-white/5 border border-hairline rounded-card p-6 text-center hover:border-ai/30 hover:bg-white/[0.07] transition-colors group"
-            >
-              <div className="text-3xl mb-3">{item.emoji}</div>
-              <h3 className="text-white font-semibold mb-1">{item.title}</h3>
-              <p className="text-ink-muted text-xs font-mono">{item.sub}</p>
-              <span className="inline-block mt-3 px-4 py-1.5 bg-ai/10 text-ai text-sm rounded-lg group-hover:bg-ai/20 transition-colors">
-                下载
+            { icon: '📝', label: '角色策略' },
+            { icon: '🧠', label: 'AI 决策' },
+            { icon: '📈', label: '自动交易' },
+            { icon: '📊', label: '盈亏展示' },
+          ].map((node, i) => (
+            <span key={node.label} className="flex items-center gap-4">
+              {i > 0 && <span className="text-ai text-lg font-bold">→</span>}
+              <span className="bg-bg-surface border border-hairline rounded-xl px-5 py-3.5 flex items-center gap-2 font-medium">
+                <span className="text-xl">{node.icon}</span>
+                {node.label}
               </span>
-            </a>
+            </span>
           ))}
         </div>
+
+        <div className="flex gap-3 justify-center flex-wrap">
+          <Link
+            to="/roles"
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium bg-ai text-white hover:opacity-90 transition-opacity"
+          >
+            管理角色策略 →
+          </Link>
+          <a
+            href="#install"
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium border border-hairline text-ink hover:border-ai hover:text-ai transition-colors"
+          >
+            📦 下载安装
+          </a>
+        </div>
       </section>
 
-      <section className="py-16 px-6 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-white mb-6 text-center">命令行安装</h2>
-        <div className="bg-black/50 border border-hairline rounded-card p-6 space-y-4">
-          <div>
-            <p className="text-ink-muted text-sm mb-2">一键安装 CLI（Linux / macOS，x86_64 / aarch64）：</p>
-            <pre className="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto">
-              <code>curl -fsSL {getApiBaseUrl()}/install.sh | bash</code>
-            </pre>
+      {/* Stats Bar */}
+      <div className="max-w-[1000px] mx-auto mb-12 px-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { num: '6', label: '核心页面' },
+          { num: 'A 股', label: '全市场覆盖' },
+          { num: '+12.8%', label: '本月 AI 策略收益', up: true },
+          { num: '8', label: '活跃角色' },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="text-center py-5 px-4 bg-bg-surface border border-hairline rounded-xl"
+          >
+            <div className={`font-mono text-[1.8rem] font-semibold ${stat.up ? 'text-up' : 'text-white'}`}>
+              {stat.num}
+            </div>
+            <div className="text-xs text-ink-muted mt-1 uppercase tracking-wider">{stat.label}</div>
           </div>
-          <div>
-            <p className="text-ink-muted text-sm mb-2">安装桌面客户端：</p>
-            <pre className="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto">
-              <code>curl -fsSL {getApiBaseUrl()}/install.sh | bash -s -- --desktop</code>
-            </pre>
-          </div>
-          <div>
-            <p className="text-ink-muted text-sm mb-2">卸载：</p>
-            <pre className="bg-black border border-hairline rounded-lg p-4 text-green/80 font-mono text-sm overflow-x-auto">
-              <code>curl -fsSL {getApiBaseUrl()}/install.sh | bash -s -- --uninstall</code>
-            </pre>
+        ))}
+      </div>
+
+      {/* Features */}
+      <section className="max-w-[1200px] mx-auto px-8 pb-16">
+        <h2 className="text-2xl font-medium text-white mb-6 flex items-center gap-2.5">
+          核心功能
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {features.map((f) => (
+            <Link
+              key={f.title}
+              to={f.to}
+              className="bg-bg-surface border border-hairline rounded-[14px] overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all"
+            >
+              <div className="py-[22px] px-[18px]">
+                <h4 className="text-base font-medium mb-1.5 flex items-center gap-2 text-white">
+                  {f.title}
+                  {f.badge === '核心' && (
+                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium bg-ai text-white">
+                      核心
+                    </span>
+                  )}
+                  {f.badge === 'A 股专版' && (
+                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium bg-ai text-white">
+                      A 股专版
+                    </span>
+                  )}
+                  {f.badge === '新增' && (
+                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium text-white"
+                      style={{ background: 'oklch(55% 0.16 55)' }}>
+                      新增
+                    </span>
+                  )}
+                </h4>
+                <p className="text-[0.8rem] text-ink-muted leading-relaxed mb-2.5">{f.desc}</p>
+                <div className="flex gap-2 flex-wrap">
+                  {f.tags.map((t) => (
+                    <span key={t} className="text-[11px] text-ink-muted px-2.5 py-[3px] rounded-[5px]" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Link>
+          ))}
+
+          {/* Telegram Bot card — design special styling */}
+          <div className="bg-bg-surface rounded-[14px] overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all"
+            style={{ border: '1px solid oklch(55% 0.14 240 / 0.4)' }}>
+            <div className="py-[22px] px-[18px]">
+              <h4 className="text-base font-medium mb-1.5 flex items-center gap-2 text-white">
+                Telegram Bot 交互
+                <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium text-white"
+                  style={{ background: 'oklch(55% 0.14 240)' }}>
+                  Beta
+                </span>
+              </h4>
+              <p className="text-[0.8rem] text-ink-muted leading-relaxed mb-2.5">
+                在 Telegram 中与你的交易角色直接对话 — 查看持仓盈亏、接收交易信号、调整策略参数，所有操作实时同步。
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                {['💬 对话交互', '📲 实时推送', '⚙️ 参数调整'].map((t) => (
+                  <span key={t} className="text-[11px] text-ink-muted px-2.5 py-[3px] rounded-[5px]" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <footer className="py-8 px-6 text-center border-t border-hairline">
-        <p className="text-ink-muted text-xs">
-          <a href="https://github.com/oouxx/openatrading" className="hover:text-white transition-colors">
-            GitHub
-          </a>
-          <span className="mx-3">·</span>
-          <span>红涨绿跌 · AI-first · 金融终端风格</span>
-        </p>
+      {/* Install */}
+      <section id="install" className="max-w-[1200px] mx-auto px-8 pb-16">
+        <h2 className="text-2xl font-medium text-white mb-6 flex items-center gap-2.5">
+          📦 下载安装
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Desktop */}
+          <div className="bg-bg-surface border border-hairline rounded-[14px] py-7 px-6">
+            <h4 className="text-base font-medium mb-2 flex items-center gap-2 text-white">
+              🖥️ 桌面端
+            </h4>
+            <p className="text-xs text-ink-muted mb-5 leading-relaxed">
+              支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。从官网下载对应安装包。
+            </p>
+            <div className="flex gap-2 flex-wrap mb-3.5">
+              {[
+                { icon: '🍎', label: 'macOS .dmg', platform: 'macos', arch: 'x86_64' },
+                { icon: '🪟', label: 'Windows .exe', platform: 'windows', arch: 'x86_64' },
+                { icon: '🐧', label: 'Linux .AppImage', platform: 'linux', arch: 'x86_64' },
+              ].map((d) => (
+                <a
+                  key={d.label}
+                  href={dl(d.platform, d.arch)}
+                  className="inline-flex items-center gap-1.5 px-[18px] py-2 rounded-lg border border-hairline text-xs font-medium bg-ink-dim text-white hover:border-ai hover:text-ai transition-colors"
+                >
+                  <span className="text-lg">{d.icon}</span>
+                  {d.label}
+                </a>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-muted">
+              或访问 <a href="https://github.com/oouxx/openatrading/releases" className="text-ai">GitHub Releases</a>
+            </p>
+          </div>
+
+          {/* CLI */}
+          <div className="bg-bg-surface border border-hairline rounded-[14px] py-7 px-6">
+            <h4 className="text-base font-medium mb-2 flex items-center gap-2 text-white">
+              ⌨️ CLI 命令行
+            </h4>
+            <p className="text-xs text-ink-muted mb-5 leading-relaxed">
+              适用于 Linux/macOS 环境，支持嵌入量化策略 pipeline、定时任务及 CI/CD 流程。
+            </p>
+            <CopyCodeBlock
+              text={`# 下载 CLI 二进制
+curl -fsSL ${apiBase}/install.sh | bash
+
+# 或手动下载指定平台版本
+# ${apiBase}/cli
+
+# 验证安装
+openatrading --version
+
+# 启动 Gateway
+openatrading gateway run`}
+            />
+            <p className="text-[11px] text-ink-muted mt-2.5">
+              完整 CLI 文档：<a href="https://github.com/oouxx/openatrading" className="text-ai">GitHub</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="text-center py-10 px-8 border-t border-hairline text-xs text-ink-muted">
+        <div className="flex gap-6 justify-center flex-wrap mb-3">
+          <a href="https://github.com/oouxx/openatrading" className="text-ai">GitHub</a>
+          <a href="#" className="text-ai">文档</a>
+          <a href="#" className="text-ai">API 参考</a>
+          <a href="#" className="text-ai">下载</a>
+        </div>
+        openatrading · AI 自动交易策略引擎
       </footer>
+    </div>
+  )
+}
+
+function CopyCodeBlock({ text }: { text: string }) {
+  return (
+    <div className="relative border border-hairline rounded-[10px] p-[14px_18px] font-mono text-xs text-white leading-relaxed whitespace-pre-wrap overflow-x-auto" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+      <button
+        onClick={() => navigator.clipboard.writeText(text)}
+        className="absolute top-2.5 right-3 px-2.5 py-1 rounded-md border border-hairline bg-bg-surface text-[11px] text-ink-muted hover:border-ai hover:text-ai transition-colors cursor-pointer"
+      >
+        复制
+      </button>
+      <code>{text}</code>
     </div>
   )
 }
