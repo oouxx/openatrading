@@ -1,18 +1,18 @@
 [package]
-name = "trending-agent-core"
+name = "trading-agent-core"
 version = "0.8.0"
 edition = "2021"
 
 [lib]
-name = "trending_agent_core"
+name = "trading_agent_core"
 path = "src/lib.rs"
 
 [dependencies]
-trending-agent-channels = { path = "../channels" }
-trending-agent-provider = { path = "../provider" }
+trading-agent-channels = { path = "../channels" }
+trading-agent-api = { path = "../api" }
+trading-agent-provider = { path = "../provider" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
-scraper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -21,9 +21,6 @@ futures = { workspace = true }
 dotenvy = { workspace = true }
 askama = { workspace = true }
 regex = { workspace = true }
-url = { workspace = true }
-md5 = { workspace = true }
-sha1 = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 cron = "0.12"
 async-trait = "0.1"

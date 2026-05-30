@@ -1,5 +1,5 @@
 [package]
-name = "trending-agent-cli"
+name = "trading-agent-cli"
 version = "0.8.0"
 edition = "2021"
 
@@ -8,8 +8,8 @@ name = "openatrading"
 path = "src/main.rs"
 
 [dependencies]
-trending-agent-core = { path = "../core" }
-trending-agent-web = { path = "../web" }
+trading-agent-core = { path = "../core" }
+trading-agent-web = { path = "../web" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 futures = { workspace = true }
 serde = { workspace = true }

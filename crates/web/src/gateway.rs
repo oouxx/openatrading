@@ -2,13 +2,13 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use trending_agent_core::api::Client as ApiClient;
-use trending_agent_core::cron::{self, CronConfig};
-use trending_agent_core::llm::LlmClient;
-use trending_agent_core::memory::sqlite::SqliteMemoryStore;
-use trending_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
-use trending_agent_core::social::NotificationSender;
-use trending_agent_core::trade::sqlite::SqliteTradeManager;
+use trading_agent_core::api::Client as ApiClient;
+use trading_agent_core::cron::{self, CronConfig};
+use trading_agent_core::llm::LlmClient;
+use trading_agent_core::memory::sqlite::SqliteMemoryStore;
+use trading_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
+use trading_agent_core::social::NotificationSender;
+use trading_agent_core::trade::sqlite::SqliteTradeManager;
 
 use crate::cache;
 use crate::{self as web, AppState, RoleEntry};

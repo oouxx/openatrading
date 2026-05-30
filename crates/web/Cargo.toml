@@ -1,16 +1,16 @@
 [package]
-name = "trending-agent-web"
+name = "trading-agent-web"
 version = "0.8.0"
 edition = "2021"
 
 [lib]
-name = "trending_agent_web"
+name = "trading_agent_web"
 path = "src/lib.rs"
 
 [dependencies]
-trending-agent-core = { path = "../core" }
-trending-agent-channels = { path = "../channels" }
-trending-agent-provider = { path = "../provider" }
+trading-agent-core = { path = "../core" }
+trading-agent-channels = { path = "../channels" }
+trading-agent-provider = { path = "../provider" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

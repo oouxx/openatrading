@@ -1,10 +1,11 @@
-import { Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import LandingPage from './LandingPage'
 import TradingView from './TradingView'
 import RoleView from './RoleView'
 import AiCopilot from './AiCopilot'
 import ReplayView from './ReplayView'
 import BreakoutView from './BreakoutView'
+import DragonTigerView from './DragonTigerView'
 import ThemeToggle from './components/ThemeToggle'
 
 const isTauri = '__TAURI_INTERNALS__' in window
@@ -27,6 +28,14 @@ export default function App() {
                 OpenATrading
               </NavLink>
             )}
+            <NavLink
+              to="/dragon-tiger"
+              className={({ isActive }) =>
+                `text-nav-link font-mono text-ink-muted hover:text-white transition-colors ${isActive ? '!text-white' : ''}`
+              }
+            >
+              龙虎榜
+            </NavLink>
             <NavLink
               to="/breakout"
               className={({ isActive }) =>
@@ -71,6 +80,8 @@ export default function App() {
         <Route path="/copilot" element={<AiCopilot />} />
         <Route path="/replay" element={<ReplayView />} />
         <Route path="/breakout" element={<BreakoutView />} />
+        <Route path="/dragon-tiger" element={<DragonTigerView />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
   )

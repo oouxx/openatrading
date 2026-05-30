@@ -44,7 +44,7 @@ impl MarketPhase {
 }
 
 pub fn current_market_phase() -> MarketPhase {
-    let now = trending_agent_core::utils::time::beijing_now();
+    let now = trading_agent_core::utils::time::beijing_now();
     let weekday = now.weekday();
 
     if weekday == Weekday::Sat || weekday == Weekday::Sun {
@@ -78,7 +78,7 @@ fn is_trading_hours() -> bool {
 }
 
 fn next_open_timestamp() -> i64 {
-    let now = trending_agent_core::utils::time::beijing_now();
+    let now = trading_agent_core::utils::time::beijing_now();
     let time = now.time();
     let open_am = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
     let open_pm = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
@@ -172,7 +172,7 @@ impl CachePolicy {
     }
 
     fn compute_expires_at(&self) -> Option<i64> {
-        let now = trending_agent_core::utils::time::beijing_now().timestamp();
+        let now = trading_agent_core::utils::time::beijing_now().timestamp();
         match self {
             CachePolicy::Never => None,
             CachePolicy::Always(ttl) => Some(now + ttl.as_secs() as i64),
@@ -193,7 +193,7 @@ impl CachePolicy {
 pub fn get(cache: &AppCache, key: &str) -> Option<String> {
     let entry = cache.get(key)?;
     if let Some(expires_at) = entry.expires_at {
-        if trending_agent_core::utils::time::beijing_now().timestamp() > expires_at {
+        if trading_agent_core::utils::time::beijing_now().timestamp() > expires_at {
             cache.invalidate(key);
             return None;
         }

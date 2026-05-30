@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::cli::config::AppConfig;
-use trending_agent_web::gateway::Gateway;
+use trading_agent_web::gateway::Gateway;
 
 #[derive(Serialize)]
 struct DoctorResult {

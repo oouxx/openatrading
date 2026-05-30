@@ -44,7 +44,7 @@ const features = [
     tags: ['🔥 连板追踪', '📈 晋级率', '📊 K 线'],
   },
   {
-    to: '/trading',
+    to: '/dragon-tiger',
     title: '龙虎榜分析',
     badge: '新增',
     badgeColor: '#oklch(55%_0.16_55)',

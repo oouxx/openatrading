@@ -32,24 +32,23 @@ set +a
 echo "=== Deploying: $SERVICE → $SERVER ==="
 
 REPO_URL="git@github.com:oouxx/openatrading.git"
+BRANCH="${DEPLOY_BRANCH:-$(git branch --show-current)}"
 
-# ─── Clone / pull from GitHub ────────────────────────────
-
-# ─── Clone / pull from GitHub ────────────────────────────
+echo "=== Deploying branch: $BRANCH ==="
 
 clone_or_pull() {
   echo ""
   echo "=== [git] Fetching latest code from GitHub ==="
   ssh $SSH_OPTS "$SERVER" "
     if [ -d $REMOTE_DIR/.git ]; then
-      cd $REMOTE_DIR && git fetch origin && git reset --hard origin/main
-      echo '✅ git pull done'
+      cd $REMOTE_DIR && git fetch origin && git reset --hard origin/$BRANCH
+      echo '✅ git pull done (branch: $BRANCH)'
     elif [ -d $REMOTE_DIR ]; then
       rm -rf $REMOTE_DIR
-      git clone $REPO_URL $REMOTE_DIR
+      git clone -b $BRANCH $REPO_URL $REMOTE_DIR
       echo '✅ old dir removed, git clone done'
     else
-      git clone $REPO_URL $REMOTE_DIR
+      git clone -b $BRANCH $REPO_URL $REMOTE_DIR
       echo '✅ git clone done'
     fi
   "

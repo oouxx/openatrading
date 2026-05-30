@@ -4,16 +4,16 @@ use std::process::Command;
 use std::sync::Arc;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
-use trending_agent_core::cron::CronConfig;
-use trending_agent_web::gateway::{Gateway, GatewayConfig};
-use trending_agent_core::social::channel_to_sender;
-use trending_agent_core::social::channels::discord::DiscordChannel;
-use trending_agent_core::social::channels::lark::LarkChannel;
-use trending_agent_core::social::channels::slack::SlackChannel;
-use trending_agent_core::social::channels::telegram::TelegramChannel;
-use trending_agent_core::social::telegram_bot::TelegramBotConfig;
-use trending_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
-use trending_agent_web::RoleEntry;
+use trading_agent_core::cron::CronConfig;
+use trading_agent_web::gateway::{Gateway, GatewayConfig};
+use trading_agent_core::social::channel_to_sender;
+use trading_agent_core::social::channels::discord::DiscordChannel;
+use trading_agent_core::social::channels::lark::LarkChannel;
+use trading_agent_core::social::channels::slack::SlackChannel;
+use trading_agent_core::social::channels::telegram::TelegramChannel;
+use trading_agent_core::social::telegram_bot::TelegramBotConfig;
+use trading_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
+use trading_agent_web::RoleEntry;
 
 const SERVICE_NAME: &str = "openatrading";
 
@@ -228,7 +228,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     }
 
     if roles.is_empty() {
-        for (name, display_name, strategy) in trending_agent_core::roles::BUILTIN_STRATEGIES {
+        for (name, display_name, strategy) in trading_agent_core::roles::BUILTIN_STRATEGIES {
             roles.push(RoleEntry {
                 name: name.to_string(),
                 display_name: display_name.to_string(),

@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::cli::config::AppConfig;
-use trending_agent_core::trade::sqlite::SqliteTradeManager;
-use trending_agent_core::trade::{Position, TradeManager};
+use trading_agent_core::trade::sqlite::SqliteTradeManager;
+use trading_agent_core::trade::{Position, TradeManager};
 
 pub fn cmd_trade_add(
     project_root: &Path,
@@ -17,7 +17,7 @@ pub fn cmd_trade_add(
         .join(".atrading")
         .join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
-    let now = trending_agent_core::utils::time::beijing_now()
+    let now = trading_agent_core::utils::time::beijing_now()
         .format("%Y-%m-%d")
         .to_string();
     let pos = Position {
