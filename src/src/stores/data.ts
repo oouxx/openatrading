@@ -61,7 +61,7 @@ export async function apiChatStream(
       if (chunkCount <= 3 || chunkCount % 20 === 0) {
         console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80))
       }
-      callbacks.onData(text.replace(/\\n/g, '\n'))
+      callbacks.onData(text)
     }
     console.log('[chat_stream] invoking api_chat_stream, body=', body)
     try {
