@@ -74,8 +74,16 @@
 清晰的成功标准让你能自主循环推进；模糊标准（"让它跑起来"）则需要持续澄清。
 
 ## 5. 项目规范
-check .claude/context/*.md
+
+check .claude/context/
 
 ## 6. ui风格
+
 check .claude/context/claude-ui.md
+
+## 7. 技术架构
+
+前端 bun
+后端 rust
+
 ---
