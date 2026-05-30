@@ -95,8 +95,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/replay/index", get(handlers::get_replay_index))
         .route("/api/replay/news", get(handlers::get_replay_news))
         .route("/api/replay/snapshots", get(handlers::get_replay_snapshots))
-        .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
-        .route("/api/dragon-tiger", get(handlers::get_dragon_tiger))
+        // .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
+        // .route("/api/dragon-tiger", get(handlers::get_dragon_tiger))
         .route(
             "/api/dragon-tiger/combined",
             get(handlers::get_dragon_tiger_combined),

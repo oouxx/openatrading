@@ -4968,7 +4968,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-api"
-version = "0.8.0"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4987,7 +4987,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-channels"
-version = "0.6.2"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4999,7 +4999,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-cli"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5019,7 +5019,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-core"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "askama",
@@ -5045,7 +5045,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-provider"
-version = "0.6.2"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -5058,7 +5058,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-tauri"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -5074,7 +5074,7 @@ dependencies = [
 
 [[package]]
 name = "trading-agent-web"
-version = "0.8.0"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "async-stream",
