@@ -499,7 +499,7 @@ impl XuanguBaoClient {
         count: u32,
     ) -> Result<Vec<PlateAbnormalEvent>> {
         let url = format!(
-            "{}/event/history?timestamp={timestamp}&count={count}&types=11001",
+            "{}/event/history?timestamp={timestamp}&count={count}&types=11001,11000",
             self.base_url
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
