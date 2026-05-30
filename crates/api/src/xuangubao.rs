@@ -517,25 +517,38 @@ impl XuanguBaoClient {
         let day_close_ts = Self::latest_trading_day_close_ts();
         let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
 
-        let url = format!(
-            "{}/event/history?timestamp={day_close_ts}&count=200&types=11001",
-            self.base_url
-        );
-        let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
-            self.client.get(&url).send().await?.json().await?;
-        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
+        let mut all_events: Vec<PlateAbnormalEvent> = Vec::new();
+        let page_size: u32 = 1000;
+        let mut cursor = day_close_ts;
 
-        let mut all_events = resp.data;
-        all_events.retain(|e| e.event_timestamp >= day_open_ts);
+        // Paginate backwards until we cross day_open_ts
+        loop {
+            let page = self.fetch_events_page(cursor, page_size).await?;
+            if page.is_empty() {
+                break;
+            }
+            // The API returns events before `cursor`, newest first
+            // The last event in the page is the earliest
+            let earliest_in_page = page.last().map(|e| e.event_timestamp).unwrap_or(cursor);
+            let keep: Vec<_> = page
+                .into_iter()
+                .filter(|e| e.event_timestamp >= day_open_ts)
+                .collect();
+            all_events.extend(keep);
+
+            if earliest_in_page <= day_open_ts {
+                break;
+            }
+            cursor = earliest_in_page;
+        }
+
         all_events.sort_by_key(|e| e.event_timestamp);
+        all_events.dedup_by_key(|e| e.id);
 
-        let plate_events = all_events.iter().filter(|e| e.event_type == 11001).count();
-        let stock_events = all_events.iter().filter(|e| e.event_type == 11000).count();
         eprintln!(
-            "[replay] fetch_all_day_events done: {} events (plate={plate_events}, stock={stock_events})",
+            "[replay] fetch_all_day_events done: {} events",
             all_events.len()
         );
-
         Ok(all_events)
     }
 
@@ -1216,4 +1229,40 @@ pub struct NewsItem {
     #[serde(default)]
     pub content: String,
     pub summary: String,
+}
+
+// ── Tests ──────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_fetch_all_day_events_returns_recent_day() {
+        let client = XuanguBaoClient::new();
+        let events = client.fetch_all_day_events().await.expect("fetch failed");
+        eprintln!("fetched {} events", events.len());
+        assert!(
+            !events.is_empty(),
+            "should return events for latest trading day"
+        );
+        // Verify events are sorted by timestamp
+        for i in 1..events.len() {
+            assert!(
+                events[i].event_timestamp >= events[i - 1].event_timestamp,
+                "events should be sorted ascending"
+            );
+        }
+        // Verify all events are within trading hours
+        let day_open = XuanguBaoClient::latest_trading_day_close_ts() - 5 * 3600 - 30 * 60;
+        for e in &events {
+            assert!(
+                e.event_timestamp >= day_open,
+                "event timestamp should be >= day open"
+            );
+        }
+        let plate_events = events.iter().filter(|e| e.event_type == 11001).count();
+        eprintln!("plate_events={plate_events}, total={}", events.len());
+    }
 }
