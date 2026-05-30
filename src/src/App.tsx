@@ -4,13 +4,15 @@ import TradingView from './TradingView'
 import RoleView from './RoleView'
 import AiCopilot from './AiCopilot'
 import ReplayView from './ReplayView'
+import BreakoutView from './BreakoutView'
+import ThemeToggle from './components/ThemeToggle'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
 export default function App() {
   return (
     <div className="min-h-screen bg-bg">
-      <header className="fixed top-0 w-full z-50 bg-black h-11">
+      <header className="fixed top-0 w-full z-50 h-11 border-b border-hairline" style={{ background: 'var(--color-header-bg)' }}>
         <div className="max-w-[1600px] mx-auto px-6 h-full flex items-center justify-between">
           <div className="flex items-center gap-6 flex-shrink-0">
             {isTauri ? (
@@ -26,12 +28,12 @@ export default function App() {
               </NavLink>
             )}
             <NavLink
-              to="/trading"
+              to="/breakout"
               className={({ isActive }) =>
                 `text-nav-link font-mono text-ink-muted hover:text-white transition-colors ${isActive ? '!text-white' : ''}`
               }
             >
-              交易终端
+              晋级分析
             </NavLink>
             <NavLink
               to="/replay"
@@ -55,9 +57,10 @@ export default function App() {
                 `text-nav-link font-mono text-ink-muted hover:text-white transition-colors ${isActive ? '!text-white' : ''}`
               }
             >
-              AI 副驾驶
+              AI 问答
             </NavLink>
           </div>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -67,6 +70,7 @@ export default function App() {
         <Route path="/roles" element={<RoleView />} />
         <Route path="/copilot" element={<AiCopilot />} />
         <Route path="/replay" element={<ReplayView />} />
+        <Route path="/breakout" element={<BreakoutView />} />
       </Routes>
     </div>
   )

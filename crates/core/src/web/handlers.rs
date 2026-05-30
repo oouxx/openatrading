@@ -806,85 +806,44 @@ pub async fn get_role_history(
 
 // ── Replay handlers ────────────────────────────────────
 
-/// GET /api/replay/events — cursor-paginated replay data
-/// No cursor → first page (latest events).
-/// ?cursor=TS → older events before that timestamp.
-#[derive(serde::Deserialize)]
-pub struct ReplayEventsQuery {
-    cursor: Option<i64>,
-}
-
-const EVENTS_PAGE_SIZE: u32 = 50;
-
+/// GET /api/replay/events — fetch all events for latest trading day
 pub async fn get_replay_events(
     State(state): State<Arc<AppState>>,
-    Query(q): Query<ReplayEventsQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Only cache the first page (no cursor); paginated requests go direct
-    if q.cursor.is_none() {
-        let cached = cache::get_or_fetch(
-            &state.cache,
-            "replay_events",
-            CachePolicy::replay(),
-            || async {
-                let client = XuanguBaoClient::new();
-                let timestamp = XuanguBaoClient::latest_trading_day_close_ts();
-                let raw = client
-                    .fetch_events_page(timestamp, EVENTS_PAGE_SIZE)
-                    .await
-                    .map_err(|e| {
-                        eprintln!("[replay] events error: {e}");
-                        StatusCode::SERVICE_UNAVAILABLE
-                    })?;
-                let events: Vec<crate::api::xuangubao::ReplayEvent> = raw
-                    .iter()
-                    .map(crate::api::xuangubao::ReplayEvent::from)
-                    .collect();
-                let next_cursor = events.last().map(|e| e.event_timestamp);
-                let date = XuanguBaoClient::last_n_trading_days(1)
-                    .first()
-                    .cloned()
-                    .unwrap_or_default();
-                let market_phase = crate::web::cache::current_market_phase()
-                    .as_str()
-                    .to_string();
-                let page = crate::api::xuangubao::ReplayPage {
-                    date,
-                    market_phase,
-                    events,
-                    next_cursor,
-                };
-                Ok(serde_json::to_string(&page).unwrap_or_default())
-            },
-        )
-        .await?;
-        return Ok(Json(
-            serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-        ));
-    }
-
-    // Paginated request — no cache
-    let client = XuanguBaoClient::new();
-    let timestamp = q.cursor.unwrap();
-    let raw = client
-        .fetch_events_page(timestamp, EVENTS_PAGE_SIZE)
-        .await
-        .map_err(|e| {
-            eprintln!("[replay] events error: {e}");
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    let events: Vec<crate::api::xuangubao::ReplayEvent> = raw
-        .iter()
-        .map(crate::api::xuangubao::ReplayEvent::from)
-        .collect();
-    let next_cursor = events.last().map(|e| e.event_timestamp);
-    let page = crate::api::xuangubao::ReplayPage {
-        date: String::new(),
-        market_phase: String::new(),
-        events,
-        next_cursor,
-    };
-    Ok(Json(serde_json::to_value(page).unwrap_or_default()))
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "replay_events",
+        CachePolicy::replay(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let all_events = client
+                .fetch_all_day_events()
+                .await
+                .map_err(|e| {
+                    eprintln!("[replay] events error: {:#}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            let events: Vec<crate::api::xuangubao::ReplayEvent> = all_events
+                .iter()
+                .map(crate::api::xuangubao::ReplayEvent::from)
+                .collect();
+            let date = XuanguBaoClient::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default();
+            let page = crate::api::xuangubao::ReplayPage {
+                date,
+                market_phase: String::new(),
+                events,
+                next_cursor: None,
+            };
+            Ok(serde_json::to_string(&page).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
 }
 
 /// GET /api/replay/index — three-index trend data
