@@ -209,9 +209,7 @@ pub async fn ai_chat(
             match chunk {
                 Ok(text) => {
                     if !text.is_empty() {
-                        for line in text.split('\n') {
-                            yield Ok(Event::default().data(line));
-                        }
+                        yield Ok(Event::default().data(text.replace('\n', "\\n")));
                     }
                 }
                 Err(e) => {

@@ -307,30 +307,42 @@ impl LhbClient {
             .collect())
     }
 
-    /// 龙虎榜合并数据（详情 + 买卖席位），用于前端一次性渲染
+    /// 龙虎榜合并数据（详情 + 买卖席位），并发请求，用于前端一次性渲染
     pub async fn lhb_combined(
         &self,
         start_date: &str,
         end_date: &str,
     ) -> Result<Vec<LhbCombinedEntry>, LhbError> {
         let details = self.lhb_detail(start_date, end_date).await?;
-        let mut combined = Vec::with_capacity(details.len());
 
-        for d in &details {
-            let buy_seats = self
-                .lhb_stock_seat(&d.code, &d.trade_date[..10].replace('-', ""), SeatFlag::Buy)
-                .await
-                .unwrap_or_default();
-            let sell_seats = self
-                .lhb_stock_seat(
-                    &d.code,
-                    &d.trade_date[..10].replace('-', ""),
-                    SeatFlag::Sell,
-                )
-                .await
-                .unwrap_or_default();
+        let futures: Vec<_> = details
+            .iter()
+            .enumerate()
+            .map(|(idx, d)| {
+                let code = d.code.clone();
+                let date = d.trade_date[..10].replace('-', "");
+                async move {
+                    let buy_seats = self
+                        .lhb_stock_seat(&code, &date, SeatFlag::Buy)
+                        .await
+                        .unwrap_or_default();
+                    let sell_seats = self
+                        .lhb_stock_seat(&code, &date, SeatFlag::Sell)
+                        .await
+                        .unwrap_or_default();
+                    (idx, buy_seats, sell_seats)
+                }
+            })
+            .collect();
 
-            combined.push(LhbCombinedEntry {
+        let mut results: Vec<(usize, Vec<LhbSeatDetail>, Vec<LhbSeatDetail>)> =
+            futures::future::join_all(futures).await;
+        results.sort_by_key(|(idx, _, _)| *idx);
+
+        let combined = results
+            .into_iter()
+            .zip(details.iter())
+            .map(|((_, buy_seats, sell_seats), d)| LhbCombinedEntry {
                 code: d.code.clone(),
                 name: d.name.clone(),
                 trade_date: d.trade_date.clone(),
@@ -348,8 +360,8 @@ impl LhbClient {
                 d10_chg: d.d10_chg,
                 buy_seats,
                 sell_seats,
-            });
-        }
+            })
+            .collect();
 
         Ok(combined)
     }

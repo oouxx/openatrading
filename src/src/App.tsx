@@ -31,14 +31,14 @@ export default function App() {
                 OpenATrading
               </NavLink>
             )}
-            {/*<NavLink
+            <NavLink
               to="/dragon-tiger"
               className={({ isActive }) =>
-                `text-nav-link font-mono text-ink-muted hover:text-white transition-colors ${isActive ? '!text-white' : ''}`
+                `text-nav-link font-mono text-ink-muted hover:text-white transition-colors ${isActive ? "!text-white" : ""}`
               }
             >
               龙虎榜
-            </NavLink>*/}
+            </NavLink>
             <NavLink
               to="/breakout"
               className={({ isActive }) =>
