@@ -7,10 +7,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use trading_agent_core::agents::sentiment::analyze_sentiment;
 use trading_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use trading_agent_core::api::Client as ApiClient;
 use trading_agent_core::trade::TradeManager;
+use trading_agent_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
 
 use crate::cache::{self, CachePolicy};
 use crate::{AppState, RoleEntry};
@@ -1078,10 +1078,46 @@ pub async fn get_dragon_tiger(
         "dragon_tiger",
         CachePolicy::daily(),
         || async {
-            let data = state.api.sina.fetch_dragon_tiger().await.map_err(|e| {
-                eprintln!("[dragon-tiger] fetch error: {:#}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let data = state
+                .api
+                .eastmoney
+                .lhb_detail(
+                    last_n_trading_days(1)[0].as_str(),
+                    last_n_trading_days(1)[0].as_str(),
+                )
+                .await
+                .map_err(|e| {
+                    eprintln!("[dragon-tiger] fetch error: {:#}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
+            Ok(serde_json::to_string(&data).unwrap_or_default())
+        },
+    )
+    .await?;
+    Ok(Json(
+        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
+    ))
+}
+
+/// GET /api/dragon-tiger/combined
+pub async fn get_dragon_tiger_combined(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let cached = cache::get_or_fetch(
+        &state.cache,
+        "dragon_tiger_combined",
+        CachePolicy::daily(),
+        || async {
+            let date = last_n_trading_days(1)[0].clone();
+            let data = state
+                .api
+                .eastmoney
+                .lhb_combined(&date, &date)
+                .await
+                .map_err(|e| {
+                    eprintln!("[dragon-tiger] combined fetch error: {:#}", e);
+                    StatusCode::SERVICE_UNAVAILABLE
+                })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
         },
     )

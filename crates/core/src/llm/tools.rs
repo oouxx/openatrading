@@ -9,7 +9,14 @@ define_tool! {
     client: XuanguBaoClient,
     method: fetch_limit_up
 }
-
+define_tool! {
+    GetSuperStock,
+    "get_super_stock",
+    "获取当前强势股股票列表，包含股票代码、名称、连板天数、封板时间、炸板次数、涨停原因等详细信息",
+    params: {},
+    client: XuanguBaoClient,
+    method: fetch_super_stock
+}
 define_tool! {
     GetLimitDown,
     "get_limit_down",
@@ -56,6 +63,12 @@ mod tests {
         assert_eq!(tool.name(), "get_market_overview");
         let schema = tool.parameters();
         assert_eq!(schema["type"], "object");
+        let result = tool.execute(&serde_json::json!({})).await;
+        assert!(
+            result.is_ok(),
+            "get_market_overview failed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
