@@ -26,10 +26,10 @@ use trading_agent_core::agents::sentiment::analyze_sentiment;
 use trading_agent_core::api::xuangubao::XuanguBaoClient;
 use trading_agent_core::api::Client;
 use trading_agent_core::cron::run_decision;
-use trading_agent_web::gateway::Gateway;
 use trading_agent_core::llm::LlmClient;
 use trading_agent_core::roles::prompt::build_prompt;
 use trading_agent_core::social::{NoopSender, NotificationSender, StdoutSender};
+use trading_agent_web::gateway::Gateway;
 
 #[derive(Serialize)]
 struct OutputData {

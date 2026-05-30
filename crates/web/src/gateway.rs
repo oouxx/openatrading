@@ -1,13 +1,10 @@
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use trading_agent_core::api::Client as ApiClient;
-use trading_agent_core::cron::{self, CronConfig};
 use trading_agent_core::llm::LlmClient;
 use trading_agent_core::memory::sqlite::SqliteMemoryStore;
-use trading_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
-use trading_agent_core::social::NotificationSender;
 use trading_agent_core::trade::sqlite::SqliteTradeManager;
 
 use crate::cache;
@@ -19,11 +16,9 @@ pub struct Gateway {
 }
 
 pub struct GatewayConfig {
-    pub cron: Option<(CronConfig, Arc<dyn NotificationSender>)>,
-    pub web_port: Option<u16>,
+    pub web_port: u16,
     pub roles: Vec<RoleEntry>,
-    pub strategies_dir: PathBuf,
-    pub telegram_bot: Option<TelegramBotConfig>,
+    pub strategies_dir: String,
 }
 
 impl Gateway {
@@ -39,82 +34,22 @@ impl Gateway {
     }
 
     pub async fn start(self, config: GatewayConfig) -> Result<()> {
-        let mut handles = Vec::new();
+        let state = Arc::new(AppState {
+            llm: LlmClient::from_env(),
+            api: ApiClient::new(),
+            memory: self.memory.clone(),
+            trade: self.trade.clone(),
+            roles: Arc::new(tokio::sync::RwLock::new(config.roles.clone())),
+            strategies_dir: config.strategies_dir.into(),
+            cache: cache::new_cache(),
+        });
 
-        let roles = config.roles;
+        let router = web::build_router(state);
+        let addr = format!("0.0.0.0:{}", config.web_port);
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        println!("🌐 Web API: http://0.0.0.0:{}", config.web_port);
 
-        // ── Cron ──────────────────────────────
-        if let Some((cron_config, social)) = config.cron {
-            eprintln!(
-                "[gateway] cron: enabled, collection={}, decision={}, news={}",
-                cron_config.collection_schedule,
-                cron_config.decision_schedule,
-                cron_config.news_schedule
-            );
-            cron::start_scheduler(
-                &cron_config,
-                self.memory.clone(),
-                self.trade.clone(),
-                social,
-                LlmClient::from_env(),
-                ApiClient::new(),
-                roles.clone(),
-            )
-            .await?;
-        } else {
-            eprintln!("[gateway] cron: disabled");
-        }
-
-        // ── Web ───────────────────────────────
-        if let Some(port) = config.web_port {
-            let state = Arc::new(AppState {
-                llm: LlmClient::from_env(),
-                api: ApiClient::new(),
-                memory: self.memory.clone(),
-                trade: self.trade.clone(),
-                roles: Arc::new(tokio::sync::RwLock::new(roles.clone())),
-                strategies_dir: config.strategies_dir,
-                cache: cache::new_cache(),
-            });
-
-            let router = web::build_router(state);
-            let addr = format!("0.0.0.0:{}", port);
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
-            println!("🌐 Web API: http://0.0.0.0:{}", port);
-
-            handles.push(tokio::spawn(async move {
-                if let Err(e) = axum::serve(listener, router).await {
-                    eprintln!("[gateway] web server error: {e}");
-                }
-            }));
-        }
-
-        // ── Telegram Bot ──────────────────────
-        if let Some(bot_config) = config.telegram_bot {
-            let bot = TelegramBot::new(bot_config, roles, self.memory.clone(), self.trade.clone());
-            handles.push(tokio::spawn(async move {
-                if let Err(e) = bot.start_polling().await {
-                    eprintln!("[gateway] telegram bot error: {e}");
-                }
-            }));
-            eprintln!("[gateway] telegram bot: enabled");
-        }
-
-        if handles.is_empty() {
-            eprintln!("[gateway] nothing to run (no cron, no web)");
-            return Ok(());
-        }
-
-        eprintln!("[gateway] running (Ctrl+C to stop)");
-
-        // Wait for Ctrl+C
-        tokio::signal::ctrl_c().await?;
-        eprintln!("\n[gateway] shutting down...");
-
-        for h in handles {
-            h.abort();
-        }
-
+        axum::serve(listener, router).await?;
         Ok(())
     }
 }

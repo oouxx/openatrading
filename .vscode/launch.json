@@ -7,7 +7,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": [],
       "envFile": "${workspaceFolder}/.env"
@@ -17,7 +17,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": ["run", "--ai"],
       "envFile": "${workspaceFolder}/.env"
@@ -27,7 +27,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": ["limit-up"],
       "envFile": "${workspaceFolder}/.env"
@@ -37,7 +37,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": ["overview"],
       "envFile": "${workspaceFolder}/.env"
@@ -47,7 +47,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": ["sentiment"],
       "envFile": "${workspaceFolder}/.env"
@@ -57,7 +57,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent", "--package=trending-agent-cli"]
+        "args": ["run", "--bin=trading-agent", "--package=trading-agent-cli"]
       },
       "args": ["agent"],
       "envFile": "${workspaceFolder}/.env"
@@ -69,7 +69,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["run", "--bin=trending-agent-web", "--package=trending-agent-web"]
+        "args": ["run", "--bin=trading-agent-web", "--package=trading-agent-web"]
       },
       "args": [],
       "envFile": "${workspaceFolder}/.env"
@@ -81,7 +81,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--package=trending-agent-core"]
+        "args": ["test", "--package=trading-agent-core"]
       },
       "envFile": "${workspaceFolder}/.env"
     },
@@ -90,7 +90,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--package=trending-agent-cli"]
+        "args": ["test", "--package=trading-agent-cli"]
       },
       "envFile": "${workspaceFolder}/.env"
     },
@@ -99,7 +99,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--package=trending-agent-web"]
+        "args": ["test", "--package=trading-agent-web"]
       },
       "envFile": "${workspaceFolder}/.env"
     },

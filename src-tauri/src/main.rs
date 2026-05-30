@@ -5,10 +5,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use trading_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use trading_agent_core::api::Client as ApiClient;
-use trading_agent_web::gateway::Gateway;
 use trading_agent_core::llm::LlmClient;
 use trading_agent_core::roles::BUILTIN_STRATEGIES;
 use trading_agent_core::trade::TradeManager;
+use trading_agent_web::gateway::Gateway;
 use trading_agent_web::{AppState, RoleEntry};
 
 fn find_project_root() -> PathBuf {

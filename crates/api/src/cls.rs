@@ -99,7 +99,7 @@ impl ClsClient {
         eprintln!(
             "[cls::telegraph] status={}, body={}",
             status,
-            &body_text[..body_text.len().min(500)]
+            &body_text.chars().take(500).collect::<String>()
         );
         let resp_data: ClsTelegraphResp = serde_json::from_str(&body_text)?;
         Ok(resp_data.data.roll_data)

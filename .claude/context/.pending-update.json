@@ -1,4 +1,4 @@
 {
-  "last_session_date": "2026-05-30 09:35",
-  "changed_files": "Cargo.toml\ncrates/cli/Cargo.toml\ncrates/cli/src/cli/doctor.rs\ncrates/cli/src/cli/gateway_cmd.rs\ncrates/cli/src/cli/mod.rs\ncrates/core/Cargo.toml\ncrates/core/src/cron/mod.rs\ncrates/core/src/gateway/mod.rs\ncrates/core/src/lib.rs\ncrates/core/src/social/telegram_bot.rs\ncrates/core/src/web/cache.rs\ncrates/core/src/web/chat.rs\ncrates/core/src/web/download.rs\ncrates/core/src/web/handlers.rs\ncrates/core/src/web/mod.rs\nsrc-tauri/Cargo.toml\nsrc-tauri/src/main.rs"
+  "last_session_date": "2026-05-30 11:20",
+  "changed_files": ".vscode/launch.json\ncrates/api/src/cls.rs\ncrates/api/src/sina.rs\ncrates/api/src/utils.rs\ncrates/cli/src/cli/gateway_cmd.rs\ncrates/cli/src/cli/mod.rs\ncrates/web/src/gateway.rs\ncrates/web/src/handlers.rs\ncrates/web/src/lib.rs\nsrc-tauri/src/main.rs"
 }

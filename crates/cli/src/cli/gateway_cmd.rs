@@ -4,15 +4,13 @@ use std::process::Command;
 use std::sync::Arc;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
-use trading_agent_core::cron::CronConfig;
-use trading_agent_web::gateway::{Gateway, GatewayConfig};
 use trading_agent_core::social::channel_to_sender;
 use trading_agent_core::social::channels::discord::DiscordChannel;
 use trading_agent_core::social::channels::lark::LarkChannel;
 use trading_agent_core::social::channels::slack::SlackChannel;
 use trading_agent_core::social::channels::telegram::TelegramChannel;
-use trading_agent_core::social::telegram_bot::TelegramBotConfig;
 use trading_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
+use trading_agent_web::gateway::{Gateway, GatewayConfig};
 use trading_agent_web::RoleEntry;
 
 const SERVICE_NAME: &str = "openatrading";
@@ -241,12 +239,11 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 }
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
-///
-/// - `cron_only`: 仅运行 cron scheduler，不启动 web server
-/// - `web_only`: 仅运行 web server（端口 8080），不启动 cron scheduler
-/// - 两者均 false（默认）: cron + web 同时运行
-/// - 两者均 true: 等同于默认行为
 pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: bool) -> Result<()> {
+    use trading_agent_core::cron::{self, CronConfig};
+    use trading_agent_core::llm::LlmClient;
+    use trading_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
+
     let app_config = AppConfig::load(project_root)?;
 
     let db_path = project_root
@@ -258,30 +255,18 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
     let do_cron = !web_only || cron_only;
     let do_web = !cron_only || web_only;
 
-    let telegram_bot_config = match &app_config.social {
-        Some(sc)
-            if sc
-                .telegram
-                .as_ref()
-                .map(|t| t.enabled && t.bot_polling)
-                .unwrap_or(false) =>
-        {
-            let tg = sc.telegram.as_ref().unwrap();
-            let token = tg.bot_token.clone().unwrap_or_default();
-            let chat_id = tg.chat_id.clone().unwrap_or_default();
-            if token.is_empty() || chat_id.is_empty() {
-                None
-            } else {
-                Some(TelegramBotConfig {
-                    bot_token: token,
-                    chat_id,
-                })
-            }
-        }
-        _ => None,
-    };
+    let roles = build_roles(&app_config);
+    let strategies_dir = project_root.join(".atrading").join("strategies");
+    let mut handles = Vec::new();
 
-    let cron_entry = if do_cron {
+    // Clone for cron/telegram/web use before gateway is moved
+    let memory = gateway.memory.clone();
+    let trade = gateway.trade.clone();
+    let web_roles = roles.clone();
+    let web_strategies_dir = strategies_dir.clone();
+
+    // ── Cron (CLI layer) ──────────────────────────
+    if do_cron {
         let social: Arc<dyn NotificationSender> = match &app_config.social {
             Some(sc) => Arc::from(create_notification_sender(sc)),
             None => Arc::new(NoopSender),
@@ -301,40 +286,77 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 news_schedule: "0 */5 9-15 * * 1-5 *".to_string(),
             },
         };
+        cron::start_scheduler(
+            &cron_cfg,
+            memory.clone(),
+            trade.clone(),
+            social.clone(),
+            LlmClient::from_env(),
+            trading_agent_core::api::Client::new(),
+            roles.clone(),
+        )
+        .await?;
 
-        Some((cron_cfg, social))
-    } else {
-        None
-    };
-
-    let web_port = if do_web { Some(8080u16) } else { None };
-
-    // ── Build roles with merged strategies ──────────
-    let roles = build_roles(&app_config);
-
-    // ── Notification channel diagnostics ──────────
-    if do_cron {
         if let Some(sc) = &app_config.social {
             let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
-            let sender = create_notification_sender(sc);
-            match sender.send_text("✅ OpenATrading Gateway 已启动").await {
+            match social.send_text("✅ OpenATrading Gateway 已启动").await {
                 Ok(()) => eprintln!("[gateway] {channel}: ✅ connected"),
                 Err(e) => eprintln!("[gateway] {channel}: ❌ connection failed: {e}"),
             }
-        } else {
-            eprintln!("[gateway] social: ⚠ not configured");
         }
     }
 
-    let strategies_dir = project_root.join(".atrading").join("strategies");
+    // ── Web (web crate) ───────────────────────────
+    if do_web {
+        let gh = tokio::spawn(async move {
+            if let Err(e) = gateway
+                .start(GatewayConfig {
+                    web_port: 8080,
+                    roles: web_roles.clone(),
+                    strategies_dir: web_strategies_dir.to_string_lossy().to_string(),
+                })
+                .await
+            {
+                eprintln!("[gateway] web error: {e}");
+            }
+        });
+        handles.push(gh);
+    }
 
-    gateway
-        .start(GatewayConfig {
-            cron: cron_entry,
-            web_port,
-            roles,
-            strategies_dir,
-            telegram_bot: telegram_bot_config,
-        })
-        .await
+    // ── Telegram Bot (CLI layer) ──────────────────
+    if let Some(sc) = &app_config.social {
+        if let Some(tg) = &sc.telegram {
+            if tg.enabled && tg.bot_polling {
+                if let (Some(token), Some(chat_id)) = (&tg.bot_token, &tg.chat_id) {
+                    if !token.is_empty() && !chat_id.is_empty() {
+                        let config = TelegramBotConfig {
+                            bot_token: token.clone(),
+                            chat_id: chat_id.clone(),
+                        };
+                        let bot = TelegramBot::new(config, roles, memory.clone(), trade.clone());
+                        handles.push(tokio::spawn(async move {
+                            if let Err(e) = bot.start_polling().await {
+                                eprintln!("[gateway] telegram bot error: {e}");
+                            }
+                        }));
+                        eprintln!("[gateway] telegram bot: enabled");
+                    }
+                }
+            }
+        }
+    }
+
+    if handles.is_empty() {
+        eprintln!("[gateway] nothing to run");
+        return Ok(());
+    }
+
+    eprintln!("[gateway] running (Ctrl+C to stop)");
+    tokio::signal::ctrl_c().await?;
+    eprintln!("\n[gateway] shutting down...");
+    for h in handles {
+        h.abort();
+    }
+
+    Ok(())
 }

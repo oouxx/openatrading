@@ -14,7 +14,9 @@ pub fn html_to_markdown(html: &str) -> String {
                 .captures(img_tag)
                 .and_then(|c| c.get(1).map(|m| m.as_str()))
                 .or_else(|| {
-                    src_re.captures(img_tag).and_then(|c| c.get(1).map(|m| m.as_str()))
+                    src_re
+                        .captures(img_tag)
+                        .and_then(|c| c.get(1).map(|m| m.as_str()))
                 })
                 .unwrap_or("");
             if src.is_empty() || src.starts_with("data:") || src.contains("placeHolder") {
