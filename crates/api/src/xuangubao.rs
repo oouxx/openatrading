@@ -69,7 +69,7 @@ pub struct StockAbnormalEventData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlateAbnormalEvent {
+pub struct PlateOrStockAbnormalEvent {
     pub id: i64,
     pub target: String,
     pub event_type: i32,
@@ -172,7 +172,7 @@ pub struct Stock {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct XuanGubaoExtra {
     pub limit_down: Vec<Stock>,
-    pub plate_abnormal: Vec<PlateAbnormalEvent>,
+    pub plate_abnormal: Vec<PlateOrStockAbnormalEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,7 +477,7 @@ impl XuanguBaoClient {
 
         Ok(results)
     }
-    pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateAbnormalEvent>> {
+    pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateOrStockAbnormalEvent>> {
         let types =
             "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010,11000,11001";
         let url = format!(
@@ -485,7 +485,7 @@ impl XuanguBaoClient {
             self.base_url, count, types
         );
 
-        let resp: ApiResponse<Vec<PlateAbnormalEvent>> =
+        let resp: ApiResponse<Vec<PlateOrStockAbnormalEvent>> =
             self.client.get(&url).send().await?.json().await?;
 
         anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
@@ -497,33 +497,81 @@ impl XuanguBaoClient {
         &self,
         timestamp: i64,
         count: u32,
-    ) -> Result<Vec<PlateAbnormalEvent>> {
+        types: &str,
+    ) -> Result<Vec<PlateOrStockAbnormalEvent>> {
         let url = format!(
-            "{}/event/history?timestamp={timestamp}&count={count}&types=11001,11000",
+            "{}/event/history?timestamp={timestamp}&count={count}&types={types}",
             self.base_url
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         let code = resp["code"].as_i64().unwrap_or(0);
         anyhow::ensure!(code == 20000, "API 返回错误码: {code}");
         let data = resp["data"].as_array().cloned().unwrap_or_default();
-        let events: Vec<PlateAbnormalEvent> = data
+        let events: Vec<PlateOrStockAbnormalEvent> = data
             .iter()
             .filter_map(|v| serde_json::from_value(v.clone()).ok())
             .collect();
         Ok(events)
     }
 
-    pub async fn fetch_all_day_events(&self) -> Result<Vec<PlateAbnormalEvent>> {
+    pub async fn fetch_all_day_events(&self) -> Result<Vec<PlateOrStockAbnormalEvent>> {
         let day_close_ts = Self::latest_trading_day_close_ts();
         let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
 
-        let mut all_events: Vec<PlateAbnormalEvent> = Vec::new();
+        let mut all_events: Vec<PlateOrStockAbnormalEvent> = Vec::new();
         let page_size: u32 = 1000;
         let mut cursor = day_close_ts;
 
         // Paginate backwards until we cross day_open_ts
         loop {
-            let page = self.fetch_events_page(cursor, page_size).await?;
+            let page = self
+                .fetch_events_page(cursor, page_size, "11001,11000")
+                .await?;
+            if page.is_empty() {
+                break;
+            }
+            // The API returns events before `cursor`, newest first
+            // The last event in the page is the earliest
+            let earliest_in_page = page.last().map(|e| e.event_timestamp).unwrap_or(cursor);
+            let keep: Vec<_> = page
+                .into_iter()
+                .filter(|e| e.event_timestamp >= day_open_ts)
+                .collect();
+            all_events.extend(keep);
+
+            if earliest_in_page <= day_open_ts {
+                break;
+            }
+            cursor = earliest_in_page;
+        }
+
+        all_events.sort_by_key(|e| e.event_timestamp);
+        all_events.dedup_by_key(|e| e.id);
+
+        eprintln!(
+            "[replay] fetch_all_day_events done: {} events",
+            all_events.len()
+        );
+        Ok(all_events)
+    }
+
+    pub async fn fetch_all_day_stock_events(&self) -> Result<Vec<PlateOrStockAbnormalEvent>> {
+        let day_close_ts = Self::latest_trading_day_close_ts();
+        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
+
+        let mut all_events: Vec<PlateOrStockAbnormalEvent> = Vec::new();
+        let page_size: u32 = 1000;
+        let mut cursor = day_close_ts;
+
+        // Paginate backwards until we cross day_open_ts
+        loop {
+            let page = self
+                .fetch_events_page(
+                    cursor,
+                    page_size,
+                    "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010",
+                )
+                .await?;
             if page.is_empty() {
                 break;
             }
@@ -914,8 +962,8 @@ pub struct ReplayEvent {
     pub related_stocks: Vec<RelatedStock>,
 }
 
-impl From<&PlateAbnormalEvent> for ReplayEvent {
-    fn from(ev: &PlateAbnormalEvent) -> Self {
+impl From<&PlateOrStockAbnormalEvent> for ReplayEvent {
+    fn from(ev: &PlateOrStockAbnormalEvent) -> Self {
         let (plate_name, pcp, related_stocks) = ev
             .plate_abnormal_event_data
             .as_ref()
@@ -970,7 +1018,7 @@ struct PlateAccumulator {
 
 /// Slice events into 5‑minute buckets across 09:30–15:00, computing
 /// cumulative emotion scores and top plates per bucket.
-pub fn build_replay_snapshots(events: &[PlateAbnormalEvent]) -> Vec<TimeSnapshot> {
+pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeSnapshot> {
     if events.is_empty() {
         return vec![];
     }

@@ -225,7 +225,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(XuanguBaoClient::latest_trading_day_close_ts);
             let raw = client
-                .fetch_events_page(timestamp, 50)
+                .fetch_events_page(timestamp, 1000, "11000,11001")
                 .await
                 .map_err(|e| format!("{e}"))?;
             let events: Vec<trading_agent_core::api::xuangubao::ReplayEvent> = raw
