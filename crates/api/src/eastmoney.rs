@@ -145,6 +145,12 @@ pub struct LhbClient {
     client: Client,
 }
 
+impl Default for LhbClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LhbClient {
     pub fn new() -> Self {
         Self {
@@ -321,7 +327,11 @@ impl LhbClient {
                 .await
                 .unwrap_or_default();
             let sell_seats = self
-                .lhb_stock_seat(&d.code, &d.trade_date[..10].replace('-', ""), SeatFlag::Sell)
+                .lhb_stock_seat(
+                    &d.code,
+                    &d.trade_date[..10].replace('-', ""),
+                    SeatFlag::Sell,
+                )
                 .await
                 .unwrap_or_default();
 
@@ -487,21 +497,30 @@ mod tests {
     #[test]
     fn test_invalid_symbol_too_short() {
         let client = LhbClient::new();
-        let result = tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(client.lhb_stock_seat("123", "20240115", SeatFlag::Buy));
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(client.lhb_stock_seat("123", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
     #[test]
     fn test_invalid_symbol_too_long() {
         let client = LhbClient::new();
-        let result = tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(client.lhb_stock_seat("1234567", "20240115", SeatFlag::Buy));
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(client.lhb_stock_seat("1234567", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
     #[test]
     fn test_invalid_symbol_empty() {
         let client = LhbClient::new();
-        let result = tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(client.lhb_stock_seat("", "20240115", SeatFlag::Buy));
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(client.lhb_stock_seat("", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
@@ -509,14 +528,19 @@ mod tests {
     #[ignore]
     async fn integration_lhb_stock_seat_valid_symbol() {
         let client = LhbClient::new();
-        let result = client.lhb_stock_seat("000001", "20240115", SeatFlag::Buy).await;
+        let result = client
+            .lhb_stock_seat("000001", "20240115", SeatFlag::Buy)
+            .await;
         assert!(!matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
     #[test]
     fn test_lhb_stock_seat_invalid_date() {
         let client = LhbClient::new();
-        let result = tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(client.lhb_stock_seat("000001", "2024-115", SeatFlag::Buy));
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(client.lhb_stock_seat("000001", "2024-115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidDate(_))));
     }
 
@@ -697,17 +721,15 @@ mod tests {
             d5_chg: Some(3.1),
             d10_chg: Some(5.8),
         };
-        let seats = vec![
-            LhbSeatDetail {
-                dept_name: "机构专用".into(),
-                seat_type: Some("机构".into()),
-                buy_amt: Some(152000000.0),
-                buy_ratio: Some(0.035),
-                sell_amt: None,
-                sell_ratio: None,
-                net_amt: Some(152000000.0),
-            },
-        ];
+        let seats = vec![LhbSeatDetail {
+            dept_name: "机构专用".into(),
+            seat_type: Some("机构".into()),
+            buy_amt: Some(152000000.0),
+            buy_ratio: Some(0.035),
+            sell_amt: None,
+            sell_ratio: None,
+            net_amt: Some(152000000.0),
+        }];
         let combined = LhbCombinedEntry {
             code: detail.code.clone(),
             name: detail.name.clone(),
@@ -802,4 +824,3 @@ mod tests {
         );
     }
 }
-
