@@ -11,7 +11,7 @@ use crate::cron::run_decision;
 use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
-use crate::web::RoleEntry;
+use crate::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
 

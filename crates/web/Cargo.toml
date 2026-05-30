@@ -1,0 +1,27 @@
+[package]
+name = "trending-agent-web"
+version = "0.8.0"
+edition = "2021"
+
+[lib]
+name = "trending_agent_web"
+path = "src/lib.rs"
+
+[dependencies]
+trending-agent-core = { path = "../core" }
+trending-agent-channels = { path = "../channels" }
+trending-agent-provider = { path = "../provider" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+async-stream = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+moka = { version = "0.12.15", features = ["sync"] }
+futures = { workspace = true }
+reqwest = { workspace = true }
+thiserror = "2"

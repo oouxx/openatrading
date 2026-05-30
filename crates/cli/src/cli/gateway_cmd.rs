@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use trending_agent_core::cron::CronConfig;
-use trending_agent_core::gateway::{Gateway, GatewayConfig};
+use trending_agent_web::gateway::{Gateway, GatewayConfig};
 use trending_agent_core::social::channel_to_sender;
 use trending_agent_core::social::channels::discord::DiscordChannel;
 use trending_agent_core::social::channels::lark::LarkChannel;
@@ -13,7 +13,7 @@ use trending_agent_core::social::channels::slack::SlackChannel;
 use trending_agent_core::social::channels::telegram::TelegramChannel;
 use trending_agent_core::social::telegram_bot::TelegramBotConfig;
 use trending_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
-use trending_agent_core::web::RoleEntry;
+use trending_agent_web::RoleEntry;
 
 const SERVICE_NAME: &str = "openatrading";
 

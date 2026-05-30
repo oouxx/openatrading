@@ -26,7 +26,7 @@ use trending_agent_core::agents::sentiment::analyze_sentiment;
 use trending_agent_core::api::xuangubao::XuanguBaoClient;
 use trending_agent_core::api::Client;
 use trending_agent_core::cron::run_decision;
-use trending_agent_core::gateway::Gateway;
+use trending_agent_web::gateway::Gateway;
 use trending_agent_core::llm::LlmClient;
 use trending_agent_core::roles::prompt::build_prompt;
 use trending_agent_core::social::{NoopSender, NotificationSender, StdoutSender};

@@ -5,11 +5,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use trending_agent_core::api::Client as ApiClient;
-use trending_agent_core::gateway::Gateway;
+use trending_agent_web::gateway::Gateway;
 use trending_agent_core::llm::LlmClient;
 use trending_agent_core::roles::BUILTIN_STRATEGIES;
 use trending_agent_core::trade::TradeManager;
-use trending_agent_core::web::{AppState, RoleEntry};
+use trending_agent_web::{AppState, RoleEntry};
 
 fn find_project_root() -> PathBuf {
     // Walk up from current_dir looking for .env first (workspace root),
@@ -244,7 +244,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             let market_phase = if has_cursor {
                 String::new()
             } else {
-                trending_agent_core::web::cache::current_market_phase()
+                trending_agent_web::cache::current_market_phase()
                     .as_str()
                     .to_string()
             };
@@ -630,7 +630,7 @@ async fn api_chat_stream(
     eprintln!("[chat_stream] role={role_name}");
 
     eprintln!("[chat_stream] fetching overview...");
-    let overview = trending_agent_core::web::chat::fetch_overview_data(&api)
+    let overview = trending_agent_web::chat::fetch_overview_data(&api)
         .await
         .map_err(|e| {
             eprintln!("[chat_stream] overview error: {e}");
@@ -638,8 +638,8 @@ async fn api_chat_stream(
         })?;
     eprintln!("[chat_stream] overview ok");
 
-    let field_items = trending_agent_core::web::chat::fetch_field_json(&api).await;
-    let super_stocks = trending_agent_core::web::chat::fetch_super_stock_json(&api).await;
+    let field_items = trending_agent_web::chat::fetch_field_json(&api).await;
+    let super_stocks = trending_agent_web::chat::fetch_super_stock_json(&api).await;
     eprintln!(
         "[chat_stream] field_items={}, super_stocks={}",
         field_items.is_some(),
@@ -653,8 +653,8 @@ async fn api_chat_stream(
         .map(|r| r.strategy.as_str())
         .unwrap_or("你是一个A股短线交易AI助手。");
 
-    let system_prompt = trending_agent_core::web::chat::build_system_prompt(strategy_text);
-    let user_message = trending_agent_core::web::chat::build_user_message(
+    let system_prompt = trending_agent_web::chat::build_system_prompt(strategy_text);
+    let user_message = trending_agent_web::chat::build_user_message(
         &overview,
         field_items.as_deref(),
         super_stocks.as_deref(),
@@ -796,7 +796,7 @@ fn main() {
         trade,
         roles: Arc::new(RwLock::new(roles)),
         strategies_dir,
-        cache: trending_agent_core::web::cache::new_cache(),
+        cache: trending_agent_web::cache::new_cache(),
     });
 
     tauri::Builder::default()

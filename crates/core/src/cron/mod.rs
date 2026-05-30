@@ -15,7 +15,7 @@ use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
 use crate::social::NotificationSender;
 use crate::trade::{Position, TradeManager};
-use crate::web::RoleEntry;
+use crate::RoleEntry;
 
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
 const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;

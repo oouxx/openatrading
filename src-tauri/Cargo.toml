@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 trending-agent-core = { path = "../crates/core" }
+trending-agent-web = { path = "../crates/web" }
 tauri = { version = "2", features = ["devtools"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

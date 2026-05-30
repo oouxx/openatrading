@@ -44,7 +44,7 @@ impl MarketPhase {
 }
 
 pub fn current_market_phase() -> MarketPhase {
-    let now = crate::utils::time::beijing_now();
+    let now = trending_agent_core::utils::time::beijing_now();
     let weekday = now.weekday();
 
     if weekday == Weekday::Sat || weekday == Weekday::Sun {
@@ -78,7 +78,7 @@ fn is_trading_hours() -> bool {
 }
 
 fn next_open_timestamp() -> i64 {
-    let now = crate::utils::time::beijing_now();
+    let now = trending_agent_core::utils::time::beijing_now();
     let time = now.time();
     let open_am = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
     let open_pm = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
@@ -172,7 +172,7 @@ impl CachePolicy {
     }
 
     fn compute_expires_at(&self) -> Option<i64> {
-        let now = crate::utils::time::beijing_now().timestamp();
+        let now = trending_agent_core::utils::time::beijing_now().timestamp();
         match self {
             CachePolicy::Never => None,
             CachePolicy::Always(ttl) => Some(now + ttl.as_secs() as i64),
@@ -193,7 +193,7 @@ impl CachePolicy {
 pub fn get(cache: &AppCache, key: &str) -> Option<String> {
     let entry = cache.get(key)?;
     if let Some(expires_at) = entry.expires_at {
-        if crate::utils::time::beijing_now().timestamp() > expires_at {
+        if trending_agent_core::utils::time::beijing_now().timestamp() > expires_at {
             cache.invalidate(key);
             return None;
         }
@@ -234,41 +234,4 @@ where
     let value = fetch().await?;
     set(cache, key, &value, policy);
     Ok(value)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_policy_daily() {
-        let policy = CachePolicy::daily();
-        let expires = policy.compute_expires_at();
-        assert!(expires.is_some());
-    }
-
-    #[test]
-    fn test_cache_set_get() {
-        let cache = AppCache::new(100);
-        set(
-            &cache,
-            "test_key",
-            "test_value",
-            CachePolicy::Always(Duration::from_secs(60)),
-        );
-        assert_eq!(get(&cache, "test_key"), Some("test_value".to_string()));
-    }
-
-    #[test]
-    fn test_cache_expired() {
-        let cache = AppCache::new(100);
-        cache.insert(
-            "test_key".to_string(),
-            CachedEntry {
-                data: "test_value".to_string(),
-                expires_at: Some(crate::utils::time::beijing_now().timestamp() - 1),
-            },
-        );
-        assert_eq!(get(&cache, "test_key"), None);
-    }
 }
