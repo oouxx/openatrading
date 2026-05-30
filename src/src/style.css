@@ -8,21 +8,6 @@
   }
 
   :root {
-    --color-bg-rgb: 13 13 26;
-    --color-surface-rgb: 17 17 36;
-    --color-surface-hover-rgb: 26 26 53;
-    --color-fg-rgb: 232 232 237;
-    --color-muted-rgb: 136 135 128;
-    --color-border-rgb: 255 255 255;
-    --color-accent-rgb: 127 119 221;
-    --color-accent-hover-rgb: 153 144 240;
-    --color-up-rgb: 255 92 92;
-    --color-down-rgb: 29 158 117;
-    --color-tag-bg: rgba(255, 255, 255, 0.05);
-    --color-header-bg: #000000;
-  }
-
-  [data-theme="light"] {
     --color-bg-rgb: 250 250 245;
     --color-surface-rgb: 255 255 255;
     --color-surface-hover-rgb: 245 245 240;
@@ -35,6 +20,21 @@
     --color-down-rgb: 22 108 80;
     --color-tag-bg: rgba(0, 0, 0, 0.04);
     --color-header-bg: #ffffff;
+  }
+
+  [data-theme="dark"] {
+    --color-bg-rgb: 13 13 26;
+    --color-surface-rgb: 17 17 36;
+    --color-surface-hover-rgb: 26 26 53;
+    --color-fg-rgb: 232 232 237;
+    --color-muted-rgb: 136 135 128;
+    --color-border-rgb: 255 255 255;
+    --color-accent-rgb: 127 119 221;
+    --color-accent-hover-rgb: 153 144 240;
+    --color-up-rgb: 255 92 92;
+    --color-down-rgb: 29 158 117;
+    --color-tag-bg: rgba(255, 255, 255, 0.05);
+    --color-header-bg: #000000;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }

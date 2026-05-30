@@ -3,15 +3,15 @@ import { useState, useEffect } from 'react'
 const STORAGE_KEY = 'openatrading-theme'
 
 function getInitialTheme(): 'dark' | 'light' {
-  if (typeof window === 'undefined') return 'dark'
+  if (typeof window === 'undefined') return 'light'
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved === 'light' || saved === 'dark') return saved
-  return 'dark'
+  return 'light'
 }
 
 function applyTheme(theme: 'dark' | 'light') {
-  if (theme === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light')
+  if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark')
   } else {
     document.documentElement.removeAttribute('data-theme')
   }

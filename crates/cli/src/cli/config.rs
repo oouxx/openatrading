@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use trending_agent_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
+use trading_agent_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -369,7 +369,7 @@ impl AppConfig {
     }
 }
 
-/// `trending-agent init` — 在 HOME 目录创建 ~/.atrading/
+/// `trading-agent init` — 在 HOME 目录创建 ~/.atrading/
 pub fn cmd_init() -> Result<()> {
     let home = dirs::home_dir().context("无法获取 HOME 目录")?;
     let atrading = home.join(".atrading");
@@ -401,7 +401,7 @@ pub fn cmd_init() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use trending_agent_core::roles::MergeMode;
+    use trading_agent_core::roles::MergeMode;
 
     #[test]
     fn test_merge_role_override() {

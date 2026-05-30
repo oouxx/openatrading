@@ -8,7 +8,7 @@ use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use trending_agent_core::api::Client as ApiClient;
+use trading_agent_core::api::Client as ApiClient;
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -96,7 +96,7 @@ pub fn build_user_message(
 }
 
 pub async fn fetch_field_json(api: &ApiClient) -> Option<String> {
-    let date = trending_agent_core::utils::time::beijing_now()
+    let date = trading_agent_core::utils::time::beijing_now()
         .format("%Y-%m-%d")
         .to_string();
     match api.jiuyan.fetch_field(&date, 1).await {
@@ -134,7 +134,7 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
     );
 
     Ok(OverviewResponse {
-        date: trending_agent_core::utils::time::beijing_now()
+        date: trading_agent_core::utils::time::beijing_now()
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         rise_count: overview.rise_count,

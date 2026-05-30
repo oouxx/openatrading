@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use crate::cron::{CollectSummary, Decision};
 use crate::trade::TradeLog;
 
-pub use trending_agent_channels as channels;
-pub use trending_agent_channels::discord::DiscordChannel;
-pub use trending_agent_channels::lark::LarkChannel;
-pub use trending_agent_channels::slack::SlackChannel;
-pub use trending_agent_channels::telegram::TelegramChannel;
-pub use trending_agent_channels::{Channel, NoopChannel, StdoutChannel};
+pub use trading_agent_channels as channels;
+pub use trading_agent_channels::discord::DiscordChannel;
+pub use trading_agent_channels::lark::LarkChannel;
+pub use trading_agent_channels::slack::SlackChannel;
+pub use trading_agent_channels::telegram::TelegramChannel;
+pub use trading_agent_channels::{Channel, NoopChannel, StdoutChannel};
 
 #[async_trait]
 pub trait NotificationSender: Send + Sync {

@@ -22,14 +22,14 @@ use crate::cli::gateway_cmd::{
 };
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
-use trending_agent_core::agents::sentiment::analyze_sentiment;
-use trending_agent_core::api::xuangubao::XuanguBaoClient;
-use trending_agent_core::api::Client;
-use trending_agent_core::cron::run_decision;
-use trending_agent_web::gateway::Gateway;
-use trending_agent_core::llm::LlmClient;
-use trending_agent_core::roles::prompt::build_prompt;
-use trending_agent_core::social::{NoopSender, NotificationSender, StdoutSender};
+use trading_agent_core::agents::sentiment::analyze_sentiment;
+use trading_agent_core::api::xuangubao::XuanguBaoClient;
+use trading_agent_core::api::Client;
+use trading_agent_core::cron::run_decision;
+use trading_agent_web::gateway::Gateway;
+use trading_agent_core::llm::LlmClient;
+use trading_agent_core::roles::prompt::build_prompt;
+use trading_agent_core::social::{NoopSender, NotificationSender, StdoutSender};
 
 #[derive(Serialize)]
 struct OutputData {
@@ -129,7 +129,7 @@ pub async fn run() -> Result<()> {
             println!("当前版本: {current}");
             println!("最新版本: {latest}");
             if needs_update {
-                println!("⚠ 有新版本可用，运行 `trending-agent update` 更新");
+                println!("⚠ 有新版本可用，运行 `trading-agent update` 更新");
             } else {
                 println!("✅ 已是最新版本");
             }
@@ -221,7 +221,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "field_item" => {
-                let date = trending_agent_core::utils::time::beijing_now()
+                let date = trading_agent_core::utils::time::beijing_now()
                     .format("%Y-%m-%d")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_field(&date, 1).await {
@@ -234,7 +234,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "timeline" => {
-                let month = trending_agent_core::utils::time::beijing_now()
+                let month = trading_agent_core::utils::time::beijing_now()
                     .format("%Y-%m")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_timeline(&month).await {
@@ -288,7 +288,7 @@ pub async fn run() -> Result<()> {
             None => {
                 eprintln!("⚠️ 未找到角色 '{role_name}'，使用默认策略");
                 output.role_name = Some("默认分析".to_string());
-                trending_agent_core::roles::get_builtin_strategy("zarili")
+                trading_agent_core::roles::get_builtin_strategy("zarili")
                     .unwrap_or("")
                     .to_string()
             }
@@ -419,10 +419,10 @@ async fn cmd_decision(
     let api = Client::new();
 
     let tools = Arc::new(
-        trending_agent_core::llm::ToolSet::new()
-            .with_tool(trending_agent_core::llm::tools::GetLimitUp)
-            .with_tool(trending_agent_core::llm::tools::GetLimitDown)
-            .with_tool(trending_agent_core::llm::tools::GetMarketOverview),
+        trading_agent_core::llm::ToolSet::new()
+            .with_tool(trading_agent_core::llm::tools::GetLimitUp)
+            .with_tool(trading_agent_core::llm::tools::GetLimitDown)
+            .with_tool(trading_agent_core::llm::tools::GetMarketOverview),
     );
 
     run_decision(

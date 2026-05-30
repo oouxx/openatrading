@@ -239,7 +239,7 @@ impl TgbClient {
             let video_img_pattern =
                 regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#).unwrap();
             inner = video_img_pattern.replace_all(&inner, "").to_string();
-            crate::utils::html::html_to_markdown(&inner)
+            crate::utils::html_to_markdown(&inner)
         } else {
             String::new()
         };
@@ -283,7 +283,7 @@ impl TgbClient {
                 regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#).unwrap();
             inner = video_img_pattern.replace_all(&inner, "").to_string();
             // 将 HTML 转为 Markdown
-            crate::utils::html::html_to_markdown(&inner)
+            crate::utils::html_to_markdown(&inner)
         } else {
             String::new()
         };

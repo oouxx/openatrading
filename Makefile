@@ -6,11 +6,11 @@ build:
 	cargo build
 
 run:
-	cargo run -p trending-agent-cli
+	cargo run -p trading-agent-cli
 
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	cargo run -p trending-agent-cli -- gateway run --web-only
+	cargo run -p trading-agent-cli -- gateway run --web-only
 
 run-frontend:
 	cd src && bun run dev
@@ -24,13 +24,13 @@ build-tauri:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p trending-agent-core -p trending-agent-cli -p trending-agent-channels -p trending-agent-provider
+	cargo test -p trading-agent-api -p trading-agent-core -p trading-agent-cli -p trading-agent-channels -p trading-agent-provider -p trading-agent-web
 
 fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p trending-agent-core -p trending-agent-cli -p trending-agent-channels -p trending-agent-provider -- -D warnings
+	cargo clippy -p trading-agent-api -p trading-agent-core -p trading-agent-cli -p trading-agent-channels -p trading-agent-provider -p trading-agent-web -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"

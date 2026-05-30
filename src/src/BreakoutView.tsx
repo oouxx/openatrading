@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useDataStore, type Stock } from '@/stores/data'
+import { type Stock } from '@/stores/data'
 import { apiFetch } from '@/stores/data'
 
 // ── Types ──────────────────────────────────────────────
@@ -157,7 +157,6 @@ function resultEl(s: PromotionItem) {
 // ── Main Component ────────────────────────────────────
 
 export default function BreakoutView() {
-  const store = useDataStore()
   const [filter, setFilter] = useState<'all' | 'promoted' | 'broken' | 'first'>('all')
   const [activeLv, setActiveLv] = useState<number | null>(null)
   const [allItems, setAllItems] = useState<PromotionItem[]>([])
@@ -172,8 +171,12 @@ export default function BreakoutView() {
     async function init() {
       setLoading(true)
       setError('')
-      await store.fetchLimitUp()
-      const todayList = store.limitUp.data
+      let todayList: Stock[] = []
+      try {
+        const resp = await apiFetch('/api/limit-up')
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        todayList = await resp.json()
+      } catch (e: unknown) { setError((e as Error).message || '加载失败'); setLoading(false); return }
       if (todayList.length === 0) { setLoading(false); setError('今日无涨停数据'); return }
       let yesterdayList: Stock[] = []
       try {

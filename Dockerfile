@@ -5,17 +5,21 @@ FROM lukemathwalker/cargo-chef:latest-rust-slim-bookworm AS planner
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
+COPY crates/api/Cargo.toml crates/api/
 COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml  crates/cli/
 COPY crates/channels/Cargo.toml crates/channels/
 COPY crates/provider/Cargo.toml crates/provider/
+COPY crates/web/Cargo.toml crates/web/
 
 # 为所有 workspace member 创建 dummy src，让 cargo metadata 能解析
-RUN mkdir -p crates/core/src crates/cli/src crates/channels/src crates/provider/src && \
+RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src crates/provider/src crates/web/src && \
+    echo '' > crates/api/src/lib.rs && \
     echo '' > crates/core/src/lib.rs && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
     echo '' > crates/channels/src/lib.rs && \
-    echo '' > crates/provider/src/lib.rs
+    echo '' > crates/provider/src/lib.rs && \
+    echo '' > crates/web/src/lib.rs
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -38,13 +42,13 @@ WORKDIR /app
 
 # ── 依赖编译层（Cargo.lock 不变就命中 Docker layer cache）─────────────────────
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json -p trending-agent-cli
+RUN cargo chef cook --release --recipe-path recipe.json -p trading-agent-cli
 
 # ── 业务代码编译层 ─────────────────────────────────────────────────────────────
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-RUN cargo build --release -p trending-agent-cli && \
+RUN cargo build --release -p trading-agent-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
 
 

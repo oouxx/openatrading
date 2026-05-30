@@ -18,13 +18,13 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub use trending_agent_core::RoleEntry;
+pub use trading_agent_core::RoleEntry;
 
 pub struct AppState {
-    pub llm: trending_agent_core::llm::LlmClient,
-    pub api: trending_agent_core::api::Client,
-    pub memory: Arc<trending_agent_core::memory::sqlite::SqliteMemoryStore>,
-    pub trade: Arc<trending_agent_core::trade::sqlite::SqliteTradeManager>,
+    pub llm: trading_agent_core::llm::LlmClient,
+    pub api: trading_agent_core::api::Client,
+    pub memory: Arc<trading_agent_core::memory::sqlite::SqliteMemoryStore>,
+    pub trade: Arc<trading_agent_core::trade::sqlite::SqliteTradeManager>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub strategies_dir: PathBuf,
     pub cache: Arc<AppCache>,
@@ -79,6 +79,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/replay/news", get(handlers::get_replay_news))
         .route("/api/replay/snapshots", get(handlers::get_replay_snapshots))
         .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
+        .route("/api/dragon-tiger", get(handlers::get_dragon_tiger))
         .route("/install.sh", get(download::serve_install_sh))
         .route("/downloads/:file", get(download::serve_download))
         .with_state(state)
