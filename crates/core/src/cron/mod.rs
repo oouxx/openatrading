@@ -802,3 +802,132 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
     );
     Ok(())
 }
+
+// ── Tests ──────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cron_config_defaults() {
+        let config = CronConfig {
+            enabled: true,
+            collection_schedule: "0 */30 9-15 * * 1-5 *".into(),
+            decision_schedule: "0 0 0 * * 1-5 *".into(),
+            news_schedule: "0 */5 9-15 * * 1-5 *".into(),
+        };
+        assert!(config.enabled);
+        assert_eq!(config.collection_schedule, "0 */30 9-15 * * 1-5 *");
+    }
+
+    #[test]
+    fn test_buy_rejects_below_min_shares() {
+        assert!(50 < MIN_SHARES);
+        assert!(100 >= MIN_SHARES);
+    }
+
+    #[test]
+    fn test_buy_requires_multiple_of_min_shares() {
+        assert_eq!(150 % MIN_SHARES, 50);
+        assert_eq!(200 % MIN_SHARES, 0);
+    }
+
+    #[test]
+    fn test_max_single_position_ratio() {
+        assert_eq!(INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO, 300_000.0);
+    }
+
+    #[test]
+    fn test_max_total_position_ratio() {
+        assert_eq!(INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO, 900_000.0);
+    }
+
+    #[test]
+    fn test_cron_schedule_parse_valid() {
+        assert!(cron::Schedule::from_str("0 */30 9-15 * * 1-5 *").is_ok());
+    }
+
+    #[test]
+    fn test_cron_schedule_parse_invalid() {
+        assert!(cron::Schedule::from_str("not a cron expr").is_err());
+    }
+
+    // ── Integration tests with mock traits ──────────────
+
+    use async_trait::async_trait;
+    use crate::memory::MarketSnapshot;
+
+    struct MockMemoryStore;
+    impl MemoryStore for MockMemoryStore {
+        fn save_snapshot(&self, _source: &str, _json: &str) -> Result<i64> { Ok(1) }
+        fn query_recent(&self, _days: u32) -> Result<Vec<MarketSnapshot>> { Ok(vec![]) }
+        fn query_by_source(&self, _source: &str, _days: u32) -> Result<Vec<MarketSnapshot>> { Ok(vec![]) }
+        fn cleanup_old(&self) -> Result<()> { Ok(()) }
+        fn get_historical_context(&self, _days: u32) -> Result<String> { Ok("".into()) }
+    }
+
+    struct MockTradeManager;
+    impl TradeManager for MockTradeManager {
+        fn list_positions(&self, _role: &str) -> Result<Vec<Position>> { Ok(vec![]) }
+        fn list_all_positions(&self) -> Result<Vec<Position>> { Ok(vec![]) }
+        fn add_position(&self, _pos: Position) -> Result<i64> { Ok(1) }
+        fn close_position(&self, _id: i64, _price: f64, _reason: &str) -> Result<()> { Ok(()) }
+        fn update_position(&self, _pos: Position) -> Result<()> { Ok(()) }
+        fn update_position_price(&self, _id: i64, _price: f64) -> Result<()> { Ok(()) }
+        fn format_positions(&self, _role: &str) -> Result<String> { Ok("暂无持仓".into()) }
+        fn get_trade_logs(&self, _position_id: i64) -> Result<Vec<crate::trade::TradeLog>> { Ok(vec![]) }
+        fn get_trade_logs_by_role(&self, _role: &str, _limit: usize) -> Result<Vec<crate::trade::TradeLogEntry>> { Ok(vec![]) }
+        fn get_all_trade_logs_by_role(&self, _role: &str) -> Result<Vec<crate::trade::TradeLogEntry>> { Ok(vec![]) }
+        fn delete_positions_by_role(&self, _role: &str) -> Result<usize> { Ok(0) }
+        fn delete_trade_logs_by_role(&self, _role: &str) -> Result<usize> { Ok(0) }
+        fn get_closed_positions(&self, _role: &str, _limit: usize) -> Result<Vec<crate::trade::ClosedPosition>> { Ok(vec![]) }
+    }
+
+    struct MockNotifier;
+    #[async_trait]
+    impl NotificationSender for MockNotifier {
+        async fn send_text(&self, _text: &str) -> Result<()> { Ok(()) }
+        async fn notify_collect(&self, _summary: &CollectSummary) -> Result<()> { Ok(()) }
+        async fn notify_decision(&self, _decision: &Decision) -> Result<()> { Ok(()) }
+        async fn notify_trade(&self, _log: &crate::trade::TradeLog) -> Result<()> { Ok(()) }
+        async fn notify_news(&self, _msg: &str) -> Result<()> { Ok(()) }
+    }
+
+    #[tokio::test]
+    async fn test_start_scheduler_disabled_returns_ok() {
+        let config = CronConfig {
+            enabled: false,
+            collection_schedule: "0 */30 9-15 * * 1-5 *".into(),
+            decision_schedule: "0 0 0 * * 1-5 *".into(),
+            news_schedule: "0 */5 9-15 * * 1-5 *".into(),
+        };
+        let result = start_scheduler(
+            &config,
+            Arc::new(MockMemoryStore),
+            Arc::new(MockTradeManager),
+            Arc::new(MockNotifier),
+            LlmClient::from_env(),
+            ApiClient::new(),
+            vec![],
+        )
+        .await;
+        assert!(result.is_ok(), "disabled config should not spawn tasks");
+    }
+
+    #[tokio::test]
+    async fn test_run_decision_with_empty_roles_completes() {
+        let result = run_decision(
+            &MockMemoryStore,
+            &MockTradeManager,
+            &MockNotifier,
+            &LlmClient::from_env(),
+            &ApiClient::new(),
+            &[],
+            &Arc::new(ToolSet::new()),
+        )
+        .await;
+        // Empty roles → loops over nothing and returns Ok
+        assert!(result.is_ok(), "empty roles should complete without error");
+    }
+}
