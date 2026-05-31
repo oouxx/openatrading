@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { apiFetch } from '@/stores/data'
+import { useRealtimeQuote } from '@/hooks/query/useRealtimeQuote'
+import { usePlatesByStock } from '@/hooks/query/usePlatesByStock'
 
 interface KlineDrawerProps {
   symbol: string
@@ -46,8 +47,8 @@ function getKlineImageUrl(symbol: string, period: string): string {
 
 export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps) {
   const [period, setPeriod] = useState('minute')
-  const [quote, setQuote] = useState<any>(null)
-  const [plates, setPlates] = useState<Array<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string }>>([])
+  const { data: quote } = useRealtimeQuote(symbol)
+  const { data: plates = [] } = usePlatesByStock(symbol)
   const [dialogPlate, setDialogPlate] = useState<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string } | null>(null)
 
   const metrics = useMemo(() => {
@@ -67,20 +68,6 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       { label: '成交量', value: formatVolume(quote.turnover_volume) + '股' },
     ]
   }, [quote])
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const resp = await apiFetch(`/api/realtime/${symbol}`)
-        if (resp.ok) setQuote(await resp.json())
-      } catch {}
-      try {
-        const resp = await apiFetch(`/api/plates-by-any-stock/${symbol}`)
-        if (resp.ok) setPlates(await resp.json())
-      } catch {}
-    }
-    load()
-  }, [symbol])
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {

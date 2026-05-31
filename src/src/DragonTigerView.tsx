@@ -1,35 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "@/stores/data";
-
-interface SeatDetail {
-  dept_name: string;
-  seat_type: string | null;
-  buy_amt: number | null;
-  buy_ratio: number | null;
-  sell_amt: number | null;
-  sell_ratio: number | null;
-  net_amt: number | null;
-}
-
-interface DragonTigerEntry {
-  code: string;
-  name: string;
-  trade_date: string;
-  close_price: number | null;
-  change_rate: number | null;
-  billboard_net_amt: number | null;
-  billboard_buy_amt: number | null;
-  billboard_sell_amt: number | null;
-  turnover_rate: number | null;
-  free_market_cap: number | null;
-  explanation: string | null;
-  d1_chg: number | null;
-  d2_chg: number | null;
-  d5_chg: number | null;
-  d10_chg: number | null;
-  buy_seats: SeatDetail[];
-  sell_seats: SeatDetail[];
-}
+import { useDragonTiger, type DragonTigerEntry } from "@/hooks/query/useDragonTiger";
 
 function fmtCap(v: number): string {
   if (v >= 1e12) return (v / 1e12).toFixed(2) + "万亿";
@@ -38,32 +8,12 @@ function fmtCap(v: number): string {
 }
 
 export default function DragonTigerView() {
-  const [data, setData] = useState<DragonTigerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data = [], isLoading, error } = useDragonTiger();
   const [typeFilter, setTypeFilter] = useState<"all" | "inst" | "retail">(
     "all",
   );
   const [dirFilter, setDirFilter] = useState<"all" | "buy" | "sell">("all");
   const [selected, setSelected] = useState<DragonTigerEntry | null>(null);
-
-  useEffect(() => {
-    async function fetch() {
-      setLoading(true);
-      setError("");
-      try {
-        const resp = await apiFetch("/api/dragon-tiger/combined");
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json: DragonTigerEntry[] = await resp.json();
-        setData(json);
-      } catch (e: unknown) {
-        setError((e as Error).message || "加载失败");
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetch();
-  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -88,7 +38,7 @@ export default function DragonTigerView() {
     return true;
   });
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div
         className="min-h-screen bg-bg pt-11 flex items-center justify-center"
@@ -108,7 +58,7 @@ export default function DragonTigerView() {
         className="min-h-screen bg-bg pt-11 flex items-center justify-center"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <p className="text-xs text-ink-muted">{error}</p>
+        <p className="text-xs text-ink-muted">{error.message}</p>
       </div>
     );
   }

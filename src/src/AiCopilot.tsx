@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { apiChatStream, useDataStore, type IndexQuote } from "@/stores/data";
+import { apiChatStream, type IndexQuote } from "@/stores/data";
+import { useIndexQuotes } from "@/hooks/query/useIndexQuotes";
+import { useOverview } from "@/hooks/query/useOverview";
 
 interface DisplayMessage {
   role: "user" | "ai";
@@ -35,17 +37,13 @@ const quickPrompts = [
 // ── Ticker ───────────────────────────────────────────
 
 function TickerStrip() {
-  const store = useDataStore();
+  const { data: quotes = [] } = useIndexQuotes();
   const [data, setData] = useState<IndexQuote[]>([]);
   const [prices, setPrices] = useState<
     Record<string, { price: number; change: number }>
   >({});
 
   useEffect(() => {
-    store.fetchIndexQuotes();
-  }, []);
-  useEffect(() => {
-    const quotes = store.indexQuotes.data;
     if (quotes.length && !data.length) {
       setData(quotes);
       const p: Record<string, { price: number; change: number }> = {};
@@ -54,7 +52,7 @@ function TickerStrip() {
       });
       setPrices(p);
     }
-  }, [store.indexQuotes.data]);
+  }, [quotes, data.length]);
 
   if (!data.length) return null;
 
@@ -126,8 +124,7 @@ function TickerStrip() {
 // ── Sidebar ───────────────────────────────────────────
 
 function ContextSidebar() {
-  const store = useDataStore();
-  const overview = store.overview.data;
+  const { data: overview } = useOverview();
 
   return (
     <aside className="w-[260px] min-w-[260px] bg-bg-surface border-l border-hairline flex flex-col overflow-y-auto md:flex">
@@ -213,17 +210,11 @@ function SidebarRow({
 // ── Main Component ────────────────────────────────────
 
 export default function AiCopilot() {
-  const store = useDataStore();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const msgContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    store.fetchOverview();
-    store.fetchIndexQuotes();
-  }, []);
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {

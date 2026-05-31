@@ -1,6 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useDataStore, type Stock, type FieldPlate, type IndexQuote } from '@/stores/data'
+import { type Stock, type FieldPlate, type IndexQuote } from '@/stores/data'
+import { useOverview } from '@/hooks/query/useOverview'
+import { useLimitUp } from '@/hooks/query/useLimitUp'
+import { useFieldItems } from '@/hooks/query/useFieldItems'
+import { useIndexQuotes } from '@/hooks/query/useIndexQuotes'
 import KpiCards from '@/components/KpiCards'
 import TabBar from '@/components/TabBar'
 import NewsFeed from '@/components/NewsFeed'
@@ -28,27 +32,17 @@ function pctClass(v: number) {
 }
 
 export default function TradingView() {
-  const store = useDataStore()
   const [activeTab, setActiveTab] = useState('strong-stocks')
   const [showAi, setShowAi] = useState(false)
   const [klineTarget, setKlineTarget] = useState<{ symbol: string; name: string } | null>(null)
 
-  useEffect(() => {
-    refreshData()
-  }, [])
-
+  const { data: overview, isLoading: ovLoading, error: ovError, refetch: refetchOverview } = useOverview()
+  const { data: limitUpStocks = [] } = useLimitUp()
+  const { data: fieldItems = [] } = useFieldItems()
+  const { data: indexQuotes = [], isLoading: idxLoading, error: idxError } = useIndexQuotes()
   const refreshData = useCallback(() => {
-    store.fetchOverview()
-    store.fetchLimitUp()
-    store.fetchFieldItems()
-    store.fetchIndexQuotes()
-    store.fetchSentimentHistory()
-  }, [])
-
-  const overview = store.overview.data
-  const limitUpStocks = store.limitUp.data
-  const fieldItems = store.fieldItems.data
-  const indexQuotes = store.indexQuotes.data
+    refetchOverview()
+  }, [refetchOverview])
 
   const indexCards = useMemo(() => {
     if (!indexQuotes.length) return []
@@ -68,12 +62,12 @@ export default function TradingView() {
     <div className="min-h-screen bg-bg pt-14">
       <div className="max-w-[1600px] mx-auto px-6 py-4">
         {/* 错误状态 */}
-        {store.overview.error && (
+        {ovError && (
           <div className="py-4">
             <div className="bg-up/5 border border-up/20 rounded-card px-5 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-up text-sm">⚠</span>
-                <span className="text-caption text-up">{store.overview.error}</span>
+                <span className="text-caption text-up">{ovError.message}</span>
               </div>
               <button
                 onClick={refreshData}
@@ -86,26 +80,26 @@ export default function TradingView() {
         )}
 
         {/* 加载状态 */}
-        {store.overview.loading && !store.overview.data && (
+        {ovLoading && !overview && (
           <div className="flex flex-col items-center justify-center py-32 gap-4">
             <div className="w-3 h-3 rounded-full bg-ai animate-pulse" />
             <span className="text-caption font-mono text-ink-muted">加载市场数据...</span>
           </div>
         )}
 
-        {store.overview.data && (
+        {overview && (
           <>
         {/* 指数加载状态 */}
-        {store.indexQuotes.loading && !store.indexQuotes.data.length && (
+        {idxLoading && !indexQuotes.length && (
           <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
             <span className="text-caption font-mono text-ink-muted">加载指数数据...</span>
           </div>
         )}
 
         {/* 指数错误状态 */}
-        {!store.indexQuotes.loading && store.indexQuotes.error && (
+        {!idxLoading && idxError && (
           <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
-            <span className="text-caption text-up">{store.indexQuotes.error}</span>
+            <span className="text-caption text-up">{idxError.message}</span>
           </div>
         )}
 

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useDataStore } from '@/stores/data'
+import { useState } from 'react'
+import { useSentiment } from '@/hooks/query/useSentiment'
 
 const subSections = [
   { id: 'topics', label: '题材热度与舆情' },
@@ -10,13 +10,9 @@ export default function MarketIntelTab() {
   const [activeSection, setActiveSection] = useState('topics')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedTgbId, setExpandedTgbId] = useState<number | null>(null)
-  const store = useDataStore()
 
-  useEffect(() => {
-    store.fetchSentiment()
-  }, [])
-
-  const sentimentData = store.sentiment.data as any
+  const { data: sentimentRaw } = useSentiment()
+  const sentimentData = sentimentRaw as any
   const hasData = !!(
     sentimentData &&
     (sentimentData.hot_stocks?.length ||
@@ -24,7 +20,7 @@ export default function MarketIntelTab() {
       sentimentData.taoguba_articles?.length)
   )
 
-  const hotStocks: Array<[string, string, number]> = sentimentData?.hot_stocks || []
+  const hotStocks: Array<[string, string, number]> = sentimentData.hot_stocks || []
   const hotArticles: Array<{
     article_id: string
     title: string
@@ -34,7 +30,7 @@ export default function MarketIntelTab() {
     forward_count: number
     heat_score: number
     content: string
-  }> = sentimentData?.hot_articles || []
+  }> = sentimentData.hot_articles || []
   const taogubaArticles: Array<{
     topic_id: number
     new_topic_id: number
@@ -44,9 +40,9 @@ export default function MarketIntelTab() {
     reply_count: number
     date_time: string
     content: string
-  }> = sentimentData?.taoguba_articles || []
+  }> = sentimentData.taoguba_articles || []
 
-  const trendText = sentimentData?.trend || '暂无数据'
+  const trendText = sentimentData.trend || '暂无数据'
   const trendColor =
     trendText === '偏多' ? 'text-up' : trendText === '中性' ? 'text-ai' : 'text-down'
 

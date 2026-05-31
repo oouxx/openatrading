@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { apiFetch, apiChatStream } from '@/stores/data'
+import { apiChatStream } from '@/stores/data'
+import { useAiRoles } from '@/hooks/query/useAiRoles'
 
 interface AiSidebarProps {
   overview?: unknown
@@ -11,11 +12,6 @@ interface AiSidebarProps {
 interface DisplayMessage {
   role: 'user' | 'ai'
   text: string
-}
-
-interface AiRole {
-  name: string
-  display_name: string
 }
 
 const suggestedQuestions = [
@@ -29,23 +25,13 @@ export default function AiSidebar(_props: AiSidebarProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [streaming, setStreaming] = useState(false)
-  const [aiRoles, setAiRoles] = useState<AiRole[]>([])
+  const { data: aiRoles = [] } = useAiRoles()
   const [currentRole, setCurrentRole] = useState('zarili')
   const [showRoleDropdown, setShowRoleDropdown] = useState(false)
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const currentRoleDisplay = aiRoles.find((r) => r.name === currentRole)?.display_name || currentRole
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const resp = await apiFetch('/api/ai/roles')
-        if (resp.ok) setAiRoles(await resp.json())
-      } catch {}
-    }
-    load()
-  }, [])
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {

@@ -1,6 +1,8 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { useDataStore, type SentimentHistoryDay } from '@/stores/data'
+import { type SentimentHistoryDay } from '@/stores/data'
+import { useSentimentHistory } from '@/hooks/query/useSentimentHistory'
+import { useOverview } from '@/hooks/query/useOverview'
 
 function getFeature(row: SentimentHistoryDay): string {
   const s = row.sentiment
@@ -14,14 +16,10 @@ function getFeature(row: SentimentHistoryDay): string {
 }
 
 export default function SentimentChipTab() {
-  const store = useDataStore()
+  const { data: overview } = useOverview()
+  const { data: historyRaw = [] } = useSentimentHistory()
 
-  useEffect(() => {
-    if (!store.sentimentHistory.data.length) store.fetchSentimentHistory()
-  }, [])
-
-  const overview = store.overview.data
-  const history = store.sentimentHistory.data as SentimentHistoryDay[]
+  const history = historyRaw as SentimentHistoryDay[]
 
   const currentSentiment = history.length ? history[history.length - 1].sentiment : 50
   const currentSentimentPct = Math.min(Math.max(currentSentiment, 0), 100)

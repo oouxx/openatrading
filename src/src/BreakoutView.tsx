@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { type Stock } from '@/stores/data'
-import { apiFetch } from '@/stores/data'
+import { useLimitUp } from '@/hooks/query/useLimitUp'
+import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -159,52 +160,33 @@ function resultEl(s: PromotionItem) {
 export default function BreakoutView() {
   const [filter, setFilter] = useState<'all' | 'promoted' | 'broken' | 'first'>('all')
   const [activeLv, setActiveLv] = useState<number | null>(null)
-  const [allItems, setAllItems] = useState<PromotionItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [hasYesterdayData, setHasYesterdayData] = useState(true)
   const [hideST, setHideST] = useState(true)
   const [selectedStock, setSelectedStock] = useState<PromotionItem | null>(null)
   const [klinePeriod, setKlinePeriod] = useState('minute')
 
-  useEffect(() => {
-    async function init() {
-      setLoading(true)
-      setError('')
-      let todayList: Stock[] = []
-      try {
-        const resp = await apiFetch('/api/limit-up')
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        todayList = await resp.json()
-      } catch (e: unknown) { setError((e as Error).message || '加载失败'); setLoading(false); return }
-      if (todayList.length === 0) { setLoading(false); setError('今日无涨停数据'); return }
-      let yesterdayList: Stock[] = []
-      try {
-        const resp = await apiFetch('/api/yesterday-limit-up')
-        if (resp.ok) yesterdayList = await resp.json()
-      } catch { /* ignore */ }
-      if (!yesterdayList || yesterdayList.length === 0) {
-        setHasYesterdayData(false)
-        const items: PromotionItem[] = todayList.map((s) => {
-          const yestDays = s.yesterday_limit_up_days || 0
-          return {
-            symbol: s.symbol, name: s.stock_chi_name,
-            yesterdayDays: yestDays, todayDays: s.limit_up_days,
-            status: (yestDays > 0 ? 'promoted' : 'first') as 'promoted' | 'first',
-            turnover: s.turnover_ratio, capital: s.total_capital,
-            changePercent: s.change_percent,
-            reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || '',
-            breakTimes: s.break_limit_up_times,
-          }
-        })
-        setAllItems(items)
-      } else {
-        setAllItems(mergeData(todayList, yesterdayList))
-      }
-      setLoading(false)
+  const { data: todayList = [], isLoading, error } = useLimitUp()
+  const { data: yesterdayList = [] } = useYesterdayLimitUp()
+
+  const hasYesterdayData = yesterdayList.length > 0
+
+  const allItems = useMemo(() => {
+    if (!todayList.length) return []
+    if (!hasYesterdayData) {
+      return todayList.map((s) => {
+        const yestDays = s.yesterday_limit_up_days || 0
+        return {
+          symbol: s.symbol, name: s.stock_chi_name,
+          yesterdayDays: yestDays, todayDays: s.limit_up_days,
+          status: (yestDays > 0 ? 'promoted' : 'first') as 'promoted' | 'first',
+          turnover: s.turnover_ratio, capital: s.total_capital,
+          changePercent: s.change_percent,
+          reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || '',
+          breakTimes: s.break_limit_up_times,
+        }
+      })
     }
-    init()
-  }, [])
+    return mergeData(todayList, yesterdayList)
+  }, [todayList, yesterdayList, hasYesterdayData])
 
   // Escape to close modal
   useEffect(() => {
@@ -257,7 +239,7 @@ export default function BreakoutView() {
   const l3Total = l3Above.reduce((s, r) => s + r.yesterdayCount, 0)
   const l3Rate = l3Total > 0 ? l3Promoted / l3Total * 100 : 0
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}>
         <div className="flex items-center gap-3 text-xs text-ink-muted">
@@ -270,7 +252,7 @@ export default function BreakoutView() {
   if (error && allItems.length === 0) {
     return (
       <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}>
-        <p className="text-xs text-ink-muted">{error}</p>
+        <p className="text-xs text-ink-muted">{error.message}</p>
       </div>
     )
   }

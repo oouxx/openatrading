@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { apiFetch } from '@/stores/data'
+import { useState } from 'react'
+import { useTelegraph } from '@/hooks/query/useTelegraph'
 
 interface NewsFeedProps {
   variant?: 'default' | 'tab'
@@ -26,40 +26,18 @@ function formatTime(ts: number | string): string {
 
 export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
   const [source, setSource] = useState('all')
-  const [loading, setLoading] = useState(false)
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([])
-  const [error, setError] = useState('')
+  const { data: rawData, isLoading, error, refetch } = useTelegraph()
 
-  async function fetchNews() {
-    setLoading(true)
-    setError('')
-    try {
-      const resp = await apiFetch('/api/telegraph')
-      if (resp.ok) {
-        const data: unknown[] = await resp.json()
-        setNewsItems(
-          data.map((item: any, idx: number) => ({
-            id: item.id || idx,
-            severity: item.level === 'R' || item.level === 'B' ? 'major' : ('normal' as const),
-            time: formatTime(item.ctime || item.modified_time),
-            title: item.brief || item.title || (item.content || '').substring(0, 60),
-            aiNote: item.title || '',
-            source: 'cls',
-          })),
-        )
-      } else {
-        setError(`HTTP ${resp.status}`)
-      }
-    } catch {
-      setError('网络请求失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchNews()
-  }, [])
+  const newsItems: NewsItem[] = rawData
+    ? (rawData as any[]).map((item: any, idx: number) => ({
+        id: item.id || idx,
+        severity: (item.level === 'R' || item.level === 'B' ? 'major' : 'normal') as 'major' | 'normal',
+        time: formatTime(item.ctime || item.modified_time),
+        title: item.brief || item.title || (item.content || '').substring(0, 60),
+        aiNote: item.title || '',
+        source: 'cls',
+      }))
+    : []
 
   const filteredNews = source === 'all' ? newsItems : newsItems.filter((n) => n.source === source)
   const majorCount = newsItems.filter((n) => n.severity === 'major').length
@@ -87,13 +65,13 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
           </select>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-12 text-caption text-ink-muted">加载中...</div>
         ) : error ? (
           <div className="text-center py-12">
-            <p className="text-caption text-up mb-3">资讯加载失败 ({error})</p>
+            <p className="text-caption text-up mb-3">资讯加载失败 ({error.message})</p>
             <button
-              onClick={fetchNews}
+              onClick={() => refetch()}
               className="px-4 py-1.5 border border-hairline rounded text-xs text-ink-muted hover:text-white transition-colors cursor-pointer"
             >
               重试
@@ -145,13 +123,13 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
       </div>
 
       <div className="max-h-[360px] overflow-y-auto">
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-8 text-caption text-ink-muted">加载中...</div>
         ) : error ? (
           <div className="text-center py-8">
-            <p className="text-caption text-up mb-3">资讯加载失败 ({error})</p>
+            <p className="text-caption text-up mb-3">资讯加载失败 ({error.message})</p>
             <button
-              onClick={fetchNews}
+              onClick={() => refetch()}
               className="px-4 py-1.5 border border-hairline rounded text-xs text-ink-muted hover:text-white transition-colors cursor-pointer"
             >
               重试
@@ -180,7 +158,7 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
             </div>
           ))
         )}
-        {!loading && !error && filteredNews.length === 0 && (
+        {!isLoading && !error && filteredNews.length === 0 && (
           <div className="text-center py-8 text-caption text-ink-muted">暂无资讯</div>
         )}
       </div>

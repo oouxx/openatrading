@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { useDataStore } from '@/stores/data'
+import { useState } from 'react'
+import { useDapanAbnormal } from '@/hooks/query/useDapanAbnormal'
+import { useTimeline } from '@/hooks/query/useTimeline'
 
 const subViews = [
   { id: 'dapan', label: '今日大盘' },
@@ -22,15 +23,10 @@ function formatTs(ts: number): string {
 
 export default function TimelineTab() {
   const [activeSubView, setActiveSubView] = useState('dapan')
-  const store = useDataStore()
 
-  useEffect(() => {
-    store.fetchDapanAbnormal()
-    store.fetchTimeline()
-  }, [])
-
-  const dapanList = store.dapanAbnormal.data || []
-  const timelineList = (store.timeline.data || []) as Array<{
+  const { data: dapanList = [], isLoading: dapanLoading, error: dapanError } = useDapanAbnormal()
+  const { data: timelineRaw = [], isLoading: timelineLoading } = useTimeline()
+  const timelineList = timelineRaw as Array<{
     date: string
     list: Array<{
       title: string
@@ -70,14 +66,14 @@ export default function TimelineTab() {
 
       {activeSubView === 'dapan' && (
         <>
-          {store.dapanAbnormal.loading ? (
+          {dapanLoading ? (
             <div className="flex items-center justify-center py-16 gap-3">
               <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />
               <span className="text-caption font-mono text-white/40">加载大盘异动...</span>
             </div>
-          ) : store.dapanAbnormal.error ? (
+          ) : dapanError ? (
             <div className="bg-surface-dark rounded-card border border-hairline-dark p-card-inner text-center text-caption text-white/40">
-              {store.dapanAbnormal.error}
+              {dapanError.message}
             </div>
           ) : (
             <>
@@ -117,7 +113,7 @@ export default function TimelineTab() {
 
       {activeSubView === 'timeline' && (
         <>
-          {store.timeline.loading ? (
+          {timelineLoading ? (
             <div className="flex items-center justify-center py-16 gap-3">
               <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />
               <span className="text-caption font-mono text-white/40">加载时间线数据...</span>

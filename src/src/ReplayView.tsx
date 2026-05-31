@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { apiFetch } from '@/stores/data'
+import { useReplayEvents } from '@/hooks/query/useReplayEvents'
 
 // ── Constants ──────────────────────────────────────────
 
@@ -51,8 +51,7 @@ interface DisplayEvent {
 // ── Main Component ────────────────────────────────────
 
 export default function ReplayView() {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { data: rawPage, isLoading, error } = useReplayEvents();
   const [allEvents, setAllEvents] = useState<DisplayEvent[]>([])
   const [currentMinute, setCurrentMinute] = useState(AM[0])
   const [isPlaying, setIsPlaying] = useState(false)
@@ -68,32 +67,22 @@ export default function ReplayView() {
   const lastAnnouncedTs = useRef<number | null>(null)
 
   useEffect(() => {
-    async function fetch() {
-      setLoading(true)
-      setError('')
-      try {
-        const resp = await apiFetch('/api/replay/events')
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const page: ReplayPage = await resp.json()
-        const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000
-        const events: DisplayEvent[] = page.events
-          .filter(e => e.plate_name)
-          .map(e => ({
-            id: e.id,
-            minute: Math.round((e.event_timestamp - base) / 60),
-            plateName: e.plate_name!,
-            pcp: e.pcp || 0,
-            goodOrBad: (e.good_or_bad === 1 ? 1 : 2) as 1 | 2,
-            relatedStocks: e.related_stocks || [],
-          }))
-          .sort((a, b) => a.minute - b.minute)
-        setAllEvents(events)
-      } catch (e: unknown) {
-        setError((e as Error).message || '加载失败')
-      } finally { setLoading(false) }
-    }
-    fetch()
-  }, [])
+    if (!rawPage) return;
+    const page = rawPage as ReplayPage;
+    const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000;
+    const events: DisplayEvent[] = page.events
+      .filter((e: ReplayEvent) => e.plate_name)
+      .map((e: ReplayEvent) => ({
+        id: e.id,
+        minute: Math.round((e.event_timestamp - base) / 60),
+        plateName: e.plate_name!,
+        pcp: e.pcp || 0,
+        goodOrBad: (e.good_or_bad === 1 ? 1 : 2) as 1 | 2,
+        relatedStocks: e.related_stocks || [],
+      }))
+      .sort((a, b) => a.minute - b.minute);
+    setAllEvents(events);
+  }, [rawPage])
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
 
@@ -158,7 +147,7 @@ export default function ReplayView() {
     return () => document.removeEventListener('keydown', onKey)
   }, [isPlaying, playSpeed])
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}>
         <div className="flex items-center gap-3 text-xs text-ink-muted">
@@ -167,7 +156,7 @@ export default function ReplayView() {
       </div>
     )
   }
-  if (error) return <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error}</p></div>
+  if (error) return <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error.message}</p></div>
 
   const filtered = allEvents.filter(e => {
     if (Math.abs(e.pcp) * 100 < minPct) return false
