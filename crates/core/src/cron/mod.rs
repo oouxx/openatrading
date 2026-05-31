@@ -40,13 +40,13 @@ fn default_true() -> bool {
     true
 }
 fn default_collection_schedule() -> String {
-    "0 */30 9-15 * * 1-5".into()
+    "0 */30 9-15 ? * 1-5 *".into()
 }
 fn default_decision_schedule() -> String {
-    "0 0 0 * * 1-5".into()
+    "0 0 0 ? * 1-5 *".into()
 }
 fn default_news_schedule() -> String {
-    "0 */5 9-15 * * 1-5".into()
+    "0 */5 9-15 ? * 1-5 *".into()
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +70,19 @@ pub struct Decision {
     pub trade_suggestions: Vec<TradeSuggestion>,
 }
 
+macro_rules! add_job {
+    ($scheduler:expr, $schedule:expr, $name:expr, $task:expr) => {
+        match Job::new_async_tz($schedule.as_str(), Shanghai, $task) {
+            Ok(j) => {
+                $scheduler.add(j).await?;
+            }
+            Err(e) => {
+                eprintln!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
+            }
+        }
+    };
+}
+
 pub async fn start_scheduler(
     config: &CronConfig,
     memory: Arc<dyn MemoryStore>,
@@ -90,9 +103,10 @@ pub async fn start_scheduler(
         let mem = memory.clone();
         let soc = social.clone();
         let api = api.clone();
-        let job = Job::new_async_tz(
-            config.collection_schedule.as_str(),
-            Shanghai,
+        add_job!(
+            scheduler,
+            config.collection_schedule,
+            "collection",
             move |_uuid, _lock| {
                 let mem = mem.clone();
                 let soc = soc.clone();
@@ -102,9 +116,8 @@ pub async fn start_scheduler(
                         eprintln!("[cron] collection error: {e}");
                     }
                 })
-            },
-        )?;
-        scheduler.add(job).await?;
+            }
+        );
     }
 
     // ── Decision ──
@@ -124,9 +137,10 @@ pub async fn start_scheduler(
                 .with_tool(GetYesterdayLimitUp)
                 .with_tool(GetDapanAbnormal),
         );
-        let job = Job::new_async_tz(
-            config.decision_schedule.as_str(),
-            Shanghai,
+        add_job!(
+            scheduler,
+            config.decision_schedule,
+            "decision",
             move |_uuid, _lock| {
                 let mem = mem.clone();
                 let trd = trd.clone();
@@ -142,18 +156,18 @@ pub async fn start_scheduler(
                         eprintln!("[cron] decision error: {e}");
                     }
                 })
-            },
-        )?;
-        scheduler.add(job).await?;
+            }
+        );
     }
 
     // ── News push (trading hours) ──
     {
         let soc = social.clone();
         let api = api.clone();
-        let job = Job::new_async_tz(
-            config.news_schedule.as_str(),
-            Shanghai,
+        add_job!(
+            scheduler,
+            config.news_schedule,
+            "news_push",
             move |_uuid, _lock| {
                 let soc = soc.clone();
                 let api = api.clone();
@@ -162,25 +176,29 @@ pub async fn start_scheduler(
                         eprintln!("[cron] news_push error: {e}");
                     }
                 })
-            },
-        )?;
-        scheduler.add(job).await?;
+            }
+        );
     }
 
     // ── News push (off-hours, 24/7) ──
     {
         let soc = social.clone();
         let api = api.clone();
-        let job = Job::new_async_tz("0 */30 0-8,16-23 * * *", Shanghai, move |_uuid, _lock| {
-            let soc = soc.clone();
-            let api = api.clone();
-            Box::pin(async move {
-                if let Err(e) = run_news_push(&api, &*soc).await {
-                    eprintln!("[cron] news_push error: {e}");
-                }
-            })
-        })?;
-        scheduler.add(job).await?;
+        let schedule = String::from("0 */30 0-8,16-23 * * * *");
+        add_job!(
+            scheduler,
+            schedule,
+            "news_push_offhours",
+            move |_uuid, _lock| {
+                let soc = soc.clone();
+                let api = api.clone();
+                Box::pin(async move {
+                    if let Err(e) = run_news_push(&api, &*soc).await {
+                        eprintln!("[cron] news_push error: {e}");
+                    }
+                })
+            }
+        );
     }
 
     scheduler.start().await?;
