@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::agent::agent_loop;
+use crate::llm::agent::agent_loop_stream;
 use crate::llm::tools::{
     GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetSuperStock,
     GetYesterdayLimitUp,
@@ -19,6 +19,7 @@ use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeIn
 use crate::social::NotificationSender;
 use crate::trade::{Position, TradeManager};
 use crate::RoleEntry;
+use futures::stream::StreamExt;
 
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
 const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;
@@ -392,18 +393,56 @@ async fn run_decision_for_role(
             role.name,
             tools.to_openai_tools().len()
         );
-        match agent_loop(llm, tools, &role.strategy, &market_user_message).await {
-            Ok(result) => {
+        match agent_loop_stream(
+            llm.clone(),
+            tools.clone(),
+            role.strategy.clone(),
+            vec![],
+            market_user_message.clone(),
+        )
+        .await
+        {
+            Ok(mut stream) => {
+                let mut stream_text = String::new();
+                while let Some(chunk) = stream.next().await {
+                    match chunk {
+                        Ok(raw) => {
+                            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                match ev["type"].as_str() {
+                                    Some("text") => {
+                                        if let Some(t) = ev["content"].as_str() {
+                                            stream_text.push_str(t);
+                                        }
+                                    }
+                                    Some("error") => {
+                                        let msg = ev["message"].as_str().unwrap_or("unknown");
+                                        tracing::warn!(
+                                            "[cron] decision for '{}': stream error: {msg}",
+                                            role.name
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "[cron] decision for '{}': stream chunk error: {e}",
+                                role.name
+                            );
+                        }
+                    }
+                }
                 tracing::info!(
-                    "[cron] decision for '{}': tool mode done in {} rounds",
+                    "[cron] decision for '{}': stream done, {} chars",
                     role.name,
-                    result.rounds
+                    stream_text.len()
                 );
-                result.final_text
+                stream_text
             }
             Err(e) => {
                 tracing::error!(
-                    "[cron] agent loop failed for '{}': {e}, falling back to prompt",
+                    "[cron] agent_loop_stream failed for '{}': {e}, falling back to prompt",
                     role.name
                 );
                 // Fallback to full prompt mode
