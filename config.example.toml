@@ -48,17 +48,17 @@ merge_mode = "supplement"
 db_path = "data.db"
 
 # ── Cron 调度 ────────────────────────────────────────────
-# cron 表达式为 7 字段：秒 分 时 日 月 周 年
+# cron 表达式为 6 字段：秒 分 时 日 月 周
 [cron]
 enabled = true
 # 采集：交易时间每 30 分钟
-collection_schedule = "0 */30 9-15 * * 1-5 *"
+collection_schedule = "0 */30 9-15 * * 1-5"
 # 决策：每天 00:00
-decision_schedule = "0 0 0 * * 1-5 *"
+decision_schedule = "0 0 0 * * 1-5"
 # 条件单监控：交易时间每 1 分钟检查止损/止盈条件单
-monitor_schedule = "0 */1 9-15 * * 1-5 *"
+monitor_schedule = "0 */1 9-15 * * 1-5"
 # CLS 新闻推送：交易时间每 5 分钟检查并推送重要新闻
-news_schedule = "0 */5 9-15 * * 1-5 *"
+news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── 社交平台通知 ──────────────────────────────────────────
 # notify_channel: cron 通知发送到哪个渠道 (telegram / discord / slack / lark)

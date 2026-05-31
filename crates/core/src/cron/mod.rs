@@ -40,13 +40,13 @@ fn default_true() -> bool {
     true
 }
 fn default_collection_schedule() -> String {
-    "0 */30 9-15 ? * 1-5 *".into()
+    "0 */30 9-15 * * 1-5".into()
 }
 fn default_decision_schedule() -> String {
-    "0 0 0 ? * 1-5 *".into()
+    "0 0 0 * * 1-5".into()
 }
 fn default_news_schedule() -> String {
-    "0 */5 9-15 ? * 1-5 *".into()
+    "0 */5 9-15 * * 1-5".into()
 }
 
 #[derive(Debug, Clone)]
@@ -184,7 +184,7 @@ pub async fn start_scheduler(
     {
         let soc = social.clone();
         let api = api.clone();
-        let schedule = String::from("0 */30 0-8,16-23 * * * *");
+        let schedule = String::from("0 */30 0-8,16-23 * * *");
         add_job!(
             scheduler,
             schedule,
@@ -822,12 +822,12 @@ mod tests {
     fn test_cron_config_defaults() {
         let config = CronConfig {
             enabled: true,
-            collection_schedule: "0 */30 9-15 * * 1-5 *".into(),
-            decision_schedule: "0 0 0 * * 1-5 *".into(),
-            news_schedule: "0 */5 9-15 * * 1-5 *".into(),
+            collection_schedule: "0 */30 9-15 * * 1-5".into(),
+            decision_schedule: "0 0 0 * * 1-5".into(),
+            news_schedule: "0 */5 9-15 * * 1-5".into(),
         };
         assert!(config.enabled);
-        assert_eq!(config.collection_schedule, "0 */30 9-15 * * 1-5 *");
+        assert_eq!(config.collection_schedule, "0 */30 9-15 * * 1-5");
     }
 
     #[test]
@@ -954,9 +954,9 @@ mod tests {
     async fn test_start_scheduler_disabled_returns_ok() {
         let config = CronConfig {
             enabled: false,
-            collection_schedule: "0 */30 9-15 * * 1-5 *".into(),
-            decision_schedule: "0 0 0 * * 1-5 *".into(),
-            news_schedule: "0 */5 9-15 * * 1-5 *".into(),
+            collection_schedule: "0 */30 9-15 * * 1-5".into(),
+            decision_schedule: "0 0 0 * * 1-5".into(),
+            news_schedule: "0 */5 9-15 * * 1-5".into(),
         };
         let result = start_scheduler(
             &config,
@@ -985,5 +985,71 @@ mod tests {
         .await;
         // Empty roles → loops over nothing and returns Ok
         assert!(result.is_ok(), "empty roles should complete without error");
+    }
+
+    #[tokio::test]
+    async fn test_which_cron_expressions_are_valid() {
+        let cases: Vec<(&str, &str, bool)> = vec![
+            ("5-field (no seconds)", "*/5 * * * *", false),
+            ("5-field (no seconds)", "0 * * * *", false),
+            ("6-field standard", "0 */5 * * * *", true),
+            ("6-field standard", "0 0 0 * * *", true),
+            ("6-field standard", "0 */30 9-15 * * 1-5", true),
+            ("6-field standard", "0 0 0 * * 1-5", true),
+            ("6-field standard", "0 */5 9-15 * * 1-5", true),
+            ("6-field standard", "0 */30 0-8,16-23 * * *", true),
+            ("6-field standard", "* * * * * *", true),
+            ("6-field standard", "0 0 12 * * 1-5", true),
+            ("6-field standard", "0 30 18 * * 1-5", true),
+            ("6-field with ?", "0 */30 9-15 ? * 1-5", true),
+            ("6-field with ?", "0 0 0 ? * 1-5", true),
+            ("6-field with ?", "0 */5 9-15 ? * 1-5", true),
+            ("7-field with year", "0 */30 9-15 * * 1-5 *", false),
+            ("7-field with year", "0 0 0 * * 1-5 *", false),
+            ("7-field with year", "0 */5 9-15 * * 1-5 *", false),
+            ("7-field with year", "0 */30 0-8,16-23 * * * *", false),
+            ("7-field with year", "0 0 12 * * 1-5 2026", false),
+            ("7-field with ? and year", "0 */30 9-15 ? * 1-5 *", false),
+            ("7-field with ? and year", "0 0 0 ? * 1-5 *", false),
+            ("4-field (too few)", "0 0 0 * *", false),
+            ("8-field (too many)", "0 0 0 * * 1-5 * extra", false),
+            ("invalid string", "not-a-cron", false),
+            ("empty string", "", false),
+            ("hour out of range", "0 0 25 * * *", false),
+            ("minute out of range", "0 60 0 * * *", false),
+        ];
+
+        let scheduler = JobScheduler::new().await.unwrap();
+        let mut passed = 0;
+        let mut failed = 0;
+
+        for (label, expr, expect_ok) in &cases {
+            let result = Job::new_async_tz(expr, Shanghai, move |_uuid, _lock| Box::pin(async {}));
+            let is_ok = result.is_ok();
+            if is_ok == *expect_ok {
+                passed += 1;
+            } else {
+                failed += 1;
+                eprintln!(
+                    "  FAIL: [{}] '{}' expected={}, got={} ({:?})",
+                    label,
+                    expr,
+                    expect_ok,
+                    is_ok,
+                    result.as_ref().err()
+                );
+            }
+            if is_ok {
+                if let Ok(job) = result {
+                    scheduler.add(job).await.unwrap();
+                }
+            }
+        }
+
+        eprintln!("\n=== cron expression test: {passed} passed, {failed} failed ===");
+        assert_eq!(
+            failed, 0,
+            "{failed} expression(s) did not match expected result"
+        );
     }
 }
