@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useDataStore, type RoleEntry, type RolePosition, type ClosedPosition } from '@/stores/data'
+import { useQueries } from '@tanstack/react-query'
+import { fetchJson, type RoleEntry, type RolePosition, type ClosedPosition } from '@/stores/data'
+import { roleKeys } from '@/hooks/query/queryKeys'
+import { useRoleList, useRolePositions, useRoleHistory } from '@/hooks/query/useRoleQueries'
+import { useCreateRole, useUpdateRoleStrategy, useDeleteRole, useResetRole } from '@/hooks/query/useRoleMutations'
 
 function formatPct(v: number) {
   return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%'
@@ -199,7 +203,6 @@ const TABS = [
 ]
 
 export default function RoleView() {
-  const store = useDataStore()
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('strategy')
@@ -212,24 +215,24 @@ export default function RoleView() {
   const [saveFeedback, setSaveFeedback] = useState(false)
   const mdEditorRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => { store.fetchRoles() }, [])
-  const roles = store.roles.data
+  const { data: roles = [] } = useRoleList()
+  const { data: positions = [] } = useRolePositions(selectedRole ?? '')
+  const { data: history = [] } = useRoleHistory(selectedRole ?? '')
 
-  useEffect(() => {
-    if (selectedRole) {
-      store.fetchRolePositions(selectedRole)
-      store.fetchRoleLogs(selectedRole)
-      store.fetchRolePnlHistory(selectedRole)
-      store.fetchRoleHistory(selectedRole)
-    }
-  }, [selectedRole])
+  const createRoleMutation = useCreateRole()
+  const updateStrategyMutation = useUpdateRoleStrategy()
+  const deleteRoleMutation = useDeleteRole()
+  const resetRoleMutation = useResetRole()
 
-  useEffect(() => {
-    roles.forEach((r) => {
-      store.fetchRolePositions(r.name)
-      store.fetchRolePnlHistory(r.name)
-    })
-  }, [roles.length])
+  // Fetch all roles' positions for sidebar PnL stats
+  const positionQueries = useQueries({
+    queries: roles.map((r) => ({
+      queryKey: roleKeys.positions(r.name),
+      queryFn: () => fetchJson<RolePosition[]>(`/api/roles/${r.name}/positions`),
+      staleTime: 5 * 60 * 1000,
+      enabled: !!r.name,
+    })),
+  })
 
   // Select first role on load
   useEffect(() => {
@@ -247,58 +250,52 @@ export default function RoleView() {
   }, [selectedRole, roles])
 
   const currentRole = roles.find((r) => r.name === selectedRole)
-  const positions = selectedRole ? store.rolePositions[selectedRole]?.data || [] : []
-  const history = selectedRole ? store.roleHistory[selectedRole]?.data || [] : []
 
   const rolePnl = useMemo(() => {
     const result: Record<string, number> = {}
-    roles.forEach((r) => {
-      const pos = store.rolePositions[r.name]?.data
+    roles.forEach((r, i) => {
+      const pos = positionQueries[i]?.data
       if (!pos?.length) { result[r.name] = 0; return }
       const totalValue = pos.reduce((s, p) => s + p.current_price * p.shares, 0)
       const totalCost = pos.reduce((s, p) => s + p.cost_price * p.shares, 0)
       result[r.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0
     })
     return result
-  }, [roles, store.rolePositions])
+  }, [roles, positionQueries])
 
   const rolePositionCounts = useMemo(() => {
     const result: Record<string, number> = {}
-    roles.forEach((r) => { result[r.name] = store.rolePositions[r.name]?.data?.length || 0 })
+    roles.forEach((r, i) => { result[r.name] = positionQueries[i]?.data?.length || 0 })
     return result
-  }, [roles, store.rolePositions])
+  }, [roles, positionQueries])
 
   const createRole = useCallback(async () => {
     const name = newName.trim()
     if (!name) return
     const id = 'r_' + Date.now().toString(36)
-    await store.createRole(id, name, `# ${name}\n\n在此编写策略文档…`)
+    await createRoleMutation.mutateAsync({ name: id, displayName: name, strategy: `# ${name}\n\n在此编写策略文档…` })
     setShowCreate(false)
     setNewName('')
-    await store.fetchRoles()
     setTimeout(() => setSelectedRole(id), 100)
-  }, [newName])
+  }, [newName, createRoleMutation])
 
   const deleteRole = useCallback(async (name: string) => {
-    await store.deleteRole(name)
+    await deleteRoleMutation.mutateAsync(name)
     setShowDeleteConfirm(null)
     if (selectedRole === name) setSelectedRole(null)
-    store.fetchRoles()
-  }, [selectedRole])
+  }, [selectedRole, deleteRoleMutation])
 
   const resetRole = useCallback(async (name: string) => {
-    await store.resetRole(name)
+    await resetRoleMutation.mutateAsync(name)
     setShowResetConfirm(null)
-    store.refreshRole(name)
-  }, [])
+  }, [resetRoleMutation])
 
   const saveStrategy = useCallback(async () => {
     if (!selectedRole) return
-    await store.updateRoleStrategy(selectedRole, editStrategyText)
+    await updateStrategyMutation.mutateAsync({ name: selectedRole, strategy: editStrategyText })
     setSaveFeedback(true)
     setTimeout(() => setSaveFeedback(false), 1500)
-    store.fetchRoles()
-  }, [selectedRole, editStrategyText])
+  }, [selectedRole, editStrategyText, updateStrategyMutation])
 
   return (
     <div className="min-h-screen bg-bg pt-11 flex flex-col" style={{ height: 'calc(100vh - 44px)' }}>

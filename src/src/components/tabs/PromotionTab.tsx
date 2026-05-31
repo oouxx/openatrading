@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { type Stock } from '@/stores/data'
-import { apiFetch } from '@/stores/data'
+import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
 import MiniChartPreview from '@/components/MiniChartPreview'
 
 interface PromotionItem {
@@ -77,52 +77,31 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
 }
 
 export default function PromotionTab({ stocks, onOpenKline }: PromotionTabProps) {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [hasYesterdayData, setHasYesterdayData] = useState(true)
   const [hideST, setHideST] = useState(true)
   const [selectedBoard, setSelectedBoard] = useState<number | null>(null)
-  const [allItems, setAllItems] = useState<PromotionItem[]>([])
+  const { data: yesterdayList = [] } = useYesterdayLimitUp()
 
-  useEffect(() => {
-    async function init() {
-      setLoading(true)
-      setError('')
-      const todayList = stocks
-      if (todayList.length === 0) {
-        setLoading(false)
-        setError('今日无涨停数据')
-        return
-      }
+  const isLoading = !stocks.length
+  const error = isLoading ? '' : stocks.length === 0 ? '今日无涨停数据' : ''
+  const hasYesterdayData = yesterdayList.length > 0
 
-      let yesterdayList: Stock[] = []
-      try {
-        const resp = await apiFetch('/api/yesterday-limit-up')
-        if (resp.ok) yesterdayList = await resp.json()
-      } catch { /* ignore */ }
-
-      if (!yesterdayList || yesterdayList.length === 0) {
-        setHasYesterdayData(false)
-        const items: PromotionItem[] = todayList.map((s) => {
-          const yestDays = s.yesterday_limit_up_days || 0
-          return {
-            symbol: s.symbol, name: s.stock_chi_name,
-            yesterdayDays: yestDays, todayDays: s.limit_up_days,
-            status: (yestDays > 0 ? 'promoted' : 'first') as 'promoted' | 'first',
-            turnover: s.turnover_ratio,
-            capital: s.total_capital, changePercent: s.change_percent,
-            reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || '',
-          }
-        })
-        setAllItems(items)
-      } else {
-        setAllItems(mergeData(todayList, yesterdayList))
-        setHasYesterdayData(true)
-      }
-      setLoading(false)
+  const allItems = useMemo(() => {
+    if (!stocks.length) return []
+    if (!hasYesterdayData) {
+      return stocks.map((s) => {
+        const yestDays = s.yesterday_limit_up_days || 0
+        return {
+          symbol: s.symbol, name: s.stock_chi_name,
+          yesterdayDays: yestDays, todayDays: s.limit_up_days,
+          status: (yestDays > 0 ? 'promoted' : 'first') as 'promoted' | 'first',
+          turnover: s.turnover_ratio,
+          capital: s.total_capital, changePercent: s.change_percent,
+          reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || '',
+        }
+      })
     }
-    init()
-  }, [stocks])
+    return mergeData(stocks, yesterdayList)
+  }, [stocks, yesterdayList, hasYesterdayData])
 
   const nonSTItems = useMemo(
     () => hideST ? allItems.filter((s) => !isST(s.name)) : allItems,
@@ -180,7 +159,7 @@ export default function PromotionTab({ stocks, onOpenKline }: PromotionTabProps)
 
   // ── Loading / Error / Empty ─────────────────────────
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 gap-3">
         <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />
