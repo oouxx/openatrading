@@ -181,14 +181,24 @@ pub async fn ai_chat(
         .unwrap_or("你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。");
 
     let system_prompt = build_system_prompt(strategy_text);
-    let user_message = req.message;
+    let history: Vec<serde_json::Value> = req
+        .history
+        .into_iter()
+        .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
+        .collect();
 
-    let mut stream = agent_loop_stream(state.llm.clone(), tools, system_prompt, user_message)
-        .await
-        .map_err(|e| {
-            eprintln!("ai_chat: agent error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
+    let mut stream = agent_loop_stream(
+        state.llm.clone(),
+        tools,
+        system_prompt,
+        history,
+        req.message,
+    )
+    .await
+    .map_err(|e| {
+        eprintln!("ai_chat: agent error: {}", e);
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
 
     let sse_stream = async_stream::stream! {
         while let Some(chunk) = stream.next().await {

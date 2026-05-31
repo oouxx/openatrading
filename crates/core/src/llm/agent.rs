@@ -102,13 +102,15 @@ pub async fn agent_loop_stream(
     llm: LlmClient,
     tools: Arc<ToolSet>,
     system_prompt: String,
+    history: Vec<serde_json::Value>,
     user_message: String,
 ) -> Result<AgentStream> {
     let tool_schemas = tools.to_openai_tools();
-    let mut messages: Vec<serde_json::Value> = vec![
-        serde_json::json!({"role": "system", "content": system_prompt}),
-        serde_json::json!({"role": "user", "content": user_message}),
-    ];
+    let mut messages: Vec<serde_json::Value> =
+        vec![serde_json::json!({"role": "system", "content": system_prompt})];
+    // Append conversation history
+    messages.extend(history);
+    messages.push(serde_json::json!({"role": "user", "content": user_message}));
 
     let stream = async_stream::stream! {
         'agent: for _round in 0..MAX_ROUNDS {
