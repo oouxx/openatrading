@@ -286,16 +286,26 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 news_schedule: "0 */5 9-15 * * 1-5 *".to_string(),
             },
         };
-        cron::start_scheduler(
-            &cron_cfg,
-            memory.clone(),
-            trade.clone(),
-            social.clone(),
-            LlmClient::from_env(),
-            trading_agent_core::api::Client::new(),
-            roles.clone(),
-        )
-        .await?;
+
+        let cron_social = social.clone();
+        let cron_roles = roles.clone();
+        let cron_memory = memory.clone();
+        let cron_trade = trade.clone();
+        handles.push(tokio::spawn(async move {
+            if let Err(e) = cron::start_scheduler(
+                &cron_cfg,
+                cron_memory,
+                cron_trade,
+                cron_social,
+                LlmClient::from_env(),
+                trading_agent_core::api::Client::new(),
+                cron_roles,
+            )
+            .await
+            {
+                eprintln!("[gateway] cron error: {e}");
+            }
+        }));
 
         if let Some(sc) = &app_config.social {
             let channel = sc.notify_channel.as_deref().unwrap_or("telegram");

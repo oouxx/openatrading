@@ -10,7 +10,7 @@ run:
 
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	cargo watch -x "run -p trading-agent-cli -- gateway run --web-only"
+	cargo watch -x "run -p trading-agent-cli -- gateway run"
 
 run-frontend:
 	cd src && bun run dev
