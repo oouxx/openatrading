@@ -4,7 +4,7 @@ use axum::{
     response::{sse::Event, IntoResponse, Sse},
     Json,
 };
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -153,13 +153,24 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    let overview = fetch_overview_data(&state.api).await.map_err(|e| {
-        eprintln!("ai_chat: overview error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
+    use trading_agent_core::llm::agent::agent_loop_stream;
+    use trading_agent_core::llm::tools::{
+        GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetRealtimeQuote,
+        GetSuperStock, GetTelegraph, GetYesterdayLimitUp,
+    };
+    use trading_agent_core::llm::ToolSet;
 
-    let field_items = fetch_field_json(&state.api).await;
-    let super_stocks = fetch_super_stock_json(&state.api).await;
+    let tools = Arc::new(
+        ToolSet::new()
+            .with_tool(GetMarketOverview)
+            .with_tool(GetLimitUp)
+            .with_tool(GetLimitDown)
+            .with_tool(GetSuperStock)
+            .with_tool(GetYesterdayLimitUp)
+            .with_tool(GetDapanAbnormal)
+            .with_tool(GetRealtimeQuote)
+            .with_tool(GetTelegraph),
+    );
 
     let role_name = req.role.as_deref().unwrap_or("zarili");
     let roles_guard = state.roles.read().await;
@@ -167,57 +178,51 @@ pub async fn ai_chat(
         .iter()
         .find(|r| r.name == role_name)
         .map(|r| r.strategy.as_str())
-        .unwrap_or("你是一个A股短线交易AI助手。");
+        .unwrap_or("你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。");
 
     let system_prompt = build_system_prompt(strategy_text);
-    let user_message =
-        build_user_message(&overview, field_items.as_deref(), super_stocks.as_deref());
+    let user_message = req.message;
 
-    let mut messages_vec: Vec<serde_json::Value> = vec![
-        serde_json::json!({"role": "system", "content": system_prompt}),
-        serde_json::json!({"role": "user", "content": user_message}),
-        serde_json::json!({"role": "assistant", "content": "已收到市场数据，请提问。"}),
-    ];
-
-    for msg in &req.history {
-        messages_vec.push(serde_json::json!({
-            "role": msg.role,
-            "content": msg.content,
-        }));
-    }
-
-    messages_vec.push(serde_json::json!({
-        "role": "user",
-        "content": req.message,
-    }));
-
-    let prompt = serde_json::json!(messages_vec).to_string();
-
-    let mut llm_stream = state
-        .llm
-        .chat_stream_with_messages(&prompt)
+    let mut stream = agent_loop_stream(state.llm.clone(), tools, system_prompt, user_message)
         .await
         .map_err(|e| {
-            eprintln!("ai_chat: llm error: {}", e);
+            eprintln!("ai_chat: agent error: {}", e);
             StatusCode::SERVICE_UNAVAILABLE
         })?;
 
-    use futures::StreamExt;
-
     let sse_stream = async_stream::stream! {
-        while let Some(chunk) = llm_stream.next().await {
+        while let Some(chunk) = stream.next().await {
             match chunk {
-                Ok(text) => {
-                    if !text.is_empty() {
-                        yield Ok(Event::default().data(text.replace('\n', "\\n")));
+                Ok(json_str) => {
+                    if let Ok(ev) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        match ev["type"].as_str() {
+                            Some("text") => {
+                                let content = ev["content"].as_str().unwrap_or("");
+                                if !content.is_empty() {
+                                    // \n 转义，前端还原
+                                    yield Ok(Event::default().data(content.replace('\n', "\\n")));
+                                }
+                            }
+                            Some("done") => {
+                                yield Ok(Event::default().data("[DONE]"));
+                            }
+                            Some("tool_call") => {
+                                let name = ev["name"].as_str().unwrap_or("");
+                                yield Ok(Event::default().event("tool").data(name));
+                            }
+                            Some("error") => {
+                                let msg = ev["message"].as_str().unwrap_or("unknown error");
+                                yield Ok(Event::default().data(format!("[ERROR] {msg}")));
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 Err(e) => {
-                    yield Ok(Event::default().data(format!("[ERROR] {}", e)));
+                    yield Ok(Event::default().data(format!("[ERROR] {e}")));
                 }
             }
         }
-        yield Ok(Event::default().data("[DONE]"));
     };
 
     Ok(Sse::new(sse_stream))

@@ -18,11 +18,13 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+async-stream = "0.3"
 dotenvy = { workspace = true }
 askama = { workspace = true }
 regex = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
-cron = "0.12"
+tokio-cron-scheduler = "0.13"
+chrono-tz = "0.10"
 async-trait = "0.1"
 teloxide = { version = "0.15", optional = true }
 thiserror = "2"

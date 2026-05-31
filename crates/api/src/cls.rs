@@ -77,7 +77,15 @@ impl Default for ClsClient {
 const ROOT_URL: &str = "https://www.cls.cn";
 
 impl ClsClient {
-    pub async fn fetch_telegraph(&self, category: &str) -> Result<Vec<TelegramInfo>> {
+    /// Fetch telegraph with cursor-based pagination.
+    /// Pass `category=""` for all, or e.g. "red", "watch".
+    /// Cursor-based: pass `last_time` (oldest item's ctime) to get next page.
+    pub async fn fetch_telegraph(
+        &self,
+        category: &str,
+        last_time: Option<i64>,
+        count: u32,
+    ) -> Result<Vec<TelegramInfo>> {
         let api_url = if !category.is_empty() {
             format!("{}/v1/roll/get_roll_list", ROOT_URL)
         } else {
@@ -87,6 +95,11 @@ impl ClsClient {
         if !category.is_empty() {
             params.insert("category".to_string(), category.to_string());
             params.insert("hasFirstVipArticle".to_string(), "1".to_string());
+            params.insert("rn".to_string(), count.to_string());
+            params.insert("refresh_type".to_string(), "1".to_string());
+            if let Some(lt) = last_time {
+                params.insert("last_time".to_string(), lt.to_string());
+            }
         } else {
             params.insert("name".to_string(), "telegraph".to_string());
         }
@@ -103,6 +116,48 @@ impl ClsClient {
         );
         let resp_data: ClsTelegraphResp = serde_json::from_str(&body_text)?;
         Ok(resp_data.data.roll_data)
+    }
+
+    /// Shortcut for LLM tool: fetch latest telegraph without pagination
+    pub async fn fetch_telegraph_latest(&self, category: &str) -> Result<Vec<TelegramInfo>> {
+        self.fetch_telegraph(category, None, 50).await
+    }
+
+    /// Fetch all telegraph items for the current trading day via cursor pagination.
+    /// Stops when reaching items before today 00:00 or empty page.
+    pub async fn fetch_telegraph_allday(&self, category: &str) -> Result<Vec<TelegramInfo>> {
+        let today_start = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        let mut all_items: Vec<TelegramInfo> = Vec::new();
+        let mut cursor: Option<i64> = None;
+        let page_size: u32 = 50;
+
+        loop {
+            let page = self.fetch_telegraph(category, cursor, page_size).await?;
+            if page.is_empty() {
+                break;
+            }
+            // Stop if oldest item is before today
+            let oldest_ts = page.last().and_then(|i| i.ctime).unwrap_or(0);
+            let keep: Vec<_> = page.into_iter().filter(|i| i.ctime.unwrap_or(0) >= today_start).collect();
+            all_items.extend(keep);
+
+            if oldest_ts < today_start {
+                break;
+            }
+            cursor = Some(oldest_ts);
+        }
+
+        all_items.sort_by_key(|i| i.ctime.unwrap_or(0));
+        all_items.dedup_by_key(|i| i.id);
+        eprintln!("[cls] fetch_telegraph_allday: {} items", all_items.len());
+        Ok(all_items)
     }
 }
 
@@ -145,7 +200,7 @@ fn get_search_params(more_params: BTreeMap<String, String>) -> String {
 #[tokio::test(flavor = "current_thread")]
 async fn test_fetch_telegraph() {
     let client = ClsClient::new();
-    let items = client.fetch_telegraph("").await.unwrap();
+    let items = client.fetch_telegraph("", None, 20).await.unwrap();
     println!("fetched {} telegraph items", items.len());
     assert!(
         !items.is_empty(),

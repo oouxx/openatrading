@@ -88,4 +88,6 @@ check .claude/context/claude-ui.md
 
 ## 8. 执行完任务自动提交代码
 
+## 9. 不要为了测试用例成功修改测试用例
+
 ---

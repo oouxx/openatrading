@@ -491,6 +491,14 @@ impl XuanguBaoClient {
         anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
         Ok(resp.data)
     }
+
+    /// fetch_plate_abnormal with String count — for LLM tool use
+    pub async fn fetch_plate_abnormal_str(&self, count: &str) -> Result<serde_json::Value> {
+        let n: i32 = count.parse().unwrap_or(30);
+        let data = self.fetch_plate_abnormal(n).await?;
+        Ok(serde_json::to_value(&data).unwrap_or_default())
+    }
+
     /// Cursor-paginate to fetch ALL events for the latest trading day (09:30–15:00).
     /// Returns events sorted by event_timestamp ascending.
     pub async fn fetch_events_page(

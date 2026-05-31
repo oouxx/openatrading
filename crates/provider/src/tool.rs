@@ -192,7 +192,7 @@ macro_rules! define_tool {
                 )*
                 Box::pin(async move {
                     let __client = <$client_type>::new();
-                    let __result = __client.$method($($pname),*).await
+                    let __result = __client.$method($($pname.as_ref()),*).await
                         .map_err(|e| $crate::tool::ToolError::ExecutionFailed(e.to_string()))?;
                     Ok(serde_json::to_string(&__result).unwrap_or_default())
                 })

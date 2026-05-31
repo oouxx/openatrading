@@ -253,7 +253,7 @@ pub async fn run() -> Result<()> {
             }
             "cls_telegraph" => {
                 let cat = cli.cls_category.as_deref().unwrap_or("");
-                if let Ok(data) = client.cls.fetch_telegraph(cat).await {
+                if let Ok(data) = client.cls.fetch_telegraph(cat, None, 20).await {
                     output.cls_telegraph = Some(serde_json::to_value(&data)?);
                 }
             }

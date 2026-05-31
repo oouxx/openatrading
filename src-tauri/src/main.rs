@@ -201,7 +201,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             let data = state
                 .api
                 .cls
-                .fetch_telegraph("")
+                .fetch_telegraph("", None, 20)
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
@@ -372,7 +372,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 let data = state
                     .api
                     .cls
-                    .fetch_telegraph(category)
+                    .fetch_telegraph(category, None, 20)
                     .await
                     .map_err(|e| format!("{e}"))?;
                 return Ok(serde_json::to_value(data).unwrap_or_default());
