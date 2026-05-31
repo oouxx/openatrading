@@ -145,7 +145,10 @@ impl ClsClient {
             }
             // Stop if oldest item is before today
             let oldest_ts = page.last().and_then(|i| i.ctime).unwrap_or(0);
-            let keep: Vec<_> = page.into_iter().filter(|i| i.ctime.unwrap_or(0) >= today_start).collect();
+            let keep: Vec<_> = page
+                .into_iter()
+                .filter(|i| i.ctime.unwrap_or(0) >= today_start)
+                .collect();
             all_items.extend(keep);
 
             if oldest_ts < today_start {
