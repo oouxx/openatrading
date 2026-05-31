@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/stores/data";
+import { fetchJson } from "@/stores/data";
 import { dragonTigerKeys } from "./queryKeys";
 
 export interface SeatDetail {
@@ -35,11 +35,7 @@ export interface DragonTigerEntry {
 export function useDragonTiger() {
   return useQuery({
     queryKey: dragonTigerKeys.all,
-    queryFn: async () => {
-      const resp = await apiFetch("/api/dragon-tiger/combined");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json() as Promise<DragonTigerEntry[]>;
-    },
+    queryFn: () => fetchJson<DragonTigerEntry[]>("/api/dragon-tiger/combined"),
     staleTime: 60 * 1000,
   });
 }

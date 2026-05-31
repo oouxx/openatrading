@@ -1,15 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/stores/data";
+import { fetchJson } from "@/stores/data";
 import { telegraphKeys } from "./queryKeys";
 
 export function useTelegraph() {
   return useQuery({
     queryKey: telegraphKeys.all,
-    queryFn: async () => {
-      const resp = await apiFetch("/api/telegraph");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: () => fetchJson("/api/telegraph"),
     staleTime: 30 * 1000,
   });
 }
