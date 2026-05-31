@@ -36,32 +36,6 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   return resp.json();
 }
 
-export async function apiFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  if (isTauri) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    if (
-      init?.method === "POST" ||
-      init?.method === "PUT" ||
-      init?.method === "DELETE"
-    ) {
-      const body = init.body ? JSON.parse(String(init.body)) : {};
-      const data = await invoke("api_post", { path, body });
-      return new Response(JSON.stringify(data), {
-        headers: { "content-type": "application/json" },
-      });
-    }
-    const data = await invoke("api_fetch", { path });
-    return new Response(JSON.stringify(data), {
-      headers: { "content-type": "application/json" },
-    });
-  }
-  const base = getApiBaseUrl();
-  return fetch(`${base}${path}`, init);
-}
-
 export interface ChatStreamCallbacks {
   onData: (text: string) => void;
   onDone: () => void;

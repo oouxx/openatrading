@@ -206,6 +206,19 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
         }
+        "/api/dragon-tiger/combined" => {
+            let date = XuanguBaoClient::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default();
+            let data = state
+                .api
+                .eastmoney
+                .lhb_combined(&date, &date)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            Ok(serde_json::to_value(data).unwrap_or_default())
+        }
         "/api/ai/roles" => {
             let roles_guard = state.roles.read().await;
             let list: Vec<serde_json::Value> = roles_guard
