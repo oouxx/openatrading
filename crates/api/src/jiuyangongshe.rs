@@ -599,6 +599,12 @@ impl JiuYanSession {
         Ok(data)
     }
 
+    /// fetch_field with String pc — for LLM tool use
+    pub async fn fetch_field_str(&self, date: &str, pc: &str) -> Result<FieldData> {
+        let n: u32 = pc.parse().unwrap_or(1);
+        self.fetch_field(date, n).await
+    }
+
     /// 获取时间线数据（timeline/list 接口）
     pub async fn fetch_timeline(&self, year_month: &str) -> Result<TimelineData> {
         #[derive(Serialize)]

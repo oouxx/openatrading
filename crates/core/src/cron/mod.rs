@@ -1,13 +1,16 @@
 use anyhow::Result;
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
+use chrono_tz::Asia::Shanghai;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration as TokioDuration};
+use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
 use crate::llm::agent::agent_loop;
-use crate::llm::tools::{GetLimitDown, GetLimitUp, GetMarketOverview};
+use crate::llm::tools::{
+    GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetSuperStock,
+    GetYesterdayLimitUp,
+};
 use crate::llm::LlmClient;
 use crate::llm::ToolSet;
 use crate::memory::MemoryStore;
@@ -37,13 +40,13 @@ fn default_true() -> bool {
     true
 }
 fn default_collection_schedule() -> String {
-    "0 */30 9-15 * * 1-5 *".to_string()
+    "0 */30 9-15 * * 1-5".into()
 }
 fn default_decision_schedule() -> String {
-    "0 0 0 * * 1-5 *".to_string()
+    "0 0 0 * * 1-5".into()
 }
 fn default_news_schedule() -> String {
-    "0 */5 9-15 * * 1-5 *".to_string()
+    "0 */5 9-15 * * 1-5".into()
 }
 
 #[derive(Debug, Clone)]
@@ -80,124 +83,112 @@ pub async fn start_scheduler(
         return Ok(());
     }
 
-    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let scheduler = JobScheduler::new().await?;
 
-    fn spawn_cron<F>(name: &str, cron_expr: &str, beijing_tz: chrono::FixedOffset, task: F)
-    where
-        F: Fn() + Send + 'static,
-    {
-        let schedule = match cron::Schedule::from_str(cron_expr) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[cron] {name}: invalid cron '{cron_expr}': {e}");
-                return;
-            }
-        };
-
-        let _name = name.to_string();
-        tokio::spawn(async move {
-            loop {
-                let now_beijing = Utc::now().with_timezone(&beijing_tz);
-                let next = match schedule.upcoming(beijing_tz).next() {
-                    Some(t) => t,
-                    None => {
-                        sleep(TokioDuration::from_secs(60)).await;
-                        continue;
-                    }
-                };
-                let wait_secs = (next - now_beijing).num_seconds().max(1) as u64;
-                sleep(TokioDuration::from_secs(wait_secs.min(60))).await;
-                if Utc::now().with_timezone(&beijing_tz) >= next {
-                    task();
-                }
-            }
-        });
-    }
-
-    // Collection
+    // ── Collection ──
     {
         let mem = memory.clone();
         let soc = social.clone();
         let api = api.clone();
-        let cron_s = config.collection_schedule.clone();
-        spawn_cron("collection", &cron_s, beijing_tz, move || {
-            let mem = mem.clone();
-            let soc = soc.clone();
-            let api = api.clone();
-            tokio::spawn(async move {
-                if let Err(e) = run_collection(&*mem, &api, &*soc).await {
-                    eprintln!("[cron] collection error: {e}");
-                }
-            });
-        });
+        let job = Job::new_async_tz(
+            config.collection_schedule.as_str(),
+            Shanghai,
+            move |_uuid, _lock| {
+                let mem = mem.clone();
+                let soc = soc.clone();
+                let api = api.clone();
+                Box::pin(async move {
+                    if let Err(e) = run_collection(&*mem, &api, &*soc).await {
+                        eprintln!("[cron] collection error: {e}");
+                    }
+                })
+            },
+        )?;
+        scheduler.add(job).await?;
     }
 
-    // Decision
+    // ── Decision ──
     {
         let mem = memory.clone();
         let trd = trade.clone();
         let soc = social.clone();
+        let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let cron_s = config.decision_schedule.clone();
         let tools = Arc::new(
             ToolSet::new()
                 .with_tool(GetLimitUp)
                 .with_tool(GetLimitDown)
-                .with_tool(GetMarketOverview),
+                .with_tool(GetMarketOverview)
+                .with_tool(GetSuperStock)
+                .with_tool(GetYesterdayLimitUp)
+                .with_tool(GetDapanAbnormal),
         );
-        spawn_cron("decision", &cron_s, beijing_tz, move || {
-            let mem = mem.clone();
-            let trd = trd.clone();
-            let soc = soc.clone();
-            let llm = llm.clone();
-            let api = api.clone();
-            let roles = roles.clone();
-            let tools = tools.clone();
-            tokio::spawn(async move {
-                if let Err(e) = run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &tools).await
-                {
-                    eprintln!("[cron] decision error: {e}");
-                }
-            });
-        });
+        let job = Job::new_async_tz(
+            config.decision_schedule.as_str(),
+            Shanghai,
+            move |_uuid, _lock| {
+                let mem = mem.clone();
+                let trd = trd.clone();
+                let soc = soc.clone();
+                let llm = llm.clone();
+                let api = api.clone();
+                let roles = roles.clone();
+                let tools = tools.clone();
+                Box::pin(async move {
+                    if let Err(e) =
+                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &tools).await
+                    {
+                        eprintln!("[cron] decision error: {e}");
+                    }
+                })
+            },
+        )?;
+        scheduler.add(job).await?;
     }
 
-    // News push (trading hours)
+    // ── News push (trading hours) ──
     {
         let soc = social.clone();
         let api = api.clone();
-        let cron_s = config.news_schedule.clone();
-        spawn_cron("news_push", &cron_s, beijing_tz, move || {
-            let soc = soc.clone();
-            let api = api.clone();
-            tokio::spawn(async move {
-                if let Err(e) = run_news_push(&api, &*soc).await {
-                    eprintln!("[cron] news_push error: {e}");
-                }
-            });
-        });
-    }
-
-    // News push (off-hours, 24/7)
-    {
-        let soc = social.clone();
-        let api = api.clone();
-        spawn_cron(
-            "news_push_offhours",
-            "0 */30 0-8,16-23 * * * *",
-            beijing_tz,
-            move || {
+        let job = Job::new_async_tz(
+            config.news_schedule.as_str(),
+            Shanghai,
+            move |_uuid, _lock| {
                 let soc = soc.clone();
                 let api = api.clone();
-                tokio::spawn(async move {
+                Box::pin(async move {
                     if let Err(e) = run_news_push(&api, &*soc).await {
                         eprintln!("[cron] news_push error: {e}");
                     }
-                });
+                })
             },
-        );
+        )?;
+        scheduler.add(job).await?;
     }
+
+    // ── News push (off-hours, 24/7) ──
+    {
+        let soc = social.clone();
+        let api = api.clone();
+        let job = Job::new_async_tz("0 */30 0-8,16-23 * * *", Shanghai, move |_uuid, _lock| {
+            let soc = soc.clone();
+            let api = api.clone();
+            Box::pin(async move {
+                if let Err(e) = run_news_push(&api, &*soc).await {
+                    eprintln!("[cron] news_push error: {e}");
+                }
+            })
+        })?;
+        scheduler.add(job).await?;
+    }
+
+    scheduler.start().await?;
+    eprintln!("[cron] scheduler started (tz=Asia/Shanghai)");
+
+    // Wait forever (Ctrl+C handled by caller)
+    tokio::signal::ctrl_c().await?;
+    eprintln!("\n[cron] shutting down...");
 
     Ok(())
 }
@@ -715,7 +706,7 @@ static NEWS_TIME_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> Result<()> {
-    let items = api.cls.fetch_telegraph("").await?;
+    let items = api.cls.fetch_telegraph("", None, 50).await?;
     if items.is_empty() {
         return Ok(());
     }
@@ -841,16 +832,6 @@ mod tests {
     #[test]
     fn test_max_total_position_ratio() {
         assert_eq!(INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO, 900_000.0);
-    }
-
-    #[test]
-    fn test_cron_schedule_parse_valid() {
-        assert!(cron::Schedule::from_str("0 */30 9-15 * * 1-5 *").is_ok());
-    }
-
-    #[test]
-    fn test_cron_schedule_parse_invalid() {
-        assert!(cron::Schedule::from_str("not a cron expr").is_err());
     }
 
     // ── Integration tests with mock traits ──────────────

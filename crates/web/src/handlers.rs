@@ -485,7 +485,7 @@ pub async fn get_telegraph_all(
         CachePolicy::telegraph(),
         || async {
             let client = ApiClient::new();
-            let data = client.cls.fetch_telegraph("").await.map_err(|e| {
+            let data = client.cls.fetch_telegraph("", None, 20).await.map_err(|e| {
                 eprintln!("[telegraph] fetch failed: {:#}", e);
                 eprintln!("[telegraph] error chain:");
                 for cause in e.chain() {
@@ -514,7 +514,7 @@ pub async fn get_telegraph(
         CachePolicy::telegraph(),
         || async {
             let client = ApiClient::new();
-            let data = client.cls.fetch_telegraph(&category).await.map_err(|e| {
+            let data = client.cls.fetch_telegraph(&category, None, 20).await.map_err(|e| {
                 eprintln!("[telegraph/{}] fetch failed: {:#}", category, e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
