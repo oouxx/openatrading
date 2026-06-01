@@ -154,7 +154,7 @@ pub async fn ai_chat(
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
-    use openatrading_core::llm::{create_agent, AgentMessage};
+    use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
 
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
         openatrading_core::llm::tools::get_market_overview(),
@@ -177,7 +177,7 @@ pub async fn ai_chat(
 
     let system_prompt = build_system_prompt(strategy_text);
 
-    let agent = create_agent(&state.llm, tools, &system_prompt);
+    let agent = Arc::new(create_agent(&state.llm, tools, &system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for h in req.history {
@@ -217,11 +217,30 @@ pub async fn ai_chat(
         timestamp: 0,
     });
 
+    // ── 注册事件监听器，实现渐进式 SSE 推送 ──
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+
+    let listener = Arc::new(
+        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        },
+    );
+
+    agent.subscribe(listener).await;
+
+    let agent_clone = Arc::clone(&agent);
+    tokio::spawn(async move {
+        let _ = agent_clone.process(pi_messages).await;
+    });
+
     let sse_stream = async_stream::stream! {
-        match agent.process(pi_messages).await {
-            Ok(results) => {
-                for msg in &results {
-                    if let AgentMessage::Assistant { content, error_message, .. } = msg {
+        loop {
+            match rx.recv().await {
+                Some(AgentEvent::MessageEnd { message }) => {
+                    if let AgentMessage::Assistant { content, error_message, .. } = &message {
                         if let Some(err) = error_message {
                             if !err.is_empty() {
                                 yield Ok(Event::default().data(format!("[ERROR] {err}")));
@@ -229,10 +248,9 @@ pub async fn ai_chat(
                         }
                         for block in content {
                             match block {
-                                ContentBlock::Text { text, .. }
-                                    if !text.is_empty() => {
-                                        yield Ok(Event::default().data(text.replace('\n', "\\n")));
-                                    }
+                                ContentBlock::Text { text, .. } if !text.is_empty() => {
+                                    yield Ok(Event::default().data(text.replace('\n', "\\n")));
+                                }
                                 ContentBlock::ToolCall { name, .. } => {
                                     yield Ok(Event::default().event("tool").data(name.as_str()));
                                 }
@@ -241,9 +259,11 @@ pub async fn ai_chat(
                         }
                     }
                 }
-            }
-            Err(e) => {
-                yield Ok(Event::default().data(format!("[ERROR] {e}")));
+                Some(AgentEvent::AgentEnd { .. }) => {
+                    break;
+                }
+                Some(_) => {}
+                None => break,
             }
         }
         yield Ok(Event::default().data("[DONE]"));
