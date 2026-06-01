@@ -185,140 +185,116 @@ define_tool! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::Tool;
+    use crate::llm::ToolSet;
 
-    #[tokio::test]
-    async fn test_all_tool_names() {
-        assert_eq!(GetLimitUp.name(), "get_limit_up");
-        assert_eq!(GetLimitDown.name(), "get_limit_down");
-        assert_eq!(GetSuperStock.name(), "get_super_stock");
-        assert_eq!(GetMarketOverview.name(), "get_market_overview");
-        assert_eq!(GetYesterdayLimitUp.name(), "get_yesterday_limit_up");
-        assert_eq!(GetDapanAbnormal.name(), "get_dapan_abnormal");
-        assert_eq!(GetRealtimeQuote.name(), "get_realtime_quote");
-        assert_eq!(GetPlatesByStock.name(), "get_plates_by_stock");
-        assert_eq!(GetMarketTrend.name(), "get_market_trend");
-        assert_eq!(GetPlateAbnormal.name(), "get_plate_abnormal");
-        assert_eq!(GetTelegraph.name(), "get_telegraph");
-        assert_eq!(GetTelegraphAllDay.name(), "get_telegraph_allday");
-        assert_eq!(GetFieldItems.name(), "get_field_items");
-        assert_eq!(GetLhbDetail.name(), "get_lhb_detail");
-        assert_eq!(GetLhbCombined.name(), "get_lhb_combined");
-        assert_eq!(GetLhbActiveYyb.name(), "get_lhb_active_yyb");
+    #[test]
+    fn test_all_tool_names() {
+        assert_eq!(GetLimitUp::to_agent_tool().name, "get_limit_up");
+        assert_eq!(GetLimitDown::to_agent_tool().name, "get_limit_down");
+        assert_eq!(GetSuperStock::to_agent_tool().name, "get_super_stock");
+        assert_eq!(
+            GetMarketOverview::to_agent_tool().name,
+            "get_market_overview"
+        );
+        assert_eq!(
+            GetYesterdayLimitUp::to_agent_tool().name,
+            "get_yesterday_limit_up"
+        );
+        assert_eq!(GetDapanAbnormal::to_agent_tool().name, "get_dapan_abnormal");
+        assert_eq!(GetRealtimeQuote::to_agent_tool().name, "get_realtime_quote");
+        assert_eq!(
+            GetPlatesByStock::to_agent_tool().name,
+            "get_plates_by_stock"
+        );
+        assert_eq!(GetMarketTrend::to_agent_tool().name, "get_market_trend");
+        assert_eq!(GetPlateAbnormal::to_agent_tool().name, "get_plate_abnormal");
+        assert_eq!(GetTelegraph::to_agent_tool().name, "get_telegraph");
+        assert_eq!(
+            GetTelegraphAllDay::to_agent_tool().name,
+            "get_telegraph_allday"
+        );
+        assert_eq!(GetFieldItems::to_agent_tool().name, "get_field_items");
+        assert_eq!(GetLhbDetail::to_agent_tool().name, "get_lhb_detail");
+        assert_eq!(GetLhbCombined::to_agent_tool().name, "get_lhb_combined");
+        assert_eq!(GetLhbActiveYyb::to_agent_tool().name, "get_lhb_active_yyb");
     }
 
-    #[tokio::test]
-    async fn test_all_tool_schemas() {
-        let tools: Vec<&dyn Tool> = vec![
-            &GetLimitUp,
-            &GetLimitDown,
-            &GetSuperStock,
-            &GetMarketOverview,
-            &GetYesterdayLimitUp,
-            &GetDapanAbnormal,
-            &GetRealtimeQuote,
-            &GetPlatesByStock,
-            &GetMarketTrend,
-            &GetPlateAbnormal,
-            &GetTelegraph,
-            &GetLhbDetail,
-            &GetLhbCombined,
-            &GetLhbActiveYyb,
+    #[test]
+    fn test_all_tool_schemas() {
+        let tools = vec![
+            GetLimitUp::to_agent_tool(),
+            GetLimitDown::to_agent_tool(),
+            GetSuperStock::to_agent_tool(),
+            GetMarketOverview::to_agent_tool(),
+            GetYesterdayLimitUp::to_agent_tool(),
+            GetDapanAbnormal::to_agent_tool(),
+            GetRealtimeQuote::to_agent_tool(),
+            GetPlatesByStock::to_agent_tool(),
+            GetMarketTrend::to_agent_tool(),
+            GetPlateAbnormal::to_agent_tool(),
+            GetTelegraph::to_agent_tool(),
+            GetLhbDetail::to_agent_tool(),
+            GetLhbCombined::to_agent_tool(),
+            GetLhbActiveYyb::to_agent_tool(),
         ];
-        for tool in tools {
-            let schema = tool.parameters();
+        for tool in &tools {
             assert_eq!(
-                schema["type"],
-                "object",
+                tool.parameters_schema["type"], "object",
                 "{} schema type mismatch",
-                tool.name()
+                tool.name
             );
             assert!(
-                !tool.description().is_empty(),
+                !tool.description.is_empty(),
                 "{} description empty",
-                tool.name()
+                tool.name
             );
         }
     }
 
-    #[tokio::test]
-    async fn test_realtime_quote_has_symbol_param() {
-        let schema = GetRealtimeQuote.parameters();
-        assert!(schema["properties"]["symbol"].is_object());
-        assert!(schema["required"]
+    #[test]
+    fn test_realtime_quote_has_symbol_param() {
+        let tool = GetRealtimeQuote::to_agent_tool();
+        assert!(tool.parameters_schema["properties"]["symbol"].is_object());
+        assert!(tool.parameters_schema["required"]
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("symbol")));
     }
 
-    #[tokio::test]
-    async fn test_plate_abnormal_has_count_param() {
-        let schema = GetPlateAbnormal.parameters();
-        assert!(schema["properties"]["count"].is_object());
+    #[test]
+    fn test_plate_abnormal_has_count_param() {
+        let tool = GetPlateAbnormal::to_agent_tool();
+        assert!(tool.parameters_schema["properties"]["count"].is_object());
     }
 
-    #[tokio::test]
-    async fn test_lhb_detail_has_date_params() {
-        let schema = GetLhbDetail.parameters();
-        assert!(schema["properties"]["start_date"].is_object());
-        assert!(schema["properties"]["end_date"].is_object());
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_market_overview_tool_call() {
-        let result = GetMarketOverview
-            .execute(&serde_json::json!({}))
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(json.get("limit_up_count").is_some());
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_realtime_quote_tool_call() {
-        let result = GetRealtimeQuote
-            .execute(&serde_json::json!({"symbol": "600519.SS"}))
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(json.get("last_px").is_some());
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_lhb_detail_tool_call() {
-        let result = GetLhbDetail
-            .execute(&serde_json::json!({"start_date": "20250120", "end_date": "20250120"}))
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(json.is_array());
+    #[test]
+    fn test_lhb_detail_has_date_params() {
+        let tool = GetLhbDetail::to_agent_tool();
+        assert!(tool.parameters_schema["properties"]["start_date"].is_object());
+        assert!(tool.parameters_schema["properties"]["end_date"].is_object());
     }
 
     #[tokio::test]
     #[ignore]
     async fn test_toolset_with_all_tools() {
-        use crate::llm::ToolSet;
         use std::sync::Arc;
 
         let tools = Arc::new(
             ToolSet::new()
-                .with_tool(GetLimitUp)
-                .with_tool(GetLimitDown)
-                .with_tool(GetSuperStock)
-                .with_tool(GetMarketOverview)
-                .with_tool(GetYesterdayLimitUp)
-                .with_tool(GetDapanAbnormal)
-                .with_tool(GetRealtimeQuote)
-                .with_tool(GetPlatesByStock)
-                .with_tool(GetMarketTrend)
-                .with_tool(GetPlateAbnormal)
-                .with_tool(GetTelegraph)
-                .with_tool(GetLhbDetail)
-                .with_tool(GetLhbCombined)
-                .with_tool(GetLhbActiveYyb),
+                .with_tool(GetLimitUp::to_agent_tool())
+                .with_tool(GetLimitDown::to_agent_tool())
+                .with_tool(GetSuperStock::to_agent_tool())
+                .with_tool(GetMarketOverview::to_agent_tool())
+                .with_tool(GetYesterdayLimitUp::to_agent_tool())
+                .with_tool(GetDapanAbnormal::to_agent_tool())
+                .with_tool(GetRealtimeQuote::to_agent_tool())
+                .with_tool(GetPlatesByStock::to_agent_tool())
+                .with_tool(GetMarketTrend::to_agent_tool())
+                .with_tool(GetPlateAbnormal::to_agent_tool())
+                .with_tool(GetTelegraph::to_agent_tool())
+                .with_tool(GetLhbDetail::to_agent_tool())
+                .with_tool(GetLhbCombined::to_agent_tool())
+                .with_tool(GetLhbActiveYyb::to_agent_tool()),
         );
 
         assert_eq!(tools.to_openai_tools().len(), 14);

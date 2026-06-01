@@ -1,62 +1,550 @@
 use anyhow::Result;
 use futures::StreamExt;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use std::pin::Pin;
+use pi_ai::env_api_keys::get_env_api_key;
+use pi_ai::models::get_model;
+use pi_ai::providers::register_builtins::register_built_in_api_providers;
+use pi_ai::stream;
+use pi_ai::types::{
+    AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Message, Model,
+    SimpleStreamOptions, StreamOptions, Tool as PiTool,
+};
 
-#[derive(Serialize)]
-struct ChatRequest {
-    model: String,
-    messages: Vec<Message>,
-    max_tokens: u32,
-    temperature: f32,
-    stream: bool,
+#[derive(Clone)]
+pub struct LlmClient {
+    pub model: Model,
+    pub api_key: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
+impl LlmClient {
+    pub fn from_env() -> Self {
+        register_built_in_api_providers();
+
+        let (provider, model_id) = if std::env::var("OPENROUTER_API_KEY").is_ok()
+            && std::env::var("DEEPSEEK_API_KEY").is_err()
+            && std::env::var("LLM_API_KEY").is_err()
+        {
+            ("openrouter", "openai/gpt-4o")
+        } else {
+            ("deepseek", "deepseek-chat")
+        };
+
+        let provider = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| provider.to_string());
+        let model_id = std::env::var("LLM_MODEL").unwrap_or_else(|_| model_id.to_string());
+
+        let model = get_model(&provider, &model_id)
+            .cloned()
+            .unwrap_or_else(|| Model {
+                id: model_id.clone(),
+                name: model_id.clone(),
+                api: "openai-completions".to_string(),
+                provider: provider.clone(),
+                base_url: String::new(),
+                reasoning: false,
+                thinking_level_map: None,
+                input: vec![],
+                cost: Default::default(),
+                context_window: 128000,
+                max_tokens: 4096,
+                headers: None,
+                compat: None,
+            });
+
+        let api_key = std::env::var("LLM_API_KEY")
+            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
+            .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
+            .or_else(|_| get_env_api_key(&provider).ok_or_else(|| "".to_string()))
+            .unwrap_or_default();
+
+        eprintln!(
+            "[llm] from_env: provider={}, model={}, api_key={}..{}",
+            model.provider,
+            model.id,
+            if api_key.is_empty() { "EMPTY" } else { "sk-" },
+            if api_key.len() > 6 {
+                &api_key[api_key.len() - 4..]
+            } else {
+                ""
+            }
+        );
+
+        Self { model, api_key }
+    }
+
+    pub fn new(api_key: String) -> Self {
+        let mut c = Self::from_env();
+        if !api_key.is_empty() {
+            c.api_key = api_key;
+        }
+        c
+    }
+
+    pub async fn chat(&self, prompt: &str) -> Result<String> {
+        let context = Context {
+            system_prompt: None,
+            messages: vec![Message::User {
+                content: vec![ContentBlock::text(prompt)],
+                timestamp: 0,
+            }],
+            tools: None,
+        };
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let msg = stream::complete(&self.model, &context, Some(options))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let text: String = msg
+            .content
+            .iter()
+            .filter_map(|b| match b {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        if text.is_empty() {
+            anyhow::bail!("LLM returned empty response");
+        }
+        Ok(text)
+    }
+
+    pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
+        let messages_val: serde_json::Value =
+            serde_json::from_str(messages_json).unwrap_or_default();
+
+        let context = json_to_context(&messages_val, None);
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let msg = stream::complete(&self.model, &context, Some(options))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let text: String = msg
+            .content
+            .iter()
+            .filter_map(|b| match b {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        if text.is_empty() {
+            anyhow::bail!("LLM returned empty response");
+        }
+        Ok(text)
+    }
+
+    pub async fn chat_stream(&self, prompt: &str) -> Result<StreamResult> {
+        let context = Context {
+            system_prompt: None,
+            messages: vec![Message::User {
+                content: vec![ContentBlock::text(prompt)],
+                timestamp: 0,
+            }],
+            tools: None,
+        };
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let event_stream = stream::stream(&self.model, &context, Some(options));
+        let result_stream = event_stream_to_text_stream(event_stream);
+        Ok(Box::pin(result_stream))
+    }
+
+    pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
+        let messages_val: serde_json::Value =
+            serde_json::from_str(messages_json).unwrap_or_default();
+
+        let context = json_to_context(&messages_val, None);
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let event_stream = stream::stream(&self.model, &context, Some(options));
+        let result_stream = event_stream_to_text_stream(event_stream);
+        Ok(Box::pin(result_stream))
+    }
+
+    pub async fn chat_stream_with_tools(
+        &self,
+        messages: &serde_json::Value,
+        tools: &serde_json::Value,
+    ) -> Result<ToolStreamResult> {
+        let context = json_to_context(messages, Some(tools));
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let event_stream = stream::stream(&self.model, &context, Some(options));
+        let result_stream = event_stream_to_tool_stream(event_stream);
+        Ok(Box::pin(result_stream))
+    }
+
+    pub async fn chat_with_tools(&self, body_json: &str) -> Result<ToolChatResponse> {
+        let body: serde_json::Value = serde_json::from_str(body_json).unwrap_or_default();
+        let messages = body.get("messages").cloned().unwrap_or_default();
+        let tools = body.get("tools").cloned();
+
+        let context = json_to_context(&messages, tools.as_ref());
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let msg = stream::complete(&self.model, &context, Some(options))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(assistant_message_to_tool_response(&msg))
+    }
+
+    pub async fn chat_simple(
+        &self,
+        context: &Context,
+        reasoning: Option<&str>,
+    ) -> Result<AssistantMessage> {
+        let options = SimpleStreamOptions {
+            base: StreamOptions {
+                api_key: Some(self.api_key.clone()),
+                max_tokens: Some(4096),
+                temperature: Some(0.7),
+                ..Default::default()
+            },
+            reasoning: reasoning.map(|s| s.to_string()),
+            thinking_budgets: None,
+        };
+
+        let msg = stream::complete_simple(&self.model, context, Some(options))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(msg)
+    }
+
+    pub fn stream_simple(
+        &self,
+        context: &Context,
+        reasoning: Option<&str>,
+    ) -> pi_ai::utils::event_stream::AssistantMessageEventStream {
+        let options = SimpleStreamOptions {
+            base: StreamOptions {
+                api_key: Some(self.api_key.clone()),
+                max_tokens: Some(4096),
+                temperature: Some(0.7),
+                ..Default::default()
+            },
+            reasoning: reasoning.map(|s| s.to_string()),
+            thinking_budgets: None,
+        };
+
+        stream::stream_simple(&self.model, context, Some(options))
+    }
+
+    /// Create a stream for the given model and context. Used by the agent's
+    /// `StreamFn` so the agent crate does not have to depend on `pi-ai`.
+    pub fn create_stream(
+        &self,
+        model: &Model,
+        context: &Context,
+        options: StreamOptions,
+    ) -> pi_ai::utils::event_stream::AssistantMessageEventStream {
+        let mut options = options;
+        if options.api_key.as_ref().map_or(true, |k| k.is_empty()) {
+            options.api_key = Some(self.api_key.clone());
+        }
+        if options.max_tokens.is_none() {
+            options.max_tokens = Some(4096);
+        }
+        if options.temperature.is_none() {
+            options.temperature = Some(0.7);
+        }
+        stream::stream(model, context, Some(options))
+    }
 }
 
-#[derive(Deserialize)]
-struct ChatResponse {
-    choices: Vec<Choice>,
+fn json_to_context(messages_val: &serde_json::Value, tools_val: Option<&serde_json::Value>) -> Context {
+    let mut system_prompt = None;
+    let mut messages = Vec::new();
+
+    if let Some(arr) = messages_val.as_array() {
+        for msg in arr {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            let content = msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+
+            match role {
+                "system" => {
+                    system_prompt = Some(content.to_string());
+                }
+                "user" => {
+                    messages.push(Message::User {
+                        content: vec![ContentBlock::text(content)],
+                        timestamp: 0,
+                    });
+                }
+                "assistant" => {
+                    let mut blocks = Vec::new();
+                    if !content.is_empty() {
+                        blocks.push(ContentBlock::text(content));
+                    }
+                    if let Some(tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
+                        for tc in tool_calls {
+                            let id = tc
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let name = tc
+                                .get("function")
+                                .and_then(|f| f.get("name"))
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let arguments = tc
+                                .get("function")
+                                .and_then(|f| f.get("arguments"))
+                                .and_then(|a| a.as_str())
+                                .unwrap_or("{}");
+                            let args_val: serde_json::Value =
+                                serde_json::from_str(arguments).unwrap_or_default();
+                            blocks.push(ContentBlock::ToolCall {
+                                id,
+                                name,
+                                arguments: args_val,
+                                thought_signature: None,
+                            });
+                        }
+                    }
+                    if !blocks.is_empty() {
+                        messages.push(Message::Assistant {
+                            content: blocks,
+                            api: String::new(),
+                            provider: String::new(),
+                            model: String::new(),
+                            response_model: None,
+                            response_id: None,
+                            diagnostics: None,
+                            usage: Default::default(),
+                            stop_reason: pi_ai::types::StopReason::Stop,
+                            error_message: None,
+                            timestamp: 0,
+                        });
+                    }
+                }
+                "tool" => {
+                    let tool_call_id = msg
+                        .get("tool_call_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let tool_name = msg
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    messages.push(Message::ToolResult {
+                        tool_call_id,
+                        tool_name,
+                        content: vec![ContentBlock::text(content)],
+                        details: None,
+                        is_error: false,
+                        timestamp: 0,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let tools = tools_val.and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
+            .filter_map(|t| {
+                let func = t.get("function")?;
+                Some(PiTool {
+                    name: func.get("name")?.as_str()?.to_string(),
+                    description: func
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    parameters: func.get("parameters").cloned().unwrap_or_default(),
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+
+    Context {
+        system_prompt,
+        messages,
+        tools,
+    }
 }
 
-#[derive(Deserialize)]
-struct Choice {
-    message: Message,
+fn event_stream_to_text_stream(
+    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
+) -> impl futures::Stream<Item = Result<String>> {
+    async_stream::stream! {
+        let mut stream = Box::pin(event_stream);
+        while let Some(event) = stream.next().await {
+            match event {
+                AssistantMessageEvent::TextDelta { delta, .. } => {
+                    if !delta.is_empty() {
+                        yield Ok(delta);
+                    }
+                }
+                AssistantMessageEvent::Error { error, .. } => {
+                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
+                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct StreamChunk {
-    choices: Option<Vec<StreamChoice>>,
+fn event_stream_to_tool_stream(
+    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
+) -> impl futures::Stream<Item = Result<Vec<StreamEvent>>> {
+    use std::cell::RefCell;
+
+    let current_tc: RefCell<Option<ToolCall>> = RefCell::new(None);
+
+    async_stream::stream! {
+        let mut stream = Box::pin(event_stream);
+        while let Some(event) = stream.next().await {
+            let mut events: Vec<StreamEvent> = Vec::new();
+
+            match event {
+                AssistantMessageEvent::TextDelta { delta, .. } => {
+                    if !delta.is_empty() {
+                        events.push(StreamEvent::Text(delta));
+                    }
+                }
+                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
+                    if !delta.is_empty() {
+                        events.push(StreamEvent::ReasoningText(delta));
+                    }
+                }
+                AssistantMessageEvent::ToolCallStart { .. } => {
+                    if let Some(prev) = current_tc.borrow_mut().take() {
+                        events.push(StreamEvent::ToolCallStart(prev));
+                    }
+                }
+                AssistantMessageEvent::ToolCallDelta { delta, .. } => {
+                    if !delta.is_empty() {
+                        events.push(StreamEvent::ToolCallDelta(ToolCall {
+                            id: String::new(),
+                            function_name: String::new(),
+                            arguments: delta,
+                        }));
+                    }
+                }
+                AssistantMessageEvent::ToolCallEnd { tool_call, .. } => {
+                    if let Some(prev) = current_tc.borrow_mut().take() {
+                        events.push(StreamEvent::ToolCallStart(prev));
+                    }
+                    events.push(StreamEvent::ToolCallStart(ToolCall {
+                        id: tool_call.id,
+                        function_name: tool_call.name,
+                        arguments: tool_call.arguments.to_string(),
+                    }));
+                }
+                AssistantMessageEvent::Done { message, .. } => {
+                    if let Some(prev) = current_tc.borrow_mut().take() {
+                        events.push(StreamEvent::ToolCallStart(prev));
+                    }
+                    for block in &message.content {
+                        if let ContentBlock::ToolCall { id, name, arguments, .. } = block {
+                            events.push(StreamEvent::ToolCallStart(ToolCall {
+                                id: id.clone(),
+                                function_name: name.clone(),
+                                arguments: arguments.to_string(),
+                            }));
+                        }
+                    }
+                }
+                AssistantMessageEvent::Error { error, .. } => {
+                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
+                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
+                    break;
+                }
+                _ => {}
+            }
+
+            if !events.is_empty() {
+                yield Ok(events);
+            }
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct StreamChoice {
-    delta: Option<Delta>,
-}
+fn assistant_message_to_tool_response(msg: &AssistantMessage) -> ToolChatResponse {
+    let mut tool_calls = Vec::new();
+    let mut content_text = None;
 
-#[derive(Debug, Deserialize)]
-struct Delta {
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    tool_calls: Option<Vec<ToolCallDelta>>,
-}
+    for block in &msg.content {
+        match block {
+            ContentBlock::Text { text, .. } => {
+                content_text = Some(text.clone());
+            }
+            ContentBlock::ToolCall {
+                id, name, arguments, ..
+            } => {
+                tool_calls.push(ToolCallItem {
+                    id: id.clone(),
+                    call_type: Some("function".to_string()),
+                    function: ToolCallFunction {
+                        name: name.clone(),
+                        arguments: arguments.to_string(),
+                    },
+                });
+            }
+            _ => {}
+        }
+    }
 
-#[derive(Debug, Deserialize)]
-struct ToolCallDelta {
-    id: Option<String>,
-    function: Option<FunctionDelta>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FunctionDelta {
-    name: Option<String>,
-    arguments: Option<String>,
+    ToolChatResponse {
+        choices: vec![ToolChatChoice {
+            message: ToolCallMessage {
+                role: Some("assistant".to_string()),
+                content: content_text,
+                tool_calls: if tool_calls.is_empty() {
+                    None
+                } else {
+                    Some(tool_calls)
+                },
+            },
+        }],
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -74,441 +562,14 @@ pub enum StreamEvent {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
+pub type StreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
 #[cfg(target_arch = "wasm32")]
-pub type StreamResult = Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
+pub type StreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>> + Send>>;
+pub type ToolStreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>> + Send>>;
 #[cfg(target_arch = "wasm32")]
-pub type ToolStreamResult = Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>>>>;
-
-#[derive(Clone)]
-pub struct LlmClient {
-    pub client: Client,
-    pub api_key: String,
-    pub api_endpoint: String,
-    pub model: String,
-}
-
-impl LlmClient {
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("LLM_API_KEY")
-            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
-            .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
-            .unwrap_or_default();
-
-        let default_endpoint = if std::env::var("OPENROUTER_API_KEY").is_ok()
-            && std::env::var("DEEPSEEK_API_KEY").is_err()
-            && std::env::var("LLM_API_KEY").is_err()
-        {
-            "https://openrouter.ai/api/v1/chat/completions"
-        } else {
-            "https://api.deepseek.com/v1/chat/completions"
-        };
-
-        let api_endpoint =
-            std::env::var("LLM_API_ENDPOINT").unwrap_or_else(|_| default_endpoint.to_string());
-
-        let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "deepseek-chat".to_string());
-
-        eprintln!(
-            "[llm] from_env: endpoint={}, model={}, api_key={}..{}",
-            api_endpoint,
-            model,
-            if api_key.is_empty() { "EMPTY" } else { "sk-" },
-            if api_key.len() > 6 {
-                &api_key[api_key.len() - 4..]
-            } else {
-                ""
-            }
-        );
-
-        Self {
-            client: Client::new(),
-            api_key,
-            api_endpoint,
-            model,
-        }
-    }
-
-    pub fn new(api_key: String) -> Self {
-        let mut c = Self::from_env();
-        if !api_key.is_empty() {
-            c.api_key = api_key;
-        }
-        c
-    }
-
-    pub async fn chat(&self, prompt: &str) -> Result<String> {
-        let req = ChatRequest {
-            model: self.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-            }],
-            max_tokens: 4096,
-            temperature: 0.7,
-            stream: false,
-        };
-
-        let resp: ChatResponse = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .json(&req)
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        let content = resp
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
-            .unwrap_or_default();
-        if content.is_empty() {
-            anyhow::bail!("LLM returned empty response");
-        }
-        Ok(content)
-    }
-
-    pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
-        let body = serde_json::json!({
-            "model": self.model,
-            "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
-            "max_tokens": 4096,
-            "temperature": 0.7,
-            "stream": false,
-        })
-        .to_string();
-
-        let resp: ChatResponse = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        let content = resp
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
-            .unwrap_or_default();
-        if content.is_empty() {
-            anyhow::bail!("LLM returned empty response");
-        }
-        Ok(content)
-    }
-
-    pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
-        let body = serde_json::json!({
-            "model": self.model,
-            "messages": serde_json::from_str::<serde_json::Value>(messages_json).unwrap_or_default(),
-            "max_tokens": 4096,
-            "temperature": 0.7,
-            "stream": true,
-        })
-        .to_string();
-
-        let resp = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await?;
-
-        let status = resp.status();
-        eprintln!("[llm] chat_stream_with_messages response status: {status}");
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            eprintln!("[llm] error response body: {body}");
-            anyhow::bail!("LLM API error {status}: {body}");
-        }
-
-        use std::cell::RefCell;
-
-        let buf = RefCell::new(String::new());
-
-        let stream = resp.bytes_stream().map(move |chunk| match chunk {
-            Ok(bytes) => {
-                let text = String::from_utf8_lossy(&bytes).to_string();
-                let mut content = String::new();
-
-                let mut prev = buf.borrow_mut();
-                let merged = format!("{}{}", *prev, text);
-
-                let mut lines: Vec<&str> = merged.lines().collect();
-
-                if merged.ends_with('\n') {
-                    prev.clear();
-                } else {
-                    *prev = lines.pop().unwrap_or("").to_string();
-                }
-
-                for line in lines {
-                    if line.starts_with("data: ") {
-                        let data = line.trim_start_matches("data: ");
-                        if data == "[DONE]" {
-                            if !prev.is_empty() {
-                                let remaining = prev.clone();
-                                prev.clear();
-                                if remaining.starts_with("data: ") {
-                                    let remaining_data = remaining.trim_start_matches("data: ");
-                                    if remaining_data != "[DONE]" {
-                                        if let Ok(chunk) =
-                                            serde_json::from_str::<StreamChunk>(remaining_data)
-                                        {
-                                            if let Some(choices) = chunk.choices {
-                                                for choice in choices {
-                                                    if let Some(delta) = choice.delta {
-                                                        if let Some(c) = delta.content {
-                                                            content.push_str(&c);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            continue;
-                        }
-                        if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
-                            if let Some(choices) = chunk.choices {
-                                for choice in choices {
-                                    if let Some(delta) = choice.delta {
-                                        if let Some(c) = delta.content {
-                                            content.push_str(&c);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !content.is_empty() {
-                    Ok(content)
-                } else {
-                    Ok(String::new())
-                }
-            }
-            Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
-        });
-
-        Ok(Box::pin(stream))
-    }
-
-    pub async fn chat_stream(&self, prompt: &str) -> Result<StreamResult> {
-        let req = ChatRequest {
-            model: self.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-            }],
-            max_tokens: 4096,
-            temperature: 0.7,
-            stream: true,
-        };
-
-        let resp = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .json(&req)
-            .send()
-            .await?;
-
-        use std::cell::RefCell;
-        let buf = RefCell::new(String::new());
-
-        let stream = resp.bytes_stream().map(move |chunk| match chunk {
-            Ok(bytes) => {
-                let text = String::from_utf8_lossy(&bytes).to_string();
-                let mut content = String::new();
-
-                let mut prev = buf.borrow_mut();
-                let merged = format!("{}{}", *prev, text);
-
-                let mut lines: Vec<&str> = merged.lines().collect();
-                if merged.ends_with('\n') {
-                    prev.clear();
-                } else {
-                    *prev = lines.pop().unwrap_or("").to_string();
-                }
-
-                for line in lines {
-                    if line.starts_with("data: ") {
-                        let data = line.trim_start_matches("data: ");
-                        if data == "[DONE]" {
-                            continue;
-                        }
-                        if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
-                            if let Some(choices) = chunk.choices {
-                                for choice in choices {
-                                    if let Some(delta) = choice.delta {
-                                        if let Some(c) = delta.content {
-                                            content.push_str(&c);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !content.is_empty() {
-                    Ok(content)
-                } else {
-                    Ok(String::new())
-                }
-            }
-            Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
-        });
-
-        Ok(Box::pin(stream))
-    }
-
-    pub async fn chat_stream_with_tools(
-        &self,
-        messages: &serde_json::Value,
-        tools: &serde_json::Value,
-    ) -> Result<ToolStreamResult> {
-        let body = serde_json::json!({
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": 4096,
-            "temperature": 0.7,
-            "stream": true,
-            "tools": tools,
-        });
-
-        let resp = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .body(body.to_string())
-            .send()
-            .await?;
-
-        let status = resp.status();
-        eprintln!("[llm] chat_stream_with_tools response status: {status}");
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            eprintln!("[llm] error response body: {body}");
-            anyhow::bail!("LLM API error {status}: {body}");
-        }
-
-        use std::cell::RefCell;
-        let buf = RefCell::new(String::new());
-
-        let stream = resp.bytes_stream().map(move |chunk| {
-            let text = String::from_utf8_lossy(&chunk?).to_string();
-            let mut events: Vec<StreamEvent> = Vec::new();
-
-            let mut prev = buf.borrow_mut();
-            let merged = format!("{}{}", *prev, text);
-
-            let mut lines: Vec<&str> = merged.lines().collect();
-            if merged.ends_with('\n') {
-                prev.clear();
-            } else {
-                *prev = lines.pop().unwrap_or("").to_string();
-            }
-
-            for line in lines {
-                if !line.starts_with("data: ") {
-                    continue;
-                }
-                let data = line.trim_start_matches("data: ");
-                if data == "[DONE]" {
-                    continue;
-                }
-                let chunk: StreamChunk = match serde_json::from_str(data) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let Some(choices) = chunk.choices else {
-                    continue;
-                };
-                for choice in choices {
-                    let Some(delta) = choice.delta else { continue };
-
-                    if let Some(content) = delta.content {
-                        if !content.is_empty() {
-                            events.push(StreamEvent::Text(content));
-                        }
-                    }
-
-                    if let Some(rc) = delta.reasoning_content {
-                        if !rc.is_empty() {
-                            events.push(StreamEvent::ReasoningText(rc));
-                        }
-                    }
-
-                    if let Some(tc_deltas) = delta.tool_calls {
-                        for tc in tc_deltas {
-                            let id = tc.id.unwrap_or_default();
-                            let func = tc.function.unwrap_or(FunctionDelta {
-                                name: None,
-                                arguments: None,
-                            });
-                            let name = func.name.unwrap_or_default();
-                            let args = func.arguments.unwrap_or_default();
-
-                            if !id.is_empty() && !name.is_empty() {
-                                events.push(StreamEvent::ToolCallStart(ToolCall {
-                                    id,
-                                    function_name: name,
-                                    arguments: args,
-                                }));
-                            } else if !args.is_empty() {
-                                events.push(StreamEvent::ToolCallDelta(ToolCall {
-                                    id: String::new(),
-                                    function_name: String::new(),
-                                    arguments: args,
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-
-            Ok(events)
-        });
-
-        Ok(Box::pin(stream))
-    }
-
-    pub async fn chat_with_tools(&self, body_json: &str) -> Result<ToolChatResponse> {
-        let resp = self
-            .client
-            .post(&self.api_endpoint)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .body(body_json.to_string())
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("LLM API error {status}: {body}");
-        }
-        let response: ToolChatResponse = resp.json().await?;
-        Ok(response)
-    }
-}
+pub type ToolStreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>>>>;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct ToolCallMessage {

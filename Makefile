@@ -107,7 +107,7 @@ deploy-web:
 
 # ─── Release ──────────────────────────────────────────
 
-VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml crates/api/Cargo.toml crates/channels/Cargo.toml crates/provider/Cargo.toml crates/web/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
+VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml crates/api/Cargo.toml crates/channels/Cargo.toml crates/provider/Cargo.toml crates/web/Cargo.toml crates/agent/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
 
 version:
 	@echo "Current: $$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"

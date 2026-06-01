@@ -420,9 +420,9 @@ async fn cmd_decision(
 
     let tools = Arc::new(
         openatrading_core::llm::ToolSet::new()
-            .with_tool(openatrading_core::llm::tools::GetLimitUp)
-            .with_tool(openatrading_core::llm::tools::GetLimitDown)
-            .with_tool(openatrading_core::llm::tools::GetMarketOverview),
+            .with_tool(openatrading_core::llm::tools::GetLimitUp::to_agent_tool())
+            .with_tool(openatrading_core::llm::tools::GetLimitDown::to_agent_tool())
+            .with_tool(openatrading_core::llm::tools::GetMarketOverview::to_agent_tool()),
     );
 
     run_decision(
