@@ -2,7 +2,7 @@
 
 ## Overview
 
-将 trending-agent 升级为持续运行的交易 agent。新增 trade（持仓）、memory（SQLite 历史）、cron（定时调度）、social（Telegram 交互）、gateway（session 管理）五大模块。
+将 openatrading 升级为持续运行的交易 agent。新增 trade（持仓）、memory（SQLite 历史）、cron（定时调度）、social（Telegram 交互）、gateway（session 管理）五大模块。
 
 ## 1. Crate 架构
 
@@ -123,9 +123,9 @@ pub trait TradeManager: Send + Sync {
 
 **CLI 命令：**
 ```bash
-trending-agent trade add --role zarili --symbol 000001 --price 10.5 --shares 1000
-trending-agent trade list [--role zarili]
-trending-agent trade close <id> --price 11.2
+openatrading trade add --role zarili --symbol 000001 --price 10.5 --shares 1000
+openatrading trade list [--role zarili]
+openatrading trade close <id> --price 11.2
 ```
 
 ## 4. Memory 模块
@@ -260,9 +260,9 @@ impl Gateway {
 
 **CLI 命令：**
 ```bash
-trending-agent serve start     # 启动 Gateway（cron + telegram）
-trending-agent serve stop      # 停止
-trending-agent serve status    # 查看状态
+openatrading serve start     # 启动 Gateway（cron + telegram）
+openatrading serve stop      # 停止
+openatrading serve status    # 查看状态
 ```
 
 Gateway 只管理 cron + telegram sessions。Web server 独立部署。
@@ -361,10 +361,10 @@ pub fn build_prompt(
 └────────────────────────────────────────────────────┘
 
 ┌─ CLI ─────────────────────────────────────────────┐
-│  trending-agent serve start/stop/status            │
-│  trending-agent trade add/list/close               │
-│  trending-agent --role --ai (单次分析)               │
-│  trending-agent init                               │
+│  openatrading serve start/stop/status            │
+│  openatrading trade add/list/close               │
+│  openatrading --role --ai (单次分析)               │
+│  openatrading init                               │
 └────────────────────────────────────────────────────┘
 
 ┌─ Web (独立部署) ───────────────────────────────────┐

@@ -170,7 +170,7 @@ interface PromotionItem {
 // ─── Previous trading day detection ──────────────────
 
 function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : '')
+  return localStorage.getItem('openatrading-api-url') || (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : '')
 }
 
 async function fetchPrevDayData(maxRetries = 5): Promise<any | null> {

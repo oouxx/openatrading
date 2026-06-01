@@ -81,7 +81,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--package=trading-agent-core"]
+        "args": ["test", "--package=openatrading-core"]
       },
       "envFile": "${workspaceFolder}/.env"
     },

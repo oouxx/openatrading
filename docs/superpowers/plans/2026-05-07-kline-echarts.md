@@ -182,7 +182,7 @@ function formatTime(ts: number, p: string): string {
 }
 
 function getApiBase(): string {
-  return localStorage.getItem('trading-agent-api-url') || 'http://localhost:8080'
+  return localStorage.getItem('openatrading-api-url') || 'http://localhost:8080'
 }
 
 async function fetchRealtime() {
@@ -430,7 +430,7 @@ git commit -m "refactor: replace lightweight-charts with echarts for K-line char
 
 - [ ] **Step 1: Start backend**
 
-Run: `cd /Users/wxx/Desktop/github/trending-agent && cargo run -- run --web`
+Run: `cd /Users/wxx/Desktop/github/openatrading && cargo run -- run --web`
 Expected: Backend starts on port 8080, initial report fetched.
 
 - [ ] **Step 2: Start frontend dev server**

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "trending-agent-mcp",
+      "name": "openatrading-mcp",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.8.0",
       },

@@ -22,14 +22,14 @@ use crate::cli::gateway_cmd::{
 };
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
-use trading_agent_core::agents::sentiment::analyze_sentiment;
-use trading_agent_core::api::xuangubao::XuanguBaoClient;
-use trading_agent_core::api::Client;
-use trading_agent_core::cron::run_decision;
-use trading_agent_core::llm::LlmClient;
-use trading_agent_core::roles::prompt::build_prompt;
-use trading_agent_core::social::{NoopSender, NotificationSender, StdoutSender};
-use trading_agent_web::gateway::Gateway;
+use openatrading_core::agents::sentiment::analyze_sentiment;
+use openatrading_core::api::xuangubao::XuanguBaoClient;
+use openatrading_core::api::Client;
+use openatrading_core::cron::run_decision;
+use openatrading_core::llm::LlmClient;
+use openatrading_core::roles::prompt::build_prompt;
+use openatrading_core::social::{NoopSender, NotificationSender, StdoutSender};
+use openatrading_web::gateway::Gateway;
 
 #[derive(Serialize)]
 struct OutputData {
@@ -129,7 +129,7 @@ pub async fn run() -> Result<()> {
             println!("当前版本: {current}");
             println!("最新版本: {latest}");
             if needs_update {
-                println!("⚠ 有新版本可用，运行 `trading-agent update` 更新");
+                println!("⚠ 有新版本可用，运行 `openatrading update` 更新");
             } else {
                 println!("✅ 已是最新版本");
             }
@@ -221,7 +221,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "field_item" => {
-                let date = trading_agent_core::utils::time::beijing_now()
+                let date = openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m-%d")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_field(&date, 1).await {
@@ -234,7 +234,7 @@ pub async fn run() -> Result<()> {
                 }
             }
             "timeline" => {
-                let month = trading_agent_core::utils::time::beijing_now()
+                let month = openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m")
                     .to_string();
                 if let Ok(data) = client.jiuyan.fetch_timeline(&month).await {
@@ -288,7 +288,7 @@ pub async fn run() -> Result<()> {
             None => {
                 eprintln!("⚠️ 未找到角色 '{role_name}'，使用默认策略");
                 output.role_name = Some("默认分析".to_string());
-                trading_agent_core::roles::get_builtin_strategy("zarili")
+                openatrading_core::roles::get_builtin_strategy("zarili")
                     .unwrap_or("")
                     .to_string()
             }
@@ -419,10 +419,10 @@ async fn cmd_decision(
     let api = Client::new();
 
     let tools = Arc::new(
-        trading_agent_core::llm::ToolSet::new()
-            .with_tool(trading_agent_core::llm::tools::GetLimitUp)
-            .with_tool(trading_agent_core::llm::tools::GetLimitDown)
-            .with_tool(trading_agent_core::llm::tools::GetMarketOverview),
+        openatrading_core::llm::ToolSet::new()
+            .with_tool(openatrading_core::llm::tools::GetLimitUp)
+            .with_tool(openatrading_core::llm::tools::GetLimitDown)
+            .with_tool(openatrading_core::llm::tools::GetMarketOverview),
     );
 
     run_decision(

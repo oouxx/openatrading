@@ -18,13 +18,13 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub use trading_agent_core::RoleEntry;
+pub use openatrading_core::RoleEntry;
 
 pub struct AppState {
-    pub llm: trading_agent_core::llm::LlmClient,
-    pub api: trading_agent_core::api::Client,
-    pub memory: Arc<trading_agent_core::memory::sqlite::SqliteMemoryStore>,
-    pub trade: Arc<trading_agent_core::trade::sqlite::SqliteTradeManager>,
+    pub llm: openatrading_core::llm::LlmClient,
+    pub api: openatrading_core::api::Client,
+    pub memory: Arc<openatrading_core::memory::sqlite::SqliteMemoryStore>,
+    pub trade: Arc<openatrading_core::trade::sqlite::SqliteTradeManager>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub strategies_dir: PathBuf,
     pub cache: Arc<AppCache>,

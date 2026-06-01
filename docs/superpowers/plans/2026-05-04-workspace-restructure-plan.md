@@ -1,10 +1,10 @@
 # Workspace Restructure Implementation Plan
 **Date:** 2026-05-04
 **Branch:** `feature/workspace-restructure`
-**Worktree Path:** `/Users/wxx/Desktop/github/trending-agent-workspace-restructure`
+**Worktree Path:** `/Users/wxx/Desktop/github/openatrading-workspace-restructure`
 
 ## Overview
-Phased migration to restructure `trending-agent` into a Cargo workspace with:
+Phased migration to restructure `openatrading` into a Cargo workspace with:
 - `crates/core`: Pure business logic (zero framework deps)
 - `crates/cli`: Clap CLI binary
 - `crates/web`: Axum web server
@@ -54,7 +54,7 @@ All work happens in the isolated worktree, no changes to main branch until merge
 - [ ] Write `crates/core/Cargo.toml`:
   ```toml
   [package]
-  name = "trending-agent-core"
+  name = "openatrading-core"
   version = "0.1.0"
   edition = "2021"
 
@@ -88,16 +88,16 @@ All work happens in the isolated worktree, no changes to main branch until merge
 - [ ] Write `crates/cli/Cargo.toml`:
   ```toml
   [package]
-  name = "trending-agent-cli"
+  name = "openatrading-cli"
   version = "0.1.0"
   edition = "2021"
 
   [[bin]]
-  name = "trending-agent"
+  name = "openatrading"
   path = "src/main.rs"
 
   [dependencies]
-  trending-agent-core = { path = "../core" }
+  openatrading-core = { path = "../core" }
   clap = { version = "4", features = ["derive"] }
   rustyline = { version = "18.0.0", features = ["default"] }
   anyhow = { workspace = true }
@@ -105,7 +105,7 @@ All work happens in the isolated worktree, no changes to main branch until merge
 - [ ] Move CLI-specific code to `crates/cli/src/`:
   - `src/cli/` → `crates/cli/src/cli/`
   - `src/main.rs` → `crates/cli/src/main.rs`
-- [ ] Update `crates/cli/src/main.rs` to import from `trending_agent_core`
+- [ ] Update `crates/cli/src/main.rs` to import from `openatrading_core`
 - [ ] **Verify:** `cargo run -- run --format markdown` works (CLI mode)
 
 ### Step 1.4: Create `crates/web/`
@@ -113,22 +113,22 @@ All work happens in the isolated worktree, no changes to main branch until merge
 - [ ] Write `crates/web/Cargo.toml`:
   ```toml
   [package]
-  name = "trending-agent-web"
+  name = "openatrading-web"
   version = "0.1.0"
   edition = "2021"
 
   [[bin]]
-  name = "trending-agent-web"
+  name = "openatrading-web"
   path = "src/main.rs"
 
   [dependencies]
-  trending-agent-core = { path = "../core" }
+  openatrading-core = { path = "../core" }
   axum = "0.7"
   anyhow = { workspace = true }
   ```
 - [ ] Move web-specific code to `crates/web/src/`:
   - `src/web/` → `crates/web/src/web/`
-- [ ] Update `crates/web/src/main.rs` to import from `trending_agent_core`
+- [ ] Update `crates/web/src/main.rs` to import from `openatrading_core`
 - [ ] **Verify:** `cargo run -- web --port 8080` starts Axum server
 
 ### Step 1.5: Create `crates/wasm/`
@@ -136,7 +136,7 @@ All work happens in the isolated worktree, no changes to main branch until merge
 - [ ] Write `crates/wasm/Cargo.toml`:
   ```toml
   [package]
-  name = "trending-agent-wasm"
+  name = "openatrading-wasm"
   version = "0.1.0"
   edition = "2021"
 
@@ -144,7 +144,7 @@ All work happens in the isolated worktree, no changes to main branch until merge
   crate-type = ["cdylib"]
 
   [dependencies]
-  trending-agent-core = { path = "../core" }
+  openatrading-core = { path = "../core" }
   wasm-bindgen = "0.2"
   wasm-bindgen-futures = "0.4"
   ```
@@ -173,11 +173,11 @@ All work happens in the isolated worktree, no changes to main branch until merge
 ### Step 2.1: Initialize Tauri project
 - [ ] Install Tauri CLI: `cargo install tauri-cli --version "^2"`
 - [ ] Create `src-tauri/` directory
-- [ ] Initialize Tauri: `cd src-tauri && cargo tauri init --name "trending-agent" --distDir "../src/dist" --devPath "../src" --pattern "modern"`
-- [ ] Update `src-tauri/Cargo.toml` to depend on `trending-agent-core`:
+- [ ] Initialize Tauri: `cd src-tauri && cargo tauri init --name "openatrading" --distDir "../src/dist" --devPath "../src" --pattern "modern"`
+- [ ] Update `src-tauri/Cargo.toml` to depend on `openatrading-core`:
   ```toml
   [dependencies]
-  trending-agent-core = { path = "../crates/core" }
+  openatrading-core = { path = "../crates/core" }
   tauri = { version = "2", features = ["devtools"] }
   ```
 - [ ] **Verify:** `cd src-tauri && cargo tauri dev` launches skeleton app
@@ -216,7 +216,7 @@ All work happens in the isolated worktree, no changes to main branch until merge
 ---
 
 ## Notes
-- All work is in `feature/workspace-restructure` branch, worktree at `../trending-agent-workspace-restructure`
+- All work is in `feature/workspace-restructure` branch, worktree at `../openatrading-workspace-restructure`
 - No changes to main branch until ready to merge
 - Follow existing code style (Chinese CLI output, anyhow errors, etc.)
 - Template data for Vue UI: reference `templates/html/` and `templates/markdown/` (UI optimization later)

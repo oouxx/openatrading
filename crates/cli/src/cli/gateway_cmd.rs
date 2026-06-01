@@ -4,14 +4,14 @@ use std::process::Command;
 use std::sync::Arc;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
-use trading_agent_core::social::channel_to_sender;
-use trading_agent_core::social::channels::discord::DiscordChannel;
-use trading_agent_core::social::channels::lark::LarkChannel;
-use trading_agent_core::social::channels::slack::SlackChannel;
-use trading_agent_core::social::channels::telegram::TelegramChannel;
-use trading_agent_core::social::{FilteredSender, NoopSender, NotificationSender};
-use trading_agent_web::gateway::{Gateway, GatewayConfig};
-use trading_agent_web::RoleEntry;
+use openatrading_core::social::channel_to_sender;
+use openatrading_core::social::channels::discord::DiscordChannel;
+use openatrading_core::social::channels::lark::LarkChannel;
+use openatrading_core::social::channels::slack::SlackChannel;
+use openatrading_core::social::channels::telegram::TelegramChannel;
+use openatrading_core::social::{FilteredSender, NoopSender, NotificationSender};
+use openatrading_web::gateway::{Gateway, GatewayConfig};
+use openatrading_web::RoleEntry;
 
 const SERVICE_NAME: &str = "openatrading";
 
@@ -226,7 +226,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     }
 
     if roles.is_empty() {
-        for (name, display_name, strategy) in trading_agent_core::roles::BUILTIN_STRATEGIES {
+        for (name, display_name, strategy) in openatrading_core::roles::BUILTIN_STRATEGIES {
             roles.push(RoleEntry {
                 name: name.to_string(),
                 display_name: display_name.to_string(),
@@ -240,9 +240,9 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
 pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: bool) -> Result<()> {
-    use trading_agent_core::cron::{self, CronConfig};
-    use trading_agent_core::llm::LlmClient;
-    use trading_agent_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
+    use openatrading_core::cron::{self, CronConfig};
+    use openatrading_core::llm::LlmClient;
+    use openatrading_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 
     let app_config = AppConfig::load(project_root)?;
 
@@ -298,7 +298,7 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 cron_trade,
                 cron_social,
                 LlmClient::from_env(),
-                trading_agent_core::api::Client::new(),
+                openatrading_core::api::Client::new(),
                 cron_roles,
             )
             .await

@@ -8,6 +8,8 @@ members = [
     "crates/provider",
     "crates/web",
     "src-tauri",
+    "crates/agent",
+
 ]
 
 [workspace.dependencies]

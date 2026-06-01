@@ -775,7 +775,7 @@ async-stream = "0.3"
 - [ ] **Step 7: 编译验证**
 
 ```bash
-cargo build -p trending-agent-core
+cargo build -p openatrading-core
 ```
 
 预期：编译通过。
@@ -885,7 +885,7 @@ impl Gateway {
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo build -p trending-agent-core
+cargo build -p openatrading-core
 ```
 
 预期：编译通过。
@@ -930,10 +930,10 @@ pub enum GatewayAction {
 
 ```rust
 use crate::cli::config::AppConfig;
-use trending_agent_core::cron::CronConfig;
-use trending_agent_core::gateway::{Gateway, GatewayConfig};
-use trending_agent_core::social::{NoopSender, NotificationSender};
-use trending_agent_core::social::telegram::TelegramSender;
+use openatrading_core::cron::CronConfig;
+use openatrading_core::gateway::{Gateway, GatewayConfig};
+use openatrading_core::social::{NoopSender, NotificationSender};
+use openatrading_core::social::telegram::TelegramSender;
 
 pub async fn cmd_gateway_run(
     project_root: &PathBuf,
@@ -1006,7 +1006,7 @@ pub async fn cmd_gateway_run(
 }
 ```
 
-同时删除不再需要的原有 import（移除 `use trending_agent_core::gateway::Gateway;` 的旧用法，清理 `use trending_agent_core::social::telegram::TelegramSender;` 等无用导入的路径调整）。
+同时删除不再需要的原有 import（移除 `use openatrading_core::gateway::Gateway;` 的旧用法，清理 `use openatrading_core::social::telegram::TelegramSender;` 等无用导入的路径调整）。
 
 - [ ] **Step 3: 修改 `mod.rs` 中 gateway run 的路由**
 
@@ -1019,7 +1019,7 @@ GatewayAction::Run { cron_only, web_only } => {
 - [ ] **Step 4: 编译验证**
 
 ```bash
-cargo build -p trending-agent-cli
+cargo build -p openatrading-cli
 ```
 
 预期：编译通过。
@@ -1056,7 +1056,7 @@ rm -rf crates/web
 cargo build
 ```
 
-预期：编译通过，`trending-agent-web` 二进制不再存在。
+预期：编译通过，`openatrading-web` 二进制不再存在。
 
 ---
 
@@ -1225,7 +1225,7 @@ all)
 ```makefile
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	cargo run -p trending-agent-cli -- gateway run --web-only
+	cargo run -p openatrading-cli -- gateway run --web-only
 ```
 
 `deploy-web` help text：
@@ -1264,7 +1264,7 @@ cargo clippy --all-targets -- -D warnings
 - [ ] **Step 4: 验证 CLI help**
 
 ```bash
-cargo run -p trending-agent-cli -- gateway run --help
+cargo run -p openatrading-cli -- gateway run --help
 ```
 
 预期：显示 `--cron-only` 和 `--web-only` flags。

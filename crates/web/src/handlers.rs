@@ -7,14 +7,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use trading_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use trading_agent_core::api::Client as ApiClient;
-use trading_agent_core::trade::TradeManager;
-use trading_agent_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
+use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::api::Client as ApiClient;
+use openatrading_core::trade::TradeManager;
+use openatrading_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
 
 use crate::cache::{self, CachePolicy};
 use crate::{AppState, RoleEntry};
-use trading_agent_core::roles::pnl::compute_pnl_history;
+use openatrading_core::roles::pnl::compute_pnl_history;
 
 // ── Response types ────────────────────────────────────
 
@@ -57,7 +57,7 @@ pub struct UpdateStrategyRequest {
 
 #[derive(Serialize)]
 pub struct PnlHistoryResponse {
-    pub points: Vec<trading_agent_core::roles::pnl::PnlPoint>,
+    pub points: Vec<openatrading_core::roles::pnl::PnlPoint>,
     pub initial_capital: f64,
 }
 
@@ -97,7 +97,7 @@ pub async fn get_overview(
             );
 
             let resp = OverviewResponse {
-                date: trading_agent_core::utils::time::beijing_now()
+                date: openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m-%d %H:%M")
                     .to_string(),
                 rise_count: overview.rise_count,
@@ -264,7 +264,7 @@ pub async fn get_field_items(
         return Ok(Json(serde_json::json!([])));
     }
     let date = q.date.unwrap_or_else(|| {
-        trading_agent_core::utils::time::beijing_now()
+        openatrading_core::utils::time::beijing_now()
             .format("%Y-%m-%d")
             .to_string()
     });
@@ -290,7 +290,7 @@ pub async fn get_timeline(
     if std::env::var("JIUYAN_PHONE").is_err() {
         return Ok(Json(serde_json::json!([])));
     }
-    let month = trading_agent_core::utils::time::beijing_now()
+    let month = openatrading_core::utils::time::beijing_now()
         .format("%Y-%m")
         .to_string();
     let cache_key = format!("timeline_{}", month);
@@ -683,7 +683,7 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    trading_agent_core::roles::save_role_strategy(
+    openatrading_core::roles::save_role_strategy(
         &state.strategies_dir,
         &body.name,
         &body.strategy,
@@ -714,7 +714,7 @@ pub async fn update_role_strategy(
     Path(name): Path<String>,
     Json(body): Json<UpdateStrategyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    trading_agent_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy)
+    openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy)
         .map_err(|e| {
             eprintln!("update_role_strategy error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -735,7 +735,7 @@ pub async fn delete_role(
 ) -> Result<impl IntoResponse, StatusCode> {
     state.trade.delete_positions_by_role(&name).ok();
     state.trade.delete_trade_logs_by_role(&name).ok();
-    trading_agent_core::roles::delete_role_dir(&state.strategies_dir, &name).ok();
+    openatrading_core::roles::delete_role_dir(&state.strategies_dir, &name).ok();
     {
         let mut roles = state.roles.write().await;
         roles.retain(|r| r.name != name);
@@ -830,15 +830,15 @@ pub async fn get_replay_events(
                 eprintln!("[replay] events error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            let events: Vec<trading_agent_core::api::xuangubao::ReplayEvent> = all_events
+            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
                 .iter()
-                .map(trading_agent_core::api::xuangubao::ReplayEvent::from)
+                .map(openatrading_core::api::xuangubao::ReplayEvent::from)
                 .collect();
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
                 .cloned()
                 .unwrap_or_default();
-            let page = trading_agent_core::api::xuangubao::ReplayPage {
+            let page = openatrading_core::api::xuangubao::ReplayPage {
                 date,
                 market_phase: String::new(),
                 events,
@@ -863,7 +863,7 @@ pub async fn get_replay_index(
         CachePolicy::replay(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = trading_agent_core::api::xuangubao::fetch_index_trends(&client)
+            let data = openatrading_core::api::xuangubao::fetch_index_trends(&client)
                 .await
                 .map_err(|e| {
                     eprintln!("[replay] index trend error: {e}");
@@ -949,7 +949,7 @@ pub async fn get_replay_snapshots(
                 eprintln!("[replay] snapshots fetch error: {e}");
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            let snaps = trading_agent_core::api::xuangubao::build_replay_snapshots(&events);
+            let snaps = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
             Ok(serde_json::to_string(&snaps).unwrap_or_default())
         },
     )
@@ -977,7 +977,7 @@ pub async fn ai_replay_analyze(
         eprintln!("[replay] analyze fetch error: {e}");
         StatusCode::SERVICE_UNAVAILABLE
     })?;
-    let snapshots = trading_agent_core::api::xuangubao::build_replay_snapshots(&events);
+    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
 
     // Build a compact data table for the prompt
     let mut data_table = String::from("时间    情绪 多  空  主线板块(前3)\n");

@@ -1,5 +1,5 @@
 [package]
-name = "trading-agent-channels"
+name = "openatrading-channels"
 version = "0.10.3"
 edition = "2021"
 

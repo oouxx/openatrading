@@ -7,12 +7,12 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  theme: (localStorage.getItem("trading-agent-theme") as "dark" | "light") ||
+  theme: (localStorage.getItem("openatrading-theme") as "dark" | "light") ||
     (window.matchMedia?.("(prefers-color-scheme: light)").matches
       ? "light"
       : "dark"),
   setTheme: (theme) => {
-    localStorage.setItem("trading-agent-theme", theme);
+    localStorage.setItem("openatrading-theme", theme);
     document.documentElement.setAttribute("data-theme", theme);
     set({ theme });
   },

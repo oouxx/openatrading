@@ -1,10 +1,10 @@
 [package]
-name = "trading-agent-api"
+name = "openatrading-api"
 version = "0.10.3"
 edition = "2021"
 
 [lib]
-name = "trading_agent_api"
+name = "openatrading_api"
 path = "src/lib.rs"
 
 [dependencies]

@@ -2,7 +2,7 @@ const isTauri = "__TAURI_INTERNALS__" in window;
 
 export function getApiBaseUrl(): string {
   if (isTauri) return "";
-  return localStorage.getItem("trading-agent-api-url") || __API_BASE_URL__;
+  return localStorage.getItem("openatrading-api-url") || __API_BASE_URL__;
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

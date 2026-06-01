@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 trending-agent 升级为持续运行的交易 agent，新增持仓管理、SQLite 历史存储、定时调度、Telegram 交互、Gateway 生命周期管理。
+**Goal:** 将 openatrading 升级为持续运行的交易 agent，新增持仓管理、SQLite 历史存储、定时调度、Telegram 交互、Gateway 生命周期管理。
 
 **Architecture:** Core crate 新增 trade/memory/cron/social/gateway 五个模块，CLI 新增 serve/trade 命令。Gateway 单进程运行 cron + telegram sessions，Web 独立部署。
 
@@ -55,7 +55,7 @@ pub mod gateway;
 - [ ] **Step 3: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 4: Commit**
@@ -122,7 +122,7 @@ pub trait TradeManager: Send + Sync {
 - [ ] **Step 2: 编译**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 3: Commit**
@@ -356,7 +356,7 @@ mod tests {
 - [ ] **Step 2: 运行测试**
 
 ```bash
-cargo test -p trending-agent-core trade::
+cargo test -p openatrading-core trade::
 ```
 
 - [ ] **Step 3: Commit**
@@ -400,7 +400,7 @@ pub trait MemoryStore: Send + Sync {
 - [ ] **Step 2: 编译**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 3: Commit**
@@ -536,7 +536,7 @@ impl MemoryStore for SqliteMemoryStore {
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 3: Commit**
@@ -677,7 +677,7 @@ mod tests {
 - [ ] **Step 2: 运行测试**
 
 ```bash
-cargo test -p trending-agent-core roles::prompt::
+cargo test -p openatrading-core roles::prompt::
 ```
 
 - [ ] **Step 3: Commit**
@@ -836,7 +836,7 @@ async fn run_decision(
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 3: Commit**
@@ -956,7 +956,7 @@ impl NotificationSender for TelegramSender {
 - [ ] **Step 3: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 4: Commit**
@@ -1122,7 +1122,7 @@ impl Gateway {
 - [ ] **Step 4: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 5: Commit**
@@ -1186,7 +1186,7 @@ async fn run_decision(
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo check -p trending-agent-core
+cargo check -p openatrading-core
 ```
 
 - [ ] **Step 3: Commit**
@@ -1294,7 +1294,7 @@ Update `load_from`, `merge`, and `DEFAULT_CONFIG_TOML` to include new sections.
 - [ ] **Step 3: 编译验证**
 
 ```bash
-cargo check -p trending-agent-cli
+cargo check -p openatrading-cli
 ```
 
 - [ ] **Step 4: Commit**
@@ -1334,9 +1334,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cli::config::AppConfig;
-use trending_agent_core::gateway::Gateway;
-use trending_agent_core::social::telegram::TelegramSender;
-use trending_agent_core::social::{NoopSender, NotificationSender};
+use openatrading_core::gateway::Gateway;
+use openatrading_core::social::telegram::TelegramSender;
+use openatrading_core::social::{NoopSender, NotificationSender};
 
 pub async fn cmd_serve(project_root: &PathBuf) -> Result<()> {
     let app_config = AppConfig::load(project_root)?;
@@ -1383,7 +1383,7 @@ if let Some(Commands::Serve) = cli.command {
 - [ ] **Step 4: 编译验证**
 
 ```bash
-cargo check -p trending-agent-cli
+cargo check -p openatrading-cli
 ```
 
 - [ ] **Step 5: Commit**
@@ -1451,7 +1451,7 @@ use std::path::PathBuf;
 use chrono::Local;
 
 use crate::cli::config::AppConfig;
-use trending_agent_core::trade::{Position, SqliteTradeManager, TradeManager};
+use openatrading_core::trade::{Position, SqliteTradeManager, TradeManager};
 
 pub fn cmd_trade_add(
     project_root: &PathBuf,
@@ -1526,7 +1526,7 @@ if let Some(Commands::Trade { action }) = cli.command {
 - [ ] **Step 4: 编译验证**
 
 ```bash
-cargo check -p trending-agent-cli
+cargo check -p openatrading-cli
 ```
 
 - [ ] **Step 5: Commit**

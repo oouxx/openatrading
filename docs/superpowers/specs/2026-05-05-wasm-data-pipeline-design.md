@@ -49,7 +49,7 @@ Vue → stores/report.ts → api/web.ts → wasm.run_report() → crates/core �
 │  └────────────────────┼───────────────────────────┘   │
 │                       │                                │
 │  ┌────────────────────▼───────────────────────────┐   │
-│  │  WASM Module (trending-agent-wasm)              │   │
+│  │  WASM Module (openatrading-wasm)              │   │
 │  │  run_report() → serde_json::to_string(&Report)  │   │
 │  │  ┌──────────────────────────────────────────┐  │   │
 │  │  │  crates/core (browser fetch via reqwest)  │  │   │
@@ -123,7 +123,7 @@ run_report() {
 ```toml
 # crates/wasm/Cargo.toml
 [dependencies]
-trending-agent-core = { path = "../core" }
+openatrading-core = { path = "../core" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -298,7 +298,7 @@ export default {
 }
 ```
 
-WASM 输出到 `src/src/wasm/`，`api/web.ts` 通过 `import('../wasm/trending_agent_wasm')` 加载。
+WASM 输出到 `src/src/wasm/`，`api/web.ts` 通过 `import('../wasm/openatrading_wasm')` 加载。
 
 ---
 

@@ -1,14 +1,14 @@
 # Vue Frontend Implementation Plan
 
 **Feature branch:** `feature/workspace-restructure`
-**Worktree path:** `/Users/wxx/Desktop/github/trending-agent-workspace-restructure`
+**Worktree path:** `/Users/wxx/Desktop/github/openatrading-workspace-restructure`
 **Design doc:** `docs/superpowers/specs/2026-05-04-vue-frontend-design.md`
 
 ---
 
 ## Overview
 
-Implement Vue3 + TypeScript frontend in `src/` to clearly display all data from the trending-agent core:
+Implement Vue3 + TypeScript frontend in `src/` to clearly display all data from the openatrading core:
 - Market overview (KPI cards)
 - Limit-up stocks (leaderboard)
 - Plate abnormal movements

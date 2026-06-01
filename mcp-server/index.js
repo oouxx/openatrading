@@ -11,11 +11,11 @@ import { accessSync, constants } from "node:fs";
 // ── Resolve CLI binary ──────────────────────────────────────
 
 const CLI =
-  process.env.TRENDING_AGENT_BIN ??
+  process.env.OPENATRADING_BIN ??
   (() => {
     const candidates = [
-      "./target/release/trending-agent",
-      "./target/debug/trending-agent",
+      "./target/release/openatrading",
+      "./target/debug/openatrading",
     ];
     for (const c of candidates) {
       try {
@@ -25,7 +25,7 @@ const CLI =
         /* not found */
       }
     }
-    return "trending-agent"; // hope it's on PATH
+    return "openatrading"; // hope it's on PATH
   })();
 
 function checkCli() {
@@ -33,8 +33,8 @@ function checkCli() {
     accessSync(CLI, constants.X_OK);
   } catch {
     throw new Error(
-      `trending-agent binary not found at "${CLI}". ` +
-        `Build with "cargo build --release -p trending-agent-cli" or set TRENDING_AGENT_BIN env var.`
+      `openatrading binary not found at "${CLI}". ` +
+        `Build with "cargo build --release -p openatrading-cli" or set OPENATRADING_BIN env var.`
     );
   }
 }
@@ -204,7 +204,7 @@ function stripAnsi(str) {
 async function execCli(cmdParts) {
   const displayCmd = cmdParts.map((p) => (p.includes(" ") ? `"${p}"` : p)).join(" ");
 
-  console.error(`[trending-agent-mcp] $ ${displayCmd}`);
+  console.error(`[openatrading-mcp] $ ${displayCmd}`);
 
   const proc = Bun.spawn(cmdParts, {
     stdout: "pipe",
@@ -243,7 +243,7 @@ async function execCli(cmdParts) {
 // ── Server setup ────────────────────────────────────────────
 
 const server = new Server(
-  { name: "trending-agent", version: "1.0.0" },
+  { name: "openatrading", version: "1.0.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -275,7 +275,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ? `${err.message}\n\nStderr:\n${err.stderr}`
       : err.message;
 
-    console.error(`[trending-agent-mcp] ERROR: ${message}`);
+    console.error(`[openatrading-mcp] ERROR: ${message}`);
     return {
       content: [{ type: "text", text: `Error: ${message}` }],
       isError: true,
@@ -288,5 +288,5 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-console.error(`[trending-agent-mcp] Server started (bun ${Bun.version})`);
-console.error(`[trending-agent-mcp] CLI binary: ${CLI}`);
+console.error(`[openatrading-mcp] Server started (bun ${Bun.version})`);
+console.error(`[openatrading-mcp] CLI binary: ${CLI}`);

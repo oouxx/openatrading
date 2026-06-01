@@ -1,16 +1,16 @@
 [package]
-name = "trading-agent-web"
+name = "openatrading-web"
 version = "0.10.3"
 edition = "2021"
 
 [lib]
-name = "trading_agent_web"
+name = "openatrading_web"
 path = "src/lib.rs"
 
 [dependencies]
-trading-agent-core = { path = "../core" }
-trading-agent-channels = { path = "../channels" }
-trading-agent-provider = { path = "../provider" }
+openatrading-core = { path = "../core" }
+openatrading-channels = { path = "../channels" }
+openatrading-provider = { path = "../provider" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

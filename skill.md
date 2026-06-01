@@ -6,29 +6,29 @@ A股市场异动追踪工具，从选股宝和韭研公社获取数据，生成 
 
 ```bash
 # 指定数据源（逗号分隔）
-trending-agent -d limit_up                          # 涨停数据
-trending-agent -d limit_down                        # 跌停数据
-trending-agent -d overview                          # 市场概览
-trending-agent -d field_item                        # 韭研公社异动数据
-trending-agent -d timeline                          # 韭研公社时间线
-trending-agent -d community                         # 韭研公社社群文章
-trending-agent -d cls_telegraph                     # 财联社电报
-trending-agent -d sentiment                         # 舆情分析
-trending-agent                                      # 全量数据（所有数据源）
+openatrading -d limit_up                          # 涨停数据
+openatrading -d limit_down                        # 跌停数据
+openatrading -d overview                          # 市场概览
+openatrading -d field_item                        # 韭研公社异动数据
+openatrading -d timeline                          # 韭研公社时间线
+openatrading -d community                         # 韭研公社社群文章
+openatrading -d cls_telegraph                     # 财联社电报
+openatrading -d sentiment                         # 舆情分析
+openatrading                                      # 全量数据（所有数据源）
 
 # 组合数据源 + 格式
-trending-agent -d limit_up,overview --json           # 涨停+概览，JSON 输出
-trending-agent -d limit_up,overview,sentiment --ai   # 多数据源 + AI 分析
-trending-agent --html -o report.html                 # HTML 格式输出到文件
+openatrading -d limit_up,overview --json           # 涨停+概览，JSON 输出
+openatrading -d limit_up,overview,sentiment --ai   # 多数据源 + AI 分析
+openatrading --html -o report.html                 # HTML 格式输出到文件
 
 # 选项
-trending-agent --ai              # 启用 AI 分析
-trending-agent --json            # JSON 格式输出
-trending-agent --html            # HTML 格式输出
-trending-agent --markdown        # Markdown 格式（默认）
-trending-agent -o ./reports      # 指定输出文件
-trending-agent --tgb-user <id>   # 淘股吧用户 ID（community 数据源）
-trending-agent --cls-category x  # 财联社电报分类
+openatrading --ai              # 启用 AI 分析
+openatrading --json            # JSON 格式输出
+openatrading --html            # HTML 格式输出
+openatrading --markdown        # Markdown 格式（默认）
+openatrading -o ./reports      # 指定输出文件
+openatrading --tgb-user <id>   # 淘股吧用户 ID（community 数据源）
+openatrading --cls-category x  # 财联社电报分类
 ```
 
 ## 环境变量
@@ -69,13 +69,13 @@ src/
 
 ## MCP 接入（OpenClaw / Hermes Agent）
 
-trending-agent 通过 **MCP (Model Context Protocol)** 暴露为标准化工具，可被 OpenClaw 和 NousResearch Hermes Agent 调用。以下介绍如何搭建 MCP Server 包装层并配置接入。
+openatrading 通过 **MCP (Model Context Protocol)** 暴露为标准化工具，可被 OpenClaw 和 NousResearch Hermes Agent 调用。以下介绍如何搭建 MCP Server 包装层并配置接入。
 
 ### 整体架构
 
 ```
 OpenClaw Gateway ──┐
-                    ├── MCP Client ── trending-agent-mcp (stdio MCP Server) ── trending-agent CLI
+                    ├── MCP Client ── openatrading-mcp (stdio MCP Server) ── openatrading CLI
 Hermes Agent ──────┘
 ```
 
@@ -103,7 +103,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { execSync } from "node:child_process";
 
-const CLI = "trending-agent";
+const CLI = "openatrading";
 
 // tool → --data 参数映射
 const TOOL_DATA_MAP: Record<string, string> = {
@@ -250,7 +250,7 @@ const TOOLS = {
 };
 
 const server = new Server(
-  { name: "trending-agent", version: "1.0.0" },
+  { name: "openatrading", version: "1.0.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -318,8 +318,8 @@ OpenClaw 通过 `~/.openclaw/openclaw.json` 配置 MCP servers。支持两种方
 ```bash
 bun add -g mcporter
 
-mcporter config add trending-agent \
-  --stdio "node /path/to/trending-agent/mcp-server/index.js"
+mcporter config add openatrading \
+  --stdio "node /path/to/openatrading/mcp-server/index.js"
 
 # 重启 gateway
 openclaw gateway restart
@@ -334,10 +334,10 @@ openclaw gateway restart
   "mcp": {
     "servers": [
       {
-        "name": "trending-agent",
+        "name": "openatrading",
         "transport": "stdio",
         "command": "bun",
-        "args": ["/path/to/trending-agent/mcp-server/index.js"]
+        "args": ["/path/to/openatrading/mcp-server/index.js"]
       }
     ]
   }
@@ -364,10 +364,10 @@ openclaw gateway restart
 
 ```yaml
 mcp_servers:
-  trending-agent:
+  openatrading:
     command: "bun"
     args:
-      - "/path/to/trending-agent/mcp-server/index.js"
+      - "/path/to/openatrading/mcp-server/index.js"
     tools:
       include:
         - limit_up
@@ -396,23 +396,23 @@ hermes chat
 /tools list
 ```
 
-验证 `trending-agent-*` 工具已出现在 tools 列表中。
+验证 `openatrading-*` 工具已出现在 tools 列表中。
 
 ### 可用 MCP Tools
 
 | Tool | 对应 CLI 调用 | 说明 |
 |------|-------------|------|
-| `limit_up` | `trending-agent -d limit_up` | 涨停板数据（选股宝） |
-| `limit_down` | `trending-agent -d limit_down` | 跌停板数据（选股宝） |
-| `overview` | `trending-agent -d overview` | 市场概览（情绪周期、空间板、龙头梯队） |
-| `field_item` | `trending-agent -d field_item` | 韭研公社题材异动 |
-| `timeline` | `trending-agent -d timeline` | 韭研公社事件时间线 |
-| `community` | `trending-agent -d community` | 韭研公社社群文章 |
-| `cls_telegraph` | `trending-agent -d cls_telegraph` | 财联社电报/快讯 |
-| `sentiment` | `trending-agent -d sentiment` | A股舆情分析 |
-| `super_stock` | `trending-agent -d super_stock` | 强势股/妖股 |
-| `plate_abnormal` | `trending-agent -d plate_abnormal` | 板块异动 |
-| `run` | `trending-agent` (默认全量) 或 `trending-agent -d ...` | 全量报告 + 可选 AI 分析 |
+| `limit_up` | `openatrading -d limit_up` | 涨停板数据（选股宝） |
+| `limit_down` | `openatrading -d limit_down` | 跌停板数据（选股宝） |
+| `overview` | `openatrading -d overview` | 市场概览（情绪周期、空间板、龙头梯队） |
+| `field_item` | `openatrading -d field_item` | 韭研公社题材异动 |
+| `timeline` | `openatrading -d timeline` | 韭研公社事件时间线 |
+| `community` | `openatrading -d community` | 韭研公社社群文章 |
+| `cls_telegraph` | `openatrading -d cls_telegraph` | 财联社电报/快讯 |
+| `sentiment` | `openatrading -d sentiment` | A股舆情分析 |
+| `super_stock` | `openatrading -d super_stock` | 强势股/妖股 |
+| `plate_abnormal` | `openatrading -d plate_abnormal` | 板块异动 |
+| `run` | `openatrading` (默认全量) 或 `openatrading -d ...` | 全量报告 + 可选 AI 分析 |
 
 ### 典型工作流
 
@@ -432,11 +432,11 @@ hermes chat
 
 ```
 > 获取今天的市场概览，关注空间板和龙头梯队
-→ Hermes 调用 trending-agent-overview
+→ Hermes 调用 openatrading-overview
 → 解析并呈现情绪周期数据
 
 > 韭研公社最近有什么异动？
-→ Hermes 调用 trending-agent-field_item + trending-agent-timeline
+→ Hermes 调用 openatrading-field_item + openatrading-timeline
 → 汇总题材和事件
 ```
 
@@ -461,10 +461,10 @@ export JIUYAN_PASSWORD=xxxx
   "mcp": {
     "servers": [
       {
-        "name": "trending-agent",
+        "name": "openatrading",
         "transport": "stdio",
         "command": "bun",
-        "args": ["/path/to/trending-agent/mcp-server/index.js"],
+        "args": ["/path/to/openatrading/mcp-server/index.js"],
         "env": {
           "LLM_API_KEY": "${LLM_API_KEY}",
           "LLM_MODEL": "deepseek-chat",
@@ -481,9 +481,9 @@ Hermes Agent 中在 `mcp_servers` 下添加 `env` 字段：
 
 ```yaml
 mcp_servers:
-  trending-agent:
+  openatrading:
     command: "bun"
-    args: ["/path/to/trending-agent/mcp-server/index.js"]
+    args: ["/path/to/openatrading/mcp-server/index.js"]
     env:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_MODEL: deepseek-chat
