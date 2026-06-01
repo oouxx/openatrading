@@ -415,7 +415,10 @@ async fn cmd_decision(
         Arc::new(NoopSender)
     };
 
-    let llm = LlmClient::from_env();
+    let llm = LlmClient::from_config(
+        app_config.llm.provider.as_deref(),
+        app_config.llm.model.as_deref(),
+    );
     let api = Client::new();
 
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
