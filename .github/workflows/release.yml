@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - run: cargo build --release -p trending-agent-cli --target x86_64-unknown-linux-gnu
+      - run: cargo build --release -p openatrading-cli --target x86_64-unknown-linux-gnu
         env:
           GIT_VERSION: ${{ github.ref_name }}
       - name: Rename binary
@@ -46,7 +46,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
-      - run: cargo build --release -p trending-agent-cli --target aarch64-unknown-linux-gnu
+      - run: cargo build --release -p openatrading-cli --target aarch64-unknown-linux-gnu
         env:
           GIT_VERSION: ${{ github.ref_name }}
       - name: Rename binary

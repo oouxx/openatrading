@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - run: cargo build --release -p trending-agent-cli
+      - run: cargo build --release -p openatrading-cli
         env:
           GIT_VERSION: ${{ env.RELEASE_TAG }}
       - name: Rename binary
@@ -55,7 +55,7 @@ jobs:
           fetch-tags: true
       - name: Add rust target
         run: rustup target add ${{ matrix.target }}
-      - run: cargo build --release -p trending-agent-cli --target ${{ matrix.target }}
+      - run: cargo build --release -p openatrading-cli --target ${{ matrix.target }}
         env:
           GIT_VERSION: ${{ env.RELEASE_TAG }}
       - name: Rename binary
