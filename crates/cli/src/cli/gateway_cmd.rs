@@ -183,7 +183,7 @@ pub fn create_notification_sender(
         other => {
             eprintln!("[gateway] unknown notify_channel: {other}, falling back to telegram");
             sc.telegram.as_ref().and_then(create_telegram_sender)
-        }
+        },
     };
 
     match sender {

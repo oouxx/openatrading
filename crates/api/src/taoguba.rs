@@ -442,7 +442,7 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             Err(e) => {
                 eprintln!("获取帖子内容失败: {}", e);
                 (String::new(), String::new())
-            }
+            },
         };
 
         let date = if create_time.is_empty() {

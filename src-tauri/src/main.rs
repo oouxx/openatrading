@@ -1,8 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::llm::LlmClient;
@@ -10,6 +7,9 @@ use openatrading_core::roles::BUILTIN_STRATEGIES;
 use openatrading_core::trade::TradeManager;
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 fn find_project_root() -> PathBuf {
     // Walk up from current_dir looking for .env first (workspace root),
@@ -126,12 +126,12 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 "market_temperature": overview.market_temperature,
                 "yesterday_limit_up_avg_pcp": overview.yesterday_limit_up_avg_pcp,
             }))
-        }
+        },
         "/api/limit-up" => {
             let client = XuanguBaoClient::new();
             let data = client.fetch_limit_up().await.map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/limit-down" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -139,7 +139,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/super-stock" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -147,7 +147,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/yesterday-limit-up" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -155,7 +155,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/index-quotes" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -163,7 +163,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/dapan-abnormal" => {
             let data = state
                 .api
@@ -172,7 +172,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/timeline" => {
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Ok(serde_json::json!([]));
@@ -187,7 +187,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/sentiment" => {
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Err("JIUYAN_PHONE not set".into());
@@ -196,7 +196,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/telegraph" => {
             let data = state
                 .api
@@ -205,7 +205,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/dragon-tiger/combined" => {
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
@@ -218,7 +218,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         "/api/ai/roles" => {
             let roles_guard = state.roles.read().await;
             let list: Vec<serde_json::Value> = roles_guard
@@ -226,11 +226,11 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map(|r| serde_json::json!({"name": r.name, "display_name": r.display_name}))
                 .collect();
             Ok(serde_json::json!(list))
-        }
+        },
         "/api/roles" => {
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
-        }
+        },
         "/api/replay/events" => {
             let client = XuanguBaoClient::new();
             let has_cursor = extract_query(path, "cursor").is_some();
@@ -268,7 +268,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 next_cursor,
             };
             Ok(serde_json::to_value(page).unwrap_or_default())
-        }
+        },
         "/api/replay/snapshots" => {
             let client = XuanguBaoClient::new();
             let events = client
@@ -277,7 +277,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map_err(|e| format!("{e}"))?;
             let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
             Ok(serde_json::to_value(snapshots).unwrap_or_default())
-        }
+        },
         "/api/replay/index" => {
             use openatrading_core::api::xuangubao::fetch_index_trends;
             let client = XuanguBaoClient::new();
@@ -285,7 +285,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        }
+        },
         _ => {
             if path.strip_prefix("/api/replay/news").is_some() {
                 let client = XuanguBaoClient::new();
@@ -414,7 +414,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 return dispatch_roles_get(rest, state).await;
             }
             Err(format!("unknown path: {path}"))
-        }
+        },
     }
 }
 
@@ -434,15 +434,18 @@ async fn dispatch_roles_get(
                 .trade
                 .list_positions(name)
                 .map_err(|e| format!("{e}"))?;
-            let result: Vec<serde_json::Value> = positions.iter().map(|p| {
-                serde_json::json!({
-                    "id": p.id, "symbol": p.symbol, "stock_name": p.stock_name,
-                    "cost_price": p.cost_price, "current_price": p.current_price.unwrap_or(0.0),
-                    "shares": p.shares, "entry_reason": p.entry_reason, "entry_date": p.entry_date,
+            let result: Vec<serde_json::Value> = positions
+                .iter()
+                .map(|p| {
+                    serde_json::json!({
+                        "id": p.id, "symbol": p.symbol, "stock_name": p.stock_name,
+                        "cost_price": p.cost_price, "current_price": p.current_price.unwrap_or(0.0),
+                        "shares": p.shares, "entry_reason": p.entry_reason, "entry_date": p.entry_date,
+                    })
                 })
-            }).collect();
+                .collect();
             Ok(serde_json::json!(result))
-        }
+        },
         "logs" => {
             let logs = state
                 .trade
@@ -459,7 +462,7 @@ async fn dispatch_roles_get(
                 })
                 .collect();
             Ok(serde_json::json!(result))
-        }
+        },
         "pnl-history" => {
             let days: usize = extract_query(rest, "days")
                 .and_then(|s| s.parse().ok())
@@ -480,7 +483,7 @@ async fn dispatch_roles_get(
                 points = points.into_iter().skip(cutoff).collect();
             }
             Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
-        }
+        },
         "history" => {
             let limit: usize = extract_query(rest, "limit")
                 .and_then(|s| s.parse().ok())
@@ -490,7 +493,7 @@ async fn dispatch_roles_get(
                 .get_closed_positions(name, limit)
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(positions).unwrap_or_default())
-        }
+        },
         _ => Err(format!("unknown roles action: {action}")),
     }
 }
@@ -532,7 +535,7 @@ async fn dispatch_post(
                 });
             }
             Ok(serde_json::json!({"ok": true}))
-        }
+        },
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
@@ -559,7 +562,7 @@ async fn dispatch_post(
                             entry.strategy = strategy;
                         }
                         Ok(serde_json::json!({"ok": true}))
-                    }
+                    },
                     "reset" => {
                         state
                             .trade
@@ -570,7 +573,7 @@ async fn dispatch_post(
                             .delete_positions_by_role(name)
                             .map_err(|e| format!("{e}"))?;
                         Ok(serde_json::json!({"ok": true}))
-                    }
+                    },
                     "delete" => {
                         state
                             .trade
@@ -585,13 +588,13 @@ async fn dispatch_post(
                         let mut roles = state.roles.write().await;
                         roles.retain(|r| r.name != name);
                         Ok(serde_json::json!({"ok": true}))
-                    }
+                    },
                     _ => Err(format!("unknown roles action: {action}")),
                 }
             } else {
                 Err(format!("unknown path: {path}"))
             }
-        }
+        },
     }
 }
 
@@ -730,14 +733,14 @@ async fn api_chat_stream(
                     eprintln!("[chat_stream] channel send error: {e}");
                     format!("channel error: {e}")
                 })?;
-            }
+            },
             Ok(_) => {
                 empty_count += 1;
-            }
+            },
             Err(e) => {
                 eprintln!("[chat_stream] stream error: {e}");
                 return Err(format!("stream error: {e}"));
-            }
+            },
         }
     }
 
@@ -776,14 +779,14 @@ async fn api_replay_analyze(
                 channel
                     .send(text)
                     .map_err(|e| format!("channel error: {e}"))?;
-            }
+            },
             Err(e) => {
                 channel
                     .send(format!("[ERROR] {e}"))
                     .map_err(|e| format!("channel error: {e}"))?;
                 break;
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     Ok(())

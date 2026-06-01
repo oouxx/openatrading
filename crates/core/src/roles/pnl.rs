@@ -40,7 +40,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                         *existing_avg = total_cost / total_shares as f64;
                     })
                     .or_insert((log.shares, log.price));
-            }
+            },
             "Close" => {
                 let proceeds = log.price * log.shares as f64;
                 cash += proceeds;
@@ -61,8 +61,8 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                         }
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         // Mark-to-market: use last known price for open positions

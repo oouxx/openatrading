@@ -87,11 +87,11 @@ fn next_open_timestamp() -> i64 {
         MarketPhase::PreOpen => {
             let secs = (open_am - time).num_seconds();
             now.timestamp() + secs
-        }
+        },
         MarketPhase::MorningBreak => {
             let secs = (open_pm - time).num_seconds();
             now.timestamp() + secs
-        }
+        },
         MarketPhase::Closed | MarketPhase::Weekend => {
             // Find the next trading day (skip weekends)
             let mut days_ahead = 1i64;
@@ -108,7 +108,7 @@ fn next_open_timestamp() -> i64 {
                 }
                 days_ahead += 1;
             }
-        }
+        },
         MarketPhase::MorningOpen | MarketPhase::AfternoonOpen => 0,
     }
 }
@@ -185,7 +185,7 @@ impl CachePolicy {
                     // Fallback: short TTL if we can't compute the next open
                     Some(now + 60)
                 }
-            }
+            },
         }
     }
 }

@@ -153,8 +153,8 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::{create_agent, AgentMessage};
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
+    use openatrading_core::llm::{create_agent, AgentMessage};
 
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
         openatrading_core::llm::tools::get_market_overview(),
@@ -190,7 +190,7 @@ pub async fn ai_chat(
                     }],
                     timestamp: 0,
                 });
-            }
+            },
             "assistant" => {
                 pi_messages.push(AgentMessage::Assistant {
                     content: vec![ContentBlock::Text {
@@ -205,8 +205,8 @@ pub async fn ai_chat(
                     error_message: None,
                     timestamp: 0,
                 });
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     pi_messages.push(AgentMessage::User {
@@ -221,28 +221,24 @@ pub async fn ai_chat(
         match agent.process(pi_messages).await {
             Ok(results) => {
                 for msg in &results {
-                    match msg {
-                        AgentMessage::Assistant { content, error_message, .. } => {
-                            if let Some(err) = error_message {
-                                if !err.is_empty() {
-                                    yield Ok(Event::default().data(format!("[ERROR] {err}")));
-                                }
-                            }
-                            for block in content {
-                                match block {
-                                    ContentBlock::Text { text, .. } => {
-                                        if !text.is_empty() {
-                                            yield Ok(Event::default().data(text.replace('\n', "\\n")));
-                                        }
-                                    }
-                                    ContentBlock::ToolCall { name, .. } => {
-                                        yield Ok(Event::default().event("tool").data(name.as_str()));
-                                    }
-                                    _ => {}
-                                }
+                    if let AgentMessage::Assistant { content, error_message, .. } = msg {
+                        if let Some(err) = error_message {
+                            if !err.is_empty() {
+                                yield Ok(Event::default().data(format!("[ERROR] {err}")));
                             }
                         }
-                        _ => {}
+                        for block in content {
+                            match block {
+                                ContentBlock::Text { text, .. }
+                                    if !text.is_empty() => {
+                                        yield Ok(Event::default().data(text.replace('\n', "\\n")));
+                                    }
+                                ContentBlock::ToolCall { name, .. } => {
+                                    yield Ok(Event::default().event("tool").data(name.as_str()));
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                 }
             }

@@ -57,15 +57,15 @@ pub fn last_n_trading_days(n: usize) -> Vec<String> {
             chrono::Weekday::Sat => {
                 current = current.pred_opt().unwrap();
                 continue;
-            }
+            },
             chrono::Weekday::Sun => {
                 current = current.pred_opt().unwrap();
                 continue;
-            }
+            },
             _ => {
                 dates.push(current.format("%Y%m%d").to_string());
                 current = current.pred_opt().unwrap();
-            }
+            },
         }
     }
     dates

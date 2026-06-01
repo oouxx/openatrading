@@ -327,15 +327,15 @@ impl XuanguBaoClient {
                 chrono::Weekday::Sat => {
                     current = current.pred_opt().unwrap();
                     continue;
-                }
+                },
                 chrono::Weekday::Sun => {
                     current = current.pred_opt().unwrap();
                     continue;
-                }
+                },
                 _ => {
                     dates.push(current.format("%Y-%m-%d").to_string());
                     current = current.pred_opt().unwrap();
-                }
+                },
             }
         }
         dates
@@ -1056,7 +1056,7 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
             match ev.good_or_bad {
                 1 => bucket_bull += 1,
                 2 => bucket_bear += 1,
-                _ => {}
+                _ => {},
             }
             if ev.event_type == 11001 {
                 if let Some(ref pd) = ev.plate_abnormal_event_data {
@@ -1187,9 +1187,8 @@ pub async fn fetch_index_trends(client: &XuanguBaoClient) -> Result<IndexTrendDa
 
 impl XuanguBaoClient {
     async fn fetch_index_trend(&self, prod_code: &str) -> Result<Vec<IndexTick>> {
-        let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields=tick_at,close_px&prod_code={prod_code}"
-        );
+        let url =
+            format!("https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields=tick_at,close_px&prod_code={prod_code}");
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
             resp["code"] == 20000,

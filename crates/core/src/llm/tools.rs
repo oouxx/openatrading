@@ -94,10 +94,7 @@ pub fn get_limit_up() -> Arc<DynTool> {
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_limit_up()
-                    .await
-                    .map_err(to_box_err)?;
+                let result = XuanguBaoClient::new().fetch_limit_up().await.map_err(to_box_err)?;
                 Ok(text_result(&result))
             })
         }),
@@ -111,10 +108,7 @@ pub fn get_super_stock() -> Arc<DynTool> {
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_super_stock()
-                    .await
-                    .map_err(to_box_err)?;
+                let result = XuanguBaoClient::new().fetch_super_stock().await.map_err(to_box_err)?;
                 Ok(text_result(&result))
             })
         }),

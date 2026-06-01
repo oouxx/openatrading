@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use openatrading_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use openatrading_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -72,7 +72,7 @@ fn substitute_env(mut content: &str) -> std::borrow::Cow<'_, str> {
                     result.push_str("${");
                     result.push_str(var);
                     result.push('}');
-                }
+                },
             }
             content = &rest[end + 1..];
         } else {
@@ -265,7 +265,7 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {}: {e}", config_path.display());
                 return None;
-            }
+            },
         };
         // Substitute ${VAR} with environment variables
         let content = substitute_env(&content);
@@ -274,7 +274,7 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {} (解析错误): {e}", config_path.display());
                 return None;
-            }
+            },
         };
         let roles = raw
             .roles
@@ -332,7 +332,7 @@ impl AppConfig {
                 let base = std::fs::read_to_string(&base_path)
                     .with_context(|| format!("无法读取 base.md: {}", base_path.display()))?;
                 Ok(base)
-            }
+            },
             MergeMode::Supplement => {
                 let base = std::fs::read_to_string(&base_path)
                     .with_context(|| format!("无法读取 base.md: {}", base_path.display()))?;
@@ -343,13 +343,13 @@ impl AppConfig {
                 } else {
                     Ok(format!("{base}\n\n{supplement}"))
                 }
-            }
+            },
             MergeMode::Override => {
                 let supplement = std::fs::read_to_string(&supplement_path).with_context(|| {
                     format!("无法读取 supplement.md: {}", supplement_path.display())
                 })?;
                 Ok(supplement)
-            }
+            },
         }
     }
 
