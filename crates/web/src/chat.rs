@@ -4,7 +4,7 @@ use axum::{
     response::{sse::Event, IntoResponse, Sse},
     Json,
 };
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -153,7 +153,8 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::agent_loop_stream;
+    use openatrading_core::llm::{create_agent, AgentMessage};
+    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
 
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
         openatrading_core::llm::tools::get_market_overview(),
@@ -175,58 +176,81 @@ pub async fn ai_chat(
         .unwrap_or("你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。");
 
     let system_prompt = build_system_prompt(strategy_text);
-    let history: Vec<serde_json::Value> = req
-        .history
-        .into_iter()
-        .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
-        .collect();
 
-    let mut stream = agent_loop_stream(
-        state.llm.clone(),
-        tools,
-        system_prompt,
-        history,
-        req.message,
-    )
-    .await
-    .map_err(|e| {
-        eprintln!("ai_chat: agent error: {}", e);
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
+    let agent = create_agent(&state.llm, tools, &system_prompt);
+
+    let mut pi_messages: Vec<AgentMessage> = Vec::new();
+    for h in req.history {
+        match h.role.as_str() {
+            "user" => {
+                pi_messages.push(AgentMessage::User {
+                    content: vec![ContentBlock::Text {
+                        text: h.content,
+                        text_signature: None,
+                    }],
+                    timestamp: 0,
+                });
+            }
+            "assistant" => {
+                pi_messages.push(AgentMessage::Assistant {
+                    content: vec![ContentBlock::Text {
+                        text: h.content,
+                        text_signature: None,
+                    }],
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    usage: Default::default(),
+                    stop_reason: Some(StopReason::Stop),
+                    error_message: None,
+                    timestamp: 0,
+                });
+            }
+            _ => {}
+        }
+    }
+    pi_messages.push(AgentMessage::User {
+        content: vec![ContentBlock::Text {
+            text: req.message,
+            text_signature: None,
+        }],
+        timestamp: 0,
+    });
 
     let sse_stream = async_stream::stream! {
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(json_str) => {
-                    if let Ok(ev) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                        match ev["type"].as_str() {
-                            Some("text") => {
-                                let content = ev["content"].as_str().unwrap_or("");
-                                if !content.is_empty() {
-                                    // \n 转义，前端还原
-                                    yield Ok(Event::default().data(content.replace('\n', "\\n")));
+        match agent.process(pi_messages).await {
+            Ok(results) => {
+                for msg in &results {
+                    match msg {
+                        AgentMessage::Assistant { content, error_message, .. } => {
+                            if let Some(err) = error_message {
+                                if !err.is_empty() {
+                                    yield Ok(Event::default().data(format!("[ERROR] {err}")));
                                 }
                             }
-                            Some("done") => {
-                                yield Ok(Event::default().data("[DONE]"));
+                            for block in content {
+                                match block {
+                                    ContentBlock::Text { text, .. } => {
+                                        if !text.is_empty() {
+                                            yield Ok(Event::default().data(text.replace('\n', "\\n")));
+                                        }
+                                    }
+                                    ContentBlock::ToolCall { name, .. } => {
+                                        yield Ok(Event::default().event("tool").data(name.as_str()));
+                                    }
+                                    _ => {}
+                                }
                             }
-                            Some("tool_call") => {
-                                let name = ev["name"].as_str().unwrap_or("");
-                                yield Ok(Event::default().event("tool").data(name));
-                            }
-                            Some("error") => {
-                                let msg = ev["message"].as_str().unwrap_or("unknown error");
-                                yield Ok(Event::default().data(format!("[ERROR] {msg}")));
-                            }
-                            _ => {}
                         }
+                        _ => {}
                     }
                 }
-                Err(e) => {
-                    yield Ok(Event::default().data(format!("[ERROR] {e}")));
-                }
+            }
+            Err(e) => {
+                yield Ok(Event::default().data(format!("[ERROR] {e}")));
             }
         }
+        yield Ok(Event::default().data("[DONE]"));
     };
 
     Ok(Sse::new(sse_stream))

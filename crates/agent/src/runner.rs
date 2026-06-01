@@ -1,14 +1,13 @@
 use std::collections::HashSet;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::Result;
 
 use openatrading_provider::llm::LlmClient;
 use pi_agent_core::agent::{Agent, AgentOptions};
-use pi_agent_core::pi_ai_types::{ContentBlock, StopReason, StreamOptions, StreamResponse, Transport};
+use pi_agent_core::pi_ai_types::{ContentBlock, StreamOptions, StreamResponse, Transport};
 use pi_agent_core::types::{
-    AgentEvent, AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn,
+    AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn,
 };
 
 #[derive(Debug)]
@@ -17,8 +16,7 @@ pub struct AgentResult {
     pub rounds: usize,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub type AgentStream = Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
+
 
 pub fn create_agent(
     llm: &LlmClient,
@@ -130,165 +128,3 @@ pub async fn agent_loop(
     })
 }
 
-pub async fn agent_loop_stream(
-    llm: LlmClient,
-    tools: Vec<Arc<DynTool>>,
-    system_prompt: String,
-    history: Vec<serde_json::Value>,
-    user_message: String,
-) -> Result<AgentStream> {
-    let agent = Arc::new(create_agent(&llm, tools, &system_prompt));
-
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    for h in &history {
-        let role = h.get("role").and_then(|r| r.as_str()).unwrap_or("");
-        let content = h.get("content").and_then(|c| c.as_str()).unwrap_or("");
-        match role {
-            "user" => {
-                pi_messages.push(AgentMessage::User {
-                    content: vec![ContentBlock::text(content)],
-                    timestamp: 0,
-                });
-            }
-            "assistant" => {
-                pi_messages.push(AgentMessage::Assistant {
-                    content: vec![ContentBlock::text(content)],
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    usage: Default::default(),
-                    stop_reason: Some(StopReason::Stop),
-                    error_message: None,
-                    timestamp: 0,
-                });
-            }
-            _ => {}
-        }
-    }
-    pi_messages.push(AgentMessage::User {
-        content: vec![ContentBlock::text(&user_message)],
-        timestamp: 0,
-    });
-
-    let (tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
-
-    let listener = Arc::new(move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-        let tx = tx.clone();
-        Box::pin(async move {
-            let _ = tx.send(event);
-        }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-    });
-
-    agent.subscribe(listener).await;
-
-    let agent_clone = agent.clone();
-    let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel::<Result<()>>();
-    tokio::spawn(async move {
-        let result = agent_clone.process(pi_messages).await;
-        match result {
-            Ok(_) => {
-                let _ = done_tx.send(Ok(()));
-            }
-            Err(e) => {
-                let _ = done_tx.send(Err(anyhow::anyhow!("{e}")));
-            }
-        }
-    });
-
-    let stream = async_stream::stream! {
-        loop {
-            tokio::select! {
-                Some(event) = event_rx.recv() => {
-                    match event {
-                        AgentEvent::MessageStart { .. } => {}
-                        AgentEvent::MessageEnd { message } => {
-                            match &message {
-                                AgentMessage::Assistant {
-                                    content,
-                                    error_message,
-                                    ..
-                                } => {
-                                    if let Some(err) = error_message {
-                                        if !err.is_empty() {
-                                            yield Ok(serde_json::json!({
-                                                "type": "error",
-                                                "message": err,
-                                            }).to_string());
-                                        }
-                                    }
-                                    for block in content {
-                                        match block {
-                                            ContentBlock::Text { text, .. } => {
-                                                if !text.is_empty() {
-                                                    yield Ok(serde_json::json!({
-                                                        "type": "text",
-                                                        "content": text,
-                                                    }).to_string());
-                                                }
-                                            }
-                                            ContentBlock::ToolCall { name, arguments, .. } => {
-                                                yield Ok(serde_json::json!({
-                                                    "type": "tool_call",
-                                                    "name": name,
-                                                    "args": arguments.to_string(),
-                                                }).to_string());
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                AgentMessage::ToolResult { content, tool_name, .. } => {
-                                    let result_text: String = content.iter()
-                                        .filter_map(|b| match b {
-                                            ContentBlock::Text { text, .. } => Some(text.as_str()),
-                                            _ => None,
-                                        })
-                                        .collect();
-                                    yield Ok(serde_json::json!({
-                                        "type": "tool_result",
-                                        "name": tool_name,
-                                        "result": result_text,
-                                    }).to_string());
-                                }
-                                _ => {}
-                            }
-                        }
-                        AgentEvent::ToolExecutionStart { tool_name, args, .. } => {
-                            yield Ok(serde_json::json!({
-                                "type": "tool_call",
-                                "name": tool_name,
-                                "args": args.to_string(),
-                            }).to_string());
-                        }
-                        AgentEvent::ToolExecutionEnd { tool_name, result, .. } => {
-                            let result_text = result.to_string();
-                            yield Ok(serde_json::json!({
-                                "type": "tool_result",
-                                "name": tool_name,
-                                "result": result_text,
-                            }).to_string());
-                        }
-                        AgentEvent::AgentEnd { .. } => {
-                            yield Ok(serde_json::json!({"type": "done"}).to_string());
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-                Some(res) = done_rx.recv() => {
-                    if let Err(e) = res {
-                        yield Ok(serde_json::json!({
-                            "type": "error",
-                            "message": e.to_string(),
-                        }).to_string());
-                    }
-                    yield Ok(serde_json::json!({"type": "done"}).to_string());
-                    break;
-                }
-                else => break,
-            }
-        }
-    };
-
-    Ok(Box::pin(stream))
-}
