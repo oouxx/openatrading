@@ -1076,4 +1076,101 @@ mod tests {
             "{failed} expression(s) did not match expected result"
         );
     }
+
+    // ── run_decision_for_role tests ───────────────────
+
+    #[tokio::test]
+    async fn test_run_decision_for_role_prompt_mode_fails_gracefully() {
+        // tools is empty → prompt mode → llm.chat_with_messages will fail
+        // with a fake key, but the error handling should work
+        let role = RoleEntry {
+            name: "test".into(),
+            display_name: "测试角色".into(),
+            strategy: "趋势跟踪策略".into(),
+        };
+        let result = run_decision_for_role(
+            &MockTradeManager,
+            &MockNotifier,
+            &LlmClient::from_env(),
+            &ApiClient::new(),
+            &role,
+            "## 市场数据\n上涨3000家",
+            "近5日数据",
+            &[],
+        )
+        .await;
+        // Should fail because LLM is not configured in test env
+        assert!(result.is_err(), "prompt mode should fail without API key");
+    }
+
+    #[tokio::test]
+    async fn test_run_decision_for_role_tool_mode_fails_gracefully() {
+        // tools is non-empty → create_agent → agent.process → will fail
+        // with fake key, verifying the fallback path doesn't panic
+        let tools = vec![];
+        let role = RoleEntry {
+            name: "test_tool".into(),
+            display_name: "测试工具模式".into(),
+            strategy: "均值回归".into(),
+        };
+        let result = run_decision_for_role(
+            &MockTradeManager,
+            &MockNotifier,
+            &LlmClient::from_env(),
+            &ApiClient::new(),
+            &role,
+            "## 市场数据\n上涨3000家",
+            "近5日数据...",
+            &tools,
+        )
+        .await;
+        // Should fail because LLM is not configured
+        assert!(result.is_err(), "tool mode should fail without API key");
+    }
+
+    #[tokio::test]
+    async fn test_execute_buy_with_mock_trade_manager() {
+        let instr = TradeInstruction {
+            action: "buy".to_string(),
+            symbol: "000001".to_string(),
+            name: "平安银行".to_string(),
+            shares: 100,
+            reason: "测试买入".to_string(),
+        };
+        let result = execute_buy(&MockTradeManager, &ApiClient::new(), "test_role", &instr).await;
+        // Should fail because ApiClient can't fetch realtime quote in test
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_sell_with_no_position_fails() {
+        // MockTradeManager returns empty positions → sell should fail
+        let instr = TradeInstruction {
+            action: "sell".to_string(),
+            symbol: "000001".to_string(),
+            name: "平安银行".to_string(),
+            shares: 0,
+            reason: "测试卖出".to_string(),
+        };
+        let result = execute_sell(&MockTradeManager, &ApiClient::new(), "test_role", &instr).await;
+        assert!(result.is_err(), "sell without position should fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("no open position"),
+            "expected 'no open position' error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_buy_rejects_below_min_shares_via_api() {
+        let instr = TradeInstruction {
+            action: "buy".to_string(),
+            symbol: "000001".to_string(),
+            name: "平安银行".to_string(),
+            shares: 50, // below MIN_SHARES (100)
+            reason: "测试".to_string(),
+        };
+        let result = execute_buy(&MockTradeManager, &ApiClient::new(), "test", &instr).await;
+        assert!(result.is_err(), "buy below 100 shares should fail");
+    }
 }

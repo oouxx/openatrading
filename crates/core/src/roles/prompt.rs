@@ -325,4 +325,29 @@ mod tests {
         assert_eq!(output.trades[0].action, "sell");
         assert_eq!(output.trades[0].shares, 0);
     }
+
+    #[test]
+    fn test_parse_decision_output_empty_string() {
+        assert!(parse_decision_output("").is_none());
+    }
+
+    #[test]
+    fn test_parse_decision_output_partial_json_block() {
+        let input = "```json\n{\"analysis\": \"test\"}";
+        assert!(parse_decision_output(input).is_none());
+    }
+
+    #[test]
+    fn test_parse_decision_output_non_json_code_block() {
+        let input = "```\njust some text\n```";
+        assert!(parse_decision_output(input).is_none());
+    }
+
+    #[test]
+    fn test_parse_decision_output_shares_default() {
+        let input = r#"{"analysis": "测试", "trades": [{"action": "buy", "symbol": "000001", "name": "浦发银行"}]}"#;
+        let output = parse_decision_output(input).unwrap();
+        assert_eq!(output.trades[0].shares, 0);
+        assert!(output.trades[0].reason.is_empty());
+    }
 }
