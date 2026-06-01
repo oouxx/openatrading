@@ -27,7 +27,6 @@ use openatrading_core::api::xuangubao::XuanguBaoClient;
 use openatrading_core::api::Client;
 use openatrading_core::cron::run_decision;
 use openatrading_core::llm::LlmClient;
-use openatrading_core::roles::prompt::build_prompt;
 use openatrading_core::social::{NoopSender, NotificationSender, StdoutSender};
 use openatrading_web::gateway::Gateway;
 
@@ -269,53 +268,6 @@ pub async fn run() -> Result<()> {
                 }
             },
             _ => eprintln!("⚠️ 未知数据源: {src}"),
-        }
-    }
-
-    // ── AI Analysis ─────────────────────────────────────
-
-    if cli.ai {
-        let role_name = cli
-            .role
-            .or_else(|| app_config.default_role.clone())
-            .unwrap_or_else(|| "zarili".to_string());
-
-        let strategy_text = match app_config.find_role(&role_name) {
-            Some(entry) => {
-                output.role_name = Some(entry.config.display_name.clone());
-                AppConfig::load_strategy(entry)?
-            },
-            None => {
-                eprintln!("⚠️ 未找到角色 '{role_name}'，使用默认策略");
-                output.role_name = Some("默认分析".to_string());
-                openatrading_core::roles::get_builtin_strategy("zarili")
-                    .unwrap_or("")
-                    .to_string()
-            },
-        };
-
-        let api_key = std::env::var("LLM_API_KEY")
-            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
-            .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
-            .ok();
-
-        if let Some(key) = api_key {
-            let llm = LlmClient::new(key);
-            let market_data_json = serde_json::to_string(&output)?;
-            let display = output.role_name.as_deref().unwrap_or("AI助手");
-            let prompt = build_prompt(&strategy_text, &market_data_json, "", &[], display);
-
-            let messages = serde_json::json!([
-                {"role": "system", "content": prompt.system},
-                {"role": "user", "content": prompt.user}
-            ])
-            .to_string();
-
-            if let Ok(analysis) = llm.chat_with_messages(&messages).await {
-                output.ai_analysis = Some(analysis);
-            }
-        } else {
-            eprintln!("⚠️ 未配置 LLM_API_KEY，跳过 AI 分析");
         }
     }
 

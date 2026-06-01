@@ -86,7 +86,7 @@ check .claude/context/claude-ui.md
 前端 bun
 后端 rust
 
-## 8. 执行完任务自动提交代码
+## 8. 执行完任务提问是否提交代码
 
 ## 9. 不要为了测试用例成功修改测试用例
 
