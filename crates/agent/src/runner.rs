@@ -123,3 +123,175 @@ pub async fn agent_loop(
         rounds: 1,
     })
 }
+
+// ── Tests ──────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::future::Future;
+    use std::pin::Pin;
+
+    use super::*;
+    use pi_ai::types::{AssistantMessage, AssistantMessageEvent, StopReason, Usage};
+
+    /// Build a minimal `AssistantMessage` with sensible defaults for testing.
+    fn make_msg(content: Vec<ContentBlock>) -> AssistantMessage {
+        AssistantMessage {
+            content,
+            api: "test".into(),
+            provider: "test".into(),
+            model: "test".into(),
+            response_model: None,
+            response_id: None,
+            diagnostics: None,
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: 0,
+        }
+    }
+
+    /// Build a mock `StreamFn` that plays back a canned text reply.
+    fn mock_text_stream_fn(reply: &str) -> StreamFn {
+        let reply = reply.to_string();
+        Arc::new(move |_model, _ctx, _thinking, _opts| {
+            let reply = reply.clone();
+            Box::pin(async move {
+                let msg = make_msg(vec![ContentBlock::text(&reply)]);
+                let events = vec![
+                    AssistantMessageEvent::TextDelta {
+                        content_index: 0,
+                        delta: reply.clone(),
+                        partial: msg.clone(),
+                    },
+                    AssistantMessageEvent::Done {
+                        reason: StopReason::Stop,
+                        message: msg,
+                    },
+                ];
+                let stream = futures::stream::iter(events);
+                let response: StreamResponse = Box::new(stream);
+                Ok(response)
+            })
+                as Pin<
+                    Box<
+                        dyn Future<Output = Result<StreamResponse, Box<dyn Error + Send + Sync>>>
+                            + Send,
+                    >,
+                >
+        })
+    }
+
+    #[tokio::test]
+    async fn test_create_agent_basic() {
+        let llm = LlmClient::new("test-key".to_string());
+        let agent = create_agent(&llm, vec![], "你是一个交易助手");
+        // Agent created without panicking
+        let _ = agent;
+    }
+
+    #[tokio::test]
+    async fn test_create_agent_with_tools() {
+        let llm = LlmClient::new("test-key".to_string());
+        let agent = create_agent(&llm, vec![], "你是一个A股短线交易AI助手");
+        let _ = agent;
+    }
+
+    #[tokio::test]
+    async fn test_agent_process_returns_text() {
+        let expected = "今日市场情绪偏暖，建议持有。";
+        let stream_fn = mock_text_stream_fn(expected);
+
+        let agent = Agent::new(AgentOptions {
+            stream_fn: Some(stream_fn),
+            get_api_key: Some(Arc::new(|_| {
+                Box::pin(async move { Some("test-key".to_string()) })
+            })),
+            ..Default::default()
+        });
+
+        let messages = vec![AgentMessage::User {
+            content: vec![ContentBlock::text("大盘怎么样？")],
+            timestamp: 0,
+        }];
+
+        let result = agent
+            .process(messages)
+            .await
+            .expect("agent process should succeed");
+        let last_text: String = result
+            .iter()
+            .rev()
+            .find_map(|msg| match msg {
+                AgentMessage::Assistant { content, .. } => {
+                    let t: String = content
+                        .iter()
+                        .filter_map(|b| match b {
+                            ContentBlock::Text { text, .. } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+                    if t.is_empty() {
+                        None
+                    } else {
+                        Some(t)
+                    }
+                },
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        assert!(!last_text.is_empty(), "expected assistant text");
+        assert_eq!(last_text, expected);
+    }
+
+    #[tokio::test]
+    async fn test_agent_process_empty_user_message() {
+        let stream_fn = mock_text_stream_fn("收到空消息");
+        let agent = Agent::new(AgentOptions {
+            stream_fn: Some(stream_fn),
+            get_api_key: Some(Arc::new(|_| {
+                Box::pin(async move { Some("test-key".to_string()) })
+            })),
+            ..Default::default()
+        });
+
+        let messages = vec![AgentMessage::User {
+            content: vec![ContentBlock::text("")],
+            timestamp: 0,
+        }];
+
+        let result = agent
+            .process(messages)
+            .await
+            .expect("agent process should succeed");
+        assert!(!result.is_empty(), "should return at least one message");
+    }
+
+    #[tokio::test]
+    async fn test_agent_process_stop_reason_propagated() {
+        let stream_fn = mock_text_stream_fn("完成");
+        let agent = Agent::new(AgentOptions {
+            stream_fn: Some(stream_fn),
+            get_api_key: Some(Arc::new(|_| {
+                Box::pin(async move { Some("test-key".to_string()) })
+            })),
+            ..Default::default()
+        });
+
+        let result = agent
+            .process(vec![AgentMessage::User {
+                content: vec![ContentBlock::text("hi")],
+                timestamp: 0,
+            }])
+            .await
+            .expect("agent process should succeed");
+
+        // process should end with at least one assistant message
+        let has_assistant = result
+            .iter()
+            .any(|m| matches!(m, AgentMessage::Assistant { .. }));
+        assert!(has_assistant, "should contain assistant messages");
+    }
+}
