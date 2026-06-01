@@ -225,7 +225,7 @@ mod tests {
 - [ ] **Step 4: 运行测试**
 
 ```bash
-cargo test -p trending-agent-core
+cargo test -p openatrading-core
 ```
 
 Expected: all tests pass.
@@ -264,7 +264,7 @@ Write `crates/cli/src/cli/config.rs`:
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use trending_agent_core::roles::{RoleConfig, MergeMode, BUILTIN_STRATEGIES};
+use openatrading_core::roles::{RoleConfig, MergeMode, BUILTIN_STRATEGIES};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -432,7 +432,7 @@ impl AppConfig {
     }
 }
 
-/// `trending-agent init` — 在 HOME 目录创建 ~/.atrading/
+/// `openatrading init` — 在 HOME 目录创建 ~/.atrading/
 pub fn cmd_init() -> Result<()> {
     let home = dirs::home_dir().context("无法获取 HOME 目录")?;
     let atrading = home.join(".atrading");
@@ -464,7 +464,7 @@ pub fn cmd_init() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use trending_agent_core::roles::MergeMode;
+    use openatrading_core::roles::MergeMode;
 
     #[test]
     fn test_merge_role_override() {
@@ -515,7 +515,7 @@ pub mod config;
 - [ ] **Step 4: 运行测试**
 
 ```bash
-cargo test -p trending-agent-cli
+cargo test -p openatrading-cli
 ```
 
 Expected: all tests pass.
@@ -544,21 +544,21 @@ Edit `crates/cli/src/cli/app.rs` — replace the `Cli` struct (lines 23-59) with
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "trending-agent")]
+#[command(name = "openatrading")]
 #[command(about = "A股市场异动追踪工具 — 命令行接口")]
 #[command(long_about = r#"
-trending-agent 是一个 A 股市场异动追踪工具。
+openatrading 是一个 A 股市场异动追踪工具。
 支持多种数据源的获取和 AI 分析，输出 JSON / Markdown / HTML 格式。
 
 用法:
-  trending-agent                               # 默认获取全量数据，输出 Markdown 到 stdout
-  trending-agent --json                        # 输出 JSON 到 stdout
-  trending-agent --html --output report.html   # 输出 HTML 到文件
-  trending-agent --data limit_up,overview      # 只获取涨停和市场概览
-  trending-agent --data cls_telegraph --ai     # 获取财联社电报并 AI 分析
-  trending-agent init                          # 初始化 ~/.atrading/ 配置目录
-  trending-agent --role zarili --ai            # 指定角色运行 AI 分析
-  trending-agent --list-roles                  # 列出所有可用角色
+  openatrading                               # 默认获取全量数据，输出 Markdown 到 stdout
+  openatrading --json                        # 输出 JSON 到 stdout
+  openatrading --html --output report.html   # 输出 HTML 到文件
+  openatrading --data limit_up,overview      # 只获取涨停和市场概览
+  openatrading --data cls_telegraph --ai     # 获取财联社电报并 AI 分析
+  openatrading init                          # 初始化 ~/.atrading/ 配置目录
+  openatrading --role zarili --ai            # 指定角色运行 AI 分析
+  openatrading --list-roles                  # 列出所有可用角色
 
 环境变量:
   LLM_API_KEY       LLM API 密钥 (DeepSeek 或 OpenAI-compatible)
@@ -625,7 +625,7 @@ pub enum Commands {
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo check -p trending-agent-cli
+cargo check -p openatrading-cli
 ```
 
 Expected: compiles without errors.
@@ -652,7 +652,7 @@ Edit `crates/cli/src/cli/mod.rs`:
 
 Add imports (after existing imports):
 ```rust
-use trending_agent_core::roles::prompt::build_prompt;
+use openatrading_core::roles::prompt::build_prompt;
 use crate::cli::config::{AppConfig, cmd_init};
 ```
 
@@ -708,7 +708,7 @@ if cli.ai {
         None => {
             eprintln!("⚠️ 未找到角色 '{role_name}'，使用默认策略");
             output.role_name = Some("默认分析".to_string());
-            trending_agent_core::roles::get_builtin_strategy("zarili")
+            openatrading_core::roles::get_builtin_strategy("zarili")
                 .unwrap_or("")
                 .to_string()
         }
@@ -777,7 +777,7 @@ pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
 - [ ] **Step 3: 编译验证**
 
 ```bash
-cargo check -p trending-agent-cli
+cargo check -p openatrading-cli
 ```
 
 Expected: compiles without errors.
@@ -857,7 +857,7 @@ Then in `ai_chat` (lines 384-418), replace the system prompt building block:
 Replace lines 399-408:
 ```rust
     // Web 端暂使用内置 zarili 策略（二进制嵌入）
-    let strategy_text = trending_agent_core::roles::get_builtin_strategy("zarili")
+    let strategy_text = openatrading_core::roles::get_builtin_strategy("zarili")
         .unwrap_or("你是一个A股短线交易AI助手。");
     let system_prompt = build_system_prompt(strategy_text);
     let user_message = build_user_message(&overview, field_items.as_deref(), super_stocks.as_deref());
@@ -873,7 +873,7 @@ Replace lines 399-408:
 - [ ] **Step 2: 编译验证**
 
 ```bash
-cargo check -p trending-agent-web
+cargo check -p openatrading-web
 ```
 
 Expected: compiles without errors.

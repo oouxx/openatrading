@@ -26,7 +26,7 @@ reqwest = { version = "0.12", features = ["json", "cookies", "stream", "rustls-t
 
 - [ ] **Step 2: 验证 core crate 仍能编译**
 
-Run: `cargo build -p trending-agent-core`
+Run: `cargo build -p openatrading-core`
 Expected: 编译成功
 
 - [ ] **Step 3: Commit**
@@ -47,7 +47,7 @@ git commit -m "build: add rustls-tls to reqwest for WASM compatibility"
 
 ```toml
 [package]
-name = "trending-agent-wasm"
+name = "openatrading-wasm"
 version = "0.1.0"
 edition = "2021"
 
@@ -55,7 +55,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-trending-agent-core = { path = "../core" }
+openatrading-core = { path = "../core" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -89,25 +89,25 @@ use wasm_bindgen::prelude::*;
 
 static OPENROUTER_KEY: OnceLock<String> = OnceLock::new();
 
-use trending_agent_core::api::xuangubao::XuanguBaoClient;
-use trending_agent_core::report::report::Report;
+use openatrading_core::api::xuangubao::XuanguBaoClient;
+use openatrading_core::report::report::Report;
 
 #[derive(Serialize)]
 struct WasmReport {
     date: String,
-    overview: trending_agent_core::api::xuangubao::MarketOverview,
-    limit_up: Vec<trending_agent_core::api::xuangubao::Stock>,
-    plate_abnormal: Vec<trending_agent_core::api::xuangubao::PlateAbnormalEvent>,
+    overview: openatrading_core::api::xuangubao::MarketOverview,
+    limit_up: Vec<openatrading_core::api::xuangubao::Stock>,
+    plate_abnormal: Vec<openatrading_core::api::xuangubao::PlateAbnormalEvent>,
     risk_level: String,
     opportunity_signals: Vec<String>,
     decision_summary: String,
     // Phase A: 这些字段用空值，Phase B cron 静态文件填充
-    field_items: Vec<trending_agent_core::api::jiuyangongshe::FieldPlate>,
-    timeline: Vec<trending_agent_core::api::jiuyangongshe::TimelineDay>,
+    field_items: Vec<openatrading_core::api::jiuyangongshe::FieldPlate>,
+    timeline: Vec<openatrading_core::api::jiuyangongshe::TimelineDay>,
     analyses: Vec<serde_json::Value>,
     sentiment: Option<serde_json::Value>,
-    taoguba_users: Vec<trending_agent_core::api::taoguba::TgbUserSummary>,
-    xuangubao_extra: trending_agent_core::api::xuangubao::XuanGubaoExtra,
+    taoguba_users: Vec<openatrading_core::api::taoguba::TgbUserSummary>,
+    xuangubao_extra: openatrading_core::api::xuangubao::XuanGubaoExtra,
 }
 
 #[wasm_bindgen]
@@ -173,7 +173,7 @@ pub async fn run_report() -> Result<JsValue, JsValue> {
         analyses: vec![],
         sentiment: None,
         taoguba_users: vec![],
-        xuangubao_extra: trending_agent_core::api::xuangubao::XuanGubaoExtra {
+        xuangubao_extra: openatrading_core::api::xuangubao::XuanGubaoExtra {
             limit_down: vec![],
             plate_abnormal: vec![],
         },
@@ -235,7 +235,7 @@ Expected: `[INFO]: Done! Your wasm pkg is ready to publish`
 ls pkg/
 ```
 
-Expected: 包含 `trending_agent_wasm_bg.wasm`, `trending_agent_wasm.js`, `trending_agent_wasm.d.ts`
+Expected: 包含 `openatrading_wasm_bg.wasm`, `openatrading_wasm.js`, `openatrading_wasm.d.ts`
 
 - [ ] **Step 5: Commit**（如果有 Cargo.lock 变更）
 
@@ -322,7 +322,7 @@ let wasmModule: any = null
 
 async function loadWasm() {
   if (!wasmModule) {
-    wasmModule = await import('../wasm/trending_agent_wasm')
+    wasmModule = await import('../wasm/openatrading_wasm')
     // 注入 OpenRouter API key（如果配置了）
     if (typeof __OPENROUTER_KEY__ !== 'undefined' && __OPENROUTER_KEY__) {
       wasmModule.set_openrouter_key(__OPENROUTER_KEY__)

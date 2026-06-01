@@ -22,16 +22,16 @@ Edit `crates/web/Cargo.toml`:
 
 ```toml
 [package]
-name = "trending-agent-web"
+name = "openatrading-web"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "trending-agent-web"
+name = "openatrading-web"
 path = "src/main.rs"
 
 [dependencies]
-trending-agent-core = { path = "../core" }
+openatrading-core = { path = "../core" }
 tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
 axum = "0.7"
 anyhow = { workspace = true }
@@ -54,9 +54,9 @@ use axum::{
 use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
-use trending_agent_core::api::xuangubao::XuanGubaoExtra;
-use trending_agent_core::api::Client as ApiClient;
-use trending_agent_core::report::report::Report;
+use openatrading_core::api::xuangubao::XuanGubaoExtra;
+use openatrading_core::api::Client as ApiClient;
+use openatrading_core::report::report::Report;
 
 #[derive(Clone)]
 pub struct WebState {
@@ -202,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
 - [ ] **Step 3: Verify compilation**
 
 ```bash
-cargo build -p trending-agent-web
+cargo build -p openatrading-web
 ```
 
 - [ ] **Step 4: Commit**
@@ -368,7 +368,7 @@ async function fetchFromJson(): Promise<Report> {
 }
 
 async function fetchFromWasm(): Promise<Report> {
-  const mod = await import('../wasm/trending_agent_wasm.js')
+  const mod = await import('../wasm/openatrading_wasm.js')
   await mod.default()
   const isDev = import.meta.env.DEV
   mod.set_xgb_base_url(isDev ? '/api/xgb' : 'https://flash-api.xuangubao.cn/api')
@@ -1095,7 +1095,7 @@ Expected: production build succeeds.
 
 Start web crate in background, call endpoint:
 ```bash
-cargo run --bin trending-agent-web &
+cargo run --bin openatrading-web &
 sleep 5
 curl -s http://localhost:8080/api/report | python3 -c "import json,sys; d=json.load(sys.stdin); print('keys:', list(d.keys())[:5], '...', 'limit_up:', len(d.get('limit_up',[])))"
 kill %1

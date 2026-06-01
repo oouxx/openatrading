@@ -191,7 +191,7 @@ impl XuanguBaoClient {
 - [ ] **Step 2: Verify compilation**
 
 ```bash
-cargo build -p trending-agent-core
+cargo build -p openatrading-core
 ```
 
 Expected: compiles without errors.
@@ -216,7 +216,7 @@ In `crates/web/src/main.rs`, add imports at top:
 
 ```rust
 use axum::extract::Path;
-use trending_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 ```
 
 In `start_web_server()`, add routes before `.layer(cors)`:
@@ -270,7 +270,7 @@ async fn get_realtime(
 - [ ] **Step 2: Verify compilation**
 
 ```bash
-cargo build -p trending-agent-web
+cargo build -p openatrading-web
 ```
 
 Expected: compiles without errors.
@@ -579,7 +579,7 @@ git commit -m "feat: wire up stock click → KlineDrawer in all tabs"
 - [ ] **Step 1: Start web crate**
 
 ```bash
-cargo run --bin trending-agent-web
+cargo run --bin openatrading-web
 ```
 
 - [ ] **Step 2: Test API endpoints**

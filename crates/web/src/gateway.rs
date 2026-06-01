@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use trading_agent_core::api::Client as ApiClient;
-use trading_agent_core::llm::LlmClient;
-use trading_agent_core::memory::sqlite::SqliteMemoryStore;
-use trading_agent_core::trade::sqlite::SqliteTradeManager;
+use openatrading_core::api::Client as ApiClient;
+use openatrading_core::llm::LlmClient;
+use openatrading_core::memory::sqlite::SqliteMemoryStore;
+use openatrading_core::trade::sqlite::SqliteTradeManager;
 
 use crate::cache;
 use crate::{self as web, AppState, RoleEntry};

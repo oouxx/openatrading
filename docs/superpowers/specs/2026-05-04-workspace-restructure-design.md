@@ -1,4 +1,4 @@
-# Workspace Restructure Design: trending-agent → Tauri + Vue
+# Workspace Restructure Design: openatrading → Tauri + Vue
 
 **Date:** 2026-05-04
 **Status:** Approved by user
@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-Restructure the existing `trending-agent` Rust project from a single-crate layout into a Cargo workspace with clear separation between business logic (`crates/core`), delivery mechanisms (`crates/cli`, `crates/web`), WASM wrapper (`crates/wasm`), Tauri desktop app (`src-tauri/`), and Vue frontend (`src/`).
+Restructure the existing `openatrading` Rust project from a single-crate layout into a Cargo workspace with clear separation between business logic (`crates/core`), delivery mechanisms (`crates/cli`, `crates/web`), WASM wrapper (`crates/wasm`), Tauri desktop app (`src-tauri/`), and Vue frontend (`src/`).
 
 **Goal:** Enable multi-platform delivery (CLI, Web, Desktop) while keeping core business logic framework-agnostic.
 

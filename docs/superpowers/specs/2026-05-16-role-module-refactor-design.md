@@ -176,10 +176,10 @@ crates/core/strategies/
 ## 5. CLI Parameters
 
 ```bash
-trending-agent init                              # 初始化 ~/.atrading/
-trending-agent --role zarili --ai                # 指定角色运行 AI 分析
-trending-agent --list-roles                      # 列出所有可用角色
-trending-agent --ai                              # 不指定 --role，用 default_role
+openatrading init                              # 初始化 ~/.atrading/
+openatrading --role zarili --ai                # 指定角色运行 AI 分析
+openatrading --list-roles                      # 列出所有可用角色
+openatrading --ai                              # 不指定 --role，用 default_role
 ```
 
 ## 6. Web Server

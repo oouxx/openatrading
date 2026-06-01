@@ -17,7 +17,7 @@ cargo run -- --data limit_up,overview    # 指定数据源
 cargo run -- --ai                        # 全量 + AI 分析
 
 # Web
-cargo run --bin trending-agent-web       # API 服务 :8080
+cargo run --bin openatrading-web       # API 服务 :8080
 cd src && bun install && bun run dev     # Vue 前端 :5173
 
 # Docker
@@ -89,7 +89,7 @@ cargo run -- --data limit_up,overview       # 按数据源
 cargo run -- --ai                           # 全量 + AI
 
 # Web
-cargo run --bin trending-agent-web          # API 服务
+cargo run --bin openatrading-web          # API 服务
 cd src && bun run dev                       # Vue 前端
 
 # 质量检查
@@ -125,5 +125,5 @@ docker compose up -d
 make deploy-racknerd
 
 # Vercel 静态部署
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Ftrending-agent)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Fopenatrading)
 ```

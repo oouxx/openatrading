@@ -44,13 +44,13 @@ WORKDIR /app
 
 # ── 依赖编译层（Cargo.lock 不变就命中 Docker layer cache）─────────────────────
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json -p trading-agent-cli
+RUN cargo chef cook --release --recipe-path recipe.json -p openatrading-cli
 
 # ── 业务代码编译层 ─────────────────────────────────────────────────────────────
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-RUN cargo build --release -p trading-agent-cli && \
+RUN cargo build --release -p openatrading-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
 
 

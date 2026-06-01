@@ -1,5 +1,5 @@
 [package]
-name = "trading-agent-provider"
+name = "openatrading-provider"
 version = "0.10.3"
 edition = "2021"
 
@@ -11,3 +11,4 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 futures = { workspace = true }
 thiserror = "2"
+pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.0" }

@@ -112,7 +112,7 @@ fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntr
 
 - [ ] **Step 3: Build and test**
 
-Run: `cargo build -p trending-agent-core`
+Run: `cargo build -p openatrading-core`
 Expected: compiles cleanly
 
 - [ ] **Step 4: Commit**
@@ -183,7 +183,7 @@ pub fn delete_role_dir(strategies_dir: &Path, name: &str) -> Result<()> {
 
 - [ ] **Step 2: Build and verify**
 
-Run: `cargo build -p trending-agent-core`
+Run: `cargo build -p openatrading-core`
 Expected: compiles cleanly
 
 - [ ] **Step 3: Commit**
@@ -301,11 +301,11 @@ pub mod pnl;
 Check if `chrono` is already in `Cargo.toml`. If not, add it.
 
 Run: `grep chrono crates/core/Cargo.toml`
-If not found: `cargo add chrono -p trending-agent-core`
+If not found: `cargo add chrono -p openatrading-core`
 
 - [ ] **Step 4: Build**
 
-Run: `cargo build -p trending-agent-core`
+Run: `cargo build -p openatrading-core`
 Expected: compiles
 
 - [ ] **Step 5: Commit**
@@ -451,7 +451,7 @@ pub async fn get_role_pnl_history(
 
 - [ ] **Step 3: Build**
 
-Run: `cargo build -p trending-agent-core`
+Run: `cargo build -p openatrading-core`
 Expected: compiles. Fix any import errors.
 
 - [ ] **Step 4: Commit**

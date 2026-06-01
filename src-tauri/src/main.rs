@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use trading_agent_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use trading_agent_core::api::Client as ApiClient;
-use trading_agent_core::llm::LlmClient;
-use trading_agent_core::roles::BUILTIN_STRATEGIES;
-use trading_agent_core::trade::TradeManager;
-use trading_agent_web::gateway::Gateway;
-use trading_agent_web::{AppState, RoleEntry};
+use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::api::Client as ApiClient;
+use openatrading_core::llm::LlmClient;
+use openatrading_core::roles::BUILTIN_STRATEGIES;
+use openatrading_core::trade::TradeManager;
+use openatrading_web::gateway::Gateway;
+use openatrading_web::{AppState, RoleEntry};
 
 fn find_project_root() -> PathBuf {
     // Walk up from current_dir looking for .env first (workspace root),
@@ -115,7 +115,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 overview.limit_down_count,
             );
             Ok(serde_json::json!({
-                "date": trading_agent_core::utils::time::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
+                "date": openatrading_core::utils::time::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
                 "rise_count": overview.rise_count,
                 "fall_count": overview.fall_count,
                 "limit_up_count": overview.limit_up_count,
@@ -177,7 +177,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Ok(serde_json::json!([]));
             }
-            let month = trading_agent_core::utils::time::beijing_now()
+            let month = openatrading_core::utils::time::beijing_now()
                 .format("%Y-%m")
                 .to_string();
             let data = state
@@ -192,7 +192,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Err("JIUYAN_PHONE not set".into());
             }
-            let data = trading_agent_core::agents::sentiment::analyze_sentiment(&state.api)
+            let data = openatrading_core::agents::sentiment::analyze_sentiment(&state.api)
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
@@ -241,9 +241,9 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .fetch_events_page(timestamp, 1000, "11000,11001")
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let events: Vec<trading_agent_core::api::xuangubao::ReplayEvent> = raw
+            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = raw
                 .iter()
-                .map(trading_agent_core::api::xuangubao::ReplayEvent::from)
+                .map(openatrading_core::api::xuangubao::ReplayEvent::from)
                 .collect();
             let next_cursor = events.last().map(|e| e.event_timestamp);
             let date = if has_cursor {
@@ -257,11 +257,11 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             let market_phase = if has_cursor {
                 String::new()
             } else {
-                trading_agent_web::cache::current_market_phase()
+                openatrading_web::cache::current_market_phase()
                     .as_str()
                     .to_string()
             };
-            let page = trading_agent_core::api::xuangubao::ReplayPage {
+            let page = openatrading_core::api::xuangubao::ReplayPage {
                 date,
                 market_phase,
                 events,
@@ -275,11 +275,11 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .fetch_all_day_events()
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let snapshots = trading_agent_core::api::xuangubao::build_replay_snapshots(&events);
+            let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
             Ok(serde_json::to_value(snapshots).unwrap_or_default())
         }
         "/api/replay/index" => {
-            use trading_agent_core::api::xuangubao::fetch_index_trends;
+            use openatrading_core::api::xuangubao::fetch_index_trends;
             let client = XuanguBaoClient::new();
             let data = fetch_index_trends(&client)
                 .await
@@ -303,7 +303,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             }
             if path.strip_prefix("/api/field-items").is_some() {
                 let date = extract_query(path, "date").unwrap_or_else(|| {
-                    trading_agent_core::utils::time::beijing_now()
+                    openatrading_core::utils::time::beijing_now()
                         .format("%Y-%m-%d")
                         .to_string()
                 });
@@ -474,7 +474,7 @@ async fn dispatch_roles_get(
                 .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
                 .sum();
             let mut points =
-                trading_agent_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
+                openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
             if days > 0 {
                 let cutoff = points.len().saturating_sub(days);
                 points = points.into_iter().skip(cutoff).collect();
@@ -518,7 +518,7 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            trading_agent_core::roles::save_role_strategy(&state.strategies_dir, &name, &strategy)
+            openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &strategy)
                 .map_err(|e| format!("{e}"))?;
             let mut roles = state.roles.write().await;
             if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
@@ -548,7 +548,7 @@ async fn dispatch_post(
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        trading_agent_core::roles::save_role_strategy(
+                        openatrading_core::roles::save_role_strategy(
                             &state.strategies_dir,
                             name,
                             &strategy,
@@ -580,7 +580,7 @@ async fn dispatch_post(
                             .trade
                             .delete_trade_logs_by_role(name)
                             .map_err(|e| format!("{e}"))?;
-                        trading_agent_core::roles::delete_role_dir(&state.strategies_dir, name)
+                        openatrading_core::roles::delete_role_dir(&state.strategies_dir, name)
                             .map_err(|e| format!("{e}"))?;
                         let mut roles = state.roles.write().await;
                         roles.retain(|r| r.name != name);
@@ -643,7 +643,7 @@ async fn api_chat_stream(
     eprintln!("[chat_stream] role={role_name}");
 
     eprintln!("[chat_stream] fetching overview...");
-    let overview = trading_agent_web::chat::fetch_overview_data(&api)
+    let overview = openatrading_web::chat::fetch_overview_data(&api)
         .await
         .map_err(|e| {
             eprintln!("[chat_stream] overview error: {e}");
@@ -651,8 +651,8 @@ async fn api_chat_stream(
         })?;
     eprintln!("[chat_stream] overview ok");
 
-    let field_items = trading_agent_web::chat::fetch_field_json(&api).await;
-    let super_stocks = trading_agent_web::chat::fetch_super_stock_json(&api).await;
+    let field_items = openatrading_web::chat::fetch_field_json(&api).await;
+    let super_stocks = openatrading_web::chat::fetch_super_stock_json(&api).await;
     eprintln!(
         "[chat_stream] field_items={}, super_stocks={}",
         field_items.is_some(),
@@ -666,8 +666,8 @@ async fn api_chat_stream(
         .map(|r| r.strategy.as_str())
         .unwrap_or("你是一个A股短线交易AI助手。");
 
-    let system_prompt = trading_agent_web::chat::build_system_prompt(strategy_text);
-    let user_message = trading_agent_web::chat::build_user_message(
+    let system_prompt = openatrading_web::chat::build_system_prompt(strategy_text);
+    let user_message = openatrading_web::chat::build_user_message(
         &overview,
         field_items.as_deref(),
         super_stocks.as_deref(),
@@ -761,8 +761,8 @@ async fn api_replay_analyze(
         .first()
         .cloned()
         .unwrap_or_default();
-    let snapshots = trading_agent_core::api::xuangubao::build_replay_snapshots(&events);
-    let prompt = trading_agent_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
+    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
+    let prompt = openatrading_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
 
     let mut llm_stream = llm
         .chat_stream(&prompt)
@@ -809,7 +809,7 @@ fn main() {
         trade,
         roles: Arc::new(RwLock::new(roles)),
         strategies_dir,
-        cache: trading_agent_web::cache::new_cache(),
+        cache: openatrading_web::cache::new_cache(),
     });
 
     tauri::Builder::default()

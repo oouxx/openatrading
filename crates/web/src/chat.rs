@@ -8,7 +8,7 @@ use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use trading_agent_core::api::Client as ApiClient;
+use openatrading_core::api::Client as ApiClient;
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -96,7 +96,7 @@ pub fn build_user_message(
 }
 
 pub async fn fetch_field_json(api: &ApiClient) -> Option<String> {
-    let date = trading_agent_core::utils::time::beijing_now()
+    let date = openatrading_core::utils::time::beijing_now()
         .format("%Y-%m-%d")
         .to_string();
     match api.jiuyan.fetch_field(&date, 1).await {
@@ -134,7 +134,7 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
     );
 
     Ok(OverviewResponse {
-        date: trading_agent_core::utils::time::beijing_now()
+        date: openatrading_core::utils::time::beijing_now()
             .format("%Y-%m-%d %H:%M")
             .to_string(),
         rise_count: overview.rise_count,
@@ -153,12 +153,12 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use trading_agent_core::llm::agent::agent_loop_stream;
-    use trading_agent_core::llm::tools::{
+    use openatrading_core::llm::agent::agent_loop_stream;
+    use openatrading_core::llm::tools::{
         GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetRealtimeQuote,
         GetSuperStock, GetTelegraph, GetYesterdayLimitUp,
     };
-    use trading_agent_core::llm::ToolSet;
+    use openatrading_core::llm::ToolSet;
 
     let tools = Arc::new(
         ToolSet::new()

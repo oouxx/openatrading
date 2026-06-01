@@ -6,11 +6,11 @@ build:
 	cargo build
 
 run:
-	cargo run -p trading-agent-cli
+	cargo run -p openatrading-cli
 
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	cargo watch -x "run -p trading-agent-cli -- gateway run"
+	cargo watch -x "run -p openatrading-cli -- gateway run"
 
 run-frontend:
 	cd src && bun run dev
@@ -24,13 +24,13 @@ build-tauri:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p trading-agent-api -p trading-agent-core -p trading-agent-cli -p trading-agent-channels -p trading-agent-provider -p trading-agent-web
+	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web
 
 fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p trading-agent-api -p trading-agent-core -p trading-agent-cli -p trading-agent-channels -p trading-agent-provider -p trading-agent-web -- -D warnings
+	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"

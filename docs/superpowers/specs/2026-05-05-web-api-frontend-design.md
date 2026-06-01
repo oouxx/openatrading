@@ -21,7 +21,7 @@
 
 ### 2.2 启动行为
 
-web crate `main.rs` 启动时自动调用 `trending_agent_core` 拉取全量数据到 `WebState`。不依赖 CLI 前置注入。
+web crate `main.rs` 启动时自动调用 `openatrading_core` 拉取全量数据到 `WebState`。不依赖 CLI 前置注入。
 
 ```rust
 // main.rs 伪代码
@@ -122,7 +122,7 @@ web crate 不依赖 CLI，从 `crates/core` 直接调用 API client 拉取数据
 ```rust
 // crates/web/src/main.rs
 async fn refresh_report(state: &WebState) -> anyhow::Result<()> {
-    let client = trending_agent_core::api::Client::new();
+    let client = openatrading_core::api::Client::new();
     // 并行拉取（复用 core 的 tokio::join! 模式）
     let (overview, limit_up, limit_down, plate_abnormal) = tokio::join!(
         client.xuangubao.fetch_market_overview(),

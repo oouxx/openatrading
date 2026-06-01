@@ -2,7 +2,7 @@
 
 ## 概述
 
-将 `trending-agent` 生成的 HTML 报告转换成静态站点结构，部署到 Vercel 或 Cloudflare Pages。
+将 `openatrading` 生成的 HTML 报告转换成静态站点结构，部署到 Vercel 或 Cloudflare Pages。
 
 ## 核心思路
 

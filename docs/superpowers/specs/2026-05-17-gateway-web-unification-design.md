@@ -109,7 +109,7 @@ make deploy          # docker compose up -d --build
 | 删除 | 原因 |
 |------|------|
 | `crates/web/` | 已移入 core |
-| `trending-agent-web` 二进制 | gateway 接管 |
+| `openatrading-web` 二进制 | gateway 接管 |
 | `docker-compose-web.yaml` | 合并到主 compose |
 | `Dockerfile.backend` | 无需独立 web 镜像 |
 | `Dockerfile.frontend` BACKEND_HOST env | nginx 直连域名 |
