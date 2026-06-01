@@ -36,7 +36,7 @@ pub async fn analyze_technical(client: &Client) -> Result<TechnicalResult> {
         .into_iter()
         .map(|(days, stocks)| LevelStocks { days, stocks })
         .collect();
-    levels.sort_by(|a, b| b.days.cmp(&a.days));
+    levels.sort_by_key(|b| std::cmp::Reverse(b.days));
 
     let mut sector_count: std::collections::HashMap<&str, u32> = Default::default();
     for stock in &limit_up {
@@ -50,7 +50,7 @@ pub async fn analyze_technical(client: &Client) -> Result<TechnicalResult> {
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
-    hot_sectors.sort_by(|a, b| b.1.cmp(&a.1));
+    hot_sectors.sort_by_key(|b| std::cmp::Reverse(b.1));
     let hot_sectors: Vec<_> = hot_sectors.into_iter().take(5).collect();
 
     let mut risk_signals = Vec::new();
