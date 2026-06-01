@@ -95,7 +95,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
         .into_iter()
         .map(|((code, name), cnt)| (code, name, cnt))
         .collect();
-    hot_stocks.sort_by(|a, b| b.2.cmp(&a.2));
+    hot_stocks.sort_by_key(|s| std::cmp::Reverse(s.2));
     let hot_stocks: Vec<_> = hot_stocks.into_iter().take(10).collect();
 
     let mut hot_articles: Vec<HotArticle> = articles_ref
@@ -114,7 +114,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
             }
         })
         .collect();
-    hot_articles.sort_by(|a, b| b.heat_score.cmp(&a.heat_score));
+    hot_articles.sort_by_key(|a| std::cmp::Reverse(a.heat_score));
 
     let total_engagement: i32 = articles_ref
         .iter()
@@ -183,7 +183,7 @@ pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentRe
         .into_iter()
         .map(|((code, name), cnt)| (code, name, cnt))
         .collect();
-    hot_stocks.sort_by(|a, b| b.2.cmp(&a.2));
+    hot_stocks.sort_by_key(|s| std::cmp::Reverse(s.2));
     let hot_stocks: Vec<_> = hot_stocks.into_iter().take(10).collect();
 
     let mut hot_articles: Vec<HotArticle> = articles_ref
@@ -202,7 +202,7 @@ pub fn analyze_from_articles(mut articles: Vec<CommunityArticle>) -> SentimentRe
             }
         })
         .collect();
-    hot_articles.sort_by(|a, b| b.heat_score.cmp(&a.heat_score));
+    hot_articles.sort_by_key(|a| std::cmp::Reverse(a.heat_score));
 
     let total_engagement: i32 = articles_ref
         .iter()
