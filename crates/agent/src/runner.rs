@@ -203,7 +203,19 @@ pub async fn agent_loop_stream(
                         AgentEvent::MessageStart { .. } => {}
                         AgentEvent::MessageEnd { message } => {
                             match &message {
-                                AgentMessage::Assistant { content, .. } => {
+                                AgentMessage::Assistant {
+                                    content,
+                                    error_message,
+                                    ..
+                                } => {
+                                    if let Some(err) = error_message {
+                                        if !err.is_empty() {
+                                            yield Ok(serde_json::json!({
+                                                "type": "error",
+                                                "message": err,
+                                            }).to_string());
+                                        }
+                                    }
                                     for block in content {
                                         match block {
                                             ContentBlock::Text { text, .. } => {
