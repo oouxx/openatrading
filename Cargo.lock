@@ -2942,6 +2942,7 @@ dependencies = [
  "futures",
  "openatrading-provider",
  "pi-agent-core",
+ "pi-ai",
  "serde",
  "serde_json",
  "tokio",
@@ -3266,7 +3267,7 @@ dependencies = [
 [[package]]
 name = "pi-agent-core"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.1#6d6a45590e141a9e45c40dac464cef009de12d4f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.2#9cb30a2c1047cdbe27af8af8ae76c991eab51e1d"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3288,7 +3289,7 @@ dependencies = [
 [[package]]
 name = "pi-ai"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.1#6d6a45590e141a9e45c40dac464cef009de12d4f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.2#9cb30a2c1047cdbe27af8af8ae76c991eab51e1d"
 dependencies = [
  "async-trait",
  "chrono",

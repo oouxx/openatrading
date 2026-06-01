@@ -6,14 +6,14 @@ pub use openatrading_provider::llm::{
 };
 pub use openatrading_agent::types::{AgentTool, AgentToolResult, DynTool};
 
-pub use openatrading_agent::agent::Agent;
+pub use openatrading_agent::agent::{Agent, AgentOptions};
 pub use openatrading_agent::runner::{
-    agent_loop, agent_loop_stream, AgentResult, AgentStream,
+    agent_loop, create_agent, AgentResult,
 };
 pub use openatrading_agent::types::{
     AfterToolCallContext, AfterToolCallResult, AgentContext, AgentEvent, AgentMessage,
-    AgentToolCall, BeforeToolCallContext, BeforeToolCallResult, QueueMode,
-    ShouldStopAfterTurnContext, StreamFnOptions,
+    AgentState, AgentToolCall, BeforeToolCallContext, BeforeToolCallResult,
+    ConvertToLlmFn, QueueMode, ShouldStopAfterTurnContext, StreamFn, StreamFnOptions,
 };
 pub use openatrading_agent::pi_ai_types;
 pub use openatrading_agent::proxy;

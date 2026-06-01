@@ -6,17 +6,15 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::agent_loop_stream;
 use crate::llm::tools;
-use crate::llm::DynTool;
-use crate::llm::LlmClient;
+use crate::llm::{create_agent, AgentMessage, DynTool, LlmClient};
+use crate::llm::pi_ai_types::ContentBlock;
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
 use crate::social::NotificationSender;
 use crate::trade::{Position, TradeManager};
 use crate::RoleEntry;
-use futures::stream::StreamExt;
 
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
 const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;
@@ -390,56 +388,43 @@ async fn run_decision_for_role(
             role.name,
             tools.len()
         );
-        match agent_loop_stream(
-            llm.clone(),
-            tools.to_vec(),
-            role.strategy.clone(),
-            vec![],
-            market_user_message.clone(),
-        )
-        .await
-        {
-            Ok(mut stream) => {
-                let mut stream_text = String::new();
-                while let Some(chunk) = stream.next().await {
-                    match chunk {
-                        Ok(raw) => {
-                            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(&raw) {
-                                match ev["type"].as_str() {
-                                    Some("text") => {
-                                        if let Some(t) = ev["content"].as_str() {
-                                            stream_text.push_str(t);
-                                        }
-                                    }
-                                    Some("error") => {
-                                        let msg = ev["message"].as_str().unwrap_or("unknown");
-                                        tracing::warn!(
-                                            "[cron] decision for '{}': stream error: {msg}",
-                                            role.name
-                                        );
-                                    }
-                                    _ => {}
-                                }
-                            }
+        let agent = create_agent(llm, tools.to_vec(), &role.strategy);
+        let messages = vec![AgentMessage::User {
+            content: vec![ContentBlock::Text {
+                text: market_user_message.clone(),
+                text_signature: None,
+            }],
+            timestamp: 0,
+        }];
+        match agent.process(messages).await {
+            Ok(results) => {
+                let reply_text: String = results
+                    .iter()
+                    .rev()
+                    .find_map(|msg| match msg {
+                        AgentMessage::Assistant { content, .. } => {
+                            let t: String = content
+                                .iter()
+                                .filter_map(|b| match b {
+                                    ContentBlock::Text { text, .. } => Some(text.as_str()),
+                                    _ => None,
+                                })
+                                .collect();
+                            if t.is_empty() { None } else { Some(t) }
                         }
-                        Err(e) => {
-                            tracing::error!(
-                                "[cron] decision for '{}': stream chunk error: {e}",
-                                role.name
-                            );
-                        }
-                    }
-                }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 tracing::info!(
-                    "[cron] decision for '{}': stream done, {} chars",
+                    "[cron] decision for '{}': agent done, {} chars",
                     role.name,
-                    stream_text.len()
+                    reply_text.len()
                 );
-                stream_text
+                reply_text
             }
             Err(e) => {
                 tracing::error!(
-                    "[cron] agent_loop_stream failed for '{}': {e}, falling back to prompt",
+                    "[cron] agent process failed for '{}': {e}, falling back to prompt",
                     role.name
                 );
                 // Fallback to full prompt mode
