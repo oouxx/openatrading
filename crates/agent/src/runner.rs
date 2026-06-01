@@ -1,15 +1,15 @@
-use anyhow::Result;
+use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use anyhow::Result;
+
 use openatrading_provider::llm::LlmClient;
-use crate::tool::ToolSet;
-
-use pi_agent_core::agent::AgentOptions;
+use pi_agent_core::agent::{Agent, AgentOptions};
 use pi_agent_core::pi_ai_types::{ContentBlock, StopReason, StreamOptions, StreamResponse, Transport};
-use pi_agent_core::types::{AgentState, GetApiKeyFn, StreamFn};
-
-use crate::types::{AgentEvent, AgentMessage};
+use pi_agent_core::types::{
+    AgentEvent, AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn,
+};
 
 #[derive(Debug)]
 pub struct AgentResult {
@@ -20,13 +20,81 @@ pub struct AgentResult {
 #[cfg(not(target_arch = "wasm32"))]
 pub type AgentStream = Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
 
+pub fn create_agent(
+    llm: &LlmClient,
+    tools: Vec<Arc<DynTool>>,
+    system_prompt: &str,
+) -> Agent {
+    let model = llm.model.clone();
+    let stream_llm = llm.clone();
+    let api_key = llm.api_key.clone();
+
+    let stream_fn: StreamFn = Arc::new(move |_model, ctx, _thinking, opts| {
+        let api_key = api_key.clone();
+        let stream_llm = stream_llm.clone();
+        Box::pin(async move {
+            let mut options = StreamOptions {
+                api_key: Some(api_key),
+                max_tokens: Some(4096),
+                temperature: Some(0.7),
+                ..Default::default()
+            };
+            if let Some(key) = opts.api_key.clone() {
+                options.api_key = Some(key);
+            }
+            if let Some(session_id) = opts.session_id {
+                options.session_id = Some(session_id);
+            }
+            if let Some(transport) = opts.transport {
+                options.transport = Some(match transport.as_str() {
+                    "websocket" => Transport::Websocket,
+                    "websocket-cached" => Transport::WebsocketCached,
+                    "auto" => Transport::Auto,
+                    _ => Transport::Sse,
+                });
+            }
+
+            let event_stream = stream_llm.create_stream(&_model, &ctx, options);
+            let response: StreamResponse = Box::new(event_stream);
+            Ok(response)
+        })
+    });
+
+    let get_api_key: GetApiKeyFn = Arc::new({
+        let api_key = llm.api_key.clone();
+        move |_provider| {
+            let key = api_key.clone();
+            Box::pin(async move { Some(key) })
+        }
+    });
+
+    let state = AgentState {
+        system_prompt: system_prompt.to_string(),
+        model,
+        thinking_level: "off".into(),
+        tools,
+        messages: Vec::new(),
+        is_streaming: false,
+        streaming_message: None,
+        pending_tool_calls: HashSet::new(),
+        error_message: None,
+    };
+
+    Agent::new(AgentOptions {
+        initial_state: Some(state),
+        stream_fn: Some(stream_fn),
+        get_api_key: Some(get_api_key),
+        ..Default::default()
+    })
+}
+
 pub async fn agent_loop(
     llm: &LlmClient,
-    tools: &Arc<ToolSet>,
+    tools: Vec<Arc<DynTool>>,
     system_prompt: &str,
     user_message: &str,
 ) -> Result<AgentResult> {
-    let agent = create_agent(llm, tools, system_prompt)?;
+    let agent = create_agent(llm, tools, system_prompt);
 
     let messages = vec![AgentMessage::User {
         content: vec![ContentBlock::text(user_message)],
@@ -64,12 +132,12 @@ pub async fn agent_loop(
 
 pub async fn agent_loop_stream(
     llm: LlmClient,
-    tools: Arc<ToolSet>,
+    tools: Vec<Arc<DynTool>>,
     system_prompt: String,
     history: Vec<serde_json::Value>,
     user_message: String,
 ) -> Result<AgentStream> {
-    let agent = Arc::new(create_agent(&llm, &tools, &system_prompt)?);
+    let agent = Arc::new(create_agent(&llm, tools, &system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for h in &history {
@@ -146,7 +214,7 @@ pub async fn agent_loop_stream(
                                                     }).to_string());
                                                 }
                                             }
-                                            ContentBlock::ToolCall { id, name, arguments, .. } => {
+                                            ContentBlock::ToolCall { name, arguments, .. } => {
                                                 yield Ok(serde_json::json!({
                                                     "type": "tool_call",
                                                     "name": name,
@@ -211,71 +279,4 @@ pub async fn agent_loop_stream(
     };
 
     Ok(Box::pin(stream))
-}
-
-fn create_agent(llm: &LlmClient, tools: &Arc<ToolSet>, system_prompt: &str) -> Result<crate::agent::Agent> {
-    let model = llm.model.clone();
-    let api_key = llm.api_key.clone();
-    let stream_llm = llm.clone();
-
-    let stream_fn: StreamFn = Arc::new(move |_model, ctx, _thinking, opts| {
-        let api_key = api_key.clone();
-        let stream_llm = stream_llm.clone();
-        Box::pin(async move {
-            let mut options = StreamOptions {
-                api_key: Some(api_key),
-                max_tokens: Some(4096),
-                temperature: Some(0.7),
-                ..Default::default()
-            };
-            if let Some(key) = opts.api_key.clone() {
-                options.api_key = Some(key);
-            }
-            if let Some(session_id) = opts.session_id {
-                options.session_id = Some(session_id);
-            }
-            if let Some(transport) = opts.transport {
-                options.transport = Some(match transport.as_str() {
-                    "websocket" => Transport::Websocket,
-                    "websocket-cached" => Transport::WebsocketCached,
-                    "auto" => Transport::Auto,
-                    _ => Transport::Sse,
-                });
-            }
-
-            let event_stream = stream_llm.create_stream(&_model, &ctx, options);
-            let response: StreamResponse = Box::new(event_stream);
-            Ok(response)
-        })
-    });
-
-    let agent_tools = tools.to_agent_tools();
-    let get_api_key: GetApiKeyFn = Arc::new({
-        let api_key = llm.api_key.clone();
-        move |_provider| {
-            let key = api_key.clone();
-            Box::pin(async move { Some(key) })
-        }
-    });
-
-    let state = AgentState {
-        system_prompt: system_prompt.to_string(),
-        model,
-        thinking_level: "off".into(),
-        tools: agent_tools,
-        messages: Vec::new(),
-        is_streaming: false,
-        streaming_message: None,
-        pending_tool_calls: std::collections::HashSet::new(),
-        error_message: None,
-    };
-
-    let agent = crate::agent::Agent::new(AgentOptions {
-        initial_state: Some(state),
-        stream_fn: Some(stream_fn),
-        get_api_key: Some(get_api_key),
-        ..Default::default()
-    });
-
-    Ok(agent)
 }
