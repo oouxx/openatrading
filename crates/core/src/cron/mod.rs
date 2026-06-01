@@ -383,7 +383,7 @@ async fn run_decision_for_role(
 
     // Build market context as user message for tool call mode
     let market_user_message = format!(
-        "{}\n\n## 当前持仓\n{}\n\n## 近5日历史数据\n{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况，给出今日复盘和明日操作建议。",
+        "{}\n\n## 当前持仓\n{}\n\n## 近5日历史数据\n{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况，当然你也可以调用工具，给出今日复盘和明日操作建议。",
         market_context, position_context, historical, role.display_name
     );
 
