@@ -2938,19 +2938,14 @@ name = "openatrading-agent"
 version = "0.10.3"
 dependencies = [
  "anyhow",
- "chrono",
+ "async-stream",
  "futures",
- "md5",
+ "openatrading-provider",
  "pi-agent-core",
- "regex",
- "reqwest 0.12.28",
- "scraper",
  "serde",
  "serde_json",
- "sha1",
  "thiserror 2.0.18",
  "tokio",
- "url",
 ]
 
 [[package]]
@@ -3016,6 +3011,7 @@ dependencies = [
  "chrono-tz",
  "dotenvy",
  "futures",
+ "openatrading-agent",
  "openatrading-api",
  "openatrading-channels",
  "openatrading-provider",
@@ -3037,9 +3033,9 @@ name = "openatrading-provider"
 version = "0.10.3"
 dependencies = [
  "anyhow",
+ "async-stream",
  "futures",
  "pi-ai",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3270,8 +3266,8 @@ dependencies = [
 
 [[package]]
 name = "pi-agent-core"
-version = "0.1.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.0#a7ac69573844adcb4f1234f57e6c789d8c0d175a"
+version = "1.78.0"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.1#6d6a45590e141a9e45c40dac464cef009de12d4f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3292,8 +3288,8 @@ dependencies = [
 
 [[package]]
 name = "pi-ai"
-version = "0.1.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.0#a7ac69573844adcb4f1234f57e6c789d8c0d175a"
+version = "1.78.0"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.1#6d6a45590e141a9e45c40dac464cef009de12d4f"
 dependencies = [
  "async-trait",
  "chrono",

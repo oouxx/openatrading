@@ -153,7 +153,7 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::agent::agent_loop_stream;
+    use openatrading_core::llm::agent_loop_stream;
     use openatrading_core::llm::tools::{
         GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetRealtimeQuote,
         GetSuperStock, GetTelegraph, GetYesterdayLimitUp,
@@ -162,14 +162,14 @@ pub async fn ai_chat(
 
     let tools = Arc::new(
         ToolSet::new()
-            .with_tool(GetMarketOverview)
-            .with_tool(GetLimitUp)
-            .with_tool(GetLimitDown)
-            .with_tool(GetSuperStock)
-            .with_tool(GetYesterdayLimitUp)
-            .with_tool(GetDapanAbnormal)
-            .with_tool(GetRealtimeQuote)
-            .with_tool(GetTelegraph),
+            .with_tool(GetMarketOverview::to_agent_tool())
+            .with_tool(GetLimitUp::to_agent_tool())
+            .with_tool(GetLimitDown::to_agent_tool())
+            .with_tool(GetSuperStock::to_agent_tool())
+            .with_tool(GetYesterdayLimitUp::to_agent_tool())
+            .with_tool(GetDapanAbnormal::to_agent_tool())
+            .with_tool(GetRealtimeQuote::to_agent_tool())
+            .with_tool(GetTelegraph::to_agent_tool()),
     );
 
     let role_name = req.role.as_deref().unwrap_or("zarili");

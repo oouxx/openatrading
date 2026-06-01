@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::agent::agent_loop_stream;
+use crate::llm::agent_loop_stream;
 use crate::llm::tools::{
     GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetSuperStock,
     GetYesterdayLimitUp,
@@ -131,12 +131,12 @@ pub async fn start_scheduler(
         let roles = roles.clone();
         let tools = Arc::new(
             ToolSet::new()
-                .with_tool(GetLimitUp)
-                .with_tool(GetLimitDown)
-                .with_tool(GetMarketOverview)
-                .with_tool(GetSuperStock)
-                .with_tool(GetYesterdayLimitUp)
-                .with_tool(GetDapanAbnormal),
+                .with_tool(GetLimitUp::to_agent_tool())
+                .with_tool(GetLimitDown::to_agent_tool())
+                .with_tool(GetMarketOverview::to_agent_tool())
+                .with_tool(GetSuperStock::to_agent_tool())
+                .with_tool(GetYesterdayLimitUp::to_agent_tool())
+                .with_tool(GetDapanAbnormal::to_agent_tool()),
         );
         add_job!(
             scheduler,

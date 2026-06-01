@@ -436,9 +436,9 @@ impl TelegramBot {
 
                 let tools = Arc::new(
                     crate::llm::ToolSet::new()
-                        .with_tool(crate::llm::tools::GetLimitUp)
-                        .with_tool(crate::llm::tools::GetLimitDown)
-                        .with_tool(crate::llm::tools::GetMarketOverview),
+                        .with_tool(crate::llm::tools::GetLimitUp::to_agent_tool())
+                        .with_tool(crate::llm::tools::GetLimitDown::to_agent_tool())
+                        .with_tool(crate::llm::tools::GetMarketOverview::to_agent_tool()),
                 );
                 match run_decision(
                     &*self.memory,
