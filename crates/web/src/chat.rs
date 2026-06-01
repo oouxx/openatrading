@@ -154,23 +154,17 @@ pub async fn ai_chat(
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     use openatrading_core::llm::agent_loop_stream;
-    use openatrading_core::llm::tools::{
-        GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetRealtimeQuote,
-        GetSuperStock, GetTelegraph, GetYesterdayLimitUp,
-    };
-    use openatrading_core::llm::ToolSet;
 
-    let tools = Arc::new(
-        ToolSet::new()
-            .with_tool(GetMarketOverview::to_agent_tool())
-            .with_tool(GetLimitUp::to_agent_tool())
-            .with_tool(GetLimitDown::to_agent_tool())
-            .with_tool(GetSuperStock::to_agent_tool())
-            .with_tool(GetYesterdayLimitUp::to_agent_tool())
-            .with_tool(GetDapanAbnormal::to_agent_tool())
-            .with_tool(GetRealtimeQuote::to_agent_tool())
-            .with_tool(GetTelegraph::to_agent_tool()),
-    );
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
+        openatrading_core::llm::tools::get_market_overview(),
+        openatrading_core::llm::tools::get_limit_up(),
+        openatrading_core::llm::tools::get_limit_down(),
+        openatrading_core::llm::tools::get_super_stock(),
+        openatrading_core::llm::tools::get_yesterday_limit_up(),
+        openatrading_core::llm::tools::get_dapan_abnormal(),
+        openatrading_core::llm::tools::get_realtime_quote(),
+        openatrading_core::llm::tools::get_telegraph(),
+    ];
 
     let role_name = req.role.as_deref().unwrap_or("zarili");
     let roles_guard = state.roles.read().await;

@@ -418,12 +418,11 @@ async fn cmd_decision(
     let llm = LlmClient::from_env();
     let api = Client::new();
 
-    let tools = Arc::new(
-        openatrading_core::llm::ToolSet::new()
-            .with_tool(openatrading_core::llm::tools::GetLimitUp::to_agent_tool())
-            .with_tool(openatrading_core::llm::tools::GetLimitDown::to_agent_tool())
-            .with_tool(openatrading_core::llm::tools::GetMarketOverview::to_agent_tool()),
-    );
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
+        openatrading_core::llm::tools::get_limit_up(),
+        openatrading_core::llm::tools::get_limit_down(),
+        openatrading_core::llm::tools::get_market_overview(),
+    ];
 
     run_decision(
         &*gateway.memory,
