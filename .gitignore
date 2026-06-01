@@ -7,6 +7,7 @@ pre-commit-usage.md
 reports/
 .qwen/
 tests/
+!crates/*/tests/
 .DS_Store
 docs/*.md
 docs/*.json
