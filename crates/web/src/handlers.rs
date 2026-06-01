@@ -149,13 +149,13 @@ pub async fn get_sentiment_history(
                             bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
                             rise_ratio: (rise_ratio * 100.0).round() / 100.0,
                         });
-                    }
+                    },
                     Ok(None) => {
                         eprintln!("sentiment_history: no data for {date}");
-                    }
+                    },
                     Err(e) => {
                         eprintln!("sentiment_history error for {date}: {e}");
-                    }
+                    },
                 }
             }
 
@@ -683,15 +683,11 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    openatrading_core::roles::save_role_strategy(
-        &state.strategies_dir,
-        &body.name,
-        &body.strategy,
-    )
-    .map_err(|e| {
-        eprintln!("create_role error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    openatrading_core::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy)
+        .map_err(|e| {
+            eprintln!("create_role error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == body.name) {

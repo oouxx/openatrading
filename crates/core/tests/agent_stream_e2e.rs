@@ -17,15 +17,11 @@
 use std::sync::Arc;
 
 use openatrading_agent::agent::{Agent, AgentOptions};
-use openatrading_agent::pi_ai_types::{
-    ContentBlock, Model, ModelCost, StopReason,
-};
-use openatrading_agent::types::{
-    AgentMessage, AgentState, ConvertToLlmFn, StreamFn,
-};
+use openatrading_agent::pi_ai_types::{ContentBlock, Model, ModelCost, StopReason};
+use openatrading_agent::types::{AgentMessage, AgentState, ConvertToLlmFn, StreamFn};
+use openatrading_provider::pi_types;
 use openatrading_provider::providers::register_builtins::register_built_in_api_providers;
 use openatrading_provider::stream as pi_stream;
-use openatrading_provider::pi_types;
 
 use openatrading_core::llm::tools::get_limit_up;
 
@@ -42,8 +38,7 @@ fn make_stream_fn(api_key: String) -> StreamFn {
                 ..Default::default()
             };
             let stream = pi_stream::stream(&model, &context, Some(options));
-            Ok(Box::new(stream)
-                as openatrading_agent::pi_ai_types::StreamResponse)
+            Ok(Box::new(stream) as openatrading_agent::pi_ai_types::StreamResponse)
         })
     })
 }
@@ -58,7 +53,7 @@ fn make_convert_to_llm() -> ConvertToLlmFn {
                         content: content.clone(),
                         timestamp: *timestamp,
                     })
-                }
+                },
                 AgentMessage::Assistant {
                     content,
                     api,
@@ -68,21 +63,19 @@ fn make_convert_to_llm() -> ConvertToLlmFn {
                     stop_reason,
                     error_message,
                     timestamp,
-                } => {
-                    Some(openatrading_agent::pi_ai_types::Message::Assistant {
-                        content: content.clone(),
-                        api: api.clone(),
-                        provider: provider.clone(),
-                        model: model.clone(),
-                        response_model: None,
-                        response_id: None,
-                        diagnostics: None,
-                        usage: usage.clone(),
-                        stop_reason: stop_reason.clone().unwrap_or(StopReason::Stop),
-                        error_message: error_message.clone(),
-                        timestamp: *timestamp,
-                    })
-                }
+                } => Some(openatrading_agent::pi_ai_types::Message::Assistant {
+                    content: content.clone(),
+                    api: api.clone(),
+                    provider: provider.clone(),
+                    model: model.clone(),
+                    response_model: None,
+                    response_id: None,
+                    diagnostics: None,
+                    usage: usage.clone(),
+                    stop_reason: stop_reason.clone().unwrap_or(StopReason::Stop),
+                    error_message: error_message.clone(),
+                    timestamp: *timestamp,
+                }),
                 AgentMessage::ToolResult {
                     tool_call_id,
                     tool_name,
@@ -90,16 +83,14 @@ fn make_convert_to_llm() -> ConvertToLlmFn {
                     details,
                     is_error,
                     timestamp,
-                } => {
-                    Some(openatrading_agent::pi_ai_types::Message::ToolResult {
-                        tool_call_id: tool_call_id.clone(),
-                        tool_name: tool_name.clone(),
-                        content: content.clone(),
-                        details: Some(details.clone()),
-                        is_error: *is_error,
-                        timestamp: *timestamp,
-                    })
-                }
+                } => Some(openatrading_agent::pi_ai_types::Message::ToolResult {
+                    tool_call_id: tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                    content: content.clone(),
+                    details: Some(details.clone()),
+                    is_error: *is_error,
+                    timestamp: *timestamp,
+                }),
                 _ => None,
             })
             .collect()
@@ -109,6 +100,7 @@ fn make_convert_to_llm() -> ConvertToLlmFn {
 // ── test ──
 
 #[tokio::test]
+#[ignore = "requires live LLM API; run with -- --nocapture"]
 async fn stream_chat_invokes_get_limit_up() {
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .or_else(|_| std::env::var("LLM_API_KEY"))
@@ -191,7 +183,7 @@ async fn stream_chat_invokes_get_limit_up() {
                     usage.total_tokens,
                     &text.chars().take(200).collect::<String>()
                 );
-            }
+            },
             AgentMessage::ToolResult {
                 tool_name,
                 content,
@@ -220,8 +212,8 @@ async fn stream_chat_invokes_get_limit_up() {
                     );
                     saw_tool_result = true;
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

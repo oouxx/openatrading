@@ -149,13 +149,13 @@ pub async fn run() -> Result<()> {
                 shares,
             } => {
                 return cmd_trade_add(&project_root, &role, &symbol, price, shares);
-            }
+            },
             TradeAction::List { role } => {
                 return cmd_trade_list(&project_root, role.as_deref());
-            }
+            },
             TradeAction::Close { id, price } => {
                 return cmd_trade_close(&project_root, id, price);
-            }
+            },
         }
     }
 
@@ -204,22 +204,22 @@ pub async fn run() -> Result<()> {
                 if let Ok(data) = xgb.fetch_market_overview().await {
                     output.overview = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "limit_up" => {
                 if let Ok(data) = xgb.fetch_limit_up().await {
                     output.limit_up = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "limit_down" => {
                 if let Ok(data) = xgb.fetch_limit_down().await {
                     output.limit_down = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "super_stock" => {
                 if let Ok(data) = xgb.fetch_super_stock().await {
                     output.super_stock = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "field_item" => {
                 let date = openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m-%d")
@@ -227,12 +227,12 @@ pub async fn run() -> Result<()> {
                 if let Ok(data) = client.jiuyan.fetch_field(&date, 1).await {
                     output.field_item = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "plate_abnormal" => {
                 if let Ok(data) = xgb.fetch_plate_abnormal(30).await {
                     output.plate_abnormal = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "timeline" => {
                 let month = openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m")
@@ -240,34 +240,34 @@ pub async fn run() -> Result<()> {
                 if let Ok(data) = client.jiuyan.fetch_timeline(&month).await {
                     output.timeline = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "community" => {
                 if let Ok(data) = client.jiuyan.fetch_community("", 1, 1, 20).await {
                     output.community = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "sentiment" => {
                 if let Ok(data) = analyze_sentiment(&client).await {
                     output.sentiment = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "cls_telegraph" => {
                 let cat = cli.cls_category.as_deref().unwrap_or("");
                 if let Ok(data) = client.cls.fetch_telegraph(cat, None, 20).await {
                     output.cls_telegraph = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "dapan_abnormal" => {
                 if let Ok(data) = client.xuangubao.fetch_dapan_abnormal().await {
                     output.dapan_abnormal = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             "market_trend" => {
                 // Default to SH index
                 if let Ok(data) = client.xuangubao.fetch_market_trend("000001").await {
                     output.market_trend = Some(serde_json::to_value(&data)?);
                 }
-            }
+            },
             _ => eprintln!("⚠️ 未知数据源: {src}"),
         }
     }
@@ -284,14 +284,14 @@ pub async fn run() -> Result<()> {
             Some(entry) => {
                 output.role_name = Some(entry.config.display_name.clone());
                 AppConfig::load_strategy(entry)?
-            }
+            },
             None => {
                 eprintln!("⚠️ 未找到角色 '{role_name}'，使用默认策略");
                 output.role_name = Some("默认分析".to_string());
                 openatrading_core::roles::get_builtin_strategy("zarili")
                     .unwrap_or("")
                     .to_string()
-            }
+            },
         };
 
         let api_key = std::env::var("LLM_API_KEY")

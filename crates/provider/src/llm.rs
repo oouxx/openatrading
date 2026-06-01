@@ -275,7 +275,7 @@ impl LlmClient {
         options: StreamOptions,
     ) -> pi_ai::utils::event_stream::AssistantMessageEventStream {
         let mut options = options;
-        if options.api_key.as_ref().map_or(true, |k| k.is_empty()) {
+        if options.api_key.as_ref().is_none_or(|k| k.is_empty()) {
             options.api_key = Some(self.api_key.clone());
         }
         if options.max_tokens.is_none() {
@@ -288,28 +288,28 @@ impl LlmClient {
     }
 }
 
-fn json_to_context(messages_val: &serde_json::Value, tools_val: Option<&serde_json::Value>) -> Context {
+fn json_to_context(
+    messages_val: &serde_json::Value,
+    tools_val: Option<&serde_json::Value>,
+) -> Context {
     let mut system_prompt = None;
     let mut messages = Vec::new();
 
     if let Some(arr) = messages_val.as_array() {
         for msg in arr {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = msg
-                .get("content")
-                .and_then(|c| c.as_str())
-                .unwrap_or("");
+            let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
 
             match role {
                 "system" => {
                     system_prompt = Some(content.to_string());
-                }
+                },
                 "user" => {
                     messages.push(Message::User {
                         content: vec![ContentBlock::text(content)],
                         timestamp: 0,
                     });
-                }
+                },
                 "assistant" => {
                     let mut blocks = Vec::new();
                     if !content.is_empty() {
@@ -358,7 +358,7 @@ fn json_to_context(messages_val: &serde_json::Value, tools_val: Option<&serde_js
                             timestamp: 0,
                         });
                     }
-                }
+                },
                 "tool" => {
                     let tool_call_id = msg
                         .get("tool_call_id")
@@ -378,8 +378,8 @@ fn json_to_context(messages_val: &serde_json::Value, tools_val: Option<&serde_js
                         is_error: false,
                         timestamp: 0,
                     });
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -415,11 +415,10 @@ fn event_stream_to_text_stream(
         let mut stream = Box::pin(event_stream);
         while let Some(event) = stream.next().await {
             match event {
-                AssistantMessageEvent::TextDelta { delta, .. } => {
-                    if !delta.is_empty() {
+                AssistantMessageEvent::TextDelta { delta, .. }
+                    if !delta.is_empty() => {
                         yield Ok(delta);
                     }
-                }
                 AssistantMessageEvent::Error { error, .. } => {
                     let msg = error.error_message.as_deref().unwrap_or("unknown error");
                     yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
@@ -444,30 +443,27 @@ fn event_stream_to_tool_stream(
             let mut events: Vec<StreamEvent> = Vec::new();
 
             match event {
-                AssistantMessageEvent::TextDelta { delta, .. } => {
-                    if !delta.is_empty() {
+                AssistantMessageEvent::TextDelta { delta, .. }
+                    if !delta.is_empty() => {
                         events.push(StreamEvent::Text(delta));
                     }
-                }
-                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
-                    if !delta.is_empty() {
+                AssistantMessageEvent::ThinkingDelta { delta, .. }
+                    if !delta.is_empty() => {
                         events.push(StreamEvent::ReasoningText(delta));
                     }
-                }
                 AssistantMessageEvent::ToolCallStart { .. } => {
                     if let Some(prev) = current_tc.borrow_mut().take() {
                         events.push(StreamEvent::ToolCallStart(prev));
                     }
                 }
-                AssistantMessageEvent::ToolCallDelta { delta, .. } => {
-                    if !delta.is_empty() {
+                AssistantMessageEvent::ToolCallDelta { delta, .. }
+                    if !delta.is_empty() => {
                         events.push(StreamEvent::ToolCallDelta(ToolCall {
                             id: String::new(),
                             function_name: String::new(),
                             arguments: delta,
                         }));
                     }
-                }
                 AssistantMessageEvent::ToolCallEnd { tool_call, .. } => {
                     if let Some(prev) = current_tc.borrow_mut().take() {
                         events.push(StreamEvent::ToolCallStart(prev));
@@ -515,9 +511,12 @@ fn assistant_message_to_tool_response(msg: &AssistantMessage) -> ToolChatRespons
         match block {
             ContentBlock::Text { text, .. } => {
                 content_text = Some(text.clone());
-            }
+            },
             ContentBlock::ToolCall {
-                id, name, arguments, ..
+                id,
+                name,
+                arguments,
+                ..
             } => {
                 tool_calls.push(ToolCallItem {
                     id: id.clone(),
@@ -527,8 +526,8 @@ fn assistant_message_to_tool_response(msg: &AssistantMessage) -> ToolChatRespons
                         arguments: arguments.to_string(),
                     },
                 });
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -567,9 +566,11 @@ pub type StreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<Stri
 pub type StreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<String>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type ToolStreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>> + Send>>;
+pub type ToolStreamResult =
+    std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>> + Send>>;
 #[cfg(target_arch = "wasm32")]
-pub type ToolStreamResult = std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>>>>;
+pub type ToolStreamResult =
+    std::pin::Pin<Box<dyn futures::Stream<Item = Result<Vec<StreamEvent>>>>>;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct ToolCallMessage {

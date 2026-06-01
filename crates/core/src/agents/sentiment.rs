@@ -39,11 +39,11 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
                             break;
                         }
                         all.extend(resp.result);
-                    }
+                    },
                     Err(e) => {
                         eprintln!("获取韭研数据失败: {}", e);
                         break;
-                    }
+                    },
                 }
             }
             all

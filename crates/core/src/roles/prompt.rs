@@ -178,7 +178,7 @@ pub fn parse_decision_output(raw: &str) -> Option<DecisionOutput> {
                 &raw[..raw.len().min(500)]
             );
             None
-        }
+        },
     }
 }
 

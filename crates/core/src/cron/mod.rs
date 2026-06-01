@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
+use crate::llm::pi_ai_types::ContentBlock;
 use crate::llm::tools;
 use crate::llm::{create_agent, AgentMessage, DynTool, LlmClient};
-use crate::llm::pi_ai_types::ContentBlock;
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -71,10 +71,10 @@ macro_rules! add_job {
         match Job::new_async_tz($schedule.as_str(), Shanghai, $task) {
             Ok(j) => {
                 $scheduler.add(j).await?;
-            }
+            },
             Err(e) => {
                 eprintln!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
-            }
+            },
         }
     };
 }
@@ -146,8 +146,7 @@ pub async fn start_scheduler(
                 let decision_tools = decision_tools.clone();
                 Box::pin(async move {
                     if let Err(e) =
-                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &decision_tools)
-                            .await
+                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &decision_tools).await
                     {
                         eprintln!("[cron] decision error: {e}");
                     }
@@ -228,10 +227,10 @@ async fn run_collection(
             memory.save_snapshot("xuangubao_overview", &json.to_string())?;
             sources.push("xuangubao_overview".into());
             snapshot_count += 1;
-        }
+        },
         Err(e) => {
             tracing::warn!("[cron] collection: fetch overview failed: {e}");
-        }
+        },
     }
 
     match api.xuangubao.fetch_limit_up().await {
@@ -240,10 +239,10 @@ async fn run_collection(
             memory.save_snapshot("xuangubao_limit_up", &json)?;
             sources.push("xuangubao_limit_up".into());
             snapshot_count += 1;
-        }
+        },
         Err(e) => {
             tracing::warn!("[cron] collection: fetch limit_up failed: {e}");
-        }
+        },
     }
 
     let summary = CollectSummary {
@@ -288,7 +287,7 @@ pub async fn run_decision(
         Err(e) => {
             tracing::warn!("[cron] fetch market overview failed: {e}");
             "## 市场数据获取失败\n".to_string()
-        }
+        },
     };
 
     let historical = memory.get_historical_context(5).unwrap_or_default();
@@ -322,7 +321,7 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
         Err(e) => {
             tracing::error!("[cron] list_all_positions failed: {e}");
             return;
-        }
+        },
     };
 
     if positions.is_empty() {
@@ -345,11 +344,11 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
                 } else {
                     updated += 1;
                 }
-            }
+            },
             Err(e) => {
                 tracing::warn!("[cron] fetch realtime failed for {}: {e}", pos.symbol);
                 failed += 1;
-            }
+            },
         }
     }
 
@@ -410,8 +409,12 @@ async fn run_decision_for_role(
                                     _ => None,
                                 })
                                 .collect();
-                            if t.is_empty() { None } else { Some(t) }
-                        }
+                            if t.is_empty() {
+                                None
+                            } else {
+                                Some(t)
+                            }
+                        },
                         _ => None,
                     })
                     .unwrap_or_default();
@@ -421,7 +424,7 @@ async fn run_decision_for_role(
                     reply_text.len()
                 );
                 reply_text
-            }
+            },
             Err(e) => {
                 tracing::error!(
                     "[cron] agent process failed for '{}': {e}, falling back to prompt",
@@ -441,7 +444,7 @@ async fn run_decision_for_role(
                 ];
                 let messages_json = serde_json::json!(messages).to_string();
                 llm.chat_with_messages(&messages_json).await?
-            }
+            },
         }
     } else {
         tracing::info!("[cron] decision for '{}': prompt mode", role.name);
@@ -468,7 +471,7 @@ async fn run_decision_for_role(
                 };
                 let _ = social.notify_decision(&decision).await;
                 return Err(e);
-            }
+            },
         }
     };
 
@@ -482,7 +485,7 @@ async fn run_decision_for_role(
                 role.name
             );
             (reply.clone(), Vec::<TradeInstruction>::new())
-        }
+        },
     };
 
     let mut executed_trades: Vec<String> = Vec::new();
@@ -516,7 +519,7 @@ async fn run_decision_for_role(
                     };
                     let _ = social.notify_trade(&log).await;
                 }
-            }
+            },
             "sell" => {
                 if let Err(e) = execute_sell(trade, api, &role.name, instr).await {
                     tracing::error!(
@@ -544,13 +547,13 @@ async fn run_decision_for_role(
                     };
                     let _ = social.notify_trade(&log).await;
                 }
-            }
+            },
             "hold" => {
                 executed_trades.push(format!(
                     "⏸ 持有 {} {} — {}",
                     instr.symbol, instr.name, instr.reason
                 ));
-            }
+            },
             other => {
                 tracing::warn!(
                     "[cron] unknown action '{}' for {} {}",
@@ -558,7 +561,7 @@ async fn run_decision_for_role(
                     instr.symbol,
                     instr.name
                 );
-            }
+            },
         }
     }
 

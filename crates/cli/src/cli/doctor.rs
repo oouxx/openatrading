@@ -45,7 +45,7 @@ async fn check_telegram(app_config: &AppConfig) -> CheckItem {
                         status: "error".into(),
                         message: "bot_token 或 chat_id 未配置".into(),
                     }
-                }
+                },
             };
 
             let client = reqwest::Client::new();
@@ -79,20 +79,20 @@ async fn check_telegram(app_config: &AppConfig) -> CheckItem {
                         status: "ok".into(),
                         message: "Telegram 连接成功".into(),
                     }
-                }
+                },
                 Ok(resp) => {
                     let body = resp.text().await.unwrap_or_default();
                     CheckItem {
                         status: "error".into(),
                         message: format!("API 返回错误: {body}"),
                     }
-                }
+                },
                 Err(e) => CheckItem {
                     status: "error".into(),
                     message: format!("连接失败: {e}"),
                 },
             }
-        }
+        },
         _ => CheckItem {
             status: "warn".into(),
             message: "Telegram 未启用".into(),
@@ -158,7 +158,7 @@ pub async fn cmd_doctor(project_root: &Path, json: bool) -> Result<()> {
                         message: "cron 表达式无效".into(),
                     }
                 }
-            }
+            },
             _ => CheckItem {
                 status: "warn".into(),
                 message: "cron 未启用".into(),

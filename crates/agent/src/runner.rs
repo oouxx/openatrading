@@ -6,9 +6,7 @@ use anyhow::Result;
 use openatrading_provider::llm::LlmClient;
 use pi_agent_core::agent::{Agent, AgentOptions};
 use pi_agent_core::pi_ai_types::{ContentBlock, StreamOptions, StreamResponse, Transport};
-use pi_agent_core::types::{
-    AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn,
-};
+use pi_agent_core::types::{AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn};
 
 #[derive(Debug)]
 pub struct AgentResult {
@@ -16,13 +14,7 @@ pub struct AgentResult {
     pub rounds: usize,
 }
 
-
-
-pub fn create_agent(
-    llm: &LlmClient,
-    tools: Vec<Arc<DynTool>>,
-    system_prompt: &str,
-) -> Agent {
+pub fn create_agent(llm: &LlmClient, tools: Vec<Arc<DynTool>>, system_prompt: &str) -> Agent {
     let model = llm.model.clone();
     let stream_llm = llm.clone();
     let api_key = llm.api_key.clone();
@@ -116,8 +108,12 @@ pub async fn agent_loop(
                         _ => None,
                     })
                     .collect();
-                if text.is_empty() { None } else { Some(text) }
-            }
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
+            },
             _ => None,
         })
         .unwrap_or_default();
@@ -127,4 +123,3 @@ pub async fn agent_loop(
         rounds: 1,
     })
 }
-
