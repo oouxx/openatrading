@@ -84,7 +84,7 @@ impl Report {
             }
         }
         let mut inds: Vec<(&str, u32)> = industries.into_iter().collect();
-        inds.sort_by(|a, b| b.1.cmp(&a.1));
+        inds.sort_by_key(|b| std::cmp::Reverse(b.1));
         if let Some((name, _cnt)) = inds.first() {
             opportunity_signals.push(format!("热门板块：{}", name));
         }
@@ -278,7 +278,7 @@ impl Report {
             .iter()
             .filter(|s| s.limit_up_days >= 2)
             .collect();
-        high.sort_by(|a, b| b.limit_up_days.cmp(&a.limit_up_days));
+        high.sort_by_key(|b| std::cmp::Reverse(b.limit_up_days));
 
         if !high.is_empty() {
             writeln!(out, "│").unwrap();
@@ -336,7 +336,7 @@ impl Report {
         }
         // 降序排列（高板在前）
         let mut vec: Vec<(u32, u32)> = map.into_iter().collect();
-        vec.sort_by(|a, b| b.0.cmp(&a.0));
+        vec.sort_by_key(|b| std::cmp::Reverse(b.0));
         vec
     }
 
@@ -350,7 +350,7 @@ impl Report {
             }
         }
         let mut vec: Vec<_> = map.into_iter().collect();
-        vec.sort_by(|a, b| b.1.cmp(&a.1));
+        vec.sort_by_key(|b| std::cmp::Reverse(b.1));
         vec.iter()
             .take(n)
             .map(|(hy, cnt)| format!("{}({}家)", hy, cnt))

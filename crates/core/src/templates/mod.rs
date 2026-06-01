@@ -132,7 +132,7 @@ impl BoardDistributionMdTemplate {
             *map.entry(s.limit_up_days).or_default() += 1;
         }
         let mut distribution: Vec<(u32, u32)> = map.into_iter().collect();
-        distribution.sort_by(|a, b| b.0.cmp(&a.0));
+        distribution.sort_by_key(|b| std::cmp::Reverse(b.0));
         Self { distribution }
     }
 }
@@ -544,7 +544,7 @@ impl BoardDistributionHtmlTemplate {
             *map.entry(s.limit_up_days).or_default() += 1;
         }
         let mut distribution: Vec<(u32, u32)> = map.into_iter().collect();
-        distribution.sort_by(|a, b| b.0.cmp(&a.0));
+        distribution.sort_by_key(|b| std::cmp::Reverse(b.0));
         Self { distribution }
     }
 }
