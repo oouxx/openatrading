@@ -987,7 +987,7 @@ mod tests {
             Arc::new(MockMemoryStore),
             Arc::new(MockTradeManager),
             Arc::new(MockNotifier),
-            LlmClient::from_env(),
+            LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
             ApiClient::new(),
             vec![],
         )
@@ -1001,7 +1001,7 @@ mod tests {
             &MockMemoryStore,
             &MockTradeManager,
             &MockNotifier,
-            &LlmClient::from_env(),
+            &LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
             &ApiClient::new(),
             &[],
             &[],
@@ -1091,7 +1091,7 @@ mod tests {
         let result = run_decision_for_role(
             &MockTradeManager,
             &MockNotifier,
-            &LlmClient::from_env(),
+            &LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
             &ApiClient::new(),
             &role,
             "## 市场数据\n上涨3000家",
@@ -1116,7 +1116,7 @@ mod tests {
         let result = run_decision_for_role(
             &MockTradeManager,
             &MockNotifier,
-            &LlmClient::from_env(),
+            &LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
             &ApiClient::new(),
             &role,
             "## 市场数据\n上涨3000家",

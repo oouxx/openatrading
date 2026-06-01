@@ -185,7 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_agent_basic() {
-        let llm = LlmClient::new("test-key".to_string());
+        let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
         let agent = create_agent(&llm, vec![], "你是一个交易助手");
         // Agent created without panicking
         let _ = agent;
@@ -193,7 +193,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_agent_with_tools() {
-        let llm = LlmClient::new("test-key".to_string());
+        let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
         let agent = create_agent(&llm, vec![], "你是一个A股短线交易AI助手");
         let _ = agent;
     }

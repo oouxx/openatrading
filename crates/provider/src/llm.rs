@@ -16,13 +16,10 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    pub fn from_env() -> Self {
+    pub fn from_env(provider: String, model_id: String) -> Self {
         register_built_in_api_providers();
-        let (provider, model_id) = ("openrouter", "openrouter/free");
-        let provider = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| provider.to_string());
-        let model_id = std::env::var("LLM_MODEL").unwrap_or_else(|_| model_id.to_string());
-        let api_key = std::env::var("LLM_API_KEY")
-            .or_else(|_| get_env_api_key(&provider).ok_or_else(|| "".to_string()))
+        let api_key = get_env_api_key(&provider)
+            .ok_or_else(|| "".to_string())
             .unwrap_or_default();
         let model = get_model(&provider, &model_id)
             .cloned()
@@ -57,27 +54,11 @@ impl LlmClient {
         Self { model, api_key }
     }
 
-    /// Backward-compat constructor: create from api_key only.
-    /// provider/model are read from env or use defaults.
-    pub fn new(api_key: String) -> Self {
-        let mut c = Self::from_env();
-        if !api_key.is_empty() {
-            c.api_key = api_key;
-        }
-        c
-    }
-
     /// Create LlmClient with explicit provider + model (override env/defaults).
     /// Call from_env() first, then override provider and model.
     pub fn with_config(provider: String, model_id: String) -> Self {
-        let mut c = Self::from_env();
-        if !provider.is_empty() {
-            c.model.provider = provider;
-        }
-        if !model_id.is_empty() {
-            c.model.id = model_id;
-        }
-        c
+        
+        Self::from_env(provider, model_id)
     }
 
     /// Create LlmClient from config-provided provider/model, with env var fallback.
