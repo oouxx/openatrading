@@ -291,13 +291,17 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
         let cron_roles = roles.clone();
         let cron_memory = memory.clone();
         let cron_trade = trade.clone();
+        let cron_llm = LlmClient::from_config(
+            app_config.llm.provider.as_deref(),
+            app_config.llm.model.as_deref(),
+        );
         handles.push(tokio::spawn(async move {
             if let Err(e) = cron::start_scheduler(
                 &cron_cfg,
                 cron_memory,
                 cron_trade,
                 cron_social,
-                LlmClient::from_env(),
+                cron_llm,
                 openatrading_core::api::Client::new(),
                 cron_roles,
             )
@@ -318,12 +322,16 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
 
     // ── Web (web crate) ───────────────────────────
     if do_web {
+        let web_llm_provider = app_config.llm.provider.clone();
+        let web_llm_model = app_config.llm.model.clone();
         let gh = tokio::spawn(async move {
             if let Err(e) = gateway
                 .start(GatewayConfig {
                     web_port: 8080,
                     roles: web_roles.clone(),
                     strategies_dir: web_strategies_dir.to_string_lossy().to_string(),
+                    llm_provider: web_llm_provider,
+                    llm_model: web_llm_model,
                 })
                 .await
             {
