@@ -7,12 +7,9 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
 use crate::llm::agent_loop_stream;
-use crate::llm::tools::{
-    GetDapanAbnormal, GetLimitDown, GetLimitUp, GetMarketOverview, GetSuperStock,
-    GetYesterdayLimitUp,
-};
+use crate::llm::tools;
+use crate::llm::DynTool;
 use crate::llm::LlmClient;
-use crate::llm::ToolSet;
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -129,15 +126,14 @@ pub async fn start_scheduler(
         let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let tools = Arc::new(
-            ToolSet::new()
-                .with_tool(GetLimitUp::to_agent_tool())
-                .with_tool(GetLimitDown::to_agent_tool())
-                .with_tool(GetMarketOverview::to_agent_tool())
-                .with_tool(GetSuperStock::to_agent_tool())
-                .with_tool(GetYesterdayLimitUp::to_agent_tool())
-                .with_tool(GetDapanAbnormal::to_agent_tool()),
-        );
+        let decision_tools: Vec<Arc<DynTool>> = vec![
+            tools::get_limit_up(),
+            tools::get_limit_down(),
+            tools::get_market_overview(),
+            tools::get_super_stock(),
+            tools::get_yesterday_limit_up(),
+            tools::get_dapan_abnormal(),
+        ];
         add_job!(
             scheduler,
             config.decision_schedule,
@@ -149,10 +145,11 @@ pub async fn start_scheduler(
                 let llm = llm.clone();
                 let api = api.clone();
                 let roles = roles.clone();
-                let tools = tools.clone();
+                let decision_tools = decision_tools.clone();
                 Box::pin(async move {
                     if let Err(e) =
-                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &tools).await
+                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &decision_tools)
+                            .await
                     {
                         eprintln!("[cron] decision error: {e}");
                     }
@@ -268,7 +265,7 @@ pub async fn run_decision(
     llm: &LlmClient,
     api: &ApiClient,
     roles: &[RoleEntry],
-    tools: &Arc<ToolSet>,
+    tools: &[Arc<DynTool>],
 ) -> Result<()> {
     tracing::info!("[cron] decision: starting");
 
@@ -370,7 +367,7 @@ async fn run_decision_for_role(
     role: &RoleEntry,
     market_context: &str,
     historical: &str,
-    tools: &Arc<ToolSet>,
+    tools: &[Arc<DynTool>],
 ) -> Result<()> {
     let positions = trade.format_positions(&role.name)?;
     let has_positions = positions != "暂无持仓";
@@ -391,11 +388,11 @@ async fn run_decision_for_role(
         tracing::info!(
             "[cron] decision for '{}': tool mode ({} tools)",
             role.name,
-            tools.to_openai_tools().len()
+            tools.len()
         );
         match agent_loop_stream(
             llm.clone(),
-            tools.clone(),
+            tools.to_vec(),
             role.strategy.clone(),
             vec![],
             market_user_message.clone(),
@@ -1019,7 +1016,7 @@ mod tests {
             &LlmClient::from_env(),
             &ApiClient::new(),
             &[],
-            &Arc::new(ToolSet::new()),
+            &[],
         )
         .await;
         // Empty roles → loops over nothing and returns Ok

@@ -434,12 +434,11 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let tools = Arc::new(
-                    crate::llm::ToolSet::new()
-                        .with_tool(crate::llm::tools::GetLimitUp::to_agent_tool())
-                        .with_tool(crate::llm::tools::GetLimitDown::to_agent_tool())
-                        .with_tool(crate::llm::tools::GetMarketOverview::to_agent_tool()),
-                );
+                let tools: Vec<Arc<crate::llm::DynTool>> = vec![
+                    Arc::clone(&crate::llm::tools::get_limit_up()),
+                    Arc::clone(&crate::llm::tools::get_limit_down()),
+                    Arc::clone(&crate::llm::tools::get_market_overview()),
+                ];
                 match run_decision(
                     &*self.memory,
                     &*self.trade,
