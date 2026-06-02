@@ -19,6 +19,8 @@ pub struct GatewayConfig {
     pub web_port: u16,
     pub roles: Vec<RoleEntry>,
     pub strategies_dir: String,
+    pub llm_provider: Option<String>,
+    pub llm_model: Option<String>,
 }
 
 impl Gateway {
@@ -35,7 +37,10 @@ impl Gateway {
 
     pub async fn start(self, config: GatewayConfig) -> Result<()> {
         let state = Arc::new(AppState {
-            llm: LlmClient::from_env(),
+            llm: LlmClient::from_config(
+                config.llm_provider.as_deref(),
+                config.llm_model.as_deref(),
+            ),
             api: ApiClient::new(),
             memory: self.memory.clone(),
             trade: self.trade.clone(),

@@ -10,6 +10,15 @@ pub struct AppConfig {
     pub service: ServiceConfig,
     pub cron: Option<CronTomlConfig>,
     pub social: Option<SocialConfig>,
+    pub llm: LlmTomlConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlmTomlConfig {
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +39,8 @@ struct RawConfig {
     cron: Option<CronTomlConfig>,
     #[serde(default)]
     social: Option<SocialConfig>,
+    #[serde(default)]
+    llm: Option<LlmTomlConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,6 +192,12 @@ display_name = "风控官"
 dir = "strategies/risk_officer"
 merge_mode = "supplement"
 
+# ── LLM 配置 ─────────────────────────────────────────────
+# 未设置时降级使用环境变量 LLM_PROVIDER / LLM_MODEL / LLM_API_KEY
+#[llm]
+# provider = "openrouter"
+# model = "openrouter/free"
+
 # ── 后台服务 ─────────────────────────────────────────────
 [service]
 db_path = "data.db"
@@ -237,6 +254,10 @@ impl AppConfig {
             },
             cron: None,
             social: None,
+            llm: LlmTomlConfig {
+                provider: None,
+                model: None,
+            },
         };
 
         // Layer 1 (lowest): ~/.atrading/config.toml
@@ -295,6 +316,10 @@ impl AppConfig {
             }),
             cron: raw.cron,
             social: raw.social,
+            llm: raw.llm.unwrap_or(LlmTomlConfig {
+                provider: None,
+                model: None,
+            }),
         })
     }
 
@@ -311,6 +336,13 @@ impl AppConfig {
         // Merge social
         if other.social.is_some() {
             self.social = other.social;
+        }
+        // Merge llm (higher-priority config overrides individual fields)
+        if other.llm.provider.is_some() {
+            self.llm.provider = other.llm.provider;
+        }
+        if other.llm.model.is_some() {
+            self.llm.model = other.llm.model;
         }
         for entry in other.roles {
             self.roles.retain(|e| e.config.name != entry.config.name);
@@ -429,6 +461,10 @@ mod tests {
             },
             cron: None,
             social: None,
+            llm: LlmTomlConfig {
+                provider: None,
+                model: None,
+            },
         };
         cfg.merge(AppConfig {
             default_role: Some("trader".into()),
@@ -441,6 +477,10 @@ mod tests {
             },
             cron: None,
             social: None,
+            llm: LlmTomlConfig {
+                provider: None,
+                model: None,
+            },
         });
 
         assert_eq!(cfg.default_role.as_deref(), Some("trader"));

@@ -1,3 +1,5 @@
+include .env
+export
 .PHONY: build run run-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version
 
 # ─── Debug ────────────────────────────────────────────
@@ -48,48 +50,6 @@ install: release
 uninstall:
 	rm -f /usr/local/bin/openatrading
 	@echo "✓ Removed /usr/local/bin/openatrading"
-
-
-# ── Cross-compilation targets ──
-
-release-mac-arm:
-	cargo build --release --target aarch64-apple-darwin
-
-release-mac-intel:
-	cargo build --release --target x86_64-apple-darwin
-
-release-linux:
-	cross build --release --target x86_64-unknown-linux-musl
-
-release-linux-arm:
-	cross build --release --target aarch64-unknown-linux-musl
-
-release-windows:
-	cargo build --release --target x86_64-pc-windows-msvc
-
-# Build all platforms (requires cross for ARM Linux)
-release-all: release-mac-arm release-mac-intel release-linux release-linux-arm release-windows
-
-
-# ── Packaging ──
-
-TARGETS = aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-msvc
-
-package:
-	@mkdir -p dist
-	@for target in $(TARGETS); do \
-		if [ -f "target/$$target/release/openatrading" ]; then \
-			echo "Packaging $$target..."; \
-			tar czf "dist/openatrading-$$target.tar.gz" -C "target/$$target/release" openatrading; \
-		elif [ -f "target/$$target/release/openatrading.exe" ]; then \
-			echo "Packaging $$target..."; \
-			cd "target/$$target/release" && zip "../../../dist/openatrading-$$target.zip" openatrading.exe && cd ../../..; \
-		fi \
-	done
-	@cd dist && sha256sum openatrading-* > SHA256SUMS.txt 2>/dev/null || shasum -a 256 openatrading-* > SHA256SUMS.txt
-	@echo "✓ Packages in dist/"
-	@ls -lh dist/
-
 
 # ─── Deploy ──────────────────────────────────────────
 

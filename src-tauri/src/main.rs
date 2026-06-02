@@ -806,7 +806,7 @@ fn main() {
     let strategies_dir = project_root.join(".atrading").join("strategies");
 
     let app_state = Arc::new(AppState {
-        llm: LlmClient::from_env(),
+        llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
         api: ApiClient::new(),
         memory,
         trade,
