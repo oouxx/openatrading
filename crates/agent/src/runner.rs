@@ -105,6 +105,7 @@ pub async fn agent_loop(
                     .iter()
                     .filter_map(|b| match b {
                         ContentBlock::Text { text, .. } => Some(text.as_str()),
+                        ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
                         _ => None,
                     })
                     .collect();

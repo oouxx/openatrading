@@ -6,9 +6,8 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::pi_ai_types::ContentBlock;
 use crate::llm::tools;
-use crate::llm::{create_agent, AgentMessage, DynTool, LlmClient};
+use crate::llm::{agent_loop, DynTool, LlmClient};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
@@ -387,50 +386,20 @@ async fn run_decision_for_role(
             role.name,
             tools.len()
         );
-        let agent = create_agent(llm, tools.to_vec(), &role.strategy);
-        let messages = vec![AgentMessage::User {
-            content: vec![ContentBlock::Text {
-                text: market_user_message.clone(),
-                text_signature: None,
-            }],
-            timestamp: 0,
-        }];
-        match agent.process(messages).await {
-            Ok(results) => {
-                let reply_text: String = results
-                    .iter()
-                    .rev()
-                    .find_map(|msg| match msg {
-                        AgentMessage::Assistant { content, .. } => {
-                            let t: String = content
-                                .iter()
-                                .filter_map(|b| match b {
-                                    ContentBlock::Text { text, .. } => Some(text.as_str()),
-                                    _ => None,
-                                })
-                                .collect();
-                            if t.is_empty() {
-                                None
-                            } else {
-                                Some(t)
-                            }
-                        },
-                        _ => None,
-                    })
-                    .unwrap_or_default();
+        match agent_loop(llm, tools.to_vec(), &role.strategy, &market_user_message).await {
+            Ok(result) => {
                 tracing::info!(
                     "[cron] decision for '{}': agent done, {} chars",
                     role.name,
-                    reply_text.len()
+                    result.final_text.len()
                 );
-                reply_text
+                result.final_text
             },
             Err(e) => {
                 tracing::error!(
-                    "[cron] agent process failed for '{}': {e}, falling back to prompt",
+                    "[cron] agent_loop failed for '{}': {e}, falling back to prompt",
                     role.name
                 );
-                // Fallback to full prompt mode
                 let prompt = build_decision_prompt(
                     &role.strategy,
                     market_context,
