@@ -250,37 +250,26 @@ pub async fn ai_chat(
                             tracing::trace!("ai/chat: TextDelta {} chars", delta.len());
                             yield Ok(Event::default().data(delta.replace('\n', "\\n")));
                         }
-                        Ame::ThinkingDelta { delta, .. } if !delta.is_empty() => {
-                            yield Ok(Event::default().event("thinking").data(delta.replace('\n', "\\n")));
+                        // Non-text events emit event-type only (no data:) so the
+                        // frontend doesn't render them as visible text.
+                        Ame::ThinkingDelta { .. } => {
+                            yield Ok(Event::default().event("thinking"));
                         }
-                        Ame::ToolCallDelta { delta, .. } if !delta.is_empty() => {
-                            yield Ok(Event::default().event("tool-delta").data(delta.clone()));
+                        Ame::ToolCallDelta { .. } => {
+                            yield Ok(Event::default().event("tool-delta"));
                         }
-                        Ame::ToolCallEnd { tool_call, .. } => {
-                            yield Ok(Event::default().event("tool-end").data(tool_call.name.as_str()));
+                        Ame::ToolCallEnd { .. } => {
+                            yield Ok(Event::default().event("tool-end"));
                         }
-                        _ => {
-                            tracing::trace!("ai/chat: unhandled MessageUpdate variant");
-                        }
+                        _ => {}
                     }
                 }
                 Some(AgentEvent::MessageEnd { message }) => {
                     tracing::info!("ai/chat: MessageEnd received");
-                    if let AgentMessage::Assistant { content, error_message, .. } = &message {
+                    if let AgentMessage::Assistant { error_message, .. } = &message {
                         if let Some(err) = error_message {
                             if !err.is_empty() {
                                 yield Ok(Event::default().data(format!("[ERROR] {err}")));
-                            }
-                        }
-                        for block in content {
-                            match block {
-                                ContentBlock::Text { text, .. } if !text.is_empty() => {
-                                    yield Ok(Event::default().data(text.replace('\n', "\\n")));
-                                }
-                                ContentBlock::ToolCall { name, .. } => {
-                                    yield Ok(Event::default().event("tool").data(name.as_str()));
-                                }
-                                _ => {}
                             }
                         }
                     }
@@ -289,17 +278,13 @@ pub async fn ai_chat(
                     tracing::info!("ai/chat: AgentEnd, breaking SSE loop");
                     break;
                 }
-                Some(AgentEvent::ToolExecutionStart { tool_name, .. }) => {
-                    tracing::info!("ai/chat: ToolExecutionStart: {tool_name}");
-                    yield Ok(Event::default().event("tool-exec-start").data(tool_name));
+                Some(AgentEvent::ToolExecutionStart { .. }) => {
+                    yield Ok(Event::default().event("tool-exec-start"));
                 }
-                Some(AgentEvent::ToolExecutionEnd { tool_name, is_error, .. }) => {
-                    tracing::info!("ai/chat: ToolExecutionEnd: {tool_name} error={is_error}");
-                    yield Ok(Event::default().event(if is_error { "tool-exec-error" } else { "tool-exec-end" }).data(tool_name));
+                Some(AgentEvent::ToolExecutionEnd { .. }) => {
+                    yield Ok(Event::default().event("tool-exec-end"));
                 }
-                Some(_) => {
-                    // ignore unhandled events (TurnStart, TurnEnd, MessageStart, etc.)
-                }
+                Some(_) => {}
                 None => {
                     eprintln!("ai/chat: channel closed unexpectedly");
                     break;
