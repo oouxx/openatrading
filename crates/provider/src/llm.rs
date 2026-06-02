@@ -16,21 +16,11 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    pub fn from_env() -> Self {
+    pub fn from_env(provider: String, model_id: String) -> Self {
         register_built_in_api_providers();
-
-        let (provider, model_id) = if std::env::var("OPENROUTER_API_KEY").is_ok()
-            && std::env::var("DEEPSEEK_API_KEY").is_err()
-            && std::env::var("LLM_API_KEY").is_err()
-        {
-            ("openrouter", "openai/gpt-4o")
-        } else {
-            ("deepseek", "deepseek-chat")
-        };
-
-        let provider = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| provider.to_string());
-        let model_id = std::env::var("LLM_MODEL").unwrap_or_else(|_| model_id.to_string());
-
+        let api_key = get_env_api_key(&provider)
+            .ok_or_else(|| "".to_string())
+            .unwrap_or_default();
         let model = get_model(&provider, &model_id)
             .cloned()
             .unwrap_or_else(|| Model {
@@ -49,12 +39,6 @@ impl LlmClient {
                 compat: None,
             });
 
-        let api_key = std::env::var("LLM_API_KEY")
-            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
-            .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
-            .or_else(|_| get_env_api_key(&provider).ok_or_else(|| "".to_string()))
-            .unwrap_or_default();
-
         eprintln!(
             "[llm] from_env: provider={}, model={}, api_key={}..{}",
             model.provider,
@@ -70,12 +54,27 @@ impl LlmClient {
         Self { model, api_key }
     }
 
-    pub fn new(api_key: String) -> Self {
-        let mut c = Self::from_env();
-        if !api_key.is_empty() {
-            c.api_key = api_key;
-        }
-        c
+    /// Create LlmClient with explicit provider + model (override env/defaults).
+    /// Call from_env() first, then override provider and model.
+    pub fn with_config(provider: String, model_id: String) -> Self {
+        
+        Self::from_env(provider, model_id)
+    }
+
+    /// Create LlmClient from config-provided provider/model, with env var fallback.
+    /// Priority: config field > env var > built-in default.
+    pub fn from_config(config_provider: Option<&str>, config_model: Option<&str>) -> Self {
+        let provider = config_provider
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("LLM_PROVIDER").ok())
+            .unwrap_or_else(|| "openrouter".to_string());
+        let model_id = config_model
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("LLM_MODEL").ok())
+            .unwrap_or_else(|| "openrouter/free".to_string());
+        Self::with_config(provider, model_id)
     }
 
     pub async fn chat(&self, prompt: &str) -> Result<String> {

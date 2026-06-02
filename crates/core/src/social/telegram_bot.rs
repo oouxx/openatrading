@@ -84,7 +84,7 @@ impl TelegramBot {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
-            llm: LlmClient::from_env(),
+            llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()), //需要从配置中获取
             api: ApiClient::new(),
             roles,
             session: Arc::new(Mutex::new(None)),
