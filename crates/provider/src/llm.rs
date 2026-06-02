@@ -57,7 +57,6 @@ impl LlmClient {
     /// Create LlmClient with explicit provider + model (override env/defaults).
     /// Call from_env() first, then override provider and model.
     pub fn with_config(provider: String, model_id: String) -> Self {
-        
         Self::from_env(provider, model_id)
     }
 

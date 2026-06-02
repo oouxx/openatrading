@@ -3269,7 +3269,7 @@ dependencies = [
 [[package]]
 name = "pi-agent-core"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.2#9cb30a2c1047cdbe27af8af8ae76c991eab51e1d"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.3#a60fe83e2746e7d7ae61c73c443830b95002554f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3291,7 +3291,7 @@ dependencies = [
 [[package]]
 name = "pi-ai"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.2#9cb30a2c1047cdbe27af8af8ae76c991eab51e1d"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.3#a60fe83e2746e7d7ae61c73c443830b95002554f"
 dependencies = [
  "async-trait",
  "chrono",
