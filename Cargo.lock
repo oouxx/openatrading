@@ -3269,7 +3269,7 @@ dependencies = [
 [[package]]
 name = "pi-agent-core"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.3#a60fe83e2746e7d7ae61c73c443830b95002554f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.4#5e2d33bf4237568210403bbe124ae2a8e0c8e11b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3291,7 +3291,7 @@ dependencies = [
 [[package]]
 name = "pi-ai"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.3#a60fe83e2746e7d7ae61c73c443830b95002554f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.4#5e2d33bf4237568210403bbe124ae2a8e0c8e11b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3780,6 +3780,7 @@ dependencies = [
  "cookie",
  "cookie_store",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2 0.4.14",

@@ -229,17 +229,43 @@ pub async fn ai_chat(
         },
     );
 
-    agent.subscribe(listener).await;
+    let handle = agent.subscribe(listener).await;
 
     let agent_clone = Arc::clone(&agent);
     tokio::spawn(async move {
         let _ = agent_clone.process(pi_messages).await;
+        // Keep handle alive until process completes (Drop replaces listener
+        // with no-op, causing the SSE stream to miss events).
+        drop(handle);
     });
 
+    tracing::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         loop {
             match rx.recv().await {
+                Some(AgentEvent::MessageUpdate { assistant_message_event, .. }) => {
+                    use openatrading_core::llm::pi_ai_types::AssistantMessageEvent as Ame;
+                    match &assistant_message_event {
+                        Ame::TextDelta { delta, .. } if !delta.is_empty() => {
+                            tracing::trace!("ai/chat: TextDelta {} chars", delta.len());
+                            yield Ok(Event::default().data(delta.replace('\n', "\\n")));
+                        }
+                        Ame::ThinkingDelta { delta, .. } if !delta.is_empty() => {
+                            yield Ok(Event::default().event("thinking").data(delta.replace('\n', "\\n")));
+                        }
+                        Ame::ToolCallDelta { delta, .. } if !delta.is_empty() => {
+                            yield Ok(Event::default().event("tool-delta").data(delta.clone()));
+                        }
+                        Ame::ToolCallEnd { tool_call, .. } => {
+                            yield Ok(Event::default().event("tool-end").data(tool_call.name.as_str()));
+                        }
+                        _ => {
+                            tracing::trace!("ai/chat: unhandled MessageUpdate variant");
+                        }
+                    }
+                }
                 Some(AgentEvent::MessageEnd { message }) => {
+                    tracing::info!("ai/chat: MessageEnd received");
                     if let AgentMessage::Assistant { content, error_message, .. } = &message {
                         if let Some(err) = error_message {
                             if !err.is_empty() {
@@ -260,10 +286,24 @@ pub async fn ai_chat(
                     }
                 }
                 Some(AgentEvent::AgentEnd { .. }) => {
+                    tracing::info!("ai/chat: AgentEnd, breaking SSE loop");
                     break;
                 }
-                Some(_) => {}
-                None => break,
+                Some(AgentEvent::ToolExecutionStart { tool_name, .. }) => {
+                    tracing::info!("ai/chat: ToolExecutionStart: {tool_name}");
+                    yield Ok(Event::default().event("tool-exec-start").data(tool_name));
+                }
+                Some(AgentEvent::ToolExecutionEnd { tool_name, is_error, .. }) => {
+                    tracing::info!("ai/chat: ToolExecutionEnd: {tool_name} error={is_error}");
+                    yield Ok(Event::default().event(if is_error { "tool-exec-error" } else { "tool-exec-end" }).data(tool_name));
+                }
+                Some(_) => {
+                    // ignore unhandled events (TurnStart, TurnEnd, MessageStart, etc.)
+                }
+                None => {
+                    eprintln!("ai/chat: channel closed unexpectedly");
+                    break;
+                }
             }
         }
         yield Ok(Event::default().data("[DONE]"));

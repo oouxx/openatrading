@@ -15,8 +15,8 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 futures = { workspace = true }
 async-stream = "0.3"
-pi-agent-core = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.3" }
-pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.3" }
+pi-agent-core = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.4" }
+pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.4" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
