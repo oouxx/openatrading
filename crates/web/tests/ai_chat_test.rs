@@ -42,7 +42,7 @@ async fn run_chat(message: &str) -> Vec<String> {
     let (memory, trade) = setup_db();
 
     let state = Arc::new(AppState {
-        llm: LlmClient::from_env(),
+        llm: LlmClient::with_config("openrouter".to_string(), "openrouter/free".to_string()),
         api: ApiClient::new(),
         memory,
         trade,
