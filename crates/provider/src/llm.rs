@@ -16,28 +16,41 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
+    /// Return a sensible base_url for a known provider when the model is
+    /// not in the built-in registry.  Falls back to empty (which pi-ai's
+    /// HTTP transport treats as "use the registered API endpoint").
+    fn default_base_url(provider: &str) -> String {
+        match provider {
+            "deepseek" => "https://api.deepseek.com",
+            "openrouter" => "https://openrouter.ai/api/v1",
+            "siliconflow" => "https://api.siliconflow.cn/v1",
+            "github" => "https://models.inference.ai.azure.com",
+            _ => "",
+        }
+        .to_string()
+    }
+
     pub fn from_env(provider: String, model_id: String) -> Self {
         register_built_in_api_providers();
-        let api_key = get_env_api_key(&provider)
-            .ok_or_else(|| "".to_string())
+        let api_key = std::env::var("LLM_API_KEY")
+            .ok()
+            .or_else(|| get_env_api_key(&provider))
             .unwrap_or_default();
-        let model = get_model(&provider, &model_id)
-            .cloned()
-            .unwrap_or_else(|| Model {
-                id: model_id.clone(),
-                name: model_id.clone(),
-                api: "openai-completions".to_string(),
-                provider: provider.clone(),
-                base_url: String::new(),
-                reasoning: false,
-                thinking_level_map: None,
-                input: vec![],
-                cost: Default::default(),
-                context_window: 128000,
-                max_tokens: 4096,
-                headers: None,
-                compat: None,
-            });
+        let model = get_model(&provider, &model_id).unwrap_or_else(|| Model {
+            id: model_id.clone(),
+            name: model_id.clone(),
+            api: "openai-completions".to_string(),
+            provider: provider.clone(),
+            base_url: Self::default_base_url(&provider),
+            reasoning: false,
+            thinking_level_map: None,
+            input: vec!["text".to_string()],
+            cost: Default::default(),
+            context_window: 128000,
+            max_tokens: 4096,
+            headers: None,
+            compat: None,
+        });
 
         eprintln!(
             "[llm] from_env: provider={}, model={}, api_key={}..{}",
