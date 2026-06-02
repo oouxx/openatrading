@@ -146,74 +146,14 @@ jobs:
 
   # ── Tauri — macOS (GitHub-hosted) ────────────────────
   build-tauri-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
+    if: false
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v1
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            src-tauri -> target
-
-      - name: Add rust target
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Install frontend deps
-        working-directory: src
-        run: bun install --frozen-lockfile
-
-      - name: Set app version
-        run: echo "APP_VERSION=${TAG#v}" >> $GITHUB_ENV
-        env:
-          TAG: ${{ env.RELEASE_TAG }}
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: >
-            --target ${{ matrix.target }}
-            --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: "v__VERSION__"
-          releaseDraft: false
+      - run: echo "Tauri build disabled"
 
   # ── Tauri — Windows (GitHub-hosted) ──────────────────
   build-tauri-windows:
+    if: false
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v1
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            src-tauri -> target
-
-      - name: Install frontend deps
-        working-directory: src
-        run: bun install --frozen-lockfile
-
-      - name: Set app version
-        shell: bash
-        run: echo "APP_VERSION=${TAG#v}" >> $GITHUB_ENV
-        env:
-          TAG: ${{ env.RELEASE_TAG }}
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: >
-            --target x86_64-pc-windows-msvc
-            --config '{"version":"${{ env.APP_VERSION }}"}'
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: "v__VERSION__"
-          releaseDraft: false
+      - run: echo "Tauri build disabled"
