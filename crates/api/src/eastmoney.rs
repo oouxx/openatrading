@@ -192,7 +192,10 @@ impl LhbClient {
             .json()
             .await?;
 
-        let result = first.result.ok_or(LhbError::EmptyResult)?;
+        let result = match first.result {
+            Some(r) => r,
+            None => return Ok(vec![]),
+        };
         let total_pages = result.pages.unwrap_or(1);
         let mut rows = result.data.unwrap_or_default();
 

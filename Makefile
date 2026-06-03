@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version
+.PHONY: build run run-web watch-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -10,10 +10,12 @@ build:
 run:
 	cargo run -p openatrading-cli
 
-run-web:
+watch-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo watch -x "run -p openatrading-cli -- gateway run"
-
+run-web:
+	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+	cargo run -p openatrading-cli -- gateway run
 run-frontend:
 	cd src && bun run dev
 

@@ -1099,12 +1099,13 @@ pub async fn get_dragon_tiger_detail(
         "dragon_tiger_detail",
         CachePolicy::daily(),
         || async {
+            let dates = last_n_trading_days(3);
             let data = state
                 .api
                 .eastmoney
                 .lhb_detail(
-                    last_n_trading_days(1)[0].as_str(),
-                    last_n_trading_days(1)[0].as_str(),
+                    dates.last().unwrap().as_str(),
+                    dates.first().unwrap().as_str(),
                 )
                 .await
                 .map_err(|e| {

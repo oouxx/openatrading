@@ -350,6 +350,8 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                         let config = TelegramBotConfig {
                             bot_token: token.clone(),
                             chat_id: chat_id.clone(),
+                            llm_provider: app_config.llm.provider.clone(),
+                            llm_model: app_config.llm.model.clone(),
                         };
                         let bot = TelegramBot::new(config, roles, memory.clone(), trade.clone());
                         handles.push(tokio::spawn(async move {
