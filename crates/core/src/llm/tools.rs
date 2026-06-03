@@ -9,7 +9,7 @@ use openatrading_agent::types::{AgentTool, AgentToolResult, DynTool};
 use crate::api::cls::ClsClient;
 use crate::api::eastmoney::LhbClient;
 use crate::api::jiuyangongshe::JiuYanSession;
-use crate::api::xuangubao::XuanguBaoClient;
+use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
 type ExecuteFn = Arc<
     dyn Fn(
@@ -255,6 +255,47 @@ pub fn get_plate_abnormal() -> Arc<DynTool> {
     )
 }
 
+// ─── K线工具 ────────────────────────────────────────────
+
+fn parse_period(s: &str) -> Result<KlinePeriod, &'static str> {
+    match s {
+        "minute" => Ok(KlinePeriod::Minute),
+        "day" => Ok(KlinePeriod::Day),
+        "week" => Ok(KlinePeriod::Week),
+        "month" => Ok(KlinePeriod::Month),
+        _ => Err("period 必须是 minute/day/week/month 之一"),
+    }
+}
+
+pub fn get_kline() -> Arc<DynTool> {
+    tool(
+        "get_kline",
+        "获取指定股票的K线数据，支持分钟/日/周/月线，返回开盘价、收盘价、最高价、最低价、成交量、涨跌幅",
+        str_schema(&[
+            ("symbol", "股票代码，如 600519.SS"),
+            ("period", "K线周期：minute(分钟线) / day(日线) / week(周线) / month(月线)"),
+            ("count", "返回K线条数，如 20"),
+        ]),
+        Arc::new(|_id, args, _signal, _progress| {
+            Box::pin(async move {
+                let symbol = str_arg(&args, "symbol");
+                let period = parse_period(&str_arg(&args, "period")).map_err(to_box_err)?;
+                let count: u32 = args
+                    .get("count")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("20")
+                    .parse()
+                    .map_err(|_| to_box_err("count 必须是数字"))?;
+                let result = XuanguBaoClient::new()
+                    .fetch_kline(&symbol, period, count)
+                    .await
+                    .map_err(to_box_err)?;
+                Ok(text_result(&result))
+            })
+        }),
+    )
+}
+
 // ─── 韭研公社 tools ──────────────────────────────────────
 
 pub fn get_field_items() -> Arc<DynTool> {
@@ -409,6 +450,7 @@ mod tests {
         assert_eq!(get_lhb_detail().name, "get_lhb_detail");
         assert_eq!(get_lhb_combined().name, "get_lhb_combined");
         assert_eq!(get_lhb_active_yyb().name, "get_lhb_active_yyb");
+        assert_eq!(get_kline().name, "get_kline");
     }
 
     #[test]
@@ -430,6 +472,7 @@ mod tests {
             get_lhb_detail(),
             get_lhb_combined(),
             get_lhb_active_yyb(),
+            get_kline(),
         ];
         for tool in &tools {
             assert_eq!(
@@ -443,7 +486,7 @@ mod tests {
                 tool.name
             );
         }
-        assert_eq!(tools.len(), 16);
+        assert_eq!(tools.len(), 17);
     }
 
     #[test]
