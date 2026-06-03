@@ -49,7 +49,10 @@ export const yesterdayLimitUpKeys = {
 };
 
 export const dragonTigerKeys = {
-  all: ["dragon-tiger"] as const,
+  detail: (page: number, pageSize: number) =>
+    ["dragon-tiger", "detail", page, pageSize] as const,
+  stockSeat: (code: string, date: string, flag: string) =>
+    ["dragon-tiger", "stock-seat", code, date, flag] as const,
 };
 
 export const replayKeys = {
