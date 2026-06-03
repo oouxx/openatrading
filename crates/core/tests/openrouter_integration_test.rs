@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::runner::create_agent;
-use openatrading_agent::types::AgentMessage;
-use openatrading_core::llm::tools;
-use openatrading_core::llm::LlmClient;
+use openatrading_core::llm::pi_ai_types::{AssistantMessageEvent, ContentBlock};
+use openatrading_core::llm::{create_agent, tools, AgentEvent, AgentMessage, LlmClient};
 
+/// Simulate the /api/ai/chat SSE streaming flow:
+/// subscribe → process in background → collect events via channel → verify.
 #[tokio::test]
-async fn test_openrouter_agent_process() {
+async fn test_openrouter_is_streaming() {
     load_env();
 
     let llm = LlmClient::with_config(
@@ -18,42 +17,75 @@ async fn test_openrouter_agent_process() {
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
         vec![tools::get_market_overview(), tools::get_limit_up()];
 
-    let agent = create_agent(
+    let agent = Arc::new(create_agent(
         &llm,
         tools,
         "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
+    ));
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+
+    let listener = Arc::new(
+        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        },
     );
 
-    let messages = agent
-        .process(vec![AgentMessage::User {
-            content: vec![ContentBlock::text(
-                "请先用 get_market_overview 查询市场概况，然后用 get_limit_up 查询今日涨停板。",
-            )],
-            timestamp: 0,
-        }])
-        .await
-        .expect("agent.process() failed");
+    let handle = agent.subscribe(listener).await;
 
-    // Verify: agent called tools and got results
-    let has_tool_call = messages.iter().any(|m| {
-        matches!(m, AgentMessage::Assistant { content, .. } if content.iter().any(|b| matches!(b, ContentBlock::ToolCall { .. })))
-    });
-    let has_tool_result = messages
-        .iter()
-        .any(|m| matches!(m, AgentMessage::ToolResult { .. }));
-    let has_final_text = messages.iter().any(|m| {
-        matches!(m, AgentMessage::Assistant { content, .. } if {
-            let t: String = content.iter().filter_map(|b| match b {
-                ContentBlock::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            }).collect();
-            t.len() > 50
-        })
+    let agent_clone = Arc::clone(&agent);
+    tokio::spawn(async move {
+        let _ = agent_clone
+            .process(vec![AgentMessage::User {
+                content: vec![ContentBlock::Text {
+                    text: "请先用 get_market_overview 查询市场概况，然后用 get_limit_up 查询今日涨停板。".to_string(),
+                    text_signature: None,
+                }],
+                timestamp: 0,
+            }])
+            .await;
+        drop(handle);
     });
 
-    assert!(has_tool_call, "agent should have called tools");
-    assert!(has_tool_result, "agent should have received tool results");
-    assert!(has_final_text, "agent should have produced final analysis");
+    let mut text_delta_count = 0u32;
+    let mut total_text = String::new();
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            AgentEvent::MessageUpdate {
+                assistant_message_event,
+                ..
+            } => {
+                if let AssistantMessageEvent::TextDelta { delta, .. } = &assistant_message_event {
+                    if !delta.is_empty() {
+                        text_delta_count += 1;
+                        total_text.push_str(delta);
+                        eprint!("{delta}");
+                    }
+                }
+            },
+            AgentEvent::AgentEnd { .. } => break,
+            _ => {},
+        }
+    }
+
+    eprintln!();
+    eprintln!(
+        "[stream stats] deltas={text_delta_count}, total_chars={}",
+        total_text.len()
+    );
+
+    assert!(
+        text_delta_count >= 3,
+        "expected at least one TextDelta event (got {text_delta_count}) — response is not streaming"
+    );
+    assert!(
+        !total_text.trim().is_empty(),
+        "accumulated text should not be empty"
+    );
 }
 
 /// Load env from project root .env

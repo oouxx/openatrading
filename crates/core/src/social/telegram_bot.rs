@@ -23,6 +23,8 @@ struct ChatSession {
 pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
+    pub llm_provider: Option<String>,
+    pub llm_model: Option<String>,
 }
 
 pub struct TelegramBot {
@@ -84,7 +86,10 @@ impl TelegramBot {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
-            llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()), //需要从配置中获取
+            llm: LlmClient::from_config(
+                config.llm_provider.as_deref(),
+                config.llm_model.as_deref(),
+            ),
             api: ApiClient::new(),
             roles,
             session: Arc::new(Mutex::new(None)),
