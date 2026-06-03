@@ -12,7 +12,7 @@ export interface SeatDetail {
   net_amt: number | null;
 }
 
-export interface DragonTigerEntry {
+export interface DragonTigerDetailItem {
   code: string;
   name: string;
   trade_date: string;
@@ -21,6 +21,8 @@ export interface DragonTigerEntry {
   billboard_net_amt: number | null;
   billboard_buy_amt: number | null;
   billboard_sell_amt: number | null;
+  billboard_deal_amt: number | null;
+  accum_amount: number | null;
   turnover_rate: number | null;
   free_market_cap: number | null;
   explanation: string | null;
@@ -28,14 +30,41 @@ export interface DragonTigerEntry {
   d2_chg: number | null;
   d5_chg: number | null;
   d10_chg: number | null;
-  buy_seats: SeatDetail[];
-  sell_seats: SeatDetail[];
 }
 
-export function useDragonTiger() {
+export interface DragonTigerDetailResponse {
+  data: DragonTigerDetailItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_net_amt: number;
+  net_buy_count: number;
+  net_sell_count: number;
+}
+
+export function useDragonTigerDetail(page: number, pageSize: number) {
   return useQuery({
-    queryKey: dragonTigerKeys.all,
-    queryFn: () => fetchJson<DragonTigerEntry[]>("/api/dragon-tiger/combined"),
+    queryKey: dragonTigerKeys.detail(page, pageSize),
+    queryFn: () =>
+      fetchJson<DragonTigerDetailResponse>(
+        `/api/dragon-tiger/detail?page=${page}&page_size=${pageSize}`,
+      ),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useDragonTigerStockSeat(
+  code: string | null,
+  date: string | null,
+  flag: "buy" | "sell",
+) {
+  return useQuery({
+    queryKey: dragonTigerKeys.stockSeat(code ?? "", date ?? "", flag),
+    queryFn: () =>
+      fetchJson<SeatDetail[]>(
+        `/api/dragon-tiger/stock-seat?code=${code}&date=${date}&flag=${flag}`,
+      ),
+    enabled: code != null && date != null,
     staleTime: 60 * 1000,
   });
 }

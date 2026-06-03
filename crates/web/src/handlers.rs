@@ -7,6 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use openatrading_core::api::eastmoney::{LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::trade::TradeManager;
@@ -1073,13 +1074,29 @@ pub async fn ai_replay_analyze(
     ))
 }
 
-/// GET /api/dragon-tiger
-pub async fn get_dragon_tiger(
+/// GET /api/dragon-tiger/detail?page=1&page_size=20
+#[derive(Deserialize)]
+pub struct DragonTigerDetailQuery {
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_page_size")]
+    pub page_size: usize,
+}
+
+fn default_page() -> usize {
+    1
+}
+fn default_page_size() -> usize {
+    20
+}
+
+pub async fn get_dragon_tiger_detail(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<DragonTigerDetailQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cached = cache::get_or_fetch(
         &state.cache,
-        "dragon_tiger",
+        "dragon_tiger_detail",
         CachePolicy::daily(),
         || async {
             let data = state
@@ -1091,42 +1108,59 @@ pub async fn get_dragon_tiger(
                 )
                 .await
                 .map_err(|e| {
-                    eprintln!("[dragon-tiger] fetch error: {:#}", e);
+                    eprintln!("[dragon-tiger] detail fetch error: {:#}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
         },
     )
     .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    let all: Vec<LhbDetail> = serde_json::from_str(&cached).unwrap_or_default();
+    let total = all.len();
+    let total_net_amt: f64 = all.iter().filter_map(|d| d.billboard_net_amt).sum();
+    let net_buy_count = all
+        .iter()
+        .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
+        .count();
+    let net_sell_count = all
+        .iter()
+        .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
+        .count();
+    let start = (query.page.saturating_sub(1)) * query.page_size;
+    let data: Vec<LhbDetail> = all.into_iter().skip(start).take(query.page_size).collect();
+    Ok(Json(serde_json::json!({
+        "data": data,
+        "total": total,
+        "page": query.page,
+        "page_size": query.page_size,
+        "total_net_amt": total_net_amt,
+        "net_buy_count": net_buy_count,
+        "net_sell_count": net_sell_count,
+    })))
 }
 
-/// GET /api/dragon-tiger/combined
-pub async fn get_dragon_tiger_combined(
+/// GET /api/dragon-tiger/stock-seat?code=000001&date=20240101&flag=buy
+#[derive(Deserialize)]
+pub struct StockSeatQuery {
+    pub code: String,
+    pub date: String,
+    pub flag: String,
+}
+
+pub async fn get_dragon_tiger_stock_seat(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<StockSeatQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
-        &state.cache,
-        "dragon_tiger_combined",
-        CachePolicy::daily(),
-        || async {
-            let date = last_n_trading_days(1)[0].clone();
-            let data = state
-                .api
-                .eastmoney
-                .lhb_combined(&date, &date)
-                .await
-                .map_err(|e| {
-                    eprintln!("[dragon-tiger] combined fetch error: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
-        },
-    )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    let flag = match query.flag.as_str() {
+        "buy" => SeatFlag::Buy,
+        "sell" => SeatFlag::Sell,
+        _ => return Err(StatusCode::BAD_REQUEST),
+    };
+    let data = state
+        .api
+        .eastmoney
+        .lhb_stock_seat(&query.code, &query.date, flag)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(Json(data))
 }
