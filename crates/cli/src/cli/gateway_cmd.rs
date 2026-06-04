@@ -266,12 +266,12 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
     let web_strategies_dir = strategies_dir.clone();
 
     // ── Cron (CLI layer) ──────────────────────────
-    if do_cron {
-        let social: Arc<dyn NotificationSender> = match &app_config.social {
-            Some(sc) => Arc::from(create_notification_sender(sc)),
-            None => Arc::new(NoopSender),
-        };
+    let social: Arc<dyn NotificationSender> = match &app_config.social {
+        Some(sc) => Arc::from(create_notification_sender(sc)),
+        None => Arc::new(NoopSender),
+    };
 
+    if do_cron {
         let cron_cfg = match &app_config.cron {
             Some(c) => CronConfig {
                 enabled: c.enabled,
@@ -310,14 +310,6 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 eprintln!("[gateway] cron error: {e}");
             }
         }));
-
-        if let Some(sc) = &app_config.social {
-            let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
-            match social.send_text("✅ OpenATrading Gateway 已启动").await {
-                Ok(()) => eprintln!("[gateway] {channel}: ✅ connected"),
-                Err(e) => eprintln!("[gateway] {channel}: ❌ connection failed: {e}"),
-            }
-        }
     }
 
     // ── Web (web crate) ───────────────────────────
@@ -369,6 +361,15 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
     if handles.is_empty() {
         eprintln!("[gateway] nothing to run");
         return Ok(());
+    }
+
+    // 所有服务已 spawn，发送启动通知
+    if let Some(sc) = &app_config.social {
+        let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
+        match social.send_text("✅ OpenATrading Gateway 已启动").await {
+            Ok(()) => eprintln!("[gateway] {channel}: ✅ connected"),
+            Err(e) => eprintln!("[gateway] {channel}: ❌ connection failed: {e}"),
+        }
     }
 
     eprintln!("[gateway] running (Ctrl+C to stop)");
