@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
 use crate::cron::run_decision;
+use crate::llm::tools as llm_tools;
 use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
@@ -420,15 +421,19 @@ impl TelegramBot {
                     async fn send_text(&self, text: &str) -> anyhow::Result<()> {
                         let url =
                             format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
-                        self.client
+                        let resp = self
+                            .client
                             .post(&url)
                             .json(&serde_json::json!({
                                 "chat_id": self.chat_id,
                                 "text": text,
-                                "parse_mode": "Markdown",
                             }))
                             .send()
                             .await?;
+                        if !resp.status().is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            anyhow::bail!("telegram sendMessage failed: {body}");
+                        }
                         Ok(())
                     }
                 }
@@ -440,9 +445,12 @@ impl TelegramBot {
                 };
 
                 let tools: Vec<Arc<crate::llm::DynTool>> = vec![
-                    Arc::clone(&crate::llm::tools::get_limit_up()),
-                    Arc::clone(&crate::llm::tools::get_limit_down()),
-                    Arc::clone(&crate::llm::tools::get_market_overview()),
+                    llm_tools::get_limit_up(),
+                    llm_tools::get_limit_down(),
+                    llm_tools::get_market_overview(),
+                    llm_tools::get_super_stock(),
+                    llm_tools::get_yesterday_limit_up(),
+                    llm_tools::get_dapan_abnormal(),
                 ];
                 match run_decision(
                     &*self.memory,
