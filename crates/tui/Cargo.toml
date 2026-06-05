@@ -12,3 +12,6 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 futures = { workspace = true }
 ratatui = "0.30"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
