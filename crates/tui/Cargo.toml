@@ -1,0 +1,11 @@
+[package]
+name = "openatrading-tui"
+version = "0.10.6"
+edition = "2021"
+
+[dependencies]
+pi-tui = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.5" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
