@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version
+.PHONY: build run run-web watch-web test test-tui fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -19,6 +19,9 @@ run-web:
 run-frontend:
 	cd src && bun run dev
 
+chat:
+	cargo run -p openatrading-cli -- chat
+
 dev-tauri:
 	cd src-tauri && cargo tauri dev
 
@@ -28,13 +31,16 @@ build-tauri:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web
+	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui
+
+test-tui:
+	cargo test -p openatrading-tui
 
 fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -- -D warnings
+	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"
@@ -69,7 +75,7 @@ deploy-web:
 
 # ─── Release ──────────────────────────────────────────
 
-VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml crates/api/Cargo.toml crates/channels/Cargo.toml crates/provider/Cargo.toml crates/web/Cargo.toml crates/agent/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
+VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml crates/api/Cargo.toml crates/channels/Cargo.toml crates/provider/Cargo.toml crates/web/Cargo.toml crates/agent/Cargo.toml crates/tui/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
 
 version:
 	@echo "Current: $$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
@@ -135,13 +141,15 @@ help:
 	@echo "Debug:"
 	@echo "  build          dev build"
 	@echo "  run            CLI test run"
+	@echo "  chat           CLI AI chat TUI"
 	@echo "  run-web        Web server"
 	@echo "  run-frontend   Vue dev server"
 	@echo "  dev-tauri      Tauri desktop dev"
 	@echo "  build-tauri    Tauri desktop build"
 	@echo ""
 	@echo "Quality:"
-	@echo "  test           cargo test"
+	@echo "  test           cargo test (all crates)"
+	@echo "  test-tui       cargo test (tui only)"
 	@echo "  fmt            cargo fmt"
 	@echo "  lint           cargo clippy"
 	@echo "  check          fmt + lint + test"
