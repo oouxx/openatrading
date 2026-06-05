@@ -99,6 +99,11 @@ pub async fn run() -> Result<()> {
         return cmd_doctor(&std::env::current_dir()?, json).await;
     }
 
+    // Handle `chat` subcommand
+    if let Some(Commands::Chat) = cli.command {
+        return openatrading_tui::chat::run_chat().await;
+    }
+
     // Handle `init` subcommand
     if let Some(Commands::Init) = cli.command {
         return cmd_init();
