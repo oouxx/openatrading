@@ -26,6 +26,7 @@ askama = "0.15"
 regex = "1"
 sha1 = "0.10"
 md5 = "0.7"
+async-trait = "0.1"
 url = "2"
 
 [profile.release]

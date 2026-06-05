@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use futures::StreamExt;
 use pi_ai::env_api_keys::get_env_api_key;
 use pi_ai::models::get_model;
@@ -296,6 +297,20 @@ impl LlmClient {
             options.temperature = Some(0.7);
         }
         stream::stream(model, context, Some(options))
+    }
+}
+
+/// Trait for abstracting the LLM chat stream provider.
+/// Enables the TUI to accept either a real [`LlmClient`] or a mock in tests.
+#[async_trait]
+pub trait ChatStreamProvider: Clone + Send + 'static {
+    async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult>;
+}
+
+#[async_trait]
+impl ChatStreamProvider for LlmClient {
+    async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
+        self.chat_stream_with_messages(messages_json).await
     }
 }
 

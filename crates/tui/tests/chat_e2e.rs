@@ -1,91 +1,122 @@
 use std::time::Duration;
 
+use openatrading_core::llm::LlmClient;
 use ratatui::backend::TestBackend;
+use tokio::sync::mpsc::UnboundedSender;
 
-/// E2E test: inject inputs, verify the chat loop renders and quits cleanly.
-///
-/// The LLM is called with a real API key (from environment). Marked ignore
-/// so CI won't run it without credentials.
-#[tokio::test]
-#[ignore]
-async fn test_chat_e2e_basic_interaction() {
-    let backend = TestBackend::new(80, 24);
+const WIDTH: u16 = 80;
+const HEIGHT: u16 = 24;
+
+fn make_llm() -> LlmClient {
+    // Load .env so DEEPSEEK_API_KEY (and friends) are available.
+    let _ = dotenvy::dotenv();
+    LlmClient::with_config("deepseek".into(), "deepseek-v4-flash".into())
+}
+
+/// Send characters one by one with a short inter-char delay, then wait
+/// `post_delay_ms` before proceeding to the next group.
+async fn send_group(tx: &UnboundedSender<String>, text: &str, post_delay_ms: u64) {
+    for c in text.chars() {
+        tx.send(c.to_string()).unwrap();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    if post_delay_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(post_delay_ms)).await;
+    }
+}
+
+/// Helper: create a terminal + input channel, inject input in groups,
+/// run the chat loop, return the rendered buffer.
+async fn run_with_input(llm: LlmClient, groups: Vec<(&'static str, u64)>) -> String {
+    let backend = TestBackend::new(WIDTH, HEIGHT);
     let mut terminal = ratatui::Terminal::new(backend).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-    // Spawn input sender with delays so the event loop has time to process
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        for c in "say hello".chars() {
-            tx.send(c.to_string()).unwrap();
+        for (text, delay) in groups {
+            send_group(&tx, text, delay).await;
         }
-        tx.send("\r".to_string()).unwrap();
-        // Wait for LLM to stream a response
-        tokio::time::sleep(Duration::from_secs(8)).await;
-        tx.send("\x1b".to_string()).unwrap();
     });
 
-    let llm = openatrading_core::llm::LlmClient::from_config(None, None);
     openatrading_tui::chat::run_chat_inner(&mut terminal, &mut rx, llm)
         .await
         .unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let text: String = buffer.content().iter().map(|c| c.symbol()).collect();
+    terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect()
+}
+
+// ── 1. Initialization ────────────────────────────────────────
+
+#[tokio::test]
+async fn test_init_shows_welcome() {
+    let buffer = run_with_input(make_llm(), vec![("\x1b", 0)]).await;
+
     assert!(
-        text.contains("say hello"),
-        "user input should appear in buffer"
+        buffer.contains("AI Chat"),
+        "welcome message should appear on init: {buffer:?}"
+    );
+    assert!(
+        buffer.contains("Type your message"),
+        "help text should appear on init"
     );
 }
 
-/// Test that pressing Escape immediately quits without needing LLM.
+// ── 2. Exit ──────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_quit_immediately() {
+    let buffer = run_with_input(make_llm(), vec![("\x1b", 0)]).await;
+
+    assert!(buffer.contains("AI Chat"));
+}
+
+/// Full conversation with real DeepSeek LLM: type a message, submit, wait for
+/// streaming, then quit.  Verifies that user input and AI response both appear.
 #[tokio::test]
 #[ignore]
-async fn test_chat_e2e_quit_immediately() {
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = ratatui::Terminal::new(backend).unwrap();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+async fn test_conversation_with_real_llm() {
+    let buffer = run_with_input(
+        make_llm(),
+        vec![("say hello in one word\r", 15000), ("\x1b", 0)],
+    )
+    .await;
 
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        tx.send("\x1b".to_string()).unwrap();
-    });
-
-    let llm = openatrading_core::llm::LlmClient::from_config(None, None);
-    openatrading_tui::chat::run_chat_inner(&mut terminal, &mut rx, llm)
-        .await
-        .unwrap();
-
-    let buffer = terminal.backend().buffer();
-    let text: String = buffer.content().iter().map(|c| c.symbol()).collect();
     assert!(
-        text.contains("AI Chat"),
-        "welcome message should be visible"
+        buffer.contains("say hello in one word"),
+        "user input should be visible: {buffer:?}"
+    );
+    assert!(
+        !buffer.contains("(streaming...)"),
+        "streaming should have finished before quit"
     );
 }
 
-/// Test that submitting empty input does nothing and doesn't crash.
+/// Ask DeepSeek for a markdown-rich answer and verify that markdown symbols
+/// (pipes from a table) are rendered in the terminal buffer.
 #[tokio::test]
 #[ignore]
-async fn test_chat_e2e_empty_submit() {
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = ratatui::Terminal::new(backend).unwrap();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+async fn test_markdown_rendering_with_real_llm() {
+    let buffer = run_with_input(
+        make_llm(),
+        vec![
+            ("Write a short markdown table with 2 columns\r", 20000),
+            ("\x1b", 0),
+        ],
+    )
+    .await;
 
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        // Empty submit should be ignored
-        tx.send("\r".to_string()).unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        // Then type and submit a real message
-        tx.send("x".to_string()).unwrap();
-        tx.send("\r".to_string()).unwrap();
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        tx.send("\x1b".to_string()).unwrap();
-    });
-
-    let llm = openatrading_core::llm::LlmClient::from_config(None, None);
-    openatrading_tui::chat::run_chat_inner(&mut terminal, &mut rx, llm)
-        .await
-        .unwrap();
+    assert!(
+        buffer.contains("Write a short markdown table"),
+        "user input visible: {buffer:?}"
+    );
+    assert!(
+        buffer.contains('|'),
+        "markdown table pipe should be visible: {buffer:?}"
+    );
 }

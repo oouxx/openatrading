@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::StreamExt;
+use openatrading_core::llm::ChatStreamProvider;
 use pi_tui::keybindings::init_keybindings;
 use pi_tui::Terminal;
 use ratatui::prelude::*;
@@ -110,11 +111,7 @@ impl ChatState {
 }
 
 /// Spawn a background task that calls the LLM and updates shared state.
-fn spawn_llm_task(
-    llm: openatrading_core::llm::LlmClient,
-    state: Arc<Mutex<ChatState>>,
-    msgs_json: String,
-) {
+fn spawn_llm_task<P: ChatStreamProvider>(llm: P, state: Arc<Mutex<ChatState>>, msgs_json: String) {
     tokio::spawn(async move {
         match llm.chat_stream_with_messages(&msgs_json).await {
             Ok(mut stream) => {
@@ -144,11 +141,49 @@ fn spawn_llm_task(
     });
 }
 
+fn key_event_to_string(key: &crossterm::event::KeyEvent) -> String {
+    use crossterm::event::{KeyCode::*, KeyModifiers};
+    match key.code {
+        Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && c.is_ascii_alphabetic() {
+                (c.to_ascii_lowercase() as u8 - b'a' + 1).to_string()
+            } else if key.modifiers.contains(KeyModifiers::ALT) {
+                format!("\x1b{}", c)
+            } else {
+                c.to_string()
+            }
+        },
+        Enter => "\r".to_string(),
+        Tab => "\t".to_string(),
+        Backspace => "\x7f".to_string(),
+        Esc => "\x1b".to_string(),
+        Delete => "\x1b[3~".to_string(),
+        Up => "\x1b[A".to_string(),
+        Down => "\x1b[B".to_string(),
+        Left => "\x1b[D".to_string(),
+        Right => "\x1b[C".to_string(),
+        Home => "\x1b[H".to_string(),
+        End => "\x1b[F".to_string(),
+        PageUp => "\x1b[5~".to_string(),
+        PageDown => "\x1b[6~".to_string(),
+        Insert => "\x1b[2~".to_string(),
+        F(n) => match n {
+            1 => "\x1bOP".to_string(),
+            2 => "\x1bOQ".to_string(),
+            3 => "\x1bOR".to_string(),
+            4 => "\x1bOS".to_string(),
+            n if n <= 12 => format!("\x1b[{}~", 10 + n),
+            _ => String::new(),
+        },
+        _ => String::new(),
+    }
+}
+
 /// Inner chat loop decoupled from terminal setup, testable with any Backend.
-pub async fn run_chat_inner<B: ratatui::backend::Backend>(
+pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>(
     ratatui_term: &mut ratatui::Terminal<B>,
     input_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
-    llm: openatrading_core::llm::LlmClient,
+    llm: P,
 ) -> anyhow::Result<()> {
     let state = Arc::new(Mutex::new(ChatState::new()));
     let mut render_ticker = tokio::time::interval(tokio::time::Duration::from_millis(33));
@@ -215,10 +250,33 @@ pub async fn run_chat() -> anyhow::Result<()> {
     let llm = openatrading_core::llm::LlmClient::from_config(None, None);
 
     let mut terminal = Terminal::new()?;
-    let (mut input_rx, shutdown_guard) = terminal.start()?;
+    let (key_rx, shutdown_guard) = terminal.start()?;
+
+    // Clear the terminal so the TUI starts on a fresh screen.
+    terminal.clear()?;
+
+    // pi-tui v1.78.7 emits KeyEvent; bridge to String for the generic inner loop.
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut key_rx = key_rx;
+        while let Some(key) = key_rx.recv().await {
+            let s = key_event_to_string(&key);
+            if !s.is_empty() {
+                let _ = input_tx.send(s);
+            }
+        }
+    });
+
     let ratatui_term = terminal.ratatui_terminal();
     let result = run_chat_inner(ratatui_term, &mut input_rx, llm).await;
+
     shutdown_guard.shutdown();
+    let _ = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
+        crossterm::cursor::MoveTo(0, 0),
+    );
+
     result
 }
 
