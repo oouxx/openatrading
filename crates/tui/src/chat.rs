@@ -3,9 +3,12 @@ use std::sync::Mutex;
 
 use futures::StreamExt;
 use openatrading_core::llm::ChatStreamProvider;
+use pi_tui::components::{Markdown, MarkdownTheme};
 use pi_tui::keybindings::init_keybindings;
+use pi_tui::Component;
 use pi_tui::Terminal;
 use ratatui::prelude::*;
+use ratatui::text::Text;
 use ratatui::widgets::*;
 
 pub struct ChatState {
@@ -214,9 +217,57 @@ pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>
                 let (chat_area, input_area) = (chunks[0], chunks[1]);
 
                 let st = state.lock().unwrap();
-                let display = st.format_display();
 
-                let chat = Paragraph::new(display)
+                // Build display lines with markdown rendering for AI responses.
+                let mut lines: Vec<Line<'static>> = Vec::new();
+                let md_width = chat_area.width;
+
+                for (role, content) in &st.display_messages {
+                    match role.as_str() {
+                        "system" => {
+                            lines.push(Line::from(Span::styled(
+                                content.clone(),
+                                Style::default().fg(Color::DarkGray),
+                            )));
+                        },
+                        "user" => {
+                            lines.push(Line::from(vec![Span::styled(
+                                "❯",
+                                Style::default()
+                                    .fg(Color::Green)
+                                    .add_modifier(Modifier::BOLD),
+                            )]));
+                            lines.push(Line::from(Span::raw(content.clone())));
+                        },
+                        "assistant" => {
+                            let md = Markdown::new(
+                                content.clone(),
+                                0,
+                                0,
+                                MarkdownTheme::default_theme(),
+                                None,
+                                None,
+                            );
+                            lines.extend(md.render(md_width));
+                        },
+                        _ => {},
+                    }
+                    lines.push(Line::from(vec![]));
+                }
+
+                if st.streaming && !st.stream_buffer.is_empty() {
+                    let md = Markdown::new(
+                        st.stream_buffer.clone(),
+                        0,
+                        0,
+                        MarkdownTheme::default_theme(),
+                        None,
+                        None,
+                    );
+                    lines.extend(md.render(md_width));
+                }
+
+                let chat = Paragraph::new(Text::from(lines))
                     .wrap(Wrap { trim: false })
                     .style(Style::default());
                 frame.render_widget(chat, chat_area);
@@ -444,8 +495,40 @@ mod tests {
                     Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
                 let (chat_area, input_area) = (chunks[0], chunks[1]);
                 let st = state.lock().unwrap();
-                let display = st.format_display();
-                let chat = Paragraph::new(display)
+
+                let mut lines: Vec<Line<'static>> = Vec::new();
+                for (role, content) in &st.display_messages {
+                    match role.as_str() {
+                        "system" => {
+                            lines.push(Line::from(Span::styled(
+                                content.clone(),
+                                Style::default().fg(Color::DarkGray),
+                            )));
+                        },
+                        "user" => {
+                            lines.push(Line::from(Span::styled(
+                                "❯",
+                                Style::default().fg(Color::Green),
+                            )));
+                            lines.push(Line::from(Span::raw(content.clone())));
+                        },
+                        "assistant" => {
+                            let md = Markdown::new(
+                                content.clone(),
+                                0,
+                                0,
+                                MarkdownTheme::default_theme(),
+                                None,
+                                None,
+                            );
+                            lines.extend(md.render(chat_area.width));
+                        },
+                        _ => {},
+                    }
+                    lines.push(Line::from(vec![]));
+                }
+
+                let chat = Paragraph::new(Text::from(lines))
                     .wrap(Wrap { trim: false })
                     .style(Style::default());
                 frame.render_widget(chat, chat_area);
