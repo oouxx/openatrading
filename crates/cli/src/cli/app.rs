@@ -102,6 +102,8 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// 启动 AI 对话终端界面
+    Chat,
     /// 手动触发一次所有角色的每日决策并推送通知
     Decision {
         /// 仅输出到终端，不推送通知

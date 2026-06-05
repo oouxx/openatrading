@@ -3699,6 +3699,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "openatrading-core",
+ "openatrading-tui",
  "openatrading-web",
  "reqwest 0.12.28",
  "serde",
@@ -3771,7 +3772,10 @@ name = "openatrading-tui"
 version = "0.10.6"
 dependencies = [
  "anyhow",
+ "futures",
+ "openatrading-core",
  "pi-tui",
+ "ratatui",
  "serde",
  "serde_json",
  "tokio",

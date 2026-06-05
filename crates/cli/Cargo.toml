@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 openatrading-core = { path = "../core" }
+openatrading-tui = { path = "../tui" }
 openatrading-web = { path = "../web" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 futures = { workspace = true }
