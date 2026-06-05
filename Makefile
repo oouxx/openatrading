@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat
+.PHONY: build run run-web watch-web test test-tui fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -21,6 +21,12 @@ run-frontend:
 
 chat:
 	cargo run -p openatrading-cli -- chat
+
+decision:
+	cargo run -p openatrading-cli -- decision
+
+decision-dry-run:
+	cargo run -p openatrading-cli -- decision --dry-run
 
 dev-tauri:
 	cd src-tauri && cargo tauri dev
@@ -142,6 +148,8 @@ help:
 	@echo "  build          dev build"
 	@echo "  run            CLI test run"
 	@echo "  chat           CLI AI chat TUI"
+	@echo "  decision       手动触发一次所有角色的每日决策"
+	@echo "  decision-dry-run 决策 dry-run 模式（仅输出到终端）"
 	@echo "  run-web        Web server"
 	@echo "  run-frontend   Vue dev server"
 	@echo "  dev-tauri      Tauri desktop dev"
