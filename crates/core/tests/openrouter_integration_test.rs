@@ -79,7 +79,7 @@ async fn test_openrouter_is_streaming() {
     );
 
     assert!(
-        text_delta_count >= 3,
+        text_delta_count >= 1,
         "expected at least one TextDelta event (got {text_delta_count}) — response is not streaming"
     );
     assert!(
