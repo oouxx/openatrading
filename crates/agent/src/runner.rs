@@ -142,6 +142,20 @@ pub async fn agent_loop(
     })
 }
 
+pub fn aggregate_usage(messages: &[AgentMessage]) -> pi_ai::types::Usage {
+    let mut total = pi_ai::types::Usage::default();
+    for msg in messages {
+        if let AgentMessage::Assistant { usage, .. } = msg {
+            total.input += usage.input;
+            total.output += usage.output;
+            total.cache_read += usage.cache_read;
+            total.cache_write += usage.cache_write;
+            total.total_tokens += usage.total_tokens;
+        }
+    }
+    total
+}
+
 // ── Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]
