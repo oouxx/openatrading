@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check dev-frontend dev-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision
+.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ decision:
 decision-dry-run:
 	cargo run -p openatrading-cli -- decision --dry-run
 
-dev-tauri:
+run-tauri:
 	cd src-tauri && cargo tauri dev
 
 build-tauri:

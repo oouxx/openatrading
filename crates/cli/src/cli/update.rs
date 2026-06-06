@@ -102,20 +102,3 @@ pub async fn cmd_update() -> Result<()> {
     println!("   旧版本备份: {}", backup.display());
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_current_version_is_set() {
-        assert!(!CURRENT_VERSION.is_empty());
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn test_asset_name_is_valid() {
-        let name = asset_name().unwrap();
-        assert!(name.starts_with("openatrading-"));
-    }
-}

@@ -1,98 +1,30 @@
 # CLAUDE.md
-
-行为准则，用于减少 LLM 编码常见错误。与项目专属说明合并使用。
-
-**权衡取舍：** 这些准则偏向谨慎而非速度。对于简单任务，酌情判断。
-
----
-
-## 1. 先思考，再写代码
-
-**不要假设。不要掩盖困惑。要暴露权衡。**
-
-在实现之前：
-
-- 明确说明你的假设。若不确定，先询问。
-- 若存在多种理解方式，逐一列出——不要默默选一个。
-- 若有更简单的方案，说出来。必要时推回去。
-- 若有不清楚的地方，停下来。指出困惑所在。询问。
-
----
-
-## 2. 简洁优先
-
-**用最少的代码解决问题。不写投机性代码。**
-
-- 不添加超出需求的功能。
-- 单次使用的代码不做抽象。
-- 不引入未被要求的"灵活性"或"可配置性"。
-- 不对不可能发生的场景做错误处理。
-- 如果写了 200 行而 50 行就够，重写。
-
-自问："高级工程师会说这太复杂了吗？" 如果是，简化。
-
----
-
-## 3. 外科手术式修改
-
-**只动必须动的地方。只清理自己制造的混乱。**
-
-编辑已有代码时：
-
-- 不"顺手优化"旁边的代码、注释或格式。
-- 不重构没有问题的东西。
-- 保持现有风格，即使你会做不同的选择。
-- 发现无关的死代码，提及——但不要删除。
-
-当你的改动产生孤儿时：
-
-- 删除**你的改动**造成的无用 import/变量/函数。
-- 不删除原本就存在的死代码，除非被明确要求。
-
-检验标准：每一行改动都应能直接追溯到用户的请求。
-
----
-
-## 4. 目标驱动执行
-
-**定义成功标准。循环直到验证通过。**
-
-将任务转化为可验证的目标：
-
-- "添加校验" → "为非法输入写测试，然后让测试通过"
-- "修复 bug" → "写一个能复现 bug 的测试，然后让测试通过"
-- "重构 X" → "确保重构前后测试均通过"
-
-多步骤任务，先说明简要计划：
-
-```
-1. [步骤] → 验证：[检查项]
-2. [步骤] → 验证：[检查项]
-3. [步骤] → 验证：[检查项]
-```
-
-清晰的成功标准让你能自主循环推进；模糊标准（"让它跑起来"）则需要持续澄清。
-
-## 5. 项目规范
-
-check .claude/context/
-
-## 7. 技术架构
-
-前端 bun
-后端 rust
-
-## 8. 执行完任务提问是否提交代码
-
-## 9. 不要为了测试用例成功修改测试用例
-
-## 10. 首要原则
-
+## 项目原型设计
+./opendesign
+## 技术架构
+前端 bun, react
+后端 rust, axum
+## 执行完任务提问是否提交代码
+## 不要为了测试用例成功修改测试用例
+## 首要原则
 正确的设计 > 兼容现有代码
 
 如果最优方案需要修改现有接口，直接提出来。
 不要因为"现在这样写了"就将就，技术债越早还越便宜。
+## web端和桌面端同步
+如果web端有修改要看一下桌面端是否需要同步修改
 
-## 11. web端和桌面端同步
-如果web端有修改要看一下桌面端是否需要修改
----
+## 保持项目代码整洁，低耦合
+
+## Anti-Patterns
+
+- Do not add heavy dependencies for minor convenience.
+- Do not silently weaken security policy or access constraints.
+- Do not add speculative config/feature flags "just in case".
+- Do not mix massive formatting-only changes with functional changes.
+- Do not modify unrelated modules "while here".
+- Do not bypass failing checks without explicit explanation.
+- Do not hide behavior-changing side effects in refactor commits.
+- Do not suppress unused production code with underscore prefixes or `#[allow(dead_code)]`; delete it, wire it into behavior, or track a follow-up issue. Reserve underscore names for required but intentionally unused API, trait, or callback parameters.
+- Do not leave `unwrap()` / `expect()` in production paths; propagate errors or document the invariant that makes panic impossible.
+- Do not include personal identity or sensitive information in test data, examples, docs, or commits.

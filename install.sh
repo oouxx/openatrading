@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DL_SERVER="${DL_SERVER:-https://atrading.oouxx.com}"
+DL_SERVER="${DL_SERVER:-https://trading.96112901.xyz}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # ── Usage ─────────────────────────────────────────────────

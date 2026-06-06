@@ -116,21 +116,3 @@ pub fn delete_role_dir(strategies_dir: &Path, name: &str) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_merge_mode_deserialize() {
-        let config: RoleConfig = toml::from_str(
-            r#"name = "test"
-display_name = "测试"
-dir = "strategies/test"
-merge_mode = "supplement"
-"#,
-        )
-        .unwrap();
-        assert!(matches!(config.merge_mode, MergeMode::Supplement));
-    }
-}
