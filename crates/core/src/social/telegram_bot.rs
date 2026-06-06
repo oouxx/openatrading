@@ -1,14 +1,13 @@
 use anyhow::Result;
-use futures::StreamExt;
 use serde::Deserialize;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
 use crate::cron::run_decision;
-use crate::llm::tools as llm_tools;
+use crate::llm::session::AgentSession;
+use crate::llm::tools::ToolRegistry;
 use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
@@ -444,14 +443,8 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let tools: Vec<Arc<crate::llm::DynTool>> = vec![
-                    llm_tools::get_limit_up(),
-                    llm_tools::get_limit_down(),
-                    llm_tools::get_market_overview(),
-                    llm_tools::get_super_stock(),
-                    llm_tools::get_yesterday_limit_up(),
-                    llm_tools::get_dapan_abnormal(),
-                ];
+                let tools: Vec<Arc<crate::llm::DynTool>> =
+                    ToolRegistry::new().market_tools().to_vec();
                 match run_decision(
                     self.memory.clone(),
                     self.trade.clone(),
@@ -542,41 +535,31 @@ impl TelegramBot {
             "content": question,
         }));
 
-        let messages = serde_json::json!(messages_vec).to_string();
+        let tools: Vec<Arc<crate::llm::DynTool>> = ToolRegistry::new().market_tools().to_vec();
 
-        let mut stream = self.llm.chat_stream_with_messages(&messages).await?;
-
-        let prefix = format!("*{} 回复:*\n\n", role.display_name);
-        let mut accumulated = String::new();
-        let mut last_edit = std::time::Instant::now();
-        let edit_interval = Duration::from_millis(800);
-        let mut pending_edit = false;
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(text) if !text.is_empty() => {
-                    accumulated.push_str(&text);
-                    pending_edit = true;
-
-                    if last_edit.elapsed() >= edit_interval {
-                        let display = format!("{}{}", prefix, accumulated);
-                        let _ = self.edit_message(msg_id, &display).await;
-                        last_edit = std::time::Instant::now();
-                        pending_edit = false;
-                    }
-                },
-                Err(e) => {
-                    accumulated.push_str(&format!("\n\n[ERROR] {}", e));
-                    break;
-                },
-                _ => {},
+        // Combine context + history + question into a single user message
+        let mut user_msg = market_context;
+        {
+            let session = self.session.lock().await;
+            if let Some(s) = session.as_ref() {
+                for msg in &s.history {
+                    let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                    let c = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    user_msg.push_str(&format!("\n{}: {}", role, c));
+                }
             }
         }
+        user_msg.push_str(&format!("\n\nuser: {}", question));
 
-        if pending_edit || !accumulated.is_empty() {
-            let display = format!("{}{}", prefix, accumulated);
-            self.edit_message(msg_id, &display).await?;
-        }
+        let accumulated = AgentSession::new(&self.llm, &role.strategy)
+            .with_tools(&tools)
+            .process_chat(&user_msg)
+            .await
+            .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));
+
+        let prefix = format!("*{} 回复:*\n\n", role.display_name);
+        let display = format!("{}{}", prefix, accumulated);
+        self.edit_message(msg_id, &display).await?;
 
         {
             let mut session = self.session.lock().await;
