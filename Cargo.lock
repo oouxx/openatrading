@@ -4212,6 +4212,7 @@ dependencies = [
 [[package]]
 name = "pi-tui"
 version = "1.78.0"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.11#7756157b7b1ab06f415dce91926b9ce1a8e258bc"
 dependencies = [
  "crossterm",
  "futures",
