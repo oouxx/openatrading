@@ -382,11 +382,13 @@ async fn cmd_decision(
         openatrading_core::llm::tools::get_limit_up(),
         openatrading_core::llm::tools::get_limit_down(),
         openatrading_core::llm::tools::get_market_overview(),
+        openatrading_core::llm::tools::get_super_stock(),
+        openatrading_core::llm::tools::get_field_items(),
     ];
 
     run_decision(
-        &*gateway.memory,
-        &*gateway.trade,
+        gateway.memory.clone(),
+        gateway.trade.clone(),
         &*social,
         &llm,
         &api,

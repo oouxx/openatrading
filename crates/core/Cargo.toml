@@ -27,6 +27,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tokio-cron-scheduler = "0.13"
 chrono-tz = "0.10"
 async-trait = "0.1"
+schemars = { version = "0.8", features = ["derive"] }
 teloxide = { version = "0.15", optional = true }
 thiserror = "2"
 tracing = "0.1"

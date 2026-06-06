@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Serialize;
 
 pub struct Prompt {
@@ -147,7 +148,7 @@ pub fn build_decision_prompt(
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
 pub struct TradeInstruction {
     pub action: String,
     pub symbol: String,
@@ -158,7 +159,7 @@ pub struct TradeInstruction {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
 pub struct DecisionOutput {
     pub analysis: String,
     #[serde(default)]
@@ -180,6 +181,31 @@ pub fn parse_decision_output(raw: &str) -> Option<DecisionOutput> {
             None
         },
     }
+}
+
+/// Extract structured DecisionOutput using pi-agent-core's Extractor (tool-call based).
+/// More reliable than text-based JSON parsing from LLM outputs.
+pub async fn extract_decision_output(
+    llm: &crate::llm::LlmClient,
+    text: &str,
+) -> anyhow::Result<DecisionOutput> {
+    use openatrading_agent::extraction::Extractor;
+
+    let extractor = Extractor::<DecisionOutput>::new(llm.model.clone())
+        .with_api_key(&llm.api_key)
+        .with_system_prompt(
+            "Extract the trading decision data from the analysis text below.              The analysis contains market analysis and trade instructions that need to be structured."
+        )
+        .with_tool_name("extract_trading_decision")
+        .with_tool_description("Extract structured trading decision data")
+        .with_retries(1);
+
+    let result = extractor
+        .extract(text)
+        .await
+        .map_err(|e| anyhow::anyhow!("[decision] extraction failed: {e}"))?;
+
+    Ok(result)
 }
 
 fn extract_json_block(text: &str) -> Option<String> {

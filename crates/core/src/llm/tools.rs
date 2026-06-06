@@ -10,6 +10,8 @@ use crate::api::cls::ClsClient;
 use crate::api::eastmoney::LhbClient;
 use crate::api::jiuyangongshe::JiuYanSession;
 use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use crate::memory::MemoryStore;
+use crate::trade::TradeManager;
 
 type ExecuteFn = Arc<
     dyn Fn(
@@ -427,6 +429,51 @@ pub fn get_lhb_active_yyb() -> Arc<DynTool> {
 }
 
 // ─── Tests ──────────────────────────────────────────────
+
+// ============================================================================
+// Tool factories: TradeManager & Memory
+// ============================================================================
+
+/// Create a tool that queries current positions for a given role.
+pub fn create_positions_tool(
+    trade: std::sync::Arc<dyn TradeManager>,
+    role_name: String,
+) -> std::sync::Arc<DynTool> {
+    tool(
+        "get_current_positions",
+        "查询当前持仓信息，包含股票代码、名称、成本价格、持仓数量、当前价格等。用于分析当前仓位情况。",
+        empty_schema(),
+        std::sync::Arc::new(move |_id, _args, _signal, _progress| {
+            let trade = trade.clone();
+            let role_name = role_name.clone();
+            Box::pin(async move {
+                let positions = trade.format_positions(&role_name).map_err(to_box_err)?;
+                Ok(text_result(&positions))
+            })
+        }),
+    )
+}
+
+/// Create a tool that queries historical context data from memory.
+pub fn create_historical_context_tool(
+    memory: std::sync::Arc<dyn MemoryStore>,
+) -> std::sync::Arc<DynTool> {
+    tool(
+        "get_historical_context",
+        "查询近N日市场历史数据，用于对比分析。参数：days（可选，默认5天）",
+        serde_json::json!({"type":"object","properties":{"days":{"type":"integer","description":"查询天数，默认5","default":5}},"required":[]}),
+        std::sync::Arc::new(move |_id, args, _signal, _progress| {
+            let memory = memory.clone();
+            Box::pin(async move {
+                let days: u32 = args.get("days").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                let ctx = memory
+                    .get_historical_context(days)
+                    .unwrap_or_else(|_| "暂无历史数据".to_string());
+                Ok(text_result(&ctx))
+            })
+        }),
+    )
+}
 
 #[cfg(test)]
 mod tests {
