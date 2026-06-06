@@ -2,14 +2,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::StreamExt;
-use openatrading_core::llm::ChatStreamProvider;
 use pi_tui::components::{Markdown, MarkdownTheme};
 use pi_tui::keybindings::init_keybindings;
 use pi_tui::Component;
+use pi_tui::SyntaxHighlighter;
 use pi_tui::Terminal;
 use ratatui::prelude::*;
 use ratatui::text::Text;
 use ratatui::widgets::*;
+use unicode_width::UnicodeWidthStr;
 
 pub struct ChatState {
     pub display_messages: Vec<(String, String)>,
@@ -17,7 +18,10 @@ pub struct ChatState {
     pub streaming: bool,
     pub stream_buffer: String,
     pub should_quit: bool,
-    llm_messages: Vec<serde_json::Value>,
+    pub display_offset: usize,
+    pub new_content: bool,
+    pub manual_scroll: bool,
+    pub llm_messages: Vec<serde_json::Value>,
 }
 
 impl Default for ChatState {
@@ -40,6 +44,9 @@ impl ChatState {
             streaming: false,
             stream_buffer: String::new(),
             should_quit: false,
+            display_offset: 0,
+            new_content: false,
+            manual_scroll: false,
         }
     }
 
@@ -58,7 +65,7 @@ impl ChatState {
                 self.stream_buffer = String::new();
                 Some(text)
             },
-            "\x1b" => {
+            "\x1b" | "\x03" => {
                 self.should_quit = true;
                 None
             },
@@ -104,44 +111,121 @@ impl ChatState {
         self.display_messages.push(("assistant".into(), response));
         self.stream_buffer = String::new();
         self.streaming = false;
+        self.new_content = true;
     }
 
     pub fn push_assistant_error(&mut self, err: String) {
         self.display_messages.push(("assistant".into(), err));
         self.stream_buffer = String::new();
         self.streaming = false;
+        self.new_content = true;
     }
 }
 
 /// Spawn a background task that calls the LLM and updates shared state.
-fn spawn_llm_task<P: ChatStreamProvider>(llm: P, state: Arc<Mutex<ChatState>>, msgs_json: String) {
+fn spawn_llm_task(
+    llm: openatrading_core::llm::LlmClient,
+    state: Arc<Mutex<ChatState>>,
+    llm_messages: Vec<serde_json::Value>,
+    tools: Vec<std::sync::Arc<openatrading_core::llm::DynTool>>,
+    system_prompt: String,
+) {
     tokio::spawn(async move {
-        match llm.chat_stream_with_messages(&msgs_json).await {
-            Ok(mut stream) => {
-                let mut response = String::new();
-                while let Some(chunk) = stream.next().await {
-                    match chunk {
-                        Ok(delta) => {
-                            response.push_str(&delta);
-                            state.lock().unwrap().stream_buffer = response.clone();
-                        },
-                        Err(e) => {
-                            response.push_str(&format!("\n[Error: {}]", e));
-                            state.lock().unwrap().stream_buffer = response.clone();
-                            break;
-                        },
-                    }
-                }
-                state.lock().unwrap().push_assistant_response(response);
-            },
-            Err(e) => {
-                state
-                    .lock()
-                    .unwrap()
-                    .push_assistant_error(format!("Error: {}", e));
-            },
+        use openatrading_core::llm::pi_ai_types::ContentBlock;
+        use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
+        use std::pin::Pin;
+        use std::sync::Arc;
+
+        let agent = Arc::new(create_agent(&llm, tools, &system_prompt));
+
+        let mut pi_messages: Vec<AgentMessage> = Vec::new();
+        for msg in &llm_messages {
+            let role = msg["role"].as_str().unwrap_or("");
+            let content = msg["content"].as_str().unwrap_or("");
+            if role == "user" {
+                pi_messages.push(AgentMessage::User {
+                    content: vec![ContentBlock::Text {
+                        text: content.to_string(),
+                        text_signature: None,
+                    }],
+                    timestamp: 0,
+                });
+            }
         }
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+
+        let listener = Arc::new(
+            move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
+                let tx = tx.clone();
+                Box::pin(async move {
+                    let _ = tx.send(event);
+                }) as Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            },
+        );
+
+        let handle = agent.subscribe(listener).await;
+
+        let agent_clone = Arc::clone(&agent);
+        tokio::spawn(async move {
+            let _ = agent_clone.process(pi_messages).await;
+            drop(handle);
+        });
+
+        let mut response = String::new();
+        let mut tool_name = String::new();
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                AgentEvent::MessageUpdate {
+                    assistant_message_event,
+                    ..
+                } => {
+                    use openatrading_core::llm::pi_ai_types::AssistantMessageEvent;
+                    if let AssistantMessageEvent::TextDelta { delta, .. } = assistant_message_event
+                    {
+                        response.push_str(&delta);
+                        state.lock().unwrap().stream_buffer = response.clone();
+                    }
+                },
+                AgentEvent::ToolExecutionStart {
+                    tool_name: name, ..
+                } => {
+                    state
+                        .lock()
+                        .unwrap()
+                        .display_messages
+                        .push(("tool".into(), format!("⚙ {}...", name)));
+                    tool_name = name;
+                },
+                AgentEvent::ToolExecutionEnd {
+                    tool_name: name,
+                    is_error,
+                    ..
+                } => {
+                    let icon = if is_error { "✗" } else { "✓" };
+                    let status = if is_error { "失败" } else { "成功" };
+                    state
+                        .lock()
+                        .unwrap()
+                        .display_messages
+                        .push(("tool".into(), format!("{} {} {}", icon, name, status)));
+                },
+                _ => {},
+            }
+        }
+
+        let mut st = state.lock().unwrap();
+        st.push_assistant_response(response);
+        st.new_content = true;
     });
+}
+
+fn make_md_theme(highlighter: &Arc<SyntaxHighlighter>) -> MarkdownTheme {
+    let mut theme = MarkdownTheme::default_theme();
+    let hl = highlighter.clone();
+    theme.highlight_code = Some(Box::new(move |code, lang| hl.highlight(code, lang)));
+    theme
 }
 
 fn key_event_to_string(key: &crossterm::event::KeyEvent) -> String {
@@ -183,12 +267,15 @@ fn key_event_to_string(key: &crossterm::event::KeyEvent) -> String {
 }
 
 /// Inner chat loop decoupled from terminal setup, testable with any Backend.
-pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>(
+pub async fn run_chat_inner<B: ratatui::backend::Backend>(
     ratatui_term: &mut ratatui::Terminal<B>,
     input_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
-    llm: P,
+    llm: openatrading_core::llm::LlmClient,
+    tools: Vec<std::sync::Arc<openatrading_core::llm::DynTool>>,
+    system_prompt: String,
 ) -> anyhow::Result<()> {
     let state = Arc::new(Mutex::new(ChatState::new()));
+    let highlighter = Arc::new(SyntaxHighlighter::new());
     let mut render_ticker = tokio::time::interval(tokio::time::Duration::from_millis(33));
 
     loop {
@@ -200,11 +287,32 @@ pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>
             _ = render_ticker.tick() => {}
             Some(data) = input_rx.recv() => {
                 let mut st = state.lock().unwrap();
+                // Always allow quit during streaming.
+                if data == "\x1b" || data == "\x03" {
+                    st.should_quit = true;
+                }
+                // Scroll handling
+                if data == "\x1b[5~" || data == "\x1b[6~" || data == "\x1b[H" || data == "\x1b[F" {
+                    if data == "\x1b[5~" { // PageUp
+                        st.display_offset = st.display_offset.saturating_add(5);
+                        st.manual_scroll = true;
+                    } else if data == "\x1b[6~" { // PageDown
+                        st.display_offset = st.display_offset.saturating_sub(5);
+                        st.manual_scroll = false;
+                    } else if data == "\x1b[H" { // Home
+                        st.display_offset = 0;
+                        st.manual_scroll = true;
+                    } else if data == "\x1b[F" { // End
+                        st.display_offset = usize::MAX;
+                        st.manual_scroll = false;
+                    }
+                    continue;
+                }
                 if !st.streaming
                     && st.handle_input(&data).is_some() {
-                        let msgs_json = st.llm_messages_json();
+                        let msgs = st.llm_messages.clone();
                         drop(st);
-                        spawn_llm_task(llm.clone(), state.clone(), msgs_json);
+                        spawn_llm_task(llm.clone(), state.clone(), msgs, tools.clone(), system_prompt.clone());
                     }
             }
         }
@@ -212,11 +320,17 @@ pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>
         ratatui_term
             .draw(|frame| {
                 let area = frame.area();
+                let frame_block = ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(" AI Chat ")
+                    .border_style(Style::default().fg(Color::DarkGray));
+                let inner = frame_block.inner(area);
+                frame.render_widget(frame_block, area);
                 let chunks =
-                    Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
                 let (chat_area, input_area) = (chunks[0], chunks[1]);
 
-                let st = state.lock().unwrap();
+                let mut st = state.lock().unwrap();
 
                 // Build display lines with markdown rendering for AI responses.
                 let mut lines: Vec<Line<'static>> = Vec::new();
@@ -231,24 +345,38 @@ pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>
                             )));
                         },
                         "user" => {
-                            lines.push(Line::from(vec![Span::styled(
-                                "❯",
+                            lines.push(Line::from(Span::styled(
+                                " ┃ You",
                                 Style::default()
                                     .fg(Color::Green)
                                     .add_modifier(Modifier::BOLD),
-                            )]));
-                            lines.push(Line::from(Span::raw(content.clone())));
+                            )));
+                            lines.push(Line::from(Span::raw(format!(" {}", content))));
                         },
                         "assistant" => {
+                            lines.push(Line::from(vec![Span::styled(
+                                " ┃ AI",
+                                Style::default()
+                                    .fg(Color::Blue)
+                                    .add_modifier(Modifier::BOLD),
+                            )]));
                             let md = Markdown::new(
                                 content.clone(),
                                 0,
                                 0,
-                                MarkdownTheme::default_theme(),
+                                make_md_theme(&highlighter),
                                 None,
                                 None,
                             );
                             lines.extend(md.render(md_width));
+                        },
+                        "tool" => {
+                            lines.push(Line::from(Span::styled(
+                                format!(" {}", content),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::DIM),
+                            )));
                         },
                         _ => {},
                     }
@@ -260,33 +388,46 @@ pub async fn run_chat_inner<B: ratatui::backend::Backend, P: ChatStreamProvider>
                         st.stream_buffer.clone(),
                         0,
                         0,
-                        MarkdownTheme::default_theme(),
+                        make_md_theme(&highlighter),
                         None,
                         None,
                     );
                     lines.extend(md.render(md_width));
                 }
 
+                // Auto-scroll to bottom when content exceeds viewport.
+                // Auto-scroll only when at bottom (not manual_scroll).
+                if st.streaming || (st.new_content && !st.manual_scroll) {
+                    st.display_offset = lines.len().saturating_sub(chat_area.height as usize);
+                    st.new_content = false;
+                }
+                // Clamp display_offset to valid range.
+                if st.display_offset > lines.len().saturating_sub(chat_area.height as usize) {
+                    st.display_offset = lines.len().saturating_sub(chat_area.height as usize);
+                }
+
                 let chat = Paragraph::new(Text::from(lines))
                     .wrap(Wrap { trim: false })
+                    .scroll((st.display_offset as u16, 0))
                     .style(Style::default());
                 frame.render_widget(chat, chat_area);
 
-                let input_suffix = if st.streaming { " (streaming...)" } else { "" };
                 let input_style = if st.streaming {
                     Style::default().fg(Color::DarkGray)
                 } else {
                     Style::default().fg(Color::Cyan)
                 };
-                let input_widget =
-                    Paragraph::new(format!("❯ {}{}", st.input, input_suffix)).style(input_style);
+                let input_widget = Paragraph::new(format!("❯ {}", st.input)).style(input_style);
                 frame.render_widget(input_widget, input_area);
 
                 if !st.streaming {
-                    let cursor_x = 2u16
-                        .saturating_add(st.input.len() as u16)
+                    let text_width = unicode_width::UnicodeWidthStr::width(st.input.as_str());
+                    let cursor_col = input_area
+                        .x
+                        .saturating_add(2)
+                        .saturating_add(text_width as u16)
                         .min(area.width.saturating_sub(1));
-                    frame.set_cursor_position((cursor_x, area.height.saturating_sub(1)));
+                    frame.set_cursor_position((cursor_col, input_area.y));
                 }
             })
             .map_err(|e| anyhow::anyhow!("render: {:?}", e))?;
@@ -299,6 +440,18 @@ pub async fn run_chat() -> anyhow::Result<()> {
     init_keybindings(None);
 
     let llm = openatrading_core::llm::LlmClient::from_config(None, None);
+    let tools: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = vec![
+        openatrading_core::llm::tools::get_market_overview(),
+        openatrading_core::llm::tools::get_limit_up(),
+        openatrading_core::llm::tools::get_limit_down(),
+        openatrading_core::llm::tools::get_super_stock(),
+        openatrading_core::llm::tools::get_yesterday_limit_up(),
+        openatrading_core::llm::tools::get_dapan_abnormal(),
+        openatrading_core::llm::tools::get_realtime_quote(),
+        openatrading_core::llm::tools::get_telegraph(),
+    ];
+    let system_prompt =
+        "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。".to_string();
 
     let mut terminal = Terminal::new()?;
     let (key_rx, shutdown_guard) = terminal.start()?;
@@ -319,7 +472,7 @@ pub async fn run_chat() -> anyhow::Result<()> {
     });
 
     let ratatui_term = terminal.ratatui_terminal();
-    let result = run_chat_inner(ratatui_term, &mut input_rx, llm).await;
+    let result = run_chat_inner(ratatui_term, &mut input_rx, llm, tools, system_prompt).await;
 
     shutdown_guard.shutdown();
     let _ = crossterm::execute!(
@@ -487,14 +640,21 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         let state = Arc::new(Mutex::new(ChatState::new()));
+        let _highlighter = Arc::new(SyntaxHighlighter::new());
 
         terminal
             .draw(|frame| {
                 let area = frame.area();
+                let frame_block = ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(" AI Chat ")
+                    .border_style(Style::default().fg(Color::DarkGray));
+                let inner = frame_block.inner(area);
+                frame.render_widget(frame_block, area);
                 let chunks =
-                    Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
                 let (chat_area, input_area) = (chunks[0], chunks[1]);
-                let st = state.lock().unwrap();
+                let mut st = state.lock().unwrap();
 
                 let mut lines: Vec<Line<'static>> = Vec::new();
                 for (role, content) in &st.display_messages {
@@ -523,13 +683,41 @@ mod tests {
                             );
                             lines.extend(md.render(chat_area.width));
                         },
+                        "tool" => {
+                            lines.push(Line::from(Span::styled(
+                                format!(" {}", content),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::DIM),
+                            )));
+                        },
+                        "tool" => {
+                            lines.push(Line::from(Span::styled(
+                                format!(" {}", content),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::DIM),
+                            )));
+                        },
                         _ => {},
                     }
                     lines.push(Line::from(vec![]));
                 }
 
+                // Auto-scroll to bottom when content exceeds viewport.
+                // Auto-scroll only when at bottom (not manual_scroll).
+                if st.streaming || (st.new_content && !st.manual_scroll) {
+                    st.display_offset = lines.len().saturating_sub(chat_area.height as usize);
+                    st.new_content = false;
+                }
+                // Clamp display_offset to valid range.
+                if st.display_offset > lines.len().saturating_sub(chat_area.height as usize) {
+                    st.display_offset = lines.len().saturating_sub(chat_area.height as usize);
+                }
+
                 let chat = Paragraph::new(Text::from(lines))
                     .wrap(Wrap { trim: false })
+                    .scroll((st.display_offset as u16, 0))
                     .style(Style::default());
                 frame.render_widget(chat, chat_area);
                 let input_widget = Paragraph::new(format!("❯ {}", st.input))

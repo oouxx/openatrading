@@ -38,7 +38,7 @@ async fn run_with_input(llm: LlmClient, groups: Vec<(&'static str, u64)>) -> Str
         }
     });
 
-    openatrading_tui::chat::run_chat_inner(&mut terminal, &mut rx, llm)
+    openatrading_tui::chat::run_chat_inner(&mut terminal, &mut rx, llm, vec![], String::new())
         .await
         .unwrap();
 
