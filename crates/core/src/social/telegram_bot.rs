@@ -453,8 +453,8 @@ impl TelegramBot {
                     llm_tools::get_dapan_abnormal(),
                 ];
                 match run_decision(
-                    &*self.memory,
-                    &*self.trade,
+                    self.memory.clone(),
+                    self.trade.clone(),
                     &notifier,
                     &self.llm,
                     &self.api,

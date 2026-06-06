@@ -6,11 +6,11 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::tools;
+use crate::llm::tools::{self, create_historical_context_tool, create_positions_tool};
 use crate::llm::{agent_loop, DynTool, LlmClient};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
-use crate::roles::prompt::{build_decision_prompt, parse_decision_output, TradeInstruction};
+use crate::roles::prompt::{extract_decision_output, TradeInstruction};
 use crate::social::NotificationSender;
 use crate::trade::{Position, TradeManager};
 use crate::RoleEntry;
@@ -144,8 +144,16 @@ pub async fn start_scheduler(
                 let roles = roles.clone();
                 let decision_tools = decision_tools.clone();
                 Box::pin(async move {
-                    if let Err(e) =
-                        run_decision(&*mem, &*trd, &*soc, &llm, &api, &roles, &decision_tools).await
+                    if let Err(e) = run_decision(
+                        mem.clone(),
+                        trd.clone(),
+                        &*soc,
+                        &llm,
+                        &api,
+                        &roles,
+                        &decision_tools,
+                    )
+                    .await
                     {
                         eprintln!("[cron] decision error: {e}");
                     }
@@ -255,8 +263,8 @@ async fn run_collection(
 }
 
 pub async fn run_decision(
-    memory: &dyn MemoryStore,
-    trade: &dyn TradeManager,
+    memory: Arc<dyn MemoryStore>,
+    trade: Arc<dyn TradeManager>,
     social: &dyn NotificationSender,
     llm: &LlmClient,
     api: &ApiClient,
@@ -289,20 +297,22 @@ pub async fn run_decision(
         },
     };
 
-    let historical = memory.get_historical_context(5).unwrap_or_default();
-
-    update_all_position_prices(trade, api).await;
+    update_all_position_prices(&*trade, api).await;
 
     for role in roles {
+        // Inject per-role tools: positions + memory (LLM calls them as needed)
+        let mut role_tools = tools.to_vec();
+        role_tools.push(create_positions_tool(trade.clone(), role.name.clone()));
+        role_tools.push(create_historical_context_tool(memory.clone()));
+
         if let Err(e) = run_decision_for_role(
-            trade,
+            &*trade,
             social,
             llm,
             api,
             role,
             &market_context,
-            &historical,
-            tools,
+            &role_tools,
         )
         .await
         {
@@ -354,7 +364,6 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
     tracing::info!("[cron] position prices updated: {updated} ok, {failed} failed");
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_decision_for_role(
     trade: &dyn TradeManager,
     social: &dyn NotificationSender,
@@ -362,95 +371,47 @@ async fn run_decision_for_role(
     api: &ApiClient,
     role: &RoleEntry,
     market_context: &str,
-    historical: &str,
     tools: &[Arc<DynTool>],
 ) -> Result<()> {
-    let positions = trade.format_positions(&role.name)?;
-    let has_positions = positions != "暂无持仓";
-
-    let position_context = if has_positions {
-        positions.clone()
-    } else {
-        "暂无持仓".to_string()
-    };
-
-    // Build market context as user message for tool call mode
-    let market_user_message = format!(
-        "{}\n\n## 当前持仓\n{}\n\n## 近5日历史数据\n{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况，当然你也可以调用工具，给出今日复盘和明日操作建议。",
-        market_context, position_context, historical, role.display_name
+    tracing::info!(
+        "[cron] decision for '{}': {} tools injected (positions, memory, market)",
+        role.name,
+        tools.len()
     );
 
-    let reply = if !tools.is_empty() {
-        tracing::info!(
-            "[cron] decision for '{}': tool mode ({} tools)",
-            role.name,
-            tools.len()
-        );
-        match agent_loop(llm, tools.to_vec(), &role.strategy, &market_user_message).await {
-            Ok(result) => {
-                tracing::info!(
-                    "[cron] decision for '{}': agent done, {} chars",
-                    role.name,
-                    result.final_text.len()
-                );
-                result.final_text
-            },
-            Err(e) => {
-                tracing::error!(
-                    "[cron] agent_loop failed for '{}': {e}, falling back to prompt",
-                    role.name
-                );
-                let prompt = build_decision_prompt(
-                    &role.strategy,
-                    market_context,
-                    &position_context,
-                    historical,
-                    &role.display_name,
-                );
-                let messages = vec![
-                    serde_json::json!({"role": "system", "content": prompt.system}),
-                    serde_json::json!({"role": "user", "content": prompt.user}),
-                ];
-                let messages_json = serde_json::json!(messages).to_string();
-                llm.chat_with_messages(&messages_json).await?
-            },
-        }
-    } else {
-        tracing::info!("[cron] decision for '{}': prompt mode", role.name);
-        let prompt = build_decision_prompt(
-            &role.strategy,
-            market_context,
-            &position_context,
-            historical,
-            &role.display_name,
-        );
-        let messages = vec![
-            serde_json::json!({"role": "system", "content": prompt.system}),
-            serde_json::json!({"role": "user", "content": prompt.user}),
-        ];
-        let messages_json = serde_json::json!(messages).to_string();
-        match llm.chat_with_messages(&messages_json).await {
-            Ok(r) => r,
-            Err(e) => {
-                let err_msg = format!("❌ LLM 调用失败: {e}");
-                let decision = Decision {
-                    role_name: role.display_name.clone(),
-                    summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
-                    trade_suggestions: vec![],
-                };
-                let _ = social.notify_decision(&decision).await;
-                return Err(e);
-            },
-        }
+    // LLM calls get_current_positions / get_historical_context tools as needed
+    let market_user_message = format!(
+        "{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。",
+        market_context, role.display_name
+    );
+
+    let reply = match agent_loop(llm, tools.to_vec(), &role.strategy, &market_user_message).await {
+        Ok(result) => {
+            tracing::info!(
+                "[cron] decision for '{}': agent done, {} chars",
+                role.name,
+                result.final_text.len()
+            );
+            result.final_text
+        },
+        Err(e) => {
+            let err_msg = format!("❌ LLM 调用失败: {e}");
+            let decision = Decision {
+                role_name: role.display_name.clone(),
+                summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
+                trade_suggestions: vec![],
+            };
+            let _ = social.notify_decision(&decision).await;
+            return Err(e);
+        },
     };
 
-    let parsed = parse_decision_output(&reply);
-
-    let (analysis, trade_instructions) = match parsed {
-        Some(output) => (output.analysis, output.trades),
-        None => {
+    // Use pi-agent-core Extractor for structured output (tool-call based extraction)
+    let (analysis, trade_instructions) = match extract_decision_output(llm, &reply).await {
+        Ok(output) => (output.analysis, output.trades),
+        Err(e) => {
             tracing::warn!(
-                "[cron] LLM output not valid JSON for role '{}', using raw text",
+                "[cron] extractor failed for '{}': {e}, using raw text",
                 role.name
             );
             (reply.clone(), Vec::<TradeInstruction>::new())
@@ -967,8 +928,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_decision_with_empty_roles_completes() {
         let result = run_decision(
-            &MockMemoryStore,
-            &MockTradeManager,
+            Arc::new(MockMemoryStore),
+            Arc::new(MockTradeManager),
             &MockNotifier,
             &LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
             &ApiClient::new(),
@@ -1065,12 +1026,11 @@ mod tests {
             &ApiClient::new(),
             &role,
             "## 市场数据\n上涨3000家",
-            "近5日数据",
             &[],
         )
         .await;
         // Should fail because LLM is not configured in test env
-        assert!(result.is_err(), "prompt mode should fail without API key");
+        assert!(result.is_err(), "agent mode should fail without API key");
     }
 
     #[tokio::test]
@@ -1091,12 +1051,11 @@ mod tests {
             &ApiClient::new(),
             &role,
             "## 市场数据\n上涨3000家",
-            "近5日数据...",
             &tools,
         )
         .await;
         // Should fail because LLM is not configured
-        assert!(result.is_err(), "tool mode should fail without API key");
+        assert!(result.is_err(), "agent mode should fail without API key");
     }
 
     #[tokio::test]
