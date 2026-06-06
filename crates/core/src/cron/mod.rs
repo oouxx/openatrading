@@ -414,7 +414,7 @@ async fn run_decision_for_role(
                 "[cron] extractor failed for '{}': {e}, using raw text",
                 role.name
             );
-            (reply.clone(), Vec::<TradeInstruction>::new())
+            (reply.clone(), Vec::new())
         },
     };
 
