@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use futures::StreamExt;
 use pi_tui::components::{Markdown, MarkdownTheme};
 use pi_tui::keybindings::init_keybindings;
 use pi_tui::Component;
@@ -10,7 +9,6 @@ use pi_tui::Terminal;
 use ratatui::prelude::*;
 use ratatui::text::Text;
 use ratatui::widgets::*;
-use unicode_width::UnicodeWidthStr;
 
 pub struct ChatState {
     pub display_messages: Vec<(String, String)>,
@@ -173,7 +171,6 @@ fn spawn_llm_task(
         });
 
         let mut response = String::new();
-        let mut tool_name = String::new();
 
         while let Some(event) = rx.recv().await {
             match event {
@@ -196,7 +193,6 @@ fn spawn_llm_task(
                         .unwrap()
                         .display_messages
                         .push(("tool".into(), format!("⚙ {}...", name)));
-                    tool_name = name;
                 },
                 AgentEvent::ToolExecutionEnd {
                     tool_name: name,
@@ -691,14 +687,7 @@ mod tests {
                                     .add_modifier(Modifier::DIM),
                             )));
                         },
-                        "tool" => {
-                            lines.push(Line::from(Span::styled(
-                                format!(" {}", content),
-                                Style::default()
-                                    .fg(Color::Yellow)
-                                    .add_modifier(Modifier::DIM),
-                            )));
-                        },
+
                         _ => {},
                     }
                     lines.push(Line::from(vec![]));
