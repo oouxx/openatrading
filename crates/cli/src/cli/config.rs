@@ -350,10 +350,6 @@ impl AppConfig {
         }
     }
 
-    pub fn find_role(&self, name: &str) -> Option<&RoleEntry> {
-        self.roles.iter().find(|e| e.config.name == name)
-    }
-
     /// 按 merge_mode 从 strategy_base/base.md 和 supplement.md 组装策略文本
     pub fn load_strategy(role: &RoleEntry) -> Result<String> {
         let base_path = role.strategy_base.join("base.md");
