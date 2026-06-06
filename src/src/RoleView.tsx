@@ -272,7 +272,12 @@ export default function RoleView() {
   const createRole = useCallback(async () => {
     const name = newName.trim()
     if (!name) return
-    const id = 'r_' + Date.now().toString(36)
+    const id = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fff_-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 64) || 'role_' + Date.now().toString(36)
     await createRoleMutation.mutateAsync({ name: id, displayName: name, strategy: `# ${name}\n\n在此编写策略文档…` })
     setShowCreate(false)
     setNewName('')
@@ -349,9 +354,9 @@ export default function RoleView() {
                   <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between gap-3 flex-wrap">
                     <h3 className="text-base font-medium text-white">策略文档（Markdown）</h3>
                     <button
-                      onClick={saveStrategy}
+                      onClick={saveStrategy} disabled={currentRole?.readonly}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
-                        saveFeedback ? 'bg-down text-white border-none' : 'bg-ink-dim text-ink-muted hover:text-white border border-hairline'
+                        saveFeedback ? 'bg-down text-white border-none' : (currentRole?.readonly ? 'bg-ink-dim text-ink-muted opacity-40 cursor-not-allowed border border-hairline' : 'bg-ink-dim text-ink-muted hover:text-white border border-hairline')
                       }`}
                     >
                       {saveFeedback ? '✓ 已保存' : '保存策略'}
@@ -362,6 +367,7 @@ export default function RoleView() {
                       ref={mdEditorRef}
                       value={editStrategyText}
                       onChange={(e) => setEditStrategyText(e.target.value)}
+                      readOnly={currentRole?.readonly}
                       className="w-full min-h-[300px] p-5 border-0 border-r lg:border-r border-b lg:border-b-0 border-hairline font-mono text-xs leading-relaxed resize-y outline-none bg-bg text-white"
                       placeholder="在此编写策略文档，支持 Markdown 格式…"
                       style={{ background: 'rgb(var(--color-bg-rgb) / 0.8)' }}

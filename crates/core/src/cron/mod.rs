@@ -1018,6 +1018,7 @@ mod tests {
             name: "test".into(),
             display_name: "测试角色".into(),
             strategy: "趋势跟踪策略".into(),
+            readonly: false,
         };
         let result = run_decision_for_role(
             &MockTradeManager,
@@ -1043,6 +1044,7 @@ mod tests {
             name: "test_tool".into(),
             display_name: "测试工具模式".into(),
             strategy: "均值回归".into(),
+            readonly: false,
         };
         let result = run_decision_for_role(
             &MockTradeManager,

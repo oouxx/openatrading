@@ -179,6 +179,7 @@ export interface RoleEntry {
   name: string;
   display_name: string;
   strategy: string;
+  readonly?: boolean;
 }
 
 export interface RolePosition {

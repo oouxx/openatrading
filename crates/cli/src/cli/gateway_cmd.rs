@@ -221,18 +221,13 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
                 name: entry.config.name.clone(),
                 display_name: entry.config.display_name.clone(),
                 strategy,
+                readonly: false,
             });
         }
     }
 
     if roles.is_empty() {
-        for (name, display_name, strategy) in openatrading_core::roles::BUILTIN_STRATEGIES {
-            roles.push(RoleEntry {
-                name: name.to_string(),
-                display_name: display_name.to_string(),
-                strategy: strategy.to_string(),
-            });
-        }
+        eprintln!("[gateway] 警告: 未配置任何角色，请在 config.toml 中设置 [[roles]]");
     }
 
     roles

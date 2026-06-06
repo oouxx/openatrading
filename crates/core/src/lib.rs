@@ -14,4 +14,7 @@ pub struct RoleEntry {
     pub name: String,
     pub display_name: String,
     pub strategy: String,
+    /// true = defined in config.toml, cannot be edited/deleted via API
+    #[serde(default)]
+    pub readonly: bool,
 }
