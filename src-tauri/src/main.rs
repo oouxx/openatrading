@@ -63,13 +63,53 @@ fn load_env(project_root: &PathBuf) {
 
 fn build_roles(strategies_dir: &std::path::Path) -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
-    // First, check if there's a config.toml at strategies_dir parent (project .atrading/)
-    let config_dir = strategies_dir.parent().unwrap_or(std::path::Path::new(""));
-    let config_path = config_dir.join("config.toml");
-    if config_path.exists() {
-        // Config-toml roles are loaded at CLI layer; here we rely on disk discovery
+
+    // Load roles from config.toml layers (readonly, low→high priority)
+    // Matches CLI's AppConfig::load() — home → .atrading → project root
+    let project_atrading = strategies_dir.parent().unwrap_or(std::path::Path::new(""));
+    let layers = [
+        std::env::var("HOME").ok().map(|h| {
+            std::path::PathBuf::from(h)
+                .join(".atrading")
+                .join("config.toml")
+        }),
+        Some(project_atrading.join("config.toml")),
+        project_atrading.parent().map(|p| p.join("config.toml")),
+    ];
+    for maybe_path in layers.iter().flatten() {
+        if !maybe_path.exists() {
+            continue;
+        }
+        if let Ok(raw) = std::fs::read_to_string(maybe_path) {
+            #[derive(serde::Deserialize)]
+            struct RolesCfg {
+                #[serde(default)]
+                roles: Vec<RoleItem>,
+            }
+            #[derive(serde::Deserialize)]
+            struct RoleItem {
+                name: String,
+                display_name: String,
+            }
+            if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
+                for rc in parsed.roles {
+                    if !roles.iter().any(|r| r.name == rc.name) {
+                        let role_strategy_path = strategies_dir.join(&rc.name).join("base.md");
+                        if let Ok(strategy) = std::fs::read_to_string(&role_strategy_path) {
+                            roles.push(RoleEntry {
+                                name: rc.name,
+                                display_name: rc.display_name,
+                                strategy,
+                                readonly: true,
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
-    // Discover roles from disk
+
+    // Discover roles from disk (editable)
     let disk_roles = openatrading_core::roles::list_roles_from_disk(strategies_dir);
     roles.extend(disk_roles);
     if roles.is_empty() {
@@ -356,6 +396,98 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 days.reverse();
                 return Ok(serde_json::json!(days));
             }
+            if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
+                let dates = openatrading_core::api::utils::last_n_trading_days(3);
+                let raw = state
+                    .api
+                    .eastmoney
+                    .lhb_detail(
+                        dates.first().map(|s| s.as_str()).unwrap_or(""),
+                        dates.last().map(|s| s.as_str()).unwrap_or(""),
+                    )
+                    .await
+                    .map_err(|e| format!("{e}"))?;
+                // Merge same-stock entries
+                use std::collections::HashMap;
+                let mut merged: HashMap<
+                    (String, String),
+                    openatrading_core::api::eastmoney::LhbDetail,
+                > = HashMap::new();
+                for item in raw {
+                    let key = (item.code.clone(), item.trade_date.clone());
+                    match merged.get_mut(&key) {
+                        Some(existing) => {
+                            existing.billboard_net_amt = existing
+                                .billboard_net_amt
+                                .zip(item.billboard_net_amt)
+                                .map(|(a, b)| a + b);
+                            existing.billboard_buy_amt = existing
+                                .billboard_buy_amt
+                                .zip(item.billboard_buy_amt)
+                                .map(|(a, b)| a + b);
+                            existing.billboard_sell_amt = existing
+                                .billboard_sell_amt
+                                .zip(item.billboard_sell_amt)
+                                .map(|(a, b)| a + b);
+                            existing.billboard_deal_amt = existing
+                                .billboard_deal_amt
+                                .zip(item.billboard_deal_amt)
+                                .map(|(a, b)| a + b);
+                            if let Some(ref exp) = item.explanation {
+                                if !exp.is_empty() {
+                                    let prefix = existing.explanation.as_deref().unwrap_or("");
+                                    let sep = if prefix.is_empty() { "" } else { "; " };
+                                    existing.explanation = Some(format!("{prefix}{sep}{exp}"));
+                                }
+                            }
+                        },
+                        None => {
+                            merged.insert(key, item);
+                        },
+                    }
+                }
+                let merged_all: Vec<_> = merged.into_values().collect();
+                let total = merged_all.len();
+                let total_net_amt: f64 =
+                    merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
+                let net_buy_count = merged_all
+                    .iter()
+                    .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
+                    .count();
+                let net_sell_count = merged_all
+                    .iter()
+                    .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
+                    .count();
+                let page: usize = extract_query(path, "page")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(1);
+                let page_size: usize = extract_query(path, "page_size")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(20);
+                let start = page.saturating_sub(1) * page_size;
+                let data: Vec<_> = merged_all.into_iter().skip(start).take(page_size).collect();
+                return Ok(serde_json::json!({
+                    "data": data, "total": total, "page": page, "page_size": page_size,
+                    "total_net_amt": total_net_amt, "net_buy_count": net_buy_count, "net_sell_count": net_sell_count,
+                }));
+            }
+            if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
+                let code = extract_query(path, "code").unwrap_or_default();
+                let date = extract_query(path, "date").unwrap_or_default();
+                let flag = extract_query(path, "flag").unwrap_or_default();
+                let seat_flag = match flag.as_str() {
+                    "buy" => openatrading_core::api::eastmoney::SeatFlag::Buy,
+                    "sell" => openatrading_core::api::eastmoney::SeatFlag::Sell,
+                    _ => return Err("flag must be 'buy' or 'sell'".to_string()),
+                };
+                let seats = state
+                    .api
+                    .eastmoney
+                    .lhb_stock_seat(&code, &date, seat_flag)
+                    .await
+                    .map_err(|e| format!("{e}"))?;
+                return Ok(serde_json::to_value(seats).unwrap_or_default());
+            }
             if let Some(rest) = path.strip_prefix("/api/kline/") {
                 let parts: Vec<&str> = rest.split('?').collect();
                 let symbol = parts[0];
@@ -528,6 +660,15 @@ async fn dispatch_post(
                 .to_string();
             openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &strategy)
                 .map_err(|e| format!("{e}"))?;
+            openatrading_core::roles::save_role_meta(
+                &state.strategies_dir,
+                &name,
+                &openatrading_core::roles::RoleMeta {
+                    display_name: display_name.clone(),
+                    created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+                },
+            )
+            .map_err(|e| format!("{e}"))?;
             let mut roles = state.roles.write().await;
             if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
                 existing.display_name = display_name;
@@ -545,10 +686,23 @@ async fn dispatch_post(
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
-                if parts.len() < 2 {
-                    return Err("invalid roles path".to_string());
-                }
                 let name = parts[0];
+                if parts.len() < 2 {
+                    // DELETE /api/roles/{name} — no action suffix → delete
+                    state
+                        .trade
+                        .delete_positions_by_role(name)
+                        .map_err(|e| format!("{e}"))?;
+                    state
+                        .trade
+                        .delete_trade_logs_by_role(name)
+                        .map_err(|e| format!("{e}"))?;
+                    openatrading_core::roles::delete_role_dir(&state.strategies_dir, name)
+                        .map_err(|e| format!("{e}"))?;
+                    let mut roles = state.roles.write().await;
+                    roles.retain(|r| r.name != name);
+                    return Ok(serde_json::json!({"ok": true}));
+                }
                 let action = parts[1];
                 match action {
                     "strategy" => {

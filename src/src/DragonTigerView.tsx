@@ -16,6 +16,7 @@ export default function DragonTigerView() {
   const pageSize = 20;
   const { data: resp, isLoading, error } = useDragonTigerDetail(page, pageSize);
   const [dirFilter, setDirFilter] = useState<"all" | "buy" | "sell">("all");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<DragonTigerDetailItem | null>(null);
 
   const { data: buySeats = [], isLoading: buyLoading } =
@@ -43,15 +44,16 @@ export default function DragonTigerView() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const netOr = (v: number | null) => v || 0;
-
   const items = resp?.data ?? [];
   const total = resp?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const filtered = items.filter((s) => {
-    if (dirFilter === "buy" && netOr(s.billboard_net_amt) <= 0) return false;
-    if (dirFilter === "sell" && netOr(s.billboard_net_amt) >= 0) return false;
+    if (dirFilter === "buy" && (s.billboard_net_amt ?? 0) <= 0) return false;
+    if (dirFilter === "sell" && (s.billboard_net_amt ?? 0) >= 0) return false;
+    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.code.toLowerCase().includes(search.toLowerCase())) {
+      return false;
+    }
     return true;
   });
 
@@ -171,6 +173,18 @@ export default function DragonTigerView() {
               筛选
             </div>
             <div className="p-3">
+              <div className="mb-3">
+                <div className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+                  搜索
+                </div>
+                <input
+                  type="text"
+                  placeholder="名称或代码…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-hairline text-xs bg-bg text-white outline-none focus:border-ai transition-colors"
+                />
+              </div>
               <div>
                 <div className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
                   净买卖
@@ -241,7 +255,7 @@ export default function DragonTigerView() {
                     </tr>
                   ) : (
                     filtered.map((s) => {
-                      const up = netOr(s.billboard_net_amt) >= 0;
+                      const up = (s.billboard_net_amt ?? 0) >= 0;
                       return (
                         <tr
                           key={s.code}
@@ -265,7 +279,7 @@ export default function DragonTigerView() {
                               className={`font-mono font-semibold text-xs ${up ? "text-up" : "text-down"}`}
                             >
                               {up ? "+" : ""}
-                              {(netOr(s.billboard_net_amt) / 1e8).toFixed(2)}
+                              {((s.billboard_net_amt ?? 0) / 1e8).toFixed(2)}
                               亿
                             </span>
                           </td>
