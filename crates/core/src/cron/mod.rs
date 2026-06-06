@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::tools::{self, create_historical_context_tool, create_positions_tool};
+use crate::llm::tools::{create_historical_context_tool, create_positions_tool};
 use crate::llm::{DynTool, LlmClient};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
@@ -123,14 +123,8 @@ pub async fn start_scheduler(
         let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let decision_tools: Vec<Arc<DynTool>> = vec![
-            tools::get_limit_up(),
-            tools::get_limit_down(),
-            tools::get_market_overview(),
-            tools::get_super_stock(),
-            tools::get_yesterday_limit_up(),
-            tools::get_dapan_abnormal(),
-        ];
+        let registry = crate::llm::tools::ToolRegistry::new();
+        let decision_tools: Vec<Arc<DynTool>> = registry.market_tools().to_vec();
         add_job!(
             scheduler,
             config.decision_schedule,

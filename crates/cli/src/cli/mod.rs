@@ -378,13 +378,8 @@ async fn cmd_decision(
     );
     let api = Client::new();
 
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = vec![
-        openatrading_core::llm::tools::get_limit_up(),
-        openatrading_core::llm::tools::get_limit_down(),
-        openatrading_core::llm::tools::get_market_overview(),
-        openatrading_core::llm::tools::get_super_stock(),
-        openatrading_core::llm::tools::get_field_items(),
-    ];
+    let registry = openatrading_core::llm::tools::ToolRegistry::new();
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.market_tools().to_vec();
 
     run_decision(
         gateway.memory.clone(),
