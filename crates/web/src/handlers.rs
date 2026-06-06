@@ -689,6 +689,18 @@ pub async fn create_role(
             eprintln!("create_role error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+    openatrading_core::roles::save_role_meta(
+        &state.strategies_dir,
+        &body.name,
+        &openatrading_core::roles::RoleMeta {
+            display_name: body.display_name.clone(),
+            created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        },
+    )
+    .map_err(|e| {
+        eprintln!("create_role meta error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == body.name) {
@@ -699,6 +711,7 @@ pub async fn create_role(
                 name: body.name.clone(),
                 display_name: body.display_name.clone(),
                 strategy: body.strategy.clone(),
+                readonly: false,
             });
         }
     }
@@ -711,6 +724,15 @@ pub async fn update_role_strategy(
     Path(name): Path<String>,
     Json(body): Json<UpdateStrategyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    // Reject edits on config-toml readonly roles
+    {
+        let roles = state.roles.read().await;
+        if let Some(role) = roles.iter().find(|r| r.name == name) {
+            if role.readonly {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
     openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy)
         .map_err(|e| {
             eprintln!("update_role_strategy error: {}", e);
@@ -730,6 +752,15 @@ pub async fn delete_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    // Reject deletion of config-toml readonly roles
+    {
+        let roles = state.roles.read().await;
+        if let Some(role) = roles.iter().find(|r| r.name == name) {
+            if role.readonly {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
     state.trade.delete_positions_by_role(&name).ok();
     state.trade.delete_trade_logs_by_role(&name).ok();
     openatrading_core::roles::delete_role_dir(&state.strategies_dir, &name).ok();

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use openatrading_core::roles::{MergeMode, RoleConfig, BUILTIN_STRATEGIES};
+use openatrading_core::roles::{MergeMode, RoleConfig};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -411,8 +411,13 @@ pub fn cmd_init() -> Result<()> {
     std::fs::create_dir_all(&atrading)?;
     std::fs::write(atrading.join("config.toml"), DEFAULT_CONFIG_TOML)?;
 
-    // 写入内置策略 base.md 和空 supplement.md
-    for (name, _display, content) in BUILTIN_STRATEGIES {
+    // 写入默认策略 base.md 和空 supplement.md
+    let default_roles: [(&str, &str, &str); 1] = [(
+        "zarili",
+        "zarili量价派",
+        openatrading_core::roles::ZARILI_INIT_STRATEGY,
+    )];
+    for (name, _display, content) in default_roles {
         let role_dir = atrading.join("strategies").join(name);
         std::fs::create_dir_all(&role_dir)?;
         std::fs::write(role_dir.join("base.md"), content)?;

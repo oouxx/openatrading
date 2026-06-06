@@ -3,7 +3,6 @@
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::llm::LlmClient;
-use openatrading_core::roles::BUILTIN_STRATEGIES;
 use openatrading_core::trade::TradeManager;
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
@@ -62,15 +61,21 @@ fn load_env(project_root: &PathBuf) {
     }
 }
 
-fn build_roles() -> Vec<RoleEntry> {
-    BUILTIN_STRATEGIES
-        .iter()
-        .map(|(name, display_name, strategy)| RoleEntry {
-            name: name.to_string(),
-            display_name: display_name.to_string(),
-            strategy: strategy.to_string(),
-        })
-        .collect()
+fn build_roles(strategies_dir: &std::path::Path) -> Vec<RoleEntry> {
+    let mut roles: Vec<RoleEntry> = Vec::new();
+    // First, check if there's a config.toml at strategies_dir parent (project .atrading/)
+    let config_dir = strategies_dir.parent().unwrap_or(std::path::Path::new(""));
+    let config_path = config_dir.join("config.toml");
+    if config_path.exists() {
+        // Config-toml roles are loaded at CLI layer; here we rely on disk discovery
+    }
+    // Discover roles from disk
+    let disk_roles = openatrading_core::roles::list_roles_from_disk(strategies_dir);
+    roles.extend(disk_roles);
+    if roles.is_empty() {
+        eprintln!("[tauri] 警告: strategies/ 目录中未发现任何角色");
+    }
+    roles
 }
 
 #[tauri::command]
@@ -532,6 +537,7 @@ async fn dispatch_post(
                     name,
                     display_name,
                     strategy,
+                    readonly: false,
                 });
             }
             Ok(serde_json::json!({"ok": true}))
@@ -802,8 +808,8 @@ fn main() {
     let memory = gateway.memory.clone();
     let trade = gateway.trade.clone();
 
-    let roles = build_roles();
     let strategies_dir = project_root.join(".atrading").join("strategies");
+    let roles = build_roles(&strategies_dir);
 
     let app_state = Arc::new(AppState {
         llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),

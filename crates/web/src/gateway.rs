@@ -44,10 +44,30 @@ impl Gateway {
             api: ApiClient::new(),
             memory: self.memory.clone(),
             trade: self.trade.clone(),
-            roles: Arc::new(tokio::sync::RwLock::new(config.roles.clone())),
+            roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             strategies_dir: config.strategies_dir.into(),
             cache: cache::new_cache(),
         });
+
+        // Seed config roles first, then discover disk roles (config wins)
+        {
+            let mut roles = state.roles.write().await;
+            let disk_roles = openatrading_core::roles::list_roles_from_disk(&state.strategies_dir);
+            // config.toml roles have higher priority, marked readonly
+            for role in config.roles {
+                if !roles.iter().any(|r| r.name == role.name) {
+                    let mut r = role;
+                    r.readonly = true;
+                    roles.push(r);
+                }
+            }
+            // disk roles are editable
+            for disk_role in disk_roles {
+                if !roles.iter().any(|r| r.name == disk_role.name) {
+                    roles.push(disk_role);
+                }
+            }
+        }
 
         let router = web::build_router(state);
         let addr = format!("0.0.0.0:{}", config.web_port);
