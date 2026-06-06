@@ -116,25 +116,127 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-tauri-macos:
-    if: false
     runs-on: macos-latest
     steps:
-      - run: echo "Tauri build disabled"
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: |
+            bun-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Install Rust targets
+        run: rustup target add aarch64-apple-darwin
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ''
+          includeDebug: false
 
   build-tauri-linux-amd64:
-    if: false
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Tauri build disabled"
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: |
+            bun-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ''
+          includeDebug: false
 
   build-tauri-linux-arm64:
-    if: false
     runs-on: ubuntu-24.04-arm
     steps:
-      - run: echo "Tauri build disabled"
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: |
+            bun-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ''
+          includeDebug: false
 
   build-tauri-windows:
-    if: false
     runs-on: windows-latest
     steps:
-      - run: echo "Tauri build disabled"
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: |
+            bun-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ''
+          includeDebug: false

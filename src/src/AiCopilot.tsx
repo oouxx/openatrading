@@ -176,16 +176,6 @@ function ContextSidebar() {
           <div className="text-[11px] text-ink-muted">加载中...</div>
         )}
       </div>
-      <div className="px-4 py-4 border-b border-hairline">
-        <h4 className="text-sm font-medium text-white mb-2.5">活跃角色策略</h4>
-        <p className="text-[11px] text-ink-muted leading-relaxed bg-ink-dim rounded-lg p-2">
-          趋势跟踪（沪深300）运行中
-          <br />
-          均值回归策略 监控中
-          <br />
-          套利策略 v1 暂停
-        </p>
-      </div>
     </aside>
   );
 }
