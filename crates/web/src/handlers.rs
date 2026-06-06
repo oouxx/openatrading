@@ -1148,18 +1148,63 @@ pub async fn get_dragon_tiger_detail(
     )
     .await?;
     let all: Vec<LhbDetail> = serde_json::from_str(&cached).unwrap_or_default();
-    let total = all.len();
-    let total_net_amt: f64 = all.iter().filter_map(|d| d.billboard_net_amt).sum();
-    let net_buy_count = all
+
+    // Merge same-stock entries with multiple billboard reasons
+    let mut merged: std::collections::HashMap<(String, String), LhbDetail> =
+        std::collections::HashMap::new();
+    for item in all {
+        let key = (item.code.clone(), item.trade_date.clone());
+        match merged.get_mut(&key) {
+            Some(existing) => {
+                // Sum monetary fields
+                existing.billboard_net_amt = existing
+                    .billboard_net_amt
+                    .zip(item.billboard_net_amt)
+                    .map(|(a, b)| a + b);
+                existing.billboard_buy_amt = existing
+                    .billboard_buy_amt
+                    .zip(item.billboard_buy_amt)
+                    .map(|(a, b)| a + b);
+                existing.billboard_sell_amt = existing
+                    .billboard_sell_amt
+                    .zip(item.billboard_sell_amt)
+                    .map(|(a, b)| a + b);
+                existing.billboard_deal_amt = existing
+                    .billboard_deal_amt
+                    .zip(item.billboard_deal_amt)
+                    .map(|(a, b)| a + b);
+                // Append explanation
+                if let Some(ref exp) = item.explanation {
+                    if !exp.is_empty() {
+                        let prefix = existing.explanation.as_deref().unwrap_or("");
+                        let sep = if prefix.is_empty() { "" } else { "; " };
+                        existing.explanation = Some(format!("{prefix}{sep}{exp}"));
+                    }
+                }
+            },
+            None => {
+                merged.insert(key, item);
+            },
+        }
+    }
+    let merged_all: Vec<LhbDetail> = merged.into_values().collect();
+
+    let total = merged_all.len();
+    let total_net_amt: f64 = merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
+    let net_buy_count = merged_all
         .iter()
         .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
         .count();
-    let net_sell_count = all
+    let net_sell_count = merged_all
         .iter()
         .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
         .count();
     let start = (query.page.saturating_sub(1)) * query.page_size;
-    let data: Vec<LhbDetail> = all.into_iter().skip(start).take(query.page_size).collect();
+    let data: Vec<LhbDetail> = merged_all
+        .into_iter()
+        .skip(start)
+        .take(query.page_size)
+        .collect();
     Ok(Json(serde_json::json!({
         "data": data,
         "total": total,
