@@ -1,5 +1,4 @@
 edition = "2021"
 max_width = 100
-wrap_comments = true
 match_block_trailing_comma = true
 merge_derives = true

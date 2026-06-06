@@ -266,11 +266,9 @@ pub async fn ai_chat(
                 }
                 Some(AgentEvent::MessageEnd { message }) => {
                     tracing::info!("ai/chat: MessageEnd received");
-                    if let AgentMessage::Assistant { error_message, .. } = &message {
-                        if let Some(err) = error_message {
-                            if !err.is_empty() {
-                                yield Ok(Event::default().data(format!("[ERROR] {err}")));
-                            }
+                    if let AgentMessage::Assistant { error_message: Some(err), .. } = &message {
+                        if !err.is_empty() {
+                            yield Ok(Event::default().data(format!("[ERROR] {err}")));
                         }
                     }
                 }
