@@ -470,6 +470,33 @@ pub fn create_historical_context_tool(memory: Arc<dyn MemoryStore>) -> Arc<DynTo
     )
 }
 
+// ============================================================================
+// Decision extraction tool (embedded schema — no second LLM call)
+// ============================================================================
+
+/// Creates a "passive" tool whose arguments **are** the parsed `DecisionOutput`.
+/// The tool does nothing except receive structured data; `terminate: true`
+/// stops the agent loop immediately after the call.
+pub fn create_decision_tool() -> Arc<DynTool> {
+    let schema = schemars::schema_for!(crate::roles::prompt::DecisionOutput);
+    let schema_value = serde_json::to_value(&schema).unwrap_or_default();
+
+    tool(
+        "submit_trading_decision",
+        "Call this tool to submit your final trading decision with analysis and trade instructions.",
+        schema_value,
+        Arc::new(|_id, _args, _signal, _progress| {
+            Box::pin(async move {
+                Ok(AgentToolResult {
+                    content: vec![ContentBlock::text("Trading decision submitted.")],
+                    details: serde_json::Value::Null,
+                    terminate: Some(true),
+                })
+            })
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

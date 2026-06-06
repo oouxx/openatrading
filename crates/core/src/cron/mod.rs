@@ -6,7 +6,9 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
-use crate::llm::tools::{self, create_historical_context_tool, create_positions_tool};
+use crate::llm::tools::{
+    self, create_decision_tool, create_historical_context_tool, create_positions_tool,
+};
 use crate::llm::{agent_loop, DynTool, LlmClient};
 use crate::memory::MemoryStore;
 use crate::roles::pnl::INITIAL_CAPITAL;
@@ -379,20 +381,24 @@ async fn run_decision_for_role(
         tools.len()
     );
 
+    // Add decision tool to enable single-call structured extraction
+    let mut all_tools = tools.to_vec();
+    all_tools.push(create_decision_tool());
+
     // LLM calls get_current_positions / get_historical_context tools as needed
     let market_user_message = format!(
         "{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。",
         market_context, role.display_name
     );
 
-    let reply = match agent_loop(llm, tools.to_vec(), &role.strategy, &market_user_message).await {
-        Ok(result) => {
+    let result = match agent_loop(llm, all_tools, &role.strategy, &market_user_message).await {
+        Ok(r) => {
             tracing::info!(
                 "[cron] decision for '{}': agent done, {} chars",
                 role.name,
-                result.final_text.len()
+                r.final_text.len()
             );
-            result.final_text
+            r
         },
         Err(e) => {
             let err_msg = format!("❌ LLM 调用失败: {e}");
@@ -406,16 +412,18 @@ async fn run_decision_for_role(
         },
     };
 
-    // Use pi-agent-core Extractor for structured output (tool-call based extraction)
-    let (analysis, trade_instructions) = match extract_decision_output(llm, &reply).await {
-        Ok(output) => (output.analysis, output.trades),
-        Err(e) => {
-            tracing::warn!(
-                "[cron] extractor failed for '{}': {e}, using raw text",
-                role.name
-            );
-            (reply.clone(), Vec::new())
-        },
+    // Extract structured output — prefer decision tool, fall back to Extractor
+    let (analysis, trade_instructions) = {
+        if let Some(output) = result.tool_output.as_ref().and_then(|v| {
+            serde_json::from_value::<crate::roles::prompt::DecisionOutput>(v.clone()).ok()
+        }) {
+            tracing::info!("[cron] decision tool extracted for '{}'", role.name);
+            (output.analysis, output.trades)
+        } else if let Ok(output) = extract_decision_output(llm, &result.final_text).await {
+            (output.analysis, output.trades)
+        } else {
+            (result.final_text.clone(), Vec::new())
+        }
     };
 
     let mut executed_trades: Vec<String> = Vec::new();
@@ -769,6 +777,4 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
 // ── Tests ──────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}
