@@ -1,3 +1,4 @@
+pub mod session;
 pub mod tools;
 
 pub use openatrading_agent::types::{AgentTool, AgentToolResult, DynTool};

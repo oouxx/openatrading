@@ -471,6 +471,65 @@ pub fn create_historical_context_tool(memory: Arc<dyn MemoryStore>) -> Arc<DynTo
 }
 
 // ============================================================================
+// ToolRegistry — categorized tool access
+// ============================================================================
+
+/// Stateless registry of all available tools, grouped by purpose.
+/// Tools are created once on construction and reused.
+pub struct ToolRegistry {
+    market: Vec<Arc<DynTool>>,
+    decision: Option<Arc<DynTool>>,
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self {
+            market: vec![
+                get_limit_up(),
+                get_limit_down(),
+                get_market_overview(),
+                get_super_stock(),
+                get_yesterday_limit_up(),
+                get_dapan_abnormal(),
+                get_realtime_quote(),
+                get_plates_by_stock(),
+                get_market_trend(),
+                get_plate_abnormal(),
+                get_kline(),
+                get_telegraph(),
+                get_telegraph_allday(),
+            ],
+            decision: Some(create_decision_tool()),
+        }
+    }
+
+    /// All market-analysis tools (limit-up, overview, kline, plates, …).
+    pub fn market_tools(&self) -> &[Arc<DynTool>] {
+        &self.market
+    }
+
+    /// Decision extraction tool (`submit_trading_decision`).
+    pub fn decision_tool(&self) -> Option<&Arc<DynTool>> {
+        self.decision.as_ref()
+    }
+
+    /// Market tools + decision tool, ready for an agent_loop call.
+    pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
+        let mut t = self.market.clone();
+        if let Some(d) = &self.decision {
+            t.push(d.clone());
+        }
+        t
+    }
+}
+
+// ============================================================================
 // Decision extraction tool (embedded schema — no second LLM call)
 // ============================================================================
 

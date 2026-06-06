@@ -8,7 +8,8 @@ use pi_agent_core::agent::{Agent, AgentOptions};
 use pi_agent_core::pi_ai_types::{ContentBlock, StreamOptions, StreamResponse, Transport};
 use pi_agent_core::types::{AgentMessage, AgentState, DynTool, GetApiKeyFn, StreamFn};
 
-#[derive(Debug)]
+// ============================================================================
+// AgentSession — unified entry abstraction
 pub struct AgentResult {
     pub final_text: String,
     /// Optional structured output from the last tool call (e.g. decision tool).
