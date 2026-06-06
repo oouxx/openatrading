@@ -12,10 +12,11 @@ COPY crates/channels/Cargo.toml crates/channels/
 COPY crates/provider/Cargo.toml crates/provider/
 COPY crates/web/Cargo.toml crates/web/
 COPY crates/agent/Cargo.toml crates/agent/
+COPY crates/tui/Cargo.toml crates/tui/
 COPY src-tauri/Cargo.toml src-tauri/
 
 # 为所有 workspace member 创建 dummy src，让 cargo metadata 能解析
-RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src crates/provider/src crates/web/src crates/agent/src src-tauri/src && \
+RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src crates/provider/src crates/web/src crates/agent/src crates/tui/src src-tauri/src && \
     echo '' > crates/api/src/lib.rs && \
     echo '' > crates/core/src/lib.rs && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
@@ -23,6 +24,7 @@ RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src c
     echo '' > crates/provider/src/lib.rs && \
     echo '' > crates/web/src/lib.rs && \
     echo '' > crates/agent/src/lib.rs && \
+    echo '' > crates/tui/src/lib.rs && \
     echo 'fn main() {}' > src-tauri/src/main.rs
 
 RUN cargo chef prepare --recipe-path recipe.json
