@@ -11,6 +11,8 @@ use pi_agent_core::types::{AgentMessage, AgentState, DynTool, GetApiKeyFn, Strea
 #[derive(Debug)]
 pub struct AgentResult {
     pub final_text: String,
+    /// Optional structured output from the last tool call (e.g. decision tool).
+    pub tool_output: Option<serde_json::Value>,
     pub rounds: usize,
 }
 
@@ -119,8 +121,22 @@ pub async fn agent_loop(
         })
         .unwrap_or_default();
 
+    // Extract tool_output from the last tool call in the results
+    let tool_output: Option<serde_json::Value> = result.iter().rev().find_map(|msg| match msg {
+        AgentMessage::Assistant { content, .. } => {
+            for block in content {
+                if let ContentBlock::ToolCall { arguments, .. } = block {
+                    return Some(arguments.clone());
+                }
+            }
+            None
+        },
+        _ => None,
+    });
+
     Ok(AgentResult {
         final_text,
+        tool_output,
         rounds: 1,
     })
 }
