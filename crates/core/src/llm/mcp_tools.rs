@@ -20,9 +20,21 @@ pub struct McpClient {
 impl McpClient {
     /// Create client with explicit endpoint (e.g. "http://localhost:8081").
     pub fn new(endpoint: impl Into<String>) -> Self {
+        use reqwest::header::{HeaderValue, ACCEPT};
+        let client = reqwest::Client::builder()
+            .default_headers({
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(
+                    ACCEPT,
+                    HeaderValue::from_static("application/json, text/event-stream"),
+                );
+                h
+            })
+            .build()
+            .unwrap_or_default();
         Self {
             endpoint: endpoint.into(),
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
@@ -238,7 +250,7 @@ impl McpRegistry {
                     }
                 },
                 Err(e) => {
-                    tracing::warn!("[mcp] discover failed for {}: {e}", client.endpoint);
+                    tracing::debug!("[mcp] discover failed for {}: {e}", client.endpoint);
                 },
             }
         }
