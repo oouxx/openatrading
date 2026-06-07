@@ -5,7 +5,6 @@ pub mod gateway;
 pub mod handlers;
 
 use cache::AppCache;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -26,7 +25,6 @@ pub struct AppState {
     pub memory: Arc<openatrading_core::memory::sqlite::SqliteMemoryStore>,
     pub trade: Arc<openatrading_core::trade::sqlite::SqliteTradeManager>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
-    pub strategies_dir: PathBuf,
     pub cache: Arc<AppCache>,
 }
 

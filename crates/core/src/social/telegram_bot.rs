@@ -7,7 +7,6 @@ use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
 use crate::cron::run_decision;
 use crate::llm::session::AgentSession;
-use crate::llm::tools::ToolRegistry;
 use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
@@ -443,10 +442,11 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let mut registry = ToolRegistry::new();
-                let mcp_client = crate::llm::McpClient::from_env();
-                crate::llm::register_mcp_tools(&mut registry, &mcp_client);
-                let tools: Vec<Arc<crate::llm::DynTool>> = registry.all_tools().to_vec();
+                let tools: Vec<Arc<crate::llm::DynTool>> =
+                    crate::llm::build_tools(&Default::default())
+                        .await
+                        .all_tools()
+                        .to_vec();
                 match run_decision(
                     self.memory.clone(),
                     self.trade.clone(),
@@ -537,7 +537,10 @@ impl TelegramBot {
             "content": question,
         }));
 
-        let tools: Vec<Arc<crate::llm::DynTool>> = ToolRegistry::new().market_tools().to_vec();
+        let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&Default::default())
+            .await
+            .all_tools()
+            .to_vec();
 
         // Combine context + history + question into a single user message
         let mut user_msg = market_context;
@@ -553,7 +556,8 @@ impl TelegramBot {
         }
         user_msg.push_str(&format!("\n\nuser: {}", question));
 
-        let accumulated = AgentSession::new(&self.llm, &role.strategy)
+        let system = crate::skills::SkillRegistry::build_role_prompt(role);
+        let accumulated = AgentSession::new(&self.llm, &system)
             .with_tools(&tools)
             .process_chat(&user_msg)
             .await

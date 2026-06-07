@@ -61,20 +61,20 @@ fn load_env(project_root: &PathBuf) {
     }
 }
 
-fn build_roles(strategies_dir: &std::path::Path) -> Vec<RoleEntry> {
+fn build_roles() -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
 
     // Load roles from config.toml layers (readonly, low→high priority)
-    // Matches CLI's AppConfig::load() — home → .atrading → project root
-    let project_atrading = strategies_dir.parent().unwrap_or(std::path::Path::new(""));
+    let skills_dir = openatrading_core::roles::default_skills_dir();
+    let project_atrading = std::env::current_dir().ok().map(|p| p.join(".atrading"));
     let layers = [
         std::env::var("HOME").ok().map(|h| {
             std::path::PathBuf::from(h)
                 .join(".atrading")
                 .join("config.toml")
         }),
-        Some(project_atrading.join("config.toml")),
-        project_atrading.parent().map(|p| p.join("config.toml")),
+        project_atrading.as_ref().map(|p| p.join("config.toml")),
+        std::env::current_dir().ok().map(|p| p.join("config.toml")),
     ];
     for maybe_path in layers.iter().flatten() {
         if !maybe_path.exists() {
@@ -94,14 +94,20 @@ fn build_roles(strategies_dir: &std::path::Path) -> Vec<RoleEntry> {
             if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
                 for rc in parsed.roles {
                     if !roles.iter().any(|r| r.name == rc.name) {
-                        let role_strategy_path = strategies_dir.join(&rc.name).join("base.md");
-                        if let Ok(strategy) = std::fs::read_to_string(&role_strategy_path) {
-                            roles.push(RoleEntry {
-                                name: rc.name,
-                                display_name: rc.display_name,
-                                strategy,
-                                readonly: true,
-                            });
+                        let role_path = skills_dir.join(&rc.name).join("SKILL.md");
+                        if let Ok(raw) = std::fs::read_to_string(&role_path) {
+                            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
+                            if !body.is_empty() {
+                                roles.push(RoleEntry {
+                                    name: rc.name,
+                                    display_name: fm
+                                        .get("description")
+                                        .cloned()
+                                        .unwrap_or(rc.display_name),
+                                    strategy: body.to_string(),
+                                    readonly: true,
+                                });
+                            }
                         }
                     }
                 }
@@ -110,10 +116,9 @@ fn build_roles(strategies_dir: &std::path::Path) -> Vec<RoleEntry> {
     }
 
     // Discover roles from disk (editable)
-    let disk_roles = openatrading_core::roles::list_roles_from_disk(strategies_dir);
-    roles.extend(disk_roles);
+    roles.extend(openatrading_core::roles::list_roles_from_disk());
     if roles.is_empty() {
-        eprintln!("[tauri] 警告: strategies/ 目录中未发现任何角色");
+        eprintln!("[tauri] 警告: skills/ 目录中未发现任何角色");
     }
     roles
 }
@@ -658,17 +663,8 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &strategy)
+            openatrading_core::roles::save_role_strategy(&name, &strategy)
                 .map_err(|e| format!("{e}"))?;
-            openatrading_core::roles::save_role_meta(
-                &state.strategies_dir,
-                &name,
-                &openatrading_core::roles::RoleMeta {
-                    display_name: display_name.clone(),
-                    created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
-                },
-            )
-            .map_err(|e| format!("{e}"))?;
             let mut roles = state.roles.write().await;
             if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
                 existing.display_name = display_name;
@@ -697,8 +693,7 @@ async fn dispatch_post(
                         .trade
                         .delete_trade_logs_by_role(name)
                         .map_err(|e| format!("{e}"))?;
-                    openatrading_core::roles::delete_role_dir(&state.strategies_dir, name)
-                        .map_err(|e| format!("{e}"))?;
+                    openatrading_core::roles::delete_role_dir(name).map_err(|e| format!("{e}"))?;
                     let mut roles = state.roles.write().await;
                     roles.retain(|r| r.name != name);
                     return Ok(serde_json::json!({"ok": true}));
@@ -711,12 +706,8 @@ async fn dispatch_post(
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        openatrading_core::roles::save_role_strategy(
-                            &state.strategies_dir,
-                            name,
-                            &strategy,
-                        )
-                        .map_err(|e| format!("{e}"))?;
+                        openatrading_core::roles::save_role_strategy(name, &strategy)
+                            .map_err(|e| format!("{e}"))?;
                         let mut roles = state.roles.write().await;
                         if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
                             entry.strategy = strategy;
@@ -743,7 +734,7 @@ async fn dispatch_post(
                             .trade
                             .delete_trade_logs_by_role(name)
                             .map_err(|e| format!("{e}"))?;
-                        openatrading_core::roles::delete_role_dir(&state.strategies_dir, name)
+                        openatrading_core::roles::delete_role_dir(name)
                             .map_err(|e| format!("{e}"))?;
                         let mut roles = state.roles.write().await;
                         roles.retain(|r| r.name != name);
@@ -962,8 +953,7 @@ fn main() {
     let memory = gateway.memory.clone();
     let trade = gateway.trade.clone();
 
-    let strategies_dir = project_root.join(".atrading").join("strategies");
-    let roles = build_roles(&strategies_dir);
+    let roles = build_roles();
 
     let app_state = Arc::new(AppState {
         llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
@@ -971,7 +961,6 @@ fn main() {
         memory,
         trade,
         roles: Arc::new(RwLock::new(roles)),
-        strategies_dir,
         cache: openatrading_web::cache::new_cache(),
     });
 

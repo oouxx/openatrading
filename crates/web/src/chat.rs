@@ -49,7 +49,7 @@ pub async fn get_ai_roles(
 }
 
 pub fn build_system_prompt(strategy_text: &str) -> String {
-    strategy_text.to_string()
+    openatrading_core::skills::SkillRegistry::build_chat_prompt(strategy_text)
 }
 
 pub fn build_user_message(
@@ -156,10 +156,11 @@ pub async fn ai_chat(
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
     use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
 
-    let mut registry = openatrading_core::llm::tools::ToolRegistry::new();
-    let mcp_client = openatrading_core::llm::McpClient::from_env();
-    openatrading_core::llm::register_mcp_tools(&mut registry, &mcp_client);
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.all_tools().to_vec();
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
+        openatrading_core::llm::build_tools(&Default::default())
+            .await
+            .all_tools()
+            .to_vec();
 
     let role_name = req.role.as_deref().unwrap_or("zarili");
     let roles_guard = state.roles.read().await;

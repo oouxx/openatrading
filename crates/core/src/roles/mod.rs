@@ -1,66 +1,58 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoleConfig {
     pub name: String,
-    pub display_name: String,
-    pub dir: String,
-    pub merge_mode: MergeMode,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MergeMode {
-    Supplement,
-    Override,
-    BaseOnly,
+    #[serde(default)]
+    pub readonly: bool,
 }
 
 pub mod pnl;
 pub mod prompt;
 
-/// Template for zarili strategy, embedded for `cmd_init()` file creation.
-/// This is the only compile-time strategy inclusion; all runtime strategies
-/// are loaded from disk.
-pub const ZARILI_INIT_STRATEGY: &str = include_str!("../../strategies/zarili/base.md");
-
-pub fn default_strategies_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".atrading").join("strategies")
+/// Path to the skills directory (<cwd>/.atrading/skills/).
+pub fn default_skills_dir() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| std::env::var("HOME").map(PathBuf::from).unwrap_or_default())
+        .join(".atrading")
+        .join("skills")
 }
 
-/// Display-name and metadata persisted alongside a strategy directory.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoleMeta {
-    pub display_name: String,
-    pub created_at: String,
+/// Parse YAML frontmatter from `---\n...\n---` delimited content.
+pub fn parse_frontmatter(content: &str) -> (std::collections::HashMap<String, String>, &str) {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return (std::collections::HashMap::new(), trimmed);
+    }
+    let after_first = &trimmed[3..];
+    let end = after_first.find("\n---").unwrap_or(after_first.len());
+    let frontmatter_str = &after_first[..end];
+    let body_start = end + 4;
+    let body = after_first[body_start..].trim();
+
+    let mut map = std::collections::HashMap::new();
+    for line in frontmatter_str.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            map.insert(key.trim().to_string(), value.trim().to_string());
+        }
+    }
+    (map, body)
 }
 
-pub fn save_role_meta(strategies_dir: &Path, name: &str, meta: &RoleMeta) -> Result<()> {
-    let path = strategies_dir.join(name).join(".meta.json");
-    let json = serde_json::to_string_pretty(meta)?;
-    fs::write(&path, &json).with_context(|| format!("写入 {} 失败", path.display()))?;
-    Ok(())
-}
-
-pub fn load_role_meta(strategies_dir: &Path, name: &str) -> Option<RoleMeta> {
-    let path = strategies_dir.join(name).join(".meta.json");
-    let json = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&json).ok()
-}
-
-/// Scan strategies dir for directories containing both `base.md` and `.meta.json`.
-/// Returns RoleEntry for each valid role found on disk.
-pub fn list_roles_from_disk(strategies_dir: &Path) -> Vec<crate::RoleEntry> {
+/// Load all SKILL.md entries from `~/.atrading/skills/` as RoleEntry.
+pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
+    let dir = default_skills_dir();
     let mut roles = Vec::new();
-    let dir = match fs::read_dir(strategies_dir) {
+
+    let entries = match fs::read_dir(&dir) {
         Ok(d) => d,
         Err(_) => return roles,
     };
-    for entry in dir.flatten() {
+
+    for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -69,24 +61,29 @@ pub fn list_roles_from_disk(strategies_dir: &Path) -> Vec<crate::RoleEntry> {
             Some(n) => n.to_string_lossy().to_string(),
             None => continue,
         };
-        let base_md = path.join("base.md");
-        if !base_md.exists() {
+        let skill_path = path.join("SKILL.md");
+        let raw = match fs::read_to_string(&skill_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let (fm, body) = parse_frontmatter(&raw);
+        if body.is_empty() {
             continue;
         }
-        let strategy = fs::read_to_string(&base_md).unwrap_or_default();
-        if strategy.is_empty() {
-            continue;
-        }
-        let display_name = load_role_meta(strategies_dir, &name)
-            .map(|m| m.display_name)
+        let display_name = fm
+            .get("description")
+            .cloned()
+            .or_else(|| fm.get("name").cloned())
             .unwrap_or_else(|| name.clone());
+
         roles.push(crate::RoleEntry {
             name,
             display_name,
-            strategy,
+            strategy: body.to_string(),
             readonly: false,
         });
     }
+
     roles
 }
 
@@ -97,22 +94,23 @@ fn validate_role_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn save_role_strategy(strategies_dir: &Path, name: &str, strategy: &str) -> Result<()> {
+/// Save a role strategy as `~/.atrading/skills/{name}/SKILL.md`.
+pub fn save_role_strategy(name: &str, strategy: &str) -> Result<()> {
     validate_role_name(name)?;
-    let role_dir = strategies_dir.join(name);
-    fs::create_dir_all(&role_dir)
-        .with_context(|| format!("创建目录失败: {}", role_dir.display()))?;
-    fs::write(role_dir.join("base.md"), strategy)
-        .with_context(|| format!("写入策略失败: {}/base.md", name))?;
+    let dir = default_skills_dir().join(name);
+    fs::create_dir_all(&dir).with_context(|| format!("创建目录失败: {}", dir.display()))?;
+    let content = format!("---\nname: {name}\ndescription: {name}\n---\n\n{strategy}");
+    fs::write(dir.join("SKILL.md"), &content)
+        .with_context(|| format!("写入策略失败: {}/SKILL.md", name))?;
     Ok(())
 }
 
-pub fn delete_role_dir(strategies_dir: &Path, name: &str) -> Result<()> {
+/// Delete a role directory from `~/.atrading/skills/{name}/`.
+pub fn delete_role_dir(name: &str) -> Result<()> {
     validate_role_name(name)?;
-    let role_dir = strategies_dir.join(name);
-    if role_dir.exists() {
-        fs::remove_dir_all(&role_dir)
-            .with_context(|| format!("删除角色目录失败: {}", role_dir.display()))?;
+    let dir = default_skills_dir().join(name);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).with_context(|| format!("删除角色目录失败: {}", dir.display()))?;
     }
     Ok(())
 }
