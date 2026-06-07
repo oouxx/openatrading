@@ -378,8 +378,10 @@ async fn cmd_decision(
     );
     let api = Client::new();
 
-    let registry = openatrading_core::llm::tools::ToolRegistry::new();
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.market_tools().to_vec();
+    let mut registry = openatrading_core::llm::tools::ToolRegistry::new();
+    let mcp_client = openatrading_core::llm::McpClient::from_env();
+    openatrading_core::llm::register_mcp_tools(&mut registry, &mcp_client);
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.all_tools().to_vec();
 
     run_decision(
         gateway.memory.clone(),

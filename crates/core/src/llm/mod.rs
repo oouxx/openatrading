@@ -1,3 +1,4 @@
+pub mod mcp_tools;
 pub mod session;
 pub mod tools;
 
@@ -7,6 +8,7 @@ pub use openatrading_provider::llm::{
     ToolCallItem, ToolCallMessage, ToolChatChoice, ToolChatResponse, ToolStreamResult,
 };
 
+pub use mcp_tools::{register_mcp_tools, McpClient};
 pub use openatrading_agent::agent::{Agent, AgentOptions};
 pub use openatrading_agent::pi_ai_types;
 pub use openatrading_agent::proxy;
