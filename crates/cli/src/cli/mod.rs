@@ -2,6 +2,9 @@ pub mod app;
 pub mod config;
 pub mod doctor;
 pub mod gateway_cmd;
+pub mod mcp_cmd;
+pub mod skills_cmd;
+pub mod tools_cmd;
 pub mod trade_cmd;
 pub mod update;
 
@@ -13,13 +16,16 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::cli::app::{Commands, GatewayAction, TradeAction};
+use crate::cli::app::{Commands, GatewayAction, McpAction, SkillAction, ToolsAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
 use crate::cli::doctor::cmd_doctor;
 use crate::cli::gateway_cmd::{
     cmd_gateway_install, cmd_gateway_run, cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop,
     cmd_gateway_uninstall,
 };
+use crate::cli::mcp_cmd::{cmd_mcp_call, cmd_mcp_list, cmd_mcp_status};
+use crate::cli::skills_cmd::{cmd_skills_install, cmd_skills_list, cmd_skills_uninstall};
+use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::update::{cmd_update, cmd_update_check};
 use openatrading_core::agents::sentiment::analyze_sentiment;
@@ -161,6 +167,35 @@ pub async fn run() -> Result<()> {
                 return cmd_trade_close(&project_root, id, price);
             },
         }
+    }
+
+    // Handle `skills` subcommand
+    if let Some(Commands::Skills { action }) = cli.command {
+        return match action {
+            SkillAction::List => cmd_skills_list(),
+            SkillAction::Install { name } => cmd_skills_install(&name),
+            SkillAction::Uninstall { name } => cmd_skills_uninstall(&name),
+        };
+    }
+
+    // Handle `tools` subcommand
+    if let Some(Commands::Tools { action }) = cli.command {
+        return match action {
+            ToolsAction::Doc { endpoint } => cmd_tools_doc(&endpoint).await,
+        };
+    }
+
+    // Handle `mcp` subcommand
+    if let Some(Commands::Mcp { action }) = cli.command {
+        return match action {
+            McpAction::List { endpoint } => cmd_mcp_list(&endpoint).await,
+            McpAction::Status { endpoint } => cmd_mcp_status(&endpoint).await,
+            McpAction::Call {
+                name,
+                args,
+                endpoint,
+            } => cmd_mcp_call(&endpoint, &name, &args).await,
+        };
     }
 
     // Load config
@@ -378,10 +413,11 @@ async fn cmd_decision(
     );
     let api = Client::new();
 
-    let mut registry = openatrading_core::llm::tools::ToolRegistry::new();
-    let mcp_client = openatrading_core::llm::McpClient::from_env();
-    openatrading_core::llm::register_mcp_tools(&mut registry, &mcp_client);
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.all_tools().to_vec();
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
+        openatrading_core::llm::build_tools(&Default::default())
+            .await
+            .all_tools()
+            .to_vec();
 
     run_decision(
         gateway.memory.clone(),

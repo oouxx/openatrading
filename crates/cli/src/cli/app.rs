@@ -113,6 +113,74 @@ pub enum Commands {
         #[arg(long)]
         role: Option<String>,
     },
+    /// 技能管理（安装/列出/卸载）
+    Skills {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+    /// 生成工具参考文档（markdown）
+    Tools {
+        #[command(subcommand)]
+        action: ToolsAction,
+    },
+    /// MCP 服务器管理（列出工具/状态检查/调用）
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ToolsAction {
+    /// 生成所有可用工具的 markdown 参考文档
+    Doc {
+        /// MCP 端点（可选，用于发现 MCP 工具）
+        #[arg(long, default_value = "http://localhost:8081")]
+        endpoint: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum McpAction {
+    /// 列出 MCP 服务端所有已注册工具
+    List {
+        /// MCP 端点，默认 http://localhost:8081
+        #[arg(long, default_value = "http://localhost:8081")]
+        endpoint: String,
+    },
+    /// 检查 MCP 服务器连通性
+    Status {
+        /// MCP 端点，默认 http://localhost:8081
+        #[arg(long, default_value = "http://localhost:8081")]
+        endpoint: String,
+    },
+    /// 直接调用一个 MCP 工具
+    Call {
+        /// 工具名称
+        name: String,
+        /// JSON 参数（可选）
+        #[arg(default_value = "{}")]
+        args: String,
+        /// MCP 端点，默认 http://localhost:8081
+        #[arg(long, default_value = "http://localhost:8081")]
+        endpoint: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SkillAction {
+    /// 列出所有可安装的技能
+    List,
+    /// 安装一个内置技能
+    Install {
+        /// 技能名称
+        name: String,
+    },
+    /// 卸载已安装的技能
+    Uninstall {
+        /// 技能名称
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]

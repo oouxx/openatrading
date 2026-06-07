@@ -1,68 +1,21 @@
 # ── OpenATrading 配置 ──────────────────────────────────
 # 优先级：项目根 config.toml > 项目根/.atrading/config.toml > ~/.atrading/config.toml
-# 同名角色：高优先级完整覆盖低优先级
+# 角色由 .atrading/skills/ 下的 SKILL.md 自动发现，无需在配置中声明
 # 复制为 config.toml 后修改
-
-default_role = "zarili"
-
-# ── 角色定义 ────────────────────────────────────────────
-# merge_mode:
-#   base_only   — 仅使用 base.md 策略
-#   supplement  — base.md + supplement.md 合并（用户补充叠加）
-#   override    — 仅使用 supplement.md（完全自定义）
-
-[[roles]]
-name = "zarili"
-display_name = "zarili量价派"
-dir = "strategies/zarili"
-merge_mode = "supplement"
-
-[[roles]]
-name = "trader"
-display_name = "游资操盘手"
-dir = "strategies/trader"
-merge_mode = "base_only"
-
-[[roles]]
-name = "quant"
-display_name = "量化分析师"
-dir = "strategies/quant"
-merge_mode = "supplement"
-
-[[roles]]
-name = "risk_officer"
-display_name = "风控官"
-dir = "strategies/risk_officer"
-merge_mode = "supplement"
-
-# 添加自定义角色：
-# [[roles]]
-# name = "my_role"
-# display_name = "我的策略"
-# dir = "strategies/my_role"
-# merge_mode = "override"
 
 # ── 后台服务 ─────────────────────────────────────────────
 [service]
-# SQLite 数据库路径（相对于项目根/.atrading/）
 db_path = "data.db"
 
 # ── Cron 调度 ────────────────────────────────────────────
 # cron 表达式为 6 字段：秒 分 时 日 月 周
 [cron]
 enabled = true
-# 采集：交易时间每 30 分钟
 collection_schedule = "0 */30 9-15 * * 1-5"
-# 决策：每天 00:00
 decision_schedule = "0 0 0 * * 1-5"
-# 条件单监控：交易时间每 1 分钟检查止损/止盈条件单
-monitor_schedule = "0 */1 9-15 * * 1-5"
-# CLS 新闻推送：交易时间每 5 分钟检查并推送重要新闻
 news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── 社交平台通知 ──────────────────────────────────────────
-# notify_channel: cron 通知发送到哪个渠道 (telegram / discord / slack / lark)
-# notify_on_*: 控制各类事件是否发送通知
 [social]
 notify_channel = "telegram"
 notify_on_collect = true
@@ -70,28 +23,24 @@ notify_on_decision = true
 notify_on_trade = true
 notify_on_news = true
 
-# Telegram（同时用于 bot 交互和通知推送）
 [social.telegram]
 enabled = true
 bot_polling = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
 chat_id = "${TELEGRAM_CHAT_ID}"
 
-# Discord（Bot 推送）
-[social.discord]
-enabled = true
-bot_token = "${DISCORD_BOT_TOKEN}"
-channel_id = "${DISCORD_CHANNEL_ID}"
+# [social.discord]
+# enabled = true
+# bot_token = "${DISCORD_BOT_TOKEN}"
+# channel_id = "${DISCORD_CHANNEL_ID}"
 
-# Slack（Bot 推送）
-[social.slack]
-enabled = true
-bot_token = "${SLACK_BOT_TOKEN}"
-channel = "${SLACK_CHANNEL}"
+# [social.slack]
+# enabled = true
+# bot_token = "${SLACK_BOT_TOKEN}"
+# channel = "${SLACK_CHANNEL}"
 
-# 飞书（Bot 推送）
-[social.lark]
-enabled = true
-app_id = "${LARK_APP_ID}"
-app_secret = "${LARK_APP_SECRET}"
-receive_id = "${LARK_RECEIVE_ID}"
+# [social.lark]
+# enabled = true
+# app_id = "${LARK_APP_ID}"
+# app_secret = "${LARK_APP_SECRET}"
+# receive_id = "${LARK_RECEIVE_ID}"

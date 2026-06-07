@@ -199,35 +199,43 @@ pub fn create_notification_sender(
 }
 
 pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
+    let skills_dir = openatrading_core::roles::default_skills_dir();
     let mut roles: Vec<RoleEntry> = Vec::new();
 
+    // Config-toml roles: mark as readonly
     for entry in &app_config.roles {
-        let strategy = AppConfig::load_strategy(entry).unwrap_or_else(|e| {
-            eprintln!(
-                "[gateway] warning: failed to load strategy for role '{}': {e}",
-                entry.config.name
-            );
-            String::new()
-        });
-
-        if strategy.is_empty() {
-            continue;
+        let skill_path = skills_dir.join(&entry.name).join("SKILL.md");
+        if let Ok(raw) = std::fs::read_to_string(&skill_path) {
+            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
+            if !body.is_empty() {
+                let display_name = fm
+                    .get("description")
+                    .cloned()
+                    .unwrap_or_else(|| entry.name.clone());
+                if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.name) {
+                    existing.readonly = entry.readonly;
+                } else {
+                    roles.push(RoleEntry {
+                        name: entry.name.clone(),
+                        display_name,
+                        strategy: body.to_string(),
+                        readonly: entry.readonly,
+                    });
+                }
+            }
         }
+    }
 
-        if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.config.name) {
-            existing.strategy = strategy;
-        } else {
-            roles.push(RoleEntry {
-                name: entry.config.name.clone(),
-                display_name: entry.config.display_name.clone(),
-                strategy,
-                readonly: false,
-            });
+    // Disk-discovered roles (editable, but config-toml readonly already set above)
+    let disk_roles = openatrading_core::roles::list_roles_from_disk();
+    for disk_role in disk_roles {
+        if !roles.iter().any(|r| r.name == disk_role.name) {
+            roles.push(disk_role);
         }
     }
 
     if roles.is_empty() {
-        eprintln!("[gateway] 警告: 未配置任何角色，请在 config.toml 中设置 [[roles]]");
+        eprintln!("[gateway] 警告: skills/ 目录中未发现任何角色");
     }
 
     roles
@@ -251,14 +259,12 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
     let do_web = !cron_only || web_only;
 
     let roles = build_roles(&app_config);
-    let strategies_dir = project_root.join(".atrading").join("strategies");
     let mut handles = Vec::new();
 
     // Clone for cron/telegram/web use before gateway is moved
     let memory = gateway.memory.clone();
     let trade = gateway.trade.clone();
     let web_roles = roles.clone();
-    let web_strategies_dir = strategies_dir.clone();
 
     // ── Cron (CLI layer) ──────────────────────────
     let social: Arc<dyn NotificationSender> = match &app_config.social {
@@ -316,7 +322,6 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 .start(GatewayConfig {
                     web_port: 8080,
                     roles: web_roles.clone(),
-                    strategies_dir: web_strategies_dir.to_string_lossy().to_string(),
                     llm_provider: web_llm_provider,
                     llm_model: web_llm_model,
                 })

@@ -97,6 +97,36 @@ impl McpClient {
         serde_json::from_str(text).map_err(|e| format!("mcp result parse: {e}"))
     }
 
+    /// Call `tools/list` on the MCP server and return the registered tools.
+    pub async fn list_tools(&self) -> Result<serde_json::Value, String> {
+        let url = format!("{}/mcp", self.endpoint);
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {},
+        });
+        let resp = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("mcp connection refused: {e}"))?;
+
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("mcp parse failed: {e}"))?;
+
+        if let Some(err) = json.get("error") {
+            let msg = err["message"].as_str().unwrap_or("unknown mcp error");
+            return Err(msg.to_string());
+        }
+
+        Ok(json["result"]["tools"].clone())
+    }
+
     /// Wrap this client into a tool factory for the given akshare method.
     /// The tool will call `.call(method, args)` when executed.
     pub fn create_tool(
@@ -131,141 +161,119 @@ impl McpClient {
 }
 
 // ============================================================================
-// Default MCP tool registration
+// McpRegistry — manages multiple MCP server connections with dynamic discovery
 // ============================================================================
 
-/// Register akshare-one-mcp tools into the given ToolRegistry.
-pub fn register_mcp_tools(registry: &mut super::tools::ToolRegistry, client: &McpClient) {
-    // ── 历史行情（含技术指标）────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_hist_data",
-        "获取个股历史K线行情数据，支持日/周/月/分钟线，可选30+种技术指标(MA,MACD,RSI,BOLL等)。参数：symbol(股票代码), interval(周期:minute/hour/day/week/month/year), start_date(YYYY-MM-DD), end_date(YYYY-MM-DD), adjust(复权:none/qfq/hfq), source(数据源:eastmoney/eastmoney_direct/sina), indicators_list(技术指标列表), recent_n(返回最近N条)",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "interval": {"type": "string", "description": "K线周期: minute/day/week/month/year", "default": "day"},
-                "start_date": {"type": "string", "description": "开始日期 YYYY-MM-DD", "default": "1970-01-01"},
-                "end_date": {"type": "string", "description": "结束日期 YYYY-MM-DD", "default": "2030-12-31"},
-                "adjust": {"type": "string", "description": "复权方式: none/qfq(前复权)/hfq(后复权)", "default": "none"},
-                "source": {"type": "string", "description": "数据源: eastmoney/eastmoney_direct/sina", "default": "eastmoney"},
-                "recent_n": {"type": "integer", "description": "返回最近N条记录，默认100", "default": 100}
-            },
-            "required": ["symbol"],
-        }),
-        "get_hist_data",
-    ));
+/// Configuration for a single MCP server endpoint.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct McpServerConfig {
+    pub name: String,
+    pub endpoint: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
 
-    // ── 实时行情 ────────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_realtime_data",
-        "获取个股实时行情数据，包含最新价、涨跌幅、成交量等。留空symbol返回全市场行情。source可选: xueqiu/eastmoney/eastmoney_direct",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，留空返回全市场", "default": ""},
-                "source": {"type": "string", "description": "数据源: xueqiu/eastmoney/eastmoney_direct", "default": "eastmoney_direct"},
-            },
-            "required": [],
-        }),
-        "get_realtime_data",
-    ));
+fn default_enabled() -> bool {
+    true
+}
 
-    // ── 个股新闻 ────────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_news_data",
-        "获取个股相关新闻资讯",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "recent_n": {"type": "integer", "description": "返回最近N条，默认10", "default": 10},
-            },
-            "required": ["symbol"],
-        }),
-        "get_news_data",
-    ));
+/// Registry of MCP server connections.
+/// Discovers tools dynamically via `tools/list` on each enabled server.
+pub struct McpRegistry {
+    clients: Vec<McpClient>,
+}
 
-    // ── 资产负债表 ──────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_balance_sheet",
-        "获取公司资产负债表数据，用于财务分析",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "recent_n": {"type": "integer", "description": "返回最近N期，默认10", "default": 10},
-            },
-            "required": ["symbol"],
-        }),
-        "get_balance_sheet",
-    ));
+impl McpRegistry {
+    /// Build from config list, falling back to `MCP_ENDPOINT` env var if empty.
+    pub fn from_config(servers: &[McpServerConfig]) -> Self {
+        let mut clients: Vec<McpClient> = servers
+            .iter()
+            .filter(|s| s.enabled)
+            .map(|s| McpClient::new(&s.endpoint))
+            .collect();
 
-    // ── 利润表 ──────────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_income_statement",
-        "获取公司利润表/损益表数据",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "recent_n": {"type": "integer", "description": "返回最近N期，默认10", "default": 10},
-            },
-            "required": ["symbol"],
-        }),
-        "get_income_statement",
-    ));
+        if clients.is_empty() {
+            // Fallback: single server from env var
+            clients.push(McpClient::from_env());
+        }
 
-    // ── 现金流量表 ──────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_cash_flow",
-        "获取公司现金流量表数据",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "source": {"type": "string", "description": "数据源: sina", "default": "sina"},
-                "recent_n": {"type": "integer", "description": "返回最近N期，默认10", "default": 10},
-            },
-            "required": ["symbol"],
-        }),
-        "get_cash_flow",
-    ));
+        Self { clients }
+    }
 
-    // ── 内部交易 ────────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_inner_trade_data",
-        "获取公司内部人交易/增减持数据",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-            },
-            "required": ["symbol"],
-        }),
-        "get_inner_trade_data",
-    ));
+    /// Create from a single endpoint (for CLI commands).
+    pub fn single(endpoint: &str) -> Self {
+        Self {
+            clients: vec![McpClient::new(endpoint)],
+        }
+    }
 
-    // ── 财务指标 ────────────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_financial_metrics",
-        "获取公司关键财务指标（三大报表核心数据）",
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "symbol": {"type": "string", "description": "股票代码，如 000001"},
-                "recent_n": {"type": "integer", "description": "返回最近N期，默认10", "default": 10},
-            },
-            "required": ["symbol"],
-        }),
-        "get_financial_metrics",
-    ));
+    /// Discover tools from all enabled MCP servers.
+    /// Each discovered tool is wrapped as an `Arc<DynTool>` that calls
+    /// the originating server via JSON-RPC `tools/call`.
+    pub async fn discover(&self) -> Vec<Arc<DynTool>> {
+        let mut all_tools = Vec::new();
 
-    // ── 时间/交易日历 ──────────────────────────
-    registry.add_mcp(client.create_tool(
-        "get_time_info",
-        "获取当前时间（ISO格式+时间戳）和最近交易日信息",
-        empty_schema(),
-        "get_time_info",
-    ));
+        for client in &self.clients {
+            match client.list_tools().await {
+                Ok(tools) => {
+                    if let Some(arr) = tools.as_array() {
+                        for tool_data in arr {
+                            let name = match tool_data["name"].as_str() {
+                                Some(n) => n,
+                                None => continue,
+                            };
+                            let desc = tool_data["description"].as_str().unwrap_or("");
+                            let schema = tool_data["inputSchema"].clone();
+                            if schema.is_null() {
+                                all_tools.push(client.create_tool(
+                                    name,
+                                    desc,
+                                    empty_schema(),
+                                    name,
+                                ));
+                            } else {
+                                all_tools.push(client.create_tool(name, desc, schema, name));
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!("[mcp] discover failed for {}: {e}", client.endpoint);
+                },
+            }
+        }
+
+        all_tools
+    }
+
+    /// Return the first client (for CLI mcp command, or when only one server).
+    pub fn first(&self) -> Option<&McpClient> {
+        self.clients.first()
+    }
+}
+
+// ============================================================================
+// ToolConfig + shared build_tools — one call to assemble all tools
+// ============================================================================
+
+/// Configuration passed to [`build_tools`] for tool assembly.
+#[derive(Default)]
+pub struct ToolConfig {
+    pub mcp_servers: Vec<McpServerConfig>,
+}
+
+
+/// One-shot assembly: native tools + MCP server discovery → `ToolRegistry`.
+///
+/// Call this at entry points instead of repeating the
+/// `ToolRegistry::new()` + `register_mcp_tools()` pattern.
+pub async fn build_tools(config: &ToolConfig) -> super::tools::ToolRegistry {
+    let mut registry = super::tools::ToolRegistry::new();
+
+    let mcp = McpRegistry::from_config(&config.mcp_servers);
+    for t in mcp.discover().await {
+        registry.add_mcp(t);
+    }
+
+    registry
 }

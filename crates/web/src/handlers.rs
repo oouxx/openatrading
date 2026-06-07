@@ -684,21 +684,8 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    openatrading_core::roles::save_role_strategy(&state.strategies_dir, &body.name, &body.strategy)
-        .map_err(|e| {
-            eprintln!("create_role error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    openatrading_core::roles::save_role_meta(
-        &state.strategies_dir,
-        &body.name,
-        &openatrading_core::roles::RoleMeta {
-            display_name: body.display_name.clone(),
-            created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
-        },
-    )
-    .map_err(|e| {
-        eprintln!("create_role meta error: {}", e);
+    openatrading_core::roles::save_role_strategy(&body.name, &body.strategy).map_err(|e| {
+        eprintln!("create_role error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     {
@@ -733,11 +720,10 @@ pub async fn update_role_strategy(
             }
         }
     }
-    openatrading_core::roles::save_role_strategy(&state.strategies_dir, &name, &body.strategy)
-        .map_err(|e| {
-            eprintln!("update_role_strategy error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    openatrading_core::roles::save_role_strategy(&name, &body.strategy).map_err(|e| {
+        eprintln!("update_role_strategy error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     {
         let mut roles = state.roles.write().await;
         if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
@@ -763,7 +749,7 @@ pub async fn delete_role(
     }
     state.trade.delete_positions_by_role(&name).ok();
     state.trade.delete_trade_logs_by_role(&name).ok();
-    openatrading_core::roles::delete_role_dir(&state.strategies_dir, &name).ok();
+    openatrading_core::roles::delete_role_dir(&name).ok();
     {
         let mut roles = state.roles.write().await;
         roles.retain(|r| r.name != name);

@@ -18,7 +18,6 @@ pub struct Gateway {
 pub struct GatewayConfig {
     pub web_port: u16,
     pub roles: Vec<RoleEntry>,
-    pub strategies_dir: String,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
 }
@@ -45,14 +44,13 @@ impl Gateway {
             memory: self.memory.clone(),
             trade: self.trade.clone(),
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
-            strategies_dir: config.strategies_dir.into(),
             cache: cache::new_cache(),
         });
 
         // Seed config roles first, then discover disk roles (config wins)
         {
             let mut roles = state.roles.write().await;
-            let disk_roles = openatrading_core::roles::list_roles_from_disk(&state.strategies_dir);
+            let disk_roles = openatrading_core::roles::list_roles_from_disk();
             // config.toml roles have higher priority, marked readonly
             for role in config.roles {
                 if !roles.iter().any(|r| r.name == role.name) {

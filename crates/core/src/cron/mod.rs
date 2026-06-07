@@ -123,10 +123,11 @@ pub async fn start_scheduler(
         let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let mut registry = crate::llm::tools::ToolRegistry::new();
-        let mcp_client = crate::llm::McpClient::from_env();
-        crate::llm::register_mcp_tools(&mut registry, &mcp_client);
-        let decision_tools: Vec<Arc<DynTool>> = registry.all_tools().to_vec();
+        let all_tools: Vec<Arc<DynTool>> = crate::llm::build_tools(&Default::default())
+            .await
+            .all_tools()
+            .to_vec();
+
         add_job!(
             scheduler,
             config.decision_schedule,
@@ -138,7 +139,7 @@ pub async fn start_scheduler(
                 let llm = llm.clone();
                 let api = api.clone();
                 let roles = roles.clone();
-                let decision_tools = decision_tools.clone();
+                let decision_tools = all_tools.clone();
                 Box::pin(async move {
                     if let Err(e) = run_decision(
                         mem.clone(),
@@ -381,9 +382,9 @@ async fn run_decision_for_role(
         market_context, role.display_name
     );
 
-    let decision = match crate::llm::session::AgentSession::new(llm, &role.strategy)
+    let system = crate::skills::SkillRegistry::build_role_prompt(role);
+    let decision = match crate::llm::session::AgentSession::new(llm, &system)
         .with_tools(tools)
-        .with_decision_tool()
         .process_decision(&market_user_message)
         .await
     {
