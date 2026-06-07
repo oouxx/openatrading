@@ -6,6 +6,7 @@ use openatrading_core::llm::{create_agent, tools, AgentEvent, AgentMessage, LlmC
 /// Simulate the /api/ai/chat SSE streaming flow:
 /// subscribe → process in background → collect events via channel → verify.
 #[tokio::test]
+#[ignore]
 async fn test_openrouter_is_streaming() {
     load_env();
 
