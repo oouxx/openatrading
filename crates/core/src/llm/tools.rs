@@ -13,7 +13,7 @@ use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::memory::MemoryStore;
 use crate::trade::TradeManager;
 
-type ExecuteFn = Arc<
+pub(crate) type ExecuteFn = Arc<
     dyn Fn(
             String,
             serde_json::Value,
@@ -32,7 +32,7 @@ type ExecuteFn = Arc<
         + Sync,
 >;
 
-fn empty_schema() -> serde_json::Value {
+pub(crate) fn empty_schema() -> serde_json::Value {
     serde_json::json!({"type": "object", "properties": {}, "required": []})
 }
 
@@ -61,7 +61,7 @@ fn str_arg(args: &serde_json::Value, name: &str) -> String {
         .to_string()
 }
 
-fn text_result<T: serde::Serialize>(value: &T) -> AgentToolResult<serde_json::Value> {
+pub(crate) fn text_result<T: serde::Serialize>(value: &T) -> AgentToolResult<serde_json::Value> {
     AgentToolResult {
         content: vec![ContentBlock::text(
             serde_json::to_string(value).unwrap_or_default(),
@@ -71,11 +71,16 @@ fn text_result<T: serde::Serialize>(value: &T) -> AgentToolResult<serde_json::Va
     }
 }
 
-fn to_box_err(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
+pub(crate) fn to_box_err(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
     e.to_string().into()
 }
 
-fn tool(name: &str, description: &str, schema: serde_json::Value, exec: ExecuteFn) -> Arc<DynTool> {
+pub(crate) fn tool(
+    name: &str,
+    description: &str,
+    schema: serde_json::Value,
+    exec: ExecuteFn,
+) -> Arc<DynTool> {
     Arc::new(AgentTool {
         name: name.into(),
         description: description.into(),
@@ -478,6 +483,7 @@ pub fn create_historical_context_tool(memory: Arc<dyn MemoryStore>) -> Arc<DynTo
 /// Tools are created once on construction and reused.
 pub struct ToolRegistry {
     market: Vec<Arc<DynTool>>,
+    mcp: Vec<Arc<DynTool>>,
     decision: Option<Arc<DynTool>>,
 }
 
@@ -506,6 +512,7 @@ impl ToolRegistry {
                 get_telegraph_allday(),
             ],
             decision: Some(create_decision_tool()),
+            mcp: Vec::new(),
         }
     }
 
@@ -519,9 +526,19 @@ impl ToolRegistry {
         self.decision.as_ref()
     }
 
+    /// Register an MCP tool.
+    pub fn add_mcp(&mut self, tool: Arc<DynTool>) {
+        self.mcp.push(tool);
+    }
+
+    pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
+        &self.mcp
+    }
+
     /// Market tools + decision tool, ready for an agent_loop call.
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         let mut t = self.market.clone();
+        t.extend(self.mcp.clone());
         if let Some(d) = &self.decision {
             t.push(d.clone());
         }

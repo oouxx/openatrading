@@ -156,8 +156,10 @@ pub async fn ai_chat(
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
     use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
 
-    let registry = openatrading_core::llm::tools::ToolRegistry::new();
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.market_tools().to_vec();
+    let mut registry = openatrading_core::llm::tools::ToolRegistry::new();
+    let mcp_client = openatrading_core::llm::McpClient::from_env();
+    openatrading_core::llm::register_mcp_tools(&mut registry, &mcp_client);
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> = registry.all_tools().to_vec();
 
     let role_name = req.role.as_deref().unwrap_or("zarili");
     let roles_guard = state.roles.read().await;

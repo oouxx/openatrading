@@ -123,8 +123,10 @@ pub async fn start_scheduler(
         let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let registry = crate::llm::tools::ToolRegistry::new();
-        let decision_tools: Vec<Arc<DynTool>> = registry.market_tools().to_vec();
+        let mut registry = crate::llm::tools::ToolRegistry::new();
+        let mcp_client = crate::llm::McpClient::from_env();
+        crate::llm::register_mcp_tools(&mut registry, &mcp_client);
+        let decision_tools: Vec<Arc<DynTool>> = registry.all_tools().to_vec();
         add_job!(
             scheduler,
             config.decision_schedule,

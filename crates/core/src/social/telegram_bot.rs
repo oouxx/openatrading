@@ -443,8 +443,10 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let tools: Vec<Arc<crate::llm::DynTool>> =
-                    ToolRegistry::new().market_tools().to_vec();
+                let mut registry = ToolRegistry::new();
+                let mcp_client = crate::llm::McpClient::from_env();
+                crate::llm::register_mcp_tools(&mut registry, &mcp_client);
+                let tools: Vec<Arc<crate::llm::DynTool>> = registry.all_tools().to_vec();
                 match run_decision(
                     self.memory.clone(),
                     self.trade.clone(),
