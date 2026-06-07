@@ -3672,7 +3672,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openatrading-agent"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3687,7 +3687,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3706,7 +3706,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3718,7 +3718,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -3770,7 +3770,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-provider"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3785,7 +3785,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -3802,7 +3802,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tui"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -3819,7 +3819,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.10.8"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-stream",
