@@ -262,7 +262,6 @@ pub struct ToolConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
-
 /// One-shot assembly: native tools + MCP server discovery → `ToolRegistry`.
 ///
 /// Call this at entry points instead of repeating the
