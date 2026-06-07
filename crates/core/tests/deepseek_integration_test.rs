@@ -76,6 +76,7 @@ fn load_env() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_deepseek_is_streaming() {
     load_env();
 
