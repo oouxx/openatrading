@@ -237,9 +237,6 @@ export default function LandingPage() {
               text={`# 下载 CLI 二进制
 curl -fsSL ${apiBase}/install.sh | bash
 
-# 或手动下载指定平台版本
-# ${apiBase}/cli
-
 # 验证安装
 openatrading --version
 
