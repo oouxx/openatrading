@@ -4,11 +4,26 @@ use rmcp::model::{CallToolRequestParams, RawContent};
 use rmcp::service::RunningService;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{RoleClient, ServiceExt};
+use thiserror::Error;
 
 use super::tools::{empty_schema, to_box_err};
 use crate::llm::DynTool;
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::AgentToolResult;
+
+#[derive(Debug, Error)]
+pub enum McpError {
+    #[error("connect: {0}")]
+    Connect(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("list: {0}")]
+    List(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("call: {0}")]
+    Call(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("mcp: no text content")]
+    NoContent,
+    #[error("result parse: {0}")]
+    Parse(#[from] serde_json::Error),
+}
 
 // ============================================================================
 // McpClient — full-stack rmcp client over streamable HTTP
@@ -24,16 +39,16 @@ pub struct McpClient {
 
 impl McpClient {
     /// Connect to an MCP server via streamable HTTP transport.
-    pub async fn connect(endpoint: impl Into<String>) -> Result<Self, String> {
+    pub async fn connect(endpoint: impl Into<String>) -> Result<Self, McpError> {
         let config = StreamableHttpClientTransportConfig::with_uri(endpoint.into());
         let transport =
             rmcp::transport::streamable_http_client::StreamableHttpClientTransport::from_config(
                 config,
             );
-        let service: RunningService<RoleClient, ()> =
-            ().serve(transport)
-                .await
-                .map_err(|e| format!("connect: {e}"))?;
+        let service: RunningService<RoleClient, ()> = ()
+            .serve(transport)
+            .await
+            .map_err(|e| McpError::Connect(e.into()))?;
         let peer = service.peer().clone();
         Ok(Self {
             peer,
@@ -42,12 +57,12 @@ impl McpClient {
     }
 
     /// List all tools from the server.
-    pub async fn list_tools(&self) -> Result<serde_json::Value, String> {
+    pub async fn list_tools(&self) -> Result<serde_json::Value, McpError> {
         let tools = self
             .peer
             .list_all_tools()
             .await
-            .map_err(|e| format!("list: {e}"))?;
+            .map_err(|e| McpError::List(e.into()))?;
         Ok(serde_json::to_value(tools).unwrap_or_default())
     }
 
@@ -56,7 +71,7 @@ impl McpClient {
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, McpError> {
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -67,7 +82,7 @@ impl McpClient {
             .peer
             .call_tool(params)
             .await
-            .map_err(|e| format!("call: {e}"))?;
+            .map_err(|e| McpError::Call(e.into()))?;
 
         let text = result
             .content
@@ -76,9 +91,9 @@ impl McpClient {
                 RawContent::Text(t) => Some(t.text.as_str()),
                 _ => None,
             })
-            .ok_or("mcp: no text content")?;
+            .ok_or(McpError::NoContent)?;
 
-        serde_json::from_str(text).map_err(|e| format!("result parse: {e}"))
+        serde_json::from_str(text).map_err(McpError::Parse)
     }
 
     /// Wrap this client into a DynTool factory.
@@ -116,7 +131,7 @@ impl McpClient {
         peer: &rmcp::service::Peer<RoleClient>,
         tool_name: &str,
         arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, McpError> {
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -126,7 +141,7 @@ impl McpClient {
         let result = peer
             .call_tool(params)
             .await
-            .map_err(|e| format!("call: {e}"))?;
+            .map_err(|e| McpError::Call(e.into()))?;
 
         let text = result
             .content
@@ -135,9 +150,9 @@ impl McpClient {
                 RawContent::Text(t) => Some(t.text.as_str()),
                 _ => None,
             })
-            .ok_or("mcp: no text content")?;
+            .ok_or(McpError::NoContent)?;
 
-        serde_json::from_str(text).map_err(|e| format!("result parse: {e}"))
+        serde_json::from_str(text).map_err(McpError::Parse)
     }
 }
 
