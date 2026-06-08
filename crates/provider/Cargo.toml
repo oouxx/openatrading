@@ -13,3 +13,4 @@ async-stream = "0.3"
 thiserror = "2"
 pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.7" }
 async-trait = { workspace = true }
+tracing = "0.1"

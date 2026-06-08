@@ -53,7 +53,7 @@ impl LlmClient {
             compat: None,
         });
 
-        eprintln!(
+        tracing::info!(
             "[llm] from_env: provider={}, model={}, api_key={}..{}",
             model.provider,
             model.id,

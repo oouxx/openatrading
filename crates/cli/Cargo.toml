@@ -22,4 +22,5 @@ anyhow = { workspace = true }
 reqwest = { workspace = true }
 toml = "0.8"
 cron = "0.12"
+shellexpand = "3"
 service-manager = "0.9"

@@ -16,6 +16,7 @@
 
 ## 保持项目代码整洁，低耦合
 
+## 日志使用tracing
 ## Anti-Patterns
 
 - Do not add heavy dependencies for minor convenience.
