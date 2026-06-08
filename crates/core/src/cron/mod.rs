@@ -78,17 +78,20 @@ macro_rules! add_job {
     };
 }
 
-pub async fn start_scheduler(
-    config: &CronConfig,
-    memory: Arc<dyn MemoryStore>,
-    trade: Arc<dyn TradeManager>,
-    social: Arc<dyn NotificationSender>,
-    llm: LlmClient,
-    api: ApiClient,
-    roles: Vec<RoleEntry>,
-    mcp_servers: &[crate::llm::mcp_tools::McpServerConfig],
-) -> Result<()> {
-    if !config.enabled {
+/// Grouped context for scheduler dependencies, avoiding an 8-parameter constructor.
+pub struct SchedulerContext {
+    pub config: CronConfig,
+    pub memory: Arc<dyn MemoryStore>,
+    pub trade: Arc<dyn TradeManager>,
+    pub social: Arc<dyn NotificationSender>,
+    pub llm: LlmClient,
+    pub api: ApiClient,
+    pub roles: Vec<RoleEntry>,
+    pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
+}
+
+pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
+    if !ctx.config.enabled {
         return Ok(());
     }
 
@@ -96,12 +99,12 @@ pub async fn start_scheduler(
 
     // ── Collection ──
     {
-        let mem = memory.clone();
-        let soc = social.clone();
-        let api = api.clone();
+        let mem = ctx.memory.clone();
+        let soc = ctx.social.clone();
+        let api = ctx.api.clone();
         add_job!(
             scheduler,
-            config.collection_schedule,
+            ctx.config.collection_schedule,
             "collection",
             move |_uuid, _lock| {
                 let mem = mem.clone();
@@ -118,14 +121,14 @@ pub async fn start_scheduler(
 
     // ── Decision ──
     {
-        let mem = memory.clone();
-        let trd = trade.clone();
-        let soc = social.clone();
-        let llm = llm.clone();
-        let api = api.clone();
-        let roles = roles.clone();
+        let mem = ctx.memory.clone();
+        let trd = ctx.trade.clone();
+        let soc = ctx.social.clone();
+        let llm = ctx.llm.clone();
+        let api = ctx.api.clone();
+        let roles = ctx.roles.clone();
         let tool_cfg = crate::llm::ToolConfig {
-            mcp_servers: mcp_servers.to_vec(),
+            mcp_servers: ctx.mcp_servers.clone(),
         };
         let all_tools: Vec<Arc<DynTool>> = crate::llm::build_tools(&tool_cfg)
             .await
@@ -134,7 +137,7 @@ pub async fn start_scheduler(
 
         add_job!(
             scheduler,
-            config.decision_schedule,
+            ctx.config.decision_schedule,
             "decision",
             move |_uuid, _lock| {
                 let mem = mem.clone();
@@ -165,11 +168,11 @@ pub async fn start_scheduler(
 
     // ── News push (trading hours) ──
     {
-        let soc = social.clone();
-        let api = api.clone();
+        let soc = ctx.social.clone();
+        let api = ctx.api.clone();
         add_job!(
             scheduler,
-            config.news_schedule,
+            ctx.config.news_schedule,
             "news_push",
             move |_uuid, _lock| {
                 let soc = soc.clone();
@@ -185,8 +188,8 @@ pub async fn start_scheduler(
 
     // ── News push (off-hours, 24/7) ──
     {
-        let soc = social.clone();
-        let api = api.clone();
+        let soc = ctx.social.clone();
+        let api = ctx.api.clone();
         let schedule = String::from("0 */30 0-8,16-23 * * *");
         add_job!(
             scheduler,
