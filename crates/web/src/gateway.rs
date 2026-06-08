@@ -18,6 +18,7 @@ pub struct Gateway {
 pub struct GatewayConfig {
     pub web_port: u16,
     pub roles: Vec<RoleEntry>,
+    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
 }
@@ -44,6 +45,7 @@ impl Gateway {
             memory: self.memory.clone(),
             trade: self.trade.clone(),
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
+            mcp_servers: config.mcp_servers.clone(),
             cache: cache::new_cache(),
         });
 

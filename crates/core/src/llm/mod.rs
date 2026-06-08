@@ -8,7 +8,9 @@ pub use openatrading_provider::llm::{
     ToolCallItem, ToolCallMessage, ToolChatChoice, ToolChatResponse, ToolStreamResult,
 };
 
-pub use mcp_tools::{build_tools, McpClient, McpRegistry, McpServerConfig, ToolConfig};
+pub use mcp_tools::{
+    build_tools, McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
+};
 pub use openatrading_agent::agent::{Agent, AgentOptions};
 pub use openatrading_agent::pi_ai_types;
 pub use openatrading_agent::proxy;

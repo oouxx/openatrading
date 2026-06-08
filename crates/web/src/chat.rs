@@ -156,8 +156,11 @@ pub async fn ai_chat(
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
     use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
 
+    let tool_cfg = openatrading_core::llm::ToolConfig {
+        mcp_servers: state.mcp_servers.clone(),
+    };
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        openatrading_core::llm::build_tools(&Default::default())
+        openatrading_core::llm::build_tools(&tool_cfg)
             .await
             .all_tools()
             .to_vec();

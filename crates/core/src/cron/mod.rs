@@ -86,6 +86,7 @@ pub async fn start_scheduler(
     llm: LlmClient,
     api: ApiClient,
     roles: Vec<RoleEntry>,
+    mcp_servers: &[crate::llm::mcp_tools::McpServerConfig],
 ) -> Result<()> {
     if !config.enabled {
         return Ok(());
@@ -123,7 +124,10 @@ pub async fn start_scheduler(
         let llm = llm.clone();
         let api = api.clone();
         let roles = roles.clone();
-        let all_tools: Vec<Arc<DynTool>> = crate::llm::build_tools(&Default::default())
+        let tool_cfg = crate::llm::ToolConfig {
+            mcp_servers: mcp_servers.to_vec(),
+        };
+        let all_tools: Vec<Arc<DynTool>> = crate::llm::build_tools(&tool_cfg)
             .await
             .all_tools()
             .to_vec();

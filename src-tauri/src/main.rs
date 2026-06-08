@@ -961,6 +961,7 @@ fn main() {
         memory,
         trade,
         roles: Arc::new(RwLock::new(roles)),
+        mcp_servers: Vec::new(),
         cache: openatrading_web::cache::new_cache(),
     });
 

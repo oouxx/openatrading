@@ -1,7 +1,9 @@
 use anyhow::Result;
 
 pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::new(endpoint);
+    let client = openatrading_core::llm::McpClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let tools = client
         .list_tools()
         .await
@@ -44,7 +46,9 @@ pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
 }
 
 pub async fn cmd_mcp_status(endpoint: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::new(endpoint);
+    let client = openatrading_core::llm::McpClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     match client.list_tools().await {
         Ok(tools) => {
             let count = tools.as_array().map(|a| a.len()).unwrap_or(0);
@@ -59,7 +63,9 @@ pub async fn cmd_mcp_status(endpoint: &str) -> Result<()> {
 }
 
 pub async fn cmd_mcp_call(endpoint: &str, tool_name: &str, arguments: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::new(endpoint);
+    let client = openatrading_core::llm::McpClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let args: serde_json::Value = if arguments.is_empty() || arguments == "{}" {
         serde_json::json!({})
