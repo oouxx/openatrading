@@ -13,7 +13,6 @@ use app::Cli;
 use clap::Parser;
 use serde::Serialize;
 use std::io::Write;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::cli::app::{Commands, GatewayAction, McpAction, SkillAction, ToolsAction, TradeAction};
@@ -84,13 +83,7 @@ const ALL_DATA_SOURCES: &[&str] = &[
 ];
 
 pub async fn run() -> Result<()> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("/"));
-
-    dotenvy::from_path(home.join(".atrading").join(".env")).ok();
-    dotenvy::dotenv().ok();
+    dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
     let cli = Cli::parse();
 
@@ -102,7 +95,7 @@ pub async fn run() -> Result<()> {
 
     // Handle `doctor` subcommand
     if let Some(Commands::Doctor { json }) = cli.command {
-        return cmd_doctor(&std::env::current_dir()?, json).await;
+        return cmd_doctor(json).await;
     }
 
     // Handle `chat` subcommand
@@ -115,12 +108,10 @@ pub async fn run() -> Result<()> {
         return cmd_init();
     }
 
-    let project_root = std::env::current_dir()?;
-
     // Handle `gateway` subcommand
     if let Some(Commands::Gateway { action }) = cli.command {
         return match action {
-            GatewayAction::Install => cmd_gateway_install(&project_root),
+            GatewayAction::Install => cmd_gateway_install(),
             GatewayAction::Uninstall => cmd_gateway_uninstall(),
             GatewayAction::Start => cmd_gateway_start(),
             GatewayAction::Stop => cmd_gateway_stop(),
@@ -128,7 +119,7 @@ pub async fn run() -> Result<()> {
             GatewayAction::Run {
                 cron_only,
                 web_only,
-            } => cmd_gateway_run(&project_root, cron_only, web_only).await,
+            } => cmd_gateway_run(cron_only, web_only).await,
         };
     }
 
@@ -158,13 +149,13 @@ pub async fn run() -> Result<()> {
                 price,
                 shares,
             } => {
-                return cmd_trade_add(&project_root, &role, &symbol, price, shares);
+                return cmd_trade_add(&role, &symbol, price, shares);
             },
             TradeAction::List { role } => {
-                return cmd_trade_list(&project_root, role.as_deref());
+                return cmd_trade_list(role.as_deref());
             },
             TradeAction::Close { id, price } => {
-                return cmd_trade_close(&project_root, id, price);
+                return cmd_trade_close(id, price);
             },
         }
     }
@@ -199,11 +190,11 @@ pub async fn run() -> Result<()> {
     }
 
     // Load config
-    let app_config = AppConfig::load(&project_root)?;
+    let app_config = AppConfig::load()?;
 
     // Handle `decision` subcommand
     if let Some(Commands::Decision { dry_run, role }) = cli.command {
-        return cmd_decision(&project_root, &app_config, dry_run, role.as_deref()).await;
+        return cmd_decision(&app_config, dry_run, role.as_deref()).await;
     }
 
     // Handle --list-roles
@@ -371,14 +362,11 @@ pub async fn run() -> Result<()> {
 }
 
 async fn cmd_decision(
-    project_root: &Path,
     app_config: &AppConfig,
     dry_run: bool,
     role_filter: Option<&str>,
 ) -> Result<()> {
-    let db_path = project_root
-        .join(".atrading")
-        .join(&app_config.service.db_path);
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
     let gateway = Gateway::init(&db_path)?;
 
     let roles = crate::cli::gateway_cmd::build_roles(app_config);

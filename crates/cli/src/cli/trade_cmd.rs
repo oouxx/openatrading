@@ -1,21 +1,12 @@
 use anyhow::Result;
-use std::path::Path;
 
 use crate::cli::config::AppConfig;
 use openatrading_core::trade::sqlite::SqliteTradeManager;
 use openatrading_core::trade::{Position, TradeManager};
 
-pub fn cmd_trade_add(
-    project_root: &Path,
-    role: &str,
-    symbol: &str,
-    price: f64,
-    shares: i64,
-) -> Result<()> {
-    let app_config = AppConfig::load(project_root)?;
-    let db_path = project_root
-        .join(".atrading")
-        .join(&app_config.service.db_path);
+pub fn cmd_trade_add(role: &str, symbol: &str, price: f64, shares: i64) -> Result<()> {
+    let app_config = AppConfig::load()?;
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
     let now = openatrading_core::utils::time::beijing_now()
         .format("%Y-%m-%d")
@@ -42,11 +33,9 @@ pub fn cmd_trade_add(
     Ok(())
 }
 
-pub fn cmd_trade_list(project_root: &Path, role: Option<&str>) -> Result<()> {
-    let app_config = AppConfig::load(project_root)?;
-    let db_path = project_root
-        .join(".atrading")
-        .join(&app_config.service.db_path);
+pub fn cmd_trade_list(role: Option<&str>) -> Result<()> {
+    let app_config = AppConfig::load()?;
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
     if let Some(role_name) = role {
         let text = tm.format_positions(role_name)?;
@@ -80,11 +69,9 @@ pub fn cmd_trade_list(project_root: &Path, role: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_trade_close(project_root: &Path, id: i64, price: f64) -> Result<()> {
-    let app_config = AppConfig::load(project_root)?;
-    let db_path = project_root
-        .join(".atrading")
-        .join(&app_config.service.db_path);
+pub fn cmd_trade_close(id: i64, price: f64) -> Result<()> {
+    let app_config = AppConfig::load()?;
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
     let tm = SqliteTradeManager::open(&db_path)?;
     tm.close_position(id, price, "手动平仓")?;
     println!("已平仓 #{id} @ {price}");

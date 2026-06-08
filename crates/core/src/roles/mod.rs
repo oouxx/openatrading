@@ -13,12 +13,9 @@ pub struct RoleConfig {
 pub mod pnl;
 pub mod prompt;
 
-/// Path to the skills directory (<cwd>/.atrading/skills/).
+/// Path to the skills directory (`{atrading_home}/skills/`).
 pub fn default_skills_dir() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| std::env::var("HOME").map(PathBuf::from).unwrap_or_default())
-        .join(".atrading")
-        .join("skills")
+    crate::atrading_home().join("skills")
 }
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.

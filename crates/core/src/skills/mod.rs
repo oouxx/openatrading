@@ -78,16 +78,9 @@ impl SkillRegistry {
         parts.join("\n\n")
     }
 
-    /// Path to the installed skills directory (<cwd>/.atrading/skills/).
+    /// Path to the installed skills directory (`{atrading_home}/skills/`).
     pub fn install_dir() -> std::path::PathBuf {
-        std::env::current_dir()
-            .unwrap_or_else(|_| {
-                std::env::var("HOME")
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_default()
-            })
-            .join(".atrading")
-            .join("skills")
+        crate::atrading_home().join("skills")
     }
 
     /// Write a skill to disk as a `SKILL.md` file in the install directory.

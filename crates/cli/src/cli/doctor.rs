@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
@@ -100,9 +99,9 @@ async fn check_telegram(app_config: &AppConfig) -> CheckItem {
     }
 }
 
-pub async fn cmd_doctor(project_root: &Path, json: bool) -> Result<()> {
+pub async fn cmd_doctor(json: bool) -> Result<()> {
     // ── Config ────────────────────────────────────
-    let (app_config, config_item) = match AppConfig::load(project_root) {
+    let (app_config, config_item) = match AppConfig::load() {
         Ok(cfg) => (
             Some(cfg),
             CheckItem {
@@ -120,7 +119,7 @@ pub async fn cmd_doctor(project_root: &Path, json: bool) -> Result<()> {
     };
 
     // ── SQLite ─────────────────────────────────────
-    let db_path = project_root.join(".atrading").join(
+    let db_path = openatrading_core::atrading_home().join(
         app_config
             .as_ref()
             .map(|c| c.service.db_path.as_str())

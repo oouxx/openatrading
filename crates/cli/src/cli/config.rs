@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -212,10 +212,8 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 "##;
 
 impl AppConfig {
-    pub fn load(project_root: &Path) -> Result<Self> {
-        let home = dirs::home_dir().context("无法获取 HOME 目录")?;
-        let home_atrading = home.join(".atrading");
-        let project_atrading = project_root.join(".atrading");
+    pub fn load() -> Result<Self> {
+        let home = openatrading_core::atrading_home();
 
         let mut merged = AppConfig {
             default_role: None,
@@ -232,24 +230,13 @@ impl AppConfig {
             },
         };
 
-        // Layer 1 (lowest): ~/.atrading/config.toml
-        if let Some(cfg) = Self::load_from(&home_atrading.join("config.toml")) {
+        // Load config from {atrading_home}/config.toml
+        if let Some(cfg) = Self::load_from(&home.join("config.toml")) {
             merged.merge(cfg);
         }
 
-        // Layer 2 (medium): <project>/.atrading/config.toml
-        if let Some(cfg) = Self::load_from(&project_atrading.join("config.toml")) {
-            merged.merge(cfg);
-        }
-
-        // Layer 3 (highest): <project>/config.toml
-        if let Some(cfg) = Self::load_from(&project_root.join("config.toml")) {
-            merged.merge(cfg);
-        }
-
-        // Load .mcp.json MCP server configs (project root only)
-        // Self::load_mcp_json(&project_root.join(".mcp.json"), &mut merged.mcp_servers);
-        Self::load_mcp_json(&project_atrading.join(".mcp.json"), &mut merged.mcp_servers);
+        // Load .mcp.json MCP server configs
+        Self::load_mcp_json(&home.join(".mcp.json"), &mut merged.mcp_servers);
 
         Ok(merged)
     }
@@ -398,11 +385,10 @@ impl AppConfig {
 }
 
 pub fn cmd_init() -> Result<()> {
-    let home = dirs::home_dir().context("无法获取 HOME 目录")?;
-    let atrading = home.join(".atrading");
+    let atrading = openatrading_core::atrading_home();
 
     if atrading.exists() {
-        eprintln!("~/.atrading/ 已存在，跳过初始化");
+        eprintln!("{} 已存在，跳过初始化", atrading.display());
         return Ok(());
     }
 
@@ -418,9 +404,16 @@ pub fn cmd_init() -> Result<()> {
 
     )?;
 
-    eprintln!("✅ 已初始化 ~/.atrading/");
-    eprintln!("   配置文件: ~/.atrading/config.toml");
-    eprintln!("   策略文件: ~/.atrading/skills/zarili/SKILL.md");
+    eprintln!("✅ 已初始化 {}", atrading.display());
+    eprintln!("   配置文件: {}", atrading.join("config.toml").display());
+    eprintln!(
+        "   策略文件: {}",
+        atrading
+            .join("skills")
+            .join("zarili")
+            .join("SKILL.md")
+            .display()
+    );
     eprintln!("   (可运行 `openatrading skills list` 查看更多可安装技能)");
     Ok(())
 }
