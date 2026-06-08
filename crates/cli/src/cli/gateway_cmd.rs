@@ -292,27 +292,22 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
             },
         };
 
-        let cron_social = social.clone();
-        let cron_roles = roles.clone();
-        let cron_memory = memory.clone();
-        let cron_trade = trade.clone();
         let cron_llm = LlmClient::from_config(
             app_config.llm.provider.as_deref(),
             app_config.llm.model.as_deref(),
         );
+        let cron_ctx = cron::SchedulerContext {
+            config: cron_cfg,
+            memory: memory.clone(),
+            trade: trade.clone(),
+            social: social.clone(),
+            llm: cron_llm,
+            api: openatrading_core::api::Client::new(),
+            roles: roles.clone(),
+            mcp_servers: cron_mcp,
+        };
         handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(
-                &cron_cfg,
-                cron_memory,
-                cron_trade,
-                cron_social,
-                cron_llm,
-                openatrading_core::api::Client::new(),
-                cron_roles,
-                &cron_mcp,
-            )
-            .await
-            {
+            if let Err(e) = cron::start_scheduler(cron_ctx).await {
                 eprintln!("[gateway] cron error: {e}");
             }
         }));
