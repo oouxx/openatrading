@@ -69,7 +69,7 @@ pub struct PnlHistoryResponse {
 pub async fn get_overview(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "overview",
         CachePolicy::overview(),
@@ -113,21 +113,17 @@ pub async fn get_overview(
                 yesterday_limit_up_avg_pcp: overview.yesterday_limit_up_avg_pcp,
             };
 
-            Ok(serde_json::to_string(&resp).unwrap_or_default())
+            Ok(resp)
         },
     )
-    .await?;
-
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/sentiment-history
 pub async fn get_sentiment_history(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "sentiment_history",
         CachePolicy::daily(),
@@ -162,21 +158,17 @@ pub async fn get_sentiment_history(
             }
 
             days.reverse();
-            Ok(serde_json::to_string(&days).unwrap_or_default())
+            Ok(days)
         },
     )
-    .await?;
-
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/limit-up
 pub async fn get_limit_up(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "limit_up",
         CachePolicy::snapshot(),
@@ -186,20 +178,17 @@ pub async fn get_limit_up(
                 tracing::error!("limit_up error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/limit-down
 pub async fn get_limit_down(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "limit_down",
         CachePolicy::snapshot(),
@@ -209,13 +198,10 @@ pub async fn get_limit_down(
                 tracing::error!("limit_down error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/plate-abnormal?count=30
@@ -233,7 +219,7 @@ pub async fn get_plate_abnormal(
     Query(q): Query<PlateAbnormalQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cache_key = format!("plate_abnormal_{}", q.count);
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
         CachePolicy::snapshot(),
@@ -243,13 +229,10 @@ pub async fn get_plate_abnormal(
                 tracing::error!("plate_abnormal error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/field-items?date=YYYY-MM-DD
@@ -271,18 +254,15 @@ pub async fn get_field_items(
             .to_string()
     });
     let cache_key = format!("field_items_{}", date);
-    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
             tracing::error!("field_items error: {}", e);
             StatusCode::SERVICE_UNAVAILABLE
         })?;
-        Ok(serde_json::to_string(&data).unwrap_or_default())
+        Ok(data)
     })
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/timeline
@@ -296,18 +276,15 @@ pub async fn get_timeline(
         .format("%Y-%m")
         .to_string();
     let cache_key = format!("timeline_{}", month);
-    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
             tracing::error!("timeline error: {}", e);
             StatusCode::SERVICE_UNAVAILABLE
         })?;
-        Ok(serde_json::to_string(&data).unwrap_or_default())
+        Ok(data)
     })
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/sentiment
@@ -317,7 +294,7 @@ pub async fn get_sentiment(
     if std::env::var("JIUYAN_PHONE").is_err() {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "sentiment",
         CachePolicy::snapshot(),
@@ -327,13 +304,10 @@ pub async fn get_sentiment(
                 tracing::error!("sentiment error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/kline/:symbol
@@ -363,7 +337,7 @@ pub async fn get_kline(
         _ => KlinePeriod::Day,
     };
     let cache_key = format!("kline_{}_{}_{}", symbol, q.period, q.count);
-    let cached = cache::get_or_fetch(&state.cache, &cache_key, CachePolicy::daily(), || async {
+    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = XuanguBaoClient::new();
         let data = client
             .fetch_kline(&symbol, period, q.count)
@@ -372,12 +346,9 @@ pub async fn get_kline(
                 tracing::error!("kline error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-        Ok(serde_json::to_string(&data).unwrap_or_default())
+        Ok(data)
     })
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/realtime/:symbol
@@ -386,7 +357,7 @@ pub async fn get_realtime(
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cache_key = format!("realtime_{}", symbol);
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
         CachePolicy::realtime(),
@@ -396,20 +367,17 @@ pub async fn get_realtime(
                 tracing::error!("realtime error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/yesterday-limit-up
 pub async fn get_yesterday_limit_up(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "yesterday_limit_up",
         CachePolicy::snapshot(),
@@ -419,20 +387,17 @@ pub async fn get_yesterday_limit_up(
                 tracing::error!("yesterday_limit_up error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/super-stock
 pub async fn get_super_stock(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "super_stock",
         CachePolicy::snapshot(),
@@ -442,20 +407,17 @@ pub async fn get_super_stock(
                 tracing::error!("super_stock error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/index-quotes
 pub async fn get_index_quotes(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "index_quotes",
         CachePolicy::realtime(),
@@ -468,20 +430,17 @@ pub async fn get_index_quotes(
                     tracing::error!("index_quotes error: {}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/telegraph — all categories
 pub async fn get_telegraph_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "telegraph_all",
         CachePolicy::telegraph(),
@@ -499,13 +458,10 @@ pub async fn get_telegraph_all(
                     }
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/telegraph/:category
@@ -514,7 +470,7 @@ pub async fn get_telegraph(
     Path(category): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cache_key = format!("telegraph_{}", category);
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
         CachePolicy::telegraph(),
@@ -528,20 +484,17 @@ pub async fn get_telegraph(
                     tracing::error!("[telegraph/{}] fetch failed: {:#}", category, e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/dapan-abnormal
 pub async fn get_dapan_abnormal(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "dapan_abnormal",
         CachePolicy::snapshot(),
@@ -551,13 +504,10 @@ pub async fn get_dapan_abnormal(
                 tracing::error!("dapan_abnormal error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/market-trend/:symbol
@@ -566,7 +516,7 @@ pub async fn get_market_trend(
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cache_key = format!("market_trend_{}", symbol);
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
         CachePolicy::realtime(),
@@ -580,13 +530,10 @@ pub async fn get_market_trend(
                     tracing::error!("market_trend error: {:#}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 pub async fn get_plates_by_any_stock(
@@ -594,7 +541,7 @@ pub async fn get_plates_by_any_stock(
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let cache_key = format!("plates_{}", symbol);
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
         CachePolicy::snapshot(),
@@ -611,10 +558,7 @@ pub async fn get_plates_by_any_stock(
             Ok(serde_json::to_string(&plates).unwrap_or_default())
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/roles
@@ -835,7 +779,7 @@ pub async fn get_role_history(
 pub async fn get_replay_events(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "replay_events",
         CachePolicy::replay(),
@@ -862,17 +806,14 @@ pub async fn get_replay_events(
             Ok(serde_json::to_string(&page).unwrap_or_default())
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/replay/index — three-index trend data
 pub async fn get_replay_index(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "replay_index",
         CachePolicy::replay(),
@@ -884,14 +825,10 @@ pub async fn get_replay_index(
                     tracing::error!("[replay] index trend error: {e}");
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+            Ok(data)
         },
     )
-    .await?;
-
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// GET /api/replay/news — cursor-paginated 7×24 news
@@ -954,7 +891,7 @@ pub async fn get_replay_news(
 pub async fn get_replay_snapshots(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
+    cache::get_or_fetch_json(
         &state.cache,
         "replay_snapshots",
         CachePolicy::replay(),
@@ -968,10 +905,7 @@ pub async fn get_replay_snapshots(
             Ok(serde_json::to_string(&snaps).unwrap_or_default())
         },
     )
-    .await?;
-    Ok(Json(
-        serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-    ))
+    .await
 }
 
 /// POST /api/replay/analyze — fetch data upfront, build into prompt, single SSE request.

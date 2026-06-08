@@ -215,7 +215,7 @@ pub fn set(cache: &AppCache, key: &str, value: &str, policy: CachePolicy) {
     );
 }
 
-use axum::http::StatusCode;
+use axum::{http::StatusCode, Json};
 
 pub async fn get_or_fetch<F, Fut>(
     cache: &AppCache,
@@ -234,4 +234,28 @@ where
     let value = fetch().await?;
     set(cache, key, &value, policy);
     Ok(value)
+}
+
+/// Like `get_or_fetch` but works with any Serialize type and returns `Json<Value>` directly,
+/// eliminating the to_string → from_str round-trip in every handler.
+pub async fn get_or_fetch_json<F, Fut, T>(
+    cache: &AppCache,
+    key: &str,
+    policy: CachePolicy,
+    fetch: F,
+) -> Result<Json<serde_json::Value>, StatusCode>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<T, StatusCode>>,
+    T: serde::Serialize,
+{
+    if let Some(cached) = get(cache, key) {
+        return Ok(Json(serde_json::from_str(&cached).unwrap_or_default()));
+    }
+
+    let value = fetch().await?;
+    let json_string = serde_json::to_string(&value).unwrap_or_default();
+    let json_value: serde_json::Value = serde_json::from_str(&json_string).unwrap_or_default();
+    set(cache, key, &json_string, policy);
+    Ok(Json(json_value))
 }
