@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
-use std::path::PathBuf;
-use std::process::Command;
+use anyhow::Result;
+use std::ffi::OsString;
 use std::sync::Arc;
+
+use service_manager::*;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use openatrading_core::social::channel_to_sender;
@@ -13,106 +14,84 @@ use openatrading_core::social::{FilteredSender, NoopSender, NotificationSender};
 use openatrading_web::gateway::{Gateway, GatewayConfig};
 use openatrading_web::RoleEntry;
 
-const SERVICE_NAME: &str = "openatrading";
+const SERVICE_LABEL: &str = "com.openatrading.gateway";
 
-fn service_file_path() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_default();
-    home.join(".config/systemd/user")
-        .join(format!("{SERVICE_NAME}.service"))
+fn manager() -> Result<Box<dyn ServiceManager>> {
+    <dyn ServiceManager>::native().map_err(|e| anyhow::anyhow!("无法检测服务管理器: {e}"))
 }
 
-fn systemctl(args: &[&str]) -> Result<()> {
-    let status = Command::new("systemctl")
-        .arg("--user")
-        .args(args)
-        .status()
-        .context("systemctl 命令失败，请确认 systemd 已安装")?;
-    if !status.success() {
-        anyhow::bail!("systemctl --user {} 返回非零退出码", args.join(" "));
-    }
-    Ok(())
+fn label() -> ServiceLabel {
+    SERVICE_LABEL.parse().expect("invalid SERVICE_LABEL")
 }
 
-fn generate_unit_file() -> Result<String> {
-    let current_exe = std::env::current_exe().context("无法获取当前二进制路径")?;
-    let work_dir = openatrading_core::atrading_home();
-
-    Ok(format!(
-        r#"[Unit]
-Description=OpenATrading - A股短线交易 Agent
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart={exe} gateway run
-WorkingDirectory={work_dir}
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier={name}
-
-[Install]
-WantedBy=default.target
-"#,
-        exe = current_exe.display(),
-        work_dir = work_dir.display(),
-        name = SERVICE_NAME,
-    ))
-}
-
-/// 安装 systemd 服务
+/// 安装并启用 gateway 系统服务（跨平台：systemd / launchctl 等）
 pub fn cmd_gateway_install() -> Result<()> {
-    let unit = generate_unit_file()?;
-    let path = service_file_path();
+    let program = std::env::current_exe()?;
+    let label = label();
+    let m = manager()?;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, &unit)?;
+    m.install(ServiceInstallCtx {
+        label: label.clone(),
+        program,
+        args: vec![OsString::from("gateway"), OsString::from("run")],
+        contents: None,
+        username: None,
+        working_directory: Some(openatrading_core::atrading_home()),
+        environment: None,
+        autostart: true,
+        restart_policy: RestartPolicy::OnFailure {
+            delay_secs: Some(10),
+        },
+    })?;
 
-    systemctl(&["daemon-reload"])?;
-    systemctl(&["enable", SERVICE_NAME])?;
-
-    println!("✅ systemd 服务已安装: {}", path.display());
+    println!("✅ 服务已安装 ({SERVICE_LABEL})");
     println!("   openatrading gateway start   # 启动");
     println!("   openatrading gateway stop    # 停止");
     println!("   openatrading gateway status  # 查看状态");
-    println!("   journalctl --user -u openatrading -f  # 查看日志");
     Ok(())
 }
 
-/// 卸载 systemd 服务
+/// 卸载 gateway 系统服务
 pub fn cmd_gateway_uninstall() -> Result<()> {
-    let _ = systemctl(&["stop", SERVICE_NAME]);
-    let _ = systemctl(&["disable", SERVICE_NAME]);
-    let path = service_file_path();
-    if path.exists() {
-        std::fs::remove_file(&path)?;
-    }
-    let _ = systemctl(&["daemon-reload"]);
-    println!("✅ systemd 服务已卸载");
+    let label = label();
+    let m = manager()?;
+
+    let _ = m.stop(ServiceStopCtx {
+        label: label.clone(),
+    });
+    m.uninstall(ServiceUninstallCtx { label })?;
+
+    println!("✅ 服务已卸载");
     Ok(())
 }
 
-/// systemctl start
+/// 启动服务
 pub fn cmd_gateway_start() -> Result<()> {
-    systemctl(&["start", SERVICE_NAME])?;
+    manager()?.start(ServiceStartCtx { label: label() })?;
     println!("✅ 服务已启动");
     Ok(())
 }
 
-/// systemctl stop
+/// 停止服务
 pub fn cmd_gateway_stop() -> Result<()> {
-    systemctl(&["stop", SERVICE_NAME])?;
+    manager()?.stop(ServiceStopCtx { label: label() })?;
     println!("✅ 服务已停止");
     Ok(())
 }
 
-/// systemctl status
+/// 查看服务状态
 pub fn cmd_gateway_status() -> Result<()> {
-    systemctl(&["status", SERVICE_NAME])?;
+    let status = manager()?.status(ServiceStatusCtx { label: label() })?;
+    match status {
+        ServiceStatus::Running => println!("✅ 服务运行中"),
+        ServiceStatus::Stopped(msg) => {
+            println!(
+                "⏹  服务已停止{}",
+                msg.as_deref().map(|s| format!(": {s}")).unwrap_or_default()
+            );
+        },
+        ServiceStatus::NotInstalled => println!("❌ 服务未安装"),
+    }
     Ok(())
 }
 
