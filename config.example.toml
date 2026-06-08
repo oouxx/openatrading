@@ -7,7 +7,7 @@
 # akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
 [[mcp_servers]]
 name = "akshare"
-transport = { type = "streamable-http", url = "http://akshare-mcp:8081" }
+transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
 enabled = true
 
 # ── 后台服务 ─────────────────────────────────────────────

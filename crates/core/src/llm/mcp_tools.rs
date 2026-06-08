@@ -184,7 +184,7 @@ pub struct McpServerConfig {
 
 fn default_transport() -> McpTransportConfig {
     McpTransportConfig::StreamableHttp {
-        url: "http://localhost:8081".to_string(),
+        url: "http://localhost:8081/mcp".to_string(),
         auth_token: None,
     }
 }
@@ -278,7 +278,6 @@ impl McpRegistry {
 pub struct ToolConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
-
 
 pub async fn build_tools(config: &ToolConfig) -> super::tools::ToolRegistry {
     let mut registry = super::tools::ToolRegistry::new();

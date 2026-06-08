@@ -167,7 +167,7 @@ model = "openrouter/free"
 # akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
 [[mcp_servers]]
 name = "akshare"
-transport = { type = "streamable-http", url = "http://akshare-mcp:8081" }
+transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
 enabled = true
 
 # ── 后台服务 ─────────────────────────────────────────────
@@ -345,7 +345,7 @@ impl AppConfig {
             "streamable-http".to_string()
         }
         fn default_url() -> String {
-            "http://localhost:8081".to_string()
+            "http://localhost:8081/mcp".to_string()
         }
         fn default_enabled() -> bool {
             true
