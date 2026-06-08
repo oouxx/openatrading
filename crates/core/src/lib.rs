@@ -9,6 +9,24 @@ pub mod social;
 pub mod trade;
 pub mod utils;
 
+use std::path::PathBuf;
+
+/// Resolve the `.atrading` data directory.
+///
+/// Priority:
+/// 1. `$OPENATRADING_HOME` — replaces the home base entirely
+/// 2. `$HOME` / `$USERPROFILE` — standard user home directory
+pub fn atrading_home() -> PathBuf {
+    if let Ok(base) = std::env::var("OPENATRADING_HOME") {
+        PathBuf::from(base).join(".atrading")
+    } else {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(".atrading")
+    }
+}
+
 // Re-export RoleEntry since it's used across web, cli, and social modules
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RoleEntry {

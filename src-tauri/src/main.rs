@@ -6,81 +6,24 @@ use openatrading_core::llm::LlmClient;
 use openatrading_core::trade::TradeManager;
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-fn find_project_root() -> PathBuf {
-    // Walk up from current_dir looking for .env first (workspace root),
-    // then Cargo.toml as fallback (crate root).
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    // First pass: look for .env (workspace root marker)
-    let mut current = cwd.as_path();
-    loop {
-        if current.join(".env").exists() {
-            return current.to_path_buf();
-        }
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => break,
-        }
-    }
-    // Second pass: fall back to any Cargo.toml directory
-    let mut current = cwd.as_path();
-    loop {
-        if current.join("Cargo.toml").exists() {
-            return current.to_path_buf();
-        }
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => break,
-        }
-    }
-    cwd
-}
-
-fn load_env(project_root: &PathBuf) {
-    // Load from ~/.atrading/.env (global config for secrets, highest priority)
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-        let home_env = PathBuf::from(home).join(".atrading").join(".env");
-        if home_env.exists() {
-            dotenvy::from_path(&home_env).ok();
-            eprintln!("[env] loaded {}", home_env.display());
-        }
-    }
-    // Load from project root
-    let project_env = project_root.join(".env");
-    if project_env.exists() {
-        dotenvy::from_path(&project_env).ok();
-        eprintln!("[env] loaded {}", project_env.display());
-    }
-    let atrading_env = project_root.join(".atrading").join(".env");
-    if atrading_env.exists() && atrading_env != project_env {
-        dotenvy::from_path(&atrading_env).ok();
-        eprintln!("[env] loaded {}", atrading_env.display());
+fn load_env() {
+    let env_path = openatrading_core::atrading_home().join(".env");
+    if env_path.exists() {
+        dotenvy::from_path(&env_path).ok();
+        eprintln!("[env] loaded {}", env_path.display());
     }
 }
 
 fn build_roles() -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
 
-    // Load roles from config.toml layers (readonly, low→high priority)
-    let skills_dir = openatrading_core::roles::default_skills_dir();
-    let project_atrading = std::env::current_dir().ok().map(|p| p.join(".atrading"));
-    let layers = [
-        std::env::var("HOME").ok().map(|h| {
-            std::path::PathBuf::from(h)
-                .join(".atrading")
-                .join("config.toml")
-        }),
-        project_atrading.as_ref().map(|p| p.join("config.toml")),
-        std::env::current_dir().ok().map(|p| p.join("config.toml")),
-    ];
-    for maybe_path in layers.iter().flatten() {
-        if !maybe_path.exists() {
-            continue;
-        }
-        if let Ok(raw) = std::fs::read_to_string(maybe_path) {
+    // Load readonly roles from {atrading_home}/config.toml
+    let config_path = openatrading_core::atrading_home().join("config.toml");
+    if config_path.exists() {
+        if let Ok(raw) = std::fs::read_to_string(&config_path) {
             #[derive(serde::Deserialize)]
             struct RolesCfg {
                 #[serde(default)]
@@ -92,6 +35,7 @@ fn build_roles() -> Vec<RoleEntry> {
                 display_name: String,
             }
             if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
+                let skills_dir = openatrading_core::roles::default_skills_dir();
                 for rc in parsed.roles {
                     if !roles.iter().any(|r| r.name == rc.name) {
                         let role_path = skills_dir.join(&rc.name).join("SKILL.md");
@@ -944,10 +888,9 @@ async fn api_replay_analyze(
 }
 
 fn main() {
-    let project_root = find_project_root();
-    load_env(&project_root);
+    load_env();
 
-    let db_path = project_root.join(".atrading").join("data.db");
+    let db_path = openatrading_core::atrading_home().join("data.db");
 
     let gateway = Gateway::init(&db_path).expect("failed to init gateway");
     let memory = gateway.memory.clone();

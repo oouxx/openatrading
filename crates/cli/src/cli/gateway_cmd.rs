@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -33,13 +33,9 @@ fn systemctl(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn generate_unit_file(project_root: &Path) -> Result<String> {
+fn generate_unit_file() -> Result<String> {
     let current_exe = std::env::current_exe().context("无法获取当前二进制路径")?;
-    let work_dir = if project_root.is_absolute() {
-        project_root.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(project_root)
-    };
+    let work_dir = openatrading_core::atrading_home();
 
     Ok(format!(
         r#"[Unit]
@@ -67,8 +63,8 @@ WantedBy=default.target
 }
 
 /// 安装 systemd 服务
-pub fn cmd_gateway_install(project_root: &Path) -> Result<()> {
-    let unit = generate_unit_file(project_root)?;
+pub fn cmd_gateway_install() -> Result<()> {
+    let unit = generate_unit_file()?;
     let path = service_file_path();
 
     if let Some(parent) = path.parent() {
@@ -242,16 +238,14 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 }
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
-pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: bool) -> Result<()> {
+pub async fn cmd_gateway_run(cron_only: bool, web_only: bool) -> Result<()> {
     use openatrading_core::cron::{self, CronConfig};
     use openatrading_core::llm::LlmClient;
     use openatrading_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 
-    let app_config = AppConfig::load(project_root)?;
+    let app_config = AppConfig::load()?;
 
-    let db_path = project_root
-        .join(".atrading")
-        .join(&app_config.service.db_path);
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
 
     let gateway = Gateway::init(&db_path)?;
 
