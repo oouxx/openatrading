@@ -265,6 +265,10 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
     let memory = gateway.memory.clone();
     let trade = gateway.trade.clone();
     let web_roles = roles.clone();
+    let mcp_servers = app_config.mcp_servers.clone();
+    let cron_mcp = mcp_servers.clone();
+    let web_mcp = mcp_servers.clone();
+    let tg_mcp = mcp_servers.clone();
 
     // ── Cron (CLI layer) ──────────────────────────
     let social: Arc<dyn NotificationSender> = match &app_config.social {
@@ -305,6 +309,7 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 cron_llm,
                 openatrading_core::api::Client::new(),
                 cron_roles,
+                &cron_mcp,
             )
             .await
             {
@@ -322,6 +327,7 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                 .start(GatewayConfig {
                     web_port: 8080,
                     roles: web_roles.clone(),
+                    mcp_servers: web_mcp.clone(),
                     llm_provider: web_llm_provider,
                     llm_model: web_llm_model,
                 })
@@ -342,6 +348,7 @@ pub async fn cmd_gateway_run(project_root: &Path, cron_only: bool, web_only: boo
                         let config = TelegramBotConfig {
                             bot_token: token.clone(),
                             chat_id: chat_id.clone(),
+                            mcp_servers: tg_mcp.clone(),
                             llm_provider: app_config.llm.provider.clone(),
                             llm_model: app_config.llm.model.clone(),
                         };

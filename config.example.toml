@@ -3,6 +3,13 @@
 # 角色由 .atrading/skills/ 下的 SKILL.md 自动发现，无需在配置中声明
 # 复制为 config.toml 后修改
 
+# ── MCP 服务器 ────────────────────────────────────────────
+# akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
+[[mcp_servers]]
+name = "akshare"
+transport = { type = "streamable-http", url = "http://akshare-mcp:8081" }
+enabled = true
+
 # ── 后台服务 ─────────────────────────────────────────────
 [service]
 db_path = "data.db"

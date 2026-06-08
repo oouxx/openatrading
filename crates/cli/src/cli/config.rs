@@ -6,6 +6,7 @@ use std::path::Path;
 pub struct AppConfig {
     pub default_role: Option<String>,
     pub roles: Vec<openatrading_core::roles::RoleConfig>,
+    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     pub service: ServiceConfig,
     pub cron: Option<CronTomlConfig>,
     pub social: Option<SocialConfig>,
@@ -25,6 +26,8 @@ struct RawConfig {
     default_role: Option<String>,
     #[serde(default)]
     roles: Vec<openatrading_core::roles::RoleConfig>,
+    #[serde(default)]
+    mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     #[serde(default)]
     service: Option<ServiceConfig>,
     #[serde(default)]
@@ -156,10 +159,16 @@ pub struct LarkConfig {
 const DEFAULT_CONFIG_TOML: &str = r##"# ── OpenATrading 配置 ──────────────────────────────────
 
 # ── LLM 配置 ─────────────────────────────────────────────
-# 未设置时降级使用环境变量 LLM_API_KEY / LLM_MODEL
-#[llm]
-# provider = "openrouter"
-# model = "openrouter/free"
+[llm]
+provider = "openrouter"
+model = "openrouter/free"
+
+# ── MCP 服务器 ────────────────────────────────────────────
+# akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
+[[mcp_servers]]
+name = "akshare"
+transport = { type = "streamable-http", url = "http://akshare-mcp:8081" }
+enabled = true
 
 # ── 后台服务 ─────────────────────────────────────────────
 [service]
@@ -211,6 +220,7 @@ impl AppConfig {
         let mut merged = AppConfig {
             default_role: None,
             roles: Vec::new(),
+            mcp_servers: Vec::new(),
             service: ServiceConfig {
                 db_path: default_db_path(),
             },
@@ -237,6 +247,10 @@ impl AppConfig {
             merged.merge(cfg);
         }
 
+        // Load .mcp.json MCP server configs (project root only)
+        // Self::load_mcp_json(&project_root.join(".mcp.json"), &mut merged.mcp_servers);
+        Self::load_mcp_json(&project_atrading.join(".mcp.json"), &mut merged.mcp_servers);
+
         Ok(merged)
     }
 
@@ -260,6 +274,7 @@ impl AppConfig {
         Some(AppConfig {
             default_role: raw.default_role,
             roles: raw.roles,
+            mcp_servers: raw.mcp_servers,
             service: raw.service.unwrap_or(ServiceConfig {
                 db_path: default_db_path(),
             }),
@@ -292,6 +307,81 @@ impl AppConfig {
         for entry in other.roles {
             self.roles.retain(|e| e.name != entry.name);
             self.roles.push(entry);
+        }
+        if !other.mcp_servers.is_empty() {
+            self.mcp_servers = other.mcp_servers;
+        }
+    }
+
+    /// Load MCP servers from a `.mcp.json` file.
+    ///
+    /// Format expected:
+    /// ```json
+    /// { "mcpServers": { "name": { "url": "http://...", "enabled": true } } }
+    /// ```
+    fn load_mcp_json(path: &Path, servers: &mut Vec<openatrading_core::llm::McpServerConfig>) {
+        use openatrading_core::llm::{McpServerConfig, McpTransportConfig};
+
+        #[derive(serde::Deserialize)]
+        struct McpJson {
+            #[serde(rename = "mcpServers")]
+            mcp_servers: std::collections::HashMap<String, McpJsonEntry>,
+        }
+        #[derive(serde::Deserialize)]
+        struct McpJsonEntry {
+            #[serde(default = "default_enabled")]
+            enabled: bool,
+            /// Transport type: "streamable-http" or "sse"
+            #[serde(rename = "type", default = "default_transport_type")]
+            transport_type: String,
+            /// Server URL.
+            #[serde(default = "default_url")]
+            url: String,
+            /// Optional POST endpoint for SSE mode.
+            #[serde(skip_serializing_if = "Option::is_none")]
+            post_url: Option<String>,
+        }
+        fn default_transport_type() -> String {
+            "streamable-http".to_string()
+        }
+        fn default_url() -> String {
+            "http://localhost:8081".to_string()
+        }
+        fn default_enabled() -> bool {
+            true
+        }
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let parsed: McpJson = match serde_json::from_str(&content) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("跳过 {} (解析错误): {e}", path.display());
+                return;
+            },
+        };
+
+        for (name, entry) in parsed.mcp_servers {
+            if servers.iter().any(|s| s.name == name) {
+                continue;
+            }
+            let transport = match entry.transport_type.as_str() {
+                "sse" => McpTransportConfig::Sse {
+                    url: entry.url,
+                    post_url: entry.post_url,
+                },
+                _ => McpTransportConfig::StreamableHttp {
+                    url: entry.url,
+                    auth_token: None,
+                },
+            };
+            servers.push(McpServerConfig {
+                name,
+                transport,
+                enabled: entry.enabled,
+            });
         }
     }
 

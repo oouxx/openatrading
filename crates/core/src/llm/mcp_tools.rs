@@ -1,146 +1,87 @@
 use std::sync::Arc;
 
+use rmcp::model::{CallToolRequestParams, RawContent};
+use rmcp::service::RunningService;
+use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+use rmcp::{RoleClient, ServiceExt};
+
 use super::tools::{empty_schema, to_box_err};
 use crate::llm::DynTool;
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::AgentToolResult;
 
 // ============================================================================
-// McpClient — standard MCP JSON-RPC 2.0 client over HTTP
+// McpClient — full-stack rmcp client over streamable HTTP
 // ============================================================================
 
-/// Lightweight MCP client speaking JSON-RPC 2.0 over HTTP.
-/// Sends POST requests to `{endpoint}/mcp` and parses MCP responses.
-#[derive(Clone)]
+/// MCP client using rmcp's full transport stack (SSE + HTTP POST).
+///
+/// Connects on construction, holds the peer for subsequent tool calls.
 pub struct McpClient {
-    endpoint: String,
-    client: reqwest::Client,
+    peer: rmcp::service::Peer<RoleClient>,
+    _service: RunningService<RoleClient, ()>,
 }
 
 impl McpClient {
-    /// Create client with explicit endpoint (e.g. "http://localhost:8081").
-    pub fn new(endpoint: impl Into<String>) -> Self {
-        use reqwest::header::{HeaderValue, ACCEPT};
-        let client = reqwest::Client::builder()
-            .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
-                h.insert(
-                    ACCEPT,
-                    HeaderValue::from_static("application/json, text/event-stream"),
-                );
-                h
-            })
-            .build()
-            .unwrap_or_default();
-        Self {
-            endpoint: endpoint.into(),
-            client,
-        }
+    /// Connect to an MCP server via streamable HTTP transport.
+    pub async fn connect(endpoint: impl Into<String>) -> Result<Self, String> {
+        let config = StreamableHttpClientTransportConfig::with_uri(endpoint.into());
+        let transport =
+            rmcp::transport::streamable_http_client::StreamableHttpClientTransport::from_config(
+                config,
+            );
+        let service: RunningService<RoleClient, ()> =
+            ().serve(transport)
+                .await
+                .map_err(|e| format!("connect: {e}"))?;
+        let peer = service.peer().clone();
+        Ok(Self {
+            peer,
+            _service: service,
+        })
     }
 
-    /// Read endpoint from `MCP_ENDPOINT` env var, or use default.
-    pub fn from_env() -> Self {
-        let ep =
-            std::env::var("MCP_ENDPOINT").unwrap_or_else(|_| "http://localhost:8081".to_string());
-        Self::new(ep)
+    /// List all tools from the server.
+    pub async fn list_tools(&self) -> Result<serde_json::Value, String> {
+        let tools = self
+            .peer
+            .list_all_tools()
+            .await
+            .map_err(|e| format!("list: {e}"))?;
+        Ok(serde_json::to_value(tools).unwrap_or_default())
     }
 
-    /// Call an MCP tool via JSON-RPC 2.0 `tools/call`.
+    /// Call a tool.
     pub async fn call(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        let url = format!("{}/mcp", self.endpoint);
-        let body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments,
-            },
-        });
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
+        let args = arguments
+            .as_object()
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+
+        let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
+        let result = self
+            .peer
+            .call_tool(params)
             .await
-            .map_err(|e| format!("mcp connection refused: {e}"))?;
+            .map_err(|e| format!("call: {e}"))?;
 
-        let json: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| format!("mcp parse failed: {e}"))?;
-
-        // JSON-RPC error
-        if let Some(err) = json.get("error") {
-            let msg = err["message"].as_str().unwrap_or("unknown mcp error");
-            return Err(msg.to_string());
-        }
-
-        let result = json.get("result").ok_or("mcp: no result")?;
-
-        // MCP tool-level error
-        if result
-            .get("isError")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            let msg = result["content"]
-                .as_array()
-                .and_then(|arr| arr.first())
-                .and_then(|c| c.get("text"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown mcp tool error");
-            return Err(msg.to_string());
-        }
-
-        // Extract text from first content block
-        let text = result["content"]
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|c| c.get("text"))
-            .and_then(|v| v.as_str())
+        let text = result
+            .content
+            .first()
+            .and_then(|c| match &c.raw {
+                RawContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
             .ok_or("mcp: no text content")?;
 
-        // The text field is a JSON string (dataframe serialized by the server)
-        serde_json::from_str(text).map_err(|e| format!("mcp result parse: {e}"))
+        serde_json::from_str(text).map_err(|e| format!("result parse: {e}"))
     }
 
-    /// Call `tools/list` on the MCP server and return the registered tools.
-    pub async fn list_tools(&self) -> Result<serde_json::Value, String> {
-        let url = format!("{}/mcp", self.endpoint);
-        let body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-            "params": {},
-        });
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("mcp connection refused: {e}"))?;
-
-        let json: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| format!("mcp parse failed: {e}"))?;
-
-        if let Some(err) = json.get("error") {
-            let msg = err["message"].as_str().unwrap_or("unknown mcp error");
-            return Err(msg.to_string());
-        }
-
-        Ok(json["result"]["tools"].clone())
-    }
-
-    /// Wrap this client into a tool factory for the given akshare method.
-    /// The tool will call `.call(method, args)` when executed.
+    /// Wrap this client into a DynTool factory.
     pub fn create_tool(
         &self,
         name: &str,
@@ -148,13 +89,13 @@ impl McpClient {
         schema: serde_json::Value,
         method: &str,
     ) -> Arc<DynTool> {
-        let client = self.clone();
+        let peer = self.peer.clone();
         let method = method.to_string();
         let execute: super::tools::ExecuteFn = Arc::new(move |_id, args, _signal, _progress| {
-            let client = client.clone();
+            let peer = peer.clone();
             let method = method.clone();
             Box::pin(async move {
-                match client.call(&method, args).await {
+                match Self::do_call(&peer, &method, args).await {
                     Ok(result) => Ok(AgentToolResult {
                         content: vec![ContentBlock::text(
                             serde_json::to_string_pretty(&result)
@@ -170,64 +111,133 @@ impl McpClient {
 
         super::tools::tool(name, description, schema, execute)
     }
+
+    async fn do_call(
+        peer: &rmcp::service::Peer<RoleClient>,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let args = arguments
+            .as_object()
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+
+        let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
+        let result = peer
+            .call_tool(params)
+            .await
+            .map_err(|e| format!("call: {e}"))?;
+
+        let text = result
+            .content
+            .first()
+            .and_then(|c| match &c.raw {
+                RawContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .ok_or("mcp: no text content")?;
+
+        serde_json::from_str(text).map_err(|e| format!("result parse: {e}"))
+    }
 }
 
 // ============================================================================
 // McpRegistry — manages multiple MCP server connections with dynamic discovery
 // ============================================================================
 
-/// Configuration for a single MCP server endpoint.
-#[derive(Debug, Clone, serde::Deserialize)]
+/// Transport protocol for an MCP connection.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum McpTransportConfig {
+    #[serde(rename = "streamable-http")]
+    StreamableHttp {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        auth_token: Option<String>,
+    },
+    #[serde(rename = "sse")]
+    Sse {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        post_url: Option<String>,
+    },
+}
+
+impl McpTransportConfig {
+    pub fn url(&self) -> &str {
+        match self {
+            McpTransportConfig::StreamableHttp { url, .. } => url,
+            McpTransportConfig::Sse { url, .. } => url,
+        }
+    }
+}
+
+/// Configuration for a single MCP server.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct McpServerConfig {
     pub name: String,
-    pub endpoint: String,
+    #[serde(default = "default_transport")]
+    pub transport: McpTransportConfig,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 }
 
+fn default_transport() -> McpTransportConfig {
+    McpTransportConfig::StreamableHttp {
+        url: "http://localhost:8081".to_string(),
+        auth_token: None,
+    }
+}
 fn default_enabled() -> bool {
     true
 }
 
 /// Registry of MCP server connections.
-/// Discovers tools dynamically via `tools/list` on each enabled server.
 pub struct McpRegistry {
-    clients: Vec<McpClient>,
+    servers: Vec<McpServerConfig>,
 }
 
 impl McpRegistry {
-    /// Build from config list, falling back to `MCP_ENDPOINT` env var if empty.
     pub fn from_config(servers: &[McpServerConfig]) -> Self {
-        let mut clients: Vec<McpClient> = servers
-            .iter()
-            .filter(|s| s.enabled)
-            .map(|s| McpClient::new(&s.endpoint))
-            .collect();
-
-        if clients.is_empty() {
-            // Fallback: single server from env var
-            clients.push(McpClient::from_env());
+        let enabled: Vec<&McpServerConfig> = servers.iter().filter(|s| s.enabled).collect();
+        if enabled.is_empty() {
+            tracing::info!("[mcp] no servers configured");
+        } else {
+            for s in &enabled {
+                tracing::info!("[mcp] register server: {} ({})", s.name, s.transport.url());
+            }
         }
-
-        Self { clients }
+        Self {
+            servers: servers.iter().filter(|s| s.enabled).cloned().collect(),
+        }
     }
 
-    /// Create from a single endpoint (for CLI commands).
     pub fn single(endpoint: &str) -> Self {
         Self {
-            clients: vec![McpClient::new(endpoint)],
+            servers: vec![McpServerConfig {
+                name: "cli".into(),
+                transport: McpTransportConfig::StreamableHttp {
+                    url: endpoint.to_string(),
+                    auth_token: None,
+                },
+                enabled: true,
+            }],
         }
     }
 
-    /// Discover tools from all enabled MCP servers.
-    /// Each discovered tool is wrapped as an `Arc<DynTool>` that calls
-    /// the originating server via JSON-RPC `tools/call`.
     pub async fn discover(&self) -> Vec<Arc<DynTool>> {
         let mut all_tools = Vec::new();
-
-        for client in &self.clients {
+        for server in &self.servers {
+            let client = match McpClient::connect(server.transport.url()).await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!("[mcp] {}: connect failed: {e}", server.name);
+                    continue;
+                },
+            };
             match client.list_tools().await {
                 Ok(tools) => {
+                    let count = tools.as_array().map(|a| a.len()).unwrap_or(0);
                     if let Some(arr) = tools.as_array() {
                         for tool_data in arr {
                             let name = match tool_data["name"].as_str() {
@@ -248,43 +258,33 @@ impl McpRegistry {
                             }
                         }
                     }
+                    tracing::info!("[mcp] {}: discovered {} tools", server.name, count);
                 },
-                Err(e) => {
-                    tracing::debug!("[mcp] discover failed for {}: {e}", client.endpoint);
-                },
+                Err(e) => tracing::warn!("[mcp] {}: discover failed: {e}", server.name),
             }
         }
-
+        if all_tools.is_empty() {
+            tracing::info!("[mcp] no tools discovered");
+        }
         all_tools
-    }
-
-    /// Return the first client (for CLI mcp command, or when only one server).
-    pub fn first(&self) -> Option<&McpClient> {
-        self.clients.first()
     }
 }
 
 // ============================================================================
-// ToolConfig + shared build_tools — one call to assemble all tools
+// ToolConfig + shared build_tools
 // ============================================================================
 
-/// Configuration passed to [`build_tools`] for tool assembly.
 #[derive(Default)]
 pub struct ToolConfig {
     pub mcp_servers: Vec<McpServerConfig>,
 }
 
-/// One-shot assembly: native tools + MCP server discovery → `ToolRegistry`.
-///
-/// Call this at entry points instead of repeating the
-/// `ToolRegistry::new()` + `register_mcp_tools()` pattern.
+
 pub async fn build_tools(config: &ToolConfig) -> super::tools::ToolRegistry {
     let mut registry = super::tools::ToolRegistry::new();
-
     let mcp = McpRegistry::from_config(&config.mcp_servers);
     for t in mcp.discover().await {
         registry.add_mcp(t);
     }
-
     registry
 }

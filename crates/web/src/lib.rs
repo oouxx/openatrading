@@ -25,6 +25,7 @@ pub struct AppState {
     pub memory: Arc<openatrading_core::memory::sqlite::SqliteMemoryStore>,
     pub trade: Arc<openatrading_core::trade::sqlite::SqliteTradeManager>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
+    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     pub cache: Arc<AppCache>,
 }
 

@@ -22,6 +22,7 @@ struct ChatSession {
 pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
+    pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
 }
@@ -29,6 +30,7 @@ pub struct TelegramBotConfig {
 pub struct TelegramBot {
     bot_token: String,
     chat_id: String,
+    mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
     llm: LlmClient,
     api: ApiClient,
     roles: Vec<RoleEntry>,
@@ -85,6 +87,7 @@ impl TelegramBot {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
+            mcp_servers: config.mcp_servers,
             llm: LlmClient::from_config(
                 config.llm_provider.as_deref(),
                 config.llm_model.as_deref(),
@@ -442,11 +445,13 @@ impl TelegramBot {
                     chat_id: self.chat_id.clone(),
                 };
 
-                let tools: Vec<Arc<crate::llm::DynTool>> =
-                    crate::llm::build_tools(&Default::default())
-                        .await
-                        .all_tools()
-                        .to_vec();
+                let tool_cfg = crate::llm::ToolConfig {
+                    mcp_servers: self.mcp_servers.clone(),
+                };
+                let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&tool_cfg)
+                    .await
+                    .all_tools()
+                    .to_vec();
                 match run_decision(
                     self.memory.clone(),
                     self.trade.clone(),
@@ -537,7 +542,10 @@ impl TelegramBot {
             "content": question,
         }));
 
-        let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&Default::default())
+        let tool_cfg = crate::llm::ToolConfig {
+            mcp_servers: self.mcp_servers.clone(),
+        };
+        let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&tool_cfg)
             .await
             .all_tools()
             .to_vec();

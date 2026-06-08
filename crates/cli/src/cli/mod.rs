@@ -413,8 +413,11 @@ async fn cmd_decision(
     );
     let api = Client::new();
 
+    let tool_cfg = openatrading_core::llm::ToolConfig {
+        mcp_servers: app_config.mcp_servers.clone(),
+    };
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        openatrading_core::llm::build_tools(&Default::default())
+        openatrading_core::llm::build_tools(&tool_cfg)
             .await
             .all_tools()
             .to_vec();
