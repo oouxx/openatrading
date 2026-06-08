@@ -135,7 +135,7 @@ pub enum ToolsAction {
     /// 生成所有可用工具的 markdown 参考文档
     Doc {
         /// MCP 端点（可选，用于发现 MCP 工具）
-        #[arg(long, default_value = "http://localhost:8081")]
+        #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
 }
@@ -144,14 +144,14 @@ pub enum ToolsAction {
 pub enum McpAction {
     /// 列出 MCP 服务端所有已注册工具
     List {
-        /// MCP 端点，默认 http://localhost:8081
-        #[arg(long, default_value = "http://localhost:8081")]
+        /// MCP 端点，默认 http://localhost:8081/mcp
+        #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
     /// 检查 MCP 服务器连通性
     Status {
-        /// MCP 端点，默认 http://localhost:8081
-        #[arg(long, default_value = "http://localhost:8081")]
+        /// MCP 端点，默认 http://localhost:8081/mcp
+        #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
     /// 直接调用一个 MCP 工具
@@ -161,8 +161,8 @@ pub enum McpAction {
         /// JSON 参数（可选）
         #[arg(default_value = "{}")]
         args: String,
-        /// MCP 端点，默认 http://localhost:8081
-        #[arg(long, default_value = "http://localhost:8081")]
+        /// MCP 端点，默认 http://localhost:8081/mcp
+        #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
 }
