@@ -55,6 +55,8 @@ clone_or_pull() {
   # Upload .env separately (not in git)
   echo "=== [env] Uploading .env ==="
   scp $SSH_OPTS .env "$SERVER:$REMOTE_DIR/.env"
+  ssh $SSH_OPTS "$SERVER" "mkdir -p /root/.atrading && cp $REMOTE_DIR/.env /root/.atrading/.env"
+  echo "✅ .env also copied to /root/.atrading/"
 }
 
 # ─── Build CLI + pull Tauri → downloads/ ────────────────
