@@ -1,129 +1,182 @@
 # OpenATrading
 
-AI-native A 股短线交易决策工作台。「AI 情绪周期分析终端」
+AI-native A 股短线交易决策工作台。集成实时行情、多源舆情、AI 决策引擎，支持 CLI / Web / TUI / 桌面端四种交互方式。
 
-[预览](./docs/preview.png)
+## Features
 
-## 快速开始
+- **多源数据聚合** — 选股宝（涨停跌停/板块异动/大盘异动）、韭研公社（社区情绪/时间线）、财联社电报、龙虎榜
+- **AI 驱动决策** — 接入 LLM，结合持仓分析、市场情绪、策略技能，生成每日买卖建议
+- **定时自动化** — 内置 cron 调度器：盘中数据采集、盘后决策、新闻推送
+- **灵活部署** — CLI 直接运行、Web 面板、TUI 终端、Tauri 桌面端、Docker 容器化
+- **MCP 协议** — 支持标准 MCP 工具调用，扩展数据源和分析能力
+- **多角色策略** — 支持同时运行多个交易角色，每个角色独立策略和仓位管理
+- **多平台通知** — Telegram / Discord / Slack / Lark 推送
+
+## Architecture
+
+```
+openatrading
+├── crates/
+│   ├── core/        # 核心业务逻辑：API 客户端、LLM、cron、角色、技能
+│   ├── cli/         # CLI 二进制入口，gateway 生命周期管理
+│   ├── web/         # Axum Web 服务，提供 REST API
+│   ├── tui/         # 终端 TUI 界面（pi-tui）
+│   ├── api/         # 第三方 API 封装（选股宝、韭研公社、财联社等）
+│   ├── channels/    # 通知渠道抽象（Telegram / Discord / Slack / Lark）
+│   ├── agent/       # Agent 相关逻辑
+│   ├── provider/    # 数据 provider
+│   └── channels/    # 通知渠道实现
+├── src/             # Vue 3 + Vite 前端
+├── src-tauri/       # Tauri 桌面端
+├── opendesign/      # 原型设计稿
+└── Dockerfile*      # 容器化部署
+```
+
+所有交付方式（CLI / Web / TUI / Desktop）都是对 `core` 的薄封装层。
+
+## Quick Start
+
+### 初始化
 
 ```bash
-pre-commit install   # 安装 hook
-cargo build          # 构建
+openatrading init              # 创建 ~/.atrading/ 和默认配置
+```
 
-# CLI
-cargo run                                # 全量数据，Markdown → stdout
-cargo run -- --json                      # JSON → stdout
-cargo run -- --data limit_up,overview    # 指定数据源
-cargo run -- --ai                        # 全量 + AI 分析
+### CLI
 
-# Web
-cargo run --bin openatrading-web       # API 服务 :8080
-cd src && bun install && bun run dev     # Vue 前端 :5173
+```bash
+openatrading                   # 全量数据 → Markdown
+openatrading --json            # JSON 输出
+openatrading --data limit_up,overview   # 指定数据源
+openatrading --ai              # 全量 + AI 分析
+openatrading decision          # 手动触发决策
+openatrading decision --dry-run --role zarili   # 指定角色试运行
+openatrading chat              # AI 对话终端
+openatrading doctor            # 诊断服务状态
+openatrading skills list       # 列出可安装技能
+openatrading mcp list          # 列出 MCP 工具
+openatrading tools doc         # 生成工具参考文档
+openatrading trade add --role zarili --symbol 000001 --price 10.5 --shares 100
+openatrading trade list        # 持仓列表
+openatrading trade close --id 1 --price 11.0
+```
 
-# Docker
+### Web 面板
+
+```bash
+openatrading gateway run          # 启动 Web + Cron + Telegram Bot（前台）
+openatrading gateway run --web-only   # 仅启动 Web
+openatrading gateway run --cron-only  # 仅启动定时任务
+```
+
+Web 服务默认监听 `:8080`，配套 Vue 3 前端：
+
+```bash
+cd src && bun install && bun run dev
+```
+
+### TUI 终端
+
+```bash
+openatrading chat              # AI 对话界面
+```
+
+### Docker
+
+```bash
 docker compose up -d
 ```
 
-## 数据源
+### 桌面端（Tauri）
 
-| 数据源 | 内容 | 认证 |
-|--------|------|------|
-| 选股宝 | 涨停/跌停、板块异动、市场概览 | 公开 API |
-| 韭研公社 | 社群文章、时间线、情绪 | 手机号登录 |
-| 淘股吧 | 用户帖子、游资观点 | HTML 爬虫 |
+编译后在 `src-tauri/target/release/bundle/` 获取安装包。
 
-## CLI 数据源
+## Configuration
 
-通过 `--data` 按需获取：
+配置文件位于 `~/.atrading/config.toml`（可通过 `$OPENATRADING_HOME` 环境变量自定义路径）。
 
-| 数据源 | 说明 |
-|--------|------|
-| `overview` | 市场概览（涨跌家数/炸板率） |
-| `limit_up` | 涨停股票 |
-| `limit_down` | 跌停股票 |
-| `super_stock` | 强势股（未涨停但强） |
-| `field_item` | 韭研公社异动板块 |
-| `plate_abnormal` | 板块异动事件 |
-| `timeline` | 韭研公社时间线 |
-| `sentiment` | AI 舆情分析 |
-| `cls_telegraph` | 财联社电报 |
-| `dapan_abnormal` | 大盘异动 |
-| `market_trend` | 市场趋势 |
-| `community` | 社区文章 |
+```toml
+[llm]
+provider = "openrouter"
+model = "openrouter/free"
 
-```bash
-cargo run -- --data limit_up,sentiment           # 涨停+舆情
-cargo run -- --data cls_telegraph --ai           # 电报+AI分析
-cargo run -- --data field_item --json --output data.json
+[[mcp_servers]]
+name = "akshare"
+transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
+enabled = true
+
+[service]
+db_path = "data.db"
+
+[cron]
+enabled = true
+collection_schedule = "0 */30 9-15 * * 1-5 *"
+decision_schedule = "0 0 0 * * 1-5 *"
+
+[social]
+notify_channel = "telegram"
+[social.telegram]
+enabled = true
+bot_token = "${TELEGRAM_BOT_TOKEN}"
+chat_id = "${TELEGRAM_CHAT_ID}"
 ```
 
-## 技术栈
-
-| Layer | Tech |
-|-------|------|
-| 后端 | Rust (Cargo Workspace: core + cli + web + wasm) |
-| 前端 | Vue 3, TypeScript, Vite, TailwindCSS, Pinia, lightweight-charts |
-| 包管理 | Bun |
-| LLM | DeepSeek (可切换 OpenAI-compatible API) |
-| 部署 | Docker Compose, Vercel, RackNerd |
-
-## 配置
-
-在 `.env` 中配置环境变量：
+环境变量（也支持从 `~/.atrading/.env` 加载）：
 
 | 变量 | 必需 | 用途 |
 |------|------|------|
-| `LLM_API_KEY` | AI 必需 | LLM API key（DeepSeek 或 OpenAI-compatible） |
-| `LLM_MODEL` | 可选 | 默认 `deepseek-chat` |
-| `LLM_API_ENDPOINT` | 可选 | 默认 DeepSeek API |
-| `JIUYAN_PHONE` | 韭研公社必需 | 登录手机号 |
-| `JIUYAN_PASSWORD` | 可选 | 韭研公社密码 |
+| `LLM_API_KEY` | AI 功能必需 | LLM API key |
+| `TELEGRAM_BOT_TOKEN` | Telegram 通知 | Bot token |
+| `TELEGRAM_CHAT_ID` | Telegram 通知 | 聊天 ID |
+| `JIUYAN_PHONE` | 韭研公社 | 登录手机号 |
+| `OPENATRADING_HOME` | 可选 | 自定义配置目录 |
 
-## 常用命令
+## Data Sources
+
+| 数据源 | 内容 | 访问方式 |
+|--------|------|---------|
+| 选股宝 | 涨停/跌停/板块异动/大盘异动/市场趋势 | HTTP API |
+| 韭研公社 | 社区文章/时间线/异动 | HTTP API（需登录） |
+| 财联社 | 电报快讯（A/B 级自动推送） | HTTP API |
+| 龙虎榜 | 席位详情/个股上榜 | HTTP API |
+| MCP 工具 | akshare 等数据扩展 | Streamable HTTP |
+
+## Strategies（技能）
+
+策略以 `SKILL.md` 形式存储在 `~/.atrading/skills/{name}/`，使用 YAML frontmatter + Markdown 描述。
+
+内置策略（`openatrading skills list` 查看）：
+- **zarili** — 量价低吸派，市场温度择时 + 涨停股池 + 分时低吸
+
+## Automation
+
+Cron 调度器定时执行：
+- **数据采集** — 交易日每 30 分钟采集市场快照
+- **决策生成** — 每日盘后 LLM 分析持仓 + 市场数据，输出买卖建议
+- **新闻推送** — 盘中每 5 分钟推送重要电报，非交易时段每 30 分钟
+
+## Desktop App
+
+Tauri 桌面端提供原生体验，支持 macOS / Linux / Windows。可通过 GitHub Releases 下载安装包。
+
+## Development
 
 ```bash
-# CLI
-cargo run                                   # 全量 Markdown
-cargo run -- --json                         # 全量 JSON
-cargo run -- --data limit_up,overview       # 按数据源
-cargo run -- --ai                           # 全量 + AI
+# 构建
+cargo build
 
-# Web
-cargo run --bin openatrading-web          # API 服务
-cd src && bun run dev                       # Vue 前端
+# 运行 CLI
+cargo run -- --ai
+
+# 前端开发
+cd src && bun install && bun run dev
 
 # 质量检查
 cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo test
-cargo test -- --ignored                     # 集成测试（需 JIUYAN_PHONE）
 ```
 
-## 架构
+## License
 
-```
-crates/core/    # 业务逻辑（API 客户端 / Agent / LLM / 报告 / 模板）
-crates/cli/     # CLI 二进制
-crates/web/     # Axum Web 服务
-crates/wasm/    # WASM 绑定
-src/            # Vue 3 前端
-src-tauri/      # Tauri 桌面应用
-tests/          # 集成测试
-```
-
-`crates/core` 不含框架依赖（无 Clap/Axum/Tauri），所有交付方式都是调用 `core` 的薄封装层。
-
-更多细节 → `.claude/context/engineering.md`
-
-## 部署
-
-```bash
-# Docker
-docker compose up -d
-
-# RackNerd
-make deploy-racknerd
-
-# Vercel 静态部署
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Foouxx%2Fopenatrading)
-```
+MIT
