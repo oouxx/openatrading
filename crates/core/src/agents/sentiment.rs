@@ -3,6 +3,7 @@ use crate::api::taoguba::TaogubaRecommend;
 use crate::api::Client;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tracing;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotArticle {
@@ -41,7 +42,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
                         all.extend(resp.result);
                     },
                     Err(e) => {
-                        eprintln!("获取韭研数据失败: {}", e);
+                        tracing::warn!("获取韭研数据失败: {}", e);
                         break;
                     },
                 }
@@ -54,7 +55,7 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
                 .fetch_recommend_articles()
                 .await
                 .unwrap_or_else(|e| {
-                    eprintln!("获取淘股吧推荐失败: {}", e);
+                    tracing::warn!("获取淘股吧推荐失败: {}", e);
                     vec![]
                 })
         },

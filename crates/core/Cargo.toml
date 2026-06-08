@@ -29,6 +29,8 @@ tokio-cron-scheduler = "0.13"
 chrono-tz = "0.10"
 async-trait = "0.1"
 schemars = { version = "0.8", features = ["derive"] }
+gray_matter = "0.3"
+serde_yaml = "0.9"
 rmcp = { version = "1.7", features = ["client", "transport-streamable-http-client-reqwest"] }
 teloxide = { version = "0.15", optional = true }
 thiserror = "2"

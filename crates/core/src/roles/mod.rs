@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use gray_matter::{engine::YAML, Matter};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -18,25 +20,17 @@ pub fn default_skills_dir() -> PathBuf {
     crate::atrading_home().join("skills")
 }
 
-/// Parse YAML frontmatter from `---\n...\n---` delimited content.
-pub fn parse_frontmatter(content: &str) -> (std::collections::HashMap<String, String>, &str) {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return (std::collections::HashMap::new(), trimmed);
+/// Parse YAML frontmatter from `---\n...\n---` delimited content using gray-matter.
+pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
+    let matter = Matter::<YAML>::new();
+    match matter.parse::<serde_json::Value>(content) {
+        Ok(parsed) => {
+            let map: HashMap<String, String> =
+                serde_yaml::from_str(&parsed.matter).unwrap_or_default();
+            (map, parsed.content)
+        },
+        Err(_) => (HashMap::new(), content.trim().to_string()),
     }
-    let after_first = &trimmed[3..];
-    let end = after_first.find("\n---").unwrap_or(after_first.len());
-    let frontmatter_str = &after_first[..end];
-    let body_start = end + 4;
-    let body = after_first[body_start..].trim();
-
-    let mut map = std::collections::HashMap::new();
-    for line in frontmatter_str.lines() {
-        if let Some((key, value)) = line.split_once(':') {
-            map.insert(key.trim().to_string(), value.trim().to_string());
-        }
-    }
-    (map, body)
 }
 
 /// Load all SKILL.md entries from `~/.atrading/skills/` as RoleEntry.

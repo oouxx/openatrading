@@ -72,7 +72,7 @@ macro_rules! add_job {
                 $scheduler.add(j).await?;
             },
             Err(e) => {
-                eprintln!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
+                tracing::error!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
             },
         }
     };
@@ -112,7 +112,7 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(e) = run_collection(&*mem, &api, &*soc).await {
-                        eprintln!("[cron] collection error: {e}");
+                        tracing::error!("[cron] collection error: {e}");
                     }
                 })
             }
@@ -159,7 +159,7 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
                     )
                     .await
                     {
-                        eprintln!("[cron] decision error: {e}");
+                        tracing::error!("[cron] decision error: {e}");
                     }
                 })
             }
@@ -179,7 +179,7 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&api, &*soc).await {
-                        eprintln!("[cron] news_push error: {e}");
+                        tracing::error!("[cron] news_push error: {e}");
                     }
                 })
             }
@@ -200,7 +200,7 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&api, &*soc).await {
-                        eprintln!("[cron] news_push error: {e}");
+                        tracing::error!("[cron] news_push error: {e}");
                     }
                 })
             }
@@ -208,11 +208,11 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
     }
 
     scheduler.start().await?;
-    eprintln!("[cron] scheduler started (tz=Asia/Shanghai)");
+    tracing::info!("[cron] scheduler started (tz=Asia/Shanghai)");
 
     // Wait forever (Ctrl+C handled by caller)
     tokio::signal::ctrl_c().await?;
-    eprintln!("\n[cron] shutting down...");
+    tracing::info!("[cron] shutting down...");
 
     Ok(())
 }

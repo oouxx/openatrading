@@ -64,29 +64,10 @@ fn default_true() -> bool {
     true
 }
 
-fn substitute_env(mut content: &str) -> std::borrow::Cow<'_, str> {
-    let mut result = String::new();
-    while let Some(start) = content.find("${") {
-        result.push_str(&content[..start]);
-        let rest = &content[start + 2..];
-        if let Some(end) = rest.find('}') {
-            let var = &rest[..end];
-            match std::env::var(var) {
-                Ok(val) => result.push_str(&val),
-                Err(_) => {
-                    result.push_str("${");
-                    result.push_str(var);
-                    result.push('}');
-                },
-            }
-            content = &rest[end + 1..];
-        } else {
-            result.push_str("${");
-            content = rest;
-        }
-    }
-    result.push_str(content);
-    std::borrow::Cow::Owned(result)
+fn substitute_env(content: &str) -> String {
+    shellexpand::full(content)
+        .unwrap_or_else(|_| content.into())
+        .into()
 }
 
 fn default_collection_schedule() -> String {
