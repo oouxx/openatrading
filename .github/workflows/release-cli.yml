@@ -1,0 +1,37 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  build-cli-macos:
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release -p openatrading-cli --target ${{ matrix.target }}
+        env:
+          GIT_VERSION: ${{ github.ref_name }}
+      - name: Rename binary
+        run: cp target/${{ matrix.target }}/release/openatrading openatrading-${{ matrix.target }}
+      - name: Upload CLI binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: openatrading-${{ matrix.target }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
