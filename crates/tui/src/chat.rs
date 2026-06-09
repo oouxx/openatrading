@@ -244,7 +244,7 @@ impl App for ChatApp {
 
         // Input-focused
         if state.focus.is_focused(&Focus::Input) {
-            if (ctrl && key.code == Key::Enter) || key.code == Key::Enter {
+            if key.code == Key::Enter {
                 return Some(Msg::SubmitInput);
             }
             return TextArea::handle_event(&state.input, event, &EventContext::new().focused(true))
