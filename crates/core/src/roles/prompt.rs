@@ -30,7 +30,7 @@ pub async fn extract_decision_output(
         )
         .with_tool_name("extract_trading_decision")
         .with_tool_description("Extract structured trading decision data")
-        .with_retries(1);
+        .with_retries(3);
 
     let result = extractor
         .extract(text)
