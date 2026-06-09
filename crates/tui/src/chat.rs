@@ -158,6 +158,15 @@ impl App for ChatApp {
     }
 
     fn handle_event_with_state(state: &Self::State, event: &Event) -> Option<Msg> {
+        // Mouse scroll → scroll the conversation view
+        if let Some(mouse) = event.as_mouse() {
+            return match mouse.kind {
+                MouseEventKind::ScrollUp => Some(Msg::Conv(ConversationViewMessage::ScrollUp)),
+                MouseEventKind::ScrollDown => Some(Msg::Conv(ConversationViewMessage::ScrollDown)),
+                _ => None,
+            };
+        }
+
         let key = event.as_key()?;
         let ctrl = key.modifiers.ctrl();
 
@@ -165,15 +174,19 @@ impl App for ChatApp {
             Key::Char('q') if ctrl => return Some(Msg::Quit),
             Key::Char('c') if ctrl => return Some(Msg::Quit),
             Key::Esc => return Some(Msg::Quit),
-            Key::Enter if ctrl => return Some(Msg::SubmitInput),
+            Key::Enter => return Some(Msg::SubmitInput),
             _ => {},
         }
 
-        TextArea::handle_event(&state.input, event, &EventContext::default())
+        TextArea::handle_event(&state.input, event, &EventContext::new().focused(true))
             .map(Msg::Input)
             .or_else(|| {
-                ConversationView::handle_event(&state.conv, event, &EventContext::default())
-                    .map(Msg::Conv)
+                ConversationView::handle_event(
+                    &state.conv,
+                    event,
+                    &EventContext::new().focused(true),
+                )
+                .map(Msg::Conv)
             })
     }
 }
