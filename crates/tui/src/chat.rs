@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use envision::component::{
     ConversationRole, ConversationView, ConversationViewMessage, ConversationViewState,
-    MessageBlock,
+    MessageBlock, MessageHandle, StatusBar, StatusBarItem, StatusBarState,
 };
 use envision::prelude::*;
 use envision::{TextArea, TextAreaMessage, TextAreaState};
@@ -12,19 +12,30 @@ use openatrading_core::llm::{
 };
 
 // ---------------------------------------------------------------------------
+// Focus
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Focus {
+    Conversation,
+    Input,
+}
+
+// ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub enum Msg {
-    Input(TextAreaMessage),
     Conv(ConversationViewMessage),
+    Input(TextAreaMessage),
+
     SubmitInput,
     SpawnLLM,
     LLMChunk(String),
     LLMDone,
     LLMError(String),
+    FocusToggle,
     Quit,
 }
 
@@ -35,6 +46,9 @@ pub enum Msg {
 pub struct AppState {
     conv: ConversationViewState,
     input: TextAreaState,
+    status: StatusBarState,
+    focus: FocusManager<Focus>,
+    streaming_handle: Option<MessageHandle>,
     msg_tx: Option<tokio::sync::mpsc::Sender<Msg>>,
     llm: LlmClient,
     tools: Vec<Arc<DynTool>>,
@@ -53,13 +67,18 @@ impl App for ChatApp {
     type Args = ();
 
     fn init(_: ()) -> (Self::State, Command<Msg>) {
-        let mut conv = ConversationViewState::new()
+        let conv = ConversationViewState::new()
             .with_markdown(true)
             .with_show_role_labels(true)
-            .with_title(" AI Chat ");
-        conv.push_system("AI Chat — Type your message and press Enter. Press Esc to quit.");
+            .with_title("AI Chat");
 
-        let input = TextAreaState::new().with_placeholder("Type a message...");
+        let input = TextAreaState::new().with_placeholder("Type a message... (Ctrl+Enter to send)");
+
+        let mut status = StatusBarState::new();
+        status.set_center(vec![StatusBarItem::new(
+            "Tab: switch focus │ Ctrl+Enter: send",
+        )]);
+
         let llm = LlmClient::from_config(None, None);
         let tools: Vec<Arc<DynTool>> = vec![
             openatrading_core::llm::tools::get_market_overview(),
@@ -77,6 +96,9 @@ impl App for ChatApp {
         let state = AppState {
             conv,
             input,
+            status,
+            focus: FocusManager::with_initial_focus(vec![Focus::Input, Focus::Conversation]),
+            streaming_handle: None,
             msg_tx: None,
             llm,
             tools,
@@ -88,20 +110,20 @@ impl App for ChatApp {
 
     fn update(state: &mut Self::State, msg: Msg) -> Command<Msg> {
         match msg {
-            Msg::Input(m) => {
-                TextArea::update(&mut state.input, m);
-            },
             Msg::Conv(m) => {
                 ConversationView::update(&mut state.conv, m);
             },
+            Msg::Input(m) => {
+                TextArea::update(&mut state.input, m);
+            },
             Msg::SubmitInput => {
-                let text = state.input.value().to_string();
+                let text = state.input.value();
                 if text.trim().is_empty() {
                     return Command::none();
                 }
                 state.input.set_value("");
                 state.conv.push_user(&text);
-                // Queue SpawnLLM on the next tick so the view updates first
+                update_status(state);
                 return Command::message(Msg::SpawnLLM);
             },
             Msg::SpawnLLM => {
@@ -114,26 +136,47 @@ impl App for ChatApp {
                 let system_prompt = state.system_prompt.clone();
                 let llm_messages = collect_llm_messages(&state.conv);
 
+                let handle = state.conv.push_assistant("");
+                state.streaming_handle = Some(handle);
+
                 tokio::spawn(async move {
                     run_llm(tx, llm, tools, system_prompt, llm_messages).await;
                 });
             },
             Msg::LLMChunk(text) => {
-                state.conv.update_last_message(|msg| {
-                    msg.set_blocks(vec![MessageBlock::text(&text)]);
-                    msg.set_streaming(text.len() < 2000);
-                });
+                if let Some(handle) = &state.streaming_handle {
+                    state.conv.update_by_handle(*handle, |msg| {
+                        msg.set_blocks(vec![MessageBlock::text(&text)]);
+                        msg.set_streaming(true);
+                    });
+                }
+                // Only auto-scroll if user hasn't manually scrolled up
+                if state.conv.auto_scroll() {
+                    return Command::message(Msg::Conv(ConversationViewMessage::ScrollToBottom));
+                }
             },
             Msg::LLMDone => {
-                state.conv.update_last_message(|msg| {
-                    msg.set_streaming(false);
-                });
+                if let Some(handle) = &state.streaming_handle {
+                    state.conv.update_by_handle(*handle, |msg| {
+                        msg.set_streaming(false);
+                    });
+                }
+                state.streaming_handle = None;
+                if state.conv.auto_scroll() {
+                    return Command::message(Msg::Conv(ConversationViewMessage::ScrollToBottom));
+                }
             },
             Msg::LLMError(err) => {
-                state.conv.update_last_message(|msg| {
-                    msg.set_blocks(vec![MessageBlock::error(&err)]);
-                    msg.set_streaming(false);
-                });
+                if let Some(handle) = &state.streaming_handle {
+                    state.conv.update_by_handle(*handle, |msg| {
+                        msg.set_blocks(vec![MessageBlock::error(&err)]);
+                        msg.set_streaming(false);
+                    });
+                }
+                state.streaming_handle = None;
+            },
+            Msg::FocusToggle => {
+                state.focus.focus_next();
             },
             Msg::Quit => return Command::quit(),
         }
@@ -144,56 +187,94 @@ impl App for ChatApp {
         let theme = Theme::default();
         let area = frame.area();
 
-        let chunks = Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
+        let chunks = Layout::vertical([
+            Constraint::Min(1),    // Conversation
+            Constraint::Length(3), // Input
+            Constraint::Length(1), // Status bar
+        ])
+        .split(area);
+
+        let conv_focused = state.focus.is_focused(&Focus::Conversation);
+        let input_focused = state.focus.is_focused(&Focus::Input);
 
         ConversationView::view(
             &state.conv,
-            &mut RenderContext::new(frame, chunks[0], &theme).focused(true),
+            &mut RenderContext::new(frame, chunks[0], &theme).focused(conv_focused),
         );
 
         TextArea::view(
             &state.input,
-            &mut RenderContext::new(frame, chunks[1], &theme).focused(true),
+            &mut RenderContext::new(frame, chunks[1], &theme).focused(input_focused),
+        );
+
+        StatusBar::view(
+            &state.status,
+            &mut RenderContext::new(frame, chunks[2], &theme),
         );
     }
 
+    fn handle_event(_event: &Event) -> Option<Msg> {
+        None
+    }
+
     fn handle_event_with_state(state: &Self::State, event: &Event) -> Option<Msg> {
-        // Mouse scroll → scroll the conversation view
+        // Mouse scroll → scroll conversation view regardless of focus
         if let Some(mouse) = event.as_mouse() {
-            return match mouse.kind {
-                MouseEventKind::ScrollUp => Some(Msg::Conv(ConversationViewMessage::ScrollUp)),
-                MouseEventKind::ScrollDown => Some(Msg::Conv(ConversationViewMessage::ScrollDown)),
-                _ => None,
-            };
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    return Some(Msg::Conv(ConversationViewMessage::ScrollUp));
+                },
+                MouseEventKind::ScrollDown => {
+                    return Some(Msg::Conv(ConversationViewMessage::ScrollDown));
+                },
+                _ => {},
+            }
         }
 
         let key = event.as_key()?;
         let ctrl = key.modifiers.ctrl();
 
+        // Global shortcuts
         match key.code {
             Key::Char('q') if ctrl => return Some(Msg::Quit),
-            Key::Char('c') if ctrl => return Some(Msg::Quit),
             Key::Esc => return Some(Msg::Quit),
-            Key::Enter => return Some(Msg::SubmitInput),
+            Key::Tab => return Some(Msg::FocusToggle),
             _ => {},
         }
 
-        TextArea::handle_event(&state.input, event, &EventContext::new().focused(true))
-            .map(Msg::Input)
-            .or_else(|| {
-                ConversationView::handle_event(
-                    &state.conv,
-                    event,
-                    &EventContext::new().focused(true),
-                )
-                .map(Msg::Conv)
-            })
+        // Input-focused
+        if state.focus.is_focused(&Focus::Input) {
+            if (ctrl && key.code == Key::Enter) || key.code == Key::Enter {
+                return Some(Msg::SubmitInput);
+            }
+            return TextArea::handle_event(&state.input, event, &EventContext::new().focused(true))
+                .map(Msg::Input);
+        }
+
+        // Conversation-focused
+        if state.focus.is_focused(&Focus::Conversation) {
+            return ConversationView::handle_event(
+                &state.conv,
+                event,
+                &EventContext::new().focused(true),
+            )
+            .map(Msg::Conv);
+        }
+
+        None
     }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn update_status(state: &mut AppState) {
+    state.status.set_center(vec![StatusBarItem::new(format!(
+        "Messages: {} │ Tab: switch focus │ Ctrl+Enter: send",
+        state.conv.message_count(),
+    ))]);
+}
 
 fn collect_llm_messages(conv: &ConversationViewState) -> Vec<serde_json::Value> {
     let mut msgs = Vec::new();
@@ -279,7 +360,7 @@ async fn run_llm(
 pub async fn run_chat() -> anyhow::Result<()> {
     let mut runtime = Runtime::<ChatApp, _>::terminal_builder()?.build()?;
 
-    // Inject the message sender so spawned LLM tasks can dispatch messages.
+    // Inject msg_tx so spawned LLM tasks can dispatch messages.
     runtime.state_mut().msg_tx = Some(runtime.message_sender());
 
     let _final_state = runtime.run_terminal().await?;
