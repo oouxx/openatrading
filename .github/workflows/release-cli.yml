@@ -23,10 +23,12 @@ jobs:
       - run: cargo build --release -p openatrading-cli --target x86_64-unknown-linux-gnu
         env:
           GIT_VERSION: ${{ github.ref_name }}
+      - name: Rename binary
+        run: cp target/x86_64-unknown-linux-gnu/release/openatrading openatrading-x86_64-unknown-linux-gnu          
       - name: Upload CLI binary
         uses: softprops/action-gh-release@v2
         with:
-          files: target/x86_64-unknown-linux-gnu/release/openatrading
+          files: openatrading-x86_64-unknown-linux-gnu
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
 
