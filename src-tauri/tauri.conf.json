@@ -1,6 +1,6 @@
 {
   "productName": "openatrading",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "identifier": "com.openatrading.app",
   "build": {
     "beforeDevCommand": "cd src && bun run dev",
