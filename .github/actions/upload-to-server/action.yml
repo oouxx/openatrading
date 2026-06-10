@@ -17,5 +17,5 @@ runs:
         for f in ${{ inputs.pattern }}; do
           [ -f "$f" ] || continue
           echo "Uploading: $f"
-          scp -o StrictHostKeyChecking=no "$f" "${server}:'${remote_dir}/'"
+          scp -o StrictHostKeyChecking=no "$f" "${server}:${remote_dir}/"
         done
