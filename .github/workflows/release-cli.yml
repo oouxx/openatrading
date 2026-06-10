@@ -11,6 +11,9 @@ permissions:
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
+  UPLOAD_SERVER_HOST: ${{ secrets.UPLOAD_SERVER_HOST }}
+  UPLOAD_SERVER_USER: ${{ secrets.UPLOAD_SERVER_USER }}
+  UPLOAD_SERVER_PATH: ${{ secrets.UPLOAD_SERVER_PATH }}
 
 jobs:
   build-cli-linux-amd64:
@@ -31,6 +34,16 @@ jobs:
           files: openatrading-x86_64-unknown-linux-gnu
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+      - name: Setup SSH agent for server upload
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
+      - name: Upload to server
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: ./.github/actions/upload-to-server
+        with:
+          pattern: openatrading-x86_64-unknown-linux-gnu
 
   build-cli-linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -54,6 +67,16 @@ jobs:
           files: openatrading-aarch64-unknown-linux-gnu
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+      - name: Setup SSH agent for server upload
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
+      - name: Upload to server
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: ./.github/actions/upload-to-server
+        with:
+          pattern: openatrading-aarch64-unknown-linux-gnu
 
   build-cli-macos:
     strategy:
@@ -77,3 +100,13 @@ jobs:
           files: openatrading-${{ matrix.target }}
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+      - name: Setup SSH agent for server upload
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
+      - name: Upload to server
+        if: env.UPLOAD_SERVER_HOST != ''
+        uses: ./.github/actions/upload-to-server
+        with:
+          pattern: openatrading-${{ matrix.target }}
