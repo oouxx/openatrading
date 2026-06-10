@@ -13,7 +13,6 @@ services:
       - TZ=Asia/Shanghai
     volumes:
       - ~/.atrading:/root/.atrading
-      - ./downloads:/app/downloads
     restart: unless-stopped
 
   frontend:
@@ -26,6 +25,7 @@ services:
       - "443:443"
     volumes:
       - /root/certs:/etc/ssl/cloudflare:ro
+      - ./downloads:/app/downloads
     restart: unless-stopped
 
   akshare-mcp:
