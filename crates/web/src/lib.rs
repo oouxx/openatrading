@@ -1,6 +1,5 @@
 pub mod cache;
 pub mod chat;
-pub mod download;
 pub mod gateway;
 pub mod handlers;
 
@@ -103,8 +102,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/dragon-tiger/stock-seat",
             get(handlers::get_dragon_tiger_stock_seat),
         )
-        .route("/install.sh", get(download::serve_install_sh))
-        .route("/downloads/:file", get(download::serve_download))
         .with_state(state)
         .layer(cors)
         .layer(
