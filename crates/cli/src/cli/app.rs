@@ -96,6 +96,8 @@ pub enum Commands {
         #[command(subcommand)]
         action: TradeAction,
     },
+    /// 卸载 openatrading（服务、配置、二进制）
+    Uninstall,
     /// 诊断当前服务状态
     Doctor {
         /// 输出 JSON 格式
