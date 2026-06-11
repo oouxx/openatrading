@@ -6,6 +6,7 @@ pub mod mcp_cmd;
 pub mod skills_cmd;
 pub mod tools_cmd;
 pub mod trade_cmd;
+pub mod uninstall_cmd;
 pub mod update;
 
 use anyhow::Result;
@@ -26,6 +27,7 @@ use crate::cli::mcp_cmd::{cmd_mcp_call, cmd_mcp_list, cmd_mcp_status};
 use crate::cli::skills_cmd::{cmd_skills_install, cmd_skills_list, cmd_skills_uninstall};
 use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
+use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
 use openatrading_core::agents::sentiment::analyze_sentiment;
 use openatrading_core::api::xuangubao::XuanguBaoClient;
@@ -106,6 +108,11 @@ pub async fn run() -> Result<()> {
     // Handle `init` subcommand
     if let Some(Commands::Init) = cli.command {
         return cmd_init();
+    }
+
+    // Handle `uninstall` subcommand
+    if let Some(Commands::Uninstall) = cli.command {
+        return cmd_uninstall();
     }
 
     // Handle `gateway` subcommand
