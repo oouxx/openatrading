@@ -97,9 +97,7 @@ impl MemoryStore for SqliteMemoryStore {
         for s in &snapshots {
             ctx.push_str(&format!(
                 "- {} | {} | {}\n",
-                s.captured_at,
-                s.data_source,
-                &s.raw_json.chars().take(200).collect::<String>()
+                s.captured_at, s.data_source, &s.raw_json
             ));
         }
         Ok(ctx)

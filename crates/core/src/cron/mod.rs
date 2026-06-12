@@ -256,6 +256,35 @@ async fn run_collection(
         },
     }
 
+    match api.xuangubao.fetch_super_stock().await {
+        Ok(stocks) => {
+            let json = serde_json::to_string(&stocks).unwrap_or_else(|_| "[]".into());
+            memory.save_snapshot("xuangubao_super_stock", &json)?;
+            sources.push("xuangubao_super_stock".into());
+            snapshot_count += 1;
+        },
+        Err(e) => {
+            tracing::warn!("[cron] collection: fetch super_stock failed: {e}");
+        },
+    }
+
+    {
+        let date = crate::utils::time::beijing_now()
+            .format("%Y-%m-%d")
+            .to_string();
+        match api.jiuyan.fetch_field_str(&date, "1").await {
+            Ok(data) => {
+                let json = serde_json::to_string(&data).unwrap_or_else(|_| "{}".into());
+                memory.save_snapshot("jiuyan_field_items", &json)?;
+                sources.push("jiuyan_field_items".into());
+                snapshot_count += 1;
+            },
+            Err(e) => {
+                tracing::warn!("[cron] collection: fetch jiuyan field failed: {e}");
+            },
+        }
+    }
+
     let summary = CollectSummary {
         timestamp: crate::utils::time::beijing_now().naive_local(),
         sources,
