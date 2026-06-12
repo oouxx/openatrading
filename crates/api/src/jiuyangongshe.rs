@@ -454,9 +454,9 @@ impl JiuYanSession {
             guard.refreshing.store(false, Ordering::SeqCst);
         }
 
-        println!(
-            "✅韭研公社登录成功 (token: {}...)",
-            &session_token[..16.min(session_token.len())]
+        tracing::info!(
+            token_prefix = %&session_token[..16.min(session_token.len())],
+            "jiuyangongshe login succeeded"
         );
         Ok(creds)
     }

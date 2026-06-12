@@ -84,6 +84,32 @@ const ALL_DATA_SOURCES: &[&str] = &[
     "market_trend",
 ];
 
+/// Initialize a file-based tracing subscriber for the `chat` TUI.
+///
+/// TUI 独占终端，任何写到 stdout/stderr 的日志都会破坏 alternate screen 渲染。
+/// 这里把日志全部落盘到 `$ATRADING_HOME/logs/tui.log`，默认 level info，
+/// 可被 `RUST_LOG` 覆盖。返回的 guard 必须保持在调用栈上以确保日志刷新。
+fn init_chat_file_logger() -> Result<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+    let log_dir = openatrading_core::atrading_home().join("logs");
+    std::fs::create_dir_all(&log_dir)?;
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "tui.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false),
+        )
+        .try_init();
+
+    Ok(guard)
+}
+
 pub async fn run() -> Result<()> {
     dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
@@ -102,6 +128,7 @@ pub async fn run() -> Result<()> {
 
     // Handle `chat` subcommand
     if let Some(Commands::Chat) = cli.command {
+        let _guard = init_chat_file_logger()?;
         return openatrading_tui::chat::run_chat().await;
     }
 

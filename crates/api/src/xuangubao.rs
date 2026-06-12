@@ -556,9 +556,9 @@ impl XuanguBaoClient {
         all_events.sort_by_key(|e| e.event_timestamp);
         all_events.dedup_by_key(|e| e.id);
 
-        eprintln!(
-            "[replay] fetch_all_day_events done: {} events",
-            all_events.len()
+        tracing::debug!(
+            count = all_events.len(),
+            "xuangubao::fetch_all_day_events done"
         );
         Ok(all_events)
     }
@@ -601,9 +601,9 @@ impl XuanguBaoClient {
         all_events.sort_by_key(|e| e.event_timestamp);
         all_events.dedup_by_key(|e| e.id);
 
-        eprintln!(
-            "[replay] fetch_all_day_events done: {} events",
-            all_events.len()
+        tracing::debug!(
+            count = all_events.len(),
+            "xuangubao::fetch_all_day_events done"
         );
         Ok(all_events)
     }
@@ -1237,11 +1237,11 @@ impl XuanguBaoClient {
         let items = resp["NewMsgs"].as_array().cloned().unwrap_or_default();
         // Debug: log first and last item timestamps
         if let (Some(first), Some(last)) = (items.first(), items.last()) {
-            eprintln!(
-                "[replay] fetch_news_stream raw: first_ts={:?} last_ts={:?} first_id={:?}",
-                first["CreatedAtInSec"].as_i64(),
-                last["CreatedAtInSec"].as_i64(),
-                first["Id"].as_str(),
+            tracing::debug!(
+                first_ts = ?first["CreatedAtInSec"].as_i64(),
+                last_ts = ?last["CreatedAtInSec"].as_i64(),
+                first_id = ?first["Id"].as_str(),
+                "xuangubao::fetch_news_stream raw"
             );
         }
         let result: Vec<NewsItem> = items
@@ -1266,9 +1266,11 @@ impl XuanguBaoClient {
             .as_str()
             .and_then(|s| s.parse::<i64>().ok());
         let next_msg = resp["TailMsgId"].as_str().map(|s| s.to_string());
-        eprintln!(
-            "[replay] fetch_news_stream: tailmark={tailmark:?} → {} items, next_tail={next_tail:?}",
-            result.len()
+        tracing::debug!(
+            ?tailmark,
+            count = result.len(),
+            ?next_tail,
+            "xuangubao::fetch_news_stream"
         );
         Ok((result, next_tail, next_msg))
     }
