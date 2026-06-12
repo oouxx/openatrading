@@ -18,8 +18,8 @@ db_path = "data.db"
 # cron 表达式为 6 字段：秒 分 时 日 月 周
 [cron]
 enabled = true
-collection_schedule = "0 */30 9-15 * * 1-5"
-decision_schedule = "0 0 0 * * 1-5"
+collection_schedule = "0 0 18 * * 1-5"
+decision_schedule = "0 */30 9-15 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── 社交平台通知 ──────────────────────────────────────────
