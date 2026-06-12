@@ -14,7 +14,6 @@ openatrading 是一个 A 股市场异动追踪工具。
   openatrading --data limit_up,overview  # 只获取涨停和市场概览
   openatrading --data cls_telegraph --ai # 获取财联社电报并 AI 分析
   openatrading init                          # 初始化 ~/.atrading/ 配置目录
-  openatrading --role zarili --ai            # 指定角色运行 AI 分析
   openatrading --list-roles                  # 列出所有可用角色
 
 环境变量:
@@ -171,12 +170,18 @@ pub enum McpAction {
 
 #[derive(Subcommand)]
 pub enum SkillAction {
-    /// 列出所有可安装的技能
+    /// 列出已安装的技能
     List,
-    /// 安装一个内置技能
+    /// 安装一个技能（文件路径、URL 或直接粘贴内容）
     Install {
-        /// 技能名称
+        /// 技能名称（用于卸载时指定）
+        #[arg(long)]
         name: String,
+        /// 文件路径、URL 或 SKILL.md 内容
+        source: String,
+        /// 从 URL 下载
+        #[arg(long)]
+        url: bool,
     },
     /// 卸载已安装的技能
     Uninstall {

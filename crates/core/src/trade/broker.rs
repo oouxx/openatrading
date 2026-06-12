@@ -1,9 +1,7 @@
+use crate::api::Client as ApiClient;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::TradeInstruction;
-const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
-const MAX_TOTAL_POSITION_RATIO: f64 = 0.9;
-const MIN_SHARES: i64 = 100;
-use crate::api::Client as ApiClient;
+use crate::trade::paper::PaperBroker;
 use crate::trade::{Position, TradeManager};
 use anyhow::Result;
 
@@ -13,21 +11,7 @@ pub async fn execute_buy(
     role_name: &str,
     instr: &TradeInstruction,
 ) -> Result<()> {
-    if instr.shares < MIN_SHARES {
-        anyhow::bail!(
-            "shares {} is less than minimum {}",
-            instr.shares,
-            MIN_SHARES
-        );
-    }
-
-    if instr.shares % MIN_SHARES != 0 {
-        anyhow::bail!(
-            "shares {} is not a multiple of {}",
-            instr.shares,
-            MIN_SHARES
-        );
-    }
+    let broker = PaperBroker::default();
 
     let quote = api
         .xuangubao
@@ -35,12 +19,13 @@ pub async fn execute_buy(
         .await
         .map_err(|e| anyhow::anyhow!("fetch realtime for {} failed: {e}", instr.symbol))?;
 
-    let price = quote.last_px;
-    if price <= 0.0 {
-        anyhow::bail!("invalid price {} for {}", price, instr.symbol);
+    let last_price = quote.last_px;
+    if last_price <= 0.0 {
+        anyhow::bail!("invalid price {} for {}", last_price, instr.symbol);
     }
 
-    let cost = price * instr.shares as f64;
+    let exec_price = broker.buy_price(last_price);
+    let shares = PaperBroker::round_shares(instr.shares);
 
     let current_positions = trade.list_positions(role_name)?;
     let total_position_value: f64 = current_positions
@@ -53,25 +38,12 @@ pub async fn execute_buy(
         .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
         .sum();
 
-    if cost + same_symbol_value > INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO {
-        anyhow::bail!(
-            "single stock position {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
-            same_symbol_value,
-            cost,
-            INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO,
-            (MAX_SINGLE_POSITION_RATIO * 100.0) as i32
-        );
-    }
+    broker
+        .validate_buy(shares, exec_price, same_symbol_value, total_position_value)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    if total_position_value + cost > INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO {
-        anyhow::bail!(
-            "total position value {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
-            total_position_value,
-            cost,
-            INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO,
-            (MAX_TOTAL_POSITION_RATIO * 100.0) as i32
-        );
-    }
+    let (_, commission) = broker.buy_cost(exec_price, shares);
+    let total_deduct = exec_price * shares as f64 + commission;
 
     let today = crate::utils::time::beijing_now()
         .format("%Y-%m-%d")
@@ -83,25 +55,26 @@ pub async fn execute_buy(
         symbol: instr.symbol.clone(),
         stock_name: instr.name.clone(),
         entry_date: today,
-        cost_price: price,
-        shares: instr.shares,
-        current_price: Some(price),
+        cost_price: exec_price,
+        shares,
+        current_price: Some(exec_price),
         stop_loss: None,
         target_price: None,
         entry_reason: instr.reason.clone(),
         sector: String::new(),
-        position_pct: cost / INITIAL_CAPITAL,
+        position_pct: total_deduct / INITIAL_CAPITAL,
         created_at: String::new(),
         updated_at: String::new(),
     };
 
     let position_id = trade.add_position(pos)?;
     tracing::info!(
-        "[cron] BUY {} {} {}shares @ {:.2} — {} (position_id={})",
+        "[cron] BUY {} {} {}shares @ {:.2} (last={:.2}) — {} (position_id={})",
         instr.symbol,
         instr.name,
-        instr.shares,
-        price,
+        shares,
+        exec_price,
+        last_price,
         instr.reason,
         position_id
     );
@@ -115,6 +88,7 @@ pub async fn execute_sell(
     role_name: &str,
     instr: &TradeInstruction,
 ) -> Result<()> {
+    let broker = PaperBroker::default();
     let positions = trade.list_positions(role_name)?;
 
     let matching: Vec<&Position> = positions
@@ -122,26 +96,23 @@ pub async fn execute_sell(
         .filter(|p| p.symbol == instr.symbol)
         .collect();
 
-    if matching.is_empty() {
-        anyhow::bail!(
-            "no open position found for {} in role {}",
-            instr.symbol,
-            role_name
-        );
-    }
+    PaperBroker::validate_sell(&instr.symbol, matching.len() as i64)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     for pos in matching {
-        let sell_price = match api.xuangubao.fetch_realtime(&pos.symbol).await {
+        let last_price = match api.xuangubao.fetch_realtime(&pos.symbol).await {
             Ok(quote) if quote.last_px > 0.0 => quote.last_px,
             _ => pos.current_price.unwrap_or(pos.cost_price),
         };
-        trade.close_position(pos.id, sell_price, &instr.reason)?;
+        let exec_price = broker.sell_price(last_price);
+        trade.close_position(pos.id, exec_price, &instr.reason)?;
         tracing::info!(
-            "[cron] SELL {} {} (id={}) @ {:.2} — {}",
+            "[cron] SELL {} {} (id={}) @ {:.2} (last={:.2}) — {}",
             pos.symbol,
             pos.stock_name,
             pos.id,
-            sell_price,
+            exec_price,
+            last_price,
             instr.reason
         );
     }

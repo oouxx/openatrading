@@ -377,24 +377,12 @@ pub fn cmd_init() -> Result<()> {
     std::fs::write(atrading.join("config.toml"), DEFAULT_CONFIG_TOML)?;
 
     // Create skills dir with default zarili strategy
-    let skills_dir = atrading.join("skills").join("zarili");
+    let skills_dir = atrading.join("skills");
     std::fs::create_dir_all(&skills_dir)?;
-    std::fs::write(
-        skills_dir.join("SKILL.md"),
-        "---\nname: zarili\ndescription: zarili量价派\n---\n\n# zarili 量价派策略\n\n你是一个A股量价低吸派实战交易者。\n\n## 择时体系\n- 市场温度 > 60 积极做多\n- 市场温度 30-60 谨慎\n- 市场温度 < 30 空仓或极小仓位\n\n## 选股体系\n- 选股池：涨停股、强势股\n- 首板、二板晋级\n- 量价配合良好\n\n## 买卖体系\n- 低吸为主，不追高\n- 分时均线附近建仓\n- 跌破止损位立即离场\n\n## 风控体系\n- 单票仓位不超过 30%\n- 总仓位根据市场温度动态调整\n- 连板晋级率 < 30% 不开新仓",
-
-    )?;
 
     eprintln!("✅ 已初始化 {}", atrading.display());
     eprintln!("   配置文件: {}", atrading.join("config.toml").display());
-    eprintln!(
-        "   策略文件: {}",
-        atrading
-            .join("skills")
-            .join("zarili")
-            .join("SKILL.md")
-            .display()
-    );
-    eprintln!("   (可运行 `openatrading skills list` 查看更多可安装技能)");
+
+    eprintln!("   (可运行 `openatrading skills install` 查看更多可安装技能)");
     Ok(())
 }

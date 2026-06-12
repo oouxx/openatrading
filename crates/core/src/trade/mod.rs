@@ -59,6 +59,7 @@ pub struct ClosedPosition {
 }
 
 pub mod broker;
+pub mod paper;
 pub mod sqlite;
 
 pub trait TradeManager: Send + Sync {
