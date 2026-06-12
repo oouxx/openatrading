@@ -11,6 +11,16 @@ use openatrading_core::llm::{
     create_agent, pi_ai_types::ContentBlock, AgentEvent, AgentMessage, DynTool, LlmClient,
 };
 
+/// Chat 子命令运行所需的依赖，由 CLI 层根据 `AppConfig` 构建后注入。
+///
+/// 与 `cmd_decision` / `web::ai_chat` 走同一套装配：`LlmClient::from_config` +
+/// `build_tools(ToolConfig)` + `SkillRegistry::build_chat_prompt`。
+pub struct ChatArgs {
+    pub llm: LlmClient,
+    pub tools: Vec<Arc<DynTool>>,
+    pub system_prompt: String,
+}
+
 // ---------------------------------------------------------------------------
 // Focus
 // ---------------------------------------------------------------------------
@@ -64,9 +74,9 @@ pub struct ChatApp;
 impl App for ChatApp {
     type State = AppState;
     type Message = Msg;
-    type Args = ();
+    type Args = ChatArgs;
 
-    fn init(_: ()) -> (Self::State, Command<Msg>) {
+    fn init(args: ChatArgs) -> (Self::State, Command<Msg>) {
         let conv = ConversationViewState::new()
             .with_markdown(true)
             .with_show_role_labels(true)
@@ -79,20 +89,6 @@ impl App for ChatApp {
             "Tab: switch focus │ Ctrl+Enter: send",
         )]);
 
-        let llm = LlmClient::from_config(None, None);
-        let tools: Vec<Arc<DynTool>> = vec![
-            openatrading_core::llm::tools::get_market_overview(),
-            openatrading_core::llm::tools::get_limit_up(),
-            openatrading_core::llm::tools::get_limit_down(),
-            openatrading_core::llm::tools::get_super_stock(),
-            openatrading_core::llm::tools::get_yesterday_limit_up(),
-            openatrading_core::llm::tools::get_dapan_abnormal(),
-            openatrading_core::llm::tools::get_realtime_quote(),
-            openatrading_core::llm::tools::get_telegraph(),
-        ];
-        let system_prompt =
-            "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。".to_string();
-
         let state = AppState {
             conv,
             input,
@@ -100,9 +96,9 @@ impl App for ChatApp {
             focus: FocusManager::with_initial_focus(vec![Focus::Input, Focus::Conversation]),
             streaming_handle: None,
             msg_tx: None,
-            llm,
-            tools,
-            system_prompt,
+            llm: args.llm,
+            tools: args.tools,
+            system_prompt: args.system_prompt,
         };
 
         (state, Command::none())
@@ -357,8 +353,10 @@ async fn run_llm(
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub async fn run_chat() -> anyhow::Result<()> {
-    let mut runtime = Runtime::<ChatApp, _>::terminal_builder()?.build()?;
+pub async fn run_chat(args: ChatArgs) -> anyhow::Result<()> {
+    let mut runtime = Runtime::<ChatApp, _>::terminal_builder()?
+        .with_args(args)
+        .build()?;
 
     // Inject msg_tx so spawned LLM tasks can dispatch messages.
     runtime.state_mut().msg_tx = Some(runtime.message_sender());
