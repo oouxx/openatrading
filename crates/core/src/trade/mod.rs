@@ -58,6 +58,7 @@ pub struct ClosedPosition {
     pub exit_reason: String,
 }
 
+pub mod broker;
 pub mod sqlite;
 
 pub trait TradeManager: Send + Sync {
@@ -75,3 +76,6 @@ pub trait TradeManager: Send + Sync {
     fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>>;
     fn get_closed_positions(&self, role_name: &str, limit: usize) -> Result<Vec<ClosedPosition>>;
 }
+
+pub use broker::execute_buy;
+pub use broker::execute_sell;
