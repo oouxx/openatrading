@@ -35,10 +35,10 @@ fn default_true() -> bool {
     true
 }
 fn default_collection_schedule() -> String {
-    "0 */30 9-15 * * 1-5".into()
+    "0 0 18 * * 1-5".into()
 }
 fn default_decision_schedule() -> String {
-    "0 0 0 * * 1-5".into()
+    "0 */30 9-15 * * 1-5".into()
 }
 fn default_news_schedule() -> String {
     "0 */5 9-15 * * 1-5".into()
