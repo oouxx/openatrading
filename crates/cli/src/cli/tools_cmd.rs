@@ -11,16 +11,17 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     let mcp = openatrading_core::llm::McpRegistry::single(endpoint);
     all_tools.extend(mcp.discover().await);
 
-    // ── Group by skill ─────────────────────────────────
-    let skills = openatrading_core::skills::SkillRegistry::builtin_skills();
+    // ── Group by installed skills ───────────────────────
+    let reg = openatrading_core::skills::SkillRegistry::from_disk();
+    let skills = reg.skills().to_vec();
 
     let mut out = String::new();
-    out.push_str("# 工具参考文档\n\n本文档列出 LLM 可用的所有工具，按技能分组。\n\n---\n\n");
+    out.push_str("# 工具参考文档\n\n本文档列出 LLM 可用的所有工具，按已安装技能分组。\n\n---\n\n");
 
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for skill in &skills {
-        out.push_str(&format!("## {}\n\n{}  \n\n", skill.name, skill.description));
+        out.push_str(&format!("## {}\n\n  \n\n", skill.name));
         out.push_str("| 工具 | 说明 | 参数 |\n|------|------|------|\n");
 
         let mut count = 0;

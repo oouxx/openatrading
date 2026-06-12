@@ -734,10 +734,7 @@ async fn api_chat_stream(
     let api = state.api.clone();
     let roles = state.roles.clone();
 
-    let role_name = body
-        .get("role")
-        .and_then(|v| v.as_str())
-        .unwrap_or("zarili");
+    let role_name = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
     eprintln!("[chat_stream] role={role_name}");
 
     eprintln!("[chat_stream] fetching overview...");

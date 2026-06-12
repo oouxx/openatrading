@@ -165,7 +165,7 @@ pub async fn ai_chat(
             .all_tools()
             .to_vec();
 
-    let role_name = req.role.as_deref().unwrap_or("zarili");
+    let role_name = req.role.as_deref().unwrap_or("");
     let roles_guard = state.roles.read().await;
     let strategy_text = roles_guard
         .iter()

@@ -24,7 +24,9 @@ use crate::cli::gateway_cmd::{
     cmd_gateway_uninstall,
 };
 use crate::cli::mcp_cmd::{cmd_mcp_call, cmd_mcp_list, cmd_mcp_status};
-use crate::cli::skills_cmd::{cmd_skills_install, cmd_skills_list, cmd_skills_uninstall};
+use crate::cli::skills_cmd::{
+    cmd_skills_install, cmd_skills_install_url, cmd_skills_list, cmd_skills_uninstall,
+};
 use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::uninstall_cmd::cmd_uninstall;
@@ -251,7 +253,13 @@ pub async fn run() -> Result<()> {
     if let Some(Commands::Skills { action }) = cli.command {
         return match action {
             SkillAction::List => cmd_skills_list(),
-            SkillAction::Install { name } => cmd_skills_install(&name),
+            SkillAction::Install { name, source, url } => {
+                if url {
+                    cmd_skills_install_url(&name, &source).await
+                } else {
+                    cmd_skills_install(&name, &source)
+                }
+            },
             SkillAction::Uninstall { name } => cmd_skills_uninstall(&name),
         };
     }
