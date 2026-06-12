@@ -110,6 +110,57 @@ fn init_chat_file_logger() -> Result<tracing_appender::non_blocking::WorkerGuard
     Ok(guard)
 }
 
+/// 用 `AppConfig` 装配 chat TUI 的依赖：LLM 客户端、工具集、system prompt。
+///
+/// 与 `cmd_decision` / `web::ai_chat` 保持一致：通过 `LlmClient::from_config`
+/// 解析 LLM provider/model；通过 `build_tools(ToolConfig)` 构建市场工具 + MCP 工具
+/// + decision 工具；通过 `SkillRegistry::build_chat_prompt` 生成 system prompt。
+async fn build_chat_args(app_config: &AppConfig) -> openatrading_tui::chat::ChatArgs {
+    let llm = LlmClient::from_config(
+        app_config.llm.provider.as_deref(),
+        app_config.llm.model.as_deref(),
+    );
+
+    let tool_cfg = openatrading_core::llm::ToolConfig {
+        mcp_servers: app_config.mcp_servers.clone(),
+    };
+    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
+        openatrading_core::llm::build_tools(&tool_cfg)
+            .await
+            .all_tools()
+            .to_vec();
+
+    let strategy_text = app_config
+        .default_role
+        .as_deref()
+        .and_then(|name| app_config.roles.iter().find(|r| r.name == name))
+        .or_else(|| app_config.roles.first())
+        .and_then(|entry| {
+            let skill_path = openatrading_core::roles::default_skills_dir()
+                .join(&entry.name)
+                .join("SKILL.md");
+            std::fs::read_to_string(&skill_path).ok().and_then(|raw| {
+                let (_, body) = openatrading_core::roles::parse_frontmatter(&raw);
+                if body.is_empty() {
+                    None
+                } else {
+                    Some(body.to_string())
+                }
+            })
+        })
+        .unwrap_or_else(|| {
+            "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。".to_string()
+        });
+
+    let system_prompt = openatrading_core::skills::SkillRegistry::build_chat_prompt(&strategy_text);
+
+    openatrading_tui::chat::ChatArgs {
+        llm,
+        tools,
+        system_prompt,
+    }
+}
+
 pub async fn run() -> Result<()> {
     dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
@@ -129,7 +180,9 @@ pub async fn run() -> Result<()> {
     // Handle `chat` subcommand
     if let Some(Commands::Chat) = cli.command {
         let _guard = init_chat_file_logger()?;
-        return openatrading_tui::chat::run_chat().await;
+        let app_config = AppConfig::load()?;
+        let chat_args = build_chat_args(&app_config).await;
+        return openatrading_tui::chat::run_chat(chat_args).await;
     }
 
     // Handle `init` subcommand

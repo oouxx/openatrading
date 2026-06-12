@@ -1,13 +1,21 @@
 use envision::harness::AppHarness;
 
-use openatrading_tui::chat::{ChatApp, Msg};
+use openatrading_tui::chat::{ChatApp, ChatArgs, Msg};
 
 const WIDTH: u16 = 80;
 const HEIGHT: u16 = 24;
 
+fn test_args() -> ChatArgs {
+    ChatArgs {
+        llm: openatrading_core::llm::LlmClient::from_config(None, None),
+        tools: Vec::new(),
+        system_prompt: String::new(),
+    }
+}
+
 /// Helper: create an AppHarness, type input, render, return screen text.
 async fn run_with_input(groups: Vec<(&str, u64)>) -> String {
-    let mut harness = AppHarness::<ChatApp>::new(WIDTH, HEIGHT).unwrap();
+    let mut harness = AppHarness::<ChatApp>::with_args(WIDTH, HEIGHT, test_args()).unwrap();
 
     for (text, _delay) in groups {
         if text == "\x1b" {
