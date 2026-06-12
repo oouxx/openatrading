@@ -352,7 +352,7 @@ impl TgbClient {
         for result in [p1, p2, p3] {
             match result {
                 Ok(list) => items.extend(list),
-                Err(e) => eprintln!("获取淘股吧推荐页失败: {}", e),
+                Err(e) => tracing::warn!(error = %e, "taoguba: 获取推荐页失败"),
             }
         }
 
@@ -403,13 +403,13 @@ fn parse_stats(text: &str) -> (i32, i32) {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str) -> Result<()> {
-    println!("📥 正在获取用户 {} 的帖子...", user_id);
+    tracing::info!(%user_id, "taoguba: 获取用户帖子");
 
     let (posts, username) = client.fetch_user_posts(user_id).await?;
-    println!("✅ 获取到 {} 篇帖子", posts.len());
+    tracing::info!(count = posts.len(), "taoguba: 获取帖子完成");
 
     if posts.is_empty() {
-        println!("⚠️ 未获取到帖子");
+        tracing::warn!(%user_id, "taoguba: 未获取到帖子");
         return Ok(());
     }
 
@@ -435,12 +435,17 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             continue;
         }
 
-        println!("📝 获取第 {}/{} 篇: {}", i + 1, posts.len(), post.title);
+        tracing::debug!(
+            index = i + 1,
+            total = posts.len(),
+            title = %post.title,
+            "taoguba: 获取帖子"
+        );
 
         let (content, create_time) = match client.fetch_post_content(&post.id).await {
             Ok((c, t)) => (c, t),
             Err(e) => {
-                eprintln!("获取帖子内容失败: {}", e);
+                tracing::warn!(error = %e, post_id = %post.id, "taoguba: 获取帖子内容失败");
                 (String::new(), String::new())
             },
         };
@@ -477,12 +482,12 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
     );
     fs::write(user_dir.join("user.md"), user_md).await?;
 
-    println!(
-        "✅ 用户 {} ({}) 的 {} 篇帖子已保存到: {}",
-        user_id,
-        username,
-        posts.len(),
-        user_dir.display()
+    tracing::info!(
+        %user_id,
+        %username,
+        count = posts.len(),
+        path = %user_dir.display(),
+        "taoguba: 用户帖子保存完成"
     );
     Ok(())
 }

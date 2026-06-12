@@ -105,14 +105,14 @@ impl ClsClient {
         }
         let querystr = get_search_params(params);
         let url = format!("{}?{}", api_url, querystr);
-        eprintln!("[cls::telegraph] GET {}", url);
+        tracing::debug!(%url, "cls::telegraph GET");
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
         let body_text = resp.text().await?;
-        eprintln!(
-            "[cls::telegraph] status={}, body={}",
-            status,
-            &body_text.chars().take(500).collect::<String>()
+        tracing::debug!(
+            status = %status,
+            body_preview = %body_text.chars().take(500).collect::<String>(),
+            "cls::telegraph response"
         );
         let resp_data: ClsTelegraphResp = serde_json::from_str(&body_text)?;
         Ok(resp_data.data.roll_data)
@@ -159,7 +159,7 @@ impl ClsClient {
 
         all_items.sort_by_key(|i| i.ctime.unwrap_or(0));
         all_items.dedup_by_key(|i| i.id);
-        eprintln!("[cls] fetch_telegraph_allday: {} items", all_items.len());
+        tracing::debug!(count = all_items.len(), "cls::fetch_telegraph_allday done");
         Ok(all_items)
     }
 }

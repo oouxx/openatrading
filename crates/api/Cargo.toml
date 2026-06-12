@@ -20,6 +20,7 @@ url = { workspace = true }
 md5 = { workspace = true }
 sha1 = { workspace = true }
 futures = { workspace = true }
+tracing = "0.1"
 thiserror = "2"
 html2text = "0.12"
 [dev-dependencies]
