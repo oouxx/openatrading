@@ -217,26 +217,6 @@ impl LlmClient {
         Ok(Box::pin(result_stream))
     }
 
-    pub async fn chat_with_tools(&self, body_json: &str) -> Result<ToolChatResponse> {
-        let body: serde_json::Value = serde_json::from_str(body_json).unwrap_or_default();
-        let messages = body.get("messages").cloned().unwrap_or_default();
-        let tools = body.get("tools").cloned();
-
-        let context = json_to_context(&messages, tools.as_ref());
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let msg = stream::complete(&self.model, &context, Some(options))
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        Ok(assistant_message_to_tool_response(&msg))
-    }
-
     pub async fn chat_simple(
         &self,
         context: &Context,
@@ -526,49 +506,6 @@ fn event_stream_to_tool_stream(
                 yield Ok(events);
             }
         }
-    }
-}
-
-fn assistant_message_to_tool_response(msg: &AssistantMessage) -> ToolChatResponse {
-    let mut tool_calls = Vec::new();
-    let mut content_text = None;
-
-    for block in &msg.content {
-        match block {
-            ContentBlock::Text { text, .. } => {
-                content_text = Some(text.clone());
-            },
-            ContentBlock::ToolCall {
-                id,
-                name,
-                arguments,
-                ..
-            } => {
-                tool_calls.push(ToolCallItem {
-                    id: id.clone(),
-                    call_type: Some("function".to_string()),
-                    function: ToolCallFunction {
-                        name: name.clone(),
-                        arguments: arguments.to_string(),
-                    },
-                });
-            },
-            _ => {},
-        }
-    }
-
-    ToolChatResponse {
-        choices: vec![ToolChatChoice {
-            message: ToolCallMessage {
-                role: Some("assistant".to_string()),
-                content: content_text,
-                tool_calls: if tool_calls.is_empty() {
-                    None
-                } else {
-                    Some(tool_calls)
-                },
-            },
-        }],
     }
 }
 
