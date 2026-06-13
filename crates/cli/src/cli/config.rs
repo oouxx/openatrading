@@ -352,17 +352,6 @@ impl AppConfig {
             });
         }
     }
-
-    pub fn list_roles(&self) {
-        println!("{:<20} {:<10}", "name", "readonly");
-        println!("{}", "-".repeat(30));
-        for entry in &self.roles {
-            println!("{:<20} {}", entry.name, entry.readonly);
-        }
-        if let Some(ref default) = self.default_role {
-            println!("\ndefault_role: {default}");
-        }
-    }
 }
 
 pub fn cmd_init() -> Result<()> {

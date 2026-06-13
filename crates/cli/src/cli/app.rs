@@ -23,50 +23,6 @@ openatrading 是一个 A 股市场异动追踪工具。
   JIUYAN_PHONE      韭研公社登录手机号
 "#)]
 pub struct Cli {
-    /// 输出 JSON 格式
-    #[arg(long, group = "format")]
-    pub json: bool,
-
-    /// 输出 Markdown 格式（默认）
-    #[arg(long, group = "format")]
-    pub markdown: bool,
-
-    /// 输出 HTML 格式
-    #[arg(long, group = "format")]
-    pub html: bool,
-
-    /// 输出到文件（默认 stdout）
-    #[arg(short, long)]
-    pub output: Option<String>,
-
-    /// 数据源，逗号分隔
-    /// 可选: limit_up, limit_down, super_stock, field_item, overview,
-    ///       plate_abnormal, timeline, community, sentiment, technical,
-    ///       cls_telegraph, dapan_abnormal, market_trend
-    /// 默认: 全部
-    #[arg(short, long, value_delimiter = ',')]
-    pub data: Option<Vec<String>>,
-
-    /// 启用 AI 分析
-    #[arg(long)]
-    pub ai: bool,
-
-    /// 淘股吧用户 ID（community 数据源使用）
-    #[arg(long)]
-    pub tgb_user: Option<String>,
-
-    /// 财联社电报分类（cls_telegraph 数据源使用）
-    #[arg(long)]
-    pub cls_category: Option<String>,
-
-    /// 指定角色名（对应 config.toml 中 [[roles]].name）
-    #[arg(long)]
-    pub role: Option<String>,
-
-    /// 列出所有可用角色
-    #[arg(long)]
-    pub list_roles: bool,
-
     /// 显示版本号
     #[arg(short = 'V', long)]
     pub version: bool,

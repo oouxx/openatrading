@@ -1,48 +1,120 @@
 # CLAUDE.md
-## 项目原型设计
-./opendesign
-## 技术架构
-前端 bun, react
-后端 rust, axum
-## 执行完任务提问是否提交代码
-## 测试
 
-- 不要为了测试用例成功修改测试用例
-- 测试用例
+## 项目概览
+
+- **原型设计**：`./opendesign`
+- **前端**：Bun + React
+- **后端**：Rust + Axum
+- **日志**：`tracing`（禁止使用 `println!` / `eprintln!` 作为生产日志）
+
+---
+
+## 工作流约定
+
+1. 每次任务完成后，询问是否提交代码
+2. 重大功能变更后，主动列出需要同步更新的文档 diff，等待确认后再更新
+3. Web 端有修改时，同步检查桌面端是否需要相同变更
+
+---
 
 ## 首要原则
-正确的设计 > 兼容现有代码
 
-如果最优方案需要修改现有接口，直接提出来。
-不要因为"现在这样写了"就将就，技术债越早还越便宜。
-## web端和桌面端同步
-如果web端有修改要看一下桌面端是否需要同步修改
+**正确的设计 > 兼容现有代码**
 
-## 保持项目代码整洁，低耦合
+最优方案需要修改现有接口时，直接提出方案和理由，不要将就。技术债越早还越便宜。
 
-## 日志使用tracing
+---
 
+## 架构约束
 
+### 函数签名
 
-## 文档维护规则
-- 每次重大功能变更后，必须同步更新以下文档：
-  - README.md（功能概述、使用示例）
-  - .claude/context 目录下的相关 API/架构文档
-  - 内联代码注释（JSDoc / TSDoc 等）
-- 变更后主动建议：生成/更新文档的 diff，并让我确认
-- 保持文档与代码一致性：示例代码必须可运行、参数匹配最新实现
-- 优先使用第二人称、清晰前提条件、代码块带语言标签
+- **单个函数参数不超过 3 个**（`ctx` / `state` 类参数不计入）
+- 超过 2 个同类型参数（如多个 `String`、多个 `f64`）**必须定义 struct**
+- 可选配置参数多时使用 **Builder Pattern**，不要用 `Option<T>` 参数堆砌
 
+```rust
+// ❌ 禁止
+fn analyze(code: &str, name: &str, price: f64, volume: i64, date: NaiveDate) -> Result<Report>
+
+// ✅ 必须
+fn analyze(snapshot: &StockSnapshot) -> Result<Report>
+```
+
+### 领域类型（Domain Types）
+
+- 新概念先定义类型**，再写业务逻辑
+- 禁止用裸 `String` / `f64` 表示有业务含义的值（股票代码、价格、日期等）
+- 使用 newtype pattern：`struct StockCode(String)`、`struct Price(Decimal)`
+
+### 跨层上下文
+
+- 基础设施（db、cache、config）通过 `AppContext` / `State` 传递，不走函数参数
+- 函数签名只包含业务参数，横切关注点走 `ctx`
+
+### 模块边界
+
+- 跨模块交互**必须先定义 trait 接口**，实现在后
+- 不允许跨模块直接访问内部字段，通过公开方法或事件交互
+- 保持低耦合：修改一个模块不应触发另一个不相关模块的改动
+
+---
+
+## 错误处理
+
+- 生产路径禁止 `unwrap()` / `expect()`；要么传播错误，要么在注释中说明该 panic 不可能发生的不变量
+- 使用项目统一的 `Error` 类型，禁止随意 `.map_err(|e| anyhow!(e))`
+- 错误信息面向调用者，不暴露内部实现细节
+
+---
+
+## 测试规范
+
+### 优先级
+
+1. Integration Test 和 E2E Test（验证真实业务流程）
+2. 最容易失败的路径（边界、并发、外部依赖失败）
+3. 不写 getter/setter 测试，不写简单纯函数测试
+
+### 写测试前必须输出测试矩阵
+
+列出：
+
+- **Happy Path**：正常使用场景
+- **Edge Case**：边界值、空数据、并发
+- **Failure Case**：外部依赖失败、非法输入、超时
+
+确认矩阵后再写代码。
+
+---
+
+## 文档维护
+
+- `README.md`：功能概述、使用示例
+- `.claude/context/`：API 文档、架构说明
+- 内联注释：复杂逻辑必须注释，简单逻辑不注释
+- 示例代码必须可运行，参数与最新实现一致
+- 使用第二人称，标注前提条件，代码块带语言标签
+
+---
 
 ## Anti-Patterns
 
-- Do not add heavy dependencies for minor convenience.
-- Do not silently weaken security policy or access constraints.
-- Do not add speculative config/feature flags "just in case".
-- Do not mix massive formatting-only changes with functional changes.
-- Do not modify unrelated modules "while here".
-- Do not bypass failing checks without explicit explanation.
-- Do not hide behavior-changing side effects in refactor commits.
-- Do not suppress unused production code with underscore prefixes or `#[allow(dead_code)]`; delete it, wire it into behavior, or track a follow-up issue. Reserve underscore names for required but intentionally unused API, trait, or callback parameters.
-- Do not leave `unwrap()` / `expect()` in production paths; propagate errors or document the invariant that makes panic impossible.
-- Do not include personal identity or sensitive information in test data, examples, docs, or commits.
+### 依赖与配置
+
+- 不为小便利引入重型依赖
+- 不添加"以防万用"的投机性配置项或 feature flag
+- 不静默削弱安全策略或访问约束
+
+### 代码变更
+
+- 不把大量格式化改动与功能改动混在同一次提交
+- 不在"顺手"时修改无关模块
+- 不在重构提交中隐藏行为变更的副作用
+- 不绕过失败的检查，除非附上明确解释
+
+### 代码质量
+
+- 不用下划线前缀或 `#[allow(dead_code)]` 掩盖未使用的生产代码——删除、接入行为，或建 issue 跟踪
+- 不在测试数据、示例、文档或提交中包含真实个人信息
+- 不在生产路径留 `unwrap()` / `expect()`（见错误处理章节）
