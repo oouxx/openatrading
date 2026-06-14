@@ -31,7 +31,13 @@ async-trait = "0.1"
 schemars = { version = "0.8", features = ["derive"] }
 gray_matter = "0.3"
 serde_yaml = "0.9"
-rmcp = { version = "1.7", features = ["client", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "1.7", features = [
+    "client",
+    "server",
+    "transport-streamable-http-client-reqwest",
+    "transport-streamable-http-server",
+    "transport-io",
+] }
 teloxide = { version = "0.15", optional = true }
 thiserror = "2"
 tracing = "0.1"
