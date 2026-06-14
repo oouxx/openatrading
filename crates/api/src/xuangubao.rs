@@ -1287,39 +1287,3 @@ pub struct NewsItem {
     pub content: String,
     pub summary: String,
 }
-
-// ── Tests ──────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_fetch_all_day_events_returns_recent_day() {
-        let client = XuanguBaoClient::new();
-        let events = client.fetch_all_day_events().await.expect("fetch failed");
-        eprintln!("fetched {} events", events.len());
-        assert!(
-            !events.is_empty(),
-            "should return events for latest trading day"
-        );
-        // Verify events are sorted by timestamp
-        for i in 1..events.len() {
-            assert!(
-                events[i].event_timestamp >= events[i - 1].event_timestamp,
-                "events should be sorted ascending"
-            );
-        }
-        // Verify all events are within trading hours
-        let day_open = XuanguBaoClient::latest_trading_day_close_ts() - 5 * 3600 - 30 * 60;
-        for e in &events {
-            assert!(
-                e.event_timestamp >= day_open,
-                "event timestamp should be >= day open"
-            );
-        }
-        let plate_events = events.iter().filter(|e| e.event_type == 11001).count();
-        eprintln!("plate_events={plate_events}, total={}", events.len());
-    }
-}

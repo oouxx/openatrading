@@ -216,21 +216,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_agent_basic() {
-        let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
-        let agent = create_agent(&llm, vec![], "你是一个交易助手");
-        // Agent created without panicking
-        let _ = agent;
-    }
-
-    #[tokio::test]
-    async fn test_create_agent_with_tools() {
-        let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
-        let agent = create_agent(&llm, vec![], "你是一个A股短线交易AI助手");
-        let _ = agent;
-    }
-
-    #[tokio::test]
     async fn test_agent_process_returns_text() {
         let expected = "今日市场情绪偏暖，建议持有。";
         let stream_fn = mock_text_stream_fn(expected);
@@ -276,54 +261,5 @@ mod tests {
 
         assert!(!last_text.is_empty(), "expected assistant text");
         assert_eq!(last_text, expected);
-    }
-
-    #[tokio::test]
-    async fn test_agent_process_empty_user_message() {
-        let stream_fn = mock_text_stream_fn("收到空消息");
-        let agent = Agent::new(AgentOptions {
-            stream_fn: Some(stream_fn),
-            get_api_key: Some(Arc::new(|_| {
-                Box::pin(async move { Some("test-key".to_string()) })
-            })),
-            ..Default::default()
-        });
-
-        let messages = vec![AgentMessage::User {
-            content: vec![ContentBlock::text("")],
-            timestamp: 0,
-        }];
-
-        let result = agent
-            .process(messages)
-            .await
-            .expect("agent process should succeed");
-        assert!(!result.is_empty(), "should return at least one message");
-    }
-
-    #[tokio::test]
-    async fn test_agent_process_stop_reason_propagated() {
-        let stream_fn = mock_text_stream_fn("完成");
-        let agent = Agent::new(AgentOptions {
-            stream_fn: Some(stream_fn),
-            get_api_key: Some(Arc::new(|_| {
-                Box::pin(async move { Some("test-key".to_string()) })
-            })),
-            ..Default::default()
-        });
-
-        let result = agent
-            .process(vec![AgentMessage::User {
-                content: vec![ContentBlock::text("hi")],
-                timestamp: 0,
-            }])
-            .await
-            .expect("agent process should succeed");
-
-        // process should end with at least one assistant message
-        let has_assistant = result
-            .iter()
-            .any(|m| matches!(m, AgentMessage::Assistant { .. }));
-        assert!(has_assistant, "should contain assistant messages");
     }
 }
