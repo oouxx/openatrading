@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision
+.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision run-mcp-http run-mcp-stdio
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -33,6 +33,15 @@ run-tauri:
 
 build-tauri:
 	cd src-tauri && cargo tauri build
+
+# ─── MCP Server ──────────────────────────────────────
+
+run-mcp-http:
+	@lsof -ti:8082 | xargs kill -9 2>/dev/null || true
+	cargo run -p openatrading-cli -- mcp serve
+
+run-mcp-stdio:
+	cargo run -p openatrading-cli -- mcp serve --transport stdio
 
 # ─── Quality ──────────────────────────────────────────
 
@@ -151,6 +160,8 @@ help:
 	@echo "  decision       手动触发一次所有角色的每日决策"
 	@echo "  decision-dry-run 决策 dry-run 模式（仅输出到终端）"
 	@echo "  run-web        Web server"
+	@echo "  run-mcp-http   MCP server (HTTP, :8082)"
+	@echo "  run-mcp-stdio  MCP server (stdio)"
 	@echo "  run-frontend   Vue dev server"
 	@echo "  dev-tauri      Tauri desktop dev"
 	@echo "  build-tauri    Tauri desktop build"
