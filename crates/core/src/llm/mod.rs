@@ -1,3 +1,4 @@
+pub mod mcp_server;
 pub mod mcp_tools;
 pub mod session;
 pub mod tools;
@@ -8,6 +9,7 @@ pub use openatrading_provider::llm::{
     ToolCallItem, ToolCallMessage, ToolChatChoice, ToolChatResponse, ToolStreamResult,
 };
 
+pub use mcp_server::{build_market_tools, serve_http, serve_stdio, MarketToolsServer};
 pub use mcp_tools::{
     build_tools, McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
 };
