@@ -217,7 +217,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 }
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
-pub async fn cmd_gateway_run(cron_only: bool, web_only: bool) -> Result<()> {
+pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> Result<()> {
     use openatrading_core::cron::{self, CronConfig};
     use openatrading_core::llm::LlmClient;
     use openatrading_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
@@ -230,6 +230,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool) -> Result<()> {
 
     let do_cron = !web_only || cron_only;
     let do_web = !cron_only || web_only;
+    let do_mcp = !cron_only && !web_only && !no_mcp && app_config.mcp_server.enabled;
 
     let roles = build_roles(&app_config);
     let mut handles = Vec::new();
@@ -307,6 +308,27 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool) -> Result<()> {
         handles.push(gh);
     }
 
+    // ── MCP Server (CLI layer) ─────────────────────
+    let mut mcp_shutdown: Option<tokio::sync::watch::Sender<bool>> = None;
+    if do_mcp {
+        let mcp_bind: std::net::SocketAddr = app_config.mcp_server.bind.parse().map_err(|e| {
+            anyhow::anyhow!(
+                "invalid mcp_server.bind {}: {e}",
+                app_config.mcp_server.bind
+            )
+        })?;
+        let (mcp_tx, mcp_rx) = tokio::sync::watch::channel(false);
+        mcp_shutdown.replace(mcp_tx);
+
+        let tools = openatrading_core::llm::build_market_tools();
+        handles.push(tokio::spawn(async move {
+            if let Err(e) = openatrading_core::llm::serve_http(tools, mcp_bind, mcp_rx).await {
+                tracing::error!("[gateway] mcp error: {e}");
+            }
+        }));
+        eprintln!("[gateway] mcp: enabled at http://{mcp_bind}/mcp");
+    }
+
     // ── Telegram Bot (CLI layer) ──────────────────
     if let Some(sc) = &app_config.social {
         if let Some(tg) = &sc.telegram {
@@ -350,6 +372,11 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool) -> Result<()> {
     eprintln!("[gateway] running (Ctrl+C to stop)");
     tokio::signal::ctrl_c().await?;
     eprintln!("\n[gateway] shutting down...");
+
+    if let Some(tx) = mcp_shutdown.take() {
+        let _ = tx.send(true);
+    }
+
     for h in handles {
         h.abort();
     }

@@ -1,5 +1,38 @@
 use anyhow::Result;
 
+use crate::cli::app::McpTransport;
+
+pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
+    use openatrading_core::llm::{build_market_tools, serve_http, serve_stdio};
+    use tokio::sync::watch;
+
+    let tools = build_market_tools();
+    let (tx, rx) = watch::channel(false);
+
+    let signal_task = tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            let _ = tx.send(true);
+        }
+    });
+
+    let result = match transport {
+        McpTransport::Http => {
+            let bind: std::net::SocketAddr = bind
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid bind {bind}: {e}"))?;
+            tracing::info!("[mcp] http server starting on http://{bind}/mcp");
+            serve_http(tools, bind, rx).await
+        },
+        McpTransport::Stdio => {
+            tracing::info!("[mcp] stdio server starting");
+            serve_stdio(tools, rx).await
+        },
+    };
+
+    signal_task.abort();
+    result
+}
+
 pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
     let client = openatrading_core::llm::McpClient::connect(endpoint)
         .await

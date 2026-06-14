@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
 #[command(name = "openatrading")]
@@ -122,6 +122,19 @@ pub enum McpAction {
         #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
+    /// 启动 MCP 服务端，对外暴露行情工具
+    Serve {
+        #[arg(long, value_enum, default_value_t = McpTransport::Http)]
+        transport: McpTransport,
+        #[arg(long, default_value = "0.0.0.0:8082")]
+        bind: String,
+    },
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum McpTransport {
+    Http,
+    Stdio,
 }
 
 #[derive(Subcommand)]
@@ -166,6 +179,9 @@ pub enum GatewayAction {
         /// 仅运行 web server
         #[arg(long)]
         web_only: bool,
+        /// 不启动 MCP server（默认随 gateway 启动）
+        #[arg(long)]
+        no_mcp: bool,
     },
 }
 
