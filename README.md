@@ -55,6 +55,7 @@ openatrading chat              # AI 对话终端
 openatrading doctor            # 诊断服务状态
 openatrading skills list       # 列出可安装技能
 openatrading mcp list          # 列出 MCP 工具
+openatrading mcp serve         # 启动 MCP 行情工具服务器
 openatrading tools doc         # 生成工具参考文档
 openatrading trade add --role zarili --symbol 000001 --price 10.5 --shares 100
 openatrading trade list        # 持仓列表
@@ -140,6 +141,41 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 | 财联社 | 电报快讯（A/B 级自动推送） | HTTP API |
 | 龙虎榜 | 席位详情/个股上榜 | HTTP API |
 | MCP 工具 | akshare 等数据扩展 | Streamable HTTP |
+
+## MCP Server
+
+把 17 个公开行情工具按 [Model Context Protocol](https://modelcontextprotocol.io/) 标准对外暴露，可直接被 Claude Desktop、Cursor、远程 agent 等 MCP 客户端消费。
+
+### 独立运行
+
+```bash
+# stdio：用于 Claude Desktop / Cursor 本地配置
+openatrading mcp serve --transport stdio
+
+# HTTP：远程或脚本调用
+openatrading mcp serve --transport http --bind 0.0.0.0:8082
+```
+
+### 随 gateway 启动
+
+```bash
+openatrading gateway run             # web + cron + telegram + mcp 全开
+openatrading gateway run --no-mcp    # 仅关 mcp
+```
+
+### 配置
+
+```toml
+[mcp_server]
+enabled = true              # gateway run 时是否一并启动
+bind    = "0.0.0.0:8082"    # mcp serve / gateway 的默认 bind
+```
+
+> 注意：`mcp_server`（单数）配置本服务暴露的 server；`mcp_servers`（复数）是连接的远端 server 列表。
+
+### 支持的工具
+
+涨停/跌停/强势股/市场概览/昨日涨停/大盘异动/实时行情/股票板块/分时走势/板块异动/K 线/财联社电报/韭研公社/东财龙虎榜（详情/合并/活跃营业部）。
 
 ## Strategies（技能）
 

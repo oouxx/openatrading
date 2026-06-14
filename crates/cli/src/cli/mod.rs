@@ -21,7 +21,7 @@ use crate::cli::gateway_cmd::{
     cmd_gateway_install, cmd_gateway_run, cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop,
     cmd_gateway_uninstall,
 };
-use crate::cli::mcp_cmd::{cmd_mcp_call, cmd_mcp_list, cmd_mcp_status};
+use crate::cli::mcp_cmd::{cmd_mcp_call, cmd_mcp_list, cmd_mcp_serve, cmd_mcp_status};
 use crate::cli::skills_cmd::{
     cmd_skills_install, cmd_skills_install_url, cmd_skills_list, cmd_skills_uninstall,
 };
@@ -138,7 +138,8 @@ pub async fn run() -> Result<()> {
             GatewayAction::Run {
                 cron_only,
                 web_only,
-            } => cmd_gateway_run(cron_only, web_only).await,
+                no_mcp,
+            } => cmd_gateway_run(cron_only, web_only, no_mcp).await,
         };
     }
 
@@ -211,6 +212,7 @@ pub async fn run() -> Result<()> {
                 args,
                 endpoint,
             } => cmd_mcp_call(&endpoint, &name, &args).await,
+            McpAction::Serve { transport, bind } => cmd_mcp_serve(transport, &bind).await,
         };
     }
 

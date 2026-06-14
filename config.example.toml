@@ -10,6 +10,12 @@ name = "akshare"
 transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
 enabled = true
 
+# ── MCP Server ─────────────────────────────────────────────
+# 本服务暴露的 MCP 行情工具 server（注意与 [[mcp_servers]] 复数配置的区别）
+[mcp_server]
+enabled = true
+bind    = "0.0.0.0:8082"
+
 # ── 后台服务 ─────────────────────────────────────────────
 [service]
 db_path = "data.db"
