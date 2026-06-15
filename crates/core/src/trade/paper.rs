@@ -17,6 +17,12 @@ pub struct PaperBroker {
     pub min_commission: f64,
 }
 
+/// Current position state used for buy validation.
+pub struct PositionSnapshot {
+    pub same_symbol_value: f64,
+    pub total_position_value: f64,
+}
+
 impl Default for PaperBroker {
     fn default() -> Self {
         Self {
@@ -64,8 +70,7 @@ impl PaperBroker {
         &self,
         shares: i64,
         exec_price: f64,
-        same_symbol_value: f64,
-        total_position_value: f64,
+        positions: &PositionSnapshot,
     ) -> Result<(), String> {
         if shares < MIN_SHARES {
             return Err(format!(
@@ -83,20 +88,20 @@ impl PaperBroker {
         let (total, commission) = self.buy_cost(exec_price, shares);
         let cost = total + commission;
 
-        if cost + same_symbol_value > INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO {
+        if cost + positions.same_symbol_value > INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO {
             return Err(format!(
                 "single stock position {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
-                same_symbol_value,
+                positions.same_symbol_value,
                 cost,
                 INITIAL_CAPITAL * MAX_SINGLE_POSITION_RATIO,
                 (MAX_SINGLE_POSITION_RATIO * 100.0) as i32
             ));
         }
 
-        if total_position_value + cost > INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO {
+        if positions.total_position_value + cost > INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO {
             return Err(format!(
                 "total position value {:.0} + new {:.0} exceeds max {:.0} ({}% of capital)",
-                total_position_value,
+                positions.total_position_value,
                 cost,
                 INITIAL_CAPITAL * MAX_TOTAL_POSITION_RATIO,
                 (MAX_TOTAL_POSITION_RATIO * 100.0) as i32
@@ -162,12 +167,30 @@ mod tests {
     #[test]
     fn test_validate_buy_rejects_odd_lot() {
         let broker = PaperBroker::default();
-        assert!(broker.validate_buy(150, 10.0, 0.0, 0.0).is_err());
+        assert!(broker
+            .validate_buy(
+                150,
+                10.0,
+                &PositionSnapshot {
+                    same_symbol_value: 0.0,
+                    total_position_value: 0.0
+                }
+            )
+            .is_err());
     }
 
     #[test]
     fn test_validate_buy_ok() {
         let broker = PaperBroker::default();
-        assert!(broker.validate_buy(100, 10.0, 0.0, 0.0).is_ok());
+        assert!(broker
+            .validate_buy(
+                100,
+                10.0,
+                &PositionSnapshot {
+                    same_symbol_value: 0.0,
+                    total_position_value: 0.0
+                }
+            )
+            .is_ok());
     }
 }

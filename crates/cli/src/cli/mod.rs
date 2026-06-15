@@ -30,7 +30,7 @@ use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
 use openatrading_core::api::Client;
-use openatrading_core::cron::run_decision;
+use openatrading_core::cron::{run_decision, CronContext};
 use openatrading_core::llm::LlmClient;
 use openatrading_core::social::{NoopSender, NotificationSender, StdoutSender};
 use openatrading_web::gateway::Gateway;
@@ -276,16 +276,14 @@ async fn cmd_decision(
             .all_tools()
             .to_vec();
 
-    run_decision(
-        gateway.memory.clone(),
-        gateway.trade.clone(),
-        &*social,
-        &llm,
-        &api,
-        &filtered_roles,
-        &tools,
-    )
-    .await?;
+    let ctx = CronContext {
+        memory: gateway.memory.clone(),
+        trade: gateway.trade.clone(),
+        social,
+        llm,
+        api,
+    };
+    run_decision(&ctx, &filtered_roles, &tools).await?;
 
     if !dry_run {
         eprintln!("✅ 决策完成，通知已推送");

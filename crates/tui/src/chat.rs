@@ -136,7 +136,16 @@ impl App for ChatApp {
                 state.streaming_handle = Some(handle);
 
                 tokio::spawn(async move {
-                    run_llm(tx, llm, tools, system_prompt, llm_messages).await;
+                    run_llm(
+                        tx,
+                        ChatArgs {
+                            llm,
+                            tools,
+                            system_prompt,
+                        },
+                        llm_messages,
+                    )
+                    .await;
                 });
             },
             Msg::LLMChunk(text) => {
@@ -294,14 +303,12 @@ fn collect_llm_messages(conv: &ConversationViewState) -> Vec<serde_json::Value> 
 
 async fn run_llm(
     msg_tx: tokio::sync::mpsc::Sender<Msg>,
-    llm: LlmClient,
-    tools: Vec<Arc<DynTool>>,
-    system_prompt: String,
+    args: ChatArgs,
     llm_messages: Vec<serde_json::Value>,
 ) {
     use std::pin::Pin;
 
-    let agent = Arc::new(create_agent(&llm, tools, &system_prompt));
+    let agent = Arc::new(create_agent(&args.llm, args.tools, &args.system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for msg in &llm_messages {

@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
 use crate::api::Client as ApiClient;
-use crate::cron::run_decision;
+use crate::cron::{run_decision, CronContext};
 use crate::llm::session::AgentSession;
 use crate::llm::LlmClient;
 use crate::memory::MemoryStore;
@@ -452,17 +452,14 @@ impl TelegramBot {
                     .await
                     .all_tools()
                     .to_vec();
-                match run_decision(
-                    self.memory.clone(),
-                    self.trade.clone(),
-                    &notifier,
-                    &self.llm,
-                    &self.api,
-                    &filtered_roles,
-                    &tools,
-                )
-                .await
-                {
+                let ctx = CronContext {
+                    memory: self.memory.clone(),
+                    trade: self.trade.clone(),
+                    social: Arc::new(notifier),
+                    llm: self.llm.clone(),
+                    api: self.api.clone(),
+                };
+                match run_decision(&ctx, &filtered_roles, &tools).await {
                     Ok(()) => {
                         self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
                             .await?;
