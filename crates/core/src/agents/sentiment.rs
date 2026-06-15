@@ -34,7 +34,16 @@ pub async fn analyze_sentiment(client: &Client) -> Result<SentimentResult> {
         async {
             let mut all = Vec::new();
             for page in 1..=3 {
-                match client.jiuyan.fetch_community("", 0, page, 30).await {
+                match client
+                    .jiuyan
+                    .fetch_community(crate::api::jiuyangongshe::CommunityQuery {
+                        category_id: String::new(),
+                        article_type: 0,
+                        page,
+                        page_size: 30,
+                    })
+                    .await
+                {
                     Ok(resp) => {
                         if resp.result.is_empty() {
                             break;

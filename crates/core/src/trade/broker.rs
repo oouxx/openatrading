@@ -39,7 +39,14 @@ pub async fn execute_buy(
         .sum();
 
     broker
-        .validate_buy(shares, exec_price, same_symbol_value, total_position_value)
+        .validate_buy(
+            shares,
+            exec_price,
+            &crate::trade::paper::PositionSnapshot {
+                same_symbol_value,
+                total_position_value,
+            },
+        )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let (_, commission) = broker.buy_cost(exec_price, shares);

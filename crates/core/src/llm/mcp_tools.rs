@@ -25,6 +25,14 @@ pub enum McpError {
     Parse(#[from] serde_json::Error),
 }
 
+/// Specification for creating an MCP-backed DynTool.
+pub struct McpToolSpec {
+    pub name: String,
+    pub description: String,
+    pub schema: serde_json::Value,
+    pub method: String,
+}
+
 // ============================================================================
 // McpClient — full-stack rmcp client over streamable HTTP
 // ============================================================================
@@ -97,15 +105,14 @@ impl McpClient {
     }
 
     /// Wrap this client into a DynTool factory.
-    pub fn create_tool(
-        &self,
-        name: &str,
-        description: &str,
-        schema: serde_json::Value,
-        method: &str,
-    ) -> Arc<DynTool> {
+    pub fn create_tool(&self, spec: McpToolSpec) -> Arc<DynTool> {
         let peer = self.peer.clone();
-        let method = method.to_string();
+        let McpToolSpec {
+            name,
+            description,
+            schema,
+            method,
+        } = spec;
         let execute: super::tools::ExecuteFn = Arc::new(move |_id, args, _signal, _progress| {
             let peer = peer.clone();
             let method = method.clone();
@@ -124,7 +131,7 @@ impl McpClient {
             })
         });
 
-        super::tools::tool(name, description, schema, execute)
+        super::tools::tool(&name, &description, schema, execute)
     }
 
     async fn do_call(
@@ -261,16 +268,16 @@ impl McpRegistry {
                             };
                             let desc = tool_data["description"].as_str().unwrap_or("");
                             let schema = tool_data["inputSchema"].clone();
-                            if schema.is_null() {
-                                all_tools.push(client.create_tool(
-                                    name,
-                                    desc,
-                                    empty_schema(),
-                                    name,
-                                ));
-                            } else {
-                                all_tools.push(client.create_tool(name, desc, schema, name));
-                            }
+                            all_tools.push(client.create_tool(McpToolSpec {
+                                name: name.to_string(),
+                                description: desc.to_string(),
+                                schema: if schema.is_null() {
+                                    empty_schema()
+                                } else {
+                                    schema
+                                },
+                                method: name.to_string(),
+                            }));
                         }
                     }
                     tracing::info!("[mcp] {}: discovered {} tools", server.name, count);

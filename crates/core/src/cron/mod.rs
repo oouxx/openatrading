@@ -73,6 +73,15 @@ macro_rules! add_job {
     };
 }
 
+/// Shared infrastructure for cron tasks (decision, collection, news).
+pub struct CronContext {
+    pub memory: Arc<dyn MemoryStore>,
+    pub trade: Arc<dyn TradeManager>,
+    pub social: Arc<dyn NotificationSender>,
+    pub llm: LlmClient,
+    pub api: ApiClient,
+}
+
 /// Grouped context for scheduler dependencies, avoiding an 8-parameter constructor.
 pub struct SchedulerContext {
     pub config: CronConfig,
@@ -116,11 +125,13 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
 
     // ── Decision ──
     {
-        let mem = ctx.memory.clone();
-        let trd = ctx.trade.clone();
-        let soc = ctx.social.clone();
-        let llm = ctx.llm.clone();
-        let api = ctx.api.clone();
+        let cron_ctx = Arc::new(CronContext {
+            memory: ctx.memory.clone(),
+            trade: ctx.trade.clone(),
+            social: ctx.social.clone(),
+            llm: ctx.llm.clone(),
+            api: ctx.api.clone(),
+        });
         let roles = ctx.roles.clone();
         let tool_cfg = crate::llm::ToolConfig {
             mcp_servers: ctx.mcp_servers.clone(),
@@ -135,25 +146,11 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
             ctx.config.decision_schedule,
             "decision",
             move |_uuid, _lock| {
-                let mem = mem.clone();
-                let trd = trd.clone();
-                let soc = soc.clone();
-                let llm = llm.clone();
-                let api = api.clone();
+                let cron_ctx = cron_ctx.clone();
                 let roles = roles.clone();
                 let decision_tools = all_tools.clone();
                 Box::pin(async move {
-                    if let Err(e) = run_decision(
-                        mem.clone(),
-                        trd.clone(),
-                        &*soc,
-                        &llm,
-                        &api,
-                        &roles,
-                        &decision_tools,
-                    )
-                    .await
-                    {
+                    if let Err(e) = run_decision(&cron_ctx, &roles, &decision_tools).await {
                         tracing::error!("[cron] decision error: {e}");
                     }
                 })
@@ -291,17 +288,13 @@ async fn run_collection(
 }
 
 pub async fn run_decision(
-    memory: Arc<dyn MemoryStore>,
-    trade: Arc<dyn TradeManager>,
-    social: &dyn NotificationSender,
-    llm: &LlmClient,
-    api: &ApiClient,
+    ctx: &CronContext,
     roles: &[RoleEntry],
     tools: &[Arc<DynTool>],
 ) -> Result<()> {
     tracing::info!("[cron] decision: starting");
 
-    let market_context = match api.xuangubao.fetch_market_overview().await {
+    let market_context = match ctx.api.xuangubao.fetch_market_overview().await {
         Ok(o) => format!(
             "## 当前市场数据\n\
              - 日期：{}\n\
@@ -325,25 +318,15 @@ pub async fn run_decision(
         },
     };
 
-    update_all_position_prices(&*trade, api).await;
+    update_all_position_prices(&*ctx.trade, &ctx.api).await;
 
     for role in roles {
         // Inject per-role tools: positions + memory (LLM calls them as needed)
         let mut role_tools = tools.to_vec();
-        role_tools.push(create_positions_tool(trade.clone(), role.name.clone()));
-        role_tools.push(create_historical_context_tool(memory.clone()));
+        role_tools.push(create_positions_tool(ctx.trade.clone(), role.name.clone()));
+        role_tools.push(create_historical_context_tool(ctx.memory.clone()));
 
-        if let Err(e) = run_decision_for_role(
-            &*trade,
-            social,
-            llm,
-            api,
-            role,
-            &market_context,
-            &role_tools,
-        )
-        .await
-        {
+        if let Err(e) = run_decision_for_role(ctx, role, &market_context, &role_tools).await {
             tracing::error!("[cron] decision failed for role '{}': {e}", role.name);
         }
     }
@@ -393,10 +376,7 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
 }
 
 async fn run_decision_for_role(
-    trade: &dyn TradeManager,
-    social: &dyn NotificationSender,
-    llm: &LlmClient,
-    api: &ApiClient,
+    ctx: &CronContext,
     role: &RoleEntry,
     market_context: &str,
     tools: &[Arc<DynTool>],
@@ -414,7 +394,7 @@ async fn run_decision_for_role(
     );
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    let decision = match crate::llm::session::AgentSession::new(llm, &system)
+    let decision = match crate::llm::session::AgentSession::new(&ctx.llm, &system)
         .with_tools(tools)
         .process_decision(&market_user_message)
         .await
@@ -427,7 +407,7 @@ async fn run_decision_for_role(
                 summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
                 trade_suggestions: vec![],
             };
-            let _ = social.notify_decision(&decision).await;
+            let _ = ctx.social.notify_decision(&decision).await;
             return Err(e);
         },
     };
@@ -440,7 +420,7 @@ async fn run_decision_for_role(
     for instr in &trade_instructions {
         match instr.action.as_str() {
             "buy" => {
-                if let Err(e) = execute_buy(trade, api, &role.name, instr).await {
+                if let Err(e) = execute_buy(&*ctx.trade, &ctx.api, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute buy failed for {} {}: {e}",
                         instr.symbol,
@@ -464,11 +444,11 @@ async fn run_decision_for_role(
                             .format("%Y-%m-%d %H:%M:%S")
                             .to_string(),
                     };
-                    let _ = social.notify_trade(&log).await;
+                    let _ = ctx.social.notify_trade(&log).await;
                 }
             },
             "sell" => {
-                if let Err(e) = execute_sell(trade, api, &role.name, instr).await {
+                if let Err(e) = execute_sell(&*ctx.trade, &ctx.api, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute sell failed for {} {}: {e}",
                         instr.symbol,
@@ -492,7 +472,7 @@ async fn run_decision_for_role(
                             .format("%Y-%m-%d %H:%M:%S")
                             .to_string(),
                     };
-                    let _ = social.notify_trade(&log).await;
+                    let _ = ctx.social.notify_trade(&log).await;
                 }
             },
             "hold" => {
@@ -538,7 +518,7 @@ async fn run_decision_for_role(
         trade_suggestions: suggestions,
     };
 
-    if let Err(e) = social.notify_decision(&decision).await {
+    if let Err(e) = ctx.social.notify_decision(&decision).await {
         tracing::error!(
             "[cron] notify decision failed for role '{}': {e}",
             role.name

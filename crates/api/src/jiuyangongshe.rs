@@ -180,6 +180,15 @@ pub struct CommunityData {
     pub page_size: i32,
 }
 
+/// Query parameters for the community article API.
+pub struct CommunityQuery {
+    pub category_id: String,
+    pub article_type: i32,
+    /// 1-based page number (passed directly as `start` to the API).
+    pub page: i32,
+    pub page_size: i32,
+}
+
 // ─── 会话管理器 ───────────────────────────────────────────────
 
 struct InnerSession {
@@ -636,13 +645,7 @@ impl JiuYanSession {
     }
 
     /// 获取社群文章数据（article/community 接口）
-    pub async fn fetch_community(
-        &self,
-        category_id: &str,
-        article_type: i32,
-        page_no: i32,
-        page_size: i32,
-    ) -> Result<CommunityData> {
+    pub async fn fetch_community(&self, query: CommunityQuery) -> Result<CommunityData> {
         #[derive(Serialize)]
         struct CommunityReq {
             category_id: String,
@@ -655,11 +658,11 @@ impl JiuYanSession {
         }
 
         let body = CommunityReq {
-            category_id: category_id.to_string(),
-            r#type: article_type,
-            limit: page_size,
+            category_id: query.category_id,
+            r#type: query.article_type,
+            limit: query.page_size,
             order: 1,
-            start: page_no,
+            start: query.page,
             back_garden: 0,
         };
 
