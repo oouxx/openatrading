@@ -97,6 +97,7 @@ impl PipelineRegistry {
                     continue;
                 } else {
                     // closing ---
+                    in_frontmatter = false;
                     body_start = i + 1;
                     break;
                 }
@@ -109,6 +110,11 @@ impl PipelineRegistry {
                     tools.push(rest.trim().to_string());
                 }
             }
+        }
+
+        // No closing --- found; treat whole content as body
+        if in_frontmatter {
+            return (Vec::new(), String::new(), raw.trim().to_string());
         }
 
         let body: String = raw.lines().skip(body_start).collect::<Vec<_>>().join("\n");
@@ -151,6 +157,15 @@ mod tests {
         let raw = "---\ndescription: test\n---";
         let (_, _, body) = PipelineRegistry::parse_frontmatter(raw);
         assert!(body.is_empty());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_unclosed() {
+        let raw = "---\ndescription: leak\ntools:\n  - get_limit_up\n\n# Actual body";
+        let (tools, desc, body) = PipelineRegistry::parse_frontmatter(raw);
+        assert!(tools.is_empty(), "tools should be empty, no closing ---");
+        assert!(desc.is_empty(), "desc should be empty, no closing ---");
+        assert_eq!(body, raw.trim(), "without closing ---, raw content is body");
     }
 
     #[test]
