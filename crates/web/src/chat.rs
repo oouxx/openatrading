@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
+use openatrading_core::commands::CommandSpec;
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -32,6 +33,47 @@ pub struct ChatRequest {
 pub struct AiRoleItem {
     pub name: String,
     pub display_name: String,
+}
+
+pub async fn get_ai_commands(State(_state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
+    use openatrading_core::commands::{CommandSpec, CommandType};
+    use openatrading_core::llm::tools::ToolRegistry;
+
+    // Tool commands from ToolRegistry (static market tools — no MCP calls)
+    let registry = ToolRegistry::new();
+    let mut commands: Vec<CommandSpec> = registry
+        .market_tools()
+        .iter()
+        .map(|t| CommandSpec {
+            name: t.name.clone(),
+            description: t.description.clone(),
+            command_type: CommandType::Tool,
+        })
+        .collect();
+
+    // Meta-skill tool
+    let meta = registry.meta_skill_tool();
+    commands.push(CommandSpec {
+        name: meta.name.clone(),
+        description: meta.description.clone(),
+        command_type: CommandType::Tool,
+    });
+
+    // Skill commands from SkillRegistry
+    let skills = openatrading_core::skills::SkillRegistry::from_disk();
+    for s in skills.skills() {
+        commands.push(CommandSpec {
+            name: s.name.clone(),
+            description: s.description.clone(),
+            command_type: CommandType::Skill,
+        });
+    }
+
+    // Pipeline commands from PipelineRegistry
+    let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
+    commands.extend(pipelines.commands());
+
+    Json(commands)
 }
 
 pub async fn get_ai_roles(
