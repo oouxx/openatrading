@@ -2,7 +2,7 @@
 
 ## Overview
 
-Replace the custom AI chat UI with assistant-ui (`<ExternalThread>`) in both `AiCopilot.tsx` and `AiSidebar.tsx`. Backend tools and skills auto-register as slash commands. The slash command layer routes to the agent runtime with per-command configuration (tool filtering, skill injection). SSE communication uses the existing `apiChatStream` handling.
+Replace the custom AI chat UI with assistant-ui (`<ExternalThread>`) in both `AiCopilot.tsx` and `AiSidebar.tsx`. Backend tools, skills, and pipelines auto-register as slash commands. The slash command layer routes to the agent runtime with per-command configuration (tool filtering, skill/pipeline prompt injection). SSE communication uses the existing `apiChatStream` handling.
 
 ## Architecture
 
@@ -14,36 +14,36 @@ assistant-ui <ExternalThread>             ← controlled component
                     │
               Slash Command Layer
           (auto-registered from /api/ai/commands)
-        ┌────────────┬────────────────────┐
-        │            │                    │
-    Tool cmd     Skill cmd          Analysis cmd
-        │            │                    │
-        └────── Agent Runtime ────────────┘
-        (command-aware: tool filtering,
-         skill injection in system prompt)
-                    │
-            Execution Engine
-                    │
-            Exchange / Data
+        ┌──────────┬──────────┬──────────┐
+        │          │          │          │
+    Tool cmd   Skill cmd  Pipeline cmd  Analysis
+        │          │          │          │
+        └──────────┴────┬─────┴──────────┘
+                        │
+              Agent Runtime (command-aware)
+         ┌──────────────┼──────────────┐
+         │              │              │
+     filter tools  inject prompt  inject prompt
+     (tool cmd)   (skill cmd)   + filter tools
+                               (pipeline cmd)
+                        │
+                  Execution Engine
+                        │
+                  Exchange / Data
 ```
 
-## Decisions (from design review)
+## Command Types
 
-| Decision | Choice |
-|----------|--------|
-| assistant-ui interface | `<ExternalThread>` controlled component, not RuntimeAdapter |
-| Command metadata flow | `useRef` — slash command `onSelect` sets a ref, `onNew` reads it |
-| Tool command behavior | Execute immediately, tool list filtered to only that tool |
-| Skill command behavior | Fill composer, user edits/presses Enter, all tools available |
-| Role & skill relationship | One-to-one — skill (SKILL.md) is a strategy, same as a role's prompt |
-| Skill vs role conflict | Skill wins — SKILL.md replaces the role strategy prompt |
-| Quick prompts | Removed — slash commands cover them |
-| Role selector in sidebar | Removed — roles accessible via slash commands |
-| AiSidebar | Also replaced with assistant-ui, shares slash commands |
+| Type | Strategy prompt | Tool availability | Composer behavior |
+|------|----------------|-------------------|-------------------|
+| **Tool** | unchaged (role or default) | only that tool | execute immediately |
+| **Skill** | SKILL.md content (overrides role) | all tools | fill composer text |
+| **Pipeline** | PIPELINE.md content (overrides role) | tools defined in pipeline spec | fill composer text |
+| **Analysis** | role or default | all tools | user types free-form |
 
 ## Backend Changes
 
-### 1. CommandSpec types (`crates/core/src/commands/mod.rs`)
+### 1. Shared types (`crates/core/src/commands/mod.rs`)
 
 ```rust
 #[derive(Serialize, Deserialize, Clone)]
@@ -55,17 +55,80 @@ pub struct CommandSpec {
     pub description: String,
     pub command_type: CommandType,
 }
+
+// ── Pipeline ──
+pub struct PipelineSpec {
+    pub name: String,
+    pub description: String,
+    pub tools: Vec<String>,
+    pub prompt: String,
+}
 ```
 
-### 2. Commands collection
+### 2. PipelineRegistry (`crates/core/src/pipelines/mod.rs`)
 
-`ToolRegistry::commands()` — maps all market tools + meta-skill to `CommandSpec` with `CommandType::Tool`.
+Installed pipelines are stored in `~/.atrading/pipelines/<name>/PIPELINE.md`, parallel to skills.
 
-`SkillRegistry::commands()` — maps all installed skills to `CommandSpec` with `CommandType::Skill`.
+**File format (`PIPELINE.md`):**
 
-New endpoint `GET /api/ai/commands` merges both into a single flat list.
+```markdown
+---
+description: 盘前快速检查——判断开盘强弱和当日方向
+tools:
+  - get_market_overview
+  - get_limit_up
+  - get_plate_abnormal
+  - get_auction_quotes
+---
 
-### 3. Extended ChatRequest (`crates/web/src/chat.rs`)
+# 盘前检查策略
+
+## 流程
+1. 调用 get_market_overview 判断市场整体温度
+2. 调用 get_auction_quotes 检查竞价异动
+3. 调用 get_limit_up 查看涨停梯队
+4. 调用 get_plate_abnormal 发现资金攻击方向
+
+## 输出
+- 市场温度（热/正常/冷）
+- 竞价方向（强/弱/分歧）
+- 主线板块
+- 今日策略建议
+```
+
+The frontmatter is parsed with `serde_yaml` (or manual line scan for simplicity). The body after the frontmatter is the prompt text.
+
+```rust
+pub struct PipelineRegistry {
+    pipelines: Vec<PipelineSpec>,
+}
+
+impl PipelineRegistry {
+    pub fn from_disk() -> Self { /* scan ~/.atrading/pipelines/ */ }
+
+    pub fn commands(&self) -> Vec<CommandSpec> {
+        self.pipelines.iter().map(|p| CommandSpec {
+            name: p.name.clone(),
+            description: p.description.clone(),
+            command_type: CommandType::Pipeline,
+        }).collect()
+    }
+
+    pub fn find(&self, name: &str) -> Option<&PipelineSpec> { /* ... */ }
+}
+```
+
+### 3. Commands collection (`GET /api/ai/commands`)
+
+Merges three registries into one flat list:
+
+```
+ToolRegistry::commands()    → CommandType::Tool
+SkillRegistry::commands()   → CommandType::Skill
+PipelineRegistry::commands() → CommandType::Pipeline
+```
+
+### 4. Extended ChatRequest (`crates/web/src/chat.rs`)
 
 ```rust
 #[derive(Deserialize)]
@@ -82,14 +145,16 @@ pub struct ChatRequest {
 }
 ```
 
-### 4. Command-aware agent configuration
+### 5. Command-aware agent configuration
 
-In `ai_chat` handler. Strategy prompt comes from one source — `role` and skill command are alternatives, not combined:
+In `ai_chat` handler, branching on `command_type`:
 
-- **Default (no command)**: current behavior — `role` → strategy prompt, or fallback. All tools available.
-- **Tool command**: `role` strategy prompt unchanged, tool list filtered to only the requested tool (excludes `submit_trading_decision` and `create_skill`).
-- **Skill command**: SKILL.md content replaces the strategy prompt (overrides `role`). All tools available.
-- **Pipeline command**: future — composite tools loaded, strategy from role.
+| Command type | Strategy prompt | Tool list |
+|---|---|---|
+| `None` (default) | role strategy or default | all tools |
+| `Tool` | role strategy or default | only `command_name` tool |
+| `Skill` | SKILL.md content | all tools |
+| `Pipeline` | PIPELINE.md body | `pipeline.tools` + `submit_trading_decision` |
 
 ## Frontend Changes
 
@@ -110,9 +175,7 @@ Add to `src/package.json`:
 - **Remove**: role selector dropdown, suggested questions, custom input/messages
 - **Replace**: message area + input → assistant-ui `<ExternalThread>` (compact variant)
 
-### 2. assistant-ui integration (shared hook)
-
-Both components share the same integration hook `useAssistantChat`:
+### 2. Shared hook `useAssistantChat`
 
 ```tsx
 // hooks/useAssistantChat.ts
@@ -125,7 +188,6 @@ export function useAssistantChat() {
     const cmd = cmdRef.current;
     cmdRef.current = null;
 
-    // Add user + empty assistant message
     setMessages(prev => [...prev, toUserMsg(appendMsg), emptyAssistantMsg()]);
     setStreaming(true);
 
@@ -144,10 +206,9 @@ export function useAssistantChat() {
   const sendCommand = useCallback((cmd: CommandSpec) => {
     cmdRef.current = { name: cmd.name, type: cmd.command_type };
     if (cmd.command_type === "tool") {
-      // Execute immediately: push message + trigger send
-      // (directly modify messages state and call apiChatStream)
+      // Execute immediately: push message + trigger apiChatStream
     } else {
-      // Fill composer text (skill): update composer content
+      // Fill composer text (skill / pipeline): update composer content
     }
   }, []);
 
@@ -158,13 +219,11 @@ export function useAssistantChat() {
 ### 3. Controlled component pattern
 
 ```tsx
-// AiCopilot.tsx
 const { messages, streaming, handleNew, sendCommand } = useAssistantChat();
 
-// Register slash commands
 useEffect(() => {
-  fetch("/api/ai/commands").then(res => res.json()).then(commands => {
-    registerSlashCommands(commands, sendCommand);
+  fetch("/api/ai/commands").then(res => res.json()).then(cmds => {
+    registerSlashCommands(cmds, sendCommand);
   });
 }, []);
 
@@ -172,51 +231,55 @@ return (
   <div className="min-h-screen bg-bg pt-11 flex flex-col">
     <TickerStrip />
     <div className="flex-1 overflow-hidden">
-      <ExternalThread
-        messages={messages}
-        onNew={handleNew}
-        isRunning={streaming}
-      />
+      <ExternalThread messages={messages} onNew={handleNew} isRunning={streaming} />
     </div>
   </div>
 );
 ```
 
-The Tauri branch in `apiChatStream` (uses `Channel` + `invoke`) works transparently.
-
 ### 4. Slash command behavior
 
-- **Tool commands** (`/get_limit_up`): `sendCommand` sets the ref AND immediately generates a message (e.g., "获取涨停数据"), adding it to messages and calling `apiChatStream` directly — user doesn't see composer
-- **Skill commands** (`/breakout-pullback`): `sendCommand` sets the ref AND fills the composer text ("执行 breakout-pullback 策略"), user edits/presses Enter → `onNew` reads the ref
+- **Tool** (`/get_limit_up`): execute immediately — sets cmdRef + generates message + calls apiChatStream directly
+- **Skill** (`/breakout-pullback`): fill composer — sets cmdRef + inserts text, user edits/presses Enter → onNew reads cmdRef
+- **Pipeline** (`/morning-check`): fill composer — same as skill
 
 ## Data Flow
 
-### Tool command (e.g. `/get_limit_up`)
+### Tool command
 
 ```
-1. User types "/get_limit_up" in assistant-ui composer
-2. Slash command fires → sendCommand → sets cmdRef + calls apiChatStream directly
-3. POST /api/ai/chat { message: "获取涨停数据", command_name: "get_limit_up", command_type: "tool" }
-4. Server: filter tools to only "get_limit_up"
-5. Agent runtime: user message + 1 tool → call tool → stream result
-6. SSE onData → appendToLastMessage() → ExternalThread re-renders
+1. User types "/get_limit_up"
+2. sendCommand → sets cmdRef + calls apiChatStream directly
+3. POST /api/ai/chat { command_name: "get_limit_up", command_type: "tool" }
+4. Server: strategy from role, only get_limit_up tool
+5. SSE onData → appendToLastMessage() → ExternalThread re-renders
 ```
 
-### Skill command (e.g. `/breakout-pullback`)
+### Skill command
 
 ```
 1. User types "/breakout-pullback"
-2. Slash command fires → sendCommand → sets cmdRef + fills composer
-3. User edits or presses Enter → onNew → reads cmdRef
-4. POST /api/ai/chat { message: "执行策略分析", command_name: "breakout-pullback", command_type: "skill" }
-5. Server: load breakout-pullback SKILL.md into system prompt
-6. Agent runtime: skill-aware prompt + all tools → stream analysis
+2. sendCommand → sets cmdRef + fills composer
+3. User presses Enter → onNew → reads cmdRef
+4. POST /api/ai/chat { command_name: "breakout-pullback", command_type: "skill" }
+5. Server: load SKILL.md as prompt, all tools available
 ```
 
-### Analysis command (default)
+### Pipeline command
 
 ```
-1. User types a free-form question
+1. User types "/morning-check"
+2. sendCommand → sets cmdRef + fills composer
+3. User presses Enter → onNew → reads cmdRef
+4. POST /api/ai/chat { command_name: "morning-check", command_type: "pipeline" }
+5. Server: load PIPELINE.md prompt, filter to pipeline.tools + decision tool
+6. Agent runtime: pipeline prompt + 4 specific tools → stream analysis
+```
+
+### Analysis (default)
+
+```
+1. User types free-form question
 2. onNew → cmdRef is null → no command fields
 3. POST /api/ai/chat (current behavior)
 4. Server: default prompt + all tools
@@ -224,15 +287,14 @@ The Tauri branch in `apiChatStream` (uses `Channel` + `invoke`) works transparen
 
 ## Out of Scope
 
-- Pipeline command type — composite command (e.g. `/morning-check`). Not implemented
 - Structured tool call cards — tools return JSON rendered as markdown, sufficient for v1
 - AG-UI protocol — deferred to future iteration
 - Role selector — removed; roles accessible via slash commands
 
 ## Why This Approach
 
-- **Single execution path**: all requests go through the agent runtime, no duplicate tool logic
+- **Single execution path**: all requests through agent runtime, no duplicate tool logic
 - **Command-aware routing**: per-command configuration without splitting the codebase
 - **Minimal frontend changes**: preserve ticker, drop sidebar + role selector + quick prompts
-- **Auto-discovery**: new tools and skills automatically appear as slash commands
+- **Auto-discovery**: new tools, skills, and pipelines automatically appear as slash commands
 - **Unified component**: `AiSidebar` and `AiCopilot` share the same `useAssistantChat` hook
