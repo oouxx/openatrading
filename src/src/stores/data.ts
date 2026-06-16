@@ -47,6 +47,8 @@ export async function apiChatStream(
     message: string;
     role: string;
     history: Array<{ role: string; content: string }>;
+    command_name?: string;
+    command_type?: string;
   },
   callbacks: ChatStreamCallbacks,
 ): Promise<void> {
