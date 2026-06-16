@@ -11,7 +11,6 @@ use tracing;
 use openatrading_core::api::eastmoney::{LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
-use openatrading_core::trade::TradeManager;
 use openatrading_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
 
 use crate::cache::{self, CachePolicy};
@@ -547,6 +546,7 @@ pub async fn get_plates_by_any_stock(
         CachePolicy::snapshot(),
         || async {
             let plates = state
+                .ctx
                 .api
                 .xuangubao
                 .plates_by_any_stock(&symbol)
@@ -574,7 +574,7 @@ pub async fn get_role_positions(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let positions = state.trade.list_positions(&name).map_err(|e| {
+    let positions = state.ctx.trade.list_positions(&name).map_err(|e| {
         tracing::error!("get_role_positions error: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -601,10 +601,14 @@ pub async fn get_role_logs(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let logs = state.trade.get_trade_logs_by_role(&name, 20).map_err(|e| {
-        tracing::error!("get_role_logs error: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let logs = state
+        .ctx
+        .trade
+        .get_trade_logs_by_role(&name, 20)
+        .map_err(|e| {
+            tracing::error!("get_role_logs error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let result: Vec<serde_json::Value> = logs
         .iter()
         .map(|l| {
@@ -692,8 +696,8 @@ pub async fn delete_role(
             }
         }
     }
-    state.trade.delete_positions_by_role(&name).ok();
-    state.trade.delete_trade_logs_by_role(&name).ok();
+    state.ctx.trade.delete_positions_by_role(&name).ok();
+    state.ctx.trade.delete_trade_logs_by_role(&name).ok();
     openatrading_core::roles::delete_role_dir(&name).ok();
     {
         let mut roles = state.roles.write().await;
@@ -707,14 +711,22 @@ pub async fn reset_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    state.trade.delete_trade_logs_by_role(&name).map_err(|e| {
-        tracing::error!("reset_role error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    state.trade.delete_positions_by_role(&name).map_err(|e| {
-        tracing::error!("reset_role error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    state
+        .ctx
+        .trade
+        .delete_trade_logs_by_role(&name)
+        .map_err(|e| {
+            tracing::error!("reset_role error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    state
+        .ctx
+        .trade
+        .delete_positions_by_role(&name)
+        .map_err(|e| {
+            tracing::error!("reset_role error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -728,13 +740,17 @@ pub async fn get_role_pnl_history(
         .get("days")
         .and_then(|d| d.parse().ok())
         .unwrap_or(30);
-    let all_logs = state.trade.get_all_trade_logs_by_role(&name).map_err(|e| {
-        tracing::error!("get_role_pnl_history error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let all_logs = state
+        .ctx
+        .trade
+        .get_all_trade_logs_by_role(&name)
+        .map_err(|e| {
+            tracing::error!("get_role_pnl_history error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     // Calculate current positions value
-    let positions = state.trade.list_positions(&name).unwrap_or_default();
+    let positions = state.ctx.trade.list_positions(&name).unwrap_or_default();
     let current_value: f64 = positions
         .iter()
         .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
@@ -764,6 +780,7 @@ pub async fn get_role_history(
         .and_then(|d| d.parse().ok())
         .unwrap_or(100);
     let positions = state
+        .ctx
         .trade
         .get_closed_positions(&name, limit)
         .map_err(|e| {
@@ -913,7 +930,7 @@ pub async fn ai_replay_analyze(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     tracing::info!("[replay] POST /api/replay/analyze start");
-    let llm = state.llm.clone();
+    let llm = state.ctx.llm.clone();
 
     let date = XuanguBaoClient::last_n_trading_days(1)
         .first()
@@ -1053,6 +1070,7 @@ pub async fn get_dragon_tiger_detail(
         || async {
             let dates = last_n_trading_days(3);
             let data = state
+                .ctx
                 .api
                 .eastmoney
                 .lhb_detail(
@@ -1155,6 +1173,7 @@ pub async fn get_dragon_tiger_stock_seat(
         _ => return Err(StatusCode::BAD_REQUEST),
     };
     let data = state
+        .ctx
         .api
         .eastmoney
         .lhb_stock_seat(&query.code, &query.date, flag)

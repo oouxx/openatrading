@@ -4,12 +4,9 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
-use crate::api::Client as ApiClient;
-use crate::cron::{run_decision, CronContext};
+use crate::context::AppContext;
+use crate::cron::run_decision;
 use crate::llm::session::AgentSession;
-use crate::llm::LlmClient;
-use crate::memory::MemoryStore;
-use crate::trade::TradeManager;
 use crate::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
@@ -23,21 +20,16 @@ pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
     pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
-    pub llm_provider: Option<String>,
-    pub llm_model: Option<String>,
 }
 
 pub struct TelegramBot {
     bot_token: String,
     chat_id: String,
     mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
-    llm: LlmClient,
-    api: ApiClient,
+    ctx: AppContext,
     roles: Vec<RoleEntry>,
     session: Arc<Mutex<Option<ChatSession>>>,
     client: reqwest::Client,
-    memory: Arc<dyn MemoryStore>,
-    trade: Arc<dyn TradeManager>,
 }
 
 #[derive(Deserialize)]
@@ -78,26 +70,15 @@ struct TgMessageObj {
 }
 
 impl TelegramBot {
-    pub fn new(
-        config: TelegramBotConfig,
-        roles: Vec<RoleEntry>,
-        memory: Arc<dyn MemoryStore>,
-        trade: Arc<dyn TradeManager>,
-    ) -> Self {
+    pub fn new(config: TelegramBotConfig, roles: Vec<RoleEntry>, ctx: AppContext) -> Self {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
             mcp_servers: config.mcp_servers,
-            llm: LlmClient::from_config(
-                config.llm_provider.as_deref(),
-                config.llm_model.as_deref(),
-            ),
-            api: ApiClient::new(),
+            ctx,
             roles,
             session: Arc::new(Mutex::new(None)),
             client: reqwest::Client::new(),
-            memory,
-            trade,
         }
     }
 
@@ -439,27 +420,13 @@ impl TelegramBot {
                     }
                 }
 
-                let notifier = DecisionNotifier {
+                let mut decision_ctx = self.ctx.clone();
+                decision_ctx.social = Arc::new(DecisionNotifier {
                     client: self.client.clone(),
                     bot_token: self.bot_token.clone(),
                     chat_id: self.chat_id.clone(),
-                };
-
-                let tool_cfg = crate::llm::ToolConfig {
-                    mcp_servers: self.mcp_servers.clone(),
-                };
-                let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&tool_cfg)
-                    .await
-                    .all_tools()
-                    .to_vec();
-                let ctx = CronContext {
-                    memory: self.memory.clone(),
-                    trade: self.trade.clone(),
-                    social: Arc::new(notifier),
-                    llm: self.llm.clone(),
-                    api: self.api.clone(),
-                };
-                match run_decision(&ctx, &filtered_roles, &tools).await {
+                });
+                match run_decision(&decision_ctx, &filtered_roles).await {
                     Ok(()) => {
                         self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
                             .await?;
@@ -519,26 +486,6 @@ impl TelegramBot {
             None => "## 市场数据获取失败\n".to_string(),
         };
 
-        let mut messages_vec: Vec<serde_json::Value> = vec![
-            serde_json::json!({"role": "system", "content": role.strategy}),
-            serde_json::json!({"role": "user", "content": market_context}),
-            serde_json::json!({"role": "assistant", "content": "已收到市场数据，请提问。"}),
-        ];
-
-        {
-            let session = self.session.lock().await;
-            if let Some(s) = session.as_ref() {
-                for msg in &s.history {
-                    messages_vec.push(msg.clone());
-                }
-            }
-        }
-
-        messages_vec.push(serde_json::json!({
-            "role": "user",
-            "content": question,
-        }));
-
         let tool_cfg = crate::llm::ToolConfig {
             mcp_servers: self.mcp_servers.clone(),
         };
@@ -547,7 +494,6 @@ impl TelegramBot {
             .all_tools()
             .to_vec();
 
-        // Combine context + history + question into a single user message
         let mut user_msg = market_context;
         {
             let session = self.session.lock().await;
@@ -562,7 +508,7 @@ impl TelegramBot {
         user_msg.push_str(&format!("\n\nuser: {}", question));
 
         let system = crate::skills::SkillRegistry::build_role_prompt(role);
-        let accumulated = AgentSession::new(&self.llm, &system)
+        let accumulated = AgentSession::new(&self.ctx.llm, &system)
             .with_tools(&tools)
             .process_chat(&user_msg)
             .await
@@ -595,7 +541,7 @@ impl TelegramBot {
     }
 
     async fn fetch_market_overview(&self) -> Option<MarketOverview> {
-        self.api.xuangubao.fetch_market_overview().await.ok()
+        self.ctx.api.xuangubao.fetch_market_overview().await.ok()
     }
 
     async fn send_message(&self, text: &str) -> Result<i64> {

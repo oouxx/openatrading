@@ -1,9 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use openatrading_core::api::Client as ApiClient;
-use openatrading_core::llm::LlmClient;
-use openatrading_core::trade::TradeManager;
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
 use std::sync::Arc;
@@ -160,6 +157,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         },
         "/api/dapan-abnormal" => {
             let data = state
+                .ctx
                 .api
                 .xuangubao
                 .fetch_dapan_abnormal()
@@ -175,6 +173,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .format("%Y-%m")
                 .to_string();
             let data = state
+                .ctx
                 .api
                 .jiuyan
                 .fetch_timeline(&month)
@@ -186,13 +185,14 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Err("JIUYAN_PHONE not set".into());
             }
-            let data = openatrading_core::agents::sentiment::analyze_sentiment(&state.api)
+            let data = openatrading_core::agents::sentiment::analyze_sentiment(&state.ctx.api)
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
         },
         "/api/telegraph" => {
             let data = state
+                .ctx
                 .api
                 .cls
                 .fetch_telegraph("", None, 20)
@@ -206,6 +206,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .cloned()
                 .unwrap_or_default();
             let data = state
+                .ctx
                 .api
                 .eastmoney
                 .lhb_combined(&date, &date)
@@ -305,6 +306,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     return Ok(serde_json::json!([]));
                 }
                 let data = state
+                    .ctx
                     .api
                     .jiuyan
                     .fetch_field(&date, 1)
@@ -348,6 +350,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
                 let dates = openatrading_core::api::utils::last_n_trading_days(3);
                 let raw = state
+                    .ctx
                     .api
                     .eastmoney
                     .lhb_detail(
@@ -430,6 +433,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     _ => return Err("flag must be 'buy' or 'sell'".to_string()),
                 };
                 let seats = state
+                    .ctx
                     .api
                     .eastmoney
                     .lhb_stock_seat(&code, &date, seat_flag)
@@ -469,6 +473,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if let Some(rest) = path.strip_prefix("/api/telegraph/") {
                 let category = rest.split('?').next().unwrap_or("");
                 let data = state
+                    .ctx
                     .api
                     .cls
                     .fetch_telegraph(category, None, 20)
@@ -479,6 +484,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if let Some(rest) = path.strip_prefix("/api/market-trend/") {
                 let symbol = rest.split('?').next().unwrap_or("");
                 let data = state
+                    .ctx
                     .api
                     .xuangubao
                     .fetch_market_trend(symbol)
@@ -489,6 +495,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if let Some(rest) = path.strip_prefix("/api/plates-by-any-stock/") {
                 let symbol = rest.split('?').next().unwrap_or("");
                 let data = state
+                    .ctx
                     .api
                     .xuangubao
                     .plates_by_any_stock(symbol)
@@ -517,6 +524,7 @@ async fn dispatch_roles_get(
     match action {
         "positions" => {
             let positions = state
+                .ctx
                 .trade
                 .list_positions(name)
                 .map_err(|e| format!("{e}"))?;
@@ -534,6 +542,7 @@ async fn dispatch_roles_get(
         },
         "logs" => {
             let logs = state
+                .ctx
                 .trade
                 .get_trade_logs_by_role(name, 20)
                 .map_err(|e| format!("{e}"))?;
@@ -554,10 +563,11 @@ async fn dispatch_roles_get(
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30);
             let all_logs = state
+                .ctx
                 .trade
                 .get_all_trade_logs_by_role(name)
                 .map_err(|e| format!("{e}"))?;
-            let positions = state.trade.list_positions(name).unwrap_or_default();
+            let positions = state.ctx.trade.list_positions(name).unwrap_or_default();
             let current_value: f64 = positions
                 .iter()
                 .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
@@ -575,6 +585,7 @@ async fn dispatch_roles_get(
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(100);
             let positions = state
+                .ctx
                 .trade
                 .get_closed_positions(name, limit)
                 .map_err(|e| format!("{e}"))?;
@@ -630,10 +641,12 @@ async fn dispatch_post(
                 if parts.len() < 2 {
                     // DELETE /api/roles/{name} — no action suffix → delete
                     state
+                        .ctx
                         .trade
                         .delete_positions_by_role(name)
                         .map_err(|e| format!("{e}"))?;
                     state
+                        .ctx
                         .trade
                         .delete_trade_logs_by_role(name)
                         .map_err(|e| format!("{e}"))?;
@@ -660,10 +673,12 @@ async fn dispatch_post(
                     },
                     "reset" => {
                         state
+                            .ctx
                             .trade
                             .delete_trade_logs_by_role(name)
                             .map_err(|e| format!("{e}"))?;
                         state
+                            .ctx
                             .trade
                             .delete_positions_by_role(name)
                             .map_err(|e| format!("{e}"))?;
@@ -671,10 +686,12 @@ async fn dispatch_post(
                     },
                     "delete" => {
                         state
+                            .ctx
                             .trade
                             .delete_positions_by_role(name)
                             .map_err(|e| format!("{e}"))?;
                         state
+                            .ctx
                             .trade
                             .delete_trade_logs_by_role(name)
                             .map_err(|e| format!("{e}"))?;
@@ -730,8 +747,8 @@ async fn api_chat_stream(
 ) -> Result<(), String> {
     eprintln!("[chat_stream] start, body={}", body);
 
-    let llm = state.llm.clone();
-    let api = state.api.clone();
+    let llm = state.ctx.llm.clone();
+    let api = state.ctx.api.clone();
     let roles = state.roles.clone();
 
     let role_name = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
@@ -845,7 +862,7 @@ async fn api_replay_analyze(
     channel: tauri::ipc::Channel<String>,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    let llm = state.llm.clone();
+    let llm = state.ctx.llm.clone();
 
     let client = XuanguBaoClient::new();
     let events = client
@@ -890,16 +907,22 @@ fn main() {
     let db_path = openatrading_core::atrading_home().join("data.db");
 
     let gateway = Gateway::init(&db_path).expect("failed to init gateway");
-    let memory = gateway.memory.clone();
-    let trade = gateway.trade.clone();
 
     let roles = build_roles();
 
+    let app_ctx = tokio::runtime::Runtime::new().unwrap().block_on(
+        openatrading_core::context::AppContext::build(
+            Some("deepseek"),
+            Some("deepseek-v4-flash"),
+            &[],
+            gateway.memory.clone(),
+            gateway.trade.clone(),
+            Arc::new(openatrading_core::social::NoopChannel),
+        ),
+    );
+
     let app_state = Arc::new(AppState {
-        llm: LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string()),
-        api: ApiClient::new(),
-        memory,
-        trade,
+        ctx: app_ctx,
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: Vec::new(),
         cache: openatrading_web::cache::new_cache(),

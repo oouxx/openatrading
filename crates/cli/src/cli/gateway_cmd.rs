@@ -5,12 +5,11 @@ use std::sync::Arc;
 use service_manager::*;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
-use openatrading_core::social::channel_to_sender;
-use openatrading_core::social::channels::discord::DiscordChannel;
-use openatrading_core::social::channels::lark::LarkChannel;
-use openatrading_core::social::channels::slack::SlackChannel;
-use openatrading_core::social::channels::telegram::TelegramChannel;
-use openatrading_core::social::{FilteredSender, NoopSender, NotificationSender};
+use openatrading_core::social::FilteredSender;
+use openatrading_core::social::NotificationSender;
+use openatrading_core::social::{
+    DiscordChannel, LarkChannel, NoopChannel, SlackChannel, TelegramChannel,
+};
 use openatrading_web::gateway::{Gateway, GatewayConfig};
 use openatrading_web::RoleEntry;
 
@@ -95,62 +94,62 @@ pub fn cmd_gateway_status() -> Result<()> {
     Ok(())
 }
 
-fn create_telegram_sender(tg: &TelegramConfig) -> Option<Box<dyn NotificationSender>> {
+fn create_telegram_sender(tg: &TelegramConfig) -> Option<Arc<dyn NotificationSender>> {
     if !tg.enabled {
         return None;
     }
     let token = tg.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let chat = tg.chat_id.as_deref().filter(|c| !c.is_empty())?;
-    Some(channel_to_sender(Box::new(TelegramChannel::new(
+    Some(Arc::new(TelegramChannel::new(
         token.to_string(),
         chat.to_string(),
-    ))))
+    )))
 }
 
-fn create_discord_sender(dc: &DiscordConfig) -> Option<Box<dyn NotificationSender>> {
+fn create_discord_sender(dc: &DiscordConfig) -> Option<Arc<dyn NotificationSender>> {
     if !dc.enabled {
         return None;
     }
     let bot_token = dc.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let channel_id = dc.channel_id.as_deref().filter(|c| !c.is_empty())?;
-    Some(channel_to_sender(Box::new(DiscordChannel::new(
+    Some(Arc::new(DiscordChannel::new(
         bot_token.to_string(),
         channel_id.to_string(),
-    ))))
+    )))
 }
 
-fn create_slack_sender(sl: &SlackConfig) -> Option<Box<dyn NotificationSender>> {
+fn create_slack_sender(sl: &SlackConfig) -> Option<Arc<dyn NotificationSender>> {
     if !sl.enabled {
         return None;
     }
     let bot_token = sl.bot_token.as_deref().filter(|t| !t.is_empty())?;
     let channel = sl.channel.as_deref().filter(|c| !c.is_empty())?;
-    Some(channel_to_sender(Box::new(SlackChannel::new(
+    Some(Arc::new(SlackChannel::new(
         bot_token.to_string(),
         channel.to_string(),
-    ))))
+    )))
 }
 
-fn create_lark_sender(lk: &LarkConfig) -> Option<Box<dyn NotificationSender>> {
+fn create_lark_sender(lk: &LarkConfig) -> Option<Arc<dyn NotificationSender>> {
     if !lk.enabled {
         return None;
     }
     let app_id = lk.app_id.as_deref().filter(|a| !a.is_empty())?;
     let app_secret = lk.app_secret.as_deref().filter(|s| !s.is_empty())?;
     let receive_id = lk.receive_id.as_deref().filter(|r| !r.is_empty())?;
-    Some(channel_to_sender(Box::new(LarkChannel::new(
+    Some(Arc::new(LarkChannel::new(
         app_id.to_string(),
         app_secret.to_string(),
         receive_id.to_string(),
-    ))))
+    )))
 }
 
 pub fn create_notification_sender(
     sc: &crate::cli::config::SocialConfig,
-) -> Box<dyn NotificationSender> {
+) -> Arc<dyn NotificationSender> {
     let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
 
-    let sender: Option<Box<dyn NotificationSender>> = match channel {
+    let sender: Option<Arc<dyn NotificationSender>> = match channel {
         "telegram" => sc.telegram.as_ref().and_then(create_telegram_sender),
         "discord" => sc.discord.as_ref().and_then(create_discord_sender),
         "slack" => sc.slack.as_ref().and_then(create_slack_sender),
@@ -162,14 +161,14 @@ pub fn create_notification_sender(
     };
 
     match sender {
-        Some(inner) => Box::new(FilteredSender {
+        Some(inner) => Arc::new(FilteredSender {
             inner,
             notify_on_collect: sc.notify_on_collect,
             notify_on_decision: sc.notify_on_decision,
             notify_on_trade: sc.notify_on_trade,
             notify_on_news: sc.notify_on_news,
         }),
-        None => Box::new(NoopSender),
+        None => Arc::new(NoopChannel),
     }
 }
 
@@ -218,8 +217,8 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 
 /// 前台运行（debug/直接使用），Ctrl+C 停止
 pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> Result<()> {
+    use openatrading_core::context::AppContext;
     use openatrading_core::cron::{self, CronConfig};
-    use openatrading_core::llm::LlmClient;
     use openatrading_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 
     let app_config = AppConfig::load()?;
@@ -233,6 +232,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     let do_mcp = !cron_only && !web_only && !no_mcp && app_config.mcp_server.enabled;
 
     let roles = build_roles(&app_config);
+    let tg_roles = roles.clone();
     let mut handles = Vec::new();
 
     // Clone for cron/telegram/web use before gateway is moved
@@ -246,8 +246,8 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
 
     // ── Cron (CLI layer) ──────────────────────────
     let social: Arc<dyn NotificationSender> = match &app_config.social {
-        Some(sc) => Arc::from(create_notification_sender(sc)),
-        None => Arc::new(NoopSender),
+        Some(sc) => create_notification_sender(sc),
+        None => Arc::new(NoopChannel),
     };
 
     if do_cron {
@@ -266,22 +266,19 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             },
         };
 
-        let cron_llm = LlmClient::from_config(
-            app_config.llm.provider.as_deref(),
-            app_config.llm.model.as_deref(),
+        let cron_ctx = Arc::new(
+            AppContext::build(
+                app_config.llm.provider.as_deref(),
+                app_config.llm.model.as_deref(),
+                &cron_mcp,
+                memory.clone(),
+                trade.clone(),
+                social.clone(),
+            )
+            .await,
         );
-        let cron_ctx = cron::SchedulerContext {
-            config: cron_cfg,
-            memory: memory.clone(),
-            trade: trade.clone(),
-            social: social.clone(),
-            llm: cron_llm,
-            api: openatrading_core::api::Client::new(),
-            roles: roles.clone(),
-            mcp_servers: cron_mcp,
-        };
         handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(cron_ctx).await {
+            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, roles).await {
                 eprintln!("[gateway] cron error: {e}");
             }
         }));
@@ -289,17 +286,25 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
 
     // ── Web (web crate) ───────────────────────────
     if do_web {
-        let web_llm_provider = app_config.llm.provider.clone();
-        let web_llm_model = app_config.llm.model.clone();
+        let web_ctx = AppContext::build(
+            app_config.llm.provider.as_deref(),
+            app_config.llm.model.as_deref(),
+            &web_mcp,
+            memory.clone(),
+            trade.clone(),
+            social.clone(),
+        )
+        .await;
         let gh = tokio::spawn(async move {
             if let Err(e) = gateway
-                .start(GatewayConfig {
-                    web_port: 8080,
-                    roles: web_roles.clone(),
-                    mcp_servers: web_mcp.clone(),
-                    llm_provider: web_llm_provider,
-                    llm_model: web_llm_model,
-                })
+                .start(
+                    GatewayConfig {
+                        web_port: 8080,
+                        roles: web_roles.clone(),
+                        mcp_servers: web_mcp.clone(),
+                    },
+                    web_ctx,
+                )
                 .await
             {
                 eprintln!("[gateway] web error: {e}");
@@ -339,10 +344,17 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                             bot_token: token.clone(),
                             chat_id: chat_id.clone(),
                             mcp_servers: tg_mcp.clone(),
-                            llm_provider: app_config.llm.provider.clone(),
-                            llm_model: app_config.llm.model.clone(),
                         };
-                        let bot = TelegramBot::new(config, roles, memory.clone(), trade.clone());
+                        let tg_ctx = AppContext::build(
+                            app_config.llm.provider.as_deref(),
+                            app_config.llm.model.as_deref(),
+                            &tg_mcp,
+                            memory.clone(),
+                            trade.clone(),
+                            social.clone(),
+                        )
+                        .await;
+                        let bot = TelegramBot::new(config, tg_roles.clone(), tg_ctx);
                         handles.push(tokio::spawn(async move {
                             if let Err(e) = bot.start_polling().await {
                                 eprintln!("[gateway] telegram bot error: {e}");
