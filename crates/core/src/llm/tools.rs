@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::types::{AgentTool, AgentToolResult, DynTool};
+use openatrading_agent::types::{AgentToolResult, DynTool};
 
 use crate::api::cls::ClsClient;
 use crate::api::eastmoney::LhbClient;
@@ -78,26 +78,34 @@ pub(crate) fn to_box_err(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sy
 pub(crate) fn tool(
     name: &str,
     description: &str,
-    schema: serde_json::Value,
-    exec: ExecuteFn,
+    parameters_schema: serde_json::Value,
+    execute: ExecuteFn,
 ) -> Arc<DynTool> {
-    Arc::new(AgentTool {
-        name: name.into(),
-        description: description.into(),
-        label: name.into(),
-        parameters_schema: schema,
+    Arc::new(DynTool {
+        name: name.to_string(),
+        description: description.to_string(),
+        parameters_schema,
+        label: String::new(),
         execution_mode: None,
         prepare_arguments: None,
-        execute: exec,
+        execute,
     })
 }
 
-// ─── XuanguBao tools ───────────────────────────────────
+// ─── 涨停 & 强势股 ─────────────────────────────────────
 
 pub fn get_limit_up() -> Arc<DynTool> {
     tool(
         "get_limit_up",
-        "获取当前涨停股票列表，包含股票代码、名称、连板天数、封板时间、炸板次数、涨停原因等详细信息",
+        "获取今日涨停股票完整列表。每只股票包含：代码(symbol)、名称(stock_chi_name)、现价、涨跌幅、\
+        连板天数(limit_up_days)、今日首次封板时间(first_limit_up, Unix秒)、最后封板时间(last_limit_up)、\
+        炸板次数(break_limit_up_times)、首次炸板时间(first_break_limit_up)、最后炸板时间(last_break_limit_up)、\
+        昨日连板天数(yesterday_limit_up_days)、封单量比(buy_lock_volume_ratio)、卖单量比(sell_lock_volume_ratio)、\
+        换手率(turnover_ratio)、量比(volume_bias_ratio)、M天N板数据(m_days_n_boards_boards/days)、\
+        涨停原因(surge_reason)等。\
+        用法：与 get_yesterday_limit_up 对比得出连板晋级率（昨日X板今日Y板的比例），\
+        连板天梯（各梯队涨停数分布），炸板率 = 炸板次数>0 的股票占比。\
+        换手率+封单量比可判断封板质量（高换手低封单 = 弱势封板）。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -111,11 +119,16 @@ pub fn get_limit_up() -> Arc<DynTool> {
 pub fn get_super_stock() -> Arc<DynTool> {
     tool(
         "get_super_stock",
-        "获取当前强势股股票列表，包含股票代码、名称、连板天数、封板时间、炸板次数、涨停原因等详细信息",
+        "获取强势股列表（未涨停但走势强劲的个股）。用于发现潜在涨停候选、\
+        识别盘中异动但尚未封板的股票。数据结构与涨停列表相同。\
+        用法：结合 realtime_quote 判断是否有封板潜力（换手、量比、涨幅）。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
-                let result = XuanguBaoClient::new().fetch_super_stock().await.map_err(to_box_err)?;
+                let result = XuanguBaoClient::new()
+                    .fetch_super_stock()
+                    .await
+                    .map_err(to_box_err)?;
                 Ok(text_result(&result))
             })
         }),
@@ -125,7 +138,9 @@ pub fn get_super_stock() -> Arc<DynTool> {
 pub fn get_limit_down() -> Arc<DynTool> {
     tool(
         "get_limit_down",
-        "获取当前跌停股票列表",
+        "获取今日跌停股票列表。包含代码、名称、连跌天数(limit_down_days)、\
+        跌停封单数据等。用于判断市场亏钱效应、恐慌程度。\
+        用法：跌停数/昨日涨停数 = 亏钱效应比率；跌停家数增加 = 情绪退潮信号。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -139,10 +154,17 @@ pub fn get_limit_down() -> Arc<DynTool> {
     )
 }
 
+// ─── 市场全景 ─────────────────────────────────────────
+
 pub fn get_market_overview() -> Arc<DynTool> {
     tool(
         "get_market_overview",
-        "获取当前市场概览数据，包含涨跌家数、涨停跌停数、炸板率、市场温度等",
+        "获取市场全景概览：上涨家数(rise_count)、下跌家数(fall_count)、\
+        涨停家数(limit_up_count)、跌停家数(limit_down_count)、\
+        炸板率(bomb_rate, 0~1)、市场温度(market_temperature, 0~100)、\
+        昨日涨停今日平均涨幅(yesterday_limit_up_avg_pcp)。\
+        用法：首先调用，快速判断市场整体强弱——温度>60且炸板率<0.2为强势；\
+        温度<40且炸板率>0.3为弱势。涨跌比<1且跌停>10为退潮。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -159,7 +181,11 @@ pub fn get_market_overview() -> Arc<DynTool> {
 pub fn get_yesterday_limit_up() -> Arc<DynTool> {
     tool(
         "get_yesterday_limit_up",
-        "获取昨日涨停股票列表，用于对比今日涨停判断晋级情况",
+        "获取昨日涨停股票列表及今日表现。每只包含：昨日连板天数(yesterday_limit_up_days)、\
+        今日是否继续涨停、今日涨跌幅等。\
+        用法：核心用途——(1)与今日涨停对比计算连板晋级率（昨日X板→今日Y板的比例），\
+        构建连板天梯；(2)昨日涨停今日下跌比例 = 亏钱效应；(3)昨日涨停平均涨幅 = 溢价率。\
+        晋级率>50%为强势，<30%为退潮。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -176,7 +202,8 @@ pub fn get_yesterday_limit_up() -> Arc<DynTool> {
 pub fn get_dapan_abnormal() -> Arc<DynTool> {
     tool(
         "get_dapan_abnormal",
-        "获取大盘异动事件列表，包含异动类型、板块信息、时间戳",
+        "获取大盘异动事件（全市场级别的异常波动）。包含异动类型、触发板块、时间戳。\
+        用法：检测系统性风险——大盘异动频发 = 市场不稳定，应降低仓位或回避。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -190,10 +217,17 @@ pub fn get_dapan_abnormal() -> Arc<DynTool> {
     )
 }
 
+// ─── 实时行情 ─────────────────────────────────────────
+
 pub fn get_realtime_quote() -> Arc<DynTool> {
     tool(
         "get_realtime_quote",
-        "获取指定股票的实时行情数据，包含价格、涨跌幅、换手率、市值、量比、振幅等",
+        "获取单只股票的实时行情：现价(last_px)、涨跌幅(px_change_rate)、开盘价(open_px)、\
+        最高价(high_px)、最低价(low_px)、振幅(amplitude)、换手率(turnover_ratio)、\
+        量比(volume_ratio)、市值(market_value)、流通市值(circulation_value)、\
+        成交额(turnover_value)、市盈率(pe_rate/dyn_pe)、市净率(dyn_pb_rate)。\
+        用法：查看涨停候选股的实时盘口——换手率适中(5-15%)+量比>2 = 活跃；\
+        振幅过大(>15%)+高位 = 分歧加大。",
         str_schema(&[("symbol", "股票代码，如 600519.SS")]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -211,7 +245,9 @@ pub fn get_realtime_quote() -> Arc<DynTool> {
 pub fn get_plates_by_stock() -> Arc<DynTool> {
     tool(
         "get_plates_by_stock",
-        "获取指定股票所属的所有板块及每个板块的涨跌幅",
+        "获取指定股票所属的所有概念/行业板块，及每个板块的当前涨跌幅。\
+        用法：判断涨停股的板块效应——所属板块涨幅>2%且有其他涨停股 = 板块助攻；\
+        个股涨停但板块不跟 = 独立行情，持续性和空间有限。",
         str_schema(&[("symbol", "股票代码，如 600519.SS")]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -229,7 +265,9 @@ pub fn get_plates_by_stock() -> Arc<DynTool> {
 pub fn get_market_trend() -> Arc<DynTool> {
     tool(
         "get_market_trend",
-        "获取指定股票的日内分时走势数据，用于分析盘中价格变化趋势",
+        "获取个股分时走势数据（日内价格+成交量序列）。\
+        用法：分析盘中走势形态——均价线上方运行 = 强势；\
+        多次冲击涨停未封 = 抛压大；尾盘跳水 = 次日低开概率高。",
         str_schema(&[("symbol", "股票代码，如 600519.SS")]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -244,10 +282,14 @@ pub fn get_market_trend() -> Arc<DynTool> {
     )
 }
 
+// ─── 板块异动 ─────────────────────────────────────────
+
 pub fn get_plate_abnormal() -> Arc<DynTool> {
     tool(
         "get_plate_abnormal",
-        "获取板块异动事件列表，包含板块涨跌幅、关联个股、利好利空判断，默认返回30条",
+        "获取板块异动事件：板块涨跌幅、异动类型、关联个股、利好/利空方向判断。\
+        用法：发现资金攻击方向——连续多条同一板块异动 = 资金抱团，可能形成主线；\
+        异动板块切换频繁 = 轮动快，不适合追高。",
         str_schema(&[("count", "返回条数，默认30")]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -262,39 +304,39 @@ pub fn get_plate_abnormal() -> Arc<DynTool> {
     )
 }
 
-// ─── K线工具 ────────────────────────────────────────────
-
-fn parse_period(s: &str) -> Result<KlinePeriod, &'static str> {
-    match s {
-        "minute" => Ok(KlinePeriod::Minute),
-        "day" => Ok(KlinePeriod::Day),
-        "week" => Ok(KlinePeriod::Week),
-        "month" => Ok(KlinePeriod::Month),
-        _ => Err("period 必须是 minute/day/week/month 之一"),
-    }
-}
+// ─── K线 ─────────────────────────────────────────────
 
 pub fn get_kline() -> Arc<DynTool> {
     tool(
         "get_kline",
-        "获取指定股票的K线数据，支持分钟/日/周/月线，返回开盘价、收盘价、最高价、最低价、成交量、涨跌幅",
+        "获取个股历史K线数据（OHLCV）。支持日线、周线、月线、分钟线。\
+        每根K线包含：时间戳(tick_at)、开盘价(open_px)、收盘价(close_px)、\
+        最高价(high_px)、最低价(low_px)、成交量(turnover_volume)、涨跌幅(px_change_rate)。\
+        用法：查看技术形态——突破前高、均线支撑、量价配合等。周期参数用枚举值。",
         str_schema(&[
             ("symbol", "股票代码，如 600519.SS"),
-            ("period", "K线周期：minute(分钟线) / day(日线) / week(周线) / month(月线)"),
-            ("count", "返回K线条数，如 20"),
+            (
+                "period",
+                "K线周期：Minute(分钟), Day(日线), Week(周线), Month(月线)",
+            ),
+            ("count", "返回K线数量，默认100"),
         ]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
                 let symbol = str_arg(&args, "symbol");
-                let period = parse_period(&str_arg(&args, "period")).map_err(to_box_err)?;
-                let count: u32 = args
+                let period = match str_arg(&args, "period").as_str() {
+                    "Minute" => KlinePeriod::Minute,
+                    "Week" => KlinePeriod::Week,
+                    "Month" => KlinePeriod::Month,
+                    _ => KlinePeriod::Day,
+                };
+                let count = args
                     .get("count")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("20")
-                    .parse()
-                    .map_err(|_| to_box_err("count 必须是数字"))?;
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(100)
+                    .min(500);
                 let result = XuanguBaoClient::new()
-                    .fetch_kline(&symbol, period, count)
+                    .fetch_kline(&symbol, period, count as u32)
                     .await
                     .map_err(to_box_err)?;
                 Ok(text_result(&result))
@@ -303,22 +345,21 @@ pub fn get_kline() -> Arc<DynTool> {
     )
 }
 
-// ─── 韭研公社 tools ──────────────────────────────────────
+// ─── 新闻 & 电报 ──────────────────────────────────────
 
 pub fn get_field_items() -> Arc<DynTool> {
     tool(
         "get_field_items",
-        "获取韭研公社总结的涨停股，强势股数据以及涨停原因",
-        str_schema(&[
-            ("date", "日期，格式YYYY-MM-DD，如2025-01-20"),
-            ("pc", "页码，默认1"),
-        ]),
-        Arc::new(|_id, args, _signal, _progress| {
+        "获取韭研公社今日异动板块数据。包含板块名称、异动信号、关联个股、\
+        趋势判断等。用于社群情绪和事件驱动的辅助参考。",
+        empty_schema(),
+        Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
-                let date = str_arg(&args, "date");
-                let pc = str_arg(&args, "pc");
+                let date = crate::utils::time::beijing_now()
+                    .format("%Y-%m-%d")
+                    .to_string();
                 let result = JiuYanSession::new()
-                    .fetch_field_str(&date, &pc)
+                    .fetch_field_str(&date, "1")
                     .await
                     .map_err(to_box_err)?;
                 Ok(text_result(&result))
@@ -327,18 +368,22 @@ pub fn get_field_items() -> Arc<DynTool> {
     )
 }
 
-// ─── CLS tools ─────────────────────────────────────────
-
 pub fn get_telegraph() -> Arc<DynTool> {
     tool(
         "get_telegraph",
-        "获取财联社最新电报资讯，默认返回全部类别。可指定category筛选：red(重要)、watch(关注)等",
-        str_schema(&[("category", "资讯类别，留空返回全部")]),
+        "获取财联社分类电报（最新N条）。参数 category 可选值：\
+        \"\" (全部), \"stock\" (股市), \"macro\" (宏观), \"industry\" (行业), \"company\" (公司)。\
+        用法：扫描突发新闻——政策消息(宏观)、行业利好(行业)、个股公告(公司)。",
+        str_schema(&[(
+            "category",
+            "分类，可选 '' 'stock' 'macro' 'industry' 'company'",
+        )]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
                 let category = str_arg(&args, "category");
+                let cat = if category.is_empty() { "" } else { &category };
                 let result = ClsClient::new()
-                    .fetch_telegraph_latest(&category)
+                    .fetch_telegraph(cat, None, 20)
                     .await
                     .map_err(to_box_err)?;
                 Ok(text_result(&result))
@@ -350,13 +395,13 @@ pub fn get_telegraph() -> Arc<DynTool> {
 pub fn get_telegraph_allday() -> Arc<DynTool> {
     tool(
         "get_telegraph_allday",
-        "获取今日全天财联社电报资讯，自动翻页拉取全部数据",
-        str_schema(&[("category", "资讯类别，留空返回全部")]),
-        Arc::new(|_id, args, _signal, _progress| {
+        "获取财联社全天电报（所有分类，不限条数）。\
+        用法：盘后复盘时获取全天重要消息，按时间线梳理事件脉络。",
+        empty_schema(),
+        Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
-                let category = str_arg(&args, "category");
                 let result = ClsClient::new()
-                    .fetch_telegraph_allday(&category)
+                    .fetch_telegraph("", None, 100)
                     .await
                     .map_err(to_box_err)?;
                 Ok(text_result(&result))
@@ -365,15 +410,17 @@ pub fn get_telegraph_allday() -> Arc<DynTool> {
     )
 }
 
-// ─── Eastmoney 龙虎榜 tools ─────────────────────────────
+// ─── 龙虎榜 ──────────────────────────────────────────
 
 pub fn get_lhb_detail() -> Arc<DynTool> {
     tool(
         "get_lhb_detail",
-        "获取龙虎榜上榜个股详情，包含净买入额、买卖金额、涨跌幅、上榜原因、上榜后1/2/5/10日表现",
+        "获取龙虎榜明细数据。包含上榜股票、买入/卖出营业部、买卖金额、净买入等。\
+        用法：判断主力动向——知名游资买入 = 短线看多信号；机构席位大额买入 = 中线看好；\
+        净买入金额大的股票次日溢价概率高。日期格式 YYYYMMDD。",
         str_schema(&[
-            ("start_date", "起始日期，格式YYYYMMDD，如20250120"),
-            ("end_date", "结束日期，格式YYYYMMDD，如20250120"),
+            ("start_date", "起始日期，如 20260615"),
+            ("end_date", "结束日期，如 20260615"),
         ]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -392,10 +439,12 @@ pub fn get_lhb_detail() -> Arc<DynTool> {
 pub fn get_lhb_combined() -> Arc<DynTool> {
     tool(
         "get_lhb_combined",
-        "获取龙虎榜合并数据，包含上榜详情+买卖席位营业部明细",
+        "获取龙虎榜合并数据（按股票汇总买卖席位）。比明细更简洁，\
+        直接显示每只股票的总买入额、总卖出额、净买入额、上榜营业部数量。\
+        用法：快速扫描当日龙虎榜——净买入前10、知名席位动向。",
         str_schema(&[
-            ("start_date", "起始日期，格式YYYYMMDD，如20250120"),
-            ("end_date", "结束日期，格式YYYYMMDD，如20250120"),
+            ("start_date", "起始日期，如 20260615"),
+            ("end_date", "结束日期，如 20260615"),
         ]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -414,10 +463,13 @@ pub fn get_lhb_combined() -> Arc<DynTool> {
 pub fn get_lhb_active_yyb() -> Arc<DynTool> {
     tool(
         "get_lhb_active_yyb",
-        "获取近期活跃营业部排名，按净买入额排序",
+        "获取近期活跃营业部排名。包含营业部名称、上榜次数、买入总额、\
+        卖出总额、跟投胜率等。\
+        用法：识别当前活跃的游资席位——跟投胜率高的席位 = 正向跟随信号。\
+        日期格式 YYYYMMDD。",
         str_schema(&[
-            ("start_date", "起始日期，格式YYYYMMDD，如20250120"),
-            ("end_date", "结束日期，格式YYYYMMDD，如20250120"),
+            ("start_date", "起始日期，如 20260615"),
+            ("end_date", "结束日期，如 20260615"),
         ]),
         Arc::new(|_id, args, _signal, _progress| {
             Box::pin(async move {
@@ -433,10 +485,16 @@ pub fn get_lhb_active_yyb() -> Arc<DynTool> {
     )
 }
 
+// ─── 全量异动 ────────────────────────────────────────
+
 pub fn get_all_day_events() -> Arc<DynTool> {
     tool(
         "get_all_day_events",
-        "获取今日全量异动事件列表（包含板块异动和个股异动），用于盘中复盘和情绪分析",
+        "获取今日盘中全量异动事件（板块异动+个股异动），按时间倒序排列。\
+        每条包含事件类型、触发标的、发生时间戳等。\
+        用法：盘后/盘中复盘时梳理全天异动时间线——\
+        哪个时间点集中异动、哪个板块异动频次最高、异动与涨停的时间关系。\
+        结合 limit_up 数据可分析「异动→封板」的转化率。",
         empty_schema(),
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
@@ -450,17 +508,16 @@ pub fn get_all_day_events() -> Arc<DynTool> {
     )
 }
 
-// ─── Tests ──────────────────────────────────────────────
-
-// ============================================================================
-// Tool factories: TradeManager & Memory
-// ============================================================================
+// ─── 持仓 & 记忆（per-role 注入）─────────────────────────
 
 /// Create a tool that queries current positions for a given role.
 pub fn create_positions_tool(trade: Arc<TradeManager>, role_name: String) -> Arc<DynTool> {
     tool(
         "get_current_positions",
-        "查询当前持仓信息，包含股票代码、名称、成本价格、持仓数量、当前价格等。用于分析当前仓位情况。",
+        "查询当前角色的持仓列表。返回股票代码、名称、成本价、持仓数量、\
+        当前价格、浮动盈亏、买入理由、持仓占比等。\
+        用法：做决策前先查持仓，避免重复买入已持仓股票，\
+        根据持仓盈亏决定是否止盈/止损。",
         empty_schema(),
         Arc::new(move |_id, _args, _signal, _progress| {
             let trade = trade.clone();
@@ -477,7 +534,10 @@ pub fn create_positions_tool(trade: Arc<TradeManager>, role_name: String) -> Arc
 pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> {
     tool(
         "get_historical_context",
-        "查询近N日市场历史数据，用于对比分析。参数：days（可选，默认5天）",
+        "查询近N日市场历史快照数据（默认5天）。包含每日市场概览、\
+        涨停数据、板块异动等历史记录。\
+        用法：对比历史同期数据判断趋势变化——\
+        今日温度 vs 近5日均温 = 情绪方向；连续缩量涨停 = 加速赶顶。",
         serde_json::json!({"type":"object","properties":{"days":{"type":"integer","description":"查询天数，默认5","default":5}},"required":[]}),
         Arc::new(move |_id, args, _signal, _progress| {
             let memory = memory.clone();
@@ -577,12 +637,15 @@ pub fn create_decision_tool() -> Arc<DynTool> {
 
     tool(
         "submit_trading_decision",
-        "Call this tool to submit your final trading decision with analysis and trade instructions.",
+        "提交交易决策。调用此工具表示已完成分析，输出结构化的分析报告和交易指令列表。\
+        每个交易指令包含：action(Buy/Sell/Hold)、symbol(股票代码)、\
+        name(股票名称)、shares(股数，100的整数倍)、reason(决策理由)。\
+        注意：必须基于实际工具返回的数据做决策，不得凭空猜测。",
         schema_value,
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
                 Ok(AgentToolResult {
-                    content: vec![ContentBlock::text("Trading decision submitted.")],
+                    content: vec![ContentBlock::text("决策已接收")],
                     details: serde_json::Value::Null,
                     terminate: Some(true),
                 })
@@ -590,6 +653,8 @@ pub fn create_decision_tool() -> Arc<DynTool> {
         }),
     )
 }
+
+// ─── Tests ──────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -661,13 +726,7 @@ mod tests {
         assert!(tool.parameters_schema["required"]
             .as_array()
             .unwrap()
-            .contains(&serde_json::json!("symbol")));
-    }
-
-    #[test]
-    fn test_plate_abnormal_has_count_param() {
-        let tool = get_plate_abnormal();
-        assert!(tool.parameters_schema["properties"]["count"].is_object());
+            .contains(&serde_json::Value::String("symbol".into())));
     }
 
     #[test]
@@ -675,5 +734,11 @@ mod tests {
         let tool = get_lhb_detail();
         assert!(tool.parameters_schema["properties"]["start_date"].is_object());
         assert!(tool.parameters_schema["properties"]["end_date"].is_object());
+    }
+
+    #[test]
+    fn test_plate_abnormal_has_count_param() {
+        let tool = get_plate_abnormal();
+        assert!(tool.parameters_schema["properties"]["count"].is_object());
     }
 }
