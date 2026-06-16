@@ -2,14 +2,13 @@
 
 ## Overview
 
-Replace the custom AI chat UI (`AiCopilot.tsx`) with assistant-ui React components and automatically register backend tools and skills as slash commands. The slash command layer routes to the agent runtime with per-command configuration (tool filtering, skill injection). SSE communication uses the existing `apiChatStream` manual handling.
+Replace the custom AI chat UI with assistant-ui (`<ExternalThread>`) in both `AiCopilot.tsx` and `AiSidebar.tsx`. Backend tools and skills auto-register as slash commands. The slash command layer routes to the agent runtime with per-command configuration (tool filtering, skill injection). SSE communication uses the existing `apiChatStream` handling.
 
 ## Architecture
 
 ```
-assistant-ui <Thread> + <Composer>        ← React UI layer
-                    │
-          RuntimeAdapter                  ← bridges assistant-ui ↔ SSE
+assistant-ui <ExternalThread>             ← controlled component
+  messages + onNew                        ← state management
                     │
       apiChatStream (manual SSE)          ← unchanged
                     │
@@ -27,6 +26,20 @@ assistant-ui <Thread> + <Composer>        ← React UI layer
                     │
             Exchange / Data
 ```
+
+## Decisions (from design review)
+
+| Decision | Choice |
+|----------|--------|
+| assistant-ui interface | `<ExternalThread>` controlled component, not RuntimeAdapter |
+| Command metadata flow | `useRef` — slash command `onSelect` sets a ref, `onNew` reads it |
+| Tool command behavior | Execute immediately, tool list filtered to only that tool |
+| Skill command behavior | Fill composer, user edits/presses Enter, all tools available |
+| Role & skill relationship | One-to-one — skill (SKILL.md) is a strategy, same as a role's prompt |
+| Skill vs role conflict | Skill wins — SKILL.md replaces the role strategy prompt |
+| Quick prompts | Removed — slash commands cover them |
+| Role selector in sidebar | Removed — roles accessible via slash commands |
+| AiSidebar | Also replaced with assistant-ui, shares slash commands |
 
 ## Backend Changes
 
@@ -71,11 +84,12 @@ pub struct ChatRequest {
 
 ### 4. Command-aware agent configuration
 
-In `ai_chat` handler:
+In `ai_chat` handler. Strategy prompt comes from one source — `role` and skill command are alternatives, not combined:
 
-- **Skill commands**: find the named skill in `SkillRegistry::from_disk()`, inject its content into the system prompt
-- **Tool commands**: filter the tool list to only the requested tool, reducing LLM latency and preventing wrong-tool calls
-- **Analysis commands** (no command): current behavior with all tools and default prompt
+- **Default (no command)**: current behavior — `role` → strategy prompt, or fallback. All tools available.
+- **Tool command**: `role` strategy prompt unchanged, tool list filtered to only the requested tool (excludes `submit_trading_decision` and `create_skill`).
+- **Skill command**: SKILL.md content replaces the strategy prompt (overrides `role`). All tools available.
+- **Pipeline command**: future — composite tools loaded, strategy from role.
 
 ## Frontend Changes
 
@@ -83,52 +97,97 @@ In `ai_chat` handler:
 
 Add to `src/package.json`:
 
-- `@assistant-ui/react` — UI components (Thread, Composer)
+- `@assistant-ui/react` — UI components (Thread, Composer, ExternalThread)
 
-### 1. Layout (`AiCopilot.tsx`)
+### 1. Layout changes
 
+**`AiCopilot.tsx`:**
 - **Keep**: `TickerStrip` (index quotes ticker at top)
-- **Remove**: `ContextSidebar`
-- **Replace**: custom textarea + message list → assistant-ui `<Thread>` + `<Composer>`
+- **Remove**: `ContextSidebar`, quick prompts
+- **Replace**: custom textarea + message list → assistant-ui `<ExternalThread>`
 
-### 2. assistant-ui integration
+**`AiSidebar.tsx`:**
+- **Remove**: role selector dropdown, suggested questions, custom input/messages
+- **Replace**: message area + input → assistant-ui `<ExternalThread>` (compact variant)
 
-- Import `@assistant-ui/react` package
-- Use `<Thread>` for message list, `<Composer>` for input
-- Wire to a custom `RuntimeAdapter` that bridges assistant-ui ↔ existing SSE
-- Render markdown using assistant-ui's built-in markdown components
+### 2. assistant-ui integration (shared hook)
 
-### 3. Runtime adapter
+Both components share the same integration hook `useAssistantChat`:
 
-Bridge the existing `apiChatStream` (SSE) to assistant-ui's internal thread state:
+```tsx
+// hooks/useAssistantChat.ts
+export function useAssistantChat() {
+  const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const cmdRef = useRef<{ name: string; type: CommandType } | null>(null);
 
+  const handleNew = useCallback((appendMsg: AppendMessage) => {
+    const cmd = cmdRef.current;
+    cmdRef.current = null;
+
+    // Add user + empty assistant message
+    setMessages(prev => [...prev, toUserMsg(appendMsg), emptyAssistantMsg()]);
+    setStreaming(true);
+
+    apiChatStream({
+      message: extractText(appendMsg),
+      command_name: cmd?.name,
+      command_type: cmd?.type,
+      history: toHistory(messages),
+    }, {
+      onData: (text) => appendToLastMessage(text),
+      onDone: () => setStreaming(false),
+      onError: (err) => setLastMessageError(err),
+    });
+  }, [messages]);
+
+  const sendCommand = useCallback((cmd: CommandSpec) => {
+    cmdRef.current = { name: cmd.name, type: cmd.command_type };
+    if (cmd.command_type === "tool") {
+      // Execute immediately: push message + trigger send
+      // (directly modify messages state and call apiChatStream)
+    } else {
+      // Fill composer text (skill): update composer content
+    }
+  }, []);
+
+  return { messages, streaming, handleNew, sendCommand };
+}
 ```
-assistant-ui RuntimeAdapter.send()
-        │
-        ▼
-apiChatStream({ message, command_name, command_type }, callbacks)
-        │
-        ▼
-callbacks.onData(text)    → assistant-ui appendText()
-callbacks.onDone()        → assistant-ui finalize()
-callbacks.onError(err)    → assistant-ui appendError()
+
+### 3. Controlled component pattern
+
+```tsx
+// AiCopilot.tsx
+const { messages, streaming, handleNew, sendCommand } = useAssistantChat();
+
+// Register slash commands
+useEffect(() => {
+  fetch("/api/ai/commands").then(res => res.json()).then(commands => {
+    registerSlashCommands(commands, sendCommand);
+  });
+}, []);
+
+return (
+  <div className="min-h-screen bg-bg pt-11 flex flex-col">
+    <TickerStrip />
+    <div className="flex-1 overflow-hidden">
+      <ExternalThread
+        messages={messages}
+        onNew={handleNew}
+        isRunning={streaming}
+      />
+    </div>
+  </div>
+);
 ```
 
-The Tauri branch in `apiChatStream` stays as-is (uses `Channel` + `invoke`). The assistant-ui runtime adapter handles both paths transparently.
+The Tauri branch in `apiChatStream` (uses `Channel` + `invoke`) works transparently.
 
-### 4. Auto-registration
+### 4. Slash command behavior
 
-On mount, fetch `GET /api/ai/commands` and register each as a slash command:
-
-```ts
-commands.map(cmd => ({
-  name: cmd.name,
-  description: cmd.description,
-  onSelect: () => sendWithCommand(cmd),
-}))
-```
-
-`sendWithCommand` sends the message with `command_name` and `command_type` in the request body.
+- **Tool commands** (`/get_limit_up`): `sendCommand` sets the ref AND immediately generates a message (e.g., "获取涨停数据"), adding it to messages and calling `apiChatStream` directly — user doesn't see composer
+- **Skill commands** (`/breakout-pullback`): `sendCommand` sets the ref AND fills the composer text ("执行 breakout-pullback 策略"), user edits/presses Enter → `onNew` reads the ref
 
 ## Data Flow
 
@@ -136,42 +195,44 @@ commands.map(cmd => ({
 
 ```
 1. User types "/get_limit_up" in assistant-ui composer
-2. onSelect fires → adapter.send({ messages, command_name, command_type: "tool" })
-3. RuntimeAdapter → apiChatStream → POST /api/ai/chat
+2. Slash command fires → sendCommand → sets cmdRef + calls apiChatStream directly
+3. POST /api/ai/chat { message: "获取涨停数据", command_name: "get_limit_up", command_type: "tool" }
 4. Server: filter tools to only "get_limit_up"
 5. Agent runtime: user message + 1 tool → call tool → stream result
-6. SSE stream → RuntimeAdapter → assistant-ui Thread renders markdown
+6. SSE onData → appendToLastMessage() → ExternalThread re-renders
 ```
 
 ### Skill command (e.g. `/breakout-pullback`)
 
 ```
 1. User types "/breakout-pullback"
-2. onSelect fires → adapter.send({ messages, command_name, command_type: "skill" })
-3. RuntimeAdapter → apiChatStream → POST /api/ai/chat
-4. Server: load breakout-pullback SKILL.md into system prompt
-5. Agent runtime: skill-aware prompt + all tools → stream analysis
+2. Slash command fires → sendCommand → sets cmdRef + fills composer
+3. User edits or presses Enter → onNew → reads cmdRef
+4. POST /api/ai/chat { message: "执行策略分析", command_name: "breakout-pullback", command_type: "skill" }
+5. Server: load breakout-pullback SKILL.md into system prompt
+6. Agent runtime: skill-aware prompt + all tools → stream analysis
 ```
 
 ### Analysis command (default)
 
 ```
 1. User types a free-form question
-2. adapter.send({ messages }) — no command fields
-3. RuntimeAdapter → apiChatStream → POST /api/ai/chat
-4. Server: current behavior (default prompt + all tools)
+2. onNew → cmdRef is null → no command fields
+3. POST /api/ai/chat (current behavior)
+4. Server: default prompt + all tools
 ```
 
 ## Out of Scope
 
-- Pipeline command type — reserved in the enum, no behavior implemented
-- Structured tool call cards — tools return JSON that renders as markdown, sufficient for v1
-- Desktop/Tauri side — same SSE bridge applies, no separate changes needed
+- Pipeline command type — composite command (e.g. `/morning-check`). Not implemented
+- Structured tool call cards — tools return JSON rendered as markdown, sufficient for v1
 - AG-UI protocol — deferred to future iteration
+- Role selector — removed; roles accessible via slash commands
 
 ## Why This Approach
 
 - **Single execution path**: all requests go through the agent runtime, no duplicate tool logic
 - **Command-aware routing**: per-command configuration without splitting the codebase
-- **Minimal frontend changes**: preserve ticker, drop sidebar, replace only the chat area
-- **Auto-discovery**: new tools and skills automatically appear as slash commands without frontend code changes
+- **Minimal frontend changes**: preserve ticker, drop sidebar + role selector + quick prompts
+- **Auto-discovery**: new tools and skills automatically appear as slash commands
+- **Unified component**: `AiSidebar` and `AiCopilot` share the same `useAssistantChat` hook
