@@ -14,6 +14,7 @@ use std::sync::Arc;
 // use openatrading_agent::types::AgentMessage;
 use openatrading_core::llm::pi_ai_types::{AssistantMessageEvent, ContentBlock};
 use openatrading_core::llm::{create_agent, tools, AgentEvent, AgentMessage, LlmClient};
+#[ignore = "integration test"]
 #[tokio::test]
 async fn test_deepseek_v4_flash_agent_process() {
     load_env();
@@ -76,7 +77,7 @@ fn load_env() {
 }
 
 #[tokio::test]
-#[ignore]
+#[ignore = "integration test"]
 async fn test_deepseek_is_streaming() {
     load_env();
 
