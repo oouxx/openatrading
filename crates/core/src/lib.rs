@@ -14,6 +14,16 @@ pub mod utils;
 
 use std::path::PathBuf;
 
+/// Check whether aggressive trading mode is enabled via `OPENATRADING_AGGRESSIVE`.
+///
+/// When enabled: daily full-position requirement, every decision must produce
+/// buy/sell/hold instructions (no "wait and see").
+pub fn is_aggressive_mode() -> bool {
+    std::env::var("OPENATRADING_AGGRESSIVE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 /// Resolve the `.atrading` data directory.
 ///
 /// Priority:
