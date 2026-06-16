@@ -1,0 +1,135 @@
+use crate::memory::MarketSnapshot;
+use openatrading_api::xuangubao::MarketOverview;
+
+// ── Default system prompts ─────────────────────────
+
+/// Default system prompt when no role-specific strategy is selected.
+pub const DEFAULT_CHAT_SYSTEM_PROMPT: &str =
+    "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。";
+
+// ── Market context ─────────────────────────────────
+
+/// Format market overview data into a structured context block.
+pub fn build_market_context(overview: &MarketOverview, date: &str) -> String {
+    format!(
+        "## 当前市场数据\n\
+         - 日期：{date}\n\
+         - 上涨家数：{rise}\n\
+         - 下跌家数：{fall}\n\
+         - 涨停家数：{limit_up}\n\
+         - 跌停家数：{limit_down}\n\
+         - 炸板率：{bomb:.1}%\n\
+         - 市场温度：{temp:.1}\n",
+        rise = overview.rise_count,
+        fall = overview.fall_count,
+        limit_up = overview.limit_up_count,
+        limit_down = overview.limit_down_count,
+        bomb = overview.bomb_rate * 100.0,
+        temp = overview.market_temperature,
+    )
+}
+
+pub const MARKET_CONTEXT_ERROR: &str = "## 市场数据获取失败\n";
+
+// ── Decision ───────────────────────────────────────
+
+/// Build the user message for the cron decision path.
+pub fn build_decision_user_message(market_context: &str, display_name: &str) -> String {
+    format!(
+        "{market_context}\n\n请以【{display_name}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。"
+    )
+}
+
+// ── Web chat ───────────────────────────────────────
+
+/// Build the user message for the web chat endpoint (richer format with risk analysis).
+#[allow(clippy::too_many_arguments)]
+pub fn build_web_chat_user_message(
+    date: &str,
+    rise: u32,
+    fall: u32,
+    limit_up: u32,
+    limit_down: u32,
+    bomb_rate: f64,
+    risk_level: &str,
+    summary: &str,
+    field_items: &str,
+    super_stocks: &str,
+) -> String {
+    let ratio = rise as f64 / fall.max(1) as f64;
+    format!(
+        r#"## 当前市场数据
+- 日期：{date}
+- 上涨家数：{rise} 家
+- 下跌家数：{fall} 家
+- 涨停家数：{limit_up} 只
+- 跌停家数：{limit_down} 只
+- 炸板率：{bomb_rate:.1}%
+- 涨跌比：{ratio:.2}
+- 风险等级：{risk_level}
+- 市场摘要：{summary}
+{field_items}{super_stocks}
+请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。"#
+    )
+}
+
+// ── Replay analysis ─────────────────────────────────
+
+/// Build the replay analysis system prompt for the web SSE endpoint.
+pub fn build_replay_analysis_prompt(date: &str, data_table: &str) -> String {
+    format!(
+        r#"你是A股短线复盘专家。以下是{date}全天5分钟级别行情快照数据：
+
+{data_table}
+
+请基于以上数据输出结构化复盘报告，严格遵循以下格式：
+
+## 一、情绪节奏
+- 开盘情绪（09:30-10:00）：情绪温度变化趋势，多空比特征
+- 盘中变化（10:00-14:00）：关键转折点及时间
+- 尾盘走势（14:00-15:00）：收盘前情绪动向
+- 全天趋势判断：单边多/单边空/震荡/反转
+
+## 二、主线板块
+- 开盘主线（前30分钟最强板块）
+- 盘中切换（如有新板块崛起，时间及原因）
+- 尾盘赢家（全天累计涨幅最大板块）
+- 主线持续性评价
+
+## 三、关键节点
+- 列出2-3个情绪突变时间点，分析可能原因
+
+## 四、轮动特征
+- 资金流向判断
+- 高低切换迹象
+
+## 五、复盘结论
+- 日内最优策略
+- 次日关注方向
+- 主要风险提示
+
+格式要求：纯 Markdown，禁止 emoji/字符画/Unicode 图表，数据引用用数字。"#
+    )
+}
+
+// ── Extraction ─────────────────────────────────────
+
+pub const EXTRACTION_SYSTEM_PROMPT: &str =
+    "Extract the trading decision data from the analysis text below. The analysis contains market analysis and trade instructions that need to be structured.";
+
+// ── Historical context ────────────────────────────
+
+/// Build the historical context text shown to the LLM as tool output.
+pub fn build_historical_context(days: u32, snapshots: &[MarketSnapshot]) -> String {
+    if snapshots.is_empty() {
+        return "暂无历史数据".to_string();
+    }
+    let mut ctx = format!("## 近{days}日市场数据快照 ({}条记录)\n\n", snapshots.len());
+    for s in snapshots {
+        ctx.push_str(&format!(
+            "- {} | {} | {}\n",
+            s.captured_at, s.data_source, &s.raw_json
+        ));
+    }
+    ctx
+}

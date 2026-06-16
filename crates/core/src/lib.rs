@@ -4,6 +4,7 @@ pub mod context;
 pub mod cron;
 pub mod llm;
 pub mod memory;
+pub mod prompts;
 pub mod roles;
 pub mod skills;
 pub mod social;

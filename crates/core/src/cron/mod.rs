@@ -253,26 +253,15 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
     tracing::info!("[cron] decision: starting");
 
     let market_context = match ctx.api.xuangubao.fetch_market_overview().await {
-        Ok(o) => format!(
-            "## 当前市场数据\n\
-             - 日期：{}\n\
-             - 上涨家数：{}\n\
-             - 下跌家数：{}\n\
-             - 涨停家数：{}\n\
-             - 跌停家数：{}\n\
-             - 炸板率：{:.1}%\n\
-             - 市场温度：{:.1}\n",
-            crate::utils::time::beijing_now().format("%Y-%m-%d %H:%M"),
-            o.rise_count,
-            o.fall_count,
-            o.limit_up_count,
-            o.limit_down_count,
-            o.bomb_rate * 100.0,
-            o.market_temperature,
+        Ok(o) => crate::prompts::build_market_context(
+            &o,
+            &crate::utils::time::beijing_now()
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
         ),
         Err(e) => {
             tracing::warn!("[cron] fetch market overview failed: {e}");
-            "## 市场数据获取失败\n".to_string()
+            crate::prompts::MARKET_CONTEXT_ERROR.to_string()
         },
     };
 
@@ -344,10 +333,8 @@ async fn run_decision_for_role(
         tools.len()
     );
 
-    let market_user_message = format!(
-        "{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。",
-        market_context, role.display_name
-    );
+    let market_user_message =
+        crate::prompts::build_decision_user_message(market_context, &role.display_name);
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
     let decision = match crate::llm::session::AgentSession::new(&ctx.llm, &system)

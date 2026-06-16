@@ -466,24 +466,13 @@ impl TelegramBot {
         let overview = self.fetch_market_overview().await;
 
         let market_context = match overview {
-            Some(o) => format!(
-                "## 当前市场数据\n\
-                 - 日期：{}\n\
-                 - 上涨家数：{}\n\
-                 - 下跌家数：{}\n\
-                 - 涨停家数：{}\n\
-                 - 跌停家数：{}\n\
-                 - 炸板率：{:.1}%\n\
-                 - 市场温度：{:.1}\n",
-                crate::utils::time::beijing_now().format("%Y-%m-%d %H:%M"),
-                o.rise_count,
-                o.fall_count,
-                o.limit_up_count,
-                o.limit_down_count,
-                o.bomb_rate * 100.0,
-                o.market_temperature,
+            Some(o) => crate::prompts::build_market_context(
+                &o,
+                &crate::utils::time::beijing_now()
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string(),
             ),
-            None => "## 市场数据获取失败\n".to_string(),
+            None => crate::prompts::MARKET_CONTEXT_ERROR.to_string(),
         };
 
         let tool_cfg = crate::llm::ToolConfig {

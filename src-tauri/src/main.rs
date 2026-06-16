@@ -776,7 +776,7 @@ async fn api_chat_stream(
         .iter()
         .find(|r| r.name == role_name)
         .map(|r| r.strategy.as_str())
-        .unwrap_or("你是一个A股短线交易AI助手。");
+        .unwrap_or(openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT);
 
     let system_prompt = openatrading_web::chat::build_system_prompt(strategy_text);
     let user_message = openatrading_web::chat::build_user_message(
