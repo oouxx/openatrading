@@ -552,6 +552,38 @@ pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> 
     )
 }
 
+// ─── 竞价数据（新浪）───────────────────────────────────
+
+pub fn get_auction_quotes() -> Arc<DynTool> {
+    tool(
+        "get_auction_quotes",
+        "获取指定股票的集合竞价实时数据（9:15-9:25）。每只股票包含：代码(code)、名称(name)、\
+        前收盘价(prev_close)、竞价撮合价(current_price)、涨跌幅(change_pct)、\
+        买一价(bid1_price)、买一量(bid1_volume, 手)、卖一价(ask1_price)、卖一量(ask1_volume, 手)、\
+        累计撮合量(volume, 手)、累计成交额(amount)、数据时间(time)。\
+        用法：竞价期(9:15-9:25)调用，判断开盘方向——竞价涨幅>3%且买一量>卖一量 = 强势开盘；\
+        竞价跌幅>3% = 弱势；涨停竞价放量 = 可能开盘封板。支持批量查询多个代码。\
+        参数：codes(逗号分隔的股票代码列表，如 '000001,600519')。",
+        str_schema(&[("codes", "逗号分隔的股票代码，如 000001,600519")]),
+        Arc::new(|_id, args, _signal, _progress| {
+            Box::pin(async move {
+                let codes_str = str_arg(&args, "codes");
+                let codes: Vec<&str> = codes_str
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if codes.is_empty() {
+                    return Err("codes 不能为空".to_string().into());
+                }
+                let client = openatrading_api::sina::SinaQuoteClient::new().map_err(to_box_err)?;
+                let result = client.fetch_quotes(&codes).await.map_err(to_box_err)?;
+                Ok(text_result(&result))
+            })
+        }),
+    )
+}
+
 // ─── 元技能：生成新策略 ───────────────────────────────
 
 pub fn create_meta_skill_tool() -> Arc<DynTool> {
@@ -639,6 +671,7 @@ impl ToolRegistry {
                 get_telegraph(),
                 get_telegraph_allday(),
                 get_all_day_events(),
+                get_auction_quotes(),
             ],
             decision: Some(create_decision_tool()),
             mcp: Vec::new(),
@@ -738,6 +771,7 @@ mod tests {
         assert_eq!(get_lhb_active_yyb().name, "get_lhb_active_yyb");
         assert_eq!(get_kline().name, "get_kline");
         assert_eq!(get_all_day_events().name, "get_all_day_events");
+        assert_eq!(get_auction_quotes().name, "get_auction_quotes");
     }
 
     #[test]
@@ -761,6 +795,7 @@ mod tests {
             get_lhb_active_yyb(),
             get_kline(),
             get_all_day_events(),
+            get_auction_quotes(),
             create_meta_skill_tool(),
         ];
         for tool in &tools {
@@ -775,7 +810,7 @@ mod tests {
                 tool.name
             );
         }
-        assert_eq!(tools.len(), 19);
+        assert_eq!(tools.len(), 20);
     }
 
     #[test]
