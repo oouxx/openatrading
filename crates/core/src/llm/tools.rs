@@ -433,6 +433,23 @@ pub fn get_lhb_active_yyb() -> Arc<DynTool> {
     )
 }
 
+pub fn get_all_day_events() -> Arc<DynTool> {
+    tool(
+        "get_all_day_events",
+        "获取今日全量异动事件列表（包含板块异动和个股异动），用于盘中复盘和情绪分析",
+        empty_schema(),
+        Arc::new(|_id, _args, _signal, _progress| {
+            Box::pin(async move {
+                let result = XuanguBaoClient::new()
+                    .fetch_all_day_events()
+                    .await
+                    .map_err(to_box_err)?;
+                Ok(text_result(&result))
+            })
+        }),
+    )
+}
+
 // ─── Tests ──────────────────────────────────────────────
 
 // ============================================================================
@@ -510,6 +527,7 @@ impl ToolRegistry {
                 get_kline(),
                 get_telegraph(),
                 get_telegraph_allday(),
+                get_all_day_events(),
             ],
             decision: Some(create_decision_tool()),
             mcp: Vec::new(),
@@ -596,6 +614,7 @@ mod tests {
         assert_eq!(get_lhb_combined().name, "get_lhb_combined");
         assert_eq!(get_lhb_active_yyb().name, "get_lhb_active_yyb");
         assert_eq!(get_kline().name, "get_kline");
+        assert_eq!(get_all_day_events().name, "get_all_day_events");
     }
 
     #[test]
@@ -618,6 +637,7 @@ mod tests {
             get_lhb_combined(),
             get_lhb_active_yyb(),
             get_kline(),
+            get_all_day_events(),
         ];
         for tool in &tools {
             assert_eq!(
@@ -631,7 +651,7 @@ mod tests {
                 tool.name
             );
         }
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
     }
 
     #[test]
