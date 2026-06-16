@@ -86,7 +86,9 @@ mod tests {
 
     #[test]
     fn test_resolve_from_file() {
-        let file_path = SkillRegistry::install_dir().join("_test_resolve_skill.md");
+        let dir = SkillRegistry::install_dir();
+        fs::create_dir_all(&dir).ok();
+        let file_path = dir.join("_test_resolve_skill.md");
         let raw = "# 首板策略\n\n只做首板";
         fs::write(&file_path, raw).unwrap();
 
