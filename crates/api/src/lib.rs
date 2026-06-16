@@ -1,6 +1,7 @@
 pub mod cls;
 pub mod eastmoney;
 pub mod jiuyangongshe;
+pub mod sina;
 pub mod taoguba;
 pub mod utils;
 pub mod xuangubao;
