@@ -9,9 +9,13 @@ export interface CommandSpec {
 }
 
 interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
+
+let nextMsgId = 0;
+const newId = () => `msg-${++nextMsgId}`;
 
 export function useAssistantChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -26,14 +30,12 @@ export function useAssistantChat() {
       const cmd = cmdRef.current;
       cmdRef.current = null;
 
-      const userMsg: ChatMessage = { role: "user", content: text };
-      setMessages((prev) => [...prev, userMsg]);
-      setIsRunning(true);
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
 
-      const history = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const userMsg: ChatMessage = { id: newId(), role: "user", content: text };
+      const assistantMsg: ChatMessage = { id: newId(), role: "assistant", content: "" };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setIsRunning(true);
 
       void apiChatStream(
         {
@@ -53,25 +55,40 @@ export function useAssistantChat() {
                   ...last,
                   content: last.content + data,
                 };
-              } else {
-                updated.push({ role: "assistant", content: data });
               }
               return updated;
             });
           },
           onDone: () => setIsRunning(false),
-          onError: () => setIsRunning(false),
+          onError: (err) => {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last && last.role === "assistant") {
+                updated[updated.length - 1] = {
+                  ...last,
+                  content: last.content + `\n\n[错误] ${err}`,
+                };
+              }
+              return updated;
+            });
+            setIsRunning(false);
+          },
         },
       );
     },
     [messages],
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const runtime = useExternalStoreRuntime<any>({
+  const runtime = useExternalStoreRuntime<ChatMessage>({
     messages,
     isRunning,
     onNew,
+    convertMessage: (m) => ({
+      id: m.id,
+      role: m.role,
+      content: [{ type: "text", text: m.content }],
+    }),
   });
 
   const clearChat = useCallback(() => {
