@@ -61,33 +61,76 @@ impl<'a> AgentSession<'a> {
     /// Run the agent and extract structured `DecisionOutput`.
     ///
     /// Prefers the decision-tool path (single LLM turn).  Falls back to
-    /// `extract_decision_output` (one extra LLM call), then raw text.
+    /// `extract_decision_output` (one extra LLM call).  If no trades are
+    /// produced, re-prompts the agent (max 3 attempts) to force a decision.
     pub async fn process_decision(
         &self,
         user_message: &str,
     ) -> Result<crate::roles::prompt::DecisionOutput> {
         let tools = self.build_tools();
-        let result = agent_loop(self.llm, tools, self.system_prompt, user_message).await?;
+        let max_retries = 3;
 
-        // 1) Decision-tool path (preferred — no extra LLM call)
-        if let Some(ref tv) = result.tool_output {
-            if let Ok(output) =
-                serde_json::from_value::<crate::roles::prompt::DecisionOutput>(tv.clone())
-            {
-                return Ok(output);
+        let mut last_text = String::new();
+        for attempt in 0..max_retries {
+            let msg = if attempt == 0 {
+                user_message.to_string()
+            } else {
+                format!(
+                    "{}\n\n⚠️ 你没有给出具体的交易指令（买入/卖出/持有）。请立即基于当前市场数据和持仓情况，\
+                    给出至少一条具体的交易指令。必须是 submit_trading_decision，不得只说分析不操作。",
+                    last_text
+                )
+            };
+
+            let result = agent_loop(self.llm, tools.clone(), self.system_prompt, &msg).await?;
+            last_text = result.final_text.clone();
+
+            // 1) Decision-tool path (preferred — no extra LLM call)
+            if let Some(ref tv) = result.tool_output {
+                if let Ok(output) =
+                    serde_json::from_value::<crate::roles::prompt::DecisionOutput>(tv.clone())
+                {
+                    if !output.trades.is_empty() {
+                        return Ok(output);
+                    }
+                    tracing::warn!(
+                        "[session] attempt {}/{}: decision tool returned empty trades, retrying",
+                        attempt + 1,
+                        max_retries
+                    );
+                    continue;
+                }
             }
+
+            // 2) Extractor fallback (one extra LLM call)
+            if let Ok(output) =
+                crate::roles::prompt::extract_decision_output(self.llm, &result.final_text).await
+            {
+                if !output.trades.is_empty() {
+                    return Ok(output);
+                }
+                tracing::warn!(
+                    "[session] attempt {}/{}: extractor returned empty trades, retrying",
+                    attempt + 1,
+                    max_retries
+                );
+                continue;
+            }
+
+            tracing::warn!(
+                "[session] attempt {}/{}: no decision output, retrying",
+                attempt + 1,
+                max_retries
+            );
         }
 
-        // 2) Extractor fallback (one extra LLM call)
-        if let Ok(output) =
-            crate::roles::prompt::extract_decision_output(self.llm, &result.final_text).await
-        {
-            return Ok(output);
-        }
-
-        // 3) Last resort — wrap raw text
+        // 3) Last resort — wrap raw text with empty trades
+        tracing::error!(
+            "[session] all {} attempts exhausted, returning raw text",
+            max_retries
+        );
         Ok(crate::roles::prompt::DecisionOutput {
-            analysis: result.final_text,
+            analysis: last_text,
             trades: Vec::new(),
         })
     }

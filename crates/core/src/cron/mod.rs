@@ -336,7 +336,10 @@ async fn run_decision_for_role(
     let market_user_message =
         crate::prompts::build_decision_user_message(market_context, &role.display_name);
 
-    let system = crate::skills::SkillRegistry::build_role_prompt(role);
+    let mut system = crate::skills::SkillRegistry::build_role_prompt(role);
+    if crate::is_aggressive_mode() {
+        system.push_str(crate::prompts::AGGRESSIVE_SYSTEM_PROMPT);
+    }
     let decision = match crate::llm::session::AgentSession::new(&ctx.llm, &system)
         .with_tools(tools)
         .process_decision(&market_user_message)
