@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useExternalStoreRuntime } from "@assistant-ui/react";
 import { apiChatStream } from "@/stores/data";
 
 export interface CommandSpec {
@@ -7,104 +8,76 @@ export interface CommandSpec {
   command_type: "tool" | "skill" | "pipeline";
 }
 
-export interface ThreadMessage {
-  id: string;
+interface ChatMessage {
   role: "user" | "assistant";
-  text: string;
-}
-
-export type AppendMessage = { text: string };
-
-let msgId = 0;
-function nextId() {
-  return `msg-${++msgId}`;
+  content: string;
 }
 
 export function useAssistantChat() {
-  const [messages, setMessages] = useState<ThreadMessage[]>([]);
-  const [streaming, setStreaming] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
   const cmdRef = useRef<{ name: string; type: string } | null>(null);
 
-  const appendToLastMessage = useCallback((text: string) => {
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last && last.role === "assistant") {
-        updated[updated.length - 1] = { ...last, text: last.text + text };
-      }
-      return updated;
-    });
-  }, []);
+  const onNew = useCallback(
+    async (msg: { content?: ReadonlyArray<{ type?: string; text?: string }> }) => {
+      const text = msg.content?.[0]?.text ?? "";
+      if (!text) return;
 
-  const handleNew = useCallback(
-    (content: string, commandContext?: { name: string; type: string } | null) => {
-      const cmd = commandContext ?? cmdRef.current;
+      const cmd = cmdRef.current;
       cmdRef.current = null;
 
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: "user", text: content },
-        { id: nextId(), role: "assistant", text: "" },
-      ]);
-      setStreaming(true);
+      const userMsg: ChatMessage = { role: "user", content: text };
+      setMessages((prev) => [...prev, userMsg]);
+      setIsRunning(true);
 
       const history = messages.map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.text,
+        role: m.role,
+        content: m.content,
       }));
 
-      apiChatStream(
+      void apiChatStream(
         {
-          message: content,
+          message: text,
           role: "zarili",
           history,
           command_name: cmd?.name,
           command_type: cmd?.type,
         },
         {
-          onData: (data) => appendToLastMessage(data),
-          onDone: () => setStreaming(false),
-          onError: (err) =>
+          onData: (data) => {
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
               if (last && last.role === "assistant") {
                 updated[updated.length - 1] = {
                   ...last,
-                  text: last.text + `\n\n[错误] ${err}`,
+                  content: last.content + data,
                 };
+              } else {
+                updated.push({ role: "assistant", content: data });
               }
               return updated;
-            }),
-        }
+            });
+          },
+          onDone: () => setIsRunning(false),
+          onError: () => setIsRunning(false),
+        },
       );
     },
-    [messages, appendToLastMessage]
+    [messages],
   );
 
-  const sendCommand = useCallback(
-    (cmd: CommandSpec) => {
-      cmdRef.current = { name: cmd.name, type: cmd.command_type };
-      if (cmd.command_type === "tool") {
-        // Execute immediately
-        handleNew(`/${cmd.name}`, { name: cmd.name, type: "tool" });
-      }
-      // Skill/pipeline: fill composer text — handled by caller via the returned cmdRef
-    },
-    [handleNew]
-  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const runtime = useExternalStoreRuntime<any>({
+    messages,
+    isRunning,
+    onNew,
+  });
 
   const clearChat = useCallback(() => {
     setMessages([]);
-    setStreaming(false);
+    setIsRunning(false);
   }, []);
 
-  return {
-    messages,
-    streaming,
-    handleNew,
-    sendCommand,
-    cmdRef,
-    clearChat,
-  };
+  return { runtime, cmdRef, clearChat };
 }
