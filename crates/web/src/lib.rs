@@ -16,15 +16,14 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use openatrading_core::context::AppContext;
+use openatrading_core::llm::McpServerConfig;
 pub use openatrading_core::RoleEntry;
 
 pub struct AppState {
-    pub llm: openatrading_core::llm::LlmClient,
-    pub api: openatrading_core::api::Client,
-    pub memory: Arc<openatrading_core::memory::sqlite::SqliteMemoryStore>,
-    pub trade: Arc<openatrading_core::trade::sqlite::SqliteTradeManager>,
+    pub ctx: AppContext,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
-    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
+    pub mcp_servers: Vec<McpServerConfig>,
     pub cache: Arc<AppCache>,
 }
 

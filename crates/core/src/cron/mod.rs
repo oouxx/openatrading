@@ -6,10 +6,9 @@ use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
+use crate::context::AppContext;
 use crate::llm::tools::{create_historical_context_tool, create_positions_tool};
-use crate::llm::{DynTool, LlmClient};
-use crate::memory::MemoryStore;
-
+use crate::llm::DynTool;
 use crate::social::NotificationSender;
 use crate::trade::{execute_buy, execute_sell, TradeManager};
 use crate::RoleEntry;
@@ -73,29 +72,12 @@ macro_rules! add_job {
     };
 }
 
-/// Shared infrastructure for cron tasks (decision, collection, news).
-pub struct CronContext {
-    pub memory: Arc<dyn MemoryStore>,
-    pub trade: Arc<dyn TradeManager>,
-    pub social: Arc<dyn NotificationSender>,
-    pub llm: LlmClient,
-    pub api: ApiClient,
-}
-
-/// Grouped context for scheduler dependencies, avoiding an 8-parameter constructor.
-pub struct SchedulerContext {
-    pub config: CronConfig,
-    pub memory: Arc<dyn MemoryStore>,
-    pub trade: Arc<dyn TradeManager>,
-    pub social: Arc<dyn NotificationSender>,
-    pub llm: LlmClient,
-    pub api: ApiClient,
-    pub roles: Vec<RoleEntry>,
-    pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
-}
-
-pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
-    if !ctx.config.enabled {
+pub async fn start_scheduler(
+    ctx: Arc<AppContext>,
+    config: CronConfig,
+    roles: Vec<RoleEntry>,
+) -> Result<()> {
+    if !config.enabled {
         return Ok(());
     }
 
@@ -103,19 +85,15 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
 
     // ── Collection ──
     {
-        let mem = ctx.memory.clone();
-        let soc = ctx.social.clone();
-        let api = ctx.api.clone();
+        let ctx = ctx.clone();
         add_job!(
             scheduler,
-            ctx.config.collection_schedule,
+            config.collection_schedule,
             "collection",
             move |_uuid, _lock| {
-                let mem = mem.clone();
-                let soc = soc.clone();
-                let api = api.clone();
+                let ctx = ctx.clone();
                 Box::pin(async move {
-                    if let Err(e) = run_collection(&*mem, &api, &*soc).await {
+                    if let Err(e) = run_collection(&ctx).await {
                         tracing::error!("[cron] collection error: {e}");
                     }
                 })
@@ -125,32 +103,17 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
 
     // ── Decision ──
     {
-        let cron_ctx = Arc::new(CronContext {
-            memory: ctx.memory.clone(),
-            trade: ctx.trade.clone(),
-            social: ctx.social.clone(),
-            llm: ctx.llm.clone(),
-            api: ctx.api.clone(),
-        });
-        let roles = ctx.roles.clone();
-        let tool_cfg = crate::llm::ToolConfig {
-            mcp_servers: ctx.mcp_servers.clone(),
-        };
-        let all_tools: Vec<Arc<DynTool>> = crate::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
-
+        let ctx = ctx.clone();
+        let roles = roles.clone();
         add_job!(
             scheduler,
-            ctx.config.decision_schedule,
+            config.decision_schedule,
             "decision",
             move |_uuid, _lock| {
-                let cron_ctx = cron_ctx.clone();
+                let ctx = ctx.clone();
                 let roles = roles.clone();
-                let decision_tools = all_tools.clone();
                 Box::pin(async move {
-                    if let Err(e) = run_decision(&cron_ctx, &roles, &decision_tools).await {
+                    if let Err(e) = run_decision(&ctx, &roles).await {
                         tracing::error!("[cron] decision error: {e}");
                     }
                 })
@@ -160,17 +123,15 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
 
     // ── News push (trading hours) ──
     {
-        let soc = ctx.social.clone();
-        let api = ctx.api.clone();
+        let ctx = ctx.clone();
         add_job!(
             scheduler,
-            ctx.config.news_schedule,
+            config.news_schedule,
             "news_push",
             move |_uuid, _lock| {
-                let soc = soc.clone();
-                let api = api.clone();
+                let ctx = ctx.clone();
                 Box::pin(async move {
-                    if let Err(e) = run_news_push(&api, &*soc).await {
+                    if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
                         tracing::error!("[cron] news_push error: {e}");
                     }
                 })
@@ -180,18 +141,16 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
 
     // ── News push (off-hours, 24/7) ──
     {
-        let soc = ctx.social.clone();
-        let api = ctx.api.clone();
+        let ctx = ctx.clone();
         let schedule = String::from("0 */30 0-8,16-23 * * *");
         add_job!(
             scheduler,
             schedule,
             "news_push_offhours",
             move |_uuid, _lock| {
-                let soc = soc.clone();
-                let api = api.clone();
+                let ctx = ctx.clone();
                 Box::pin(async move {
-                    if let Err(e) = run_news_push(&api, &*soc).await {
+                    if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
                         tracing::error!("[cron] news_push error: {e}");
                     }
                 })
@@ -202,22 +161,17 @@ pub async fn start_scheduler(ctx: SchedulerContext) -> Result<()> {
     scheduler.start().await?;
     tracing::info!("[cron] scheduler started (tz=Asia/Shanghai)");
 
-    // Wait forever (Ctrl+C handled by caller)
     tokio::signal::ctrl_c().await?;
     tracing::info!("[cron] shutting down...");
 
     Ok(())
 }
 
-async fn run_collection(
-    memory: &dyn MemoryStore,
-    api: &ApiClient,
-    social: &dyn NotificationSender,
-) -> Result<()> {
+async fn run_collection(ctx: &AppContext) -> Result<()> {
     let mut sources = Vec::new();
     let mut snapshot_count = 0u32;
 
-    match api.xuangubao.fetch_market_overview().await {
+    match ctx.api.xuangubao.fetch_market_overview().await {
         Ok(overview) => {
             let json = serde_json::json!({
                 "rise_count": overview.rise_count,
@@ -227,7 +181,8 @@ async fn run_collection(
                 "bomb_rate": overview.bomb_rate,
                 "market_temperature": overview.market_temperature,
             });
-            memory.save_snapshot("xuangubao_overview", &json.to_string())?;
+            ctx.memory
+                .save_snapshot("xuangubao_overview", &json.to_string())?;
             sources.push("xuangubao_overview".into());
             snapshot_count += 1;
         },
@@ -236,10 +191,10 @@ async fn run_collection(
         },
     }
 
-    match api.xuangubao.fetch_limit_up().await {
+    match ctx.api.xuangubao.fetch_limit_up().await {
         Ok(stocks) => {
             let json = serde_json::to_string(&stocks).unwrap_or_else(|_| "[]".into());
-            memory.save_snapshot("xuangubao_limit_up", &json)?;
+            ctx.memory.save_snapshot("xuangubao_limit_up", &json)?;
             sources.push("xuangubao_limit_up".into());
             snapshot_count += 1;
         },
@@ -248,10 +203,10 @@ async fn run_collection(
         },
     }
 
-    match api.xuangubao.fetch_super_stock().await {
+    match ctx.api.xuangubao.fetch_super_stock().await {
         Ok(stocks) => {
             let json = serde_json::to_string(&stocks).unwrap_or_else(|_| "[]".into());
-            memory.save_snapshot("xuangubao_super_stock", &json)?;
+            ctx.memory.save_snapshot("xuangubao_super_stock", &json)?;
             sources.push("xuangubao_super_stock".into());
             snapshot_count += 1;
         },
@@ -264,10 +219,10 @@ async fn run_collection(
         let date = crate::utils::time::beijing_now()
             .format("%Y-%m-%d")
             .to_string();
-        match api.jiuyan.fetch_field_str(&date, "1").await {
+        match ctx.api.jiuyan.fetch_field_str(&date, "1").await {
             Ok(data) => {
                 let json = serde_json::to_string(&data).unwrap_or_else(|_| "{}".into());
-                memory.save_snapshot("jiuyan_field_items", &json)?;
+                ctx.memory.save_snapshot("jiuyan_field_items", &json)?;
                 sources.push("jiuyan_field_items".into());
                 snapshot_count += 1;
             },
@@ -282,16 +237,18 @@ async fn run_collection(
         sources,
         snapshot_count,
     };
-    let _ = social.notify_collect(&summary).await;
+    let text = format!(
+        "📊 采集完成\n时间: {}\n数据源: {}\n快照: {} 条",
+        summary.timestamp.format("%H:%M:%S"),
+        summary.sources.join(", "),
+        summary.snapshot_count,
+    );
+    let _ = ctx.social.notify_collect(&text).await;
 
     Ok(())
 }
 
-pub async fn run_decision(
-    ctx: &CronContext,
-    roles: &[RoleEntry],
-    tools: &[Arc<DynTool>],
-) -> Result<()> {
+pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
     tracing::info!("[cron] decision: starting");
 
     let market_context = match ctx.api.xuangubao.fetch_market_overview().await {
@@ -321,8 +278,7 @@ pub async fn run_decision(
     update_all_position_prices(&*ctx.trade, &ctx.api).await;
 
     for role in roles {
-        // Inject per-role tools: positions + memory (LLM calls them as needed)
-        let mut role_tools = tools.to_vec();
+        let mut role_tools = ctx.tools.clone();
         role_tools.push(create_positions_tool(ctx.trade.clone(), role.name.clone()));
         role_tools.push(create_historical_context_tool(ctx.memory.clone()));
 
@@ -376,7 +332,7 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
 }
 
 async fn run_decision_for_role(
-    ctx: &CronContext,
+    ctx: &AppContext,
     role: &RoleEntry,
     market_context: &str,
     tools: &[Arc<DynTool>],
@@ -387,7 +343,6 @@ async fn run_decision_for_role(
         tools.len()
     );
 
-    // LLM calls get_current_positions / get_historical_context tools as needed
     let market_user_message = format!(
         "{}\n\n请以【{}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。",
         market_context, role.display_name
@@ -402,12 +357,10 @@ async fn run_decision_for_role(
         Ok(d) => d,
         Err(e) => {
             let err_msg = format!("❌ LLM 调用失败: {e}");
-            let decision = Decision {
-                role_name: role.display_name.clone(),
-                summary: format!("【{} 决策】\n{}", role.display_name, err_msg),
-                trade_suggestions: vec![],
-            };
-            let _ = ctx.social.notify_decision(&decision).await;
+            let _ = ctx
+                .social
+                .notify_decision(&format!("【{} 决策】\n{}", role.display_name, err_msg))
+                .await;
             return Err(e);
         },
     };
@@ -433,18 +386,11 @@ async fn run_decision_for_role(
                         "✅ 买入 {} {} {}股 — {}",
                         instr.symbol, instr.name, instr.shares, instr.reason
                     ));
-                    let log = crate::trade::TradeLog {
-                        id: 0,
-                        position_id: 0,
-                        action: "Open".into(),
-                        price: 0.0,
-                        shares: instr.shares,
-                        reason: instr.reason.clone(),
-                        created_at: crate::utils::time::beijing_now()
-                            .format("%Y-%m-%d %H:%M:%S")
-                            .to_string(),
-                    };
-                    let _ = ctx.social.notify_trade(&log).await;
+                    let trade_text = format!(
+                        "💹 持仓变动\n操作: 买入\n价格: {}\n股数: {}\n理由: {}",
+                        instr.symbol, instr.shares, instr.reason,
+                    );
+                    let _ = ctx.social.notify_trade(&trade_text).await;
                 }
             },
             "sell" => {
@@ -461,18 +407,8 @@ async fn run_decision_for_role(
                         "✅ 卖出 {} {} — {}",
                         instr.symbol, instr.name, instr.reason
                     ));
-                    let log = crate::trade::TradeLog {
-                        id: 0,
-                        position_id: 0,
-                        action: "Close".into(),
-                        price: 0.0,
-                        shares: 0,
-                        reason: instr.reason.clone(),
-                        created_at: crate::utils::time::beijing_now()
-                            .format("%Y-%m-%d %H:%M:%S")
-                            .to_string(),
-                    };
-                    let _ = ctx.social.notify_trade(&log).await;
+                    let trade_text = format!("💹 持仓变动\n操作: 卖出\n理由: {}", instr.reason,);
+                    let _ = ctx.social.notify_trade(&trade_text).await;
                 }
             },
             "hold" => {
@@ -518,12 +454,7 @@ async fn run_decision_for_role(
         trade_suggestions: suggestions,
     };
 
-    if let Err(e) = ctx.social.notify_decision(&decision).await {
-        tracing::error!(
-            "[cron] notify decision failed for role '{}': {e}",
-            role.name
-        );
-    }
+    let _ = ctx.social.notify_decision(&decision.summary).await;
 
     Ok(())
 }
@@ -538,7 +469,6 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         return Ok(());
     }
 
-    // On first run, seed with current time to avoid flooding old news
     if !NEWS_TIME_INITIALIZED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let now = chrono::Utc::now().timestamp();
         LAST_PUSHED_NEWS_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
@@ -569,7 +499,6 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         .unwrap_or(last_time);
     LAST_PUSHED_NEWS_TIME.store(max_time, std::sync::atomic::Ordering::Relaxed);
 
-    // Push items with level A (most important) or B (important)
     let important: Vec<&crate::api::cls::TelegramInfo> = new_items
         .iter()
         .filter(|item| {

@@ -175,7 +175,7 @@ pub async fn ai_chat(
 
     let system_prompt = build_system_prompt(strategy_text);
 
-    let agent = Arc::new(create_agent(&state.llm, tools, &system_prompt));
+    let agent = Arc::new(create_agent(&state.ctx.llm, tools, &system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for h in req.history {

@@ -29,10 +29,9 @@ use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
-use openatrading_core::api::Client;
-use openatrading_core::cron::{run_decision, CronContext};
-use openatrading_core::llm::LlmClient;
-use openatrading_core::social::{NoopSender, NotificationSender, StdoutSender};
+use openatrading_core::context::AppContext;
+use openatrading_core::cron::run_decision;
+use openatrading_core::social::{NoopChannel, NotificationSender, StdoutChannel};
 use openatrading_web::gateway::Gateway;
 
 /// Initialize a file-based tracing subscriber for the `chat` TUI.
@@ -63,32 +62,28 @@ fn init_chat_file_logger() -> Result<tracing_appender::non_blocking::WorkerGuard
 
 /// 用 `AppConfig` 装配 chat TUI 的依赖：LLM 客户端、工具集、system prompt。
 ///
-/// 与 `cmd_decision` / `web::ai_chat` 保持一致：通过 `LlmClient::from_config`
-/// 解析 LLM provider/model；通过 `build_tools(ToolConfig)` 构建市场工具 + MCP 工具
-/// + decision 工具；通过 `SkillRegistry::build_chat_prompt` 生成 system prompt。
+/// 通过 `AppContext::build()` 统一构造 llm + api + tools。
 async fn build_chat_args(app_config: &AppConfig) -> openatrading_tui::chat::ChatArgs {
-    let llm = LlmClient::from_config(
+    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
+    let gateway = Gateway::init(&db_path).expect("Failed to open database");
+
+    let ctx = AppContext::build(
         app_config.llm.provider.as_deref(),
         app_config.llm.model.as_deref(),
+        &app_config.mcp_servers,
+        gateway.memory.clone(),
+        gateway.trade.clone(),
+        Arc::new(NoopChannel),
+    )
+    .await;
+
+    let system_prompt = openatrading_core::skills::SkillRegistry::build_chat_prompt(
+        "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。",
     );
 
-    let tool_cfg = openatrading_core::llm::ToolConfig {
-        mcp_servers: app_config.mcp_servers.clone(),
-    };
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        openatrading_core::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
-
-    let strategy_text =
-        "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。".to_string();
-
-    let system_prompt = openatrading_core::skills::SkillRegistry::build_chat_prompt(&strategy_text);
-
     openatrading_tui::chat::ChatArgs {
-        llm,
-        tools,
+        llm: ctx.llm,
+        tools: ctx.tools,
         system_prompt,
     }
 }
@@ -253,37 +248,24 @@ async fn cmd_decision(
 
     let social: Arc<dyn NotificationSender> = if dry_run {
         eprintln!("📋 dry-run 模式，仅输出到终端\n");
-        Arc::new(StdoutSender)
+        Arc::new(StdoutChannel)
     } else if let Some(sc) = &app_config.social {
-        Arc::from(crate::cli::gateway_cmd::create_notification_sender(sc))
+        crate::cli::gateway_cmd::create_notification_sender(sc)
     } else {
         eprintln!("⚠️ 未配置社交平台通知，仅输出到终端\n");
-        Arc::new(NoopSender)
+        Arc::new(NoopChannel)
     };
 
-    let llm = LlmClient::from_config(
+    let ctx = AppContext::build(
         app_config.llm.provider.as_deref(),
         app_config.llm.model.as_deref(),
-    );
-    let api = Client::new();
-
-    let tool_cfg = openatrading_core::llm::ToolConfig {
-        mcp_servers: app_config.mcp_servers.clone(),
-    };
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        openatrading_core::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
-
-    let ctx = CronContext {
-        memory: gateway.memory.clone(),
-        trade: gateway.trade.clone(),
+        &app_config.mcp_servers,
+        gateway.memory.clone(),
+        gateway.trade.clone(),
         social,
-        llm,
-        api,
-    };
-    run_decision(&ctx, &filtered_roles, &tools).await?;
+    )
+    .await;
+    run_decision(&ctx, &filtered_roles).await?;
 
     if !dry_run {
         eprintln!("✅ 决策完成，通知已推送");

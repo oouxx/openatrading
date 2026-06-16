@@ -2,8 +2,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use openatrading_core::api::Client as ApiClient;
-use openatrading_core::llm::LlmClient;
+use openatrading_core::context::AppContext;
 use openatrading_core::memory::sqlite::SqliteMemoryStore;
 use openatrading_core::trade::sqlite::SqliteTradeManager;
 
@@ -19,8 +18,6 @@ pub struct GatewayConfig {
     pub web_port: u16,
     pub roles: Vec<RoleEntry>,
     pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
-    pub llm_provider: Option<String>,
-    pub llm_model: Option<String>,
 }
 
 impl Gateway {
@@ -35,15 +32,9 @@ impl Gateway {
         Ok(Gateway { memory, trade })
     }
 
-    pub async fn start(self, config: GatewayConfig) -> Result<()> {
+    pub async fn start(self, config: GatewayConfig, ctx: AppContext) -> Result<()> {
         let state = Arc::new(AppState {
-            llm: LlmClient::from_config(
-                config.llm_provider.as_deref(),
-                config.llm_model.as_deref(),
-            ),
-            api: ApiClient::new(),
-            memory: self.memory.clone(),
-            trade: self.trade.clone(),
+            ctx,
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: config.mcp_servers.clone(),
             cache: cache::new_cache(),
