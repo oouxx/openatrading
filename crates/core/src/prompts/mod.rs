@@ -36,7 +36,12 @@ pub const MARKET_CONTEXT_ERROR: &str = "## 市场数据获取失败\n";
 /// Build the user message for the cron decision path.
 pub fn build_decision_user_message(market_context: &str, display_name: &str) -> String {
     format!(
-        "{market_context}\n\n请以【{display_name}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。"
+        "{market_context}\n\n请以【{display_name}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。\n\n\
+        ⚠️ 调用 submit_trading_decision 时，每条交易指令的 `symbol` 必须是 Yahoo Finance 风格带市场后缀的代码：\n\
+        - 沪市（6 开头）→ `.SS`，例如 600519.SS、688981.SS\n\
+        - 深市（0 或 3 开头）→ `.SZ`，例如 000001.SZ、002008.SZ、300750.SZ\n\
+        - 北交所（4/8/9 开头）→ `.BJ`，例如 873169.BJ\n\
+        禁止输出裸 6 位代码（如 002008），否则后续行情拉取会失败。"
     )
 }
 
@@ -127,7 +132,12 @@ pub fn build_replay_analysis_prompt(date: &str, data_table: &str) -> String {
 // ── Extraction ─────────────────────────────────────
 
 pub const EXTRACTION_SYSTEM_PROMPT: &str =
-    "Extract the trading decision data from the analysis text below. The analysis contains market analysis and trade instructions that need to be structured.";
+    "Extract the trading decision data from the analysis text below. The analysis contains market analysis and trade instructions that need to be structured.\n\n\
+    IMPORTANT: For each trade instruction's `symbol` field, use Yahoo Finance style with market suffix:\n\
+    - Shanghai (codes starting with 6): append `.SS` (e.g. 600519.SS, 688981.SS)\n\
+    - Shenzhen (codes starting with 0 or 3): append `.SZ` (e.g. 000001.SZ, 002008.SZ, 300750.SZ)\n\
+    - Beijing (codes starting with 4, 8, or 9): append `.BJ` (e.g. 873169.BJ)\n\
+    Never emit a bare 6-digit code. If the source text mentions a bare code, infer the suffix from the leading digit.";
 
 // ── Historical context ────────────────────────────
 
