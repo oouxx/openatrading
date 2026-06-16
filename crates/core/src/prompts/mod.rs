@@ -40,17 +40,17 @@ pub fn build_decision_user_message(market_context: &str, display_name: &str) -> 
     )
 }
 
-/// Aggressive-mode system prompt rules. Appended to the role strategy system prompt.
+/// Aggressive-mode rules appended to the user message.
 ///
 /// Enforces: must be fully invested daily, every decision must produce concrete
 /// buy/sell/hold instructions. No "wait and see" or "观望" allowed.
-pub const AGGRESSIVE_SYSTEM_PROMPT: &str = "\n\n## 激进模式规则（必须遵守）\n\
-1. 每天必须满仓操作，资金不可闲置。账户资金必须全部用于交易。\n\
-2. 每个决策必须输出具体的交易指令（买入/卖出/持有），不得输出\"观望\"或\"等待\"。\n\
-3. 如果有可用资金（现金），必须推荐买入你认为最强的标的。\n\
-4. 如果当前持仓走弱或不符合策略，必须果断卖出换股。\n\
-5. 持仓数量不限，但每只股票的仓位比例必须合理（单票不超过总资金的30%）。\n\
-6. 每次决策至少输出一条买入或卖出指令，纯\"持有\"不可接受。";
+pub const AGGRESSIVE_MODE_USER_PROMPT: &str = "\n\n⚠️ 当前为**激进模式**，必须严格遵守：\n\
+1. 每天必须满仓，资金不可闲置。\n\
+2. 必须输出具体的 buy/sell/hold 指令，禁止\"观望\"。\n\
+3. 有可用资金必须买入最强标的。\n\
+4. 持仓走弱必须果断卖出换股。\n\
+5. 单票不超过总资金30%。\n\
+6. 每次至少一条买入或卖出指令。";
 
 // ── Web chat ───────────────────────────────────────
 
