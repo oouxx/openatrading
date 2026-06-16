@@ -552,6 +552,56 @@ pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> 
     )
 }
 
+// ─── 元技能：生成新策略 ───────────────────────────────
+
+pub fn create_meta_skill_tool() -> Arc<DynTool> {
+    tool(
+        "create_skill",
+        "元技能：根据市场观察和分析，生成并安装一个新的交易策略技能(SKILL.md)。\
+        当你在决策过程中发现新的可复用的交易模式、特定市场环境下的有效策略、\
+        或值得固化下来的交易规则时，调用此工具将其沉淀为技能，供后续决策复用。\
+        参数：skill_name(技能名称，英文短名如 'breakout-pullback')、\
+        content(策略内容，Markdown格式，包含策略规则、适用条件、买卖信号等)。",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "skill_name": {"type": "string", "description": "技能名称，英文短名"},
+                "content": {"type": "string", "description": "策略内容，Markdown格式"}
+            },
+            "required": ["skill_name", "content"]
+        }),
+        Arc::new(|_id, args, _signal, _progress| {
+            Box::pin(async move {
+                let name = args
+                    .get("skill_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unnamed");
+                let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                if content.is_empty() {
+                    return Err("content 不能为空".to_string().into());
+                }
+                let skill = crate::skills::SkillRegistry::parse_skill_from_md(content)
+                    .map(|mut s| {
+                        s.name = name.to_string();
+                        s
+                    })
+                    .ok_or_else(|| to_box_err("content 为空"))?;
+                let path = crate::skills::SkillRegistry::install_skill(&skill)
+                    .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+                Ok(AgentToolResult {
+                    content: vec![ContentBlock::text(format!(
+                        "技能已安装: {} ({})",
+                        skill.name,
+                        path.display()
+                    ))],
+                    details: serde_json::Value::Null,
+                    terminate: None,
+                })
+            })
+        }),
+    )
+}
+
 // ============================================================================
 // ToolRegistry — categorized tool access
 // ============================================================================
@@ -562,6 +612,7 @@ pub struct ToolRegistry {
     market: Vec<Arc<DynTool>>,
     mcp: Vec<Arc<DynTool>>,
     decision: Option<Arc<DynTool>>,
+    meta_skill: Arc<DynTool>,
 }
 
 impl Default for ToolRegistry {
@@ -591,6 +642,7 @@ impl ToolRegistry {
             ],
             decision: Some(create_decision_tool()),
             mcp: Vec::new(),
+            meta_skill: create_meta_skill_tool(),
         }
     }
 
@@ -604,6 +656,11 @@ impl ToolRegistry {
         self.decision.as_ref()
     }
 
+    /// Meta-skill tool for generating new strategies.
+    pub fn meta_skill_tool(&self) -> &Arc<DynTool> {
+        &self.meta_skill
+    }
+
     /// Register an MCP tool.
     pub fn add_mcp(&mut self, tool: Arc<DynTool>) {
         self.mcp.push(tool);
@@ -613,9 +670,10 @@ impl ToolRegistry {
         &self.mcp
     }
 
-    /// Market tools + decision tool, ready for an agent_loop call.
+    /// Market tools + meta skill + decision tool, ready for an agent_loop call.
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         let mut t = self.market.clone();
+        t.push(self.meta_skill.clone());
         t.extend(self.mcp.clone());
         if let Some(d) = &self.decision {
             t.push(d.clone());
@@ -703,6 +761,7 @@ mod tests {
             get_lhb_active_yyb(),
             get_kline(),
             get_all_day_events(),
+            create_meta_skill_tool(),
         ];
         for tool in &tools {
             assert_eq!(
@@ -716,7 +775,7 @@ mod tests {
                 tool.name
             );
         }
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 19);
     }
 
     #[test]
