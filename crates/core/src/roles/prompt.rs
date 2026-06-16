@@ -27,9 +27,7 @@ pub async fn extract_decision_output(
 ) -> anyhow::Result<DecisionOutput> {
     let extractor = Extractor::<DecisionOutput>::new(llm.model.clone())
         .with_api_key(&llm.api_key)
-        .with_system_prompt(
-            "Extract the trading decision data from the analysis text below. The analysis contains market analysis and trade instructions that need to be structured."
-        )
+        .with_system_prompt(crate::prompts::EXTRACTION_SYSTEM_PROMPT)
         .with_tool_name("extract_trading_decision")
         .with_tool_description("Extract structured trading decision data")
         .with_retries(3);

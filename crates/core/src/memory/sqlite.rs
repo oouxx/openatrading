@@ -88,16 +88,6 @@ impl MemoryStore {
 
     pub fn get_historical_context(&self, days: u32) -> Result<String> {
         let snapshots = self.query_recent(days)?;
-        if snapshots.is_empty() {
-            return Ok("暂无历史数据".to_string());
-        }
-        let mut ctx = format!("## 近{days}日市场数据快照 ({}条记录)\n\n", snapshots.len());
-        for s in &snapshots {
-            ctx.push_str(&format!(
-                "- {} | {} | {}\n",
-                s.captured_at, s.data_source, &s.raw_json
-            ));
-        }
-        Ok(ctx)
+        Ok(crate::prompts::build_historical_context(days, &snapshots))
     }
 }

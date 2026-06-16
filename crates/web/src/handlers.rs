@@ -964,41 +964,8 @@ pub async fn ai_replay_analyze(
         ));
     }
 
-    let system_prompt = format!(
-        r#"你是A股短线复盘专家。以下是{date}全天5分钟级别行情快照数据：
-
-{data_table}
-
-请基于以上数据输出结构化复盘报告，严格遵循以下格式：
-
-## 一、情绪节奏
-- 开盘情绪（09:30-10:00）：情绪温度变化趋势，多空比特征
-- 盘中变化（10:00-14:00）：关键转折点及时间
-- 尾盘走势（14:00-15:00）：收盘前情绪动向
-- 全天趋势判断：单边多/单边空/震荡/反转
-
-## 二、主线板块
-- 开盘主线（前30分钟最强板块）
-- 盘中切换（如有新板块崛起，时间及原因）
-- 尾盘赢家（全天累计涨幅最大板块）
-- 主线持续性评价
-
-## 三、关键节点
-- 列出2-3个情绪突变时间点，分析可能原因
-
-## 四、轮动特征
-- 资金流向判断
-- 高低切换迹象
-
-## 五、复盘结论
-- 日内最优策略
-- 次日关注方向
-- 主要风险提示
-
-格式要求：纯 Markdown，禁止 emoji/字符画/Unicode 图表，数据引用用数字。"#,
-        date = date,
-        data_table = data_table,
-    );
+    let system_prompt =
+        openatrading_core::prompts::build_replay_analysis_prompt(&date, &data_table);
 
     let messages = serde_json::json!([
         {"role": "user", "content": system_prompt}

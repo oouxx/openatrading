@@ -65,33 +65,17 @@ pub fn build_user_message(
         .map(|s| format!("\n## 强势股数据（未涨停但强）\n{s}\n"))
         .unwrap_or_default();
 
-    format!(
-        r#"## 当前市场数据
-- 日期：{date}
-- 上涨家数：{rise} 家
-- 下跌家数：{fall} 家
-- 涨停家数：{limit_up} 只
-- 跌停家数：{limit_down} 只
-- 炸板率：{bomb_rate:.1}%
-- 涨跌比：{ratio}
-- 风险等级：{risk_level}
-- 市场摘要：{summary}
-{field_items}{super_stocks}
-请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。"#,
-        date = overview.date,
-        rise = overview.rise_count,
-        fall = overview.fall_count,
-        limit_up = overview.limit_up_count,
-        limit_down = overview.limit_down_count,
-        bomb_rate = overview.bomb_rate * 100.0,
-        ratio = format_args!(
-            "{:.2}",
-            overview.rise_count as f64 / overview.fall_count.max(1) as f64
-        ),
-        risk_level = overview.risk_level,
-        summary = overview.decision_summary,
-        field_items = field_section,
-        super_stocks = super_section,
+    openatrading_core::prompts::build_web_chat_user_message(
+        &overview.date,
+        overview.rise_count,
+        overview.fall_count,
+        overview.limit_up_count,
+        overview.limit_down_count,
+        overview.bomb_rate,
+        &overview.risk_level,
+        &overview.decision_summary,
+        &field_section,
+        &super_section,
     )
 }
 
@@ -171,7 +155,7 @@ pub async fn ai_chat(
         .iter()
         .find(|r| r.name == role_name)
         .map(|r| r.strategy.as_str())
-        .unwrap_or("你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。");
+        .unwrap_or(openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT);
 
     let system_prompt = build_system_prompt(strategy_text);
 

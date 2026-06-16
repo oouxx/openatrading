@@ -78,7 +78,7 @@ async fn build_chat_args(app_config: &AppConfig) -> openatrading_tui::chat::Chat
     .await;
 
     let system_prompt = openatrading_core::skills::SkillRegistry::build_chat_prompt(
-        "你是一个A股短线交易AI助手。可以调用工具获取实时市场数据来回答用户问题。",
+        openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT,
     );
 
     openatrading_tui::chat::ChatArgs {
