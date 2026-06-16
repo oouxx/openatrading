@@ -30,9 +30,7 @@ pub struct SinaQuoteClient {
 
 impl SinaQuoteClient {
     pub fn new() -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
         Ok(Self { client })
     }
 
@@ -158,7 +156,7 @@ pub async fn poll_auction_window(client: &SinaQuoteClient, codes: &[&str]) -> Re
                         "[sina] 竞价快照"
                     );
                 }
-            }
+            },
             Err(e) => tracing::warn!(error = %e, "[sina] 本次快照拉取失败，跳过"),
         }
     }
@@ -212,7 +210,10 @@ mod tests {
         assert_eq!(quotes.len(), codes.len(), "all codes should return data");
         for q in &quotes {
             assert!(!q.name.is_empty(), "{} name empty", q.code);
-            eprintln!("{} {} chg={:.2}% vol={}", q.code, q.name, q.change_pct, q.volume);
+            eprintln!(
+                "{} {} chg={:.2}% vol={}",
+                q.code, q.name, q.change_pct, q.volume
+            );
         }
     }
 }

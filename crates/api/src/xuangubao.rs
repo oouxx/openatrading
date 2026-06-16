@@ -169,12 +169,6 @@ pub struct Stock {
     pub new_stock_limit_up_price_before_broken: f64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct XuanGubaoExtra {
-    pub limit_down: Vec<Stock>,
-    pub plate_abnormal: Vec<PlateOrStockAbnormalEvent>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketOverview {
     pub limit_up_count: u32,
@@ -534,51 +528,6 @@ impl XuanguBaoClient {
         loop {
             let page = self
                 .fetch_events_page(cursor, page_size, "11001,11000")
-                .await?;
-            if page.is_empty() {
-                break;
-            }
-            // The API returns events before `cursor`, newest first
-            // The last event in the page is the earliest
-            let earliest_in_page = page.last().map(|e| e.event_timestamp).unwrap_or(cursor);
-            let keep: Vec<_> = page
-                .into_iter()
-                .filter(|e| e.event_timestamp >= day_open_ts)
-                .collect();
-            all_events.extend(keep);
-
-            if earliest_in_page <= day_open_ts {
-                break;
-            }
-            cursor = earliest_in_page;
-        }
-
-        all_events.sort_by_key(|e| e.event_timestamp);
-        all_events.dedup_by_key(|e| e.id);
-
-        tracing::debug!(
-            count = all_events.len(),
-            "xuangubao::fetch_all_day_events done"
-        );
-        Ok(all_events)
-    }
-
-    pub async fn fetch_all_day_stock_events(&self) -> Result<Vec<PlateOrStockAbnormalEvent>> {
-        let day_close_ts = Self::latest_trading_day_close_ts();
-        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
-
-        let mut all_events: Vec<PlateOrStockAbnormalEvent> = Vec::new();
-        let page_size: u32 = 1000;
-        let mut cursor = day_close_ts;
-
-        // Paginate backwards until we cross day_open_ts
-        loop {
-            let page = self
-                .fetch_events_page(
-                    cursor,
-                    page_size,
-                    "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010",
-                )
                 .await?;
             if page.is_empty() {
                 break;
