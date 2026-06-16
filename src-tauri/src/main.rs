@@ -772,13 +772,45 @@ async fn api_chat_stream(
     );
 
     let roles_guard = roles.read().await;
-    let strategy_text = roles_guard
-        .iter()
-        .find(|r| r.name == role_name)
-        .map(|r| r.strategy.as_str())
-        .unwrap_or(openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT);
+    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
-    let system_prompt = openatrading_web::chat::build_system_prompt(strategy_text);
+    let command_type_str = body
+        .get("command_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let command_name = body
+        .get("command_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let strategy_text: String = match command_type_str {
+        "skill" => {
+            let skills = openatrading_core::skills::SkillRegistry::from_disk();
+            skills
+                .skills()
+                .iter()
+                .find(|s| s.name == command_name)
+                .map(|s| s.content.clone())
+                .unwrap_or_else(|| default_strategy.to_string())
+        },
+        "pipeline" => {
+            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
+            pipelines
+                .find(command_name)
+                .map(|s| s.prompt.clone())
+                .unwrap_or_else(|| default_strategy.to_string())
+        },
+        _ => {
+            // "tool" or None: use role strategy
+            roles_guard
+                .iter()
+                .find(|r| r.name == role_name)
+                .map(|r| r.strategy.clone())
+                .unwrap_or_else(|| default_strategy.to_string())
+        },
+    };
+
+    let system_prompt = openatrading_web::chat::build_system_prompt(&strategy_text);
     let user_message = openatrading_web::chat::build_user_message(
         &overview,
         field_items.as_deref(),
