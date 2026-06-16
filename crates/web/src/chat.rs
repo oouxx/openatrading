@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
-use openatrading_core::commands::CommandSpec;
+use openatrading_core::commands::{CommandSpec, CommandType};
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -27,6 +27,10 @@ pub struct ChatRequest {
     role: Option<String>,
     #[serde(default)]
     history: Vec<ChatMessage>,
+    #[serde(default)]
+    command_name: Option<String>,
+    #[serde(default)]
+    command_type: Option<openatrading_core::commands::CommandType>,
 }
 
 #[derive(Serialize)]
@@ -36,7 +40,6 @@ pub struct AiRoleItem {
 }
 
 pub async fn get_ai_commands(State(_state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
-    use openatrading_core::commands::{CommandSpec, CommandType};
     use openatrading_core::llm::tools::ToolRegistry;
 
     // Tool commands from ToolRegistry (static market tools — no MCP calls)
@@ -185,21 +188,73 @@ pub async fn ai_chat(
     let tool_cfg = openatrading_core::llm::ToolConfig {
         mcp_servers: state.mcp_servers.clone(),
     };
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        openatrading_core::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
+    let tools_registry = openatrading_core::llm::build_tools(&tool_cfg).await;
 
+    // ── Command-aware configuration ──
     let role_name = req.role.as_deref().unwrap_or("");
     let roles_guard = state.roles.read().await;
-    let strategy_text = roles_guard
-        .iter()
-        .find(|r| r.name == role_name)
-        .map(|r| r.strategy.as_str())
-        .unwrap_or(openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT);
+    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
-    let system_prompt = build_system_prompt(strategy_text);
+    let (system_prompt, tools) = match req.command_type {
+        Some(CommandType::Tool) => {
+            let strategy_text = roles_guard
+                .iter()
+                .find(|r| r.name == role_name)
+                .map(|r| r.strategy.as_str())
+                .unwrap_or(default_strategy);
+            let sp = build_system_prompt(strategy_text);
+            let tool_name = req.command_name.as_deref().unwrap_or("");
+            if tool_name.is_empty() {
+                tracing::warn!("ai_chat: Tool command with empty command_name");
+            }
+            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .all_tools()
+                .iter()
+                .filter(|t| t.name == tool_name)
+                .cloned()
+                .collect();
+            (sp, filtered)
+        },
+        Some(CommandType::Skill) => {
+            let skill_name = req.command_name.as_deref().unwrap_or("");
+            let skills = openatrading_core::skills::SkillRegistry::from_disk();
+            let prompt = skills
+                .skills()
+                .iter()
+                .find(|s| s.name == skill_name)
+                .map(|s| s.content.as_str())
+                .unwrap_or(default_strategy);
+            (
+                build_system_prompt(prompt),
+                tools_registry.all_tools().to_vec(),
+            )
+        },
+        Some(CommandType::Pipeline) => {
+            let pipeline_name = req.command_name.as_deref().unwrap_or("");
+            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
+            let spec = pipelines.find(pipeline_name);
+            let prompt = spec.map(|s| s.prompt.as_str()).unwrap_or(default_strategy);
+            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
+            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .all_tools()
+                .iter()
+                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
+                .cloned()
+                .collect();
+            (build_system_prompt(prompt), filtered)
+        },
+        None => {
+            let strategy_text = roles_guard
+                .iter()
+                .find(|r| r.name == role_name)
+                .map(|r| r.strategy.as_str())
+                .unwrap_or(default_strategy);
+            (
+                build_system_prompt(strategy_text),
+                tools_registry.all_tools().to_vec(),
+            )
+        },
+    };
 
     let agent = Arc::new(create_agent(&state.ctx.llm, tools, &system_prompt));
 
