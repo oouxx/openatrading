@@ -3,15 +3,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openatrading_core::context::AppContext;
-use openatrading_core::memory::sqlite::SqliteMemoryStore;
-use openatrading_core::trade::sqlite::SqliteTradeManager;
+use openatrading_core::memory::sqlite::MemoryStore;
+use openatrading_core::trade::sqlite::TradeManager;
 
 use crate::cache;
 use crate::{self as web, AppState, RoleEntry};
 
 pub struct Gateway {
-    pub memory: Arc<SqliteMemoryStore>,
-    pub trade: Arc<SqliteTradeManager>,
+    pub memory: Arc<MemoryStore>,
+    pub trade: Arc<TradeManager>,
 }
 
 pub struct GatewayConfig {
@@ -27,8 +27,8 @@ impl Gateway {
                 std::fs::create_dir_all(parent)?;
             }
         }
-        let memory = Arc::new(SqliteMemoryStore::open(db_path)?);
-        let trade = Arc::new(SqliteTradeManager::open(db_path)?);
+        let memory = Arc::new(MemoryStore::open(db_path)?);
+        let trade = Arc::new(TradeManager::open(db_path)?);
         Ok(Gateway { memory, trade })
     }
 

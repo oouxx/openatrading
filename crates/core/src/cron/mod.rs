@@ -10,7 +10,8 @@ use crate::context::AppContext;
 use crate::llm::tools::{create_historical_context_tool, create_positions_tool};
 use crate::llm::DynTool;
 use crate::social::NotificationSender;
-use crate::trade::{execute_buy, execute_sell, TradeManager};
+use crate::trade::sqlite::TradeManager;
+use crate::trade::{execute_buy, execute_sell};
 use crate::RoleEntry;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,8 +48,8 @@ pub struct CollectSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TradeSuggestion {
-    pub symbol: String,
-    pub action: String,
+    pub symbol: crate::types::StockCode,
+    pub action: crate::trade::TradeAction,
     pub reason: String,
 }
 
@@ -275,7 +276,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
         },
     };
 
-    update_all_position_prices(&*ctx.trade, &ctx.api).await;
+    update_all_position_prices(&ctx.trade, &ctx.api).await;
 
     for role in roles {
         let mut role_tools = ctx.tools.clone();
@@ -291,7 +292,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
     Ok(())
 }
 
-async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
+async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
     let positions = match trade.list_all_positions() {
         Ok(p) => p,
         Err(e) => {
@@ -308,7 +309,7 @@ async fn update_all_position_prices(trade: &dyn TradeManager, api: &ApiClient) {
     let mut failed = 0u32;
 
     for pos in &positions {
-        match api.xuangubao.fetch_realtime(&pos.symbol).await {
+        match api.xuangubao.fetch_realtime(pos.symbol.as_str()).await {
             Ok(quote) => {
                 if let Err(e) = trade.update_position_price(pos.id, quote.last_px) {
                     tracing::warn!(
@@ -371,9 +372,9 @@ async fn run_decision_for_role(
     let mut executed_trades: Vec<String> = Vec::new();
 
     for instr in &trade_instructions {
-        match instr.action.as_str() {
-            "buy" => {
-                if let Err(e) = execute_buy(&*ctx.trade, &ctx.api, &role.name, instr).await {
+        match instr.action {
+            crate::trade::TradeAction::Buy => {
+                if let Err(e) = execute_buy(&ctx.trade, &ctx.api, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute buy failed for {} {}: {e}",
                         instr.symbol,
@@ -393,8 +394,8 @@ async fn run_decision_for_role(
                     let _ = ctx.social.notify_trade(&trade_text).await;
                 }
             },
-            "sell" => {
-                if let Err(e) = execute_sell(&*ctx.trade, &ctx.api, &role.name, instr).await {
+            crate::trade::TradeAction::Sell => {
+                if let Err(e) = execute_sell(&ctx.trade, &ctx.api, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute sell failed for {} {}: {e}",
                         instr.symbol,
@@ -411,16 +412,16 @@ async fn run_decision_for_role(
                     let _ = ctx.social.notify_trade(&trade_text).await;
                 }
             },
-            "hold" => {
+            crate::trade::TradeAction::Hold => {
                 executed_trades.push(format!(
                     "⏸ 持有 {} {} — {}",
                     instr.symbol, instr.name, instr.reason
                 ));
             },
-            other => {
+            crate::trade::TradeAction::Open | crate::trade::TradeAction::Close => {
                 tracing::warn!(
-                    "[cron] unknown action '{}' for {} {}",
-                    other,
+                    "[cron] unexpected action '{}' for {} {}",
+                    instr.action,
                     instr.symbol,
                     instr.name
                 );
@@ -443,7 +444,7 @@ async fn run_decision_for_role(
         .iter()
         .map(|t| TradeSuggestion {
             symbol: t.symbol.clone(),
-            action: t.action.clone(),
+            action: t.action,
             reason: t.reason.clone(),
         })
         .collect();

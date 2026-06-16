@@ -3,13 +3,13 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{MarketSnapshot, MemoryStore};
+use super::MarketSnapshot;
 
-pub struct SqliteMemoryStore {
+pub struct MemoryStore {
     conn: Mutex<Connection>,
 }
 
-impl SqliteMemoryStore {
+impl MemoryStore {
     pub fn open(db_path: &Path) -> Result<Self> {
         let conn = Connection::open(db_path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
@@ -23,14 +23,12 @@ impl SqliteMemoryStore {
             CREATE INDEX IF NOT EXISTS idx_snapshots_date ON market_snapshots(captured_at);
             CREATE INDEX IF NOT EXISTS idx_snapshots_source ON market_snapshots(data_source);",
         )?;
-        Ok(SqliteMemoryStore {
+        Ok(MemoryStore {
             conn: Mutex::new(conn),
         })
     }
-}
 
-impl MemoryStore for SqliteMemoryStore {
-    fn save_snapshot(&self, source: &str, json: &str) -> Result<i64> {
+    pub fn save_snapshot(&self, source: &str, json: &str) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO market_snapshots (data_source, raw_json) VALUES (?1, ?2)",
@@ -42,7 +40,7 @@ impl MemoryStore for SqliteMemoryStore {
         Ok(id)
     }
 
-    fn query_recent(&self, days: u32) -> Result<Vec<MarketSnapshot>> {
+    pub fn query_recent(&self, days: u32) -> Result<Vec<MarketSnapshot>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
@@ -60,7 +58,7 @@ impl MemoryStore for SqliteMemoryStore {
             .map_err(Into::into)
     }
 
-    fn query_by_source(&self, source: &str, days: u32) -> Result<Vec<MarketSnapshot>> {
+    pub fn query_by_source(&self, source: &str, days: u32) -> Result<Vec<MarketSnapshot>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
@@ -79,7 +77,7 @@ impl MemoryStore for SqliteMemoryStore {
             .map_err(Into::into)
     }
 
-    fn cleanup_old(&self) -> Result<()> {
+    pub fn cleanup_old(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "DELETE FROM market_snapshots WHERE captured_at < datetime('now', 'localtime', '-10 days')",
@@ -88,7 +86,7 @@ impl MemoryStore for SqliteMemoryStore {
         Ok(())
     }
 
-    fn get_historical_context(&self, days: u32) -> Result<String> {
+    pub fn get_historical_context(&self, days: u32) -> Result<String> {
         let snapshots = self.query_recent(days)?;
         if snapshots.is_empty() {
             return Ok("暂无历史数据".to_string());
