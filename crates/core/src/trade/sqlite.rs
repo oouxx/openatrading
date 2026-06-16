@@ -3,13 +3,14 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::{ClosedPosition, Position, TradeLog, TradeLogEntry, TradeManager};
+use super::{ClosedPosition, Position, TradeAction, TradeLog, TradeLogEntry};
+use crate::types::StockCode;
 
-pub struct SqliteTradeManager {
+pub struct TradeManager {
     conn: Mutex<Connection>,
 }
 
-impl SqliteTradeManager {
+impl TradeManager {
     pub fn open(db_path: &Path) -> Result<Self> {
         let conn = Connection::open(db_path)
             .with_context(|| format!("无法打开 SQLite: {}", db_path.display()))?;
@@ -67,14 +68,12 @@ impl SqliteTradeManager {
         )
         .ok();
 
-        Ok(SqliteTradeManager {
+        Ok(TradeManager {
             conn: Mutex::new(conn),
         })
     }
-}
 
-impl TradeManager for SqliteTradeManager {
-    fn list_positions(&self, role_name: &str) -> Result<Vec<Position>> {
+    pub fn list_positions(&self, role_name: &str) -> Result<Vec<Position>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
@@ -85,7 +84,7 @@ impl TradeManager for SqliteTradeManager {
             Ok(Position {
                 id: row.get(0)?,
                 role_name: row.get(1)?,
-                symbol: row.get(2)?,
+                symbol: StockCode::new(row.get::<_, String>(2)?),
                 stock_name: row.get(3)?,
                 entry_date: row.get(4)?,
                 cost_price: row.get(5)?,
@@ -104,7 +103,7 @@ impl TradeManager for SqliteTradeManager {
             .map_err(Into::into)
     }
 
-    fn add_position(&self, pos: Position) -> Result<i64> {
+    pub fn add_position(&self, pos: Position) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO positions (role_name,symbol,stock_name,entry_date,cost_price,shares,\
@@ -112,7 +111,7 @@ impl TradeManager for SqliteTradeManager {
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
             rusqlite::params![
                 pos.role_name,
-                pos.symbol,
+                pos.symbol.to_string(),
                 pos.stock_name,
                 pos.entry_date,
                 pos.cost_price,
@@ -127,13 +126,13 @@ impl TradeManager for SqliteTradeManager {
         )?;
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Open',?2,?3,?4,?5,?6,?7)",
-            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol, pos.stock_name],
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Open',?2,?3,?4,?5,?6,?7) /* action=Open via as_str */",
+            rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol.to_string(), pos.stock_name],
         )?;
         Ok(id)
     }
 
-    fn update_position(&self, pos: Position) -> Result<()> {
+    pub fn update_position(&self, pos: Position) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE positions SET current_price=?1,stop_loss=?2,target_price=?3,\
@@ -143,7 +142,7 @@ impl TradeManager for SqliteTradeManager {
         Ok(())
     }
 
-    fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
+    pub fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let (role_name, symbol, shares, stock_name): (String, String, i64, String) = conn
             .query_row(
@@ -159,7 +158,7 @@ impl TradeManager for SqliteTradeManager {
         Ok(())
     }
 
-    fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>> {
+    pub fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id,position_id,action,price,shares,reason,created_at \
@@ -169,7 +168,14 @@ impl TradeManager for SqliteTradeManager {
             Ok(TradeLog {
                 id: row.get(0)?,
                 position_id: row.get(1)?,
-                action: row.get(2)?,
+                action: {
+                    let a: String = row.get(2)?;
+                    match a.as_str() {
+                        "Open" => TradeAction::Open,
+                        "Close" => TradeAction::Close,
+                        _ => TradeAction::Buy,
+                    }
+                },
                 price: row.get(3)?,
                 shares: row.get(4)?,
                 reason: row.get(5)?,
@@ -180,7 +186,11 @@ impl TradeManager for SqliteTradeManager {
             .map_err(Into::into)
     }
 
-    fn get_trade_logs_by_role(&self, role_name: &str, limit: usize) -> Result<Vec<TradeLogEntry>> {
+    pub fn get_trade_logs_by_role(
+        &self,
+        role_name: &str,
+        limit: usize,
+    ) -> Result<Vec<TradeLogEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
@@ -197,19 +207,26 @@ impl TradeManager for SqliteTradeManager {
             Ok(TradeLogEntry {
                 id: row.get(0)?,
                 position_id: row.get(1)?,
-                action: row.get(2)?,
+                action: {
+                    let a: String = row.get(2)?;
+                    match a.as_str() {
+                        "Open" => TradeAction::Open,
+                        "Close" => TradeAction::Close,
+                        _ => TradeAction::Buy,
+                    }
+                },
                 price: row.get(3)?,
                 shares: row.get(4)?,
                 reason: row.get(5)?,
                 created_at: row.get(6)?,
-                symbol: row.get(7)?,
+                symbol: StockCode::new(row.get::<_, String>(7)?),
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
 
-    fn format_positions(&self, role_name: &str) -> Result<String> {
+    pub fn format_positions(&self, role_name: &str) -> Result<String> {
         let positions = self.list_positions(role_name)?;
         if positions.is_empty() {
             return Ok("暂无持仓".to_string());
@@ -240,7 +257,7 @@ impl TradeManager for SqliteTradeManager {
         Ok(lines.join("\n"))
     }
 
-    fn list_all_positions(&self) -> Result<Vec<Position>> {
+    pub fn list_all_positions(&self) -> Result<Vec<Position>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
@@ -251,7 +268,7 @@ impl TradeManager for SqliteTradeManager {
             Ok(Position {
                 id: row.get(0)?,
                 role_name: row.get(1)?,
-                symbol: row.get(2)?,
+                symbol: StockCode::new(row.get::<_, String>(2)?),
                 stock_name: row.get(3)?,
                 entry_date: row.get(4)?,
                 cost_price: row.get(5)?,
@@ -270,7 +287,7 @@ impl TradeManager for SqliteTradeManager {
             .map_err(Into::into)
     }
 
-    fn update_position_price(&self, id: i64, current_price: f64) -> Result<()> {
+    pub fn update_position_price(&self, id: i64, current_price: f64) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE positions SET current_price=?1, updated_at=datetime('now','localtime') WHERE id=?2",
@@ -279,19 +296,19 @@ impl TradeManager for SqliteTradeManager {
         Ok(())
     }
 
-    fn delete_positions_by_role(&self, role_name: &str) -> Result<usize> {
+    pub fn delete_positions_by_role(&self, role_name: &str) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute("DELETE FROM positions WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
 
-    fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize> {
+    pub fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute("DELETE FROM trade_logs WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
 
-    fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>> {
+    pub fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
@@ -306,19 +323,30 @@ impl TradeManager for SqliteTradeManager {
             Ok(TradeLogEntry {
                 id: row.get(0)?,
                 position_id: row.get(1)?,
-                action: row.get(2)?,
+                action: {
+                    let a: String = row.get(2)?;
+                    match a.as_str() {
+                        "Open" => TradeAction::Open,
+                        "Close" => TradeAction::Close,
+                        _ => TradeAction::Buy,
+                    }
+                },
                 price: row.get(3)?,
                 shares: row.get(4)?,
                 reason: row.get(5)?,
                 created_at: row.get(6)?,
-                symbol: row.get(7)?,
+                symbol: StockCode::new(row.get::<_, String>(7)?),
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
 
-    fn get_closed_positions(&self, role_name: &str, limit: usize) -> Result<Vec<ClosedPosition>> {
+    pub fn get_closed_positions(
+        &self,
+        role_name: &str,
+        limit: usize,
+    ) -> Result<Vec<ClosedPosition>> {
         let conn = self.conn.lock().unwrap();
         // Pair Close logs with their corresponding Open logs by position_id
         let mut stmt = conn.prepare(
@@ -343,7 +371,7 @@ impl TradeManager for SqliteTradeManager {
             };
             Ok(ClosedPosition {
                 position_id: row.get(0)?,
-                symbol: row.get(1)?,
+                symbol: StockCode::new(row.get::<_, String>(1)?),
                 stock_name: row.get(2)?,
                 entry_date: row.get::<_, String>(3)?.chars().take(10).collect(),
                 exit_date: row.get::<_, String>(4)?.chars().take(10).collect(),
@@ -369,7 +397,7 @@ mod tests {
         Position {
             id: 0,
             role_name: role.into(),
-            symbol: symbol.into(),
+            symbol: StockCode::new(symbol),
             stock_name: name.into(),
             entry_date: "2026-01-15".into(),
             cost_price: 10.5,
@@ -387,17 +415,17 @@ mod tests {
 
     #[test]
     fn test_add_and_list_positions() {
-        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
         tm.add_position(test_pos("zarili", "000001", "平安银行"))
             .unwrap();
         let positions = tm.list_positions("zarili").unwrap();
         assert_eq!(positions.len(), 1);
-        assert_eq!(positions[0].symbol, "000001");
+        assert_eq!(positions[0].symbol, StockCode::new("000001"));
     }
 
     #[test]
     fn test_close_position() {
-        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
         let id = tm
             .add_position(test_pos("trader", "600519", "茅台"))
             .unwrap();
@@ -408,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_format_positions() {
-        let tm = SqliteTradeManager::open(Path::new(":memory:")).unwrap();
+        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
         tm.add_position(test_pos("zarili", "000001", "平安银行"))
             .unwrap();
         let text = tm.format_positions("zarili").unwrap();

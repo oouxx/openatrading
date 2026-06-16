@@ -2,11 +2,12 @@ use crate::api::Client as ApiClient;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::TradeInstruction;
 use crate::trade::paper::PaperBroker;
-use crate::trade::{Position, TradeManager};
+use crate::trade::sqlite::TradeManager;
+use crate::trade::Position;
 use anyhow::Result;
 
 pub async fn execute_buy(
-    trade: &dyn TradeManager,
+    trade: &TradeManager,
     api: &ApiClient,
     role_name: &str,
     instr: &TradeInstruction,
@@ -15,7 +16,7 @@ pub async fn execute_buy(
 
     let quote = api
         .xuangubao
-        .fetch_realtime(&instr.symbol)
+        .fetch_realtime(instr.symbol.as_str())
         .await
         .map_err(|e| anyhow::anyhow!("fetch realtime for {} failed: {e}", instr.symbol))?;
 
@@ -90,7 +91,7 @@ pub async fn execute_buy(
 }
 
 pub async fn execute_sell(
-    trade: &dyn TradeManager,
+    trade: &TradeManager,
     api: &ApiClient,
     role_name: &str,
     instr: &TradeInstruction,
@@ -103,11 +104,11 @@ pub async fn execute_sell(
         .filter(|p| p.symbol == instr.symbol)
         .collect();
 
-    PaperBroker::validate_sell(&instr.symbol, matching.len() as i64)
+    PaperBroker::validate_sell(instr.symbol.as_str(), matching.len() as i64)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     for pos in matching {
-        let last_price = match api.xuangubao.fetch_realtime(&pos.symbol).await {
+        let last_price = match api.xuangubao.fetch_realtime(pos.symbol.as_str()).await {
             Ok(quote) if quote.last_px > 0.0 => quote.last_px,
             _ => pos.current_price.unwrap_or(pos.cost_price),
         };

@@ -1,11 +1,39 @@
-use anyhow::Result;
+use crate::types::StockCode;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TradeAction {
+    Buy,
+    Sell,
+    Hold,
+    Open,
+    Close,
+}
+
+impl TradeAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TradeAction::Buy => "buy",
+            TradeAction::Sell => "sell",
+            TradeAction::Hold => "hold",
+            TradeAction::Open => "Open",
+            TradeAction::Close => "Close",
+        }
+    }
+}
+
+impl std::fmt::Display for TradeAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Position {
     pub id: i64,
     pub role_name: String,
-    pub symbol: String,
+    pub symbol: StockCode,
     pub stock_name: String,
     pub entry_date: String,
     pub cost_price: f64,
@@ -24,7 +52,7 @@ pub struct Position {
 pub struct TradeLog {
     pub id: i64,
     pub position_id: i64,
-    pub action: String,
+    pub action: TradeAction,
     pub price: f64,
     pub shares: i64,
     pub reason: String,
@@ -35,18 +63,18 @@ pub struct TradeLog {
 pub struct TradeLogEntry {
     pub id: i64,
     pub position_id: i64,
-    pub action: String,
+    pub action: TradeAction,
     pub price: f64,
     pub shares: i64,
     pub reason: String,
     pub created_at: String,
-    pub symbol: String,
+    pub symbol: StockCode,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClosedPosition {
     pub position_id: i64,
-    pub symbol: String,
+    pub symbol: StockCode,
     pub stock_name: String,
     pub entry_date: String,
     pub exit_date: String,
@@ -62,21 +90,6 @@ pub mod broker;
 pub mod paper;
 pub mod sqlite;
 
-pub trait TradeManager: Send + Sync {
-    fn list_positions(&self, role_name: &str) -> Result<Vec<Position>>;
-    fn list_all_positions(&self) -> Result<Vec<Position>>;
-    fn add_position(&self, pos: Position) -> Result<i64>;
-    fn update_position(&self, pos: Position) -> Result<()>;
-    fn update_position_price(&self, id: i64, current_price: f64) -> Result<()>;
-    fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()>;
-    fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>>;
-    fn get_trade_logs_by_role(&self, role_name: &str, limit: usize) -> Result<Vec<TradeLogEntry>>;
-    fn format_positions(&self, role_name: &str) -> Result<String>;
-    fn delete_positions_by_role(&self, role_name: &str) -> Result<usize>;
-    fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize>;
-    fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>>;
-    fn get_closed_positions(&self, role_name: &str, limit: usize) -> Result<Vec<ClosedPosition>>;
-}
-
 pub use broker::execute_buy;
 pub use broker::execute_sell;
+pub use sqlite::TradeManager;

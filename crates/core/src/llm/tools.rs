@@ -10,8 +10,8 @@ use crate::api::cls::ClsClient;
 use crate::api::eastmoney::LhbClient;
 use crate::api::jiuyangongshe::JiuYanSession;
 use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use crate::memory::MemoryStore;
-use crate::trade::TradeManager;
+use crate::memory::sqlite::MemoryStore;
+use crate::trade::sqlite::TradeManager;
 
 pub(crate) type ExecuteFn = Arc<
     dyn Fn(
@@ -440,7 +440,7 @@ pub fn get_lhb_active_yyb() -> Arc<DynTool> {
 // ============================================================================
 
 /// Create a tool that queries current positions for a given role.
-pub fn create_positions_tool(trade: Arc<dyn TradeManager>, role_name: String) -> Arc<DynTool> {
+pub fn create_positions_tool(trade: Arc<TradeManager>, role_name: String) -> Arc<DynTool> {
     tool(
         "get_current_positions",
         "查询当前持仓信息，包含股票代码、名称、成本价格、持仓数量、当前价格等。用于分析当前仓位情况。",
@@ -457,7 +457,7 @@ pub fn create_positions_tool(trade: Arc<dyn TradeManager>, role_name: String) ->
 }
 
 /// Create a tool that queries historical context data from memory.
-pub fn create_historical_context_tool(memory: Arc<dyn MemoryStore>) -> Arc<DynTool> {
+pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> {
     tool(
         "get_historical_context",
         "查询近N日市场历史数据，用于对比分析。参数：days（可选，默认5天）",

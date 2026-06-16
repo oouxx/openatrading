@@ -8,6 +8,7 @@ pub mod roles;
 pub mod skills;
 pub mod social;
 pub mod trade;
+pub mod types;
 pub mod utils;
 
 use std::path::PathBuf;

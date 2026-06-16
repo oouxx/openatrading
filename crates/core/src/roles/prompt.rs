@@ -1,10 +1,12 @@
+use crate::trade::TradeAction;
+use crate::types::StockCode;
 use openatrading_agent::extraction::Extractor;
 use schemars::JsonSchema;
 
 #[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
 pub struct TradeInstruction {
-    pub action: String,
-    pub symbol: String,
+    pub action: TradeAction,
+    pub symbol: StockCode,
     pub name: String,
     #[serde(default)]
     pub shares: i64,

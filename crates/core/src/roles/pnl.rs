@@ -1,4 +1,4 @@
-use crate::trade::TradeLogEntry;
+use crate::trade::{TradeAction, TradeLogEntry};
 use serde::Serialize;
 
 pub const INITIAL_CAPITAL: f64 = 1_000_000.0;
@@ -26,12 +26,12 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
         std::collections::HashMap::new();
 
     for log in logs {
-        match log.action.as_str() {
-            "Open" => {
+        match log.action {
+            TradeAction::Open => {
                 let cost = log.price * log.shares as f64;
                 cash -= cost;
                 holdings
-                    .entry(log.symbol.clone())
+                    .entry(log.symbol.to_string())
                     .and_modify(|(existing_shares, existing_avg)| {
                         let total_shares = *existing_shares + log.shares;
                         let total_cost =
@@ -41,23 +41,23 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                     })
                     .or_insert((log.shares, log.price));
             },
-            "Close" => {
+            TradeAction::Close => {
                 let proceeds = log.price * log.shares as f64;
                 cash += proceeds;
                 if log.shares == 0 {
-                    holdings.remove(&log.symbol);
+                    holdings.remove(log.symbol.as_str());
                 } else {
                     holdings
-                        .entry(log.symbol.clone())
+                        .entry(log.symbol.to_string())
                         .and_modify(|(existing_shares, _)| {
                             *existing_shares -= log.shares;
                             if *existing_shares <= 0 {
                                 *existing_shares = 0;
                             }
                         });
-                    if let Some((s, _)) = holdings.get(&log.symbol) {
+                    if let Some((s, _)) = holdings.get(log.symbol.as_str()) {
                         if *s == 0 {
-                            holdings.remove(&log.symbol);
+                            holdings.remove(log.symbol.as_str());
                         }
                     }
                 }

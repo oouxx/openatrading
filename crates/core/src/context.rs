@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use crate::api::Client as ApiClient;
 use crate::llm::{build_tools, DynTool, LlmClient, McpServerConfig, ToolConfig};
-use crate::memory::MemoryStore;
+use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
-use crate::trade::TradeManager;
+use crate::trade::sqlite::TradeManager;
 
 #[derive(Clone)]
 pub struct AppContext {
     pub llm: LlmClient,
     pub api: ApiClient,
     pub tools: Vec<Arc<DynTool>>,
-    pub memory: Arc<dyn MemoryStore>,
-    pub trade: Arc<dyn TradeManager>,
+    pub memory: Arc<MemoryStore>,
+    pub trade: Arc<TradeManager>,
     pub social: Arc<dyn NotificationSender>,
 }
 
@@ -21,8 +21,8 @@ impl AppContext {
         provider: Option<&str>,
         model: Option<&str>,
         mcp_servers: &[McpServerConfig],
-        memory: Arc<dyn MemoryStore>,
-        trade: Arc<dyn TradeManager>,
+        memory: Arc<MemoryStore>,
+        trade: Arc<TradeManager>,
         social: Arc<dyn NotificationSender>,
     ) -> Self {
         let llm = LlmClient::from_config(provider, model);
