@@ -35,6 +35,7 @@ pub fn build_market_tools() -> Vec<Arc<DynTool>> {
         tools::get_lhb_combined(),
         tools::get_lhb_active_yyb(),
         tools::get_all_day_events(),
+        tools::get_auction_quotes(),
         tools::create_meta_skill_tool(),
     ]
 }
