@@ -340,6 +340,26 @@ pub async fn ai_chat(
                         Ame::ToolCallEnd { .. } => {
                             yield Ok(Event::default().event("tool-end"));
                         }
+                        Ame::Error { reason, error } => {
+                            // Provider stream ended abnormally — e.g. DeepSeek
+                            // closing the connection without a `finish_reason`.
+                            // Surface the reason + any partial content length so
+                            // we can distinguish empty responses from truncated ones.
+                            let partial_len = error
+                                .content
+                                .iter()
+                                .map(|b| match b {
+                                    openatrading_core::llm::pi_ai_types::ContentBlock::Text { text, .. } => text.len(),
+                                    _ => 0,
+                                })
+                                .sum::<usize>();
+                            tracing::warn!(
+                                "ai/chat: stream error reason={:?} partial_content_chars={} error_msg={:?}",
+                                reason,
+                                partial_len,
+                                error.error_message,
+                            );
+                        }
                         _ => {}
                     }
                 }
@@ -347,6 +367,7 @@ pub async fn ai_chat(
                     tracing::info!("ai/chat: MessageEnd received");
                     if let AgentMessage::Assistant { error_message: Some(err), .. } = &message {
                         if !err.is_empty() {
+                            tracing::warn!("ai/chat: MessageEnd carries error: {err}");
                             yield Ok(Event::default().data(format!("[ERROR] {err}")));
                         }
                     }
