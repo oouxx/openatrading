@@ -17,6 +17,7 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
+import type { Unstable_TriggerAdapter, Unstable_TriggerItem } from "@assistant-ui/react";
 import "@assistant-ui/react-markdown/styles/dot.css";
 
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,15 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { cn } from "@/lib/utils";
 
-export function Thread() {
+export interface ThreadProps {
+  slashAdapter?: Unstable_TriggerAdapter;
+  slashAction?: {
+    onExecute: (item: Unstable_TriggerItem) => void;
+    removeOnExecute?: boolean;
+  };
+}
+
+export function Thread({ slashAdapter, slashAction }: ThreadProps) {
   return (
     <ThreadPrimitive.Root
       className="flex h-full flex-col bg-background text-sm"
@@ -41,7 +50,7 @@ export function Thread() {
         turnAnchor="top"
         className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
       >
-        
+
 
         <ThreadPrimitive.Messages
           components={{
@@ -52,19 +61,24 @@ export function Thread() {
         />
 
         <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mx-auto mt-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4">
-          
-          <Composer />
+
+          <Composer slashAdapter={slashAdapter} slashAction={slashAction} />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
   );
 }
 
-function Composer() {
-  return (
+interface ComposerProps {
+  slashAdapter?: Unstable_TriggerAdapter;
+  slashAction?: { onExecute: (item: Unstable_TriggerItem) => void; removeOnExecute?: boolean };
+}
+
+function Composer({ slashAdapter, slashAction }: ComposerProps) {
+  const inner = (
     <ComposerPrimitive.Root className="relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-colors has-[textarea:focus-visible]:border-foreground/60 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
-        
+
         <ComposerPrimitive.Input
           placeholder="Send a message..."
           className="mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
@@ -75,6 +89,39 @@ function Composer() {
         <ComposerAction />
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
+  );
+
+  if (!slashAdapter) return inner;
+
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
+        {slashAction && (
+          <ComposerPrimitive.Unstable_TriggerPopover.Action
+            onExecute={slashAction.onExecute}
+            removeOnExecute={slashAction.removeOnExecute}
+          />
+        )}
+        <ComposerPrimitive.Unstable_TriggerPopoverItems>
+          {(items) => (
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1 mb-2">
+              {items.map((item) => (
+                <ComposerPrimitive.Unstable_TriggerPopoverItem
+                  key={item.id}
+                  item={item}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
+                >
+                  <div className="font-medium text-xs text-white">/{item.label}</div>
+                  <div className="text-[11px] text-ink-muted mt-0.5">{item.description}</div>
+                </ComposerPrimitive.Unstable_TriggerPopoverItem>
+              ))}
+            </div>
+          )}
+        </ComposerPrimitive.Unstable_TriggerPopoverItems>
+      </ComposerPrimitive.Unstable_TriggerPopover>
+
+      {inner}
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 }
 
