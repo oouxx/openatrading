@@ -254,11 +254,11 @@ export default function DragonTigerView() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((s) => {
+                    filtered.map((s, i) => {
                       const up = (s.billboard_net_amt ?? 0) >= 0;
                       return (
                         <tr
-                          key={s.code}
+                          key={`${s.code}-${i}`}
                           className={`cursor-pointer transition-colors [&>td]:hover:bg-bg-hover ${selected?.code === s.code ? "[&>td]:!bg-ai/10" : ""}`}
                           onClick={() =>
                             setSelected(

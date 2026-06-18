@@ -70,7 +70,7 @@ export default function ReplayView() {
     if (!rawPage) return;
     const page = rawPage as ReplayPage;
     const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000;
-    const events: DisplayEvent[] = page.events
+    const events: DisplayEvent[] = (page.events ?? [])
       .filter((e: ReplayEvent) => e.plate_name)
       .map((e: ReplayEvent) => ({
         id: e.id,

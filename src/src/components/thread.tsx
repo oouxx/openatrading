@@ -19,6 +19,7 @@ import {
 } from "@assistant-ui/react";
 import type { Unstable_TriggerAdapter, Unstable_TriggerItem } from "@assistant-ui/react";
 import "@assistant-ui/react-markdown/styles/dot.css";
+import { useCallback, useRef, useEffect, type FC, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -26,6 +27,15 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { cn } from "@/lib/utils";
+
+const ScrollIntoView: FC<{ children: ReactNode }> = ({ children }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current?.querySelector('[data-highlighted]');
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  });
+  return <div ref={ref}>{children}</div>;
+};
 
 export interface ThreadProps {
   slashAdapter?: Unstable_TriggerAdapter;
@@ -60,7 +70,7 @@ export function Thread({ slashAdapter, slashAction }: ThreadProps) {
           }}
         />
 
-        <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mx-auto mt-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4">
+        <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mx-auto mt-auto flex w-full max-w-[var(--thread-max-width)] flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 shadow-[0_-8px_12px_-4px_var(--color-background)]">
 
           <Composer slashAdapter={slashAdapter} slashAction={slashAction} />
         </ThreadPrimitive.ViewportFooter>
@@ -95,26 +105,40 @@ function Composer({ slashAdapter, slashAction }: ComposerProps) {
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-      <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
+      <ComposerPrimitive.Unstable_TriggerPopover
+        char="/"
+        adapter={slashAdapter}
+      >
         {slashAction && (
           <ComposerPrimitive.Unstable_TriggerPopover.Action
             onExecute={slashAction.onExecute}
             removeOnExecute={slashAction.removeOnExecute}
           />
         )}
+        <ComposerPrimitive.Unstable_TriggerPopover.Directive
+          formatter={{ serialize: (item: any) => item.label }}
+        />
         <ComposerPrimitive.Unstable_TriggerPopoverItems>
           {(items) => (
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1 mb-2">
-              {items.map((item) => (
-                <ComposerPrimitive.Unstable_TriggerPopoverItem
-                  key={item.id}
-                  item={item}
-                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
-                >
-                  <div className="font-medium text-xs text-white">/{item.label}</div>
-                  <div className="text-[11px] text-ink-muted mt-0.5">{item.description}</div>
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1 w-full" role="listbox">
+              {items.map((item: any) => (
+                <ScrollIntoView key={item.id}>
+                  <ComposerPrimitive.Unstable_TriggerPopoverItem
+                    item={item}
+                    className="block w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
+                  >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-xs text-white">/{item.label}</span>
+                    <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${item.commandType === 'skill' ? 'bg-ai/20 text-ai' : item.commandType === 'pipeline' ? 'bg-down/20 text-down' : 'bg-ink-dim text-ink-muted'}`}>
+                      {item.commandType || 'tool'}
+                    </span>
+                  </div>
+                  {item.description && (
+                    <div className="text-[11px] text-ink-muted mt-1 line-clamp-2">{item.description}</div>
+                  )}
                 </ComposerPrimitive.Unstable_TriggerPopoverItem>
-              ))}
+              </ScrollIntoView>
+            ))}
             </div>
           )}
         </ComposerPrimitive.Unstable_TriggerPopoverItems>
@@ -176,18 +200,23 @@ function UserMessage() {
       className="mx-auto grid w-full max-w-[var(--thread-max-width)] auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 py-5 fade-in slide-in-from-bottom-1 animate-in duration-150"
       data-role="user"
     >
-      
+
 
       <div className="relative col-start-2 min-w-0">
-        <div className="rounded-2xl bg-muted px-4 py-2.5 break-words text-foreground">
-          <MessagePrimitive.Parts />
+        <div className="flex items-end gap-3">
+          <div className="flex-1 rounded-2xl bg-muted px-4 py-2.5 break-words text-foreground">
+            <MessagePrimitive.Parts />
+          </div>
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <UserIcon className="size-4" />
+          </div>
         </div>
         <div className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 pr-2">
           <UserActionBar />
         </div>
       </div>
 
-      
+
     </MessagePrimitive.Root>
   );
 }
@@ -256,10 +285,10 @@ function AssistantMessage() {
       </div>
 
       <div className="mt-1 ml-2 flex min-h-6 items-center">
-        
+
         <AssistantActionBar />
       </div>
-      
+
       <AuiIf condition={(s) => !s.thread.isRunning}>
         <div className="mt-4 flex flex-wrap gap-2">
           <ThreadPrimitive.Suggestion
@@ -297,14 +326,14 @@ function AssistantActionBar() {
       autohide="not-last"
       className="-ml-1 flex gap-1 text-muted-foreground"
     >
-      
+
       <ActionBarPrimitive.ExportMarkdown asChild>
         <TooltipIconButton tooltip="Export as Markdown">
           <DownloadIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.ExportMarkdown>
-      
-      
+
+
     </ActionBarPrimitive.Root>
   );
 }
