@@ -1,9 +1,9 @@
 use openatrading_core::llm::build_market_tools;
 
 #[test]
-fn build_market_tools_returns_seventeen() {
+fn build_market_tools_returns_twenty() {
     let tools = build_market_tools();
-    assert_eq!(tools.len(), 17, "expected 17 public market tools");
+    assert_eq!(tools.len(), 20, "expected 20 public market tools");
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     for required in [
         "get_limit_up",
@@ -18,12 +18,12 @@ fn build_market_tools_returns_seventeen() {
 }
 
 #[test]
-fn build_tool_descriptors_returns_all_seventeen() {
+fn build_tool_descriptors_returns_all_twenty() {
     use openatrading_core::llm::MarketToolsServer;
 
     let server = MarketToolsServer::new(build_market_tools());
     let descriptors = server.build_tool_descriptors();
-    assert_eq!(descriptors.len(), 17);
+    assert_eq!(descriptors.len(), 20);
     for tool in &descriptors {
         let schema_type = tool
             .input_schema
@@ -132,7 +132,7 @@ async fn http_end_to_end_list_tools() {
         .expect("connect");
     let tools_json = client.list_tools().await.expect("list");
     let arr = tools_json.as_array().expect("tools array");
-    assert_eq!(arr.len(), 17);
+    assert_eq!(arr.len(), 20);
 
     // 关闭
     let _ = tx.send(true);

@@ -106,7 +106,8 @@ export async function apiChatStream(
           callbacks.onDone();
           return;
         } else if (data.startsWith("[ERROR]")) {
-          callbacks.onError(data);
+          // 非致命错误（如 finish_reason 缺失），内容已流出，只记录日志不中断对话
+          console.warn("[chat_stream]", data);
         } else {
           callbacks.onData(data.replace(/\\n/g, "\n"));
         }
