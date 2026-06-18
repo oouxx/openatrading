@@ -7,8 +7,32 @@ import ReplayView from "./ReplayView";
 import BreakoutView from "./BreakoutView";
 import DragonTigerView from "./DragonTigerView";
 import ThemeToggle from "./components/ThemeToggle";
+import { useIndexQuotes } from "@/hooks/query/useIndexQuotes";
 
 const isTauri = "__TAURI_INTERNALS__" in window;
+
+function IndexTicker() {
+  const { data: quotes = [] } = useIndexQuotes();
+  if (!quotes.length) return null;
+  return (
+    <div className="hidden md:flex items-center gap-3 overflow-x-auto text-[11px] font-mono text-ink-muted">
+      {quotes.map((q) => {
+        const up = q.px_change_rate >= 0;
+        return (
+          <span key={q.symbol} className="flex items-center gap-1 whitespace-nowrap">
+            <span className="text-white text-[11px]">{q.name.replace("指数", "")}</span>
+            <span className="text-white text-[11px]">
+              {q.last_px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className={up ? "text-up" : "text-down"}>
+              {up ? "+" : ""}{q.px_change_rate.toFixed(2)}%
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -72,7 +96,10 @@ export default function App() {
               AI 问答
             </NavLink>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-4">
+            <IndexTicker />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
