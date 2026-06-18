@@ -14,7 +14,8 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "src/*": ["./src/*"]
     },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
