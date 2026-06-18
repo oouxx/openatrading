@@ -12,6 +12,7 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string;
 }
 
 let nextMsgId = 0;
@@ -55,7 +56,10 @@ export function useAssistantChat(roleName: string = "") {
       const cmd = cmdRef.current;
       cmdRef.current = null;
 
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const history = messages.map((m) => ({
+        role: m.role,
+        content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
+      }));
 
       const userMsg: ChatMessage = { id: newId(), role: "user", content: text };
       const assistantMsg: ChatMessage = { id: newId(), role: "assistant", content: "" };
@@ -71,7 +75,7 @@ export function useAssistantChat(roleName: string = "") {
           command_type: cmd?.type,
         },
         {
-          onData: (data) => {
+          onText: (data) => {
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
@@ -79,6 +83,19 @@ export function useAssistantChat(roleName: string = "") {
                 updated[updated.length - 1] = {
                   ...last,
                   content: last.content + data,
+                };
+              }
+              return updated;
+            });
+          },
+          onReasoning: (data) => {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last && last.role === "assistant") {
+                updated[updated.length - 1] = {
+                  ...last,
+                  reasoning: (last.reasoning ?? "") + data,
                 };
               }
               return updated;
@@ -109,11 +126,12 @@ export function useAssistantChat(roleName: string = "") {
     messages,
     isRunning,
     onNew,
-    convertMessage: (m) => ({
-      id: m.id,
-      role: m.role,
-      content: [{ type: "text", text: m.content }],
-    }),
+    convertMessage: (m) => {
+      const content: Array<{ type: "text" | "reasoning"; text: string }> = [];
+      if (m.reasoning) content.push({ type: "reasoning", text: m.reasoning });
+      if (m.content) content.push({ type: "text", text: m.content });
+      return { id: m.id, role: m.role, content };
+    },
   });
 
   const clearChat = useCallback(() => {

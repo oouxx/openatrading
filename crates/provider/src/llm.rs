@@ -198,6 +198,31 @@ impl LlmClient {
         Ok(Box::pin(result_stream))
     }
 
+    /// Stream text from the model with per-chunk markers that distinguish
+    /// normal text from thinking/reasoning content.
+    ///
+    /// See [`event_stream_to_marked_stream`] for the marker format.
+    pub async fn chat_stream_with_messages_marked(
+        &self,
+        messages_json: &str,
+    ) -> Result<StreamResult> {
+        let messages_val: serde_json::Value =
+            serde_json::from_str(messages_json).unwrap_or_default();
+
+        let context = json_to_context(&messages_val, None);
+
+        let options = StreamOptions {
+            api_key: Some(self.api_key.clone()),
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+
+        let event_stream = stream::stream(&self.model, &context, Some(options));
+        let result_stream = event_stream_to_marked_stream(event_stream);
+        Ok(Box::pin(result_stream))
+    }
+
     pub async fn chat_stream_with_tools(
         &self,
         messages: &serde_json::Value,
@@ -424,6 +449,40 @@ fn event_stream_to_text_stream(
                 AssistantMessageEvent::TextDelta { delta, .. }
                     if !delta.is_empty() => {
                         yield Ok(delta);
+                    }
+                AssistantMessageEvent::Error { error, .. } => {
+                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
+                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Like [`event_stream_to_text_stream`] but prefixes each chunk so the
+/// consumer can distinguish text from reasoning/thinking content.
+///
+/// - Text chunks are prefixed with `\x00TEXT\x00`
+/// - Thinking chunks are prefixed with `\x00THINKING\x00`
+///
+/// The null-byte prefix is chosen because it cannot appear in LLM output,
+/// making parsing unambiguous.
+fn event_stream_to_marked_stream(
+    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
+) -> impl futures::Stream<Item = Result<String>> {
+    async_stream::stream! {
+        let mut stream = Box::pin(event_stream);
+        while let Some(event) = stream.next().await {
+            match event {
+                AssistantMessageEvent::TextDelta { delta, .. }
+                    if !delta.is_empty() => {
+                        yield Ok(format!("\x00TEXT\x00{}", delta.replace('\n', "\\n")));
+                    }
+                AssistantMessageEvent::ThinkingDelta { delta, .. }
+                    if !delta.is_empty() => {
+                        yield Ok(format!("\x00THINKING\x00{}", delta.replace('\n', "\\n")));
                     }
                 AssistantMessageEvent::Error { error, .. } => {
                     let msg = error.error_message.as_deref().unwrap_or("unknown error");
