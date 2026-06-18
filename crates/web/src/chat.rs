@@ -393,3 +393,158 @@ pub async fn ai_chat(
 
     Ok(Sse::new(sse_stream))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── build_user_message ─────────────────────────────────
+
+    fn make_overview() -> OverviewResponse {
+        OverviewResponse {
+            date: "2026-06-18 10:00".into(),
+            rise_count: 2500,
+            fall_count: 1500,
+            limit_up_count: 45,
+            limit_down_count: 5,
+            bomb_rate: 0.25,
+            risk_level: "中".into(),
+            decision_summary: "风险等级：中；上涨2500家，下跌1500家，涨停45只，跌停5只".into(),
+            market_temperature: 62.5,
+            yesterday_limit_up_avg_pcp: 3.2,
+        }
+    }
+
+    #[test]
+    fn test_build_user_message_with_all_data() {
+        let msg = build_user_message(&make_overview(), Some("板块A\n板块B"), Some("股票X\n股票Y"));
+        assert!(msg.contains("韭研公社异动数据"));
+        assert!(msg.contains("板块A"));
+        assert!(msg.contains("强势股数据"));
+        assert!(msg.contains("股票X"));
+        assert!(msg.contains("2026-06-18"));
+        assert!(msg.contains("2500"));
+    }
+
+    #[test]
+    fn test_build_user_message_without_optional_sections() {
+        let msg = build_user_message(&make_overview(), None, None);
+        assert!(!msg.contains("韭研公社异动数据"));
+        assert!(!msg.contains("强势股数据"));
+        assert!(msg.contains("2026-06-18"));
+    }
+
+    #[test]
+    fn test_build_user_message_empty_optional_sections() {
+        let msg = build_user_message(&make_overview(), Some(""), Some(""));
+        // empty strings still trigger section rendering because format! is called
+        assert!(msg.contains("韭研公社异动数据"));
+        assert!(msg.contains("强势股数据"));
+    }
+
+    #[test]
+    fn test_build_user_message_zero_counts() {
+        let ov = OverviewResponse {
+            rise_count: 0,
+            fall_count: 0,
+            limit_up_count: 0,
+            limit_down_count: 0,
+            ..make_overview()
+        };
+        let msg = build_user_message(&ov, None, None);
+        assert!(msg.contains("0"));
+    }
+
+    // ── build_system_prompt ────────────────────────────────
+
+    #[test]
+    fn test_build_system_prompt_returns_non_empty_string() {
+        let prompt = build_system_prompt("你是一个股票交易助手。");
+        assert!(!prompt.is_empty(), "system prompt should not be empty");
+        assert!(
+            prompt.contains("股票交易助手"),
+            "should include strategy text"
+        );
+    }
+
+    #[test]
+    fn test_build_system_prompt_with_empty_strategy() {
+        let prompt = build_system_prompt("");
+        assert!(
+            !prompt.is_empty(),
+            "should produce a fallback prompt even when strategy is empty"
+        );
+    }
+
+    // ── get_ai_commands (validates JSON structure only) ────
+
+    #[test]
+    fn test_command_spec_serde_roundtrip() {
+        let cmd = CommandSpec {
+            name: "test_cmd".into(),
+            description: "A test command".into(),
+            command_type: CommandType::Tool,
+        };
+        let json = serde_json::to_string(&cmd).unwrap();
+        let parsed: CommandSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "test_cmd");
+        assert_eq!(parsed.command_type, CommandType::Tool);
+    }
+
+    #[test]
+    fn test_command_spec_serialize_snake_case() {
+        let cmd = CommandSpec {
+            name: "test".into(),
+            description: "desc".into(),
+            command_type: CommandType::Skill,
+        };
+        let json = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(
+            json["command_type"], "skill",
+            "should serialize as snake_case"
+        );
+    }
+
+    // ── ChatRequest / ChatMessage ──────────────────────────
+
+    #[test]
+    fn test_chat_request_deserialize_with_defaults() {
+        let json = r#"{"message":"hello"}"#;
+        let req: ChatRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.message, "hello");
+        assert!(req.role.is_none(), "role should default to None");
+        assert!(req.history.is_empty(), "history should default to empty");
+        assert!(
+            req.command_name.is_none(),
+            "command_name should default to None"
+        );
+    }
+
+    #[test]
+    fn test_chat_request_deserialize_full() {
+        let json = r#"{
+            "message": "hello",
+            "role": "test_role",
+            "history": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"}
+            ],
+            "command_name": "get_market_overview",
+            "command_type": "tool"
+        }"#;
+        let req: ChatRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.message, "hello");
+        assert_eq!(req.role.unwrap(), "test_role");
+        assert_eq!(req.history.len(), 2);
+        assert_eq!(req.command_name.unwrap(), "get_market_overview");
+        assert_eq!(req.command_type.unwrap(), CommandType::Tool);
+    }
+
+    #[test]
+    fn test_chat_message_deserialize() {
+        let json = r#"{"role":"user","content":"测试消息"}"#;
+        let msg: ChatMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.role, "user");
+        assert_eq!(msg.content, "测试消息");
+    }
+}

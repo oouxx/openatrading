@@ -17,16 +17,16 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import type { Unstable_TriggerAdapter, Unstable_TriggerItem } from "@assistant-ui/react";
+import type { Unstable_TriggerItem } from "@assistant-ui/react";
+import type { Unstable_TriggerAdapter } from "@assistant-ui/core";
 import "@assistant-ui/react-markdown/styles/dot.css";
-import { useCallback, useRef, useEffect, type FC, type ReactNode } from "react";
+import { useRef, useEffect, type FC, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
-import { cn } from "@/lib/utils";
 
 const ScrollIntoView: FC<{ children: ReactNode }> = ({ children }) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -51,10 +51,8 @@ export function Thread({ slashAdapter, slashAction }: ThreadProps) {
       className="flex h-full flex-col bg-background text-sm"
       style={{
     "--thread-max-width": "48rem",
-    "--accent-color": "#c96442",
-    "--accent-foreground": "#ffffff",
     fontFamily: "Georgia, serif",
-      }}
+      } as React.CSSProperties}
     >
       <ThreadPrimitive.Viewport
         turnAnchor="top"
@@ -115,26 +113,23 @@ function Composer({ slashAdapter, slashAction }: ComposerProps) {
             removeOnExecute={slashAction.removeOnExecute}
           />
         )}
-        <ComposerPrimitive.Unstable_TriggerPopover.Directive
-          formatter={{ serialize: (item: any) => item.label }}
-        />
         <ComposerPrimitive.Unstable_TriggerPopoverItems>
           {(items) => (
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1 w-full" role="listbox">
+            <div className="max-h-48 overflow-y-auto rounded-xl border bg-popover shadow-lg p-1 w-full" role="listbox">
               {items.map((item: any) => (
                 <ScrollIntoView key={item.id}>
                   <ComposerPrimitive.Unstable_TriggerPopoverItem
                     item={item}
-                    className="block w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
+                    className="block w-full text-left px-3 py-2 rounded-lg text-xs text-foreground hover:bg-accent/20 cursor-pointer transition-colors data-[highlighted]:bg-accent/30"
                   >
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-xs text-white">/{item.label}</span>
-                    <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${item.commandType === 'skill' ? 'bg-ai/20 text-ai' : item.commandType === 'pipeline' ? 'bg-down/20 text-down' : 'bg-ink-dim text-ink-muted'}`}>
+                    <span className="font-medium text-xs text-foreground">/{item.label}</span>
+                    <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${item.commandType === 'skill' ? 'bg-accent/20 text-accent-foreground' : item.commandType === 'pipeline' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
                       {item.commandType || 'tool'}
                     </span>
                   </div>
                   {item.description && (
-                    <div className="text-[11px] text-ink-muted mt-1 line-clamp-2">{item.description}</div>
+                    <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{item.description}</div>
                   )}
                 </ComposerPrimitive.Unstable_TriggerPopoverItem>
               </ScrollIntoView>
@@ -162,10 +157,6 @@ function ComposerAction() {
             variant="default"
             size="icon"
             className="size-8 rounded-full"
-            style={{
-              backgroundColor: "var(--accent-color)",
-              color: "var(--accent-foreground)",
-            }}
             aria-label="Send message"
           >
             <ArrowUpIcon className="size-4" />
@@ -180,10 +171,6 @@ function ComposerAction() {
             variant="default"
             size="icon"
             className="size-8 rounded-full"
-            style={{
-              backgroundColor: "var(--accent-color)",
-              color: "var(--accent-foreground)",
-            }}
             aria-label="Stop generating"
           >
             <SquareIcon className="size-3 fill-current" />
@@ -264,7 +251,7 @@ function AssistantMessage() {
       className="relative mx-auto w-full max-w-[var(--thread-max-width)] py-5 fade-in slide-in-from-bottom-1 animate-in duration-150"
       data-role="assistant"
     >
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 mb-1">
         <BotIcon className="size-4" />
       </div>
       <div className="break-words px-2 leading-relaxed text-foreground">
@@ -312,7 +299,7 @@ function AssistantMessage() {
 function MessageError() {
   return (
     <MessagePrimitive.Error>
-      <ErrorPrimitive.Root className="mt-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive text-sm dark:bg-destructive/5 dark:text-red-200">
+      <ErrorPrimitive.Root className="mt-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive text-sm">
         <ErrorPrimitive.Message className="line-clamp-2" />
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>
