@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef } from "react";
-import { useExternalStoreRuntime } from "@assistant-ui/react";
-import { apiChatStream } from "@/stores/data";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useExternalStoreRuntime, unstable_useSlashCommandAdapter } from "@assistant-ui/react";
+import { apiChatStream, fetchJson } from "@/stores/data";
 
 export interface CommandSpec {
   name: string;
@@ -17,10 +17,35 @@ interface ChatMessage {
 let nextMsgId = 0;
 const newId = () => `msg-${++nextMsgId}`;
 
-export function useAssistantChat() {
+export function useAssistantChat(roleName: string = "") {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [cmdSpecs, setCmdSpecs] = useState<CommandSpec[]>([]);
   const cmdRef = useRef<{ name: string; type: string } | null>(null);
+
+  // Fetch available commands once
+  useEffect(() => {
+    fetchJson<CommandSpec[]>("/api/ai/commands")
+      .then(setCmdSpecs)
+      .catch(() => {});
+  }, []);
+
+  // Slash command adapter — correctly typed for Unstable_TriggerPopover
+  const slashCommands = useMemo(() => {
+    return cmdSpecs.map((c) => ({
+      id: c.name,
+      label: c.name,
+      description: c.description,
+      execute: () => {
+        cmdRef.current = { name: c.name, type: c.command_type };
+      },
+    }));
+  }, [cmdSpecs]);
+
+  const { adapter: slashAdapter, action: slashAction } = unstable_useSlashCommandAdapter({
+    commands: slashCommands,
+    removeOnExecute: false,
+  });
 
   const onNew = useCallback(
     async (msg: { content?: ReadonlyArray<{ type?: string; text?: string }> }) => {
@@ -40,7 +65,7 @@ export function useAssistantChat() {
       void apiChatStream(
         {
           message: text,
-          role: "zarili",
+          role: roleName,
           history,
           command_name: cmd?.name,
           command_type: cmd?.type,
@@ -77,7 +102,7 @@ export function useAssistantChat() {
         },
       );
     },
-    [messages],
+    [messages, roleName],
   );
 
   const runtime = useExternalStoreRuntime<ChatMessage>({
@@ -96,5 +121,10 @@ export function useAssistantChat() {
     setIsRunning(false);
   }, []);
 
-  return { runtime, cmdRef, clearChat };
+  return {
+    runtime,
+    slashAdapter,
+    slashAction,
+    clearChat,
+  };
 }

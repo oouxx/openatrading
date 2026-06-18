@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useQueries } from '@tanstack/react-query'
-import { fetchJson, type RoleEntry, type RolePosition, type ClosedPosition } from '@/stores/data'
+import { fetchJson, type RoleEntry, type RolePosition, type ClosedPosition, type PnlPoint } from '@/stores/data'
 import { roleKeys } from '@/hooks/query/queryKeys'
-import { useRoleList, useRolePositions, useRoleHistory } from '@/hooks/query/useRoleQueries'
+import { useRoleList, useRolePositions, useRoleHistory, useRolePnlHistory } from '@/hooks/query/useRoleQueries'
 import { useCreateRole, useUpdateRoleStrategy, useDeleteRole, useResetRole } from '@/hooks/query/useRoleMutations'
 
 function formatPct(v: number) {
@@ -71,8 +71,8 @@ function Sidebar({
                 <div className="text-[13px] font-medium text-white truncate">{displayName}</div>
                 <div className="text-[11px] text-ink-muted flex gap-2.5 mt-0.5">
                   <span>{count} 持仓</span>
-                  <span className={`font-semibold font-mono text-[11px] ${pnl >= 0 ? 'text-down' : 'text-up'}`}>
-                    {count > 0 ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '空仓'}
+                  <span className={`font-semibold font-mono text-[11px] ${isNaN(pnl) ? 'text-ink-muted' : pnl > 0 ? 'text-up' : pnl < 0 ? 'text-down' : 'text-white'}`}>
+                    {count > 0 ? (isNaN(pnl) ? 'N/A' : `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%`) : '空仓'}
                   </span>
                 </div>
               </div>
@@ -130,25 +130,20 @@ function StatCard({ label, value, positive, negative }: { label: string; value: 
   )
 }
 
-// ── P&L Chart (SVG) ────────────────────────────────────
+// ── P&L Chart (SVG) — uses backend pnl-history endpoint ──
 
-function PnlChart({ history }: { history: ClosedPosition[] }) {
-  const sorted = [...history].sort((a, b) => a.entry_date.localeCompare(b.entry_date))
-  if (sorted.length === 0) {
+function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapital: number }) {
+  if (points.length === 0) {
     return <div className="text-center py-12 text-xs text-ink-muted">暂无交易数据，无法生成盈利曲线</div>
   }
-  let cumulative = 0
-  const points: { date: string; value: number }[] = [{ date: sorted[0].entry_date, value: 0 }]
-  sorted.forEach((t) => {
-    cumulative += (t.exit_price - t.entry_price) * t.shares
-    points.push({ date: t.exit_date, value: cumulative })
-  })
-  const values = points.map((p) => p.value)
+  const W = 700; const H = 260; const padL = 50; const padR = 20; const padT = 20; const padB = 30
+  const plotW = W - padL - padR; const plotH = H - padT - padB
+
+  // Map each point to equity delta from initial capital
+  const values = points.map((p) => p.equity - initialCapital)
   const minVal = Math.min(0, ...values) - 100
   const maxVal = Math.max(0, ...values) + 100
   const range = maxVal - minVal || 1
-  const W = 700; const H = 260; const padL = 50; const padR = 20; const padT = 20; const padB = 30
-  const plotW = W - padL - padR; const plotH = H - padT - padB
   const x = (i: number) => padL + (i / (points.length - 1)) * plotW
   const y = (v: number) => padT + (1 - (v - minVal) / range) * plotH
   const zeroY = y(0)
@@ -156,16 +151,12 @@ function PnlChart({ history }: { history: ClosedPosition[] }) {
   let pathD = ''; let areaD = ''
   points.forEach((p, i) => {
     const cmd = i === 0 ? 'M' : 'L'
-    const xv = x(i).toFixed(1); const yv = y(p.value).toFixed(1)
+    const val = p.equity - initialCapital
+    const xv = x(i).toFixed(1); const yv = y(val).toFixed(1)
     pathD += `${cmd}${xv},${yv} `
     areaD += `${cmd}${xv},${yv} `
   })
   areaD += `L${x(points.length - 1).toFixed(1)},${zeroY} L${x(0).toFixed(1)},${zeroY} Z`
-
-  const circles = points.filter((_p, idx) => idx > 0 || _p.value !== 0).map((p) => {
-    const idx = points.indexOf(p)
-    return `<circle cx="${x(idx).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3" fill="var(--color-accent)" stroke="#fff" stroke-width="1.5"/>`
-  }).join('')
 
   // Y labels
   let yLabels = ''
@@ -176,10 +167,20 @@ function PnlChart({ history }: { history: ClosedPosition[] }) {
     yLabels += `<line x1="${padL}" y1="${ly}" x2="${W - padR}" y2="${ly}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5" stroke-dasharray="3,3"/>`
   }
 
+  // X labels — show MM-DD
   const labelStep = Math.max(1, Math.floor(points.length / 5))
   const xLabels = points.filter((_, i) => i % labelStep === 0 || i === points.length - 1).map((p) => {
     const idx = points.indexOf(p)
     return `<text x="${x(idx).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#888780">${p.date.slice(5)}</text>`
+  }).join('')
+
+  // Highlight final point with a larger circle if it reflects live mark-to-market
+  const circles = points.map((p, i) => {
+    const isLast = i === points.length - 1
+    const r = isLast ? "4.5" : "3"
+    const fill = isLast ? "var(--color-accent)" : "var(--color-accent)"
+    const stroke = isLast ? "#fff" : "#fff"
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.equity - initialCapital).toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`
   }).join('')
 
   return (
@@ -218,6 +219,7 @@ export default function RoleView() {
   const { data: roles = [] } = useRoleList()
   const { data: positions = [] } = useRolePositions(selectedRole ?? '')
   const { data: history = [] } = useRoleHistory(selectedRole ?? '')
+  const { data: pnlPoints = [] } = useRolePnlHistory(selectedRole ?? '')
 
   const createRoleMutation = useCreateRole()
   const updateStrategyMutation = useUpdateRoleStrategy()
@@ -258,7 +260,8 @@ export default function RoleView() {
       if (!pos?.length) { result[r.name] = 0; return }
       const totalValue = pos.reduce((s, p) => s + p.current_price * p.shares, 0)
       const totalCost = pos.reduce((s, p) => s + p.cost_price * p.shares, 0)
-      result[r.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0
+      // Only compute PnL % when cost basis is meaningful (>0)
+      result[r.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : Number.NaN
     })
     return result
   }, [roles, positionQueries])
@@ -474,7 +477,7 @@ export default function RoleView() {
                   <div className="px-5 py-3.5 border-b border-hairline">
                     <h3 className="text-base font-medium text-white">累计盈利曲线</h3>
                   </div>
-                  <PnlChart history={history} />
+                  <PnlChart points={pnlPoints} initialCapital={1_000_000} />
                   <div className="flex gap-5 px-5 py-3 border-t border-hairline text-[11px] text-ink-muted">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full inline-block bg-ai" />
