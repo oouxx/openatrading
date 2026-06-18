@@ -35,6 +35,7 @@ module.exports = {
         },
         primary: {
           DEFAULT: 'rgb(var(--color-accent-rgb) / <alpha-value>)',
+          foreground: 'hsl(var(--primary-foreground))',
           focus: 'rgb(var(--color-accent-hover-rgb) / <alpha-value>)',
           'on-dark': '#7F77DD',
         },
@@ -47,6 +48,35 @@ module.exports = {
         },
         white: 'rgb(var(--color-fg-rgb) / <alpha-value>)',
         black: 'rgb(var(--color-bg-rgb) / <alpha-value>)',
+        /* shadcn standard tokens — used by @apply in style.css and generated components */
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+        },
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],

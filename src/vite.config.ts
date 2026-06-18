@@ -13,6 +13,7 @@ export default defineConfig(async ({ mode }) => {
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
+        "src": resolve(__dirname, "src"),
       },
     },
     plugins,
