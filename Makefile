@@ -143,6 +143,7 @@ _release:
 	tag="v$$v"; \
 	git tag -l "$$tag" | grep -q "$$tag" && { echo "❌ Tag $$tag 已存在"; exit 1; }; \
 	echo "🚀 发版 $$tag"; \
+	cargo generate-lockfile && \
 	git add -A && git commit -m "release $$tag"; \
 	git tag "$$tag"; \
 	git push origin main --tags; \
