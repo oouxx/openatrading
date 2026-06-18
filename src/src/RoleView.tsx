@@ -140,18 +140,18 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
   const plotW = W - padL - padR; const plotH = H - padT - padB
 
   // Map each point to equity delta from initial capital
-  const values = points.map((p) => p.equity - initialCapital)
+  const values = points.map((p) => (p.equity ?? initialCapital) - initialCapital)
   const minVal = Math.min(0, ...values) - 100
   const maxVal = Math.max(0, ...values) + 100
   const range = maxVal - minVal || 1
-  const x = (i: number) => padL + (i / (points.length - 1)) * plotW
+  const x = (i: number) => padL + (i / Math.max(points.length - 1, 1)) * plotW
   const y = (v: number) => padT + (1 - (v - minVal) / range) * plotH
   const zeroY = y(0)
 
   let pathD = ''; let areaD = ''
   points.forEach((p, i) => {
     const cmd = i === 0 ? 'M' : 'L'
-    const val = p.equity - initialCapital
+    const val = (p.equity ?? initialCapital) - initialCapital
     const xv = x(i).toFixed(1); const yv = y(val).toFixed(1)
     pathD += `${cmd}${xv},${yv} `
     areaD += `${cmd}${xv},${yv} `
@@ -180,7 +180,8 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
     const r = isLast ? "4.5" : "3"
     const fill = isLast ? "var(--color-accent)" : "var(--color-accent)"
     const stroke = isLast ? "#fff" : "#fff"
-    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.equity - initialCapital).toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`
+    const val = (p.equity ?? initialCapital) - initialCapital
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(val).toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`
   }).join('')
 
   return (

@@ -16,7 +16,7 @@ interface ChatMessage {
 }
 
 let nextMsgId = 0;
-const newId = () => `msg-${++nextMsgId}`;
+const newId = () => `msg-${++nextMsgId}-${Date.now()}`;
 
 export function useAssistantChat(roleName: string = "") {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -37,6 +37,7 @@ export function useAssistantChat(roleName: string = "") {
       id: c.name,
       label: c.name,
       description: c.description,
+      commandType: c.command_type,
       execute: () => {
         cmdRef.current = { name: c.name, type: c.command_type };
       },
