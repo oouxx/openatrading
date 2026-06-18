@@ -329,11 +329,10 @@ pub async fn ai_chat(
                             tracing::trace!("ai/chat: TextDelta {} chars", delta.len());
                             yield Ok(Event::default().data(delta.replace('\n', "\\n")));
                         }
-                        // Non-text events emit event-type only (no data:) so the
-                        // frontend doesn't render them as visible text.
-                        Ame::ThinkingDelta { .. } => {
-                            yield Ok(Event::default().event("thinking"));
+                        Ame::ThinkingDelta { delta, .. } if !delta.is_empty() => {
+                            yield Ok(Event::default().event("thinking").data(delta.replace('\n', "\\n")));
                         }
+                        Ame::ThinkingDelta { .. } => {}
                         Ame::ToolCallDelta { .. } => {
                             yield Ok(Event::default().event("tool-delta"));
                         }

@@ -37,7 +37,8 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 }
 
 export interface ChatStreamCallbacks {
-  onData: (text: string) => void;
+  onText: (text: string) => void;
+  onReasoning?: (text: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }
@@ -61,7 +62,14 @@ export async function apiChatStream(
       if (chunkCount <= 3 || chunkCount % 20 === 0) {
         console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80));
       }
-      callbacks.onData(text);
+      // Parse \x00TEXT\x00 / \x00THINKING\x00 markers from Tauri path
+      if (text.startsWith("\x00THINKING\x00")) {
+        callbacks.onReasoning?.(text.slice(11).replace(/\\n/g, "\n"));
+      } else if (text.startsWith("\x00TEXT\x00")) {
+        callbacks.onText(text.slice(6).replace(/\\n/g, "\n"));
+      } else {
+        callbacks.onText(text);
+      }
     };
     console.log("[chat_stream] invoking api_chat_stream, body=", body);
     try {
@@ -99,8 +107,11 @@ export async function apiChatStream(
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
 
+    let currentEvent = "";
     for (const line of lines) {
-      if (line.startsWith("data: ")) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
         const data = line.slice(6);
         if (data === "[DONE]") {
           callbacks.onDone();
@@ -109,11 +120,16 @@ export async function apiChatStream(
           // 非致命错误（如 finish_reason 缺失），内容已流出，只记录日志不中断对话
           console.warn("[chat_stream]", data);
         } else {
-          callbacks.onData(data.replace(/\\n/g, "\n"));
+          const decoded = data.replace(/\\n/g, "\n");
+          if (currentEvent === "thinking") {
+            callbacks.onReasoning?.(decoded);
+          } else {
+            callbacks.onText(decoded);
+          }
         }
-      } else if (line.startsWith("event: tool")) {
-        // 下一行就是 data: <tool_name>，在下一次循环会被 data: 分支处理
-        // 如果需要区分 tool 事件可以在这里设个 flag
+      } else if (line.trim() === "") {
+        // SSE blank line resets event type
+        currentEvent = "";
       }
     }
   }

@@ -845,14 +845,17 @@ async fn api_chat_stream(
 
     let prompt = serde_json::json!(messages_vec).to_string();
     eprintln!(
-        "[chat_stream] calling llm chat_stream_with_messages, prompt len={}",
+        "[chat_stream] calling llm chat_stream_with_messages_marked, prompt len={}",
         prompt.len()
     );
 
-    let mut llm_stream = llm.chat_stream_with_messages(&prompt).await.map_err(|e| {
-        eprintln!("[chat_stream] llm error: {e}");
-        format!("llm error: {e}")
-    })?;
+    let mut llm_stream = llm
+        .chat_stream_with_messages_marked(&prompt)
+        .await
+        .map_err(|e| {
+            eprintln!("[chat_stream] llm error: {e}");
+            format!("llm error: {e}")
+        })?;
     eprintln!("[chat_stream] llm stream started");
 
     use futures_util::StreamExt;

@@ -4,9 +4,18 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  groupPartByType,
 } from "@assistant-ui/react";
 import { useIndexQuotes } from "@/hooks/query/useIndexQuotes";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  ReasoningRoot,
+  ReasoningTrigger,
+  ReasoningContent,
+  ReasoningText,
+} from "@/components/ui/reasoning";
 
 // ── Ticker ───────────────────────────────────────────
 
@@ -112,7 +121,41 @@ function ThreadContent({
         <ThreadPrimitive.Messages>
           {() => (
             <MessagePrimitive.Root>
-              <MessagePrimitive.Content />
+              <MessagePrimitive.GroupedParts
+                groupBy={groupPartByType({
+                  reasoning: ["group-reasoning"],
+                })}
+              >
+                {({ part, children }) => {
+                  switch (part.type) {
+                    case "group-reasoning": {
+                      const running = part.status?.type === "running";
+                      return (
+                        <ReasoningRoot defaultOpen={running}>
+                          <ReasoningTrigger active={running} />
+                          <ReasoningContent aria-busy={running}>
+                            <ReasoningText>{children}</ReasoningText>
+                          </ReasoningContent>
+                        </ReasoningRoot>
+                      );
+                    }
+                    case "text":
+                      return (
+                        <div className="px-1 py-0.5 aui-md">
+                          <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />
+                        </div>
+                      );
+                    case "reasoning":
+                      return (
+                        <div className="px-1 py-0.5 text-caption text-ink-muted aui-md">
+                          <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />
+                        </div>
+                      );
+                    default:
+                      return null;
+                  }
+                }}
+              </MessagePrimitive.GroupedParts>
             </MessagePrimitive.Root>
           )}
         </ThreadPrimitive.Messages>

@@ -136,3 +136,45 @@
         background-position: -200% 0;
     }
 }
+
+/* === Reasoning / Chain-of-Thought === */
+
+@keyframes reasoning-slide-down {
+    from {
+        height: 0;
+        opacity: 0;
+    }
+    to {
+        height: var(--radix-collapsible-content-height);
+        opacity: 1;
+    }
+}
+
+@keyframes reasoning-slide-up {
+    from {
+        height: var(--radix-collapsible-content-height);
+        opacity: 1;
+    }
+    to {
+        height: 0;
+        opacity: 0;
+    }
+}
+
+@keyframes reasoning-shimmer {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+.reasoning-content[data-state="open"] {
+    animation: reasoning-slide-down 200ms ease-out;
+}
+
+.reasoning-content[data-state="closed"] {
+    animation: reasoning-slide-up 200ms ease-out;
+}

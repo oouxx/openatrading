@@ -3,8 +3,17 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  groupPartByType,
 } from "@assistant-ui/react";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  ReasoningRoot,
+  ReasoningTrigger,
+  ReasoningContent,
+  ReasoningText,
+} from "@/components/ui/reasoning";
 
 interface AiSidebarProps {
   overview?: unknown;
@@ -21,7 +30,41 @@ export default function AiSidebar(_props: AiSidebarProps) {
             <ThreadPrimitive.Messages>
               {() => (
                 <MessagePrimitive.Root>
-                  <MessagePrimitive.Content />
+                  <MessagePrimitive.GroupedParts
+                    groupBy={groupPartByType({
+                      reasoning: ["group-reasoning"],
+                    })}
+                  >
+                    {({ part, children }) => {
+                      switch (part.type) {
+                        case "group-reasoning": {
+                          const running = part.status?.type === "running";
+                          return (
+                            <ReasoningRoot defaultOpen={running}>
+                              <ReasoningTrigger active={running} />
+                              <ReasoningContent aria-busy={running}>
+                                <ReasoningText>{children}</ReasoningText>
+                              </ReasoningContent>
+                            </ReasoningRoot>
+                          );
+                        }
+                        case "text":
+                          return (
+                            <div className="px-1 py-0.5 aui-md">
+                              <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />
+                            </div>
+                          );
+                        case "reasoning":
+                          return (
+                            <div className="px-1 py-0.5 text-caption text-ink-muted aui-md">
+                              <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />
+                            </div>
+                          );
+                        default:
+                          return null;
+                      }
+                    }}
+                  </MessagePrimitive.GroupedParts>
                 </MessagePrimitive.Root>
               )}
             </ThreadPrimitive.Messages>
@@ -29,30 +72,7 @@ export default function AiSidebar(_props: AiSidebarProps) {
 
           <div className="border-t border-hairline px-3 py-2 flex-shrink-0">
             <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-              <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
-                <ComposerPrimitive.Unstable_TriggerPopover.Action
-                  onExecute={slashAction.onExecute}
-                  removeOnExecute={slashAction.removeOnExecute}
-                />
-                <ComposerPrimitive.Unstable_TriggerPopoverItems>
-                  {(items) => (
-                    <div className="max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1 mb-2">
-                      {items.map((item) => (
-                        <ComposerPrimitive.Unstable_TriggerPopoverItem
-                          key={item.id}
-                          item={item}
-                          className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
-                        >
-                          <div className="font-medium text-xs text-white">/{item.label}</div>
-                          <div className="text-[11px] text-ink-muted mt-0.5">{item.description}</div>
-                        </ComposerPrimitive.Unstable_TriggerPopoverItem>
-                      ))}
-                    </div>
-                  )}
-                </ComposerPrimitive.Unstable_TriggerPopoverItems>
-              </ComposerPrimitive.Unstable_TriggerPopover>
-
-              <ComposerPrimitive.Root className="flex gap-2 items-end">
+              <ComposerPrimitive.Root className="flex gap-2 items-end relative">
                 <ComposerPrimitive.Input
                   className="flex-1 bg-bg border border-hairline rounded-input px-3 py-2 text-caption text-white placeholder-ink-muted outline-none focus:border-ai/50 transition-colors font-mono"
                 />
@@ -81,6 +101,28 @@ export default function AiSidebar(_props: AiSidebarProps) {
                     </svg>
                   </button>
                 </div>
+                <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
+                  <ComposerPrimitive.Unstable_TriggerPopover.Action
+                    onExecute={slashAction.onExecute}
+                    removeOnExecute={slashAction.removeOnExecute}
+                  />
+                  <ComposerPrimitive.Unstable_TriggerPopoverItems>
+                    {(items) => (
+                      <div className="absolute bottom-full left-0 right-0 mb-2 max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1">
+                        {items.map((item) => (
+                          <ComposerPrimitive.Unstable_TriggerPopoverItem
+                            key={item.id}
+                            item={item}
+                            className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
+                          >
+                            <div className="font-medium text-xs text-white">/{item.label}</div>
+                            <div className="text-[11px] text-ink-muted mt-0.5">{item.description}</div>
+                          </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                        ))}
+                      </div>
+                    )}
+                  </ComposerPrimitive.Unstable_TriggerPopoverItems>
+                </ComposerPrimitive.Unstable_TriggerPopover>
               </ComposerPrimitive.Root>
             </ComposerPrimitive.Unstable_TriggerPopoverRoot>
           </div>
