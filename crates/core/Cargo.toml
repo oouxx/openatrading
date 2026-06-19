@@ -20,10 +20,6 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-async-stream = "0.3"
-dotenvy = { workspace = true }
-askama = { workspace = true }
-regex = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio-cron-scheduler = "0.13"
 chrono-tz = "0.10"
