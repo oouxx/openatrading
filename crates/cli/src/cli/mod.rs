@@ -100,8 +100,8 @@ pub async fn run() -> Result<()> {
     }
 
     // Handle `doctor` subcommand
-    if let Some(Commands::Doctor { json }) = cli.command {
-        return cmd_doctor(json).await;
+    if let Some(Commands::Doctor { json, fix }) = cli.command {
+        return cmd_doctor(json, fix).await;
     }
 
     // Handle `chat` subcommand
