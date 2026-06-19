@@ -66,10 +66,16 @@ struct RawConfig {
 pub struct ServiceConfig {
     #[serde(default = "default_db_path")]
     pub db_path: String,
+    #[serde(default = "default_web_bind")]
+    pub web_bind: String,
 }
 
 fn default_db_path() -> String {
     "data.db".to_string()
+}
+
+fn default_web_bind() -> String {
+    "0.0.0.0:8080".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -161,64 +167,10 @@ pub struct LarkConfig {
     pub receive_id: Option<String>,
 }
 
-const DEFAULT_CONFIG_TOML: &str = r##"# ── OpenATrading 配置 ──────────────────────────────────
-
-# ── LLM 配置 ─────────────────────────────────────────────
-[llm]
-provider = "openrouter"
-model = "openrouter/free"
-
-# ── MCP 服务器 ────────────────────────────────────────────
-# akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
-[[mcp_servers]]
-name = "akshare"
-transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
-enabled = true
-
-# ── 后台服务 ─────────────────────────────────────────────
-[service]
-db_path = "data.db"
-
-# ── Cron 调度 ────────────────────────────────────────────
-[cron]
-enabled = true
-collection_schedule = "0 0 18 * * 1-5 *"
-decision_schedule = "0 */30 9-15 * * 1-5 *"
-
-# ── 社交平台 ─────────────────────────────────────────────
-[social]
-notify_channel = "telegram"
-notify_on_collect = true
-notify_on_decision = true
-notify_on_trade = true
-notify_on_news = true
-
-[social.telegram]
-enabled = true
-bot_polling = true
-bot_token = "${TELEGRAM_BOT_TOKEN}"
-chat_id = "${TELEGRAM_CHAT_ID}"
-
-# [social.discord]
-# enabled = true
-# bot_token = "${DISCORD_BOT_TOKEN}"
-# channel_id = "${DISCORD_CHANNEL_ID}"
-
-# [social.slack]
-# enabled = true
-# bot_token = "${SLACK_BOT_TOKEN}"
-# channel = "${SLACK_CHANNEL}"
-
-# [social.lark]
-# enabled = true
-# app_id = "${LARK_APP_ID}"
-# app_secret = "${LARK_APP_SECRET}"
-# receive_id = "${LARK_RECEIVE_ID}"
-"##;
-
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let home = openatrading_core::atrading_home();
+        tracing::info!(?home, "Loading config from home");
 
         let mut merged = AppConfig {
             default_role: None,
@@ -226,6 +178,7 @@ impl AppConfig {
             mcp_servers: Vec::new(),
             service: ServiceConfig {
                 db_path: default_db_path(),
+                web_bind: default_web_bind(),
             },
             cron: None,
             social: None,
@@ -270,6 +223,7 @@ impl AppConfig {
             mcp_servers: raw.mcp_servers,
             service: raw.service.unwrap_or(ServiceConfig {
                 db_path: default_db_path(),
+                web_bind: default_web_bind(),
             }),
             cron: raw.cron,
             social: raw.social,
@@ -405,7 +359,10 @@ pub fn cmd_init() -> Result<()> {
     }
 
     std::fs::create_dir_all(&atrading)?;
-    std::fs::write(atrading.join("config.toml"), DEFAULT_CONFIG_TOML)?;
+    std::fs::write(
+        atrading.join("config.toml"),
+        include_str!("../../../../config.example.toml"),
+    )?;
 
     // Create skills dir with default zarili strategy
     let skills_dir = atrading.join("skills");
