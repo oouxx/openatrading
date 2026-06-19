@@ -310,8 +310,9 @@ impl AppConfig {
 
     /// Load MCP servers from a `.mcp.json` file.
     ///
-    /// Format expected:
+    /// Supports both Claude Code format and streamable-http format:
     /// ```json
+    /// { "mcpServers": { "name": { "type": "stdio", "command": "npx", "args": ["..."] } } }
     /// { "mcpServers": { "name": { "url": "http://...", "enabled": true } } }
     /// ```
     fn load_mcp_json(path: &Path, servers: &mut Vec<openatrading_core::llm::McpServerConfig>) {
@@ -326,15 +327,24 @@ impl AppConfig {
         struct McpJsonEntry {
             #[serde(default = "default_enabled")]
             enabled: bool,
-            /// Transport type: "streamable-http" or "sse"
+            /// Transport type: "streamable-http", "sse", or "stdio"
             #[serde(rename = "type", default = "default_transport_type")]
             transport_type: String,
-            /// Server URL.
+            /// Server URL (for streamable-http / sse).
             #[serde(default = "default_url")]
             url: String,
             /// Optional POST endpoint for SSE mode.
             #[serde(skip_serializing_if = "Option::is_none")]
             post_url: Option<String>,
+            /// Executable command (for stdio).
+            #[serde(default)]
+            command: String,
+            /// Command arguments (for stdio).
+            #[serde(default)]
+            args: Vec<String>,
+            /// Environment variables (for stdio).
+            #[serde(default)]
+            env: std::collections::HashMap<String, String>,
         }
         fn default_transport_type() -> String {
             "streamable-http".to_string()
@@ -366,6 +376,11 @@ impl AppConfig {
                 "sse" => McpTransportConfig::Sse {
                     url: entry.url,
                     post_url: entry.post_url,
+                },
+                "stdio" => McpTransportConfig::Stdio {
+                    command: entry.command,
+                    args: entry.args,
+                    env: entry.env,
                 },
                 _ => McpTransportConfig::StreamableHttp {
                     url: entry.url,
