@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use rmcp::model::{CallToolRequestParams, RawContent};
 use rmcp::service::RunningService;
+use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{RoleClient, ServiceExt};
+use std::collections::HashMap;
 use thiserror::Error;
 
 use super::tools::{empty_schema, to_box_err};
@@ -53,6 +55,32 @@ impl McpClient {
             rmcp::transport::streamable_http_client::StreamableHttpClientTransport::from_config(
                 config,
             );
+        let service: RunningService<RoleClient, ()> = ()
+            .serve(transport)
+            .await
+            .map_err(|e| McpError::Connect(e.into()))?;
+        let peer = service.peer().clone();
+        Ok(Self {
+            peer,
+            _service: service,
+        })
+    }
+
+    /// Connect to an MCP server via stdio subprocess.
+    pub async fn connect_stdio(
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+    ) -> Result<Self, McpError> {
+        let mut cmd = tokio::process::Command::new(command);
+        cmd.args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::Connect(e.into()))?;
         let service: RunningService<RoleClient, ()> = ()
             .serve(transport)
             .await
@@ -183,6 +211,14 @@ pub enum McpTransportConfig {
         #[serde(skip_serializing_if = "Option::is_none")]
         post_url: Option<String>,
     },
+    #[serde(rename = "stdio")]
+    Stdio {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        env: HashMap<String, String>,
+    },
 }
 
 impl McpTransportConfig {
@@ -190,6 +226,7 @@ impl McpTransportConfig {
         match self {
             McpTransportConfig::StreamableHttp { url, .. } => url,
             McpTransportConfig::Sse { url, .. } => url,
+            McpTransportConfig::Stdio { command, .. } => command,
         }
     }
 }
@@ -250,7 +287,14 @@ impl McpRegistry {
     pub async fn discover(&self) -> Vec<Arc<DynTool>> {
         let mut all_tools = Vec::new();
         for server in &self.servers {
-            let client = match McpClient::connect(server.transport.url()).await {
+            let client = match &server.transport {
+                McpTransportConfig::StreamableHttp { url, .. } => McpClient::connect(url).await,
+                McpTransportConfig::Sse { url, .. } => McpClient::connect(url).await,
+                McpTransportConfig::Stdio { command, args, env } => {
+                    McpClient::connect_stdio(command, args, env).await
+                },
+            };
+            let client = match client {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::warn!("[mcp] {}: connect failed: {e}", server.name);
