@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { AnimatePresence } from 'framer-motion'
 import { useQueries } from '@tanstack/react-query'
 import { fetchJson, type RoleEntry, type RolePosition, type ClosedPosition, type PnlPoint } from '@/stores/data'
 import { roleKeys } from '@/hooks/query/queryKeys'
 import { useRoleList, useRolePositions, useRoleHistory, useRolePnlHistory } from '@/hooks/query/useRoleQueries'
 import { useCreateRole, useUpdateRoleStrategy, useDeleteRole, useResetRole } from '@/hooks/query/useRoleMutations'
+import KlineDrawer from '@/components/KlineDrawer'
 
 function formatPct(v: number) {
   return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%'
@@ -215,6 +217,7 @@ export default function RoleView() {
   const [newName, setNewName] = useState('')
   const [editStrategyText, setEditStrategyText] = useState('')
   const [saveFeedback, setSaveFeedback] = useState(false)
+  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
   const mdEditorRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: roles = [] } = useRoleList()
@@ -426,7 +429,7 @@ export default function RoleView() {
                               const pnl = (p.current_price - p.cost_price) * p.shares
                               return (
                                 <tr key={p.id}>
-                                  <Td bold>{p.stock_name}</Td>
+                                  <Td bold><button className="cursor-pointer hover:text-ai transition-colors text-left" onClick={() => setSelectedStock({ symbol: p.symbol, name: p.stock_name })}>{p.stock_name}</button></Td>
                                   <Td>{p.cost_price.toFixed(2)}</Td>
                                   <Td>{p.current_price.toFixed(2)}</Td>
                                   <Td className={pctClass(pnlPct)}>{pnl >= 0 ? '+' : ''}¥{Math.abs(pnl).toLocaleString(undefined, { maximumFractionDigits: 2 })}</Td>
@@ -453,7 +456,7 @@ export default function RoleView() {
                               const pnl = (h.exit_price - h.entry_price) * h.shares
                               return (
                                 <tr key={h.position_id}>
-                                  <Td bold>{h.stock_name}</Td>
+                                  <Td bold><button className="cursor-pointer hover:text-ai transition-colors text-left" onClick={() => setSelectedStock({ symbol: h.symbol, name: h.stock_name })}>{h.stock_name}</button></Td>
                                   <Td>{h.entry_price.toFixed(2)}</Td>
                                   <Td>{h.exit_price.toFixed(2)}</Td>
                                   <Td className={pctClass(h.pnl_pct)}>{pnl >= 0 ? '+' : ''}¥{Math.abs(pnl).toLocaleString(undefined, { maximumFractionDigits: 2 })}</Td>
@@ -556,6 +559,11 @@ export default function RoleView() {
           </div>
         </div>
       )}
+
+      {/* Stock Detail Drawer */}
+      <AnimatePresence>
+        {selectedStock && <KlineDrawer symbol={selectedStock.symbol} name={selectedStock.name} onClose={() => setSelectedStock(null)} />}
+      </AnimatePresence>
     </div>
   )
 }

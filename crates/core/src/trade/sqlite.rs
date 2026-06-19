@@ -362,8 +362,8 @@ impl TradeManager {
         )?;
         let limit_i64: i64 = limit.try_into().unwrap_or(i64::MAX);
         let rows = stmt.query_map(rusqlite::params![role_name, limit_i64], |row| {
-            let entry_price: f64 = row.get(6)?;
-            let exit_price: f64 = row.get(7)?;
+            let entry_price: f64 = row.get(5)?;
+            let exit_price: f64 = row.get(6)?;
             let pnl_pct = if entry_price > 0.0 {
                 (exit_price - entry_price) / entry_price * 100.0
             } else {
@@ -377,10 +377,10 @@ impl TradeManager {
                 exit_date: row.get::<_, String>(4)?.chars().take(10).collect(),
                 entry_price,
                 exit_price,
-                shares: row.get(8)?,
+                shares: row.get(7)?,
                 pnl_pct: (pnl_pct * 100.0).round() / 100.0,
-                entry_reason: row.get(9)?,
-                exit_reason: row.get(10)?,
+                entry_reason: row.get(8)?,
+                exit_reason: row.get(9)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
