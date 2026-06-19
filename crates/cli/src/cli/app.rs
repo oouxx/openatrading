@@ -58,6 +58,9 @@ pub enum Commands {
         /// 输出 JSON 格式
         #[arg(long)]
         json: bool,
+        /// 交互式修复
+        #[arg(long)]
+        fix: bool,
     },
     /// 启动 AI 对话终端界面
     Chat,
