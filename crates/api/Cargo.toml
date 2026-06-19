@@ -15,10 +15,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-regex = { workspace = true }
-url = { workspace = true }
-md5 = { workspace = true }
-sha1 = { workspace = true }
+regex = "1"
+url = "2"
+md5 = "0.7"
+sha1 = "0.10"
 futures = { workspace = true }
 tracing = "0.1"
 thiserror = "2"
