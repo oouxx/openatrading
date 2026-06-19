@@ -3,10 +3,15 @@
     "codegraph": {
       "type": "stdio",
       "command": "codegraph",
-      "args": [
-        "serve",
-        "--mcp"
-      ]
+      "args": ["serve", "--mcp"]
+    },
+    "ferrss": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["mcp-server/ferrss/dist/index.js"],
+      "env": {
+        "FERRSS_BIN_PATH": "/Users/xinxing/Desktop/github/Ferrss/target/release/autocli"
+      }
     }
   }
 }
