@@ -16,12 +16,14 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use openatrading_core::chat::ChatThreadStore;
 use openatrading_core::context::AppContext;
 use openatrading_core::llm::McpServerConfig;
 pub use openatrading_core::RoleEntry;
 
 pub struct AppState {
     pub ctx: AppContext,
+    pub chat_threads: Arc<ChatThreadStore>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: Vec<McpServerConfig>,
     pub cache: Arc<AppCache>,
@@ -101,6 +103,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/dragon-tiger/stock-seat",
             get(handlers::get_dragon_tiger_stock_seat),
+        )
+        .route("/api/ai/threads", get(chat::list_threads))
+        .route("/api/ai/threads", post(chat::create_thread))
+        .route("/api/ai/threads/:id", put(chat::rename_thread))
+        .route("/api/ai/threads/:id", delete(chat::delete_thread))
+        .route(
+            "/api/ai/threads/:id/messages",
+            get(chat::get_thread_messages),
+        )
+        .route(
+            "/api/ai/threads/:id/messages",
+            post(chat::save_thread_message),
         )
         .with_state(state)
         .layer(cors)

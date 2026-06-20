@@ -222,6 +222,13 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .collect();
             Ok(serde_json::json!(list))
         },
+        "/api/ai/threads" => {
+            let threads = state
+                .chat_threads
+                .list_threads()
+                .map_err(|e| format!("{e}"))?;
+            Ok(serde_json::to_value(threads).unwrap_or_default())
+        },
         "/api/roles" => {
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
@@ -506,6 +513,18 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 return dispatch_roles_get(rest, state).await;
             }
+            if let Some(rest) = path.strip_prefix("/api/ai/threads/") {
+                if let Some(msg_path) = rest.strip_suffix("/messages") {
+                    let id: i64 = msg_path
+                        .parse()
+                        .map_err(|_| "invalid thread id".to_string())?;
+                    let messages = state
+                        .chat_threads
+                        .get_messages(id)
+                        .map_err(|e| format!("{e}"))?;
+                    return Ok(serde_json::to_value(messages).unwrap_or_default());
+                }
+            }
             Err(format!("unknown path: {path}"))
         },
     }
@@ -601,6 +620,25 @@ async fn dispatch_post(
     state: &Arc<AppState>,
 ) -> Result<serde_json::Value, String> {
     match path {
+        "/api/ai/threads" => {
+            let title = body
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("新对话");
+            let id = state
+                .chat_threads
+                .create_thread(title)
+                .map_err(|e| format!("{e}"))?;
+            let threads = state
+                .chat_threads
+                .list_threads()
+                .map_err(|e| format!("{e}"))?;
+            let thread = threads
+                .into_iter()
+                .find(|t| t.id == id)
+                .ok_or("thread not found")?;
+            Ok(serde_json::to_value(thread).unwrap_or_default())
+        },
         "/api/roles" => {
             let name = body
                 .get("name")
@@ -702,6 +740,60 @@ async fn dispatch_post(
                         Ok(serde_json::json!({"ok": true}))
                     },
                     _ => Err(format!("unknown roles action: {action}")),
+                }
+            } else if let Some(rest) = path.strip_prefix("/api/ai/threads/") {
+                // PUT /api/ai/threads/:id (rename) or POST /api/ai/threads/:id/messages (save message)
+                if let Some(msg_path) = rest.strip_suffix("/messages") {
+                    let id: i64 = msg_path
+                        .parse()
+                        .map_err(|_| "invalid thread id".to_string())?;
+                    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                    let content = body.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    let msg_id = state
+                        .chat_threads
+                        .save_message(id, role, content)
+                        .map_err(|e| format!("{e}"))?;
+                    let messages = state
+                        .chat_threads
+                        .get_messages(id)
+                        .map_err(|e| format!("{e}"))?;
+                    let msg = messages
+                        .into_iter()
+                        .find(|m| m.id == msg_id)
+                        .ok_or("message not found")?;
+                    Ok(serde_json::to_value(msg).unwrap_or_default())
+                } else {
+                    // PUT /api/ai/threads/:id (rename) or DELETE /api/ai/threads/:id
+                    let id: i64 = rest.parse().map_err(|_| "invalid thread id".to_string())?;
+                    if body
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .map(|s| !s.is_empty())
+                        .unwrap_or(false)
+                    {
+                        // Rename (PUT)
+                        let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                        state
+                            .chat_threads
+                            .rename_thread(id, title)
+                            .map_err(|e| format!("{e}"))?;
+                        let threads = state
+                            .chat_threads
+                            .list_threads()
+                            .map_err(|e| format!("{e}"))?;
+                        let thread = threads
+                            .into_iter()
+                            .find(|t| t.id == id)
+                            .ok_or("thread not found")?;
+                        Ok(serde_json::to_value(thread).unwrap_or_default())
+                    } else {
+                        // Delete (DELETE)
+                        state
+                            .chat_threads
+                            .delete_thread(id)
+                            .map_err(|e| format!("{e}"))?;
+                        Ok(serde_json::json!({"ok": true}))
+                    }
                 }
             } else {
                 Err(format!("unknown path: {path}"))
@@ -958,6 +1050,7 @@ fn main() {
 
     let app_state = Arc::new(AppState {
         ctx: app_ctx,
+        chat_threads: gateway.chat_threads.clone(),
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: Vec::new(),
         cache: openatrading_web::cache::new_cache(),
