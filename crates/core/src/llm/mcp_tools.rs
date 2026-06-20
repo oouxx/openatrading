@@ -132,6 +132,59 @@ impl McpClient {
         serde_json::from_str(text).map_err(McpError::Parse)
     }
 
+    /// Call a tool and return the raw text content without JSON parsing.
+    pub async fn call_raw(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, McpError> {
+        let args = arguments
+            .as_object()
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+
+        let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
+        let result = self
+            .peer
+            .call_tool(params)
+            .await
+            .map_err(|e| McpError::Call(e.into()))?;
+
+        result
+            .content
+            .first()
+            .and_then(|c| match &c.raw {
+                RawContent::Text(t) => Some(t.text.clone()),
+                _ => None,
+            })
+            .ok_or(McpError::NoContent)
+    }
+
+    /// Verify MCP server is functional: list tools and call the first one.
+    ///
+    /// Returns `(tool_count, call_result)` where `call_result` is `Ok(())` if
+    /// the first tool was called successfully, or an error description.
+    pub async fn verify(&self) -> Result<(usize, Result<(), String>), McpError> {
+        let tools = self.list_tools().await?;
+        let arr = tools.as_array().map(|v| v.as_slice()).unwrap_or(&[]);
+        let count = arr.len();
+
+        if count == 0 {
+            return Ok((0, Ok(())));
+        }
+
+        // Try to call the first tool with empty args
+        let first_name = match arr[0]["name"].as_str() {
+            Some(n) => n.to_string(),
+            None => return Ok((count, Ok(()))),
+        };
+
+        match self.call_raw(&first_name, serde_json::json!({})).await {
+            Ok(_) => Ok((count, Ok(()))),
+            Err(e) => Ok((count, Err(e.to_string()))),
+        }
+    }
+
     /// Wrap this client into a DynTool factory.
     pub fn create_tool(&self, spec: McpToolSpec) -> Arc<DynTool> {
         let peer = self.peer.clone();

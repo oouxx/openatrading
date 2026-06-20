@@ -9,7 +9,8 @@ build:
 
 run:
 	cargo run -p openatrading-cli
-
+doctor:
+	cargo run -p openatrading-cli -- doctor
 watch-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo watch -x "run -p openatrading-cli -- gateway run"
