@@ -1,6 +1,14 @@
 use async_trait::async_trait;
+use std::time::Duration;
 
 use super::*;
+
+/// Network timeout for a single LLM probe request.
+///
+/// LLM completions can legitimately take a while; 30s leaves headroom for a
+/// slow provider while still bounding a hung endpoint so `doctor` doesn't
+/// stall indefinitely.
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct LlmCheck;
 
@@ -30,8 +38,13 @@ impl Check for LlmCheck {
 
         let client = openatrading_provider::llm::LlmClient::from_config(provider, model);
         let start = std::time::Instant::now();
-        match client.chat("Respond with exactly one word: ok").await {
-            Ok(_) => {
+        match tokio::time::timeout(
+            NETWORK_TIMEOUT,
+            client.chat("Respond with exactly one word: ok"),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {
                 let elapsed = start.elapsed();
                 let ms = elapsed.as_millis();
                 CheckResult {
@@ -41,11 +54,17 @@ impl Check for LlmCheck {
                     duration_ms: ms as u64,
                 }
             },
-            Err(e) => CheckResult {
+            Ok(Err(e)) => CheckResult {
                 status: CheckStatus::Error("请求失败".into()),
                 summary: "LLM API 调用失败".into(),
                 details: vec![format!("{e:#}")],
                 duration_ms: start.elapsed().as_millis() as u64,
+            },
+            Err(_elapsed) => CheckResult {
+                status: CheckStatus::Error("请求超时".into()),
+                summary: format!("LLM API 调用超时 (>{NETWORK_TIMEOUT:?})"),
+                details: vec![],
+                duration_ms: NETWORK_TIMEOUT.as_millis() as u64,
             },
         }
     }

@@ -286,6 +286,9 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
 
     // ── Web (web crate) ───────────────────────────
     if do_web {
+        // Clone out the bind string before the spawn: `app_config` is still
+        // borrowed below for the MCP server bind and telegram sections.
+        let web_bind = app_config.service.web_bind.clone();
         let web_ctx = AppContext::build(
             app_config.llm.provider.as_deref(),
             app_config.llm.model.as_deref(),
@@ -299,7 +302,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             if let Err(e) = gateway
                 .start(
                     GatewayConfig {
-                        web_port: 8080,
+                        web_bind,
                         roles: web_roles.clone(),
                         mcp_servers: web_mcp.clone(),
                     },

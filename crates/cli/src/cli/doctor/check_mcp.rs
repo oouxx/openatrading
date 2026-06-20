@@ -1,7 +1,15 @@
 use async_trait::async_trait;
+use std::time::Duration;
 
 use super::*;
 use openatrading_core::llm::{McpClient, McpTransportConfig};
+
+/// Network timeout for a single MCP server connect handshake.
+///
+/// A healthy MCP server should complete the initialize handshake quickly;
+/// 10s is generous for a slow cold start (e.g. a stdio child) while still
+/// failing fast on a hung endpoint.
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct McpCheck;
 
@@ -76,12 +84,21 @@ impl Check for McpCheck {
 
             let connect_result = match &server.transport {
                 McpTransportConfig::StreamableHttp { url, .. } => {
-                    McpClient::connect(url.clone()).await
+                    tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
+                        .await
+                        .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
                 },
-                McpTransportConfig::Sse { url, .. } => McpClient::connect(url.clone()).await,
-                McpTransportConfig::Stdio { command, args, env } => {
-                    McpClient::connect_stdio(command, args, env).await
+                McpTransportConfig::Sse { url, .. } => {
+                    tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
+                        .await
+                        .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
                 },
+                McpTransportConfig::Stdio { command, args, env } => tokio::time::timeout(
+                    NETWORK_TIMEOUT,
+                    McpClient::connect_stdio(command, args, env),
+                )
+                .await
+                .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})")),
             };
 
             match connect_result {

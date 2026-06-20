@@ -1,5 +1,7 @@
 use anyhow::Result;
+use std::net::SocketAddr;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use openatrading_core::context::AppContext;
@@ -15,7 +17,8 @@ pub struct Gateway {
 }
 
 pub struct GatewayConfig {
-    pub web_port: u16,
+    /// Full bind address (`host:port`) for the web API, e.g. `0.0.0.0:8080`.
+    pub web_bind: String,
     pub roles: Vec<RoleEntry>,
     pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
 }
@@ -61,9 +64,10 @@ impl Gateway {
         }
 
         let router = web::build_router(state);
-        let addr = format!("0.0.0.0:{}", config.web_port);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        println!("🌐 Web API: http://0.0.0.0:{}", config.web_port);
+        let addr = SocketAddr::from_str(&config.web_bind)
+            .map_err(|e| anyhow::anyhow!("invalid web_bind {}: {e}", config.web_bind))?;
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        println!("🌐 Web API: http://{addr}");
 
         axum::serve(listener, router).await?;
         Ok(())

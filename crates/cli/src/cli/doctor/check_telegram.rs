@@ -1,6 +1,13 @@
 use async_trait::async_trait;
+use std::time::Duration;
 
 use super::*;
+
+/// Network timeout for the Telegram API probe.
+///
+/// Telegram's API is normally fast; 10s is generous enough to absorb a slow
+/// international link while still failing fast on a hung/blocked endpoint.
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct TelegramCheck;
 
@@ -71,7 +78,17 @@ impl Check for TelegramCheck {
             },
         };
 
-        let client = reqwest::Client::new();
+        let client = match reqwest::Client::builder().timeout(NETWORK_TIMEOUT).build() {
+            Ok(c) => c,
+            Err(e) => {
+                return CheckResult {
+                    status: CheckStatus::Error("客户端构建失败".into()),
+                    summary: format!("构建 HTTP 客户端失败: {e}"),
+                    details: vec![],
+                    duration_ms: 0,
+                }
+            },
+        };
         let send_url = format!("https://api.telegram.org/bot{token}/sendMessage");
         match client
             .post(&send_url)
@@ -113,11 +130,18 @@ impl Check for TelegramCheck {
                     duration_ms: 0,
                 }
             },
-            Err(e) => CheckResult {
-                status: CheckStatus::Error("连接失败".into()),
-                summary: "无法连接 Telegram API".into(),
-                details: vec![format!("{e}")],
-                duration_ms: 0,
+            Err(e) => {
+                let is_timeout = e.is_timeout();
+                CheckResult {
+                    status: CheckStatus::Error("连接失败".into()),
+                    summary: if is_timeout {
+                        format!("连接超时 (>{NETWORK_TIMEOUT:?})")
+                    } else {
+                        "无法连接 Telegram API".into()
+                    },
+                    details: vec![format!("{e}")],
+                    duration_ms: 0,
+                }
             },
         }
     }
