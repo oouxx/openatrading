@@ -55,7 +55,7 @@ export function useAssistantChat(
 
   const { adapter: slashAdapter, action: slashAction } = unstable_useSlashCommandAdapter({
     commands: slashCommands,
-    removeOnExecute: false,
+    removeOnExecute: true,
   });
 
   const onNew = useCallback(
