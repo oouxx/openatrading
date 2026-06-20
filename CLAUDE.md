@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-- **原型设计**：`./opendesign`
+- **原型设计**：`./docs/opendesign`
 - **前端**：Bun + React
 - **后端**：Rust + Axum
 - **日志**：`tracing`（禁止使用 `println!` / `eprintln!` 作为生产日志）

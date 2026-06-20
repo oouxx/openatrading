@@ -4,6 +4,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use openatrading_core::chat::ChatThreadStore;
 use openatrading_core::context::AppContext;
 use openatrading_core::memory::sqlite::MemoryStore;
 use openatrading_core::trade::sqlite::TradeManager;
@@ -14,6 +15,7 @@ use crate::{self as web, AppState, RoleEntry};
 pub struct Gateway {
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
+    pub chat_threads: Arc<ChatThreadStore>,
 }
 
 pub struct GatewayConfig {
@@ -32,12 +34,18 @@ impl Gateway {
         }
         let memory = Arc::new(MemoryStore::open(db_path)?);
         let trade = Arc::new(TradeManager::open(db_path)?);
-        Ok(Gateway { memory, trade })
+        let chat_threads = Arc::new(ChatThreadStore::open(db_path)?);
+        Ok(Gateway {
+            memory,
+            trade,
+            chat_threads,
+        })
     }
 
     pub async fn start(self, config: GatewayConfig, ctx: AppContext) -> Result<()> {
         let state = Arc::new(AppState {
             ctx,
+            chat_threads: self.chat_threads.clone(),
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: config.mcp_servers.clone(),
             cache: cache::new_cache(),
