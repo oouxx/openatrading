@@ -102,8 +102,39 @@ impl Check for McpCheck {
             };
 
             match connect_result {
-                Ok(_client) => {
-                    details.push(format!("{} {}  ✓", label, transport_desc));
+                Ok(Ok(client)) => {
+                    // Verify: list tools and call the first one
+                    let verify_result = client.verify().await;
+                    match verify_result {
+                        Ok((tool_count, call_outcome)) => {
+                            let call_icon = match &call_outcome {
+                                Ok(()) => "✓",
+                                Err(_) => "✗",
+                            };
+                            let call_note = match &call_outcome {
+                                Ok(()) => String::new(),
+                                Err(e) => format!(", call failed: {e}"),
+                            };
+                            details.push(format!(
+                                "{} {}  ✓ ({} tools, {} tool call{})",
+                                label, transport_desc, tool_count, call_icon, call_note
+                            ));
+                            if call_outcome.is_err() {
+                                failures += 1;
+                            }
+                        },
+                        Err(e) => {
+                            details.push(format!(
+                                "{} {}  ✗ (verify failed: {})",
+                                label, transport_desc, e
+                            ));
+                            failures += 1;
+                        },
+                    }
+                },
+                Ok(Err(e)) => {
+                    details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
+                    failures += 1;
                 },
                 Err(e) => {
                     details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
