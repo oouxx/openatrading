@@ -49,7 +49,9 @@ impl Check for LlmCheck {
                 let ms = elapsed.as_millis();
                 CheckResult {
                     status: CheckStatus::Ok,
-                    summary: format!("响应 {ms}ms"),
+                    // `start` 在 `chat()` 之前采样，故耗时含 TLS 握手与连接建立，
+                    // 用"往返"而非"响应"以如实反映测量内容。
+                    summary: format!("往返 {ms}ms"),
                     details: vec![],
                     duration_ms: ms as u64,
                 }

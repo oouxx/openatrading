@@ -126,7 +126,22 @@ fn all_checks() -> Vec<Box<dyn Check>> {
 
 // ── Runner ───────────────────────────────────────────────
 
-async fn run_checks(checks: &[Box<dyn Check>], ctx: &CheckContext) -> Vec<CheckResult> {
+/// 每项检查完成后的回调类型。
+///
+/// 在文本模式下用于流式输出单行结果；JSON 模式下传 `None`，runner 仍会
+/// 收集完整 `Vec<CheckResult>` 以便序列化为单个 JSON 数组。
+type CheckCallback<'a> = &'a mut dyn FnMut(&dyn Check, &CheckResult);
+
+/// 顺序执行所有检查，返回完整的 `CheckResult` 列表。
+///
+/// `on_result` 若提供，则在每项检查**完成后立即**回调一次（已填充
+/// `duration_ms`），用于文本模式的流式输出。无论是否回调，结果都会被收集
+/// 返回——JSON 模式与 `interactive_fix` 都依赖这份完整结果。
+async fn run_checks(
+    checks: &[Box<dyn Check>],
+    ctx: &CheckContext,
+    mut on_result: Option<CheckCallback<'_>>,
+) -> Vec<CheckResult> {
     let mut results = Vec::with_capacity(checks.len());
     for check in checks {
         let start = std::time::Instant::now();
@@ -134,6 +149,9 @@ async fn run_checks(checks: &[Box<dyn Check>], ctx: &CheckContext) -> Vec<CheckR
         let elapsed = start.elapsed();
         let mut r = result;
         r.duration_ms = elapsed.as_millis() as u64;
+        if let Some(cb) = on_result.as_deref_mut() {
+            cb(check.as_ref(), &r);
+        }
         results.push(r);
     }
     results
@@ -141,8 +159,39 @@ async fn run_checks(checks: &[Box<dyn Check>], ctx: &CheckContext) -> Vec<CheckR
 
 // ── Reporter (Text) ──────────────────────────────────────
 
-fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
-    let (ok, warn, err) = status_summary(results);
+/// 检查名称在单行输出中的固定列宽，用于对齐各检查项。
+const CHECK_NAME_COL_WIDTH: usize = 12;
+
+/// 渲染单条检查结果的行为单行字符串（图标 + 名称 + 摘要 + 详情）。
+///
+/// 文本模式的流式输出与（如保留的）批量打印共用此函数，确保格式一致、不发散。
+fn format_check_line(check: &dyn Check, result: &CheckResult) -> String {
+    let icon = match &result.status {
+        CheckStatus::Ok => format!("{}", "✓".green().bold()),
+        CheckStatus::Warn(_) => format!("{}", "⚠".yellow().bold()),
+        CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
+    };
+    let name = format!("{}", check.name().bold());
+    let details = if result.details.is_empty() {
+        String::new()
+    } else {
+        result.details.join("; ")
+    };
+    format!(
+        " {}  {:<width$}  {}  {}",
+        icon,
+        name,
+        result.summary,
+        details.dimmed(),
+        width = CHECK_NAME_COL_WIDTH,
+    )
+}
+
+/// 打印报告头部（标题、版本、平台、AI_HOME）。
+///
+/// 在文本模式下于检查开始前先打印，使用户能立即看到运行环境；检查结果随后
+/// 流式追加。
+fn print_report_header(atrading_home: &std::path::Path) {
     println!();
     println!("{}", " OpenATrading 诊断报告 ".bold());
     println!("{}", "════════════════════════════════════".bold());
@@ -152,29 +201,13 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
         std::env::consts::OS,
         std::env::consts::ARCH
     );
+    println!("  AI_HOME: {}", atrading_home.display());
     println!();
+}
 
-    for (check, r) in checks.iter().zip(results.iter()) {
-        let icon = match &r.status {
-            CheckStatus::Ok => format!("{}", "✓".green().bold()),
-            CheckStatus::Warn(_) => format!("{}", "⚠".yellow().bold()),
-            CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
-        };
-        let name = format!("{}", check.name().bold());
-        let details = if r.details.is_empty() {
-            String::new()
-        } else {
-            r.details.join("; ")
-        };
-        println!(
-            " {}  {:12}  {}  {}",
-            icon,
-            name,
-            r.summary,
-            details.dimmed()
-        );
-    }
-
+/// 打印报告尾部（分隔线 + 汇总行）。
+fn print_report_footer(results: &[CheckResult]) {
+    let (ok, warn, err) = status_summary(results);
     println!();
     println!("{}", "════════════════════════════════════".bold());
 
@@ -235,12 +268,16 @@ fn confirm_fix(risk: FixRisk, _id: &str, input: &str) -> FixDecision {
 }
 
 async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results: &[CheckResult]) {
+    // 保留原始检查序号（1 基），使修复提示的编号与报告一致，而非过滤后的
+    // 连续编号。
     let fixable: Vec<_> = checks
         .iter()
+        .enumerate()
         .zip(results.iter())
-        .filter(|(check, result)| {
+        .filter(|((_, check), result)| {
             check.has_fix() && matches!(result.status, CheckStatus::Warn(_) | CheckStatus::Error(_))
         })
+        .map(|((i, check), result)| (i, check, result))
         .collect();
 
     if fixable.is_empty() {
@@ -248,13 +285,13 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
         return;
     }
 
-    for (i, (check, _result)) in fixable.iter().enumerate() {
+    for (original_index, check, _result) in fixable.iter() {
         let fix_label = check.fix_label();
         let label = fix_label.as_deref().unwrap_or("执行修复");
 
         print!(
             "是否修复 #{} ({})？[{}] [y/N]: ",
-            i + 1,
+            original_index + 1,
             check.name(),
             label
         );
@@ -322,9 +359,11 @@ pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()>
             println!("  {} 已跳过联网检查: {}", "⤚".dimmed(), skipped.join(", "));
         }
     }
-    let results = run_checks(&checks, &ctx).await;
 
-    if json {
+    // JSON 模式：收集全部结果后一次性输出单个 JSON 数组，不流式。
+    // 文本模式：先打印头部，再以流式回调逐项输出单行结果，最后打印尾部汇总。
+    let results = if json {
+        let results = run_checks(&checks, &ctx, None).await;
         #[derive(Serialize)]
         struct JsonOutput {
             version: &'static str,
@@ -349,9 +388,18 @@ pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()>
                 items,
             })?
         );
+        results
     } else {
-        print_report(&checks, &results);
-    }
+        print_report_header(&ctx.atrading_home);
+        // 流式回调：每项检查完成后立即打印单行结果。`cb` 必须与 `run_checks`
+        // 同一作用域声明，使其借用覆盖整个 await。
+        let mut cb = |check: &dyn Check, result: &CheckResult| {
+            println!("{}", format_check_line(check, result));
+        };
+        let results = run_checks(&checks, &ctx, Some(&mut cb as CheckCallback<'_>)).await;
+        print_report_footer(&results);
+        results
+    };
 
     if fix {
         interactive_fix(&checks, &ctx, &results).await;

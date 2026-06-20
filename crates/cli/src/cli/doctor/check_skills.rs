@@ -56,6 +56,11 @@ impl Check for SkillsCheck {
     }
 
     async fn fix(&self, _ctx: &CheckContext) -> Result<FixResult> {
-        unreachable!("SkillsCheck has no fix");
+        // `has_fix()` 返回 false，正常流程不会到达这里；返回 Skipped 而非
+        // panic，与其余无破坏性修复项保持一致。
+        Ok(FixResult {
+            status: FixStatus::Skipped,
+            message: "可运行 `openatrading skills install` 安装技能".into(),
+        })
     }
 }
