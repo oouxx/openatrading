@@ -80,6 +80,8 @@ export type ThreadComponents = {
 
 export type ThreadProps = {
   components?: ThreadComponents | undefined;
+  slashAdapter?: { search: (query: string) => Array<{ id: string; type: string; label: string; description?: string }> };
+  slashAction?: { onExecute: (item: { id: string }) => void };
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -93,17 +95,17 @@ const isNewChatView = (s: AssistantState) =>
   s.thread.messages.length === 0 &&
   (!s.thread.isLoading || s.threads.isLoading);
 
-export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
+export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS, slashAdapter, slashAction }) => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot isEmpty={isEmpty} />
+      <ThreadRoot isEmpty={isEmpty} slashAdapter={slashAdapter} slashAction={slashAction} />
     </ThreadComponentsContext.Provider>
   );
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
+const ThreadRoot: FC<{ isEmpty: boolean; slashAdapter?: ThreadProps['slashAdapter']; slashAction?: ThreadProps['slashAction'] }> = ({ isEmpty, slashAdapter, slashAction }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
 
   return (
@@ -149,7 +151,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
             )}
           >
             <ThreadScrollToBottom />
-            <Composer />
+            <Composer slashAdapter={slashAdapter} slashAction={slashAction} />
             <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
               <ThreadSuggestions />
             </AuiIf>
@@ -221,26 +223,58 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+const Composer: FC<{ slashAdapter?: ThreadProps['slashAdapter']; slashAction?: ThreadProps['slashAction'] }> = ({ slashAdapter, slashAction }) => {
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="aui_composer-shell"
-          className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none"
-        >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder="Send a message..."
-            className="aui-composer-input placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
-            rows={1}
-            autoFocus
-            aria-label="Message input"
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          <div
+            data-slot="aui_composer-shell"
+            className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none"
+          >
+            <ComposerAttachments />
+            <ComposerPrimitive.Input
+              placeholder="Send a message..."
+              className="aui-composer-input placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+              rows={1}
+              autoFocus
+              aria-label="Message input"
+            />
+            <ComposerAction />
+          </div>
+        </ComposerPrimitive.AttachmentDropzone>
+      </ComposerPrimitive.Root>
+
+      {slashAdapter && slashAction && (
+        <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
+          <ComposerPrimitive.Unstable_TriggerPopover.Action
+            onExecute={(item) => slashAction.onExecute(item)}
+            removeOnExecute={false}
           />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
-    </ComposerPrimitive.Root>
+          <ComposerPrimitive.Unstable_TriggerPopoverItems>
+            {(items) => (
+              <div className="bg-popover text-popover-foreground z-50 max-h-64 w-64 overflow-hidden rounded-xl border p-1 shadow-lg">
+                <div className="text-muted-foreground px-2 py-1.5 text-xs font-medium">
+                  Commands
+                </div>
+                {items.map((item) => (
+                  <ComposerPrimitive.Unstable_TriggerPopoverItem
+                    key={item.id}
+                    item={item}
+                    className="hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none"
+                  >
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.description && (
+                      <span className="text-muted-foreground truncate text-xs">{item.description}</span>
+                    )}
+                  </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                ))}
+              </div>
+            )}
+          </ComposerPrimitive.Unstable_TriggerPopoverItems>
+        </ComposerPrimitive.Unstable_TriggerPopover>
+      )}
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 };
 
