@@ -17,8 +17,8 @@ impl TradeAction {
             TradeAction::Buy => "buy",
             TradeAction::Sell => "sell",
             TradeAction::Hold => "hold",
-            TradeAction::Open => "Open",
-            TradeAction::Close => "Close",
+            TradeAction::Open => "open",
+            TradeAction::Close => "close",
         }
     }
 }

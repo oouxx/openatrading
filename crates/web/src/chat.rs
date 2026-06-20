@@ -383,7 +383,7 @@ pub async fn ai_chat(
                 }
                 Some(_) => {}
                 None => {
-                    eprintln!("ai/chat: channel closed unexpectedly");
+                    tracing::warn!("ai/chat: channel closed unexpectedly");
                     break;
                 }
             }

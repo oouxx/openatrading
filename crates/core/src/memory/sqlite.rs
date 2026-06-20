@@ -29,7 +29,10 @@ impl MemoryStore {
     }
 
     pub fn save_snapshot(&self, source: &str, json: &str) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         conn.execute(
             "INSERT INTO market_snapshots (data_source, raw_json) VALUES (?1, ?2)",
             rusqlite::params![source, json],
@@ -41,7 +44,10 @@ impl MemoryStore {
     }
 
     pub fn query_recent(&self, days: u32) -> Result<Vec<MarketSnapshot>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
              WHERE captured_at >= datetime('now', 'localtime', ?1) ORDER BY captured_at DESC",
@@ -59,7 +65,10 @@ impl MemoryStore {
     }
 
     pub fn query_by_source(&self, source: &str, days: u32) -> Result<Vec<MarketSnapshot>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
              WHERE data_source = ?1 AND captured_at >= datetime('now', 'localtime', ?2) \
@@ -78,7 +87,10 @@ impl MemoryStore {
     }
 
     pub fn cleanup_old(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM market_snapshots WHERE captured_at < datetime('now', 'localtime', '-10 days')",
             [],

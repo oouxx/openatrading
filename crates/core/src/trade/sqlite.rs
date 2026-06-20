@@ -74,7 +74,10 @@ impl TradeManager {
     }
 
     pub fn list_positions(&self, role_name: &str) -> Result<Vec<Position>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct,\
@@ -104,7 +107,10 @@ impl TradeManager {
     }
 
     pub fn add_position(&self, pos: Position) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         conn.execute(
             "INSERT INTO positions (role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct)\
@@ -126,14 +132,17 @@ impl TradeManager {
         )?;
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Open',?2,?3,?4,?5,?6,?7) /* action=Open via as_str */",
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'open',?2,?3,?4,?5,?6,?7) /* action=open via as_str */",
             rusqlite::params![id, pos.cost_price, pos.shares, pos.entry_reason, pos.role_name, pos.symbol.to_string(), pos.stock_name],
         )?;
         Ok(id)
     }
 
     pub fn update_position(&self, pos: Position) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         conn.execute(
             "UPDATE positions SET current_price=?1,stop_loss=?2,target_price=?3,\
              updated_at=datetime('now','localtime') WHERE id=?4",
@@ -143,7 +152,10 @@ impl TradeManager {
     }
 
     pub fn close_position(&self, id: i64, price: f64, reason: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let (role_name, symbol, shares, stock_name): (String, String, i64, String) = conn
             .query_row(
                 "SELECT role_name, symbol, shares, stock_name FROM positions WHERE id=?1",
@@ -151,7 +163,7 @@ impl TradeManager {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )?;
         conn.execute(
-            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'Close',?2,?3,?4,?5,?6,?7)",
+            "INSERT INTO trade_logs (position_id,action,price,shares,reason,role_name,symbol,stock_name) VALUES (?1,'close',?2,?3,?4,?5,?6,?7)",
             rusqlite::params![id, price, shares, reason, role_name, symbol, stock_name],
         )?;
         conn.execute("DELETE FROM positions WHERE id=?1", [id])?;
@@ -159,7 +171,10 @@ impl TradeManager {
     }
 
     pub fn get_trade_logs(&self, position_id: i64) -> Result<Vec<TradeLog>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id,position_id,action,price,shares,reason,created_at \
              FROM trade_logs WHERE position_id=?1 ORDER BY id",
@@ -171,8 +186,8 @@ impl TradeManager {
                 action: {
                     let a: String = row.get(2)?;
                     match a.as_str() {
-                        "Open" => TradeAction::Open,
-                        "Close" => TradeAction::Close,
+                        "open" => TradeAction::Open,
+                        "close" => TradeAction::Close,
                         _ => TradeAction::Buy,
                     }
                 },
@@ -191,7 +206,10 @@ impl TradeManager {
         role_name: &str,
         limit: usize,
     ) -> Result<Vec<TradeLogEntry>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
              tl.reason, tl.created_at, \
@@ -210,8 +228,8 @@ impl TradeManager {
                 action: {
                     let a: String = row.get(2)?;
                     match a.as_str() {
-                        "Open" => TradeAction::Open,
-                        "Close" => TradeAction::Close,
+                        "open" => TradeAction::Open,
+                        "close" => TradeAction::Close,
                         _ => TradeAction::Buy,
                     }
                 },
@@ -258,7 +276,10 @@ impl TradeManager {
     }
 
     pub fn list_all_positions(&self) -> Result<Vec<Position>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct,\
@@ -288,7 +309,10 @@ impl TradeManager {
     }
 
     pub fn update_position_price(&self, id: i64, current_price: f64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         conn.execute(
             "UPDATE positions SET current_price=?1, updated_at=datetime('now','localtime') WHERE id=?2",
             rusqlite::params![current_price, id],
@@ -297,19 +321,28 @@ impl TradeManager {
     }
 
     pub fn delete_positions_by_role(&self, role_name: &str) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let n = conn.execute("DELETE FROM positions WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
 
     pub fn delete_trade_logs_by_role(&self, role_name: &str) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let n = conn.execute("DELETE FROM trade_logs WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
 
     pub fn get_all_trade_logs_by_role(&self, role_name: &str) -> Result<Vec<TradeLogEntry>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
              tl.reason, tl.created_at, \
@@ -326,8 +359,8 @@ impl TradeManager {
                 action: {
                     let a: String = row.get(2)?;
                     match a.as_str() {
-                        "Open" => TradeAction::Open,
-                        "Close" => TradeAction::Close,
+                        "open" => TradeAction::Open,
+                        "close" => TradeAction::Close,
                         _ => TradeAction::Buy,
                     }
                 },
@@ -347,7 +380,10 @@ impl TradeManager {
         role_name: &str,
         limit: usize,
     ) -> Result<Vec<ClosedPosition>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
         // Pair Close logs with their corresponding Open logs by position_id
         let mut stmt = conn.prepare(
             "SELECT c.position_id, c.symbol, COALESCE(o.stock_name, c.stock_name, '') as stock_name,
@@ -355,8 +391,8 @@ impl TradeManager {
              o.price as entry_price, c.price as exit_price,
              c.shares, o.reason as entry_reason, c.reason as exit_reason
              FROM trade_logs c
-             JOIN trade_logs o ON o.position_id = c.position_id AND o.action = 'Open'
-             WHERE c.action = 'Close' AND c.role_name = ?1
+             JOIN trade_logs o ON o.position_id = c.position_id AND o.action = 'open'
+             WHERE c.action = 'close' AND c.role_name = ?1
              ORDER BY c.created_at DESC
              LIMIT ?2",
         )?;
