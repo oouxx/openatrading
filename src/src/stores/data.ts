@@ -33,6 +33,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   });
   if (!resp.ok) throw new Error(`${resp.status}`);
+  if (resp.status === 204) return undefined as T;
   return resp.json();
 }
 
