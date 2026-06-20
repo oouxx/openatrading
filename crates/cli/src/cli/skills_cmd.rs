@@ -1,5 +1,5 @@
 use anyhow::Result;
-use openatrading_core::skills::SkillRegistry;
+use openatrading_core::skills::{SkillEntry, SkillRegistry};
 
 pub fn cmd_skills_list() -> Result<()> {
     let reg = SkillRegistry::from_disk();
@@ -10,7 +10,17 @@ pub fn cmd_skills_list() -> Result<()> {
     }
     println!("已安装的技能 ({}):\n", skills.len());
     for skill in skills {
-        println!("  {:<30} {}", skill.name, skill.description);
+        let scope = match skill.scope {
+            openatrading_core::skills::SkillScope::Project => " [project]",
+            openatrading_core::skills::SkillScope::User => "",
+        };
+        println!("  {:<30} {}{}", skill.name, skill.description, scope);
+        if let Some(compat) = &skill.compatibility {
+            println!("  {:>30} 兼容性: {}", "", compat);
+        }
+        if !skill.list_resources().is_empty() {
+            println!("  {:>30} 资源: {}", "", skill.list_resources().join(", "));
+        }
     }
     Ok(())
 }
@@ -18,7 +28,7 @@ pub fn cmd_skills_list() -> Result<()> {
 /// Resolve a skill source argument. Tries:
 /// 1. File path (if the path exists)
 /// 2. Raw content (anything else)
-pub fn resolve_skill_source(name: &str, source: &str) -> Result<openatrading_core::skills::Skill> {
+pub fn resolve_skill_source(name: &str, source: &str) -> Result<SkillEntry> {
     // Try file path
     let path = std::path::Path::new(source);
     if path.exists() && path.is_file() {

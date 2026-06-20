@@ -34,6 +34,7 @@ import {
   ThreadPrimitive,
   type ToolCallMessagePartComponent,
   useAuiState,
+  unstable_useTriggerPopoverScopeContextOptional,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -223,6 +224,31 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
+/** Highlight matching substring in a label. */
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-500/30 text-foreground rounded-sm px-0.5">{text.slice(idx, idx + query.length)}</mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
+/** Inner items renderer that reads the search query for keyword highlighting. */
+function SlashPopoverItems({ children }: { children: (items: readonly import("@assistant-ui/core").Unstable_TriggerItem[]) => React.ReactNode }) {
+  const ctx = unstable_useTriggerPopoverScopeContextOptional();
+  const query = ctx?.query ?? "";
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverItems>
+      {(items) => children(items.map((item) => ({ ...item, metadata: { ...(item.metadata as object || {}), _query: query } })))}
+    </ComposerPrimitive.Unstable_TriggerPopoverItems>
+  );
+}
+
 const Composer: FC<{ slashAdapter?: ThreadProps['slashAdapter']; slashAction?: ThreadProps['slashAction'] }> = ({ slashAdapter, slashAction }) => {
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
@@ -247,31 +273,45 @@ const Composer: FC<{ slashAdapter?: ThreadProps['slashAdapter']; slashAction?: T
 
       {slashAdapter && slashAction && (
         <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
-          <ComposerPrimitive.Unstable_TriggerPopover.Action
-            onExecute={(item) => slashAction.onExecute(item)}
-            removeOnExecute={true}
+          <ComposerPrimitive.Unstable_TriggerPopover.Directive
+            onInserted={(item) => {
+              slashAction.onExecute(item);
+            }}
           />
-          <ComposerPrimitive.Unstable_TriggerPopoverItems>
-            {(items) => (
-              <div className="bg-popover text-popover-foreground z-50 max-h-64 w-64 overflow-hidden rounded-xl border p-1 shadow-lg">
-                <div className="text-muted-foreground px-2 py-1.5 text-xs font-medium">
+          <SlashPopoverItems>
+            {(items) => {
+              const query = (items[0]?.metadata as { _query?: string } | undefined)?._query ?? "";
+              return (
+              <div className="bg-popover text-popover-foreground z-50 max-h-60 overflow-y-auto rounded-xl border p-1.5 shadow-lg"
+                style={{ width: "var(--thread-max-width, 44rem)" }}>
+                <div className="text-muted-foreground px-2 py-1 text-xs font-semibold tracking-wide uppercase">
                   Commands
                 </div>
-                {items.map((item) => (
-                  <ComposerPrimitive.Unstable_TriggerPopoverItem
-                    key={item.id}
-                    item={item}
-                    className="hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none"
-                  >
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {item.description && (
-                      <span className="text-muted-foreground truncate text-xs">{item.description}</span>
-                    )}
-                  </ComposerPrimitive.Unstable_TriggerPopoverItem>
-                ))}
+                {items.map((item, idx) => {
+                  const cmdType = (item.metadata as { commandType?: string } | undefined)?.commandType;
+                  const badge = cmdType === "skill" ? "SKILL" : cmdType === "pipeline" ? "PIPE" : "TOOL";
+                  const badgeColor = cmdType === "skill"
+                    ? "bg-purple-500/15 text-purple-500"
+                    : cmdType === "pipeline"
+                    ? "bg-blue-500/15 text-blue-500"
+                    : "bg-amber-500/15 text-amber-500";
+                  return (
+                    <ComposerPrimitive.Unstable_TriggerPopoverItem
+                      key={item.id}
+                      item={item}
+                      index={idx}
+                      className="hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm outline-none select-none"
+                    >
+                      <span className="flex-1 truncate font-medium">
+                        <HighlightMatch text={item.label} query={query} />
+                      </span>
+                      <span className={"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-tight " + badgeColor}>{badge}</span>
+                    </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                  );
+                })}
               </div>
-            )}
-          </ComposerPrimitive.Unstable_TriggerPopoverItems>
+            )}}
+          </SlashPopoverItems>
         </ComposerPrimitive.Unstable_TriggerPopover>
       )}
     </ComposerPrimitive.Unstable_TriggerPopoverRoot>
