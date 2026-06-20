@@ -61,6 +61,9 @@ pub enum Commands {
         /// 交互式修复
         #[arg(long)]
         fix: bool,
+        /// 跳过需要联网的检查（Telegram / LLM / MCP）
+        #[arg(long)]
+        skip_network: bool,
     },
     /// 启动 AI 对话终端界面
     Chat,

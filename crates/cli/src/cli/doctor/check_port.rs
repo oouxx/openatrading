@@ -29,6 +29,10 @@ impl Check for PortCheck {
         true
     }
     fn fix_risk(&self) -> FixRisk {
+        // Classified Dangerous: the fix guides the user to stop whichever
+        // process occupies the port — a genuinely risky action that could
+        // terminate a process the user needs. The typed-id confirmation in
+        // interactive_fix guards against running it by accident.
         FixRisk::Dangerous
     }
     fn fix_label(&self) -> Option<String> {

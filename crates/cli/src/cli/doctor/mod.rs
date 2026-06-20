@@ -51,7 +51,6 @@ pub enum FixRisk {
 pub enum FixStatus {
     Fixed,
     Skipped,
-    Failed(String),
 }
 
 #[derive(Debug)]
@@ -91,21 +90,7 @@ pub struct FlatCheckResult {
     pub duration_ms: u64,
 }
 
-#[derive(Debug, Serialize)]
-struct ReportJson {
-    version: &'static str,
-    items: Vec<FlatCheckResult>,
-}
-
 // ── Helper functions ─────────────────────────────────────
-
-fn status_icon(status: &CheckStatus) -> &'static str {
-    match status {
-        CheckStatus::Ok => "✓",
-        CheckStatus::Warn(_) => "⚠",
-        CheckStatus::Error(_) => "✗",
-    }
-}
 
 fn status_summary(results: &[CheckResult]) -> (usize, usize, usize) {
     let ok = results
@@ -216,23 +201,49 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
 
 // ── Reporter (JSON) ─────────────────────────────────────
 
-#[allow(dead_code)]
-fn print_json(results: &[CheckResult]) {
-    let _flat: Vec<FlatCheckResult> = results
-        .iter()
-        .map(|r| FlatCheckResult {
-            id: "", // Filled after run_checks returns (see cmd_doctor)
-            name: "",
-            status: r.status.clone(),
-            summary: r.summary.clone(),
-            details: r.details.clone(),
-            duration_ms: r.duration_ms,
-        })
-        .collect();
-    // We need the check id/name — fix below in cmd_doctor
-}
+// JSON output is produced inline in `cmd_doctor` via the local `JsonOutput`
+// struct, which has access to the check id/name from the registry.
 
 // ── Interactive fix ──────────────────────────────────────
+
+/// Decision returned by [`confirm_fix`] for whether to run a fix.
+///
+/// Extracted as a pure function so the risk-gating contract is unit-testable
+/// without driving stdin.
+#[derive(Debug, PartialEq, Eq)]
+enum FixDecision {
+    /// Proceed and run the fix.
+    Proceed,
+    /// User declined; skip this check.
+    Skip,
+}
+
+/// Decide whether to run a fix based on its risk level and the user's input.
+///
+/// - `Safe`: proceed only on an affirmative `y`/`yes` (case-insensitive).
+/// - `Dangerous`: proceed only if the user typed the check's exact id — a
+///   deliberate confirmation that guards against accidental destructive
+///   operations.
+/// - `Impossible` is filtered out by `has_fix()` before reaching here.
+fn confirm_fix(risk: FixRisk, id: &str, input: &str) -> FixDecision {
+    match risk {
+        FixRisk::Dangerous => {
+            if input.trim() == id {
+                FixDecision::Proceed
+            } else {
+                FixDecision::Skip
+            }
+        },
+        FixRisk::Safe => {
+            if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
+                FixDecision::Proceed
+            } else {
+                FixDecision::Skip
+            }
+        },
+        FixRisk::Impossible => FixDecision::Skip,
+    }
+}
 
 async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results: &[CheckResult]) {
     let fixable: Vec<_> = checks
@@ -251,16 +262,31 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
     for (i, (check, _result)) in fixable.iter().enumerate() {
         let fix_label = check.fix_label();
         let label = fix_label.as_deref().unwrap_or("执行修复");
-        print!(
-            "是否修复 #{} ({})？[{}] [y/N]: ",
-            i + 1,
-            check.name(),
-            label
-        );
+        let risk = check.fix_risk();
+
+        // Dangerous fixes require typing the check id to confirm — guards
+        // against accidental destructive operations.
+        if matches!(risk, FixRisk::Dangerous) {
+            let id = check.id();
+            println!(
+                "  {} 该修复具有风险，确认请输入 check id: {}",
+                "⚠".yellow().bold(),
+                id
+            );
+            print!("  确认 [输入 {} / 其他跳过]: ", id);
+        } else {
+            print!(
+                "是否修复 #{} ({})？[{}] [y/N]: ",
+                i + 1,
+                check.name(),
+                label
+            );
+        }
         std::io::stdout().flush().ok();
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).ok();
-        if !input.trim().eq_ignore_ascii_case("y") {
+
+        if confirm_fix(risk, check.id(), &input) == FixDecision::Skip {
             println!("  {} 跳过", "☐".dimmed());
             continue;
         }
@@ -281,10 +307,10 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
                 FixStatus::Skipped => {
                     println!("  {} {}", "☐".dimmed(), fix_result.message);
                 },
-                FixStatus::Failed(msg) => {
-                    println!("  {} {}", "✗".red().bold(), msg);
-                },
             },
+            // A fix that fails (expected or unexpected) surfaces here as an
+            // error message; `FixStatus` only distinguishes success vs
+            // no-op since failures propagate via `Result`.
             Err(e) => {
                 println!("  {} 修复失败: {e:#}", "✗".red().bold());
             },
@@ -292,9 +318,12 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
     }
 }
 
+/// Check ids that require real network I/O. Skipped under `--skip-network`.
+const NETWORK_CHECK_IDS: &[&str] = &["telegram", "llm", "mcp"];
+
 // ── Entry point ─────────────────────────────────────────
 
-pub async fn cmd_doctor(json: bool, fix: bool) -> Result<()> {
+pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()> {
     let atrading_home = openatrading_core::atrading_home();
     let app_config = AppConfig::load().ok();
 
@@ -303,7 +332,20 @@ pub async fn cmd_doctor(json: bool, fix: bool) -> Result<()> {
         app_config,
     };
 
-    let checks = all_checks();
+    let mut checks = all_checks();
+    if skip_network {
+        let mut skipped: Vec<&str> = Vec::new();
+        checks.retain(|c| {
+            let is_network = NETWORK_CHECK_IDS.contains(&c.id());
+            if is_network {
+                skipped.push(c.id());
+            }
+            !is_network
+        });
+        if !skipped.is_empty() && !json {
+            println!("  {} 已跳过联网检查: {}", "⤚".dimmed(), skipped.join(", "));
+        }
+    }
     let results = run_checks(&checks, &ctx).await;
 
     if json {
@@ -340,4 +382,58 @@ pub async fn cmd_doctor(json: bool, fix: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── confirm_fix risk gating ──────────────────────────
+    //
+    // The Dangerous confirmation path exists for future checks that perform
+    // destructive operations. No current check is Dangerous (PortCheck's fix
+    // is just a Skipped hint), so these tests are the load-bearing reference
+    // for the variant and the gating contract.
+
+    #[test]
+    fn safe_fix_proceeds_on_yes() {
+        assert_eq!(
+            confirm_fix(FixRisk::Safe, "port", "y"),
+            FixDecision::Proceed
+        );
+        assert_eq!(
+            confirm_fix(FixRisk::Safe, "port", "YES"),
+            FixDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn safe_fix_skips_on_anything_else() {
+        assert_eq!(confirm_fix(FixRisk::Safe, "port", "n"), FixDecision::Skip);
+        assert_eq!(confirm_fix(FixRisk::Safe, "port", ""), FixDecision::Skip);
+    }
+
+    #[test]
+    fn dangerous_fix_requires_exact_id() {
+        assert_eq!(
+            confirm_fix(FixRisk::Dangerous, "port", "port"),
+            FixDecision::Proceed
+        );
+        assert_eq!(
+            confirm_fix(FixRisk::Dangerous, "port", "y"),
+            FixDecision::Skip
+        );
+        assert_eq!(
+            confirm_fix(FixRisk::Dangerous, "port", " port "),
+            FixDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn impossible_fix_always_skips() {
+        assert_eq!(
+            confirm_fix(FixRisk::Impossible, "mcp", "mcp"),
+            FixDecision::Skip
+        );
+    }
 }
