@@ -249,7 +249,7 @@ const Composer: FC<{ slashAdapter?: ThreadProps['slashAdapter']; slashAction?: T
         <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
           <ComposerPrimitive.Unstable_TriggerPopover.Action
             onExecute={(item) => slashAction.onExecute(item)}
-            removeOnExecute={false}
+            removeOnExecute={true}
           />
           <ComposerPrimitive.Unstable_TriggerPopoverItems>
             {(items) => (
