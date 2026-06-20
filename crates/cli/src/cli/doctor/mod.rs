@@ -10,16 +10,16 @@ use crate::cli::config::AppConfig;
 
 // ── Sub-modules ─────────────────────────────────────────
 
-mod check_home;
 mod check_config;
-mod check_env;
-mod check_sqlite;
 mod check_cron;
-mod check_telegram;
+mod check_env;
+mod check_home;
 mod check_llm;
 mod check_mcp;
-mod check_skills;
 mod check_port;
+mod check_skills;
+mod check_sqlite;
+mod check_telegram;
 
 // ── Types ────────────────────────────────────────────────
 
@@ -108,9 +108,18 @@ fn status_icon(status: &CheckStatus) -> &'static str {
 }
 
 fn status_summary(results: &[CheckResult]) -> (usize, usize, usize) {
-    let ok = results.iter().filter(|r| matches!(r.status, CheckStatus::Ok)).count();
-    let warn = results.iter().filter(|r| matches!(r.status, CheckStatus::Warn(_))).count();
-    let err = results.iter().filter(|r| matches!(r.status, CheckStatus::Error(_))).count();
+    let ok = results
+        .iter()
+        .filter(|r| matches!(r.status, CheckStatus::Ok))
+        .count();
+    let warn = results
+        .iter()
+        .filter(|r| matches!(r.status, CheckStatus::Warn(_)))
+        .count();
+    let err = results
+        .iter()
+        .filter(|r| matches!(r.status, CheckStatus::Error(_)))
+        .count();
     (ok, warn, err)
 }
 
@@ -154,7 +163,11 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
     println!("{}", " OpenATrading 诊断报告 ".bold());
     println!("{}", "════════════════════════════════════".bold());
     println!("  版本: {}", env!("GIT_VERSION").bold());
-    println!("  平台: {}/{}", std::env::consts::OS, std::env::consts::ARCH);
+    println!(
+        "  平台: {}/{}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
     println!();
 
     for (check, r) in checks.iter().zip(results.iter()) {
@@ -169,7 +182,13 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
         } else {
             r.details.join("; ")
         };
-        println!(" {}  {:12}  {}  {}", icon, name, r.summary, details.dimmed());
+        println!(
+            " {}  {:12}  {}  {}",
+            icon,
+            name,
+            r.summary,
+            details.dimmed()
+        );
     }
 
     println!();
@@ -178,10 +197,18 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
     if err == 0 && warn == 0 {
         println!("{}", "✓ 一切正常".green().bold());
     } else if err == 0 {
-        println!("{}", format!("⚠ {ok} 项正常，{warn} 项警告").yellow().bold());
+        println!(
+            "{}",
+            format!("⚠ {ok} 项正常，{warn} 项警告").yellow().bold()
+        );
         println!("  建议运行 `openatrading doctor --fix` 修复警告项");
     } else {
-        println!("{}", format!("✗ {ok} 项正常，{warn} 项警告，{err} 项错误").red().bold());
+        println!(
+            "{}",
+            format!("✗ {ok} 项正常，{warn} 项警告，{err} 项错误")
+                .red()
+                .bold()
+        );
         println!("  建议运行 `openatrading doctor --fix` 尝试自动修复");
     }
     println!();
@@ -191,10 +218,9 @@ fn print_report(checks: &[Box<dyn Check>], results: &[CheckResult]) {
 
 #[allow(dead_code)]
 fn print_json(results: &[CheckResult]) {
-    let flat: Vec<FlatCheckResult> = results
+    let _flat: Vec<FlatCheckResult> = results
         .iter()
-        .enumerate()
-        .map(|(i, r)| FlatCheckResult {
+        .map(|r| FlatCheckResult {
             id: "", // Filled after run_checks returns (see cmd_doctor)
             name: "",
             status: r.status.clone(),
@@ -208,17 +234,12 @@ fn print_json(results: &[CheckResult]) {
 
 // ── Interactive fix ──────────────────────────────────────
 
-async fn interactive_fix(
-    checks: &[Box<dyn Check>],
-    ctx: &CheckContext,
-    results: &[CheckResult],
-) {
+async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results: &[CheckResult]) {
     let fixable: Vec<_> = checks
         .iter()
         .zip(results.iter())
         .filter(|(check, result)| {
-            check.has_fix()
-                && matches!(result.status, CheckStatus::Warn(_) | CheckStatus::Error(_))
+            check.has_fix() && matches!(result.status, CheckStatus::Warn(_) | CheckStatus::Error(_))
         })
         .collect();
 
@@ -227,10 +248,15 @@ async fn interactive_fix(
         return;
     }
 
-    for (i, (check, result)) in fixable.iter().enumerate() {
+    for (i, (check, _result)) in fixable.iter().enumerate() {
         let fix_label = check.fix_label();
         let label = fix_label.as_deref().unwrap_or("执行修复");
-        print!("是否修复 #{} ({})？[{}] [y/N]: ", i + 1, check.name(), label);
+        print!(
+            "是否修复 #{} ({})？[{}] [y/N]: ",
+            i + 1,
+            check.name(),
+            label
+        );
         std::io::stdout().flush().ok();
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).ok();
@@ -246,22 +272,22 @@ async fn interactive_fix(
                     // Re-check
                     let new_result = check.check(ctx).await;
                     let icon = match &new_result.status {
-            CheckStatus::Ok => format!("{}", "✓".green().bold()),
-            CheckStatus::Warn(_) => format!("{}", "⚠".yellow().bold()),
-            CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
-        };
+                        CheckStatus::Ok => format!("{}", "✓".green().bold()),
+                        CheckStatus::Warn(_) => format!("{}", "⚠".yellow().bold()),
+                        CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
+                    };
                     println!("    复查: {} {}", icon, new_result.summary);
-                }
+                },
                 FixStatus::Skipped => {
                     println!("  {} {}", "☐".dimmed(), fix_result.message);
-                }
+                },
                 FixStatus::Failed(msg) => {
                     println!("  {} {}", "✗".red().bold(), msg);
-                }
+                },
             },
             Err(e) => {
                 println!("  {} 修复失败: {e:#}", "✗".red().bold());
-            }
+            },
         }
     }
 }
@@ -298,10 +324,13 @@ pub async fn cmd_doctor(json: bool, fix: bool) -> Result<()> {
                 duration_ms: result.duration_ms,
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&JsonOutput {
-            version: env!("GIT_VERSION"),
-            items,
-        })?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&JsonOutput {
+                version: env!("GIT_VERSION"),
+                items,
+            })?
+        );
     } else {
         print_report(&checks, &results);
     }
