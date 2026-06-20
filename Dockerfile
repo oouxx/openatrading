@@ -53,6 +53,9 @@ RUN cargo chef cook --release --recipe-path recipe.json -p openatrading-cli
 
 # ── 业务代码编译层 ─────────────────────────────────────────────────────────────
 COPY Cargo.toml Cargo.lock ./
+# config.example.toml is include_str!'d at compile time by cmd_init / ConfigCheck,
+# so it must exist in the build context alongside the source.
+COPY config.example.toml ./
 COPY crates/ crates/
 
 RUN cargo build --release -p openatrading-cli && \
