@@ -80,6 +80,13 @@ impl McpClient {
         for (k, v) in env {
             cmd.env(k, v);
         }
+        tracing::info!(
+            "[mcp] connect_stdio: cmd={} args={:?} env={:?} cwd={:?}",
+            command,
+            args,
+            env,
+            std::env::current_dir().ok()
+        );
         let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::Connect(e.into()))?;
         let service: RunningService<RoleClient, ()> = ()
             .serve(transport)
@@ -129,6 +136,11 @@ impl McpClient {
             })
             .ok_or(McpError::NoContent)?;
 
+        tracing::info!(
+            "[mcp] do_call: {tool_name} returned:
+{}",
+            text
+        );
         serde_json::from_str(text).map_err(McpError::Parse)
     }
 
@@ -138,6 +150,7 @@ impl McpClient {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<String, McpError> {
+        tracing::debug!("[mcp] call_raw: {tool_name}");
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -150,14 +163,21 @@ impl McpClient {
             .await
             .map_err(|e| McpError::Call(e.into()))?;
 
-        result
+        let text = result
             .content
             .first()
             .and_then(|c| match &c.raw {
                 RawContent::Text(t) => Some(t.text.clone()),
                 _ => None,
             })
-            .ok_or(McpError::NoContent)
+            .ok_or(McpError::NoContent)?;
+
+        tracing::info!(
+            "[mcp] call_raw: {tool_name} returned:
+{}",
+            text
+        );
+        Ok(text)
     }
 
     /// Verify MCP server is functional: list tools and call the first one.
@@ -220,6 +240,7 @@ impl McpClient {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, McpError> {
+        tracing::debug!("[mcp] do_call: {tool_name}");
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
@@ -240,6 +261,11 @@ impl McpClient {
             })
             .ok_or(McpError::NoContent)?;
 
+        tracing::info!(
+            "[mcp] do_call: {tool_name} returned:
+{}",
+            text
+        );
         serde_json::from_str(text).map_err(McpError::Parse)
     }
 }
@@ -337,8 +363,9 @@ impl McpRegistry {
         }
     }
 
-    pub async fn discover(&self) -> Vec<Arc<DynTool>> {
+    pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Vec<McpClient>) {
         let mut all_tools = Vec::new();
+        let mut all_clients = Vec::new();
         for server in &self.servers {
             let client = match &server.transport {
                 McpTransportConfig::StreamableHttp { url, .. } => McpClient::connect(url).await,
@@ -381,11 +408,12 @@ impl McpRegistry {
                 },
                 Err(e) => tracing::warn!("[mcp] {}: discover failed: {e}", server.name),
             }
+            all_clients.push(client);
         }
         if all_tools.is_empty() {
             tracing::info!("[mcp] no tools discovered");
         }
-        all_tools
+        (all_tools, all_clients)
     }
 }
 
@@ -401,8 +429,10 @@ pub struct ToolConfig {
 pub async fn build_tools(config: &ToolConfig) -> super::tools::ToolRegistry {
     let mut registry = super::tools::ToolRegistry::new();
     let mcp = McpRegistry::from_config(&config.mcp_servers);
-    for t in mcp.discover().await {
+    let (tools, clients) = mcp.discover().await;
+    for t in tools {
         registry.add_mcp(t);
     }
+    registry.set_mcp_clients(clients);
     registry
 }

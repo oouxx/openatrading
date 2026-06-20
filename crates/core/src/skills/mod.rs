@@ -380,13 +380,13 @@ impl SkillRegistry {
     /// Returns a merged registry with project-level skills overriding user-level.
     pub fn from_disk() -> Self {
         let user_native = scan_skill_dir(&Self::install_dir(), SkillScope::User);
-        let user_agents = scan_skill_dir(&Self::agents_skills_dir(), SkillScope::User);
+        // let user_agents = scan_skill_dir(&Self::agents_skills_dir(), SkillScope::User);
         let project_native = scan_skill_dir(&Self::project_skills_dir(), SkillScope::Project);
-        let project_agents =
-            scan_skill_dir(&Self::project_agents_skills_dir(), SkillScope::Project);
+        // let project_agents =
+        // scan_skill_dir(&Self::project_agents_skills_dir(), SkillScope::Project);
 
-        let user = user_native.into_iter().chain(user_agents).collect();
-        let project = project_native.into_iter().chain(project_agents).collect();
+        let user = user_native.into_iter().chain(vec![]).collect();
+        let project = project_native.into_iter().chain(vec![]).collect();
 
         let merged = merge_skills(project, user);
         Self { skills: merged }
