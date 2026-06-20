@@ -364,7 +364,7 @@ async fn run_decision_for_role(
     for instr in &trade_instructions {
         match instr.action {
             crate::trade::TradeAction::Buy => {
-                if let Err(e) = execute_buy(&ctx.trade, &ctx.api, &role.name, instr).await {
+                if let Err(e) = execute_buy(ctx, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute buy failed for {} {}: {e}",
                         instr.symbol,
@@ -385,7 +385,7 @@ async fn run_decision_for_role(
                 }
             },
             crate::trade::TradeAction::Sell => {
-                if let Err(e) = execute_sell(&ctx.trade, &ctx.api, &role.name, instr).await {
+                if let Err(e) = execute_sell(ctx, &role.name, instr).await {
                     tracing::error!(
                         "[cron] execute sell failed for {} {}: {e}",
                         instr.symbol,

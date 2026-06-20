@@ -5,6 +5,13 @@ use std::time::Duration;
 
 pub type AppCache = Cache<String, CachedEntry>;
 
+// ── A-share market hours constants ──────────────────────────
+// Safety: these are compile-time-known valid clock times (HMS).
+const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
+const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CachedEntry {
     pub data: String,
@@ -52,18 +59,14 @@ pub fn current_market_phase() -> MarketPhase {
     }
 
     let time = now.time();
-    let open_am = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
-    let close_am = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
-    let open_pm = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
-    let close_pm = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
 
-    if time < open_am {
+    if time < MORNING_OPEN {
         MarketPhase::PreOpen
-    } else if time < close_am {
+    } else if time < MORNING_CLOSE {
         MarketPhase::MorningOpen
-    } else if time < open_pm {
+    } else if time < AFTERNOON_OPEN {
         MarketPhase::MorningBreak
-    } else if time < close_pm {
+    } else if time < AFTERNOON_CLOSE {
         MarketPhase::AfternoonOpen
     } else {
         MarketPhase::Closed
@@ -80,16 +83,14 @@ fn is_trading_hours() -> bool {
 fn next_open_timestamp() -> i64 {
     let now = openatrading_core::utils::time::beijing_now();
     let time = now.time();
-    let open_am = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
-    let open_pm = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
 
     match current_market_phase() {
         MarketPhase::PreOpen => {
-            let secs = (open_am - time).num_seconds();
+            let secs = (MORNING_OPEN - time).num_seconds();
             now.timestamp() + secs
         },
         MarketPhase::MorningBreak => {
-            let secs = (open_pm - time).num_seconds();
+            let secs = (AFTERNOON_OPEN - time).num_seconds();
             now.timestamp() + secs
         },
         MarketPhase::Closed | MarketPhase::Weekend => {
@@ -100,8 +101,7 @@ fn next_open_timestamp() -> i64 {
                 if next.weekday() != Weekday::Sat && next.weekday() != Weekday::Sun {
                     let open = next
                         .date_naive()
-                        .and_hms_opt(9, 30, 0)
-                        .unwrap()
+                        .and_time(MORNING_OPEN)
                         .and_utc()
                         .timestamp();
                     return open;
