@@ -39,8 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         mold \
     && rm -rf /var/lib/apt/lists/*
 
-ARG GIT_VERSION=v0.0.0-dev
-ENV GIT_VERSION=${GIT_VERSION}
+# Default is unset — build.rs will read the version from Cargo.toml.
+# Override with: docker build --build-arg GIT_VERSION=v0.x.x ...
+ARG GIT_VERSION
 
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 
