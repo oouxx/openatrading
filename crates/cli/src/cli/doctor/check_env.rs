@@ -4,12 +4,15 @@ use super::*;
 
 pub struct EnvCheck;
 
+/// 环境变量白名单：仅列出代码实际会读取的变量。
+///
+/// 历史上此列表曾包含一些代码库无任何消费者的变量（提示用户设置系统从不
+/// 读取的变量属于误导），已移除，仅保留代码实际在 `crates/api` 与
+/// `crates/web` 中读取的 `JIUYAN_*`。
 const REQUIRED_VARS: &[(&str, &str)] = &[
     ("JIUYAN_PHONE", "韭研公社手机号"),
     ("JIUYAN_PASSWORD", "韭研公社密码"),
     ("JIUYAN_INIT_TOKEN", "韭研公社初始 Token"),
-    ("TAOGUBA_USER", "淘股吧用户名"),
-    ("TAOGUBA_PASSWORD", "淘股吧密码"),
 ];
 
 #[async_trait]

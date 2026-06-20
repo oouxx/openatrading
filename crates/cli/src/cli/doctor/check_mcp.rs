@@ -130,6 +130,12 @@ impl Check for McpCheck {
     }
 
     async fn fix(&self, _ctx: &CheckContext) -> Result<FixResult> {
-        unreachable!("McpCheck has no fix");
+        // `has_fix()` 返回 false，正常流程不会到达这里；返回 Skipped 而非
+        // panic，与 PortCheck/TelegramCheck/LlmCheck 等无破坏性修复项一致，
+        // 防御性地给出提示。
+        Ok(FixResult {
+            status: FixStatus::Skipped,
+            message: "请在 config.toml [[mcp_servers]] 中检查 MCP 服务器配置".into(),
+        })
     }
 }
