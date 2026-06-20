@@ -105,23 +105,40 @@ export default function AiSidebar(_props: AiSidebarProps) {
                   </button>
                 </div>
                 <ComposerPrimitive.Unstable_TriggerPopover char="/" adapter={slashAdapter}>
-                  <ComposerPrimitive.Unstable_TriggerPopover.Action
-                    onExecute={slashAction.onExecute}
-                    removeOnExecute={slashAction.removeOnExecute}
+                  <ComposerPrimitive.Unstable_TriggerPopover.Directive
+                    onInserted={(item) => {
+                      slashAction.onExecute(item);
+                    }}
                   />
                   <ComposerPrimitive.Unstable_TriggerPopoverItems>
                     {(items) => (
-                      <div className="absolute bottom-full left-0 right-0 mb-2 max-h-48 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1">
-                        {items.map((item) => (
-                          <ComposerPrimitive.Unstable_TriggerPopoverItem
-                            key={item.id}
-                            item={item}
-                            className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
-                          >
-                            <div className="font-medium text-xs text-white">/{item.label}</div>
-                            <div className="text-[11px] text-ink-muted mt-0.5">{item.description}</div>
-                          </ComposerPrimitive.Unstable_TriggerPopoverItem>
-                        ))}
+                      <div className="absolute bottom-full left-0 right-0 mb-2 max-h-56 overflow-y-auto rounded-xl border border-hairline bg-bg-surface shadow-lg p-1.5">
+                        <div className="text-[10px] text-ink-muted px-2 py-1 font-semibold uppercase tracking-wide">Commands</div>
+                        {items.map((item, idx) => {
+                          const cmdType = (item.metadata as { commandType?: string } | undefined)?.commandType;
+                          const badge = cmdType === "skill" ? "SKILL" : cmdType === "pipeline" ? "PIPE" : "TOOL";
+                          const badgeColor = cmdType === "skill"
+                            ? "bg-purple-500/20 text-purple-400"
+                            : cmdType === "pipeline"
+                            ? "bg-blue-500/20 text-blue-400"
+                            : "bg-amber-500/20 text-amber-400";
+                          return (
+                            <ComposerPrimitive.Unstable_TriggerPopoverItem
+                              key={item.id}
+                              item={item}
+                              index={idx}
+                              className="w-full text-left px-3 py-2 rounded-lg text-xs text-white hover:bg-ai/20 cursor-pointer transition-colors data-[highlighted]:bg-ai/30"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-xs text-white truncate flex-1">/{item.label}</span>
+                                <span className={"shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold leading-tight " + badgeColor}>{badge}</span>
+                              </div>
+                              {item.description && (
+                                <div className="text-[11px] text-ink-muted mt-0.5 line-clamp-1">{item.description}</div>
+                              )}
+                            </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                          );
+                        })}
                       </div>
                     )}
                   </ComposerPrimitive.Unstable_TriggerPopoverItems>

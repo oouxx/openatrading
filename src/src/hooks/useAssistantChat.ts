@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useExternalStoreRuntime, unstable_useSlashCommandAdapter } from "@assistant-ui/react";
+import { useExternalStoreRuntime, unstable_useSlashCommandAdapter, unstable_defaultDirectiveFormatter } from "@assistant-ui/react";
 import { apiChatStream, fetchJson } from "@/stores/data";
 import type { ChatMessage as StoredMessage } from "./useChatThreads";
 
@@ -40,13 +40,14 @@ export function useAssistantChat(
       .catch(() => {});
   }, []);
 
-  // Slash command adapter
+  // Slash command adapter — Directive mode enables Tab auto-complete
   const slashCommands = useMemo(() => {
     return cmdSpecs.map((c) => ({
       id: c.name,
       label: c.name,
       description: c.description,
-      commandType: c.command_type,
+      icon: c.command_type === "tool" ? "Wrench" : c.command_type === "skill" ? "Brain" : "Workflow",
+      metadata: { commandType: c.command_type },
       execute: () => {
         cmdRef.current = { name: c.name, type: c.command_type };
       },
@@ -60,11 +61,23 @@ export function useAssistantChat(
 
   const onNew = useCallback(
     async (msg: { content?: ReadonlyArray<{ type?: string; text?: string }> }) => {
-      const text = msg.content?.[0]?.text ?? "";
+      let text = msg.content?.[0]?.text ?? "";
       if (!text) return;
 
-      const cmd = cmdRef.current;
+      // Parse directive from message text (e.g. ":tool[command_name] → command_name")
+      let cmd = cmdRef.current;
       cmdRef.current = null;
+      if (!cmd) {
+        const directiveMatch = text.match(/:(\w+)\[([^\]]+)\]/);
+        if (directiveMatch) {
+          const cmdName = directiveMatch[2];
+          const found = cmdSpecs.find((c) => c.name === cmdName);
+          if (found) {
+            cmd = { name: found.name, type: found.command_type };
+            text = text.replace(directiveMatch[0], "").trim();
+          }
+        }
+      }
 
       const currentMessages = messagesRef.current;
       const history = currentMessages.map((m) => ({

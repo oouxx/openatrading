@@ -39,13 +39,25 @@ pub struct AiRoleItem {
     pub display_name: String,
 }
 
-pub async fn get_ai_commands(State(_state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
-    use openatrading_core::llm::tools::ToolRegistry;
+pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
+    // Build full tool registry including MCP tools
+    let tool_cfg = openatrading_core::llm::ToolConfig {
+        mcp_servers: state.mcp_servers.clone(),
+    };
+    let registry = openatrading_core::llm::build_tools(&tool_cfg).await;
 
-    // Tool commands from ToolRegistry (static market tools — no MCP calls)
-    let registry = ToolRegistry::new();
-    let mut commands: Vec<CommandSpec> = registry
-        .market_tools()
+    let all_tools = registry.all_tools();
+    let mcp_count = registry.mcp_tools().len();
+    tracing::info!(
+        "get_ai_commands: {} total tools ({} market, {} mcp, {} meta/skill/decision)",
+        all_tools.len(),
+        registry.market_tools().len(),
+        mcp_count,
+        all_tools.len() - registry.market_tools().len() - mcp_count,
+    );
+
+    // All tools (market + meta skill + MCP + decision)
+    let mut commands: Vec<CommandSpec> = all_tools
         .iter()
         .map(|t| CommandSpec {
             name: t.name.clone(),
@@ -53,14 +65,6 @@ pub async fn get_ai_commands(State(_state): State<Arc<AppState>>) -> Json<Vec<Co
             command_type: CommandType::Tool,
         })
         .collect();
-
-    // Meta-skill tool
-    let meta = registry.meta_skill_tool();
-    commands.push(CommandSpec {
-        name: meta.name.clone(),
-        description: meta.description.clone(),
-        command_type: CommandType::Tool,
-    });
 
     // Skill commands from SkillRegistry
     let skills = openatrading_core::skills::SkillRegistry::from_disk();
