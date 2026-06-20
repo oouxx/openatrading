@@ -1,10 +1,10 @@
-import { useCallback } from "react";
 import type {
   RemoteThreadListAdapter,
   RemoteThreadListResponse,
   RemoteThreadMetadata,
   RemoteThreadInitializeResponse,
 } from "@assistant-ui/react";
+import type { ThreadMessage } from "@assistant-ui/react";
 import { fetchJson } from "@/stores/data";
 
 export interface ChatThread {
@@ -29,6 +29,20 @@ function toMetadata(t: ChatThread): RemoteThreadMetadata {
     title: t.title,
     lastMessageAt: new Date(t.updated_at),
   };
+}
+
+function generateTitleFromMessages(messages: readonly ThreadMessage[]): string {
+  // Find first user message text
+  for (const msg of messages) {
+    for (const part of msg.content) {
+      if (part.type === "text" && part.text) {
+        const text = part.text.trim();
+        // Take first 30 chars as title
+        return text.length > 30 ? text.slice(0, 30) + "…" : text;
+      }
+    }
+  }
+  return "新对话";
 }
 
 export function createThreadListAdapter(): RemoteThreadListAdapter {
@@ -65,8 +79,44 @@ export function createThreadListAdapter(): RemoteThreadListAdapter {
       return { remoteId: String(thread.id), externalId: String(thread.id) };
     },
 
-    async generateTitle(): Promise<never> {
-      throw new Error("not implemented");
+    async generateTitle(
+      remoteId: string,
+      messages: readonly ThreadMessage[],
+    ): Promise<ReadableStream<{
+      readonly path: readonly number[];
+      readonly type: string;
+      readonly textDelta?: string;
+      readonly part?: Record<string, unknown>;
+    }>> {
+      const title = generateTitleFromMessages(messages);
+
+      // Rename via API
+      await fetchJson(`/api/ai/threads/${remoteId}`, {
+        method: "PUT",
+        body: JSON.stringify({ title }),
+      });
+
+      // Return a minimal AssistantStream (text part with the title)
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            path: [0],
+            type: "part-start",
+            part: { type: "text" },
+          });
+          controller.enqueue({
+            path: [0],
+            type: "text-delta",
+            textDelta: title,
+          });
+          controller.enqueue({
+            path: [0],
+            type: "part-finish",
+          });
+          controller.close();
+        },
+      });
     },
 
     async fetch(remoteId: string): Promise<RemoteThreadMetadata> {
