@@ -9,7 +9,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
         .to_vec();
 
     let mcp = openatrading_core::llm::McpRegistry::single(endpoint);
-    all_tools.extend(mcp.discover().await);
+    all_tools.extend(mcp.discover().await.0);
 
     // ── Group by installed skills ───────────────────────
     let reg = openatrading_core::skills::SkillRegistry::from_disk();

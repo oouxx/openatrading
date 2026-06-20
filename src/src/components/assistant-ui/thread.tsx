@@ -1,3 +1,4 @@
+import type { Unstable_TriggerAdapter } from "@assistant-ui/core";
 import {
   ComposerAddAttachment,
   ComposerAttachments,
@@ -81,7 +82,7 @@ export type ThreadComponents = {
 
 export type ThreadProps = {
   components?: ThreadComponents | undefined;
-  slashAdapter?: { search: (query: string) => Array<{ id: string; type: string; label: string; description?: string }> };
+  slashAdapter?: Unstable_TriggerAdapter;
   slashAction?: { onExecute: (item: { id: string }) => void };
 };
 
