@@ -11,30 +11,39 @@ import { ThreadList } from "@/components/assistant-ui/thread-list";
 
 function AiCopilotContent() {
   const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
-  const threadIdRef = useRef<string | null>(null);
-  threadIdRef.current = mainThreadId ?? null;
+  const threadItems = useAuiState((s) => s.threads.threadItems);
+
+  // Get the real backend ID from thread data
+  const remoteId = useMemo(() => {
+    if (!mainThreadId) return null;
+    const item = threadItems.find((t) => t.id === mainThreadId);
+    return item?.remoteId ?? null;
+  }, [mainThreadId, threadItems]);
+
+  const remoteIdRef = useRef<string | null>(null);
+  remoteIdRef.current = remoteId;
 
   const onSaveMessage = useCallback((role: string, content: string) => {
-    const tid = threadIdRef.current;
-    if (tid) {
-      saveMessage(Number(tid), role, content);
+    const rid = remoteIdRef.current;
+    if (rid && /^\d+$/.test(rid)) {
+      saveMessage(Number(rid), role, content);
     }
   }, []);
 
   const { slashAdapter, slashAction, loadMessages } = useAssistantChat(
     "",
-    mainThreadId ? Number(mainThreadId) : null,
+    remoteId && /^\d+$/.test(remoteId) ? Number(remoteId) : null,
     onSaveMessage,
   );
 
   // Load messages when thread changes
   useEffect(() => {
-    if (mainThreadId) {
-      getMessages(Number(mainThreadId)).then((msgs) => {
+    if (remoteId && /^\d+$/.test(remoteId)) {
+      getMessages(Number(remoteId)).then((msgs) => {
         loadMessages(msgs);
       });
     }
-  }, [mainThreadId, loadMessages]);
+  }, [remoteId, loadMessages]);
 
   return (
     <div
