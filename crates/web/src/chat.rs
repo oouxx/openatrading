@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
+use openatrading_core::skills::SkillEntry;
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -78,6 +79,30 @@ pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<Com
     commands.extend(pipelines.commands());
 
     Json(commands)
+}
+
+#[derive(Serialize)]
+pub struct ToolResponse {
+    pub name: String,
+    pub description: String,
+}
+
+pub async fn get_skills(State(_state): State<Arc<AppState>>) -> Json<Vec<SkillEntry>> {
+    let skills = openatrading_core::skills::SkillRegistry::from_disk();
+    Json(skills.skills().to_vec())
+}
+
+pub async fn get_tools(State(state): State<Arc<AppState>>) -> Json<Vec<ToolResponse>> {
+    let registry = &state.ctx.tool_registry;
+    let tools = registry
+        .all_tools()
+        .iter()
+        .map(|t| ToolResponse {
+            name: t.name.clone(),
+            description: t.description.clone(),
+        })
+        .collect();
+    Json(tools)
 }
 
 pub async fn get_ai_roles(
