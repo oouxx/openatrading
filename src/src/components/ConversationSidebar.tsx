@@ -1,4 +1,3 @@
-// src/components/ConversationSidebar.tsx
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +9,12 @@ import { usePanelWidth } from "@/hooks/usePanelWidth";
 import { useConversations } from "@/hooks/useConversations";
 
 const PRESET_SKILLS = [
-  { name: "market-analysis", label: "📈 市场分析" },
-  { name: "dragon-tiger-tracking", label: "🐉 龙虎榜追踪" },
-  { name: "breakout-analysis", label: "🔥 涨停晋级" },
-  { name: "market-replay", label: "🎯 行情回放" },
-  { name: "strategy-manager", label: "🤖 策略管理" },
-  { name: "free-chat", label: "⚡ 自由对话" },
+  { name: "market-analysis", label: "市场分析" },
+  { name: "dragon-tiger-tracking", label: "龙虎榜追踪" },
+  { name: "breakout-analysis", label: "涨停晋级" },
+  { name: "market-replay", label: "行情回放" },
+  { name: "strategy-manager", label: "策略管理" },
+  { name: "free-chat", label: "自由对话" },
 ];
 
 export default function ConversationSidebar() {
@@ -31,33 +30,17 @@ export default function ConversationSidebar() {
     useConversations();
   const [showSkills, setShowSkills] = useState(false);
 
-  // Collapsed state: icon-only bar
   if (collapsed) {
     return (
       <div className="flex flex-col items-center py-3 gap-4 w-12 border-r border-hairline bg-bg-surface flex-shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleCollapse}
-          className="w-8 h-8"
-        >
+        <Button variant="ghost" size="icon" onClick={toggleCollapse} className="w-8 h-8">
           <Plus className="w-4 h-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMode("skill-editor")}
-          className="w-8 h-8"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setMode("skill-editor")} className="w-8 h-8">
           <Puzzle className="w-4 h-4" />
         </Button>
         <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMode("settings")}
-          className="w-8 h-8"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setMode("settings")} className="w-8 h-8">
           <Settings className="w-4 h-4" />
         </Button>
       </div>
@@ -95,21 +78,14 @@ export default function ConversationSidebar() {
             </div>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleCollapse}
-          className="w-8 h-8 flex-shrink-0"
-        >
+        <Button variant="ghost" size="icon" onClick={toggleCollapse} className="w-8 h-8 flex-shrink-0">
           <span className="block w-1 h-1 rounded-full bg-ink-muted shadow-[0_4px_0_0_var(--color-muted),0_8px_0_0_var(--color-muted)]" />
         </Button>
       </div>
 
       {/* Skills entry */}
       <button
-        onClick={() =>
-          setMode(mode === "skill-editor" ? "chat" : "skill-editor")
-        }
+        onClick={() => setMode(mode === "skill-editor" ? "chat" : "skill-editor")}
         className="flex items-center gap-2 px-4 py-2 text-sm text-ink-muted hover:text-white hover:bg-bg-hover transition-colors border-b border-hairline"
       >
         <Puzzle className="w-4 h-4" />
@@ -134,9 +110,7 @@ export default function ConversationSidebar() {
       {/* Session List */}
       <ScrollArea className="flex-1 px-2 py-1">
         {conversations.length === 0 ? (
-          <div className="py-8 text-center text-xs text-ink-muted">
-            暂无会话
-          </div>
+          <div className="py-8 text-center text-xs text-ink-muted">暂无会话</div>
         ) : (
           conversations.map((c) => (
             <button

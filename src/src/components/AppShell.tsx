@@ -11,10 +11,8 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg">
-      {/* Left sidebar always visible */}
       <ConversationSidebar />
 
-      {/* Center + Right area */}
       <div className="flex flex-1 min-w-0">
         {mode === "chat" ? (
           <>
@@ -24,11 +22,11 @@ export default function AppShell() {
             <RightPanel />
           </>
         ) : mode === "skill-editor" ? (
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-y-auto">
             <SkillEditor />
           </div>
         ) : (
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-y-auto">
             <SettingsView />
           </div>
         )}
