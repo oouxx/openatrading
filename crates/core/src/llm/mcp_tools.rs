@@ -345,6 +345,20 @@ pub struct McpServerConfig {
     pub enabled: bool,
 }
 
+impl McpServerConfig {
+    /// Create a new config with just a name (for testing/UI stubs).
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            transport: McpTransportConfig::StreamableHttp {
+                url: "http://localhost:8081/mcp".to_string(),
+                auth_token: None,
+            },
+            enabled: true,
+        }
+    }
+}
+
 fn default_transport() -> McpTransportConfig {
     McpTransportConfig::StreamableHttp {
         url: "http://localhost:8081/mcp".to_string(),

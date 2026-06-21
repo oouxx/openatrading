@@ -11,12 +11,13 @@ path = "src/lib.rs"
 openatrading-core = { path = "../core" }
 openatrading-channels = { path = "../channels" }
 openatrading-provider = { path = "../provider" }
+arc-swap = "1"
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-axum = "0.7"
+axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 async-stream = "0.3"
 tracing = "0.1"

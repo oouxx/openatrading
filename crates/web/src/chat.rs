@@ -46,14 +46,14 @@ pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<Com
     // Use the pre-built tool registry from AppContext (startup lifetime)
     let registry = &state.ctx.tool_registry;
 
-    let all_tools = registry.all_tools();
-    let mcp_count = registry.mcp_tools().len();
+    let all_tools = registry.load().all_tools();
+    let mcp_count = registry.load().mcp_tools().len();
     tracing::info!(
         "get_ai_commands: {} total tools ({} market, {} mcp, {} meta/skill/decision)",
         all_tools.len(),
-        registry.market_tools().len(),
+        registry.load().market_tools().len(),
         mcp_count,
-        all_tools.len() - registry.market_tools().len() - mcp_count,
+        all_tools.len() - registry.load().market_tools().len() - mcp_count,
     );
 
     // All tools (market + meta skill + MCP + decision)
@@ -97,6 +97,7 @@ pub async fn get_skills(State(_state): State<Arc<AppState>>) -> Json<Vec<SkillEn
 pub async fn get_tools(State(state): State<Arc<AppState>>) -> Json<Vec<ToolResponse>> {
     let registry = &state.ctx.tool_registry;
     let tools = registry
+        .load()
         .all_tools()
         .iter()
         .map(|t| ToolResponse {
@@ -242,6 +243,7 @@ pub async fn ai_chat(
                 tracing::warn!("ai_chat: Tool command with empty command_name");
             }
             let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .load()
                 .all_tools()
                 .iter()
                 .filter(|t| t.name == tool_name)
@@ -260,7 +262,7 @@ pub async fn ai_chat(
                 .unwrap_or(default_strategy);
             (
                 build_system_prompt(prompt),
-                tools_registry.all_tools().to_vec(),
+                tools_registry.load().all_tools().to_vec(),
             )
         },
         Some(CommandType::Pipeline) => {
@@ -270,6 +272,7 @@ pub async fn ai_chat(
             let prompt = spec.map(|s| s.prompt.as_str()).unwrap_or(default_strategy);
             let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
             let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .load()
                 .all_tools()
                 .iter()
                 .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
@@ -285,7 +288,7 @@ pub async fn ai_chat(
                 .unwrap_or(default_strategy);
             (
                 build_system_prompt(strategy_text),
-                tools_registry.all_tools().to_vec(),
+                tools_registry.load().all_tools().to_vec(),
             )
         },
     };

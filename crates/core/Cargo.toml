@@ -12,6 +12,7 @@ openatrading-channels = { path = "../channels" }
 openatrading-api = { path = "../api" }
 openatrading-provider = { path = "../provider" }
 openatrading-agent = { path = "../agent", features = ["mcp"] }
+arc-swap = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

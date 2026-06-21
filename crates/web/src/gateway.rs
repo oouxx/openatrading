@@ -47,7 +47,7 @@ impl Gateway {
             ctx,
             chat_threads: self.chat_threads.clone(),
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
-            mcp_servers: config.mcp_servers.clone(),
+            mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
         });
 

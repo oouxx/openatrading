@@ -26,7 +26,7 @@ pub struct AppState {
     pub ctx: AppContext,
     pub chat_threads: Arc<ChatThreadStore>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
-    pub mcp_servers: Vec<McpServerConfig>,
+    pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
 }
 
@@ -70,6 +70,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/ai/chat", post(chat::ai_chat))
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
+        .route("/api/skills", get(chat::get_skills))
+        .route("/api/tools", get(chat::get_tools))
         .route("/api/skills", get(chat::get_skills))
         .route("/api/tools", get(chat::get_tools))
         .route(
@@ -119,7 +121,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/ai/threads/:id/messages",
             post(chat::save_thread_message),
         )
-        .with_state(state)
+        .route("/api/mcp/servers", get(mcp::list_handler))
+        .route("/api/mcp/servers", post(mcp::add_handler))
+        .route("/api/mcp/servers/:name", delete(mcp::delete_handler))
+        .route("/api/mcp/servers/:name/toggle", get(mcp::toggle_handler))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
@@ -130,4 +135,5 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 )
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
+        .with_state(state)
 }
