@@ -187,7 +187,7 @@ pub async fn ai_chat(
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
-    use openatrading_core::llm::{create_agent, AgentEvent, AgentMessage};
+    use openatrading_core::llm::{AgentEvent, AgentMessage};
 
     let tool_cfg = openatrading_core::llm::ToolConfig {
         mcp_servers: state.mcp_servers.clone(),
@@ -260,7 +260,7 @@ pub async fn ai_chat(
         },
     };
 
-    let agent = Arc::new(create_agent(&state.ctx.llm, tools, &system_prompt));
+    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for h in req.history {

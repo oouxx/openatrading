@@ -10,10 +10,8 @@
 
 use std::sync::Arc;
 
-// use openatrading_agent::runner::create_agent;
-// use openatrading_agent::types::AgentMessage;
 use openatrading_core::llm::pi_ai_types::{AssistantMessageEvent, ContentBlock};
-use openatrading_core::llm::{create_agent, tools, AgentEvent, AgentMessage, LlmClient};
+use openatrading_core::llm::{tools, AgentEvent, AgentMessage, LlmClient};
 #[ignore = "integration test"]
 #[tokio::test]
 async fn test_deepseek_v4_flash_agent_process() {
@@ -24,8 +22,7 @@ async fn test_deepseek_v4_flash_agent_process() {
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
         vec![tools::get_market_overview(), tools::get_limit_up()];
 
-    let agent = create_agent(
-        &llm,
+    let agent = llm.create_agent(
         tools,
         "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
     );
@@ -86,8 +83,7 @@ async fn test_deepseek_is_streaming() {
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
         vec![tools::get_market_overview(), tools::get_limit_up()];
 
-    let agent = Arc::new(create_agent(
-        &llm,
+    let agent = Arc::new(llm.create_agent(
         tools,
         "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
     ));
