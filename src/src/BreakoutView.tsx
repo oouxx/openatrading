@@ -266,8 +266,7 @@ export default function BreakoutView() {
   )
 
   return (
-    <div className="min-h-screen bg-bg pt-11">
-      <div className="max-w-[1500px] mx-auto p-6 w-full">
+    <div className="p-4">
         {/* Stats Row */}
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-[18px]">
           {[
