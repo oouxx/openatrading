@@ -86,6 +86,12 @@ export default function LandingPage() {
 
         <div className="flex gap-3 justify-center flex-wrap">
           <Link
+            to="/app"
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium bg-ai text-white hover:opacity-90 transition-opacity"
+          >
+            开始使用 →
+          </Link>
+          <Link
             to="/roles"
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium bg-ai text-white hover:opacity-90 transition-opacity"
           >
