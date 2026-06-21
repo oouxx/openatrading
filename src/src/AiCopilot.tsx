@@ -7,7 +7,7 @@ import {
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { createThreadListAdapter, getMessages, saveMessage } from "@/hooks/useChatThreads";
 import { Thread } from "@/components/assistant-ui/thread";
-import { ThreadList } from "@/components/assistant-ui/thread-list";
+import ChatQuickButtons from "@/components/ChatQuickButtons";
 
 function AiCopilotContent() {
   const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
@@ -46,15 +46,10 @@ function AiCopilotContent() {
   }, [remoteId, loadMessages]);
 
   return (
-    <div
-      className="min-h-screen bg-bg pt-11 flex flex-row"
-      style={{ height: "calc(100vh - 44px)" }}
-    >
-      <div className="w-56 flex-shrink-0 bg-bg-surface border-r border-hairline flex flex-col h-full overflow-y-auto">
-        <ThreadList />
-      </div>
-      <div className="flex-1 flex flex-col">
+    <div className="flex flex-row h-full w-full">
+      <div className="flex-1 flex flex-col min-w-0">
         <Thread slashAdapter={slashAdapter} slashAction={slashAction} />
+        <ChatQuickButtons />
       </div>
     </div>
   );
