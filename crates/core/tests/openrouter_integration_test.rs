@@ -56,16 +56,12 @@ async fn test_openrouter_is_streaming() {
     while let Some(event) = rx.recv().await {
         match event {
             AgentEvent::MessageUpdate {
-                assistant_message_event,
+                assistant_message_event: AssistantMessageEvent::TextDelta { ref delta, .. },
                 ..
-            } => {
-                if let AssistantMessageEvent::TextDelta { delta, .. } = &assistant_message_event {
-                    if !delta.is_empty() {
-                        text_delta_count += 1;
-                        total_text.push_str(delta);
-                        eprint!("{delta}");
-                    }
-                }
+            } if !delta.is_empty() => {
+                text_delta_count += 1;
+                total_text.push_str(delta);
+                eprint!("{delta}");
             },
             AgentEvent::AgentEnd { .. } => break,
             _ => {},

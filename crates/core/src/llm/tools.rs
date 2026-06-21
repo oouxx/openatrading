@@ -3,6 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use openatrading_agent::mcp::McpHandle;
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::{AgentToolResult, DynTool};
 
@@ -643,7 +644,7 @@ pub fn create_meta_skill_tool() -> Arc<DynTool> {
 pub struct ToolRegistry {
     market: Vec<Arc<DynTool>>,
     mcp: Vec<Arc<DynTool>>,
-    _mcp_clients: Vec<super::mcp_tools::McpClient>,
+    _mcp_handle: Option<McpHandle>,
     decision: Option<Arc<DynTool>>,
     meta_skill: Arc<DynTool>,
 }
@@ -657,7 +658,7 @@ impl Default for ToolRegistry {
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
-            _mcp_clients: Vec::new(),
+            _mcp_handle: None,
             market: vec![
                 get_limit_up(),
                 get_limit_down(),
@@ -701,9 +702,9 @@ impl ToolRegistry {
         self.mcp.push(tool);
     }
 
-    /// Keep MCP clients alive so their transports don't close.
-    pub fn set_mcp_clients(&mut self, clients: Vec<super::mcp_tools::McpClient>) {
-        self._mcp_clients = clients;
+    /// Keep stdio MCP handle alive so subprocess transports don't close.
+    pub fn set_mcp_handle(&mut self, handle: Option<McpHandle>) {
+        self._mcp_handle = handle;
     }
 
     pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
