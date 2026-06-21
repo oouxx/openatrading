@@ -8,5 +8,9 @@ name = "openatrading_agent"
 path = "src/lib.rs"
 
 [dependencies]
-pi-agent-core = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.12", features = ["extraction"] }
-pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.12" }
+pi-agent-core = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.14", features = ["extraction"] }
+pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.14" }
+
+[features]
+default = []
+mcp = ["pi-agent-core/mcp"]

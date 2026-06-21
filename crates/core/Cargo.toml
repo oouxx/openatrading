@@ -11,7 +11,7 @@ path = "src/lib.rs"
 openatrading-channels = { path = "../channels" }
 openatrading-api = { path = "../api" }
 openatrading-provider = { path = "../provider" }
-openatrading-agent = { path = "../agent" }
+openatrading-agent = { path = "../agent", features = ["mcp"] }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

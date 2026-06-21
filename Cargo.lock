@@ -1069,7 +1069,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1315,7 +1315,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2983,7 +2983,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3667,7 +3667,7 @@ dependencies = [
 [[package]]
 name = "pi-agent-core"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.12#adde3ef2ff24b49137282cb6391033273ecaaf5f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.14#ff5c2a7a5cf0663c2a3e2a57b4e0f971a939b48c"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3675,6 +3675,7 @@ dependencies = [
  "pi-ai",
  "regex",
  "reqwest 0.12.28",
+ "rmcp",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -3690,7 +3691,7 @@ dependencies = [
 [[package]]
 name = "pi-ai"
 version = "1.78.0"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.12#adde3ef2ff24b49137282cb6391033273ecaaf5f"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.78.14#ff5c2a7a5cf0663c2a3e2a57b4e0f971a939b48c"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4483,7 +4484,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5672,7 +5673,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6697,7 +6698,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

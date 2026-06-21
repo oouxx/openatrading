@@ -8,8 +8,12 @@ use rmcp::{RoleClient, ServiceExt};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use super::tools::{empty_schema, to_box_err};
+use super::tools::to_box_err;
 use crate::llm::DynTool;
+use openatrading_agent::mcp::{
+    load_mcp_tools_from_config as upstream_load_mcp_tools, McpConfig as UpstreamMcpConfig,
+    McpHandle, McpServerConfig as UpstreamMcpServerConfig,
+};
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::AgentToolResult;
 
@@ -363,57 +367,51 @@ impl McpRegistry {
         }
     }
 
-    pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Vec<McpClient>) {
-        let mut all_tools = Vec::new();
-        let mut all_clients = Vec::new();
-        for server in &self.servers {
-            let client = match &server.transport {
-                McpTransportConfig::StreamableHttp { url, .. } => McpClient::connect(url).await,
-                McpTransportConfig::Sse { url, .. } => McpClient::connect(url).await,
-                McpTransportConfig::Stdio { command, args, env } => {
-                    McpClient::connect_stdio(command, args, env).await
-                },
-            };
-            let client = match client {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!("[mcp] {}: connect failed: {e}", server.name);
-                    continue;
-                },
-            };
-            match client.list_tools().await {
-                Ok(tools) => {
-                    let count = tools.as_array().map(|a| a.len()).unwrap_or(0);
-                    if let Some(arr) = tools.as_array() {
-                        for tool_data in arr {
-                            let name = match tool_data["name"].as_str() {
-                                Some(n) => n,
-                                None => continue,
-                            };
-                            let desc = tool_data["description"].as_str().unwrap_or("");
-                            let schema = tool_data["inputSchema"].clone();
-                            all_tools.push(client.create_tool(McpToolSpec {
-                                name: name.to_string(),
-                                description: desc.to_string(),
-                                schema: if schema.is_null() {
-                                    empty_schema()
-                                } else {
-                                    schema
-                                },
-                                method: name.to_string(),
-                            }));
-                        }
-                    }
-                    tracing::info!("[mcp] {}: discovered {} tools", server.name, count);
-                },
-                Err(e) => tracing::warn!("[mcp] {}: discover failed: {e}", server.name),
-            }
-            all_clients.push(client);
+    pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {
+        if self.servers.is_empty() {
+            return (Vec::new(), None);
         }
-        if all_tools.is_empty() {
-            tracing::info!("[mcp] no tools discovered");
+
+        // Convert our config to upstream format and batch-discover via pi-agent-core
+        let upstream_cfg = UpstreamMcpConfig {
+            mcp_servers: self
+                .servers
+                .iter()
+                .map(|s| {
+                    let upstream_server = match &s.transport {
+                        McpTransportConfig::StreamableHttp { url, .. }
+                        | McpTransportConfig::Sse { url, .. } => UpstreamMcpServerConfig::Http {
+                            url: url.clone(),
+                            headers: Default::default(),
+                        },
+                        McpTransportConfig::Stdio { command, args, env } => {
+                            UpstreamMcpServerConfig::Stdio {
+                                command: command.clone(),
+                                args: args.clone(),
+                                env: env.clone(),
+                            }
+                        },
+                    };
+                    (s.name.clone(), upstream_server)
+                })
+                .collect(),
+        };
+
+        match upstream_load_mcp_tools(&upstream_cfg).await {
+            Ok(mcp_tools) => {
+                let count = mcp_tools.tools.len();
+                let tools: Vec<Arc<DynTool>> = mcp_tools.tools.into_iter().map(Arc::new).collect();
+                tracing::info!(
+                    "[mcp] discovered {count} tools across {} servers",
+                    self.servers.len()
+                );
+                (tools, Some(mcp_tools.handle))
+            },
+            Err(e) => {
+                tracing::warn!("[mcp] discovery failed: {e}");
+                (Vec::new(), None)
+            },
         }
-        (all_tools, all_clients)
     }
 }
 
@@ -429,10 +427,10 @@ pub struct ToolConfig {
 pub async fn build_tools(config: &ToolConfig) -> super::tools::ToolRegistry {
     let mut registry = super::tools::ToolRegistry::new();
     let mcp = McpRegistry::from_config(&config.mcp_servers);
-    let (tools, clients) = mcp.discover().await;
+    let (tools, handle) = mcp.discover().await;
     for t in tools {
         registry.add_mcp(t);
     }
-    registry.set_mcp_clients(clients);
+    registry.set_mcp_handle(handle);
     registry
 }
