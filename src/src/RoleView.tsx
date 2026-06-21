@@ -8,6 +8,13 @@ import { roleKeys } from '@/hooks/query/queryKeys'
 import { useRoleList, useRolePositions, useRoleHistory, useRolePnlHistory } from '@/hooks/query/useRoleQueries'
 import { useCreateRole, useUpdateRoleStrategy, useDeleteRole, useResetRole } from '@/hooks/query/useRoleMutations'
 import KlineDrawer from '@/components/KlineDrawer'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function formatPct(v: number) {
   return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%'
@@ -310,21 +317,37 @@ export default function RoleView() {
   }, [selectedRole, editStrategyText, updateStrategyMutation])
 
   return (
-    <div className="min-h-screen bg-bg pt-11 flex flex-col" style={{ height: 'calc(100vh - 44px)' }}>
+    <div className="flex flex-col h-full">
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          roles={roles}
-          selectedRole={selectedRole}
-          onSelect={setSelectedRole}
-          onDelete={(name) => setShowDeleteConfirm(name)}
-          onCreate={() => setShowCreate(true)}
-          rolePnl={rolePnl}
-          rolePositionCounts={rolePositionCounts}
-          search={search}
-          setSearch={setSearch}
-          totalCount={roles.length}
-        />
+        {/* Sidebar replaced with Select at top for narrow right panel */}
+        <div className="px-4 py-3 border-b border-hairline flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedRole || ""}
+              onValueChange={(v) => {
+                setSelectedRole(v);
+                setShowCreate(v === "__create__");
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择角色..." />
+              </SelectTrigger>
+              <SelectContent>
+                {roles.map((r) => (
+                  <SelectItem key={r.name} value={r.name}>
+                    {r.display_name || r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-ai text-white hover:opacity-90 transition-opacity cursor-pointer flex-shrink-0"
+            >
+              + 新建
+            </button>
+          </div>
+        </div>
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-5">

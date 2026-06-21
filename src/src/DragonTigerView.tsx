@@ -143,8 +143,8 @@ export default function DragonTigerView() {
   };
 
   return (
-    <div className="min-h-screen bg-bg pt-11">
-      <div className="max-w-[1500px] mx-auto p-6 w-full">
+    <>
+      <div className="p-4 w-full">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-[18px]">
           {stats.map((s) => (
             <div
@@ -575,6 +575,6 @@ export default function DragonTigerView() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
