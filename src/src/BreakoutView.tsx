@@ -267,7 +267,7 @@ export default function BreakoutView() {
 
   return (
     <div className="p-4">
-        {/* Stats Row */}
+      {/* Stats Row */}
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-[18px]">
           {[
             { label: '今日涨停', value: String(todayTotal), sub: `晋级${promoted.length}+新进${first.length}`, hl: true },
@@ -387,7 +387,6 @@ export default function BreakoutView() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* Drawer */}
       <AnimatePresence>
