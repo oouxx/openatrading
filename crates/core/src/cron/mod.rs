@@ -268,7 +268,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
     update_all_position_prices(&ctx.trade, &ctx.api).await;
 
     for role in roles {
-        let mut role_tools = ctx.tools.clone();
+        let mut role_tools = ctx.all_tools();
         role_tools.push(create_positions_tool(ctx.trade.clone(), role.name.clone()));
         role_tools.push(create_historical_context_tool(ctx.memory.clone()));
 

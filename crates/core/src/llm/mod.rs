@@ -13,6 +13,7 @@ pub use mcp_server::{build_market_tools, serve_http, serve_stdio, MarketToolsSer
 pub use mcp_tools::{
     build_tools, McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
 };
+pub use tools::ToolRegistry;
 
 pub use openatrading_agent::agent::{Agent, AgentOptions};
 pub use openatrading_agent::pi_ai_types;

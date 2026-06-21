@@ -92,11 +92,13 @@ impl McpClient {
             std::env::current_dir().ok()
         );
         let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::Connect(e.into()))?;
+        tracing::info!("[mcp] connect_stdio: child process spawned, serving...");
         let service: RunningService<RoleClient, ()> = ()
             .serve(transport)
             .await
             .map_err(|e| McpError::Connect(e.into()))?;
         let peer = service.peer().clone();
+        tracing::info!("[mcp] connect_stdio: handshake complete, service initialized");
         Ok(Self {
             peer,
             _service: service,
@@ -105,11 +107,13 @@ impl McpClient {
 
     /// List all tools from the server.
     pub async fn list_tools(&self) -> Result<serde_json::Value, McpError> {
+        tracing::info!("[mcp] list_tools: calling list_all_tools");
         let tools = self
             .peer
             .list_all_tools()
             .await
             .map_err(|e| McpError::List(e.into()))?;
+        tracing::info!("[mcp] list_tools: got {} tools", tools.len());
         Ok(serde_json::to_value(tools).unwrap_or_default())
     }
 
@@ -119,17 +123,22 @@ impl McpClient {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, McpError> {
+        tracing::info!("[mcp] call: {tool_name}");
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
-        let result = self
-            .peer
-            .call_tool(params)
-            .await
-            .map_err(|e| McpError::Call(e.into()))?;
+        let start = std::time::Instant::now();
+        let result = self.peer.call_tool(params).await.map_err(|e| {
+            tracing::error!("[mcp] call call_tool ERROR: {tool_name}: {e}");
+            McpError::Call(e.into())
+        })?;
+        tracing::info!(
+            "[mcp] call call_tool OK: {tool_name} took {:?}",
+            start.elapsed()
+        );
 
         let text = result
             .content
@@ -154,18 +163,22 @@ impl McpClient {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<String, McpError> {
-        tracing::debug!("[mcp] call_raw: {tool_name}");
+        tracing::info!("[mcp] call_raw: {tool_name}");
+        tracing::info!(
+            "[mcp] call_raw args: {}",
+            serde_json::to_string(&arguments).unwrap_or_default()
+        );
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
-        let result = self
-            .peer
-            .call_tool(params)
-            .await
-            .map_err(|e| McpError::Call(e.into()))?;
+        tracing::info!("[mcp] call_raw: sending to peer");
+        let result = self.peer.call_tool(params).await.map_err(|e| {
+            tracing::error!("[mcp] call_raw call_tool ERROR: {tool_name}: {e}");
+            McpError::Call(e.into())
+        })?;
 
         let text = result
             .content
@@ -176,6 +189,7 @@ impl McpClient {
             })
             .ok_or(McpError::NoContent)?;
 
+        tracing::info!("[mcp] call_raw OK: {tool_name}");
         tracing::info!(
             "[mcp] call_raw: {tool_name} returned:
 {}",
@@ -189,9 +203,11 @@ impl McpClient {
     /// Returns `(tool_count, call_result)` where `call_result` is `Ok(())` if
     /// the first tool was called successfully, or an error description.
     pub async fn verify(&self) -> Result<(usize, Result<(), String>), McpError> {
+        tracing::info!("[mcp] verify: listing tools");
         let tools = self.list_tools().await?;
         let arr = tools.as_array().map(|v| v.as_slice()).unwrap_or(&[]);
         let count = arr.len();
+        tracing::info!("[mcp] verify: got {} tools", count);
 
         if count == 0 {
             return Ok((0, Ok(())));
@@ -244,17 +260,22 @@ impl McpClient {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, McpError> {
-        tracing::debug!("[mcp] do_call: {tool_name}");
+        tracing::info!("[mcp] do_call: {tool_name}");
+        tracing::info!(
+            "[mcp] do_call args: {}",
+            serde_json::to_string(&arguments).unwrap_or_default()
+        );
         let args = arguments
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
 
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args);
-        let result = peer
-            .call_tool(params)
-            .await
-            .map_err(|e| McpError::Call(e.into()))?;
+        tracing::info!("[mcp] do_call: sending to peer");
+        let result = peer.call_tool(params).await.map_err(|e| {
+            tracing::error!("[mcp] do_call: call_tool ERROR: {tool_name}: {e}");
+            McpError::Call(e.into())
+        })?;
 
         let text = result
             .content
@@ -369,8 +390,15 @@ impl McpRegistry {
 
     pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {
         if self.servers.is_empty() {
+            tracing::warn!("[mcp] discover: no servers configured");
             return (Vec::new(), None);
         }
+
+        tracing::info!(
+            "[mcp] discover: starting discovery for {} servers: {:?}",
+            self.servers.len(),
+            self.servers.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
 
         // Convert our config to upstream format and batch-discover via pi-agent-core
         let upstream_cfg = UpstreamMcpConfig {
@@ -397,6 +425,11 @@ impl McpRegistry {
                 .collect(),
         };
 
+        tracing::info!(
+            "[mcp] upstream_cfg: {} servers in config",
+            upstream_cfg.mcp_servers.len()
+        );
+
         match upstream_load_mcp_tools(&upstream_cfg).await {
             Ok(mcp_tools) => {
                 let count = mcp_tools.tools.len();
@@ -405,10 +438,14 @@ impl McpRegistry {
                     "[mcp] discovered {count} tools across {} servers",
                     self.servers.len()
                 );
+                tracing::info!(
+                    "[mcp] McpHandle has {} connections",
+                    mcp_tools.handle.server_count()
+                );
                 (tools, Some(mcp_tools.handle))
             },
             Err(e) => {
-                tracing::warn!("[mcp] discovery failed: {e}");
+                tracing::error!("[mcp] discovery FAILED: {e:?}");
                 (Vec::new(), None)
             },
         }
