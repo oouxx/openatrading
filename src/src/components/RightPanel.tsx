@@ -1,8 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { usePanelWidth } from "@/hooks/usePanelWidth";
-import ResizableHandle from "./ResizableHandle";
+import { Button } from "@/components/ui/button";
 import DragonTigerView from "@/DragonTigerView";
 import BreakoutView from "@/BreakoutView";
 import ReplayView from "@/ReplayView";
@@ -19,8 +17,6 @@ const VIEW_TITLES: Record<string, string> = {
 
 export default function RightPanel() {
   const [activeView, setActiveView] = useState<ViewId | null>(null);
-  const { displayWidth, setWidth } =
-    usePanelWidth("layout:right-width", 420, 320, 600, "layout:right-collapsed");
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -30,10 +26,6 @@ export default function RightPanel() {
     window.addEventListener("open-right-panel", handler);
     return () => window.removeEventListener("open-right-panel", handler);
   }, []);
-
-  const onResize = useCallback((delta: number) => {
-    setWidth((w) => w + delta);
-  }, [setWidth]);
 
   if (!activeView) return null;
 
@@ -47,20 +39,21 @@ export default function RightPanel() {
   };
 
   return (
-    <>
-      <ResizableHandle onResize={onResize} />
-      <div
-        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden flex-shrink-0"
-        style={{ width: displayWidth || 420 }}
-      >
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline flex-shrink-0">
-          <span className="text-sm font-medium text-white">{VIEW_TITLES[activeView]}</span>
-          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setActiveView(null)}>
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto">{renderView()}</div>
+    <div className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden flex-shrink-0 w-[420px]">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline flex-shrink-0">
+        <span className="text-sm font-medium text-white">
+          {VIEW_TITLES[activeView]}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-7 h-7"
+          onClick={() => setActiveView(null)}
+        >
+          <X className="w-4 h-4" />
+        </Button>
       </div>
-    </>
+      <div className="flex-1 overflow-y-auto">{renderView()}</div>
+    </div>
   );
 }
