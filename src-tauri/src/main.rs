@@ -1052,7 +1052,7 @@ fn main() {
         ctx: app_ctx,
         chat_threads: gateway.chat_threads.clone(),
         roles: Arc::new(RwLock::new(roles)),
-        mcp_servers: Vec::new(),
+        mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
     });
 
