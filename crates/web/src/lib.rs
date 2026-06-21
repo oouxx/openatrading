@@ -2,6 +2,7 @@ pub mod cache;
 pub mod chat;
 pub mod gateway;
 pub mod handlers;
+pub mod mcp;
 
 use cache::AppCache;
 use std::sync::Arc;
@@ -69,6 +70,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/ai/chat", post(chat::ai_chat))
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
+        .route("/api/skills", get(chat::get_skills))
+        .route("/api/tools", get(chat::get_tools))
         .route(
             "/api/plates-by-any-stock/:symbol",
             get(handlers::get_plates_by_any_stock),
