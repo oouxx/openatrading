@@ -32,6 +32,8 @@ pub struct ChatRequest {
     command_name: Option<String>,
     #[serde(default)]
     command_type: Option<openatrading_core::commands::CommandType>,
+    #[serde(default)]
+    skill_name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -219,7 +221,15 @@ pub async fn ai_chat(
     let roles_guard = state.roles.read().await;
     let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
-    let (system_prompt, tools) = match req.command_type {
+    // skill_name support: route to Skill command if skill_name present
+    let effective_command_type = req.command_type.clone().or_else(|| {
+        req.skill_name
+            .as_ref()
+            .map(|_| openatrading_core::commands::CommandType::Skill)
+    });
+    let effective_command_name = req.command_name.clone().or_else(|| req.skill_name.clone());
+
+    let (system_prompt, tools) = match effective_command_type {
         Some(CommandType::Tool) => {
             let strategy_text = roles_guard
                 .iter()
@@ -240,7 +250,7 @@ pub async fn ai_chat(
             (sp, filtered)
         },
         Some(CommandType::Skill) => {
-            let skill_name = req.command_name.as_deref().unwrap_or("");
+            let skill_name = effective_command_name.as_deref().unwrap_or("");
             let skills = openatrading_core::skills::SkillRegistry::from_disk();
             let prompt = skills
                 .skills()
