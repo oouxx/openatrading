@@ -40,11 +40,8 @@ pub struct AiRoleItem {
 }
 
 pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
-    // Build full tool registry including MCP tools
-    let tool_cfg = openatrading_core::llm::ToolConfig {
-        mcp_servers: state.mcp_servers.clone(),
-    };
-    let registry = openatrading_core::llm::build_tools(&tool_cfg).await;
+    // Use the pre-built tool registry from AppContext (startup lifetime)
+    let registry = &state.ctx.tool_registry;
 
     let all_tools = registry.all_tools();
     let mcp_count = registry.mcp_tools().len();
@@ -189,10 +186,8 @@ pub async fn ai_chat(
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
     use openatrading_core::llm::{AgentEvent, AgentMessage};
 
-    let tool_cfg = openatrading_core::llm::ToolConfig {
-        mcp_servers: state.mcp_servers.clone(),
-    };
-    let tools_registry = openatrading_core::llm::build_tools(&tool_cfg).await;
+    // Use the pre-built tool registry from AppContext (startup lifetime)
+    let tools_registry = &state.ctx.tool_registry;
 
     // ── Command-aware configuration ──
     let role_name = req.role.as_deref().unwrap_or("");

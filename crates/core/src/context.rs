@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{build_tools, DynTool, LlmClient, McpServerConfig, ToolConfig};
+use crate::llm::{build_tools, DynTool, LlmClient, McpServerConfig, ToolConfig, ToolRegistry};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
@@ -10,7 +10,7 @@ use crate::trade::sqlite::TradeManager;
 pub struct AppContext {
     pub llm: LlmClient,
     pub api: ApiClient,
-    pub tools: Vec<Arc<DynTool>>,
+    pub tool_registry: Arc<ToolRegistry>,
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
     pub social: Arc<dyn NotificationSender>,
@@ -30,14 +30,24 @@ impl AppContext {
         let tool_cfg = ToolConfig {
             mcp_servers: mcp_servers.to_vec(),
         };
-        let tools = build_tools(&tool_cfg).await.all_tools().to_vec();
+        let tool_registry = Arc::new(build_tools(&tool_cfg).await);
         Self {
             llm,
             api,
-            tools,
+            tool_registry,
             memory,
             trade,
             social,
         }
+    }
+
+    /// Get all tools (market + meta + MCP + decision).
+    pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
+        self.tool_registry.all_tools()
+    }
+
+    /// Get only MCP tools.
+    pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
+        self.tool_registry.mcp_tools()
     }
 }

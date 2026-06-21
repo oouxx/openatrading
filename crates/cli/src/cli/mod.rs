@@ -82,8 +82,8 @@ async fn build_chat_args(app_config: &AppConfig) -> openatrading_tui::chat::Chat
     );
 
     openatrading_tui::chat::ChatArgs {
-        llm: ctx.llm,
-        tools: ctx.tools,
+        llm: ctx.llm.clone(),
+        tools: ctx.all_tools(),
         system_prompt,
     }
 }

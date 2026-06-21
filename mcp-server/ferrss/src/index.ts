@@ -13,15 +13,26 @@ import { fileURLToPath } from "url";
 
 const execAsync = promisify(exec);
 
+// Timestamped log helper
+function log(...args: unknown[]) {
+  console.error(`[ferrss-mcp ${new Date().toISOString()}]`, ...args);
+}
+
 // Resolve autocli binary path
 function findAutocli(): string {
   const envBin = process.env.FERRSS_BIN_PATH;
+  log("findAutocli: FERRSS_BIN_PATH=", envBin, "cwd=", process.cwd());
   if (envBin) {
-    if (existsSync(envBin)) return envBin;
+    if (existsSync(envBin)) {
+      log("findAutocli: using FERRSS_BIN_PATH:", envBin);
+      return envBin;
+    }
     try {
       execSync(`"${envBin}" --version`, { stdio: "pipe" });
+      log("findAutocli: FERRSS_BIN_PATH works:", envBin);
       return envBin;
-    } catch {
+    } catch (e) {
+      log("findAutocli: FERRSS_BIN_PATH not working:", envBin, e);
       throw new Error(
         `FERRSS_BIN_PATH is set but binary not found or not working: ${envBin}`
       );
@@ -238,12 +249,15 @@ const server = new Server(
   { capabilities: { tools: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  log("list_tools called");
+  return { tools: TOOLS };
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  log("call_tool:", name, "args:", JSON.stringify(args));
+  const start = Date.now();
 
   try {
     switch (name) {
@@ -340,24 +354,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
+    const elapsed = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
+    log("call_tool ERROR:", name, "elapsed:", elapsed, "ms error:", message);
     return {
       content: [{ type: "text" as const, text: `Error: ${message}` }],
       isError: true,
     };
   }
+  log("call_tool OK:", name, "elapsed:", Date.now() - start, "ms");
 });
 
 // Start
 async function main() {
   // Validate autocli is available
-  getAutocliPath();
+  const binPath = getAutocliPath();
+  log("autocli path resolved:", binPath);
+
   const transport = new StdioServerTransport();
+  log("created StdioServerTransport");
+
+  // Hook into transport lifecycle
+  transport.onclose = () => log("transport onclose fired");
+  transport.onerror = (e: unknown) => log("transport onerror:", e);
+
   await server.connect(transport);
-  console.error("Ferrss MCP server running on stdio");
+  console.error(`[ferrss-mcp ${new Date().toISOString()}] Ferrss MCP server running on stdio`);
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  console.error(`[ferrss-mcp ${new Date().toISOString()}] Fatal error:`, err);
   process.exit(1);
 });
+
+// Log transport close / error events
+process.on("exit", (code) => log("process exit, code:", code));
+process.on("uncaughtException", (err) => log("uncaught exception:", err));
+process.on("unhandledRejection", (err) => log("unhandled rejection:", err));
