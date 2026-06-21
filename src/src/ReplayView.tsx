@@ -166,7 +166,7 @@ export default function ReplayView() {
   const nowTs = currentMinute
 
   return (
-    <div className="min-h-screen bg-bg pt-11 flex flex-col" style={{ height: 'calc(100vh - 44px)' }}>
+    <div className="flex flex-col h-full">
       {/* Control Bar */}
       <div className="flex items-center gap-2.5 px-5 py-2 bg-bg-surface border-b border-hairline flex-shrink-0 flex-wrap sticky top-0 z-15">
         {[
