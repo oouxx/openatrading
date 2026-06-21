@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -10,6 +13,8 @@ use pi_ai::types::{
     SimpleStreamOptions, StreamOptions, Tool as PiTool,
 };
 
+pub use pi_agent_core::types::{StreamFn, StreamFnOptions};
+
 #[derive(Clone)]
 pub struct LlmClient {
     pub model: Model,
@@ -17,6 +22,79 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
+    /// Build a pi-agent-core-compatible `StreamFn` from this client.
+    /// This bridges `LlmClient::create_stream` into the generic `StreamFn`
+    /// interface that `pi_agent_core::agent::Agent` and `run_agent_loop` expect.
+    pub fn to_stream_fn(&self) -> StreamFn {
+        let api_key = self.api_key.clone();
+        let stream_llm = self.clone();
+        Arc::new(move |_model, ctx, _thinking, opts| {
+            let api_key = api_key.clone();
+            let stream_llm = stream_llm.clone();
+            Box::pin(async move {
+                let mut options = StreamOptions {
+                    api_key: Some(api_key),
+                    max_tokens: Some(4096),
+                    temperature: Some(0.7),
+                    ..Default::default()
+                };
+                if let Some(key) = opts.api_key.clone() {
+                    options.api_key = Some(key);
+                }
+                if let Some(session_id) = opts.session_id {
+                    options.session_id = Some(session_id);
+                }
+                if let Some(transport) = opts.transport {
+                    options.transport = Some(match transport.as_str() {
+                        "websocket" => pi_ai::types::Transport::Websocket,
+                        "websocket-cached" => pi_ai::types::Transport::WebsocketCached,
+                        "auto" => pi_ai::types::Transport::Auto,
+                        _ => pi_ai::types::Transport::Sse,
+                    });
+                }
+                let event_stream = stream_llm.create_stream(&_model, &ctx, options);
+                let response: pi_agent_core::pi_ai_types::StreamResponse = Box::new(event_stream);
+                Ok(response)
+            })
+        })
+    }
+
+    /// Create a pi-agent-core `Agent` pre-configured with this client's LLM.
+    pub fn create_agent(
+        &self,
+        tools: Vec<std::sync::Arc<pi_agent_core::types::DynTool>>,
+        system_prompt: &str,
+    ) -> pi_agent_core::agent::Agent {
+        use pi_agent_core::agent::{Agent, AgentOptions};
+        use pi_agent_core::types::{AgentState, GetApiKeyFn};
+
+        let stream_fn = self.to_stream_fn();
+        let get_api_key: GetApiKeyFn = std::sync::Arc::new({
+            let api_key = self.api_key.clone();
+            move |_provider| {
+                let key = api_key.clone();
+                Box::pin(async move { Some(key) })
+            }
+        });
+
+        Agent::new(AgentOptions {
+            initial_state: Some(AgentState {
+                system_prompt: system_prompt.to_string(),
+                model: self.model.clone(),
+                thinking_level: "off".into(),
+                tools,
+                messages: Vec::new(),
+                is_streaming: false,
+                streaming_message: None,
+                pending_tool_calls: HashSet::new(),
+                error_message: None,
+            }),
+            stream_fn: Some(stream_fn),
+            get_api_key: Some(get_api_key),
+            ..Default::default()
+        })
+    }
+
     /// Return a sensible base_url for a known provider when the model is
     /// not in the built-in registry.  Falls back to empty (which pi-ai's
     /// HTTP transport treats as "use the registered API endpoint").

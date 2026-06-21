@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use gray_matter::{engine::YAML, Matter};
 use serde::{Deserialize, Serialize};
 
-pub use pi_agent_core::harness::types::Skill;
+pub use openatrading_agent::harness::types::Skill;
 
 use crate::RoleEntry;
 

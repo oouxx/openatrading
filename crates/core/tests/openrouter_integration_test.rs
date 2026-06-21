@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use openatrading_core::llm::pi_ai_types::{AssistantMessageEvent, ContentBlock};
-use openatrading_core::llm::{create_agent, tools, AgentEvent, AgentMessage, LlmClient};
+use openatrading_core::llm::{tools, AgentEvent, AgentMessage, LlmClient};
 
 /// Simulate the /api/ai/chat SSE streaming flow:
 /// subscribe → process in background → collect events via channel → verify.
@@ -18,8 +18,7 @@ async fn test_openrouter_is_streaming() {
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
         vec![tools::get_market_overview(), tools::get_limit_up()];
 
-    let agent = Arc::new(create_agent(
-        &llm,
+    let agent = Arc::new(llm.create_agent(
         tools,
         "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
     ));

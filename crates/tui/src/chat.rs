@@ -8,7 +8,7 @@ use envision::prelude::*;
 use envision::{TextArea, TextAreaMessage, TextAreaState};
 
 use openatrading_core::llm::{
-    create_agent, pi_ai_types::ContentBlock, AgentEvent, AgentMessage, DynTool, LlmClient,
+    pi_ai_types::ContentBlock, AgentEvent, AgentMessage, DynTool, LlmClient,
 };
 
 /// Chat 子命令运行所需的依赖，由 CLI 层根据 `AppConfig` 构建后注入。
@@ -308,7 +308,7 @@ async fn run_llm(
 ) {
     use std::pin::Pin;
 
-    let agent = Arc::new(create_agent(&args.llm, args.tools, &args.system_prompt));
+    let agent = Arc::new(args.llm.create_agent(args.tools, &args.system_prompt));
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for msg in &llm_messages {
