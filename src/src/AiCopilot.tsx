@@ -1,18 +1,17 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import {
-  AssistantRuntimeProvider,
-  useRemoteThreadListRuntime,
   useAuiState,
 } from "@assistant-ui/react";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
-import { createThreadListAdapter, getMessages, saveMessage } from "@/hooks/useChatThreads";
+import { getMessages, saveMessage } from "@/hooks/useChatThreads";
 import { fetchJson } from "@/stores/data";
 import { Thread } from "@/components/assistant-ui/thread";
 import ChatQuickButtons from "@/components/ChatQuickButtons";
 import KlineDrawer from "@/components/KlineDrawer";
 
-function AiCopilotContent() {
+export default function AiCopilotContent() {
+
   const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
@@ -179,24 +178,5 @@ function AiCopilotContent() {
         />
       )}
     </div>
-  );
-}
-
-export default function AiCopilot() {
-  const adapter = useMemo(() => createThreadListAdapter(), []);
-
-  const { runtime } = useAssistantChat("");
-
-  const runtimeHook = useCallback(() => runtime, [runtime]);
-
-  const threadListRuntime = useRemoteThreadListRuntime({
-    adapter,
-    runtimeHook,
-  });
-
-  return (
-    <AssistantRuntimeProvider runtime={threadListRuntime}>
-      <AiCopilotContent />
-    </AssistantRuntimeProvider>
   );
 }
