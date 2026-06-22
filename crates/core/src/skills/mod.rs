@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use gray_matter::{engine::YAML, Matter};
 use serde::{Deserialize, Serialize};
 
 pub use openatrading_agent::harness::types::Skill;
@@ -103,16 +102,12 @@ struct SkillFrontmatter {
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.
 /// Returns `(frontmatter, body)` where body is the content after the closing `---`.
 fn parse_skill_frontmatter(raw: &str) -> (Option<SkillFrontmatter>, String) {
-    let matter = Matter::<YAML>::new();
-    match matter.parse::<SkillFrontmatter>(raw) {
-        Ok(parsed) => {
-            let body = parsed.content.trim().to_string();
-            (parsed.data, body)
+    match crate::utils::parse_yaml_frontmatter(raw) {
+        Some((matter, body)) => {
+            let fm = serde_yaml::from_str::<SkillFrontmatter>(&matter).ok();
+            (fm, body.trim().to_string())
         },
-        Err(_) => {
-            // If parsing fails, treat the entire content as body (no frontmatter)
-            (None, raw.trim().to_string())
-        },
+        None => (None, raw.trim().to_string()),
     }
 }
 

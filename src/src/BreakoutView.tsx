@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { type Stock } from '@/stores/data'
 import { useLimitUp } from '@/hooks/query/useLimitUp'
 import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
+import { normalizeSymbol, getKlineImageUrl } from '@/lib/stock-utils'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -75,27 +76,6 @@ function fmtCap(v: number): string {
 
 function dayLabel(d: number): string {
   return d === 1 ? '首板' : d === 2 ? '二板' : d === 3 ? '三板' : d + '板'
-}
-
-function normalizeSymbol(raw: string): string {
-  const dot = raw.indexOf('.')
-  if (dot !== -1) {
-    const code = raw.substring(0, dot)
-    const suffix = raw.substring(dot + 1).toLowerCase()
-    return (suffix === 'ss' ? 'sh' : suffix) + code
-  }
-  return (raw.startsWith('6') ? 'sh' : 'sz') + raw
-}
-
-function getKlineImageUrl(symbol: string, period: string): string {
-  const s = normalizeSymbol(symbol)
-  switch (period) {
-    case 'minute': return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-    case 'day': return `https://image.sinajs.cn/newchart/daily/n/${s}.gif`
-    case 'week': return `https://image.sinajs.cn/newchart/weekly/n/${s}.gif`
-    case 'month': return `https://image.sinajs.cn/newchart/monthly/n/${s}.gif`
-    default: return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-  }
 }
 
 // ── Table styles ───────────────────────────────────────

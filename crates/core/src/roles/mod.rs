@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use gray_matter::{engine::YAML, Matter};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -20,16 +19,14 @@ pub fn default_skills_dir() -> PathBuf {
     crate::atrading_home().join("skills")
 }
 
-/// Parse YAML frontmatter from `---\n...\n---` delimited content using gray-matter.
+/// Parse YAML frontmatter from `---\n...\n---` delimited content.
 pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
-    let matter = Matter::<YAML>::new();
-    match matter.parse::<serde_json::Value>(content) {
-        Ok(parsed) => {
-            let map: HashMap<String, String> =
-                serde_yaml::from_str(&parsed.matter).unwrap_or_default();
-            (map, parsed.content)
+    match crate::utils::parse_yaml_frontmatter(content) {
+        Some((matter, body)) => {
+            let map: HashMap<String, String> = serde_yaml::from_str(&matter).unwrap_or_default();
+            (map, body)
         },
-        Err(_) => (HashMap::new(), content.trim().to_string()),
+        None => (HashMap::new(), content.trim().to_string()),
     }
 }
 
