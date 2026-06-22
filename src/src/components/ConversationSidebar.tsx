@@ -34,15 +34,20 @@ export default function ConversationSidebar() {
   );
   const [search, setSearch] = useState("");
 
+  const threadIds = useAuiState((s) => s.threads.threadIds);
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
   const filteredIndices = useMemo(() => {
-    if (!search.trim()) return threadItems.map((_, i) => i);
+    if (!search.trim()) return threadIds.map((_, i) => i);
     const q = search.trim().toLowerCase();
-    return threadItems
-      .map((t, i) => ((t.title || "").toLowerCase().includes(q) ? i : -1))
+    const itemsById = new Map(threadItems.map((t) => [t.id, t]));
+    return threadIds
+      .map((id, i) => {
+        const t = itemsById.get(id);
+        return t && (t.title || "").toLowerCase().includes(q) ? i : -1;
+      })
       .filter((i) => i !== -1);
-  }, [threadItems, search]);
+  }, [threadIds, threadItems, search]);
 
   if (collapsed) {
     return (
@@ -118,7 +123,7 @@ export default function ConversationSidebar() {
         ) : (
           filteredIndices.map((index) => (
             <ThreadListPrimitive.ItemByIndex
-              key={threadItems[index]?.id ?? index}
+              key={threadIds[index]}
               index={index}
               components={{ ThreadListItem }}
             />
