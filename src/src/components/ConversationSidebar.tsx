@@ -6,16 +6,11 @@ import { Separator } from "@/components/ui/separator";
 import { Search, Plus, Settings, Puzzle } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { usePanelWidth } from "@/hooks/usePanelWidth";
-import { useConversations } from "@/hooks/useConversations";
-
-const PRESET_SKILLS = [
-  { name: "market-analysis", label: "市场分析" },
-  { name: "dragon-tiger-tracking", label: "龙虎榜追踪" },
-  { name: "breakout-analysis", label: "涨停晋级" },
-  { name: "market-replay", label: "行情回放" },
-  { name: "strategy-manager", label: "策略管理" },
-  { name: "free-chat", label: "自由对话" },
-];
+import {
+  ThreadListPrimitive,
+  ThreadListItemPrimitive,
+  useAuiState,
+} from "@assistant-ui/react";
 
 export default function ConversationSidebar() {
   const { mode, setMode } = useAppMode();
@@ -26,36 +21,27 @@ export default function ConversationSidebar() {
     360,
     "layout:left-collapsed",
   );
-  const {
-    conversations,
-    selectedId,
-    selectConversation,
-    createConversation,
-    search,
-    setSearch,
-  } = useConversations();
-  const [showSkills, setShowSkills] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const filteredConversations = useMemo(() => {
-    if (!search.trim()) return conversations;
+  const threadItems = useAuiState((s) => s.threads.threadItems);
+  const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
+
+  const filteredThreads = useMemo(() => {
+    if (!search.trim()) return threadItems;
     const q = search.trim().toLowerCase();
-    return conversations.filter(
-      (c) => c.title.toLowerCase().includes(q)
+    return threadItems.filter((t) =>
+      (t.title || "").toLowerCase().includes(q)
     );
-  }, [conversations, search]);
-
-  const handleNewSession = async (skillLabel?: string) => {
-    setShowSkills(false);
-    const title = skillLabel || "新对话";
-    await createConversation(title);
-  };
+  }, [threadItems, search]);
 
   if (collapsed) {
     return (
       <div className="flex flex-col items-center py-3 gap-4 w-12 border-r border-hairline bg-bg-surface flex-shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => handleNewSession()} className="w-8 h-8" title="新建会话">
-          <Plus className="w-4 h-4" />
-        </Button>
+        <ThreadListPrimitive.New asChild>
+          <Button variant="ghost" size="icon" className="w-8 h-8" title="新建会话">
+            <Plus className="w-4 h-4" />
+          </Button>
+        </ThreadListPrimitive.New>
         <Button variant="ghost" size="icon" onClick={() => setMode("skill-editor")} className="w-8 h-8">
           <Puzzle className="w-4 h-4" />
         </Button>
@@ -74,30 +60,16 @@ export default function ConversationSidebar() {
     >
       {/* New conversation + collapse toggle */}
       <div className="flex items-center gap-1 px-3 py-2.5 border-b border-hairline">
-        <div className="relative flex-1">
+        <ThreadListPrimitive.New asChild>
           <Button
             variant="default"
             size="sm"
-            className="w-full justify-start gap-2 text-sm h-9"
-            onClick={() => setShowSkills(!showSkills)}
+            className="w-full justify-start gap-2 text-sm h-9 flex-1"
           >
             <Plus className="w-4 h-4" />
             新建会话
           </Button>
-          {showSkills && (
-            <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-bg-surface border border-hairline rounded-lg shadow-lg py-1">
-              {PRESET_SKILLS.map((skill) => (
-                <button
-                  key={skill.name}
-                  className="w-full text-left px-4 py-2 text-sm text-white hover:bg-bg-hover transition-colors"
-                  onClick={() => handleNewSession(skill.label)}
-                >
-                  {skill.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        </ThreadListPrimitive.New>
         <Button variant="ghost" size="icon" onClick={toggleCollapse} className="w-8 h-8 flex-shrink-0">
           <span className="block w-1 h-1 rounded-full bg-ink-muted shadow-[0_4px_0_0_var(--color-muted),0_8px_0_0_var(--color-muted)]" />
         </Button>
@@ -129,26 +101,29 @@ export default function ConversationSidebar() {
 
       {/* Session List */}
       <ScrollArea className="flex-1 px-2 py-1">
-        {filteredConversations.length === 0 ? (
-          <div className="py-8 text-center text-xs text-ink-muted">
-            {search.trim() ? "未找到匹配会话" : "暂无会话"}
-          </div>
-        ) : (
-          filteredConversations.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => selectConversation(c.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                selectedId === c.id
-                  ? "bg-ai/10 text-white"
-                  : "text-ink-muted hover:text-white hover:bg-bg-hover"
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${selectedId === c.id ? "bg-up" : "bg-ink-muted"}`} />
-              <span className="truncate">{c.title}</span>
-            </button>
-          ))
-        )}
+        <ThreadListPrimitive.Items>
+          {() =>
+            filteredThreads.length === 0 ? (
+              <div className="py-8 text-center text-xs text-ink-muted">
+                {search.trim() ? "未找到匹配会话" : "暂无会话"}
+              </div>
+            ) : (
+              filteredThreads.map((t) => (
+                <ThreadListItemPrimitive.Root
+                  key={t.id}
+                  className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10"
+                >
+                  <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${mainThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
+                    <span className="min-w-0 flex-1 truncate text-xs">
+                      <ThreadListItemPrimitive.Title fallback="新对话" />
+                    </span>
+                  </ThreadListItemPrimitive.Trigger>
+                </ThreadListItemPrimitive.Root>
+              ))
+            )
+          }
+        </ThreadListPrimitive.Items>
       </ScrollArea>
 
       {/* Settings at bottom */}
