@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,17 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 
+const ThreadListItem: FC = () => (
+  <ThreadListItemPrimitive.Root className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10">
+    <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-ink-muted data-[active=true]:bg-up" />
+      <span className="min-w-0 flex-1 truncate text-xs">
+        <ThreadListItemPrimitive.Title fallback="新对话" />
+      </span>
+    </ThreadListItemPrimitive.Trigger>
+  </ThreadListItemPrimitive.Root>
+);
+
 export default function ConversationSidebar() {
   const { mode, setMode } = useAppMode();
   const { displayWidth, collapsed, toggleCollapse } = usePanelWidth(
@@ -24,14 +35,13 @@ export default function ConversationSidebar() {
   const [search, setSearch] = useState("");
 
   const threadItems = useAuiState((s) => s.threads.threadItems);
-  const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
 
-  const filteredThreads = useMemo(() => {
-    if (!search.trim()) return threadItems;
+  const filteredIndices = useMemo(() => {
+    if (!search.trim()) return threadItems.map((_, i) => i);
     const q = search.trim().toLowerCase();
-    return threadItems.filter((t) =>
-      (t.title || "").toLowerCase().includes(q)
-    );
+    return threadItems
+      .map((t, i) => ((t.title || "").toLowerCase().includes(q) ? i : -1))
+      .filter((i) => i !== -1);
   }, [threadItems, search]);
 
   if (collapsed) {
@@ -101,23 +111,17 @@ export default function ConversationSidebar() {
 
       {/* Session List */}
       <ScrollArea className="flex-1 px-2 py-1">
-        {filteredThreads.length === 0 ? (
+        {filteredIndices.length === 0 ? (
           <div className="py-8 text-center text-xs text-ink-muted">
             {search.trim() ? "未找到匹配会话" : "暂无会话"}
           </div>
         ) : (
-          filteredThreads.map((t) => (
-            <ThreadListItemPrimitive.Root
-              key={t.id}
-              className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10"
-            >
-              <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${mainThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
-                <span className="min-w-0 flex-1 truncate text-xs">
-                  <ThreadListItemPrimitive.Title fallback="新对话" />
-                </span>
-              </ThreadListItemPrimitive.Trigger>
-            </ThreadListItemPrimitive.Root>
+          filteredIndices.map((index) => (
+            <ThreadListPrimitive.ItemByIndex
+              key={threadItems[index]?.id ?? index}
+              index={index}
+              components={{ ThreadListItem }}
+            />
           ))
         )}
       </ScrollArea>
