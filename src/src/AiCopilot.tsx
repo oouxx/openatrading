@@ -111,12 +111,12 @@ function AiCopilotContent() {
           <span>分析助手</span>
         </div>
         <div className="flex-1 flex justify-center">
-          <div className="relative w-full max-w-[280px]">
+          <div className="relative w-full max-w-[200px]">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
             <input
               ref={searchRef}
-              className="w-full h-7 pl-7 pr-12 text-xs bg-bg border border-hairline rounded-input text-white placeholder:text-ink-muted outline-none transition-colors focus:border-ai"
-              placeholder="搜索股票名称或代码..."
+              className="w-full h-7 pl-7 pr-12 text-xs bg-bg border border-hairline rounded-lg text-white placeholder:text-ink-muted outline-none transition-colors focus:border-ai"
+              placeholder="搜索股票..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
               onFocus={() => setShowDropdown(true)}
