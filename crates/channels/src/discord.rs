@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::Channel;
+use crate::NotificationSender;
 
 const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 const DISCORD_MAX_MESSAGE_LEN: usize = 2000;
@@ -43,7 +43,7 @@ impl DiscordChannel {
 }
 
 #[async_trait]
-impl Channel for DiscordChannel {
+impl NotificationSender for DiscordChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
         for chunk in split_chunks(text, DISCORD_MAX_MESSAGE_LEN) {
             self.send_chunk(chunk).await?;

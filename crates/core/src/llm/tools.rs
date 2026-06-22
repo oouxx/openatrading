@@ -116,6 +116,30 @@ macro_rules! simple_tool {
     };
 }
 
+// Macro for tools with a single string param: extract arg → client call → text_result.
+// Usage: param_tool!(get_realtime_quote, "...desc...", symbol, "...param_desc...", XuanguBaoClient, fetch_realtime);
+macro_rules! param_tool {
+    ($name:ident, $desc:literal, $param:ident, $param_desc:literal, $client:ty, $method:ident) => {
+        pub fn $name() -> Arc<DynTool> {
+            tool(
+                stringify!($name),
+                $desc,
+                str_schema(&[(stringify!($param), $param_desc)]),
+                Arc::new(|_id, args, _signal, _progress| {
+                    Box::pin(async move {
+                        let $param = str_arg(&args, stringify!($param));
+                        let result = <$client>::new()
+                            .$method(&$param)
+                            .await
+                            .map_err(to_box_err)?;
+                        Ok(text_result(&result))
+                    })
+                }),
+            )
+        }
+    };
+}
+
 // ─── 涨停 & 强势股 ─────────────────────────────────────
 
 simple_tool!(get_limit_up,
@@ -184,68 +208,41 @@ simple_tool!(
 
 // ─── 实时行情 ─────────────────────────────────────────
 
-pub fn get_realtime_quote() -> Arc<DynTool> {
-    tool(
-        "get_realtime_quote",
-        "获取单只股票的实时行情：现价(last_px)、涨跌幅(px_change_rate)、开盘价(open_px)、\
-        最高价(high_px)、最低价(low_px)、振幅(amplitude)、换手率(turnover_ratio)、\
-        量比(volume_ratio)、市值(market_value)、流通市值(circulation_value)、\
-        成交额(turnover_value)、市盈率(pe_rate/dyn_pe)、市净率(dyn_pb_rate)。\
-        用法：查看涨停候选股的实时盘口——换手率适中(5-15%)+量比>2 = 活跃；\
-        振幅过大(>15%)+高位 = 分歧加大。",
-        str_schema(&[("symbol", "股票代码，如 600519.SS")]),
-        Arc::new(|_id, args, _signal, _progress| {
-            Box::pin(async move {
-                let symbol = str_arg(&args, "symbol");
-                let result = XuanguBaoClient::new()
-                    .fetch_realtime(&symbol)
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+param_tool!(
+    get_realtime_quote,
+    "获取单只股票的实时行情：现价(last_px)、涨跌幅(px_change_rate)、开盘价(open_px)、\
+    最高价(high_px)、最低价(low_px)、振幅(amplitude)、换手率(turnover_ratio)、\
+    量比(volume_ratio)、市值(market_value)、流通市值(circulation_value)、\
+    成交额(turnover_value)、市盈率(pe_rate/dyn_pe)、市净率(dyn_pb_rate)。\
+    用法：查看涨停候选股的实时盘口——换手率适中(5-15%)+量比>2 = 活跃；\
+    振幅过大(>15%)+高位 = 分歧加大。",
+    symbol,
+    "股票代码，如 600519.SS",
+    XuanguBaoClient,
+    fetch_realtime
+);
 
-pub fn get_plates_by_stock() -> Arc<DynTool> {
-    tool(
-        "get_plates_by_stock",
-        "获取指定股票所属的所有概念/行业板块，及每个板块的当前涨跌幅。\
-        用法：判断涨停股的板块效应——所属板块涨幅>2%且有其他涨停股 = 板块助攻；\
-        个股涨停但板块不跟 = 独立行情，持续性和空间有限。",
-        str_schema(&[("symbol", "股票代码，如 600519.SS")]),
-        Arc::new(|_id, args, _signal, _progress| {
-            Box::pin(async move {
-                let symbol = str_arg(&args, "symbol");
-                let result = XuanguBaoClient::new()
-                    .plates_by_any_stock(&symbol)
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+param_tool!(
+    get_plates_by_stock,
+    "获取指定股票所属的所有概念/行业板块，及每个板块的当前涨跌幅。\
+    用法：判断涨停股的板块效应——所属板块涨幅>2%且有其他涨停股 = 板块助攻；\
+    个股涨停但板块不跟 = 独立行情，持续性和空间有限。",
+    symbol,
+    "股票代码，如 600519.SS",
+    XuanguBaoClient,
+    plates_by_any_stock
+);
 
-pub fn get_market_trend() -> Arc<DynTool> {
-    tool(
-        "get_market_trend",
-        "获取个股分时走势数据（日内价格+成交量序列）。\
-        用法：分析盘中走势形态——均价线上方运行 = 强势；\
-        多次冲击涨停未封 = 抛压大；尾盘跳水 = 次日低开概率高。",
-        str_schema(&[("symbol", "股票代码，如 600519.SS")]),
-        Arc::new(|_id, args, _signal, _progress| {
-            Box::pin(async move {
-                let symbol = str_arg(&args, "symbol");
-                let result = XuanguBaoClient::new()
-                    .fetch_market_trend(&symbol)
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+param_tool!(
+    get_market_trend,
+    "获取个股分时走势数据（日内价格+成交量序列）。\
+    用法：分析盘中走势形态——均价线上方运行 = 强势；\
+    全天在均价线下方 = 弱势；多次回踩均价线不破 = 有支撑。",
+    symbol,
+    "股票代码，如 600519.SS",
+    XuanguBaoClient,
+    fetch_market_trend
+);
 
 // ─── 板块异动 ─────────────────────────────────────────
 

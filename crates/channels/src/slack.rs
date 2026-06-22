@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::Channel;
+use crate::NotificationSender;
 
 const SLACK_API_BASE: &str = "https://slack.com/api";
 
@@ -23,7 +23,7 @@ impl SlackChannel {
 }
 
 #[async_trait]
-impl Channel for SlackChannel {
+impl NotificationSender for SlackChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
         let url = format!("{}/chat.postMessage", SLACK_API_BASE);
         let resp = self

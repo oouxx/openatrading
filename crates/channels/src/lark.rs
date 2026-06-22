@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::Channel;
+use crate::NotificationSender;
 
 const LARK_API_BASE: &str = "https://open.feishu.cn/open-apis";
 const LARK_MAX_CONTENT_LEN: usize = 28000;
@@ -131,7 +131,7 @@ impl LarkChannel {
 }
 
 #[async_trait]
-impl Channel for LarkChannel {
+impl NotificationSender for LarkChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
         for chunk in split_lark_chunks(text, LARK_MAX_CONTENT_LEN) {
             self.send_chunk(chunk).await?;

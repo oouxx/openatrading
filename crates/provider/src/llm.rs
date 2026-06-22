@@ -9,7 +9,7 @@ use pi_ai::models::get_model;
 use pi_ai::providers::register_builtins::register_built_in_api_providers;
 use pi_ai::stream;
 use pi_ai::types::{
-    AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Message, Model,
+    AssistantMessageEvent, ContentBlock, Context, Message, Model,
     SimpleStreamOptions, StreamOptions, Tool as PiTool,
 };
 
@@ -204,38 +204,6 @@ impl LlmClient {
         Ok(text)
     }
 
-    pub async fn chat_with_messages(&self, messages_json: &str) -> Result<String> {
-        let messages_val: serde_json::Value =
-            serde_json::from_str(messages_json).unwrap_or_default();
-
-        let context = json_to_context(&messages_val, None);
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let msg = stream::complete(&self.model, &context, Some(options))
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-        let text: String = msg
-            .content
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect();
-
-        if text.is_empty() {
-            anyhow::bail!("LLM returned empty response");
-        }
-        Ok(text)
-    }
-
     pub async fn chat_stream(&self, prompt: &str) -> Result<StreamResult> {
         let context = Context {
             system_prompt: None,
@@ -299,47 +267,6 @@ impl LlmClient {
         let event_stream = stream::stream(&self.model, &context, Some(options));
         let result_stream = event_stream_to_marked_stream(event_stream);
         Ok(Box::pin(result_stream))
-    }
-
-    pub async fn chat_stream_with_tools(
-        &self,
-        messages: &serde_json::Value,
-        tools: &serde_json::Value,
-    ) -> Result<ToolStreamResult> {
-        let context = json_to_context(messages, Some(tools));
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let event_stream = stream::stream(&self.model, &context, Some(options));
-        let result_stream = event_stream_to_tool_stream(event_stream);
-        Ok(Box::pin(result_stream))
-    }
-
-    pub async fn chat_simple(
-        &self,
-        context: &Context,
-        reasoning: Option<&str>,
-    ) -> Result<AssistantMessage> {
-        let options = SimpleStreamOptions {
-            base: StreamOptions {
-                api_key: Some(self.api_key.clone()),
-                max_tokens: Some(4096),
-                temperature: Some(0.7),
-                ..Default::default()
-            },
-            reasoning: reasoning.map(|s| s.to_string()),
-            thinking_budgets: None,
-        };
-
-        let msg = stream::complete_simple(&self.model, context, Some(options))
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        Ok(msg)
     }
 
     pub fn stream_simple(
