@@ -19,6 +19,9 @@ interface ChatMessage {
 let nextMsgId = 0;
 const newId = () => `msg-${++nextMsgId}-${Date.now()}`;
 
+// Shared ref so slash command selection works across useAssistantChat instances
+const sharedCmdRef = { current: null as { name: string; type: string } | null };
+
 export function useAssistantChat(
   roleName: string = "",
   threadId?: number | null,
@@ -27,7 +30,7 @@ export function useAssistantChat(
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [cmdSpecs, setCmdSpecs] = useState<CommandSpec[]>([]);
-  const cmdRef = useRef<{ name: string; type: string } | null>(null);
+
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
   const messagesRef = useRef(messages);
@@ -49,7 +52,7 @@ export function useAssistantChat(
       icon: c.command_type === "tool" ? "Wrench" : c.command_type === "skill" ? "Brain" : "Workflow",
       metadata: { commandType: c.command_type },
       execute: () => {
-        cmdRef.current = { name: c.name, type: c.command_type };
+        sharedCmdRef.current = { name: c.name, type: c.command_type };
       },
     }));
   }, [cmdSpecs]);
@@ -65,8 +68,8 @@ export function useAssistantChat(
       if (!text) return;
 
       // Parse directive from message text (e.g. ":tool[command_name] → command_name")
-      let cmd = cmdRef.current;
-      cmdRef.current = null;
+      let cmd = sharedCmdRef.current;
+      sharedCmdRef.current = null;
       if (!cmd) {
         const directiveMatch = text.match(/:(\w+)\[([^\]]+)\]/);
         if (directiveMatch) {
