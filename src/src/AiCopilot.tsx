@@ -53,6 +53,7 @@ function AiCopilotContent() {
   const [searchResults, setSearchResults] = useState<{code: string; name: string}[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Debounced API search
@@ -93,7 +94,7 @@ function AiCopilotContent() {
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     };
@@ -111,7 +112,7 @@ function AiCopilotContent() {
           <span>分析助手</span>
         </div>
         <div className="flex-1 flex justify-center">
-          <div className="relative w-full max-w-[200px]">
+          <div className="relative w-full max-w-[200px]" ref={searchContainerRef}>
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
             <input
               ref={searchRef}
