@@ -59,14 +59,6 @@ export function createThreadListAdapter(): RemoteThreadListAdapter {
       });
     },
 
-    async archive(_remoteId: string): Promise<void> {
-      // not implemented
-    },
-
-    async unarchive(_remoteId: string): Promise<void> {
-      // not implemented
-    },
-
     async delete(remoteId: string): Promise<void> {
       await fetchJson(`/api/ai/threads/${remoteId}`, { method: "DELETE" });
     },

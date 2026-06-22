@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { normalizeSymbol, getKlineImageUrl } from '@/lib/stock-utils'
 import { useRealtimeQuote } from '@/hooks/query/useRealtimeQuote'
 import { usePlatesByStock } from '@/hooks/query/usePlatesByStock'
 
@@ -22,34 +23,12 @@ function formatVolume(v: number) {
   return v.toFixed(0)
 }
 
-function normalizeSymbol(raw: string): string {
-  const dot = raw.indexOf('.')
-  if (dot !== -1) {
-    const code = raw.substring(0, dot)
-    let suffix = raw.substring(dot + 1).toLowerCase()
-    if (suffix === 'ss') suffix = 'sh'
-    return suffix + code
-  }
-  return (raw.startsWith('6') ? 'sh' : 'sz') + raw
-}
-
 function toXuangubaoSymbol(code: string): string {
   const clean = code.replace(/[.].*$/, '')
   if (clean.startsWith('6')) return clean + '.SS'
   if (clean.startsWith('0') || clean.startsWith('3')) return clean + '.SZ'
   if (clean.startsWith('4') || clean.startsWith('8')) return clean + '.BJ'
   return clean
-}
-
-function getKlineImageUrl(symbol: string, period: string): string {
-  const s = normalizeSymbol(symbol)
-  switch (period) {
-    case 'minute': return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-    case 'day': return `https://image.sinajs.cn/newchart/daily/n/${s}.gif`
-    case 'week': return `https://image.sinajs.cn/newchart/weekly/n/${s}.gif`
-    case 'month': return `https://image.sinajs.cn/newchart/monthly/n/${s}.gif`
-    default: return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-  }
 }
 
 export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps) {
