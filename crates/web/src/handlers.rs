@@ -560,7 +560,7 @@ pub async fn get_plates_by_any_stock(
                     tracing::error!("get_plates_by_any_stock: error: {}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
-            Ok(serde_json::to_string(&plates).unwrap_or_default())
+            Ok(plates)
         },
     )
     .await
