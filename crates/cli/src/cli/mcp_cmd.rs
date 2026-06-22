@@ -3,10 +3,12 @@ use anyhow::Result;
 use crate::cli::app::McpTransport;
 
 pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
-    use openatrading_core::llm::{build_market_tools, serve_http, serve_stdio};
+    use openatrading_core::llm::{serve_http, serve_stdio, ToolRegistry};
     use tokio::sync::watch;
 
-    let tools = build_market_tools();
+    let registry = ToolRegistry::new();
+    let mut tools = registry.market_tools().to_vec();
+    tools.push(registry.meta_skill_tool().clone());
     let (tx, rx) = watch::channel(false);
 
     let signal_task = tokio::spawn(async move {

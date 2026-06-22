@@ -323,12 +323,12 @@ async fn run_llm(
         }
     }
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
     let listener = Arc::new(
         move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
             let tx = tx.clone();
             Box::pin(async move {
-                let _ = tx.send(event);
+                let _ = tx.send(event).await;
             }) as Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         },
     );

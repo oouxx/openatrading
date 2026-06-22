@@ -328,7 +328,9 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let (mcp_tx, mcp_rx) = tokio::sync::watch::channel(false);
         mcp_shutdown.replace(mcp_tx);
 
-        let tools = openatrading_core::llm::build_market_tools();
+        let registry = openatrading_core::llm::ToolRegistry::new();
+        let mut tools = registry.market_tools().to_vec();
+        tools.push(registry.meta_skill_tool().clone());
         handles.push(tokio::spawn(async move {
             if let Err(e) = openatrading_core::llm::serve_http(tools, mcp_bind, mcp_rx).await {
                 tracing::error!("[gateway] mcp error: {e}");

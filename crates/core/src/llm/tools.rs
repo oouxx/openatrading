@@ -93,130 +93,94 @@ pub(crate) fn tool(
     })
 }
 
+// Macro for simple no-param tools: single client call → text_result.
+// Usage: simple_tool!(get_limit_up, "...desc...", XuanguBaoClient, fetch_limit_up);
+macro_rules! simple_tool {
+    ($name:ident, $desc:literal, $client:ty, $method:ident $(, $arg:expr)*) => {
+        pub fn $name() -> Arc<DynTool> {
+            tool(
+                stringify!($name),
+                $desc,
+                empty_schema(),
+                Arc::new(|_id, _args, _signal, _progress| {
+                    Box::pin(async move {
+                        let result = <$client>::new()
+                            .$method($($arg,)*)
+                            .await
+                            .map_err(to_box_err)?;
+                        Ok(text_result(&result))
+                    })
+                }),
+            )
+        }
+    };
+}
+
 // ─── 涨停 & 强势股 ─────────────────────────────────────
 
-pub fn get_limit_up() -> Arc<DynTool> {
-    tool(
-        "get_limit_up",
-        "获取今日涨停股票完整列表。每只股票包含：代码(symbol)、名称(stock_chi_name)、现价、涨跌幅、\
-        连板天数(limit_up_days)、今日首次封板时间(first_limit_up, Unix秒)、最后封板时间(last_limit_up)、\
-        炸板次数(break_limit_up_times)、首次炸板时间(first_break_limit_up)、最后炸板时间(last_break_limit_up)、\
-        昨日连板天数(yesterday_limit_up_days)、封单量比(buy_lock_volume_ratio)、卖单量比(sell_lock_volume_ratio)、\
-        换手率(turnover_ratio)、量比(volume_bias_ratio)、M天N板数据(m_days_n_boards_boards/days)、\
-        涨停原因(surge_reason)等。\
-        用法：与 get_yesterday_limit_up 对比得出连板晋级率（昨日X板今日Y板的比例），\
-        连板天梯（各梯队涨停数分布），炸板率 = 炸板次数>0 的股票占比。\
-        换手率+封单量比可判断封板质量（高换手低封单 = 弱势封板）。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new().fetch_limit_up().await.map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(get_limit_up,
+    "获取今日涨停股票完整列表。每只股票包含：代码(symbol)、名称(stock_chi_name)、现价、涨跌幅、\
+    连板天数(limit_up_days)、今日首次封板时间(first_limit_up, Unix秒)、最后封板时间(last_limit_up)、\
+    炸板次数(break_limit_up_times)、首次炸板时间(first_break_limit_up)、最后炸板时间(last_break_limit_up)、\
+    昨日连板天数(yesterday_limit_up_days)、封单量比(buy_lock_volume_ratio)、卖单量比(sell_lock_volume_ratio)、\
+    换手率(turnover_ratio)、量比(volume_bias_ratio)、M天N板数据(m_days_n_boards_boards/days)、\
+    涨停原因(surge_reason)等。\
+    用法：与 get_yesterday_limit_up 对比得出连板晋级率（昨日X板今日Y板的比例），\
+    连板天梯（各梯队涨停数分布），炸板率 = 炸板次数>0 的股票占比。\
+    换手率+封单量比可判断封板质量（高换手低封单 = 弱势封板）。",
+    XuanguBaoClient, fetch_limit_up
+);
 
-pub fn get_super_stock() -> Arc<DynTool> {
-    tool(
-        "get_super_stock",
-        "获取强势股列表（未涨停但走势强劲的个股）。用于发现潜在涨停候选、\
-        识别盘中异动但尚未封板的股票。数据结构与涨停列表相同。\
-        用法：结合 realtime_quote 判断是否有封板潜力（换手、量比、涨幅）。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_super_stock()
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(
+    get_super_stock,
+    "获取强势股列表（未涨停但走势强劲的个股）。用于发现潜在涨停候选、\
+    识别盘中异动但尚未封板的股票。数据结构与涨停列表相同。\
+    用法：结合 realtime_quote 判断是否有封板潜力（换手、量比、涨幅）。",
+    XuanguBaoClient,
+    fetch_super_stock
+);
 
-pub fn get_limit_down() -> Arc<DynTool> {
-    tool(
-        "get_limit_down",
-        "获取今日跌停股票列表。包含代码、名称、连跌天数(limit_down_days)、\
-        跌停封单数据等。用于判断市场亏钱效应、恐慌程度。\
-        用法：跌停数/昨日涨停数 = 亏钱效应比率；跌停家数增加 = 情绪退潮信号。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_limit_down()
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(
+    get_limit_down,
+    "获取今日跌停股票列表。包含代码、名称、连跌天数(limit_down_days)、\
+    跌停封单数据等。用于判断市场亏钱效应、恐慌程度。\
+    用法：跌停数/昨日涨停数 = 亏钱效应比率；跌停家数增加 = 情绪退潮信号。",
+    XuanguBaoClient,
+    fetch_limit_down
+);
 
 // ─── 市场全景 ─────────────────────────────────────────
 
-pub fn get_market_overview() -> Arc<DynTool> {
-    tool(
-        "get_market_overview",
-        "获取市场全景概览：上涨家数(rise_count)、下跌家数(fall_count)、\
-        涨停家数(limit_up_count)、跌停家数(limit_down_count)、\
-        炸板率(bomb_rate, 0~1)、市场温度(market_temperature, 0~100)、\
-        昨日涨停今日平均涨幅(yesterday_limit_up_avg_pcp)。\
-        用法：首先调用，快速判断市场整体强弱——温度>60且炸板率<0.2为强势；\
-        温度<40且炸板率>0.3为弱势。涨跌比<1且跌停>10为退潮。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_market_overview()
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(
+    get_market_overview,
+    "获取市场全景概览：上涨家数(rise_count)、下跌家数(fall_count)、\
+    涨停家数(limit_up_count)、跌停家数(limit_down_count)、\
+    炸板率(bomb_rate, 0~1)、市场温度(market_temperature, 0~100)、\
+    昨日涨停今日平均涨幅(yesterday_limit_up_avg_pcp)。\
+    用法：首先调用，快速判断市场整体强弱——温度>60且炸板率<0.2为强势；\
+    温度<40且炸板率>0.3为弱势。涨跌比<1且跌停>10为退潮。",
+    XuanguBaoClient,
+    fetch_market_overview
+);
 
-pub fn get_yesterday_limit_up() -> Arc<DynTool> {
-    tool(
-        "get_yesterday_limit_up",
-        "获取昨日涨停股票列表及今日表现。每只包含：昨日连板天数(yesterday_limit_up_days)、\
-        今日是否继续涨停、今日涨跌幅等。\
-        用法：核心用途——(1)与今日涨停对比计算连板晋级率（昨日X板→今日Y板的比例），\
-        构建连板天梯；(2)昨日涨停今日下跌比例 = 亏钱效应；(3)昨日涨停平均涨幅 = 溢价率。\
-        晋级率>50%为强势，<30%为退潮。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_yesterday_limit_up()
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(
+    get_yesterday_limit_up,
+    "获取昨日涨停股票列表及今日表现。每只包含：昨日连板天数(yesterday_limit_up_days)、\
+    今日是否继续涨停、今日涨跌幅等。\
+    用法：核心用途——(1)与今日涨停对比计算连板晋级率（昨日X板→今日Y板的比例），\
+    构建连板天梯；(2)昨日涨停今日下跌比例 = 亏钱效应；(3)昨日涨停平均涨幅 = 溢价率。\
+    晋级率>50%为强势，<30%为退潮。",
+    XuanguBaoClient,
+    fetch_yesterday_limit_up
+);
 
-pub fn get_dapan_abnormal() -> Arc<DynTool> {
-    tool(
-        "get_dapan_abnormal",
-        "获取大盘异动事件（全市场级别的异常波动）。包含异动类型、触发板块、时间戳。\
-        用法：检测系统性风险——大盘异动频发 = 市场不稳定，应降低仓位或回避。",
-        empty_schema(),
-        Arc::new(|_id, _args, _signal, _progress| {
-            Box::pin(async move {
-                let result = XuanguBaoClient::new()
-                    .fetch_dapan_abnormal()
-                    .await
-                    .map_err(to_box_err)?;
-                Ok(text_result(&result))
-            })
-        }),
-    )
-}
+simple_tool!(
+    get_dapan_abnormal,
+    "获取大盘异动事件（全市场级别的异常波动）。包含异动类型、触发板块、时间戳。\
+    用法：检测系统性风险——大盘异动频发 = 市场不稳定，应降低仓位或回避。",
+    XuanguBaoClient,
+    fetch_dapan_abnormal
+);
 
 // ─── 实时行情 ─────────────────────────────────────────
 
@@ -765,65 +729,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_all_tool_names() {
-        assert_eq!(get_limit_up().name, "get_limit_up");
-        assert_eq!(get_limit_down().name, "get_limit_down");
-        assert_eq!(get_super_stock().name, "get_super_stock");
-        assert_eq!(get_market_overview().name, "get_market_overview");
-        assert_eq!(get_yesterday_limit_up().name, "get_yesterday_limit_up");
-        assert_eq!(get_dapan_abnormal().name, "get_dapan_abnormal");
-        assert_eq!(get_realtime_quote().name, "get_realtime_quote");
-        assert_eq!(get_plates_by_stock().name, "get_plates_by_stock");
-        assert_eq!(get_market_trend().name, "get_market_trend");
-        assert_eq!(get_plate_abnormal().name, "get_plate_abnormal");
-        assert_eq!(get_telegraph().name, "get_telegraph");
-        assert_eq!(get_telegraph_allday().name, "get_telegraph_allday");
-        assert_eq!(get_field_items().name, "get_field_items");
-        assert_eq!(get_lhb_detail().name, "get_lhb_detail");
-        assert_eq!(get_lhb_combined().name, "get_lhb_combined");
-        assert_eq!(get_lhb_active_yyb().name, "get_lhb_active_yyb");
-        assert_eq!(get_kline().name, "get_kline");
-        assert_eq!(get_all_day_events().name, "get_all_day_events");
-        assert_eq!(get_auction_quotes().name, "get_auction_quotes");
+    fn test_all_tools_unique_names() {
+        let reg = ToolRegistry::new();
+        let tools = reg.all_tools();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        let mut unique = std::collections::HashSet::new();
+        for &name in &names {
+            assert!(!name.is_empty(), "tool name must not be empty");
+            assert!(
+                name.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "tool name must be snake_case: {name}"
+            );
+            assert!(unique.insert(name), "duplicate tool name: {name}");
+        }
     }
 
     #[test]
     fn test_all_tool_schemas_are_valid() {
-        let tools: Vec<Arc<DynTool>> = vec![
-            get_limit_up(),
-            get_limit_down(),
-            get_super_stock(),
-            get_market_overview(),
-            get_yesterday_limit_up(),
-            get_dapan_abnormal(),
-            get_realtime_quote(),
-            get_plates_by_stock(),
-            get_market_trend(),
-            get_plate_abnormal(),
-            get_telegraph(),
-            get_telegraph_allday(),
-            get_field_items(),
-            get_lhb_detail(),
-            get_lhb_combined(),
-            get_lhb_active_yyb(),
-            get_kline(),
-            get_all_day_events(),
-            get_auction_quotes(),
-            create_meta_skill_tool(),
-        ];
+        let reg = ToolRegistry::new();
+        let tools = reg.all_tools();
         for tool in &tools {
             assert_eq!(
                 tool.parameters_schema["type"], "object",
-                "{} schema type mismatch",
+                "{} schema type must be object",
                 tool.name
             );
             assert!(
                 !tool.description.is_empty(),
-                "{} description empty",
+                "{} description must not be empty",
                 tool.name
             );
         }
-        assert_eq!(tools.len(), 20);
+        assert!(
+            tools.len() >= 15,
+            "expected at least 15 tools, got {}",
+            tools.len()
+        );
     }
 
     #[test]

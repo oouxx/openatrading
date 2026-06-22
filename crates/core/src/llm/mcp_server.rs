@@ -12,34 +12,6 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer};
 use tokio::sync::watch;
 
-use super::tools;
-
-/// 收集所有要对外暴露的行情类 DynTool。
-pub fn build_market_tools() -> Vec<Arc<DynTool>> {
-    vec![
-        tools::get_limit_up(),
-        tools::get_limit_down(),
-        tools::get_super_stock(),
-        tools::get_market_overview(),
-        tools::get_yesterday_limit_up(),
-        tools::get_dapan_abnormal(),
-        tools::get_realtime_quote(),
-        tools::get_plates_by_stock(),
-        tools::get_market_trend(),
-        tools::get_plate_abnormal(),
-        tools::get_kline(),
-        tools::get_telegraph(),
-        tools::get_telegraph_allday(),
-        tools::get_field_items(),
-        tools::get_lhb_detail(),
-        tools::get_lhb_combined(),
-        tools::get_lhb_active_yyb(),
-        tools::get_all_day_events(),
-        tools::get_auction_quotes(),
-        tools::create_meta_skill_tool(),
-    ]
-}
-
 /// 持有工具集合，用作 rmcp ServerHandler 状态。
 #[derive(Clone)]
 pub struct MarketToolsServer {
