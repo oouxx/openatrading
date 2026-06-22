@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing;
 
-use openatrading_core::api::eastmoney::{LhbDetail, SeatFlag};
+use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
@@ -1147,4 +1147,35 @@ pub async fn get_dragon_tiger_stock_seat(
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     Ok(Json(data))
+}
+
+/// GET /api/search-stocks?q=keyword — search stocks by name or code
+pub async fn search_stocks(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let q = params
+        .get("q")
+        .map(|s| s.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if q.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "missing q"})),
+        )
+            .into_response();
+    }
+    let client = LhbClient::new();
+    match client.search_stocks(&q).await {
+        Ok(items) => (StatusCode::OK, Json(items)).into_response(),
+        Err(e) => {
+            tracing::error!("search_stocks: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "search failed"})),
+            )
+                .into_response()
+        },
+    }
 }

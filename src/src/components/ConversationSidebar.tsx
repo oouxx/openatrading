@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,14 +26,34 @@ export default function ConversationSidebar() {
     360,
     "layout:left-collapsed",
   );
-  const { conversations, selectedId, selectConversation, search, setSearch } =
-    useConversations();
+  const {
+    conversations,
+    selectedId,
+    selectConversation,
+    createConversation,
+    search,
+    setSearch,
+  } = useConversations();
   const [showSkills, setShowSkills] = useState(false);
+
+  const filteredConversations = useMemo(() => {
+    if (!search.trim()) return conversations;
+    const q = search.trim().toLowerCase();
+    return conversations.filter(
+      (c) => c.title.toLowerCase().includes(q)
+    );
+  }, [conversations, search]);
+
+  const handleNewSession = async (skillLabel?: string) => {
+    setShowSkills(false);
+    const title = skillLabel || "新对话";
+    await createConversation(title);
+  };
 
   if (collapsed) {
     return (
       <div className="flex flex-col items-center py-3 gap-4 w-12 border-r border-hairline bg-bg-surface flex-shrink-0">
-        <Button variant="ghost" size="icon" onClick={toggleCollapse} className="w-8 h-8">
+        <Button variant="ghost" size="icon" onClick={() => handleNewSession()} className="w-8 h-8" title="新建会话">
           <Plus className="w-4 h-4" />
         </Button>
         <Button variant="ghost" size="icon" onClick={() => setMode("skill-editor")} className="w-8 h-8">
@@ -70,7 +90,7 @@ export default function ConversationSidebar() {
                 <button
                   key={skill.name}
                   className="w-full text-left px-4 py-2 text-sm text-white hover:bg-bg-hover transition-colors"
-                  onClick={() => setShowSkills(false)}
+                  onClick={() => handleNewSession(skill.label)}
                 >
                   {skill.label}
                 </button>
@@ -109,20 +129,23 @@ export default function ConversationSidebar() {
 
       {/* Session List */}
       <ScrollArea className="flex-1 px-2 py-1">
-        {conversations.length === 0 ? (
-          <div className="py-8 text-center text-xs text-ink-muted">暂无会话</div>
+        {filteredConversations.length === 0 ? (
+          <div className="py-8 text-center text-xs text-ink-muted">
+            {search.trim() ? "未找到匹配会话" : "暂无会话"}
+          </div>
         ) : (
-          conversations.map((c) => (
+          filteredConversations.map((c) => (
             <button
               key={c.id}
               onClick={() => selectConversation(c.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
                 selectedId === c.id
                   ? "bg-ai/10 text-white"
                   : "text-ink-muted hover:text-white hover:bg-bg-hover"
               }`}
             >
-              <div className="truncate">{c.title}</div>
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${selectedId === c.id ? "bg-up" : "bg-ink-muted"}`} />
+              <span className="truncate">{c.title}</span>
             </button>
           ))
         )}
