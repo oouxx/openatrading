@@ -35,7 +35,7 @@ function normalizeSymbol(raw: string): string {
 
 function toXuangubaoSymbol(code: string): string {
   const clean = code.replace(/[.].*$/, '')
-  if (clean.startsWith('6')) return clean + '.SH'
+  if (clean.startsWith('6')) return clean + '.SS'
   if (clean.startsWith('0') || clean.startsWith('3')) return clean + '.SZ'
   if (clean.startsWith('4') || clean.startsWith('8')) return clean + '.BJ'
   return clean
