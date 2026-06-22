@@ -363,8 +363,13 @@ pub async fn get_realtime(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_realtime(&symbol).await.map_err(|e| {
-                tracing::error!("realtime error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
+                let msg = e.to_string();
+                tracing::warn!("realtime unavailable for {symbol}: {msg}");
+                if msg.contains("not found") {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
             })?;
             Ok(data)
         },

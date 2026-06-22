@@ -687,6 +687,9 @@ impl XuanguBaoClient {
             .unwrap_or_default();
 
         let snap = &resp["data"]["snapshot"][symbol];
+        if snap.is_null() {
+            anyhow::bail!("symbol '{symbol}' not found in realtime snapshot");
+        }
         let arr = snap.as_array().context("missing snapshot array")?;
 
         let get_f64 = |name: &str| -> f64 {
