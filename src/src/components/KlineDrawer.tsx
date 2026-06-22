@@ -56,7 +56,8 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const [period, setPeriod] = useState('minute')
   const xgSymbol = toXuangubaoSymbol(symbol)
   const { data: quote } = useRealtimeQuote(xgSymbol)
-  const { data: plates = [] } = usePlatesByStock(xgSymbol)
+  const { data: plates } = usePlatesByStock(xgSymbol)
+  const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string } | null>(null)
 
   const metrics = useMemo(() => {
@@ -151,11 +152,11 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       )}
 
       {/* Plates */}
-      {plates.length > 0 && (
+      {plateList.length > 0 && (
         <div className="px-6 py-2.5 border-t border-hairline mt-2">
           <p className="text-xs text-ink-muted mb-2">所属板块</p>
           <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-            {plates.map((p) => (
+            {plateList.map((p) => (
               <div
                 key={p.plate_id}
                 className="bg-bg-surface rounded-card border border-hairline p-2.5 cursor-pointer hover:border-white/20 transition-colors"
