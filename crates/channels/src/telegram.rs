@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::Channel;
+use crate::NotificationSender;
 
 pub struct TelegramChannel {
     bot_token: String,
@@ -21,7 +21,7 @@ impl TelegramChannel {
 }
 
 #[async_trait]
-impl Channel for TelegramChannel {
+impl NotificationSender for TelegramChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let stripped = text.replace(['*', '_'], "");

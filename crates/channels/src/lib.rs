@@ -6,35 +6,6 @@ pub mod lark;
 pub mod slack;
 pub mod telegram;
 
-// ── Channel (low-level transport) ──────────────────────
-
-#[async_trait]
-pub trait Channel: Send + Sync {
-    async fn send_text(&self, text: &str) -> Result<()>;
-}
-
-pub struct NoopChannel;
-
-#[async_trait]
-impl Channel for NoopChannel {
-    async fn send_text(&self, _: &str) -> Result<()> {
-        Ok(())
-    }
-}
-
-pub struct StdoutChannel;
-
-#[async_trait]
-impl Channel for StdoutChannel {
-    async fn send_text(&self, text: &str) -> Result<()> {
-        println!("{}", text);
-        println!("{}", "─".repeat(40));
-        Ok(())
-    }
-}
-
-// ── NotificationSender (mid-level event routing) ───────
-
 #[async_trait]
 pub trait NotificationSender: Send + Sync {
     async fn send_text(&self, text: &str) -> Result<()>;
@@ -53,11 +24,22 @@ pub trait NotificationSender: Send + Sync {
     }
 }
 
-/// Every [`Channel`] automatically implements [`NotificationSender`].
-/// New social platforms only need to implement [`Channel::send_text`].
+pub struct NoopChannel;
+
 #[async_trait]
-impl<T: Channel + Send + Sync> NotificationSender for T {
+impl NotificationSender for NoopChannel {
+    async fn send_text(&self, _: &str) -> Result<()> {
+        Ok(())
+    }
+}
+
+pub struct StdoutChannel;
+
+#[async_trait]
+impl NotificationSender for StdoutChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
-        Channel::send_text(self, text).await
+        println!("{}", text);
+        println!("{}", "─".repeat(40));
+        Ok(())
     }
 }

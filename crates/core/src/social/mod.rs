@@ -8,7 +8,7 @@ pub use openatrading_channels::discord::DiscordChannel;
 pub use openatrading_channels::lark::LarkChannel;
 pub use openatrading_channels::slack::SlackChannel;
 pub use openatrading_channels::telegram::TelegramChannel;
-pub use openatrading_channels::{Channel, NoopChannel, NotificationSender, StdoutChannel};
+pub use openatrading_channels::{NoopChannel, NotificationSender, StdoutChannel};
 
 // ── FilteredSender ────────────────────────────────────
 
