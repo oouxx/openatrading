@@ -33,6 +33,14 @@ function normalizeSymbol(raw: string): string {
   return (raw.startsWith('6') ? 'sh' : 'sz') + raw
 }
 
+function toXuangubaoSymbol(code: string): string {
+  const clean = code.replace(/[.].*$/, '')
+  if (clean.startsWith('6')) return clean + '.SH'
+  if (clean.startsWith('0') || clean.startsWith('3')) return clean + '.SZ'
+  if (clean.startsWith('4') || clean.startsWith('8')) return clean + '.BJ'
+  return clean
+}
+
 function getKlineImageUrl(symbol: string, period: string): string {
   const s = normalizeSymbol(symbol)
   switch (period) {
@@ -46,8 +54,9 @@ function getKlineImageUrl(symbol: string, period: string): string {
 
 export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps) {
   const [period, setPeriod] = useState('minute')
-  const { data: quote } = useRealtimeQuote(symbol)
-  const { data: plates = [] } = usePlatesByStock(symbol)
+  const xgSymbol = toXuangubaoSymbol(symbol)
+  const { data: quote } = useRealtimeQuote(xgSymbol)
+  const { data: plates = [] } = usePlatesByStock(xgSymbol)
   const [dialogPlate, setDialogPlate] = useState<{ plate_id: number; plate_name: string; core_avg_pcp: number; reason: string } | null>(null)
 
   const metrics = useMemo(() => {
