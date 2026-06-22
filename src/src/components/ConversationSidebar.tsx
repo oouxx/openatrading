@@ -7,8 +7,8 @@ import { Search, Plus, Settings, Puzzle } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { usePanelWidth } from "@/hooks/usePanelWidth";
 import {
-  ThreadListPrimitive,
   ThreadListItemPrimitive,
+  ThreadListPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
 
@@ -101,29 +101,25 @@ export default function ConversationSidebar() {
 
       {/* Session List */}
       <ScrollArea className="flex-1 px-2 py-1">
-        <ThreadListPrimitive.Items>
-          {() =>
-            filteredThreads.length === 0 ? (
-              <div className="py-8 text-center text-xs text-ink-muted">
-                {search.trim() ? "未找到匹配会话" : "暂无会话"}
-              </div>
-            ) : (
-              filteredThreads.map((t) => (
-                <ThreadListItemPrimitive.Root
-                  key={t.id}
-                  className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10"
-                >
-                  <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${mainThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
-                    <span className="min-w-0 flex-1 truncate text-xs">
-                      <ThreadListItemPrimitive.Title fallback="新对话" />
-                    </span>
-                  </ThreadListItemPrimitive.Trigger>
-                </ThreadListItemPrimitive.Root>
-              ))
-            )
-          }
-        </ThreadListPrimitive.Items>
+        {filteredThreads.length === 0 ? (
+          <div className="py-8 text-center text-xs text-ink-muted">
+            {search.trim() ? "未找到匹配会话" : "暂无会话"}
+          </div>
+        ) : (
+          filteredThreads.map((t) => (
+            <ThreadListItemPrimitive.Root
+              key={t.id}
+              className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10"
+            >
+              <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${mainThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  <ThreadListItemPrimitive.Title fallback="新对话" />
+                </span>
+              </ThreadListItemPrimitive.Trigger>
+            </ThreadListItemPrimitive.Root>
+          ))
+        )}
       </ScrollArea>
 
       {/* Settings at bottom */}
