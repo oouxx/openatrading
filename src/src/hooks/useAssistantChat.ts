@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useExternalStoreRuntime, unstable_useSlashCommandAdapter, unstable_defaultDirectiveFormatter } from "@assistant-ui/react";
+import { useExternalStoreRuntime, unstable_useSlashCommandAdapter } from "@assistant-ui/react";
 import { apiChatStream, fetchJson } from "@/stores/data";
 import type { ChatMessage as StoredMessage } from "./useChatThreads";
 

@@ -1,155 +1,346 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { fetchJson } from "@/stores/data";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+interface SkillEntry {
+  name: string;
+  description: string;
+  license?: string | null;
+  compatibility?: string | null;
+  metadata: Record<string, string>;
+  allowed_tools?: string | null;
+  file_path: string;
+  content: string;
+  base_dir: string;
+  disable_model_invocation: boolean;
+  scope: string;
+}
+
 interface ToolItem {
   name: string;
   description: string;
 }
 
-const PRESET_SKILLS = [
-  { name: "market-analysis", label: "📈 市场分析" },
-  { name: "dragon-tiger-tracking", label: "🐉 龙虎榜追踪" },
-  { name: "breakout-analysis", label: "🔥 涨停晋级" },
-  { name: "market-replay", label: "🎯 行情回放" },
-  { name: "strategy-manager", label: "🤖 策略管理" },
-  { name: "free-chat", label: "⚡ 自由对话" },
-];
+type EditorTab = "manifest" | "content";
 
 export default function SkillEditor() {
   const { setMode } = useAppMode();
-  const [selectedSkill, setSelectedSkill] = useState(PRESET_SKILLS[0].name);
-  const [name, setName] = useState("dragon-tiger-tracking");
-  const [description, setDescription] = useState(
-    "龙虎榜分析 — 查询上榜个股、营业部买卖明细",
-  );
-  const [instructions, setInstructions] = useState(
-    "## 角色\n\n你是一个龙虎榜分析专家...\n\n## 工具\n- dragon_tiger_detail\n- dragon_tiger_seat",
-  );
+  const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [tools, setTools] = useState<ToolItem[]>([]);
-  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<EditorTab>("manifest");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetchJson<ToolItem[]>("/api/tools")
-      .then(setTools)
-      .catch(() => {});
+  // Editable fields
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editLicense, setEditLicense] = useState("");
+  const [editCompat, setEditCompat] = useState("");
+  const [editAllowedTools, setEditAllowedTools] = useState("");
+  const [isNew, setIsNew] = useState(false);
+
+  const loadSkills = useCallback(async () => {
+    try {
+      const data = await fetchJson<SkillEntry[]>("/api/skills");
+      setSkills(data);
+    } catch {
+      setSkills([]);
+    }
   }, []);
 
-  const toggleTool = (toolName: string) => {
-    setSelectedTools((prev) =>
-      prev.includes(toolName)
-        ? prev.filter((t) => t !== toolName)
-        : [...prev, toolName],
-    );
+  const loadTools = useCallback(async () => {
+    try {
+      const data = await fetchJson<ToolItem[]>("/api/tools");
+      setTools(data);
+    } catch {
+      setTools([]);
+    }
+  }, []);
+
+  useEffect(() => { loadSkills(); loadTools(); }, [loadSkills, loadTools]);
+
+  const selectSkill = (idx: number) => {
+    setSelectedIdx(idx);
+    setIsNew(false);
+    const s = skills[idx];
+    setEditName(s.name);
+    setEditDesc(s.description);
+    setEditContent(s.content || "");
+    setEditLicense(s.license || "");
+    setEditCompat(s.compatibility || "");
+    setEditAllowedTools(s.allowed_tools || "");
+    setActiveTab("manifest");
   };
 
+  const startNew = () => {
+    setSelectedIdx(null);
+    setIsNew(true);
+    setEditName("");
+    setEditDesc("");
+    setEditContent("");
+    setEditLicense("");
+    setEditCompat("");
+    setEditAllowedTools("");
+    setActiveTab("manifest");
+  };
+
+  const saveSkill = async () => {
+    if (!editName.trim() || !editDesc.trim()) return;
+    setSaving(true);
+    try {
+      await fetchJson("/api/skills", {
+        method: "POST",
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDesc.trim(),
+          content: editContent,
+          license: editLicense.trim() || null,
+          compatibility: editCompat.trim() || null,
+          "allowed-tools": editAllowedTools.trim() || null,
+          metadata: {},
+        }),
+      });
+      await loadSkills();
+      setIsNew(false);
+      // Select the saved skill
+      const updated = await fetchJson<SkillEntry[]>("/api/skills");
+      const idx = updated.findIndex((s) => s.name === editName.trim());
+      if (idx >= 0) {
+        setSelectedIdx(idx);
+        setSkills(updated);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteSkill = async (name: string) => {
+    if (!confirm(`确定删除技能「${name}」？`)) return;
+    try {
+      await fetchJson(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+      setSelectedIdx(null);
+      await loadSkills();
+    } catch {
+      // silently fail
+    }
+  };
+
+  const selected = selectedIdx !== null ? skills[selectedIdx] : null;
+
   return (
-    <div className="flex flex-col h-full p-6 gap-5 overflow-y-auto">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-medium text-white mr-2">
-          已安装 Skill
-        </span>
-        {PRESET_SKILLS.map((skill) => (
-          <Button
-            key={skill.name}
-            variant={selectedSkill === skill.name ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedSkill(skill.name)}
-          >
-            {skill.label}
-          </Button>
-        ))}
-        <Button variant="outline" size="sm">
-          + 新建
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-hairline">
+        <Button variant="ghost" size="sm" onClick={() => setMode("chat")}>
+          ← 返回
         </Button>
+        <span className="text-sm font-medium text-white">技能管理</span>
+        <span className="text-xs text-ink-muted">{skills.length} 个已安装</span>
       </div>
 
-      <Separator />
+      <div className="flex flex-1 min-h-0">
+        {/* Left: skill list */}
+        <div className="w-[220px] flex-shrink-0 border-r border-hairline flex flex-col">
+          <div className="px-3 py-2 border-b border-hairline">
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs border border-hairline rounded-md text-accent hover:bg-bg-hover transition-colors"
+              onClick={startNew}
+            >
+              + 新建技能
+            </button>
+          </div>
+          <ScrollArea className="flex-1">
+            {skills.length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-ink-muted">暂无已安装技能</p>
+            ) : (
+              skills.map((sk, i) => (
+                <button
+                  key={sk.name}
+                  onClick={() => selectSkill(i)}
+                  className={`w-full text-left px-3 py-2 border-l-2 transition-colors ${
+                    selectedIdx === i
+                      ? "border-ai bg-ai/5 text-white"
+                      : "border-transparent text-ink-muted hover:text-white hover:bg-bg-hover"
+                  }`}
+                >
+                  <div className="text-xs font-medium truncate">{sk.name}</div>
+                  <div className="text-[10px] text-ink-muted mt-0.5 truncate">{sk.description}</div>
+                  <div className="text-[10px] text-ink-muted mt-0.5">
+                    {sk.scope === "project" ? "项目" : "用户"}
+                  </div>
+                </button>
+              ))
+            )}
+          </ScrollArea>
+        </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0">
-        {/* Left: Form */}
-        <ScrollArea className="pr-3">
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-ink-muted block mb-1">name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="font-mono text-xs"
-              />
+        {/* Right: editor */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {!selected && !isNew ? (
+            <div className="flex-1 flex items-center justify-center text-xs text-ink-muted">
+              选择一个技能开始编辑，或新建一个
             </div>
-            <div>
-              <label className="text-xs text-ink-muted block mb-1">
-                description
-              </label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="text-xs"
-                rows={3}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ink-muted block mb-3">
-                关联工具
-              </label>
-              <div className="space-y-2">
-                {tools.map((tool) => (
-                  <label
-                    key={tool.name}
-                    className="flex items-center gap-2 cursor-pointer text-xs text-ink-muted hover:text-white"
-                  >
-                    <Checkbox
-                      checked={selectedTools.includes(tool.name)}
-                      onCheckedChange={() => toggleTool(tool.name)}
-                    />
-                    <span className="font-mono">{tool.name}</span>
-                    <span className="text-ink-muted">
-                      {" "}
-                      — {tool.description}
-                    </span>
-                  </label>
-                ))}
-                {tools.length === 0 && (
-                  <p className="text-xs text-ink-muted">加载中...</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-hairline">
+                <div className="flex items-center gap-1">
+                  {(["manifest", "content"] as EditorTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-3 py-1 text-xs border-b-2 transition-colors ${
+                        activeTab === tab
+                          ? "border-ai text-ai"
+                          : "border-transparent text-ink-muted hover:text-white"
+                      }`}
+                    >
+                      {tab === "manifest" ? "配置" : "内容"}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  {selected && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-[10px] text-down border-down/30 hover:bg-down/10"
+                      onClick={() => deleteSkill(selected.name)}
+                    >
+                      删除
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={saveSkill} disabled={saving}>
+                    {saving ? "保存中..." : "保存"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex-1 flex min-h-0">
+                {activeTab === "manifest" ? (
+                  <ScrollArea className="flex-1 p-4">
+                    <div className="space-y-4 max-w-lg">
+                      <div>
+                        <label className="text-xs text-ink-muted block mb-1">name</label>
+                        <Input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="font-mono text-xs"
+                          placeholder="my-skill"
+                          disabled={!!selected}
+                        />
+                        {selected && (
+                          <p className="text-[10px] text-ink-muted mt-0.5">
+                            技能名称不可修改（如需要，请删除后重新创建）
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-xs text-ink-muted block mb-1">description</label>
+                        <Textarea
+                          value={editDesc}
+                          onChange={(e) => setEditDesc(e.target.value)}
+                          className="text-xs"
+                          rows={3}
+                          placeholder="简要描述技能的功能..."
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-ink-muted block mb-1">license</label>
+                          <Input
+                            value={editLicense}
+                            onChange={(e) => setEditLicense(e.target.value)}
+                            className="font-mono text-xs"
+                            placeholder="可选"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-ink-muted block mb-1">compatibility</label>
+                          <Input
+                            value={editCompat}
+                            onChange={(e) => setEditCompat(e.target.value)}
+                            className="font-mono text-xs"
+                            placeholder="可选"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-ink-muted block mb-1">allowed-tools</label>
+                        <Input
+                          value={editAllowedTools}
+                          onChange={(e) => setEditAllowedTools(e.target.value)}
+                          className="font-mono text-xs"
+                          placeholder="tool1 tool2 (空格分隔)"
+                        />
+                      </div>
+                      {tools.length > 0 && (
+                        <div>
+                          <label className="text-xs text-ink-muted block mb-2">可用工具 ({tools.length})</label>
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {tools.map((tool) => (
+                              <label
+                                key={tool.name}
+                                className="flex items-center gap-2 cursor-pointer text-xs text-ink-muted hover:text-white"
+                              >
+                                <Checkbox
+                                  checked={editAllowedTools.split(/\s+/).includes(tool.name)}
+                                  onCheckedChange={(checked) => {
+                                    const current = editAllowedTools.split(/\s+/).filter(Boolean);
+                                    const updated = checked
+                                      ? [...current, tool.name]
+                                      : current.filter((t) => t !== tool.name);
+                                    setEditAllowedTools(updated.join(" "));
+                                  }}
+                                />
+                                <span className="font-mono">{tool.name}</span>
+                                <span className="text-ink-muted">— {tool.description}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="flex-1 flex min-h-0">
+                    <div className="flex-1 p-4">
+                      <label className="text-xs text-ink-muted block mb-1">
+                        指令（Markdown）— 编辑后点击右侧预览
+                      </label>
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="font-mono text-xs min-h-[300px] h-full"
+                        placeholder="## 角色&#10;&#10;你是一个...&#10;&#10;## 工具&#10;..."
+                      />
+                    </div>
+                    <div className="w-[380px] flex-shrink-0 border-l border-hairline p-4 bg-bg overflow-y-auto">
+                      <p className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">预览</p>
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        {editContent ? (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {editContent}
+                          </ReactMarkdown>
+                        ) : (
+                          <p className="text-xs text-ink-muted">暂无内容</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
-            <div>
-              <label className="text-xs text-ink-muted block mb-1">
-                指令（Markdown）
-              </label>
-              <Textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                className="font-mono text-xs min-h-[300px]"
-              />
-            </div>
-          </div>
-        </ScrollArea>
-        {/* Right: Preview */}
-        <ScrollArea className="border border-hairline rounded-lg p-4 bg-bg">
-          <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {instructions}
-            </ReactMarkdown>
-          </div>
-        </ScrollArea>
-      </div>
-
-      <div className="flex gap-2 justify-end pt-3 border-t border-hairline">
-        <Button variant="outline" onClick={() => setMode("chat")}>
-          返回
-        </Button>
-        <Button>保存 Skill</Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

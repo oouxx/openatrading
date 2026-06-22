@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useRealtimeQuote } from '@/hooks/query/useRealtimeQuote'
 import { usePlatesByStock } from '@/hooks/query/usePlatesByStock'
 
@@ -70,133 +69,122 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   }, [quote])
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
   const klineUrl = getKlineImageUrl(symbol, period)
 
+  const up = quote && quote.px_change_rate >= 0
+  const changeClass = up ? 'text-up' : 'text-down'
+
   return (
-    <>
-      <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose} />
-
-      <motion.div
-        className="fixed top-0 right-0 h-full z-50 overflow-y-auto bg-surface-dark border-l border-hairline-dark"
-        style={{ width: 520 }}
-        initial={{ x: 520 }}
-        animate={{ x: 0 }}
-        exit={{ x: 520 }}
-        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-      >
-        <div className="sticky top-0 z-10 p-4 bg-surface-dark border-b border-hairline-dark">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white">{name}</span>
-              <span className="text-xs font-mono text-white/40">{symbol}</span>
-            </div>
-            <button onClick={onClose} className="text-lg leading-none p-1 text-white/40 hover:text-white/60">&times;</button>
-          </div>
-          {quote && (
-            <div className="flex items-center gap-3">
-              <span className={`text-xl font-bold font-mono ${quote.px_change_rate >= 0 ? 'text-up' : 'text-down'}`}>
-                {quote.last_px?.toFixed(2)}
-              </span>
-              <span className={`text-sm font-mono ${quote.px_change_rate >= 0 ? 'text-up' : 'text-down'}`}>
-                {quote.px_change_rate >= 0 ? '+' : ''}{quote.px_change_rate?.toFixed(2)}%
-              </span>
-              <span className="text-xs text-white/40">成交 {formatVolume(quote.turnover_value)}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-1 px-4 py-2 sticky z-10 bg-surface-dark border-b border-hairline-dark top-[97px]">
-          {periods.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className={`px-3 py-1 text-xs font-mono transition rounded-button ${
-                period === p.value ? 'bg-ai text-white' : 'bg-transparent text-white/40'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-4">
-          <img
-            src={klineUrl}
-            alt={`${name} K线图`}
-            className="w-full rounded-lg"
-            style={{ minHeight: 300 }}
-          />
-        </div>
-
-        {plates.length > 0 && (
-          <div className="px-4 py-3 border-t border-hairline-dark">
-            <p className="text-xs text-white/40 mb-2">所属板块</p>
-            <div className="space-y-1.5 max-h-[240px] overflow-y-auto custom-scroll">
-              {plates.map((p) => (
-                <div
-                  key={p.plate_id}
-                  className="bg-surface-dark rounded-card border border-hairline-dark p-2.5 cursor-pointer hover:border-white/20 transition-colors"
-                  onClick={() => p.reason && setDialogPlate(p)}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-white truncate">{p.plate_name}</span>
-                    <span className={`text-xs font-mono shrink-0 ${p.core_avg_pcp >= 0 ? 'text-up' : 'text-down'}`}>
-                      {p.core_avg_pcp >= 0 ? '+' : ''}{(p.core_avg_pcp * 100).toFixed(2)}%
-                    </span>
-                  </div>
-                  {p.reason && <p className="text-[11px] text-white/50 mt-1 leading-relaxed line-clamp-2">{p.reason}</p>}
-                </div>
-              ))}
-            </div>
+    <div className="absolute inset-0 z-[22] bg-bg overflow-y-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-hairline bg-bg-surface flex-shrink-0">
+        <button onClick={onClose} className="text-xs text-ai hover:underline whitespace-nowrap">
+          ← 返回
+        </button>
+        <span className="text-xl font-bold text-white">{name}</span>
+        <span className="text-xs text-ink-muted font-mono">{symbol}</span>
+        {quote && (
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-[22px] font-bold font-mono">{quote.last_px?.toFixed(2)}</span>
+            <span className={`text-sm font-mono font-semibold px-2.5 py-1 rounded-card ${up ? 'bg-up/20 text-up' : 'bg-down/20 text-down'}`}>
+              {up ? '+' : ''}{quote.px_change_rate?.toFixed(2)}%
+            </span>
           </div>
         )}
+      </div>
 
-        <AnimatePresence>
-          {dialogPlate && (
-            <>
-              <div className="fixed inset-0 z-[60]" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setDialogPlate(null)} />
-              <motion.div
-                className="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-              >
-                <div className="pointer-events-auto bg-surface-dark border border-hairline-dark rounded-card p-5 w-[420px] max-w-[90vw] shadow-2xl">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white">{dialogPlate.plate_name}</span>
-                      <span className={`text-xs font-mono ${dialogPlate.core_avg_pcp >= 0 ? 'text-up' : 'text-down'}`}>
-                        {dialogPlate.core_avg_pcp >= 0 ? '+' : ''}{(dialogPlate.core_avg_pcp * 100).toFixed(2)}%
-                      </span>
-                    </div>
-                    <button onClick={() => setDialogPlate(null)} className="text-lg leading-none p-1 text-white/40 hover:text-white/60">&times;</button>
-                  </div>
-                  <p className="text-[13px] text-white/70 leading-relaxed">{dialogPlate.reason}</p>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+      {/* Period selector */}
+      <div className="flex gap-1.5 px-6 py-2.5 border-b border-hairline bg-bg-surface">
+        {periods.map((p) => (
+          <button
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            className={`px-3.5 py-1 text-xs rounded-full border transition-colors ${
+              period === p.value
+                ? 'bg-ai text-white border-ai'
+                : 'bg-bg text-ink-muted border-hairline hover:border-hairline-dark hover:text-white'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
 
-        {quote && (
-          <div className="p-4 grid grid-cols-3 gap-2 text-xs">
+      {/* Chart */}
+      <div className="px-6 py-2.5">
+        <img
+          src={klineUrl}
+          alt={`${name} K线图`}
+          className="w-full rounded-card"
+          style={{ minHeight: 300, maxHeight: 420 }}
+        />
+      </div>
+
+      {/* Metrics */}
+      {quote && (
+        <div className="px-6 py-2.5">
+          <div className="grid grid-cols-4 gap-2 text-xs">
             {metrics.map((m) => (
-              <div key={m.label} className="bg-surface-dark rounded-card border border-hairline-dark p-3 text-center">
-                <p className="text-white/40 text-[11px]">{m.label}</p>
-                <p className="font-mono mt-1 text-white text-xs">{m.value}</p>
+              <div key={m.label} className="bg-bg-surface border border-hairline rounded-card p-2.5 text-center">
+                <p className="text-ink-muted text-[10px] uppercase tracking-wide mb-1">{m.label}</p>
+                <p className="font-mono text-white text-xs">{m.value}</p>
               </div>
             ))}
           </div>
-        )}
-      </motion.div>
-    </>
+        </div>
+      )}
+
+      {/* Plates */}
+      {plates.length > 0 && (
+        <div className="px-6 py-2.5 border-t border-hairline mt-2">
+          <p className="text-xs text-ink-muted mb-2">所属板块</p>
+          <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
+            {plates.map((p) => (
+              <div
+                key={p.plate_id}
+                className="bg-bg-surface rounded-card border border-hairline p-2.5 cursor-pointer hover:border-white/20 transition-colors"
+                onClick={() => p.reason && setDialogPlate(p)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-white truncate">{p.plate_name}</span>
+                  <span className={`text-xs font-mono shrink-0 ${p.core_avg_pcp >= 0 ? 'text-up' : 'text-down'}`}>
+                    {p.core_avg_pcp >= 0 ? '+' : ''}{(p.core_avg_pcp * 100).toFixed(2)}%
+                  </span>
+                </div>
+                {p.reason && <p className="text-[11px] text-ink-muted mt-1 leading-relaxed line-clamp-2">{p.reason}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Plate dialog */}
+      {dialogPlate && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setDialogPlate(null)} />
+          <div className="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none">
+            <div className="pointer-events-auto bg-bg-surface border border-hairline rounded-card p-5 w-[420px] max-w-[90vw] shadow-2xl">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">{dialogPlate.plate_name}</span>
+                  <span className={`text-xs font-mono ${dialogPlate.core_avg_pcp >= 0 ? 'text-up' : 'text-down'}`}>
+                    {dialogPlate.core_avg_pcp >= 0 ? '+' : ''}{(dialogPlate.core_avg_pcp * 100).toFixed(2)}%
+                  </span>
+                </div>
+                <button onClick={() => setDialogPlate(null)} className="text-lg leading-none p-1 text-ink-muted hover:text-white">&times;</button>
+              </div>
+              <p className="text-[13px] text-white/70 leading-relaxed">{dialogPlate.reason}</p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   )
 }

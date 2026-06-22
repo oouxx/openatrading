@@ -45,6 +45,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/api/overview", get(handlers::get_overview))
+        .route("/api/search-stocks", get(handlers::search_stocks))
         .route(
             "/api/sentiment-history",
             get(handlers::get_sentiment_history),
@@ -71,8 +72,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
         .route("/api/skills", get(chat::get_skills))
-        .route("/api/tools", get(chat::get_tools))
-        .route("/api/skills", get(chat::get_skills))
+        .route("/api/skills", post(chat::save_skill))
+        .route("/api/skills/:name", delete(chat::delete_skill))
         .route("/api/tools", get(chat::get_tools))
         .route(
             "/api/plates-by-any-stock/:symbol",

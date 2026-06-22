@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-
 export default function ChatQuickButtons() {
   const openView = (viewId: string) => {
     window.dispatchEvent(
@@ -8,19 +6,19 @@ export default function ChatQuickButtons() {
   };
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-t border-hairline">
-      <Button variant="ghost" size="sm" className="text-xs text-ink-muted hover:text-white h-8 px-3" onClick={() => openView("dragon-tiger")}>
-        📈 龙虎榜
-      </Button>
-      <Button variant="ghost" size="sm" className="text-xs text-ink-muted hover:text-white h-8 px-3" onClick={() => openView("breakout")}>
-        🔥 晋级分析
-      </Button>
-      <Button variant="ghost" size="sm" className="text-xs text-ink-muted hover:text-white h-8 px-3" onClick={() => openView("replay")}>
-        🎯 行情回放
-      </Button>
-      <Button variant="ghost" size="sm" className="text-xs text-ink-muted hover:text-white h-8 px-3" onClick={() => openView("roles")}>
-        🤖 角色策略
-      </Button>
+    <div className="flex items-center gap-1 px-4 py-1.5 border-t border-hairline">
+      <button className="flex items-center gap-1 px-2 py-1 h-6 text-[11px] text-ink-muted border border-hairline rounded-card bg-transparent hover:bg-bg-hover hover:text-white transition-colors" onClick={() => openView("dragon-tiger")}>
+        龙虎榜
+      </button>
+      <button className="flex items-center gap-1 px-2 py-1 h-6 text-[11px] text-ink-muted border border-hairline rounded-card bg-transparent hover:bg-bg-hover hover:text-white transition-colors" onClick={() => openView("breakout")}>
+        晋级分析
+      </button>
+      <button className="flex items-center gap-1 px-2 py-1 h-6 text-[11px] text-ink-muted border border-hairline rounded-card bg-transparent hover:bg-bg-hover hover:text-white transition-colors" onClick={() => openView("replay")}>
+        行情回放
+      </button>
+      <button className="flex items-center gap-1 px-2 py-1 h-6 text-[11px] text-ink-muted border border-hairline rounded-card bg-transparent hover:bg-bg-hover hover:text-white transition-colors" onClick={() => openView("roles")}>
+        角色策略
+      </button>
     </div>
   );
 }

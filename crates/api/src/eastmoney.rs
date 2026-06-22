@@ -151,6 +151,13 @@ impl Default for LhbClient {
     }
 }
 
+/// Stock search result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockSearchItem {
+    pub code: String,
+    pub name: String,
+}
+
 impl LhbClient {
     pub fn new() -> Self {
         Self {
@@ -436,6 +443,47 @@ impl LhbClient {
         ]
         .into();
         self.fetch_all_pages(&mut params).await
+    }
+
+    /// Search stocks by keyword (name or code) via 东方财富 suggestion API.
+    pub async fn search_stocks(&self, keyword: &str) -> Result<Vec<StockSearchItem>, LhbError> {
+        let url = "https://searchapi.eastmoney.com/api/suggest/get";
+        let params = [
+            ("input", keyword),
+            ("type", "14"),
+            ("token", "D43BF722C8E33BDC906FB84D85E326E8"),
+            ("count", "12"),
+        ];
+        let resp = self
+            .client
+            .get(url)
+            .query(&params)
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let data = resp
+            .pointer("/QuotationCodeTable/Data")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let items: Vec<StockSearchItem> = data
+            .iter()
+            .filter_map(|v| {
+                let code = v.get("Code")?.as_str()?.to_string();
+                let name = v.get("Name")?.as_str()?.to_string();
+                // Only include A-stock codes (6 digits, starting with 0/3/6/4/8)
+                if code.len() == 6 && code.chars().all(|c| c.is_ascii_digit()) {
+                    Some(StockSearchItem { code, name })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(items)
     }
 }
 

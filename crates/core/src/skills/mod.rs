@@ -259,6 +259,41 @@ fn merge_skills(project: Vec<SkillEntry>, user: Vec<SkillEntry>) -> Vec<SkillEnt
     skills
 }
 
+/// A request body for creating or updating a skill.
+#[derive(Debug, Deserialize)]
+pub struct SkillRequest {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub compatibility: Option<String>,
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+    #[serde(default, rename = "allowed-tools")]
+    pub allowed_tools: Option<String>,
+}
+
+impl SkillRequest {
+    pub fn into_skill_entry(self) -> SkillEntry {
+        SkillEntry {
+            name: self.name,
+            description: self.description,
+            license: self.license,
+            compatibility: self.compatibility,
+            metadata: self.metadata,
+            allowed_tools: self.allowed_tools,
+            content: self.content,
+            file_path: String::new(),
+            base_dir: String::new(),
+            disable_model_invocation: false,
+            scope: SkillScope::User,
+        }
+    }
+}
+
 // ── SkillRegistry ───────────────────────────────────────────────────────
 
 /// Registry of skills conforming to the agentskills.io specification.
@@ -374,6 +409,18 @@ impl SkillRegistry {
         let full = format!("---\n{}---\n\n{}", frontmatter, skill.content);
         std::fs::write(&path, &full)?;
         Ok(path)
+    }
+
+    /// Delete a skill from disk by name.
+    pub fn uninstall_skill(name: &str) -> std::io::Result<()> {
+        let dir = Self::install_dir().join(name);
+        if !dir.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("skill '{name}' not found"),
+            ));
+        }
+        std::fs::remove_dir_all(&dir)
     }
 
     /// Load all skills from all configured directories.

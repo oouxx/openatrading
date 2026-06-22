@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::{sse::Event, IntoResponse, Sse},
     Json,
@@ -11,6 +11,8 @@ use std::sync::Arc;
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
 use openatrading_core::skills::SkillEntry;
+use openatrading_core::skills::SkillRegistry;
+use openatrading_core::skills::SkillRequest;
 
 use crate::handlers::OverviewResponse;
 use crate::AppState;
@@ -106,6 +108,50 @@ pub async fn get_tools(State(state): State<Arc<AppState>>) -> Json<Vec<ToolRespo
         })
         .collect();
     Json(tools)
+}
+
+/// POST /api/skills — create or update a skill
+pub async fn save_skill(
+    State(_state): State<Arc<AppState>>,
+    Json(req): Json<SkillRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = openatrading_core::skills::validate_skill_name(&req.name) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response();
+    }
+    let entry = req.into_skill_entry();
+    if let Err(e) = SkillRegistry::install_skill(&entry) {
+        tracing::error!("failed to save skill: {e}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "failed to save skill"})),
+        )
+            .into_response();
+    }
+    let skills = SkillRegistry::from_disk();
+    let saved = skills
+        .skills()
+        .iter()
+        .find(|s| s.name == entry.name)
+        .cloned();
+    (StatusCode::OK, Json(saved)).into_response()
+}
+
+/// DELETE /api/skills/:name — delete a skill
+pub async fn delete_skill(
+    State(_state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match SkillRegistry::uninstall_skill(&name) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("failed to delete skill '{name}': {e}");
+            StatusCode::NOT_FOUND.into_response()
+        },
+    }
 }
 
 pub async fn get_ai_roles(
