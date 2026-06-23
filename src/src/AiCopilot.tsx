@@ -51,6 +51,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
   messagesRef.current = messages;
   const activeThreadRef = useRef<number | null>(activeThreadId);
   activeThreadRef.current = activeThreadId;
+  const newThreadRef = useRef<number | null>(null);
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,6 +72,11 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
   useEffect(() => {
     if (activeThreadId === null) {
       setMessages([]);
+      return;
+    }
+    // Don't reload if this thread was just created by send() — it already set messages
+    if (newThreadRef.current === activeThreadId) {
+      newThreadRef.current = null;
       return;
     }
     getMessages(activeThreadId).then((msgs) => {
@@ -148,6 +154,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
     if (threadId === null) {
       const thread = await createThread("新对话");
       threadId = thread.id;
+      newThreadRef.current = thread.id;
       onActiveThreadChange(thread.id);
     }
 
@@ -381,15 +388,22 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
                     }`}
                   >
                     {msg.reasoning && (
-                      <details className="mb-2 text-xs text-ink-muted">
-                        <summary className="cursor-pointer">思考过程</summary>
-                        <div className="mt-1 whitespace-pre-wrap">{msg.reasoning}</div>
+                      <details
+                        open={isLastAi && streaming}
+                        className="mb-2 text-xs text-ink-muted border-l-2 border-ink-muted/30 pl-3"
+                      >
+                        <summary className="cursor-pointer select-none hover:text-white">
+                          思考过程 {streaming && isLastAi && <span className="ml-1 text-ai">●</span>}
+                        </summary>
+                        <div className="mt-2 whitespace-pre-wrap leading-relaxed opacity-80">
+                          {msg.reasoning}
+                        </div>
                       </details>
                     )}
                     {msg.role === "assistant" ? (
                       msg.content ? (
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                      ) : streaming && isLastAi ? (
+                      ) : streaming && isLastAi && !msg.reasoning ? (
                         <div className="flex gap-1 py-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" />
                           <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" style={{ animationDelay: "0.2s" }} />
