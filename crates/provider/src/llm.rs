@@ -556,14 +556,6 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
     events
 }
 
-fn default_tool_call() -> ToolCall {
-    ToolCall {
-        id: String::new(),
-        function_name: String::new(),
-        arguments: String::new(),
-    }
-}
-
 fn event_stream_to_tool_stream(
     event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
 ) -> impl futures::Stream<Item = Result<Vec<StreamEvent>>> {
