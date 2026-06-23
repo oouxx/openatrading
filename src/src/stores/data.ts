@@ -40,6 +40,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 export interface ChatStreamCallbacks {
   onText: (text: string) => void;
   onReasoning?: (text: string) => void;
+  onToolCall?: (tool: { id: string; name: string; args: string }) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }
@@ -124,6 +125,8 @@ export async function apiChatStream(
           const decoded = data.replace(/\\n/g, "\n");
           if (currentEvent === "thinking") {
             callbacks.onReasoning?.(decoded);
+          } else if (currentEvent === "tool-call") {
+            try { callbacks.onToolCall?.(JSON.parse(data)); } catch { }
           } else {
             callbacks.onText(decoded);
           }

@@ -280,6 +280,16 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               forceRender();
             }
           },
+          onToolCall: (tool) => {
+            const msgs = threadMessagesRef.current.get(threadId) ?? [];
+            const last = msgs[msgs.length - 1];
+            const note = `\n\`🛠️ ${tool.name || '调用工具'} — ${tool.id}\``;
+            if (last && last.role === "assistant") {
+              msgs[msgs.length - 1] = { ...last, content: last.content + note };
+              threadMessagesRef.current.set(threadId, msgs);
+              forceRender();
+            }
+          },
           onDone: () => {
             setStreaming(false);
             const msgs = threadMessagesRef.current.get(threadId) ?? [];
