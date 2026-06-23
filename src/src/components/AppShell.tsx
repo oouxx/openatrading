@@ -1,5 +1,5 @@
 // src/components/AppShell.tsx
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useAppMode } from "@/contexts/AppModeContext";
 import AiCopilot from "@/AiCopilot";
 import ConversationSidebar from "./ConversationSidebar";
@@ -20,17 +20,23 @@ export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const { createThread, deleteThread } = useThreads();
+  const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
     const thread = await createThread("新对话");
     setActiveThreadId(thread.id);
   };
 
-  const handleDeleteThread = async (id: number) => {
+  const handleDeleteThread = useCallback(async (id: number) => {
     await deleteThread(id);
     if (activeThreadId === id) setActiveThreadId(null);
-  };
+    reload();
+  }, [activeThreadId, deleteThread, reload]);
+
+  const handleActiveChange = useCallback((id: number | null) => {
+    setActiveThreadId(id);
+    reload();
+  }, [reload]);
 
   return (
     <TooltipProvider>
@@ -39,8 +45,9 @@ export default function AppShell() {
           <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
         ) : (
           <ConversationSidebar
+            threads={threads}
             activeThreadId={activeThreadId}
-            onSelectThread={setActiveThreadId}
+            onSelectThread={handleActiveChange}
             onNewThread={handleNewThread}
             onDeleteThread={handleDeleteThread}
           />
@@ -51,7 +58,8 @@ export default function AppShell() {
               <div className="flex-1 min-w-0 flex flex-col">
                 <AiCopilot
                   activeThreadId={activeThreadId}
-                  onActiveThreadChange={setActiveThreadId}
+                  onActiveThreadChange={handleActiveChange}
+                  onReload={reload}
                 />
               </div>
               <RightPanel />
