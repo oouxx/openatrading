@@ -556,20 +556,6 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
     events
 }
 
-fn event_stream_to_tool_stream(
-    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
-) -> impl futures::Stream<Item = Result<Vec<StreamEvent>>> {
-    async_stream::stream! {
-        let mut stream = Box::pin(event_stream);
-        while let Some(event) = stream.next().await {
-            let events = assistant_event_to_stream_events(&event);
-            if !events.is_empty() {
-                yield Ok(events);
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ToolCall {
     pub id: String,
