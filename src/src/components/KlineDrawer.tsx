@@ -16,8 +16,6 @@ const periods = [
   { label: '月K', value: 'month' },
 ]
 
-const FALLBACK_IMG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="#1a1a2e" width="400" height="300"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#666" font-size="14">K线图加载失败</text></svg>')
-
 interface KlineDrawerProps {
   symbol: string
   name: string
@@ -75,9 +73,6 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   }, [onClose])
 
   const klineUrl = getKlineImageUrlV5(symbol, period)
-  const [imgError, setImgError] = useState(false)
-
-  useEffect(() => { setImgError(false); }, [klineUrl])
 
   const up = quote && quote.px_change_rate >= 0
   const changeClass = up ? 'text-up' : 'text-down'
@@ -118,11 +113,10 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {/* Chart */}
       <div className="px-6 py-2.5">
         <img
-          src={imgError ? FALLBACK_IMG : klineUrl}
+          src={klineUrl}
           alt={`${name} K线图`}
           className="w-full rounded-card"
           style={{ minHeight: 300, maxHeight: 420 }}
-          onError={() => setImgError(true)}
         />
       </div>
 
