@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiChatStream, fetchJson } from "@/stores/data";
 import {
-  useThreads,
   getMessages,
   saveMessage,
   fetchCommands,
@@ -38,7 +37,6 @@ let msgSeq = 0;
 const newMsgId = () => `msg-${++msgSeq}`;
 
 export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCopilotProps) {
-  const { createThread } = useThreads();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -152,9 +150,11 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
 
     let threadId = activeThreadRef.current;
     if (threadId === null) {
-      const thread = await createThread("新对话");
+      const thread = await fetchJson<{ id: number; title: string }>("/api/ai/threads", {
+        method: "POST",
+        body: JSON.stringify({ title: "新对话" }),
+      });
       threadId = thread.id;
-      newThreadRef.current = thread.id;
       onActiveThreadChange(thread.id);
     }
 

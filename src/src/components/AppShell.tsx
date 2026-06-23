@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAppMode } from "@/contexts/AppModeContext";
 import AiCopilot from "@/AiCopilot";
 import ConversationSidebar from "./ConversationSidebar";
+import { useThreads } from "@/hooks/useChatThreads";
 import RightPanel from "./RightPanel";
 import SkillEditor from "./SkillEditor";
 import SettingsView from "./SettingsView";
@@ -19,6 +20,17 @@ export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+  const { createThread, deleteThread } = useThreads();
+
+  const handleNewThread = async () => {
+    const thread = await createThread("新对话");
+    setActiveThreadId(thread.id);
+  };
+
+  const handleDeleteThread = async (id: number) => {
+    await deleteThread(id);
+    if (activeThreadId === id) setActiveThreadId(null);
+  };
 
   return (
     <TooltipProvider>
@@ -29,10 +41,8 @@ export default function AppShell() {
           <ConversationSidebar
             activeThreadId={activeThreadId}
             onSelectThread={setActiveThreadId}
-            onNewThread={() => setActiveThreadId(null)}
-            onDeleteThread={(id) => {
-              if (activeThreadId === id) setActiveThreadId(null);
-            }}
+            onNewThread={handleNewThread}
+            onDeleteThread={handleDeleteThread}
           />
         )}
         <SidebarInset className="overflow-hidden">
