@@ -5,6 +5,7 @@ import AiCopilot from "@/AiCopilot";
 import ConversationSidebar from "./ConversationSidebar";
 import { useThreads } from "@/hooks/useChatThreads";
 import { useStockTabStore } from "@/stores/stockTabStore";
+import { useThreadStore } from "@/stores/threadStore";
 import RightPanel from "./RightPanel";
 import SkillEditor from "./SkillEditor";
 import SettingsView from "./SettingsView";
@@ -20,8 +21,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
-  const activeThreadId = useStockTabStore((s) => s.activeThreadId);
-  const setActiveThreadId = useStockTabStore((s) => s.setActiveThreadId);
+  const activeThreadId = useThreadStore((s) => s.activeThreadId);
+  const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId);
   const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
