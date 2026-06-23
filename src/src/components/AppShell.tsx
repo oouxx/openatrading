@@ -4,6 +4,7 @@ import { useAppMode } from "@/contexts/AppModeContext";
 import AiCopilot from "@/AiCopilot";
 import ConversationSidebar from "./ConversationSidebar";
 import { useThreads } from "@/hooks/useChatThreads";
+import { useStockTabStore } from "@/stores/stockTabStore";
 import RightPanel from "./RightPanel";
 import SkillEditor from "./SkillEditor";
 import SettingsView from "./SettingsView";
@@ -20,14 +21,6 @@ export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const [activeStockTab, setActiveStockTab] = useState<string | null>(() => {
-    try { return localStorage.getItem("stock-active-tab"); } catch { return null; }
-  });
-  const syncActiveTab = useCallback((id: string | null) => {
-    setActiveStockTab(id);
-    if (id) localStorage.setItem("stock-active-tab", id);
-    else localStorage.removeItem("stock-active-tab");
-  }, []);
   const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
@@ -43,8 +36,7 @@ export default function AppShell() {
 
   const handleActiveChange = useCallback((id: number | null) => {
     setActiveThreadId(id);
-    localStorage.removeItem("stock-active-tab");
-    setActiveStockTab(null);
+    useStockTabStore.getState().setActiveStockTab(null);
     reload();
   }, [reload]);
 
@@ -70,8 +62,6 @@ export default function AppShell() {
                   activeThreadId={activeThreadId}
                   onActiveThreadChange={handleActiveChange}
                   onReload={reload}
-                  activeStockTab={activeStockTab}
-                  setActiveStockTab={syncActiveTab}
                 />
               </div>
               <RightPanel />

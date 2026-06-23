@@ -47,6 +47,7 @@ import {
 import ChatQuickButtons from "@/components/ChatQuickButtons";
 import KlineDrawer from "@/components/KlineDrawer";
 import ChromeTabs from "@/components/ChromeTabs";
+import { useStockTabStore } from "@/stores/stockTabStore";
 
 interface DisplayMessage {
   id: string;
@@ -65,14 +66,12 @@ interface AiCopilotProps {
   activeThreadId: number | null;
   onActiveThreadChange: (id: number | null) => void;
   onReload?: () => void;
-  activeStockTab: string | null;
-  setActiveStockTab: (id: string | null) => void;
 }
 
 let msgSeq = 0;
 const newMsgId = () => `msg-${++msgSeq}`;
 
-export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload, activeStockTab, setActiveStockTab }: AiCopilotProps) {
+export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
@@ -82,6 +81,11 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const [renderTick, setRenderTick] = useState(0);
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null);
   const streamThreadRef = useRef<number | null>(null);
+  const activeStockTab = useStockTabStore((s) => s.activeStockTab);
+  const stockTabs = useStockTabStore((s) => s.stockTabs);
+  const openTab = useStockTabStore((s) => s.openTab);
+  const closeTab = useStockTabStore((s) => s.closeTab);
+  const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab);
 
   // Per-thread message store — persists across thread switches
   const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(new Map());
@@ -92,19 +96,12 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [stockTabs, setStockTabs] = useState<{ id: string; name: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem("stock-tabs") || "[]"); } catch { return []; }
-  });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const msgContainerRef = useRef<HTMLDivElement>(null);
 
   const forceRender = useCallback(() => setRenderTick((t) => t + 1), []);
-
-  useEffect(() => {
-    localStorage.setItem("stock-tabs", JSON.stringify(stockTabs));
-  }, [stockTabs]);
 
   useEffect(() => {
     fetchCommands().then(setCommands).catch(() => {});
@@ -202,11 +199,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       <div className="flex-1 min-h-0">
         {tab && (
           <div className="h-full overflow-y-auto">
-            <KlineDrawer symbol={activeStockTab} name={tab.name} onClose={() => {
-              const id = activeStockTab;
-              setStockTabs((prev) => prev.filter((s) => s.id !== id));
-              setActiveStockTab(null);
-            }} />
+            <KlineDrawer symbol={activeStockTab} name={tab.name} onClose={() => closeTab(activeStockTab)} />
           </div>
         )}
       </div>
@@ -410,9 +403,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     key={s.code}
                     className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-bg-hover transition-colors"
                     onClick={() => {
-                      const id = `${s.code}`;
-                      setStockTabs((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, { id, name: s.name }]));
-                      setActiveStockTab(id);
+                      openTab(`${s.code}`, s.name);
                       setSearchQuery("");
                       setShowDropdown(false);
                       searchRef.current?.blur();
@@ -437,10 +428,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         tabs={stockTabs.map((t) => ({ id: t.id, label: t.name }))}
         activeTab={activeStockTab}
         onSelect={setActiveStockTab}
-        onClose={(id) => {
-          setStockTabs((prev) => prev.filter((t) => t.id !== id));
-          if (activeStockTab === id) setActiveStockTab(stockTabs.find((t) => t.id !== id)?.id ?? null);
-        }}
+        onClose={closeTab}
       />
 
       {bodyContent ? bodyContent : (
