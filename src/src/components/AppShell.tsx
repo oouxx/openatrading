@@ -37,7 +37,7 @@ export default function AppShell() {
         )}
         <SidebarInset>
           {mode === "chat" ? (
-            <div className="flex flex-1 min-w-0 h-full">
+            <div className="flex flex-1 min-w-0">
               <div className="flex-1 min-w-0 flex flex-col">
                 <AiCopilot
                   activeThreadId={activeThreadId}
@@ -47,7 +47,7 @@ export default function AppShell() {
               <RightPanel />
             </div>
           ) : mode === "skill-editor" ? (
-            <div className="flex flex-col flex-1 min-w-0 h-full">
+            <div className="flex flex-col flex-1 min-w-0">
               <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
                 <SidebarTrigger />
               </div>
@@ -56,8 +56,13 @@ export default function AppShell() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-w-0 h-full overflow-y-auto">
-              <SettingsView activeTab={settingsTab} />
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
+                <SidebarTrigger />
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <SettingsView activeTab={settingsTab} />
+              </div>
             </div>
           )}
         </SidebarInset>
