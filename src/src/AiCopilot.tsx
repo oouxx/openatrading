@@ -46,7 +46,6 @@ import {
 } from "@/hooks/useChatThreads";
 import ChatQuickButtons from "@/components/ChatQuickButtons";
 import KlineDrawer from "@/components/KlineDrawer";
-import ChromeTabs from "@/components/ChromeTabs";
 
 interface DisplayMessage {
   id: string;
@@ -65,14 +64,12 @@ interface AiCopilotProps {
   activeThreadId: number | null;
   onActiveThreadChange: (id: number | null) => void;
   onReload?: () => void;
-  activeStockTab: string | null;
-  setActiveStockTab: (id: string | null) => void;
 }
 
 let msgSeq = 0;
 const newMsgId = () => `msg-${++msgSeq}`;
 
-export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload, activeStockTab, setActiveStockTab }: AiCopilotProps) {
+export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
@@ -90,9 +87,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   // Stock search
   const [searchQuery, setSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
   const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [stockTabs, setStockTabs] = useState<{ id: string; name: string }[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -404,9 +401,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     key={s.code}
                     className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-bg-hover transition-colors"
                     onClick={() => {
-                      const id = `${s.code}`;
-                      setStockTabs((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, { id, name: s.name }]));
-                      setActiveStockTab(id);
+                      setSelectedStock({ symbol: s.code, name: s.name });
                       setSearchQuery("");
                       setShowDropdown(false);
                       searchRef.current?.blur();
