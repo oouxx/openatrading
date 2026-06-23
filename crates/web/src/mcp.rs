@@ -37,7 +37,6 @@ pub async fn delete_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let servers;
     {
         let mut guard = state.mcp_servers.lock().unwrap();
         let before = guard.len();
@@ -45,7 +44,6 @@ pub async fn delete_handler(
         if guard.len() == before {
             return Err(StatusCode::NOT_FOUND);
         }
-        servers = guard.clone();
     }
     load_servers_and_reload(&state).await;
     Ok((StatusCode::NO_CONTENT, ""))
