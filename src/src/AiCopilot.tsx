@@ -44,7 +44,6 @@ import {
   fetchCommands,
   type ChatMessage,
 } from "@/hooks/useChatThreads";
-import ChatQuickButtons from "@/components/ChatQuickButtons";
 import KlineDrawer from "@/components/KlineDrawer";
 import ChromeTabs from "@/components/ChromeTabs";
 import { useStockTabStore } from "@/stores/stockTabStore";
@@ -373,9 +372,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       <div className="flex items-center gap-3 px-4 py-1.5 border-b border-hairline bg-bg-surface flex-shrink-0">
         <SidebarTrigger className="flex-shrink-0" />
         <div className="flex items-center gap-1.5 text-xs text-ink-muted whitespace-nowrap flex-shrink-0">
-          <span className="text-white font-medium">市场分析</span>
-          <span>·</span>
-          <span>分析助手</span>
+          <span className="text-white font-medium">OpenATrading</span>
         </div>
         <div className="flex-1 flex justify-center">
           <div className="relative w-full max-w-[200px]" ref={searchContainerRef}>
@@ -542,7 +539,6 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               <Send className="w-4 h-4" />
             </Button>
           </div>
-          <ChatQuickButtons />
         </div>
       </div>
       )}
