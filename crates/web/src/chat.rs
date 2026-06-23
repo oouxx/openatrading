@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
+use openatrading_core::llm::{assistant_event_to_stream_events, StreamEvent};
 use openatrading_core::skills::SkillEntry;
 use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
@@ -406,43 +407,34 @@ pub async fn ai_chat(
         loop {
             match rx.recv().await {
                 Some(AgentEvent::MessageUpdate { assistant_message_event, .. }) => {
-                    use openatrading_core::llm::pi_ai_types::AssistantMessageEvent as Ame;
-                    match &assistant_message_event {
-                        Ame::TextDelta { delta, .. } if !delta.is_empty() => {
-                            tracing::trace!("ai/chat: TextDelta {} chars", delta.len());
-                            yield Ok(Event::default().data(delta.replace('\n', "\\n")));
+                    for stream_event in assistant_event_to_stream_events(&assistant_message_event) {
+                        match stream_event {
+                            StreamEvent::Text(t) => {
+                                tracing::trace!("ai/chat: Text {} chars", t.len());
+                                yield Ok(Event::default().data(t.replace('\n', "\\n")));
+                            }
+                            StreamEvent::ReasoningText(t) => {
+                                yield Ok(Event::default().event("thinking").data(t.replace('\n', "\\n")));
+                            }
+                            StreamEvent::ToolCallStart(tc) => {
+                                let data = serde_json::to_string(&serde_json::json!({
+                                    "id": tc.id,
+                                    "name": tc.function_name,
+                                    "args": tc.arguments,
+                                })).unwrap_or_default();
+                                yield Ok(Event::default().event("tool-call").data(data));
+                            }
+                            StreamEvent::ToolCallDelta(tc) => {
+                                let data = serde_json::to_string(&serde_json::json!({
+                                    "args": tc.arguments,
+                                })).unwrap_or_default();
+                                yield Ok(Event::default().event("tool-delta").data(data));
+                            }
+                            StreamEvent::Error(e) => {
+                                tracing::warn!("ai/chat: assistant error: {e}");
+                                yield Ok(Event::default().data(format!("[ERROR] {e}")));
+                            }
                         }
-                        Ame::ThinkingDelta { delta, .. } if !delta.is_empty() => {
-                            yield Ok(Event::default().event("thinking").data(delta.replace('\n', "\\n")));
-                        }
-                        Ame::ThinkingDelta { .. } => {}
-                        Ame::ToolCallDelta { .. } => {
-                            yield Ok(Event::default().event("tool-delta"));
-                        }
-                        Ame::ToolCallEnd { .. } => {
-                            yield Ok(Event::default().event("tool-end"));
-                        }
-                        Ame::Error { reason, error } => {
-                            // Provider stream ended abnormally — e.g. DeepSeek
-                            // closing the connection without a `finish_reason`.
-                            // Surface the reason + any partial content length so
-                            // we can distinguish empty responses from truncated ones.
-                            let partial_len = error
-                                .content
-                                .iter()
-                                .map(|b| match b {
-                                    openatrading_core::llm::pi_ai_types::ContentBlock::Text { text, .. } => text.len(),
-                                    _ => 0,
-                                })
-                                .sum::<usize>();
-                            tracing::warn!(
-                                "ai/chat: stream error reason={:?} partial_content_chars={} error_msg={:?}",
-                                reason,
-                                partial_len,
-                                error.error_message,
-                            );
-                        }
-                        _ => {}
                     }
                 }
                 Some(AgentEvent::MessageEnd { message }) => {

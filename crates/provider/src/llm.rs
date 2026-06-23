@@ -9,8 +9,8 @@ use pi_ai::models::get_model;
 use pi_ai::providers::register_builtins::register_built_in_api_providers;
 use pi_ai::stream;
 use pi_ai::types::{
-    AssistantMessageEvent, ContentBlock, Context, Message, Model,
-    SimpleStreamOptions, StreamOptions, Tool as PiTool,
+    AssistantMessageEvent, ContentBlock, Context, Message, Model, SimpleStreamOptions,
+    StreamOptions, Tool as PiTool,
 };
 
 pub use pi_agent_core::types::{StreamFn, StreamFnOptions};
@@ -500,72 +500,78 @@ fn event_stream_to_marked_stream(
     }
 }
 
+/// Convert a single AssistantMessageEvent into StreamEvent(s), if relevant.
+/// Shared between stream-based (event_stream_to_tool_stream) and
+/// channel-based (SSE handler) consumers.
+pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<StreamEvent> {
+    let mut events = Vec::new();
+    match event {
+        AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
+            events.push(StreamEvent::Text(delta.clone()));
+        },
+        AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
+            events.push(StreamEvent::ReasoningText(delta.clone()));
+        },
+        AssistantMessageEvent::ToolCallStart { .. } => {
+            events.push(StreamEvent::ToolCallStart(default_tool_call()));
+        },
+        AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
+            events.push(StreamEvent::ToolCallDelta(ToolCall {
+                id: String::new(),
+                function_name: String::new(),
+                arguments: delta.clone(),
+            }));
+        },
+        AssistantMessageEvent::ToolCallEnd { tool_call, .. }
+            if !tool_call.name.is_empty() => {
+                events.push(StreamEvent::ToolCallStart(ToolCall {
+                    id: tool_call.id.clone(),
+                    function_name: tool_call.name.clone(),
+                    arguments: tool_call.arguments.to_string(),
+                }));
+            },
+        AssistantMessageEvent::Done { message, .. } => {
+            for block in &message.content {
+                use pi_ai::types::ContentBlock;
+                if let ContentBlock::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                    ..
+                } = block
+                {
+                    events.push(StreamEvent::ToolCallStart(ToolCall {
+                        id: id.clone(),
+                        function_name: name.clone(),
+                        arguments: arguments.to_string(),
+                    }));
+                }
+            }
+        },
+        AssistantMessageEvent::Error { error, .. } => {
+            let msg = error.error_message.as_deref().unwrap_or("unknown error");
+            events.push(StreamEvent::Error(msg.to_string()));
+        },
+        _ => {},
+    }
+    events
+}
+
+fn default_tool_call() -> ToolCall {
+    ToolCall {
+        id: String::new(),
+        function_name: String::new(),
+        arguments: String::new(),
+    }
+}
+
 fn event_stream_to_tool_stream(
     event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
 ) -> impl futures::Stream<Item = Result<Vec<StreamEvent>>> {
-    use std::cell::RefCell;
-
-    let current_tc: RefCell<Option<ToolCall>> = RefCell::new(None);
-
     async_stream::stream! {
         let mut stream = Box::pin(event_stream);
         while let Some(event) = stream.next().await {
-            let mut events: Vec<StreamEvent> = Vec::new();
-
-            match event {
-                AssistantMessageEvent::TextDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        events.push(StreamEvent::Text(delta));
-                    }
-                AssistantMessageEvent::ThinkingDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        events.push(StreamEvent::ReasoningText(delta));
-                    }
-                AssistantMessageEvent::ToolCallStart { .. } => {
-                    if let Some(prev) = current_tc.borrow_mut().take() {
-                        events.push(StreamEvent::ToolCallStart(prev));
-                    }
-                }
-                AssistantMessageEvent::ToolCallDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        events.push(StreamEvent::ToolCallDelta(ToolCall {
-                            id: String::new(),
-                            function_name: String::new(),
-                            arguments: delta,
-                        }));
-                    }
-                AssistantMessageEvent::ToolCallEnd { tool_call, .. } => {
-                    if let Some(prev) = current_tc.borrow_mut().take() {
-                        events.push(StreamEvent::ToolCallStart(prev));
-                    }
-                    events.push(StreamEvent::ToolCallStart(ToolCall {
-                        id: tool_call.id,
-                        function_name: tool_call.name,
-                        arguments: tool_call.arguments.to_string(),
-                    }));
-                }
-                AssistantMessageEvent::Done { message, .. } => {
-                    if let Some(prev) = current_tc.borrow_mut().take() {
-                        events.push(StreamEvent::ToolCallStart(prev));
-                    }
-                    for block in &message.content {
-                        if let ContentBlock::ToolCall { id, name, arguments, .. } = block {
-                            events.push(StreamEvent::ToolCallStart(ToolCall {
-                                id: id.clone(),
-                                function_name: name.clone(),
-                                arguments: arguments.to_string(),
-                            }));
-                        }
-                    }
-                }
-                AssistantMessageEvent::Error { error, .. } => {
-                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
-                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
-                    break;
-                }
-                _ => {}
-            }
-
+            let events = assistant_event_to_stream_events(&event);
             if !events.is_empty() {
                 yield Ok(events);
             }
@@ -585,6 +591,7 @@ pub enum StreamEvent {
     ReasoningText(String),
     ToolCallStart(ToolCall),
     ToolCallDelta(ToolCall),
+    Error(String),
 }
 
 #[cfg(not(target_arch = "wasm32"))]

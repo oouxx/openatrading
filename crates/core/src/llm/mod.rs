@@ -4,8 +4,9 @@ pub mod session;
 pub mod tools;
 
 pub use openatrading_provider::llm::{
-    LlmClient, StreamEvent, StreamFn, StreamFnOptions, StreamResult, ToolCall, ToolCallFunction,
-    ToolCallItem, ToolCallMessage, ToolChatChoice, ToolChatResponse, ToolStreamResult,
+    assistant_event_to_stream_events, LlmClient, StreamEvent, StreamFn, StreamFnOptions,
+    StreamResult, ToolCall, ToolCallFunction, ToolCallItem, ToolCallMessage, ToolChatChoice,
+    ToolChatResponse, ToolStreamResult,
 };
 
 pub use mcp_server::{serve_http, serve_stdio, MarketToolsServer};
