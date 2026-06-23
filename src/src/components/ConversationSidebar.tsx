@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, type FC } from "react";
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Sidebar,
@@ -10,55 +11,42 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Search, Plus, Settings, Puzzle } from "lucide-react";
+import { Search, Plus, Settings, Puzzle, Trash2 } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
-import {
-  ThreadListItemPrimitive,
-  ThreadListPrimitive,
-  useAuiState,
-} from "@assistant-ui/react";
+import { useThreads } from "@/hooks/useChatThreads";
 
-const ThreadListItem: FC = () => (
-  <ThreadListItemPrimitive.Root className="group relative flex h-8 items-center rounded-lg transition-colors hover:bg-bg-hover data-[active=true]:bg-ai/10">
-    <ThreadListItemPrimitive.Trigger className="flex h-full min-w-0 flex-1 items-center px-2.5 text-start text-sm gap-2">
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-ink-muted data-[active=true]:bg-up" />
-      <span className="min-w-0 flex-1 truncate text-xs">
-        <ThreadListItemPrimitive.Title fallback="新对话" />
-      </span>
-    </ThreadListItemPrimitive.Trigger>
-  </ThreadListItemPrimitive.Root>
-);
+interface ConversationSidebarProps {
+  activeThreadId: number | null;
+  onSelectThread: (id: number) => void;
+  onNewThread: () => void;
+  onDeleteThread: (id: number) => void;
+}
 
-export default function ConversationSidebar() {
+export default function ConversationSidebar({
+  activeThreadId,
+  onSelectThread,
+  onNewThread,
+  onDeleteThread,
+}: ConversationSidebarProps) {
   const { mode, setMode } = useAppMode();
   const [search, setSearch] = useState("");
+  const { threads } = useThreads();
 
-  const threadIds = useAuiState((s) => s.threads.threadIds);
-  const threadItems = useAuiState((s) => s.threads.threadItems);
-
-  const filteredIndices = useMemo(() => {
-    if (!search.trim()) return threadIds.map((_, i) => i);
+  const filteredThreads = useMemo(() => {
+    if (!search.trim()) return threads;
     const q = search.trim().toLowerCase();
-    const itemsById = new Map(threadItems.map((t) => [t.id, t]));
-    return threadIds
-      .map((id, i) => {
-        const t = itemsById.get(id);
-        return t && (t.title || "").toLowerCase().includes(q) ? i : -1;
-      })
-      .filter((i) => i !== -1);
-  }, [threadIds, threadItems, search]);
+    return threads.filter((t) => t.title.toLowerCase().includes(q));
+  }, [threads, search]);
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <ThreadListPrimitive.New asChild>
-              <SidebarMenuButton tooltip="新建会话">
-                <Plus />
-                <span>新建会话</span>
-              </SidebarMenuButton>
-            </ThreadListPrimitive.New>
+            <SidebarMenuButton onClick={onNewThread} tooltip="新建会话">
+              <Plus />
+              <span>新建会话</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -95,17 +83,30 @@ export default function ConversationSidebar() {
 
         <SidebarGroup className="flex-1 min-h-0">
           <SidebarMenu>
-            {filteredIndices.length === 0 ? (
+            {filteredThreads.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
                 {search.trim() ? "未找到匹配会话" : "暂无会话"}
               </div>
             ) : (
-              filteredIndices.map((index) => (
-                <ThreadListPrimitive.ItemByIndex
-                  key={threadIds[index]}
-                  index={index}
-                  components={{ ThreadListItem }}
-                />
+              filteredThreads.map((t) => (
+                <SidebarMenuItem key={t.id}>
+                  <SidebarMenuButton
+                    isActive={activeThreadId === t.id}
+                    onClick={() => onSelectThread(t.id)}
+                    tooltip={t.title}
+                    className="group/item"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
+                    <span className="flex-1 truncate">{t.title}</span>
+                    <button
+                      className="opacity-0 group-hover/item:opacity-100 text-ink-muted hover:text-down transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); onDeleteThread(t.id); }}
+                      title="删除"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               ))
             )}
           </SidebarMenu>
