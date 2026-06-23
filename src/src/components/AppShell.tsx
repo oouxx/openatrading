@@ -19,6 +19,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default function AppShell() {
   const { mode } = useAppMode();
@@ -31,7 +32,8 @@ export default function AppShell() {
 
   return (
     <AssistantRuntimeProvider runtime={threadListRuntime}>
-      <SidebarProvider defaultOpen>
+      <TooltipProvider>
+        <SidebarProvider defaultOpen>
         <ConversationSidebar />
         <SidebarInset>
           <div className="flex h-screen w-full overflow-hidden bg-bg">
@@ -63,6 +65,7 @@ export default function AppShell() {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      </TooltipProvider>
     </AssistantRuntimeProvider>
   );
 }
