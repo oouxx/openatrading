@@ -34,37 +34,35 @@ export default function AppShell() {
     <AssistantRuntimeProvider runtime={threadListRuntime}>
       <TooltipProvider>
         <SidebarProvider defaultOpen>
-        <ConversationSidebar />
-        <SidebarInset>
-          <div className="flex h-screen w-full overflow-hidden bg-bg">
-            <div className="flex flex-1 min-w-0">
-              {mode === "chat" ? (
-                <>
-                  <div className="flex-1 min-w-0 flex flex-col">
-                    <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
-                      <SidebarTrigger />
-                    </div>
-                    <AiCopilotContent />
-                  </div>
-                  <RightPanel />
-                </>
-              ) : mode === "skill-editor" ? (
-                <div className="flex-1 min-w-0 overflow-y-auto">
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
-                    <SidebarTrigger />
-                  </div>
+          {mode === "settings" ? (
+            <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
+          ) : (
+            <ConversationSidebar />
+          )}
+          <SidebarInset>
+            {mode === "chat" ? (
+              <div className="flex flex-1 min-w-0 h-full">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <AiCopilotContent />
+                </div>
+                <RightPanel />
+              </div>
+            ) : mode === "skill-editor" ? (
+              <div className="flex flex-col flex-1 min-w-0 h-full">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-hairline">
+                  <SidebarTrigger />
+                </div>
+                <div className="flex-1 overflow-y-auto">
                   <SkillEditor />
                 </div>
-              ) : (
-                <div className="flex flex-1 min-w-0">
-                  <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
-                  <SettingsView activeTab={settingsTab} />
-                </div>
-              )}
-            </div>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+              </div>
+            ) : (
+              <div className="flex-1 min-w-0 h-full overflow-y-auto">
+                <SettingsView activeTab={settingsTab} />
+              </div>
+            )}
+          </SidebarInset>
+        </SidebarProvider>
       </TooltipProvider>
     </AssistantRuntimeProvider>
   );

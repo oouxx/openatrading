@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import {
   useAuiState,
 } from "@assistant-ui/react";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { getMessages, saveMessage } from "@/hooks/useChatThreads";
 import { fetchJson } from "@/stores/data";
@@ -105,6 +106,7 @@ export default function AiCopilotContent() {
     <div className="flex flex-col h-full w-full relative">
       {/* Center header: breadcrumb + stock search */}
       <div className="flex items-center gap-3 px-4 py-1.5 border-b border-hairline bg-bg-surface flex-shrink-0">
+        <SidebarTrigger className="flex-shrink-0" />
         <div className="flex items-center gap-1.5 text-xs text-ink-muted whitespace-nowrap flex-shrink-0">
           <span className="text-white font-medium">市场分析</span>
           <span>·</span>
