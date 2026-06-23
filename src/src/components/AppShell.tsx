@@ -20,7 +20,14 @@ export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const [activeStockTab, setActiveStockTab] = useState<string | null>(null);
+  const [activeStockTab, setActiveStockTab] = useState<string | null>(() => {
+    try { return localStorage.getItem("stock-active-tab"); } catch { return null; }
+  });
+  const syncActiveTab = useCallback((id: string | null) => {
+    setActiveStockTab(id);
+    if (id) localStorage.setItem("stock-active-tab", id);
+    else localStorage.removeItem("stock-active-tab");
+  }, []);
   const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
@@ -36,6 +43,7 @@ export default function AppShell() {
 
   const handleActiveChange = useCallback((id: number | null) => {
     setActiveThreadId(id);
+    localStorage.removeItem("stock-active-tab");
     setActiveStockTab(null);
     reload();
   }, [reload]);
@@ -63,7 +71,7 @@ export default function AppShell() {
                   onActiveThreadChange={handleActiveChange}
                   onReload={reload}
                   activeStockTab={activeStockTab}
-                  setActiveStockTab={setActiveStockTab}
+                  setActiveStockTab={syncActiveTab}
                 />
               </div>
               <RightPanel />

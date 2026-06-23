@@ -92,13 +92,19 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [stockTabs, setStockTabs] = useState<{ id: string; name: string }[]>([]);
+  const [stockTabs, setStockTabs] = useState<{ id: string; name: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem("stock-tabs") || "[]"); } catch { return []; }
+  });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const msgContainerRef = useRef<HTMLDivElement>(null);
 
   const forceRender = useCallback(() => setRenderTick((t) => t + 1), []);
+
+  useEffect(() => {
+    localStorage.setItem("stock-tabs", JSON.stringify(stockTabs));
+  }, [stockTabs]);
 
   useEffect(() => {
     fetchCommands().then(setCommands).catch(() => {});
