@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { normalizeSymbol, getKlineImageUrl } from '@/lib/stock-utils'
+import { normalizeSymbol, getKlineImageUrl, getKlineImageUrlV5 } from '@/lib/stock-utils'
 import { useRealtimeQuote } from '@/hooks/query/useRealtimeQuote'
 import { usePlatesByStock } from '@/hooks/query/usePlatesByStock'
 
@@ -24,12 +24,6 @@ interface KlineDrawerProps {
   onClose: () => void
 }
 
-const periods = [
-  { label: '分时', value: 'minute' },
-  { label: '日K', value: 'day' },
-  { label: '周K', value: 'week' },
-  { label: '月K', value: 'month' },
-]
 
 function formatVolume(v: number) {
   if (!v) return '-'
@@ -80,7 +74,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const klineUrl = getKlineImageUrl(symbol, period)
+  const klineUrl = getKlineImageUrlV5(symbol, period)
   const [imgError, setImgError] = useState(false)
 
   useEffect(() => { setImgError(false); }, [klineUrl])
