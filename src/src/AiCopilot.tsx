@@ -2,6 +2,38 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
+
+const mdComponents: Components = {
+  code: ({ className, children, ...props }) => {
+    const isInline = !className;
+    if (isInline) {
+      return <code className="px-1 py-0.5 rounded bg-bg-hover text-xs font-mono text-ink" {...props}>{children}</code>;
+    }
+    return (
+      <pre className="my-2 p-3 rounded-card bg-bg-hover border border-hairline overflow-x-auto text-xs font-mono leading-relaxed text-ink-muted">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    );
+  },
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full text-xs font-mono border-collapse">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="px-3 py-2 text-left font-medium text-ink-muted border-b border-hairline bg-bg-hover">{children}</th>
+  ),
+  td: ({ children }) => (
+    <td className="px-3 py-2 border-b border-hairline text-ink-muted">{children}</td>
+  ),
+  a: ({ children, href }) => (
+    <a href={href} className="text-ai hover:underline" target="_blank" rel="noreferrer">{children}</a>
+  ),
+  ul: ({ children }) => <ul className="list-disc pl-5 my-1 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 my-1 space-y-1">{children}</ol>,
+  hr: () => <hr className="my-3 border-hairline" />,
+};
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -419,7 +451,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     )}
                     {msg.role === "assistant" ? (
                       msg.content ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
                       ) : streaming && isLastAi && !msg.reasoning ? (
                         <div className="flex gap-1 py-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" />
