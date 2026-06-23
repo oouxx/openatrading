@@ -115,6 +115,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     }
     if (threadMessagesRef.current.has(activeThreadId)) {
       forceRender();
+      scrollDown();
       return;
     }
     if (loadQueueRef.current.has(activeThreadId)) return;
@@ -129,8 +130,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         })),
       );
       forceRender();
+      scrollDown();
     });
-  }, [activeThreadId, forceRender]);
+  }, [activeThreadId, forceRender, scrollDown]);
 
   // Stock search debounce
   useEffect(() => {
