@@ -33,6 +33,13 @@
   --color-hairline-dark: rgb(var(--color-border-rgb) / 0.04);
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --font-size-display-lg: 40px;
+  --font-size-display-md: 28px;
+  --font-size-body: 17px;
+  --font-size-body-strong: 17px;
+  --font-size-caption: 14px;
+  --font-size-caption-strong: 14px;
+  --font-size-nav-link: 12px;
   --radius-card: 18px;
   --radius-button: 9999px;
   --radius-input: 18px;
