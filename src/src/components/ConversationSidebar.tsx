@@ -10,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarProvider,
 } from "@/components/ui/sidebar";
 import { Search, Plus, Settings, Puzzle } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
@@ -70,7 +71,8 @@ export default function ConversationSidebar() {
   }
 
   return (
-    <Sidebar className="border-r border-hairline" style={{ width: displayWidth || 240 }}>
+    <SidebarProvider defaultOpen>
+      <Sidebar className="border-r border-hairline" style={{ width: displayWidth || 240 }}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -151,5 +153,6 @@ export default function ConversationSidebar() {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+    </SidebarProvider>
   );
 }
