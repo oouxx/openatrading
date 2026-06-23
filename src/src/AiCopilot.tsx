@@ -184,6 +184,25 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
 
   const currentMessages = activeThreadId ? threadMessagesRef.current.get(activeThreadId) ?? [] : [];
   const isEmpty = currentMessages.length === 0;
+  const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab);
+
+  let bodyContent: JSX.Element | null = null;
+  if (showStockTab && activeStockTab) {
+    const tab = stockTabs.find((t) => t.id === activeStockTab);
+    bodyContent = (
+      <div className="flex-1 min-h-0">
+        {tab && (
+          <div className="h-full overflow-y-auto">
+            <KlineDrawer symbol={tab.id} name={tab.name} onClose={() => {
+              const next = stockTabs.find((s) => s.id !== tab.id);
+              setStockTabs((prev) => prev.filter((s) => s.id !== tab.id));
+              setActiveStockTab(next?.id ?? null);
+            }} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const send = useCallback(async (question?: string) => {
     const text = (question || input).trim();
@@ -403,6 +422,17 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         </div>
       </div>
 
+      <ChromeTabs
+        tabs={stockTabs.map((t) => ({ id: t.id, label: t.name }))}
+        activeTab={activeStockTab}
+        onSelect={setActiveStockTab}
+        onClose={(id) => {
+          setStockTabs((prev) => prev.filter((t) => t.id !== id));
+          if (activeStockTab === id) setActiveStockTab(stockTabs.find((t) => t.id !== id)?.id ?? null);
+        }}
+      />
+
+      {bodyContent ? bodyContent : (
       <div className="flex-1 flex flex-col min-h-0">
         <div ref={msgContainerRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
           {isEmpty ? (
@@ -516,14 +546,8 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           <ChatQuickButtons />
         </div>
       </div>
-
-      {selectedStock && (
-        <KlineDrawer
-          symbol={selectedStock.symbol}
-          name={selectedStock.name}
-          onClose={() => setSelectedStock(null)}
-        />
       )}
+
     </div>
   );
 }
