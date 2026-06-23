@@ -1,5 +1,5 @@
 // src/components/AppShell.tsx
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useRemoteThreadListRuntime,
@@ -12,9 +12,12 @@ import ConversationSidebar from "./ConversationSidebar";
 import RightPanel from "./RightPanel";
 import SkillEditor from "./SkillEditor";
 import SettingsView from "./SettingsView";
+import SettingsSidebar from "./SettingsSidebar";
+import type { SettingsTab } from "./SettingsSidebar";
 
 export default function AppShell() {
   const { mode } = useAppMode();
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
 
   const adapter = useMemo(() => createThreadListAdapter(), []);
   const { runtime } = useAssistantChat("");
@@ -39,8 +42,9 @@ export default function AppShell() {
               <SkillEditor />
             </div>
           ) : (
-            <div className="flex-1 min-w-0 overflow-y-auto">
-              <SettingsView />
+            <div className="flex flex-1 min-w-0">
+              <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
+              <SettingsView activeTab={settingsTab} />
             </div>
           )}
         </div>

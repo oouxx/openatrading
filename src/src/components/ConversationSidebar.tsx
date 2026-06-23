@@ -1,8 +1,16 @@
 import { useState, useMemo, type FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { Search, Plus, Settings, Puzzle } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
 import { usePanelWidth } from "@/hooks/usePanelWidth";
@@ -26,11 +34,7 @@ const ThreadListItem: FC = () => (
 export default function ConversationSidebar() {
   const { mode, setMode } = useAppMode();
   const { displayWidth, collapsed, toggleCollapse } = usePanelWidth(
-    "layout:left-width",
-    240,
-    180,
-    360,
-    "layout:left-collapsed",
+    "layout:left-width", 240, 180, 360, "layout:left-collapsed",
   );
   const [search, setSearch] = useState("");
 
@@ -42,10 +46,7 @@ export default function ConversationSidebar() {
     const q = search.trim().toLowerCase();
     const itemsById = new Map(threadItems.map((t) => [t.id, t]));
     return threadIds
-      .map((id, i) => {
-        const t = itemsById.get(id);
-        return t && (t.title || "").toLowerCase().includes(q) ? i : -1;
-      })
+      .map((id, i) => { const t = itemsById.get(id); return t && (t.title || "").toLowerCase().includes(q) ? i : -1; })
       .filter((i) => i !== -1);
   }, [threadIds, threadItems, search]);
 
@@ -69,77 +70,86 @@ export default function ConversationSidebar() {
   }
 
   return (
-    <div
-      className="flex flex-col border-r border-hairline bg-bg-surface flex-shrink-0 overflow-hidden"
-      style={{ width: displayWidth || 240, minWidth: 0 }}
-    >
-      {/* New conversation + collapse toggle */}
-      <div className="flex items-center gap-1 px-3 py-2.5 border-b border-hairline">
-        <ThreadListPrimitive.New asChild>
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full justify-start gap-2 text-sm h-9 flex-1"
-          >
-            <Plus className="w-4 h-4" />
-            新建会话
-          </Button>
-        </ThreadListPrimitive.New>
-        <Button variant="ghost" size="icon" onClick={toggleCollapse} className="w-8 h-8 flex-shrink-0">
-          <span className="block w-1 h-1 rounded-full bg-ink-muted shadow-[0_4px_0_0_var(--color-muted),0_8px_0_0_var(--color-muted)]" />
-        </Button>
-      </div>
+    <Sidebar className="border-r border-hairline" style={{ width: displayWidth || 240 }}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ThreadListPrimitive.New asChild>
+              <SidebarMenuButton>
+                <Plus />
+                新建会话
+              </SidebarMenuButton>
+            </ThreadListPrimitive.New>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <Button variant="ghost" size="icon" onClick={toggleCollapse} className="ml-auto">
+              <span className="block w-1 h-1 rounded-full bg-ink-muted shadow-[0_4px_0_0_var(--color-muted),0_8px_0_0_var(--color-muted)]" />
+            </Button>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      {/* Skills entry */}
-      <button
-        onClick={() => setMode(mode === "skill-editor" ? "chat" : "skill-editor")}
-        className="flex items-center gap-2 px-4 py-2 text-sm text-ink-muted hover:text-white hover:bg-bg-hover transition-colors border-b border-hairline"
-      >
-        <Puzzle className="w-4 h-4" />
-        技能
-      </button>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setMode(mode === "skill-editor" ? "chat" : "skill-editor")}
+                isActive={mode === "skill-editor"}
+              >
+                <Puzzle />
+                技能
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
 
-      {/* Search */}
-      <div className="px-3 py-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-muted" />
-          <Input
-            placeholder="搜索会话..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-xs"
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Session List */}
-      <ScrollArea className="flex-1 px-2 py-1">
-        {filteredIndices.length === 0 ? (
-          <div className="py-8 text-center text-xs text-ink-muted">
-            {search.trim() ? "未找到匹配会话" : "暂无会话"}
+        <SidebarGroup>
+          <div className="px-3 py-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="搜索会话..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8 text-xs"
+              />
+            </div>
           </div>
-        ) : (
-          filteredIndices.map((index) => (
-            <ThreadListPrimitive.ItemByIndex
-              key={threadIds[index]}
-              index={index}
-              components={{ ThreadListItem }}
-            />
-          ))
-        )}
-      </ScrollArea>
+        </SidebarGroup>
 
-      {/* Settings at bottom */}
-      <Separator />
-      <button
-        onClick={() => setMode(mode === "settings" ? "chat" : "settings")}
-        className="flex items-center gap-2 px-4 py-2.5 text-sm text-ink-muted hover:text-white hover:bg-bg-hover transition-colors"
-      >
-        <Settings className="w-4 h-4" />
-        设置
-      </button>
-    </div>
+        <SidebarGroup className="flex-1 min-h-0">
+          <SidebarMenu>
+            {filteredIndices.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                {search.trim() ? "未找到匹配会话" : "暂无会话"}
+              </div>
+            ) : (
+              filteredIndices.map((index) => (
+                <ThreadListPrimitive.ItemByIndex
+                  key={threadIds[index]}
+                  index={index}
+                  components={{ ThreadListItem }}
+                />
+              ))
+            )}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => setMode(mode === "settings" ? "chat" : "settings")}
+              isActive={mode === "settings"}
+            >
+              <Settings />
+              设置
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
   );
 }
