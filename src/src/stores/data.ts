@@ -127,6 +127,10 @@ export async function apiChatStream(
             callbacks.onReasoning?.(decoded);
           } else if (currentEvent === "tool-call") {
             try { callbacks.onToolCall?.(JSON.parse(data)); } catch { }
+          } else if (currentEvent === "tool-delta" || currentEvent === "tool-exec-start" || currentEvent === "tool-exec-end") {
+            // tool call internals — not displayed
+          } else if (currentEvent === "tool-end") {
+            // ignore legacy tool-end event
           } else {
             callbacks.onText(decoded);
           }
