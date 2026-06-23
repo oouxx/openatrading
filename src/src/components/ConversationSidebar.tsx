@@ -89,23 +89,22 @@ export default function ConversationSidebar({
               </div>
             ) : (
               filteredThreads.map((t) => (
-                <SidebarMenuItem key={t.id}>
+                <SidebarMenuItem key={t.id} className="group/item">
                   <SidebarMenuButton
                     isActive={activeThreadId === t.id}
                     onClick={() => onSelectThread(t.id)}
                     tooltip={t.title}
-                    className="group/item"
                   >
                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
                     <span className="flex-1 truncate">{t.title}</span>
-                    <button
-                      className="opacity-0 group-hover/item:opacity-100 text-ink-muted hover:text-down transition-opacity"
-                      onClick={(e) => { e.stopPropagation(); onDeleteThread(t.id); }}
-                      title="删除"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
                   </SidebarMenuButton>
+                  <button
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 text-ink-muted hover:text-down transition-opacity z-10"
+                    onClick={(e) => { e.stopPropagation(); onDeleteThread(t.id); }}
+                    title="删除"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </SidebarMenuItem>
               ))
             )}
