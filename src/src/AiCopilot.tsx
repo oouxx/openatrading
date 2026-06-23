@@ -196,10 +196,10 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       <div className="flex-1 min-h-0">
         {tab && (
           <div className="h-full overflow-y-auto">
-            <KlineDrawer symbol={tab.id} name={tab.name} onClose={() => {
-              const next = stockTabs.find((s) => s.id !== tab.id);
-              setStockTabs((prev) => prev.filter((s) => s.id !== tab.id));
-              setActiveStockTab(next?.id ?? null);
+            <KlineDrawer symbol={activeStockTab} name={tab.name} onClose={() => {
+              const id = activeStockTab;
+              setStockTabs((prev) => prev.filter((s) => s.id !== id));
+              setActiveStockTab(null);
             }} />
           </div>
         )}
