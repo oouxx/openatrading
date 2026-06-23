@@ -20,6 +20,7 @@ export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+  const [activeStockTab, setActiveStockTab] = useState<string | null>(null);
   const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
@@ -35,6 +36,7 @@ export default function AppShell() {
 
   const handleActiveChange = useCallback((id: number | null) => {
     setActiveThreadId(id);
+    setActiveStockTab(null);
     reload();
   }, [reload]);
 
@@ -60,6 +62,8 @@ export default function AppShell() {
                   activeThreadId={activeThreadId}
                   onActiveThreadChange={handleActiveChange}
                   onReload={reload}
+                  activeStockTab={activeStockTab}
+                  setActiveStockTab={setActiveStockTab}
                 />
               </div>
               <RightPanel />
