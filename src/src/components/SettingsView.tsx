@@ -188,8 +188,8 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             {[
               ["应用名称", "OpenATrading"],
               ["版本", "0.12.0"],
-              ["构建日期", "2025.06"],
-              ["引擎", "AI Agent v4"],
+              ["构建日期", "2026.06"],
+              ["引擎", "pi-rs v1.78.0"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between px-4 py-2 text-xs">
                 <span className="text-ink-muted">{label}</span>
