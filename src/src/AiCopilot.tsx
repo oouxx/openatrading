@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
 
 const mdComponents: Components = {
@@ -477,7 +478,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     )}
                     {msg.role === "assistant" ? (
                       msg.content ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={mdComponents}>{msg.content}</ReactMarkdown>
                       ) : streaming && isLastAi && !msg.reasoning ? (
                         <div className="flex gap-1 py-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" />
