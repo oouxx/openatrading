@@ -54,6 +54,7 @@ interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
   reasoning?: string;
+  toolCalls?: { name: string; id: string }[];
 }
 
 interface SlashCommand {
@@ -283,9 +284,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           onToolCall: (tool) => {
             const msgs = threadMessagesRef.current.get(threadId) ?? [];
             const last = msgs[msgs.length - 1];
-            const note = `\n\`🛠️ ${tool.name || '调用工具'} — ${tool.id}\``;
             if (last && last.role === "assistant") {
-              msgs[msgs.length - 1] = { ...last, content: last.content + note };
+              const calls = last.toolCalls ?? [];
+              msgs[msgs.length - 1] = { ...last, toolCalls: [...calls, { name: tool.name, id: tool.id }] };
               threadMessagesRef.current.set(threadId, msgs);
               forceRender();
             }
@@ -488,6 +489,15 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                           {msg.reasoning}
                         </div>
                       </details>
+                    )}
+                    {msg.toolCalls && msg.toolCalls.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {msg.toolCalls.map((tc, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-card bg-ai/10 text-ai font-mono">
+                            🛠️ {tc.name || '工具调用'}
+                          </span>
+                        ))}
+                      </div>
                     )}
                     {msg.role === "assistant" ? (
                       msg.content ? (
