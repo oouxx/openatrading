@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { normalizeSymbol, getKlineImageUrl, getKlineImageUrlV5 } from '@/lib/stock-utils'
+import { normalizeSymbol, getKlineImageUrl } from '@/lib/stock-utils'
 import { useRealtimeQuote } from '@/hooks/query/useRealtimeQuote'
 import { usePlatesByStock } from '@/hooks/query/usePlatesByStock'
 
@@ -72,7 +72,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const klineUrl = getKlineImageUrlV5(symbol, period)
+  const klineUrl = getKlineImageUrl(symbol, period)
 
   const up = quote && quote.px_change_rate >= 0
   const changeClass = up ? 'text-up' : 'text-down'
