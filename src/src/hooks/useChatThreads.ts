@@ -1,10 +1,4 @@
-import type {
-  RemoteThreadListAdapter,
-  RemoteThreadListResponse,
-  RemoteThreadMetadata,
-  RemoteThreadInitializeResponse,
-} from "@assistant-ui/react";
-import type { ThreadMessage } from "@assistant-ui/react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchJson } from "@/stores/data";
 
 export interface ChatThread {
@@ -22,105 +16,47 @@ export interface ChatMessage {
   created_at: string;
 }
 
-function toMetadata(t: ChatThread): RemoteThreadMetadata {
-  return {
-    status: "regular",
-    remoteId: String(t.id),
-    title: t.title,
-    lastMessageAt: new Date(t.updated_at),
-  };
-}
+export function useThreads() {
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [loading, setLoading] = useState(true);
 
-function generateTitleFromMessages(messages: readonly ThreadMessage[]): string {
-  // Find first user message text
-  for (const msg of messages) {
-    for (const part of msg.content) {
-      if (part.type === "text" && part.text) {
-        const text = part.text.trim();
-        // Take first 30 chars as title
-        return text.length > 30 ? text.slice(0, 30) + "…" : text;
-      }
+  const reload = useCallback(async () => {
+    try {
+      const data = await fetchJson<ChatThread[]>("/api/ai/threads");
+      setThreads(data);
+    } catch {
+      setThreads([]);
+    } finally {
+      setLoading(false);
     }
-  }
-  return "新对话";
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const createThread = useCallback(async (title = "新对话") => {
+    const thread = await fetchJson<ChatThread>("/api/ai/threads", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+    setThreads((prev) => [thread, ...prev]);
+    return thread;
+  }, []);
+
+  const renameThread = useCallback(async (id: number, title: string) => {
+    await fetchJson(`/api/ai/threads/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ title }),
+    });
+    setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+  }, []);
+
+  const deleteThread = useCallback(async (id: number) => {
+    await fetchJson(`/api/ai/threads/${id}`, { method: "DELETE" });
+    setThreads((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  return { threads, loading, reload, createThread, renameThread, deleteThread };
 }
-
-export function createThreadListAdapter(): RemoteThreadListAdapter {
-  return {
-    async list(): Promise<RemoteThreadListResponse> {
-      const threads = await fetchJson<ChatThread[]>("/api/ai/threads");
-      return { threads: threads.map(toMetadata) };
-    },
-
-    async rename(remoteId: string, newTitle: string): Promise<void> {
-      await fetchJson(`/api/ai/threads/${remoteId}`, {
-        method: "PUT",
-        body: JSON.stringify({ title: newTitle }),
-      });
-    },
-
-    async delete(remoteId: string): Promise<void> {
-      await fetchJson(`/api/ai/threads/${remoteId}`, { method: "DELETE" });
-    },
-
-    async initialize(_threadId: string): Promise<RemoteThreadInitializeResponse> {
-      const thread = await fetchJson<ChatThread>("/api/ai/threads", {
-        method: "POST",
-        body: JSON.stringify({ title: "新对话" }),
-      });
-      return { remoteId: String(thread.id), externalId: String(thread.id) };
-    },
-
-    async generateTitle(
-      remoteId: string,
-      messages: readonly ThreadMessage[],
-    ): Promise<ReadableStream<{
-      readonly path: readonly number[];
-      readonly type: string;
-      readonly textDelta?: string;
-      readonly part?: Record<string, unknown>;
-    }>> {
-      const title = generateTitleFromMessages(messages);
-
-      // Rename via API
-      await fetchJson(`/api/ai/threads/${remoteId}`, {
-        method: "PUT",
-        body: JSON.stringify({ title }),
-      });
-
-      // Return a minimal AssistantStream (text part with the title)
-      const encoder = new TextEncoder();
-      return new ReadableStream({
-        start(controller) {
-          controller.enqueue({
-            path: [0],
-            type: "part-start",
-            part: { type: "text" },
-          });
-          controller.enqueue({
-            path: [0],
-            type: "text-delta",
-            textDelta: title,
-          });
-          controller.enqueue({
-            path: [0],
-            type: "part-finish",
-          });
-          controller.close();
-        },
-      });
-    },
-
-    async fetch(remoteId: string): Promise<RemoteThreadMetadata> {
-      const threads = await fetchJson<ChatThread[]>("/api/ai/threads");
-      const t = threads.find((t) => String(t.id) === remoteId);
-      if (!t) throw new Error("thread not found");
-      return toMetadata(t);
-    },
-  };
-}
-
-// Standalone helpers used by AiCopilot outside the hook
 
 export async function getMessages(threadId: number): Promise<ChatMessage[]> {
   try {
@@ -142,5 +78,13 @@ export async function saveMessage(
     });
   } catch {
     // silently fail
+  }
+}
+
+export async function fetchCommands() {
+  try {
+    return await fetchJson<{ name: string; description: string; command_type: string }[]>("/api/ai/commands");
+  } catch {
+    return [];
   }
 }
