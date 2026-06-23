@@ -20,7 +20,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 export default function AppShell() {
   const { mode } = useAppMode();
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
-  const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+  const activeThreadId = useStockTabStore((s) => s.activeThreadId);
+  const setActiveThreadId = useStockTabStore((s) => s.setActiveThreadId);
   const { threads, createThread, deleteThread, reload } = useThreads();
 
   const handleNewThread = async () => {
