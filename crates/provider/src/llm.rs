@@ -513,7 +513,7 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
             events.push(StreamEvent::ReasoningText(delta.clone()));
         },
         AssistantMessageEvent::ToolCallStart { .. } => {
-            events.push(StreamEvent::ToolCallStart(default_tool_call()));
+            // Name not available until ToolCallEnd — skip empty start
         },
         AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
             events.push(StreamEvent::ToolCallDelta(ToolCall {
@@ -522,14 +522,13 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
                 arguments: delta.clone(),
             }));
         },
-        AssistantMessageEvent::ToolCallEnd { tool_call, .. }
-            if !tool_call.name.is_empty() => {
-                events.push(StreamEvent::ToolCallStart(ToolCall {
-                    id: tool_call.id.clone(),
-                    function_name: tool_call.name.clone(),
-                    arguments: tool_call.arguments.to_string(),
-                }));
-            },
+        AssistantMessageEvent::ToolCallEnd { tool_call, .. } if !tool_call.name.is_empty() => {
+            events.push(StreamEvent::ToolCallStart(ToolCall {
+                id: tool_call.id.clone(),
+                function_name: tool_call.name.clone(),
+                arguments: tool_call.arguments.to_string(),
+            }));
+        },
         AssistantMessageEvent::Done { message, .. } => {
             for block in &message.content {
                 use pi_ai::types::ContentBlock;

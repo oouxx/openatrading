@@ -492,9 +492,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     )}
                     {msg.toolCalls && msg.toolCalls.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
-                        {msg.toolCalls.map((tc, i) => (
+                        {msg.toolCalls.filter((tc) => tc.name).map((tc, i) => (
                           <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-card bg-ai/10 text-ai font-mono">
-                            🛠️ {tc.name || '工具调用'}
+                            🛠️ {tc.name}
                           </span>
                         ))}
                       </div>
