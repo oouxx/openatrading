@@ -31,12 +31,13 @@ interface SlashCommand {
 interface AiCopilotProps {
   activeThreadId: number | null;
   onActiveThreadChange: (id: number | null) => void;
+  onReload?: () => void;
 }
 
 let msgSeq = 0;
 const newMsgId = () => `msg-${++msgSeq}`;
 
-export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCopilotProps) {
+export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -217,7 +218,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
                 fetchJson(`/api/ai/threads/${threadId}`, {
                   method: "PUT",
                   body: JSON.stringify({ title: text.slice(0, 30) }),
-                }).catch(() => {});
+                }).then(() => onReload?.()).catch(() => {});
               }
             }
           },
@@ -245,7 +246,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
       });
       setStreaming(false);
     }
-  }, [input, streaming, createThread, scrollDown, onActiveThreadChange]);
+  }, [input, streaming, scrollDown, onActiveThreadChange]);
 
   const onInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSlash) {

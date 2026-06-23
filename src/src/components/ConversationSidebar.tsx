@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Search, Plus, Settings, Puzzle, Trash2 } from "lucide-react";
 import { useAppMode } from "@/contexts/AppModeContext";
-import { useThreads } from "@/hooks/useChatThreads";
+import type { ChatThread } from "@/hooks/useChatThreads";
 
 interface ConversationSidebarProps {
+  threads: ChatThread[];
   activeThreadId: number | null;
   onSelectThread: (id: number) => void;
   onNewThread: () => void;
@@ -23,6 +24,7 @@ interface ConversationSidebarProps {
 }
 
 export default function ConversationSidebar({
+  threads,
   activeThreadId,
   onSelectThread,
   onNewThread,
@@ -30,7 +32,6 @@ export default function ConversationSidebar({
 }: ConversationSidebarProps) {
   const { mode, setMode } = useAppMode();
   const [search, setSearch] = useState("");
-  const { threads } = useThreads();
 
   const filteredThreads = useMemo(() => {
     if (!search.trim()) return threads;
