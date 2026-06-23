@@ -299,7 +299,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange }: AiCo
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full w-full relative">
+    <div className="flex flex-col h-full w-full">
       <div className="flex items-center gap-3 px-4 py-1.5 border-b border-hairline bg-bg-surface flex-shrink-0">
         <SidebarTrigger className="flex-shrink-0" />
         <div className="flex items-center gap-1.5 text-xs text-ink-muted whitespace-nowrap flex-shrink-0">
