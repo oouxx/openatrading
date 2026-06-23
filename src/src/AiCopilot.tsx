@@ -51,6 +51,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const activeThreadRef = useRef<number | null>(activeThreadId);
   activeThreadRef.current = activeThreadId;
   const newThreadRef = useRef<number | null>(null);
+  const streamThreadRef = useRef<number | null>(null);
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("");
@@ -176,6 +177,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     setStreaming(true);
     scrollDown();
 
+    streamThreadRef.current = threadId;
+    const currentStreamThread = threadId;
+
     saveMessage(threadId, "user", text);
 
     try {
@@ -189,6 +193,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         },
         {
           onText: (data) => {
+            if (activeThreadRef.current !== streamThreadRef.current) return;
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
@@ -200,6 +205,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             scrollDown();
           },
           onReasoning: (data) => {
+            if (activeThreadRef.current !== streamThreadRef.current) return;
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
@@ -210,6 +216,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             });
           },
           onDone: () => {
+            if (activeThreadRef.current !== streamThreadRef.current) return;
             setStreaming(false);
             const lastMsg = messagesRef.current[messagesRef.current.length - 1];
             if (lastMsg && lastMsg.role === "assistant" && lastMsg.content) {
@@ -223,6 +230,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             }
           },
           onError: (err) => {
+            if (activeThreadRef.current !== streamThreadRef.current) return;
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
