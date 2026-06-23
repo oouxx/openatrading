@@ -18,8 +18,7 @@ const TABS: { id: ViewId; label: string }[] = [
 ];
 
 export default function RightPanel() {
-  const [activeView, setActiveView] = useState<ViewId | null>(null);
-  const [hidden, setHidden] = useState(true);
+  const [activeView, setActiveView] = useState<ViewId>("dragon-tiger");
   const { width, setWidth, collapsed, toggleCollapse } = usePanelWidth(
     "layout:right-width", 400, 300, 700, "layout:right-collapsed"
   );
@@ -27,9 +26,8 @@ export default function RightPanel() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as ViewId;
-      setHidden(false);
       if (collapsed) toggleCollapse();
-      setActiveView((prev) => (prev === detail ? null : detail));
+      setActiveView(detail);
     };
     window.addEventListener("open-right-panel", handler);
     return () => window.removeEventListener("open-right-panel", handler);
@@ -41,7 +39,6 @@ export default function RightPanel() {
   );
 
   const renderView = () => {
-    if (!activeView) return null;
     switch (activeView) {
       case "dragon-tiger": return <DragonTigerView />;
       case "breakout": return <BreakoutView />;
@@ -51,13 +48,12 @@ export default function RightPanel() {
   };
 
   return (
-    <div className="flex" style={{ display: hidden ? 'none' : undefined }}>
+    <div className="flex flex-shrink-0">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
-        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden flex-shrink-0 transition-[width] duration-150"
+        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden transition-[width] duration-150"
         style={{ width: collapsed ? 48 : width }}
       >
-        {/* Header */}
         <div className="flex items-center gap-1 px-2 py-2 border-b border-hairline flex-shrink-0">
           <Button
             variant="ghost"
@@ -73,23 +69,13 @@ export default function RightPanel() {
             )}
           </Button>
           {!collapsed && (
-            <>
-              <span className="text-xs font-medium text-white flex-1 truncate">
-                {activeView ? TABS.find((t) => t.id === activeView)?.label : "面板"}
-              </span>
-              <button
-                className="w-6 h-6 flex items-center justify-center rounded-card text-sm text-ink-muted hover:text-white hover:bg-bg-hover transition-colors"
-                onClick={() => { setHidden(true); setActiveView(null); }}
-                title="关闭面板"
-              >
-                ✕
-              </button>
-            </>
+            <span className="text-xs font-medium text-white flex-1 truncate">
+              {TABS.find((t) => t.id === activeView)?.label}
+            </span>
           )}
         </div>
 
         {collapsed ? (
-          /* Icon strip when collapsed */
           <div className="flex flex-col items-center gap-1 py-2 flex-1 border-t border-hairline overflow-y-auto">
             {TABS.map((tab) => (
               <button
@@ -108,7 +94,6 @@ export default function RightPanel() {
           </div>
         ) : (
           <>
-            {/* Tab navigation */}
             <div className="flex gap-0 px-3 border-b border-hairline flex-shrink-0">
               {TABS.map((tab) => (
                 <button
@@ -122,14 +107,8 @@ export default function RightPanel() {
               ))}
             </div>
 
-            {/* View content */}
             <div className="flex-1 overflow-y-auto">
               {renderView()}
-              {!activeView && (
-                <div className="flex flex-col items-center justify-center h-full text-ink-muted text-xs gap-2 p-4 text-center">
-                  <p>选择标签页查看数据</p>
-                </div>
-              )}
             </div>
           </>
         )}
