@@ -38,20 +38,19 @@ let msgSeq = 0;
 const newMsgId = () => `msg-${++msgSeq}`;
 
 export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [showSlash, setShowSlash] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+  const [renderTick, setRenderTick] = useState(0);
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null);
-  const messagesRef = useRef<DisplayMessage[]>([]);
-  messagesRef.current = messages;
-  const activeThreadRef = useRef<number | null>(activeThreadId);
-  activeThreadRef.current = activeThreadId;
-  const newThreadRef = useRef<number | null>(null);
   const streamThreadRef = useRef<number | null>(null);
+
+  // Per-thread message store — persists across thread switches
+  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(new Map());
+  const loadQueueRef = useRef<Set<number>>(new Set());
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,31 +63,36 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const msgContainerRef = useRef<HTMLDivElement>(null);
 
+  const forceRender = useCallback(() => setRenderTick((t) => t + 1), []);
+
   useEffect(() => {
     fetchCommands().then(setCommands).catch(() => {});
   }, []);
 
-  // Load messages when active thread changes
+  // Load messages when active thread changes — but only once per thread
   useEffect(() => {
     if (activeThreadId === null) {
-      setMessages([]);
+      forceRender();
       return;
     }
-    // Don't reload if this thread was just created by send() — it already set messages
-    if (newThreadRef.current === activeThreadId) {
-      newThreadRef.current = null;
+    if (threadMessagesRef.current.has(activeThreadId)) {
+      forceRender();
       return;
     }
+    if (loadQueueRef.current.has(activeThreadId)) return;
+    loadQueueRef.current.add(activeThreadId);
     getMessages(activeThreadId).then((msgs) => {
-      setMessages(
+      threadMessagesRef.current.set(
+        activeThreadId,
         msgs.map((m: ChatMessage) => ({
           id: newMsgId(),
           role: m.role === "user" ? "user" : "assistant",
           content: m.content,
         })),
       );
+      forceRender();
     });
-  }, [activeThreadId]);
+  }, [activeThreadId, forceRender]);
 
   // Stock search debounce
   useEffect(() => {
@@ -146,11 +150,16 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     ? commands.filter((c) => c.name.toLowerCase().includes(slashQuery.toLowerCase())).slice(0, 8)
     : commands.slice(0, 8);
 
+  const currentMessages = activeThreadId ? threadMessagesRef.current.get(activeThreadId) ?? [] : [];
+  const isEmpty = currentMessages.length === 0;
+
   const send = useCallback(async (question?: string) => {
     const text = (question || input).trim();
-    if (!text || streaming) return;
+    if (!text) return;
+    // Allow sending in different threads while other thread is streaming
+    if (streaming && streamThreadRef.current === activeThreadId) return;
 
-    let threadId = activeThreadRef.current;
+    let threadId = activeThreadId;
     if (threadId === null) {
       const thread = await fetchJson<{ id: number; title: string }>("/api/ai/threads", {
         method: "POST",
@@ -166,20 +175,24 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     setSlashQuery("");
     setInput("");
 
-    const history = messagesRef.current.map((m) => ({
+    // Get history from the thread's own message store
+    const threadMsgs = threadMessagesRef.current.get(threadId) ?? [];
+    const history = threadMsgs.map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
       content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
     }));
 
     const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text };
     const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" };
-    setMessages((prev) => [...prev, userMsg, aiMsg]);
-    setStreaming(true);
+
+    // Update thread's messages
+    const existing = threadMessagesRef.current.get(threadId) ?? [];
+    threadMessagesRef.current.set(threadId, [...existing, userMsg, aiMsg]);
+    forceRender();
     scrollDown();
 
+    setStreaming(true);
     streamThreadRef.current = threadId;
-    const currentStreamThread = threadId;
-
     saveMessage(threadId, "user", text);
 
     try {
@@ -193,68 +206,65 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         },
         {
           onText: (data) => {
-            if (activeThreadRef.current !== streamThreadRef.current) return;
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                updated[updated.length - 1] = { ...last, content: last.content + data };
-              }
-              return updated;
-            });
-            scrollDown();
+            const msgs = threadMessagesRef.current.get(threadId) ?? [];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === "assistant") {
+              msgs[msgs.length - 1] = { ...last, content: last.content + data };
+              threadMessagesRef.current.set(threadId, msgs);
+              forceRender();
+              if (activeThreadId === threadId) scrollDown();
+            }
           },
           onReasoning: (data) => {
-            if (activeThreadRef.current !== streamThreadRef.current) return;
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                updated[updated.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data };
-              }
-              return updated;
-            });
+            const msgs = threadMessagesRef.current.get(threadId) ?? [];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === "assistant") {
+              msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data };
+              threadMessagesRef.current.set(threadId, msgs);
+              forceRender();
+            }
           },
           onDone: () => {
-            if (activeThreadRef.current !== streamThreadRef.current) return;
             setStreaming(false);
-            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
-            if (lastMsg && lastMsg.role === "assistant" && lastMsg.content) {
-              saveMessage(threadId!, "assistant", lastMsg.content);
+            const msgs = threadMessagesRef.current.get(threadId) ?? [];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === "assistant" && last.content) {
+              saveMessage(threadId, "assistant", last.content);
               if (text.length > 0) {
                 fetchJson(`/api/ai/threads/${threadId}`, {
                   method: "PUT",
                   body: JSON.stringify({ title: text.slice(0, 30) }),
-                }).then(() => onReload?.()).catch(() => {});
+                }).then(() => {
+                  if (activeThreadId === threadId || threadMessagesRef.current.has(threadId)) {
+                    onReload?.();
+                  }
+                }).catch(() => {});
               }
             }
           },
           onError: (err) => {
-            if (activeThreadRef.current !== streamThreadRef.current) return;
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                updated[updated.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` };
-              }
-              return updated;
-            });
             setStreaming(false);
+            const msgs = threadMessagesRef.current.get(threadId) ?? [];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === "assistant") {
+              msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` };
+              threadMessagesRef.current.set(threadId, msgs);
+              forceRender();
+            }
           },
         },
       );
     } catch (e: unknown) {
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last && last.role === "assistant") {
-          updated[updated.length - 1] = { ...last, content: `[错误] ${(e as Error).message || "网络请求失败"}` };
-        }
-        return updated;
-      });
       setStreaming(false);
+      const msgs = threadMessagesRef.current.get(threadId) ?? [];
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === "assistant") {
+        msgs[msgs.length - 1] = { ...last, content: `[错误] ${(e as Error).message || "网络请求失败"}` };
+        threadMessagesRef.current.set(threadId, msgs);
+        forceRender();
+      }
     }
-  }, [input, streaming, scrollDown, onActiveThreadChange]);
+  }, [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload, forceRender]);
 
   const onInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSlash) {
@@ -304,8 +314,6 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       setSlashQuery("");
     }
   }, []);
-
-  const isEmpty = messages.length === 0;
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -375,8 +383,8 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               </div>
             </div>
           ) : (
-            messages.map((msg, idx) => {
-              const isLastAi = msg.role === "assistant" && idx === messages.length - 1;
+            currentMessages.map((msg, idx) => {
+              const isLastAi = msg.role === "assistant" && idx === currentMessages.length - 1;
               return (
                 <div
                   key={msg.id}
@@ -398,7 +406,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                   >
                     {msg.reasoning && (
                       <details
-                        open={isLastAi && streaming}
+                        open={streaming && isLastAi}
                         className="mb-2 text-xs text-ink-muted border-l-2 border-ink-muted/30 pl-3"
                       >
                         <summary className="cursor-pointer select-none hover:text-white">
