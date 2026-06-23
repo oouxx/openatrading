@@ -103,6 +103,14 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
 
   const forceRender = useCallback(() => setRenderTick((t) => t + 1), []);
 
+  const scrollDown = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (msgContainerRef.current) {
+        msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight;
+      }
+    });
+  }, []);
+
   useEffect(() => {
     fetchCommands().then(setCommands).catch(() => {});
   }, []);
@@ -178,13 +186,6 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const scrollDown = useCallback(() => {
-    requestAnimationFrame(() => {
-      if (msgContainerRef.current) {
-        msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight;
-      }
-    });
-  }, []);
 
   const filteredCommands = slashQuery
     ? commands.filter((c) => c.name.toLowerCase().includes(slashQuery.toLowerCase())).slice(0, 8)
