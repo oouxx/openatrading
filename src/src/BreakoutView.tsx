@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { type Stock } from '@/stores/data'
 import { useLimitUp } from '@/hooks/query/useLimitUp'
 import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
-import { normalizeSymbol, getKlineImageUrlV5 } from '@/lib/stock-utils'
+import { normalizeSymbol, getKlineImageUrl } from '@/lib/stock-utils'
 
 // ── Types ──────────────────────────────────────────────
 
