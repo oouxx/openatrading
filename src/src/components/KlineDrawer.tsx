@@ -71,12 +71,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const changeClass = up ? 'text-up' : 'text-down'
 
   return (
-    <div className="fixed inset-0 z-[50] bg-bg overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-bg">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-hairline bg-bg-surface flex-shrink-0">
-        <button onClick={onClose} className="text-xs text-ai hover:underline whitespace-nowrap">
-          ← 返回
-        </button>
         <span className="text-xl font-bold text-white">{name}</span>
         <span className="text-xs text-ink-muted font-mono">{symbol}</span>
         {quote && (
