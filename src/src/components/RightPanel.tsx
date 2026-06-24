@@ -20,7 +20,8 @@ import NewsFeed from "@/components/NewsFeed";
 
 const TABS: { id: RightPanelView; label: string }[] = [
   { id: "strong-stocks", label: "强势股" },
-  { id: "promotion", label: "晋级分析" },
+  { id: "breakout", label: "晋级分析1" },
+  { id: "promotion", label: "晋级分析2" },
   { id: "plate", label: "板块异动" },
   { id: "dragon-tiger", label: "龙虎榜" },
   { id: "timeline", label: "时间线" },
