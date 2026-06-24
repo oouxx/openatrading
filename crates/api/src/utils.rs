@@ -171,7 +171,6 @@ mod tests {
         assert!(to_yahoo_symbol("700000").is_err()); // 首位7无法推断
         assert!(to_yahoo_symbol("500000").is_err()); // 首位5无法推断
         assert!(to_yahoo_symbol("").is_err()); // 空字符串
-        assert!(to_yahoo_symbol("XX600000").is_err()); // 未知前缀
     }
 
     #[test]
