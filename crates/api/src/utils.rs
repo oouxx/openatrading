@@ -1,10 +1,27 @@
-use chrono::{Datelike, FixedOffset};
-
+use chrono::{Datelike, FixedOffset, Utc};
+use md5;
 /// Get current datetime in Beijing timezone (UTC+8).
 pub fn beijing_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
 }
 
+pub fn gen_jiuyan_token() -> String {
+    // 1. 北京时区（UTC+8）
+    let beijing = FixedOffset::east_opt(8 * 3600).unwrap();
+
+    // 2. 当前时间（UTC -> 转北京时间）
+    let now_utc = Utc::now();
+    let now_bj = now_utc.with_timezone(&beijing);
+
+    // 3. 转成毫秒时间戳（注意：timestamp_millis 是 UTC epoch）
+    let timestamp_ms = now_bj.timestamp_millis();
+
+    let secret = "REDACTED-JIUYAN-SECRET";
+    let input = format!("{}:{}", secret, timestamp_ms);
+    // 3. MD5 计算
+    let token = format!("{:x}", md5::compute(input));
+    token
+}
 pub fn html_to_markdown(html: &str) -> String {
     // Some Chinese sites use data-original for lazy-loaded images
     let html = regex::Regex::new(r#"data-original="([^"]*)""#)
