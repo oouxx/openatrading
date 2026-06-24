@@ -148,17 +148,16 @@ impl MessageAdapter for TelegramAdapter {
         "telegram"
     }
 
-    async fn start(
-        self: Box<Self>,
-        sender: mpsc::Sender<MessageEvent>,
-    ) -> Result<(), AdapterError> {
+    async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError> {
+        let bot_token = self.bot_token.clone();
+        let allowed_chat_id = self.allowed_chat_id.clone();
+        let client = self.client.clone();
+        let stop_signal = self.stop_signal.clone();
+
         tracing::info!("[telegram-adapter] polling started");
 
         // 注册命令列表
-        let cmd_url = format!(
-            "https://api.telegram.org/bot{}/setMyCommands",
-            self.bot_token
-        );
+        let cmd_url = format!("https://api.telegram.org/bot{}/setMyCommands", bot_token);
         let _ = self
             .client
             .post(&cmd_url)
@@ -176,17 +175,17 @@ impl MessageAdapter for TelegramAdapter {
 
         loop {
             // 检查是否应停止
-            if self.stop_signal.load(std::sync::atomic::Ordering::Acquire) {
+            if stop_signal.load(std::sync::atomic::Ordering::Acquire) {
                 tracing::info!("[telegram-adapter] polling stopped");
                 break;
             }
 
             let url = format!(
                 "https://api.telegram.org/bot{}/getUpdates?offset={}&timeout=30",
-                self.bot_token, offset
+                bot_token, offset
             );
 
-            let resp = match self.client.get(&url).send().await {
+            let resp = match client.get(&url).send().await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::error!("[telegram-adapter] getUpdates error: {e}");
@@ -232,7 +231,7 @@ impl MessageAdapter for TelegramAdapter {
                     if let Some(msg) = update.message {
                         if let Some(text) = msg.text {
                             let chat_id = msg.chat.id.to_string();
-                            if chat_id != self.allowed_chat_id {
+                            if chat_id != allowed_chat_id {
                                 continue;
                             }
 

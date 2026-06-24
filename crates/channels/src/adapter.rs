@@ -2,6 +2,7 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::event::{AdapterError, MessageEvent};
 use crate::session::SessionManager;
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// 平台适配器——统一多平台消息接入的抽象层。
@@ -15,8 +16,7 @@ pub trait MessageAdapter: Send + Sync {
     fn platform_name(&self) -> &'static str;
 
     /// 启动监听，通过 `sender` 将收到的统一事件送入上层。
-    async fn start(self: Box<Self>, sender: mpsc::Sender<MessageEvent>)
-        -> Result<(), AdapterError>;
+    async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError>;
 
     /// 优雅关闭。
     async fn stop(&self) -> Result<(), AdapterError>;
@@ -104,24 +104,28 @@ impl Default for AdapterRuntime {
 /// 便捷函数：从多个适配器创建统一的消息流。
 ///
 /// 启动所有适配器，每个适配器的输出都路由到同一个 `Receiver`。
+/// 返回 `(接收端, 适配器列表, JoinHandle 列表)`。
+/// 适配器列表可用于之后调用 `reply()` 回复消息。
 pub fn launch_adapters(
-    adapters: Vec<Box<dyn MessageAdapter>>,
+    adapters: Vec<Arc<dyn MessageAdapter>>,
     buffer: usize,
 ) -> (
     mpsc::Receiver<MessageEvent>,
+    Vec<Arc<dyn MessageAdapter>>,
     Vec<tokio::task::JoinHandle<()>>,
 ) {
     let (tx, rx) = mpsc::channel(buffer);
     let mut handles = Vec::with_capacity(adapters.len());
 
-    for adapter in adapters {
+    for adapter in &adapters {
         let tx = tx.clone();
+        let a = Arc::clone(adapter);
         handles.push(tokio::spawn(async move {
-            if let Err(e) = adapter.start(tx).await {
-                tracing::error!("[adapter] failed to start: {e}");
+            if let Err(e) = a.start(tx).await {
+                tracing::error!("[adapter] {} start failed: {e}", a.platform_name());
             }
         }));
     }
 
-    (rx, handles)
+    (rx, adapters, handles)
 }
