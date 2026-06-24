@@ -58,7 +58,7 @@ export default function AppShell() {
         )}
         <SidebarInset className="overflow-hidden">
           {mode === "chat" ? (
-            <div className="flex flex-row flex-1 min-w-0 h-full">
+            <div className="flex flex-row flex-1 min-w-0 h-full max-h-screen">
               <div className="flex-1 min-w-0 flex flex-col">
                 <AiCopilot
                   activeThreadId={activeThreadId}
