@@ -56,9 +56,55 @@ pub async fn run_adapter_handler(
                     adapter.reply(&event, "触发决策中，请稍候…").await.ok();
                     // TODO: run decision
                 },
+                "tools" => {
+                    let msg = "可用工具:\n- get_current_positions: 查询持仓\n\
+                        - get_realtime_quote: 实时行情\n- get_field_items: 板块异动\n\
+                        - get_market_trend: 指数走势\n- get_historical_context: 历史数据\n\
+                        - get_limit_up_replay: 涨停回放\n- get_auction_quotes: 竞价数据";
+                    adapter.reply(&event, msg).await.ok();
+                },
+                "skills" => {
+                    let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
+                    if names.is_empty() {
+                        adapter.reply(&event, "暂无可用角色").await.ok();
+                    } else {
+                        let msg = format!(
+                            "可用角色:\n{}",
+                            names
+                                .iter()
+                                .map(|n| format!("- {}", n))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        );
+                        adapter.reply(&event, &msg).await.ok();
+                    }
+                },
+                "model" => {
+                    let msg = format!("当前模型: {:?}", ctx.llm.model);
+                    adapter.reply(&event, &msg).await.ok();
+                },
+                "mcp" => {
+                    let names = ctx.mcp_server_names();
+                    if names.is_empty() {
+                        adapter.reply(&event, "暂无 MCP 服务").await.ok();
+                    } else {
+                        let msg = format!(
+                            "MCP 服务:\n{}",
+                            names
+                                .iter()
+                                .map(|n| format!("- {}", n))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        );
+                        adapter.reply(&event, &msg).await.ok();
+                    }
+                },
                 "start" | "help" => {
                     let msg = "可用命令:\n/ask role_name 问题 — 向指定角色提问\n\
-                         /new — 开始新对话\n/decision — 触发每日决策".to_string();
+                         /new — 开始新对话\n/decision — 触发每日决策\n\
+                         /tools — 查看可用工具\n/skills — 查看可用角色\n\
+                         /model — 查看当前模型\n/mcp — 查看 MCP 服务"
+                        .to_string();
                     adapter.reply(&event, &msg).await.ok();
                 },
                 _ => {
