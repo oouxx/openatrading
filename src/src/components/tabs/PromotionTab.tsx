@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { type Stock } from '@/stores/data'
+import { useLimitUp } from '@/hooks/query/useLimitUp'
 import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
 import MiniChartPreview from '@/components/MiniChartPreview'
+import { useRightPanelStore } from '@/stores/rightPanelStore'
 
 interface PromotionItem {
   symbol: string
@@ -76,10 +78,15 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
   return result
 }
 
-export default function PromotionTab({ stocks, onOpenKline }: PromotionTabProps) {
+export default function PromotionTab({ stocks: propStocks, onOpenKline }: PromotionTabProps) {
   const [hideST, setHideST] = useState(true)
   const [selectedBoard, setSelectedBoard] = useState<number | null>(null)
   const { data: yesterdayList = [] } = useYesterdayLimitUp()
+  const { data: fallbackStocks = [] } = useLimitUp()
+  const panelStore = useRightPanelStore()
+
+  const stocks = propStocks.length ? propStocks : fallbackStocks
+  const handleOpenKline = onOpenKline ?? panelStore.openKline
 
   const isLoading = !stocks.length
   const error = isLoading ? '' : stocks.length === 0 ? '今日无涨停数据' : ''
@@ -264,7 +271,7 @@ export default function PromotionTab({ stocks, onOpenKline }: PromotionTabProps)
                       <tbody>
                         {row.details.map((s) => (
                           <tr key={s.symbol}>
-                            <td className="cursor-pointer font-mono hover:underline text-ai" onClick={() => onOpenKline(s.symbol, s.name)}>
+                            <td className="cursor-pointer font-mono hover:underline text-ai" onClick={() => handleOpenKline(s.symbol, s.name)}>
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
                                 {s.symbol}
                               </MiniChartPreview>
@@ -322,7 +329,7 @@ export default function PromotionTab({ stocks, onOpenKline }: PromotionTabProps)
               <tbody>
                 {firstBoard.map((s) => (
                   <tr key={s.symbol}>
-                    <td className="cursor-pointer font-mono hover:underline text-ai" onClick={() => onOpenKline(s.symbol, s.name)}>
+                    <td className="cursor-pointer font-mono hover:underline text-ai" onClick={() => handleOpenKline(s.symbol, s.name)}>
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
                         {s.symbol}
                       </MiniChartPreview>

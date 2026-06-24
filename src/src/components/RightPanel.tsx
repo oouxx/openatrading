@@ -1,37 +1,54 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { usePanelWidth } from "@/hooks/usePanelWidth";
+import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore";
 import ResizableHandle from "./ResizableHandle";
+import KlineDrawer from "./KlineDrawer";
 import DragonTigerView from "@/DragonTigerView";
 import BreakoutView from "@/BreakoutView";
 import ReplayView from "@/ReplayView";
 import RoleView from "@/RoleView";
+import StrongStocksTab from "@/components/tabs/StrongStocksTab";
+import PromotionTab from "@/components/tabs/PromotionTab";
+import PlateTab from "@/components/tabs/PlateTab";
+import TimelineTab from "@/components/tabs/TimelineTab";
+import SentimentChipTab from "@/components/tabs/SentimentChipTab";
+import MarketIntelTab from "@/components/tabs/MarketIntelTab";
+import NewsFeed from "@/components/NewsFeed";
 
-type ViewId = "dragon-tiger" | "breakout" | "replay" | "roles";
-
-const TABS: { id: ViewId; label: string }[] = [
+const TABS: { id: RightPanelView; label: string }[] = [
+  { id: "strong-stocks", label: "强势股" },
+  { id: "promotion", label: "晋级分析" },
+  { id: "plate", label: "板块异动" },
   { id: "dragon-tiger", label: "龙虎榜" },
-  { id: "breakout", label: "晋级分析" },
+  { id: "timeline", label: "时间线" },
+  { id: "sentiment-chip", label: "情绪筹码" },
+  { id: "market-intel", label: "市场情报" },
+  { id: "news", label: "资讯" },
   { id: "replay", label: "行情回放" },
   { id: "roles", label: "角色策略" },
 ];
 
 export default function RightPanel() {
-  const [activeView, setActiveView] = useState<ViewId>("dragon-tiger");
+  const activeView = useRightPanelStore((s) => s.activeView);
+  const setActiveView = useRightPanelStore((s) => s.setActiveView);
+  const klineTarget = useRightPanelStore((s) => s.klineTarget);
+  const closeKline = useRightPanelStore((s) => s.closeKline);
   const { width, setWidth, collapsed, toggleCollapse } = usePanelWidth(
     "layout:right-width", 400, 300, 700, "layout:right-collapsed"
   );
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as ViewId;
+      const detail = (e as CustomEvent).detail as RightPanelView;
       if (collapsed) toggleCollapse();
       setActiveView(detail);
     };
     window.addEventListener("open-right-panel", handler);
     return () => window.removeEventListener("open-right-panel", handler);
-  }, [collapsed, toggleCollapse]);
+  }, [collapsed, toggleCollapse, setActiveView]);
 
   const handleResize = useCallback(
     (delta: number) => setWidth((prev) => prev + delta),
@@ -44,11 +61,18 @@ export default function RightPanel() {
       case "breakout": return <BreakoutView />;
       case "replay": return <ReplayView />;
       case "roles": return <RoleView />;
+      case "strong-stocks": return <StrongStocksTab />;
+      case "promotion": return <PromotionTab stocks={[]} onOpenKline={() => {}} />;
+      case "plate": return <PlateTab />;
+      case "timeline": return <TimelineTab />;
+      case "sentiment-chip": return <SentimentChipTab />;
+      case "market-intel": return <MarketIntelTab />;
+      case "news": return <NewsFeed />;
     }
   };
 
   return (
-    <div className="flex flex-shrink-0">
+    <div className="flex flex-shrink-0 h-full">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
         className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden transition-[width] duration-150"
@@ -94,7 +118,7 @@ export default function RightPanel() {
           </div>
         ) : (
           <>
-            <div className="flex gap-0 px-3 border-b border-hairline flex-shrink-0">
+            <div className="flex gap-0 px-3 border-b border-hairline flex-shrink-0 overflow-x-auto">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
@@ -113,6 +137,16 @@ export default function RightPanel() {
           </>
         )}
       </div>
+
+      <AnimatePresence>
+        {klineTarget && (
+          <KlineDrawer
+            symbol={klineTarget.symbol}
+            name={klineTarget.name}
+            onClose={closeKline}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
