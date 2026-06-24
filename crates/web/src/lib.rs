@@ -15,6 +15,7 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
+use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use openatrading_core::chat::ChatThreadStore;
@@ -35,12 +36,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
-
+    let timer = LocalTime::rfc_3339();
     let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_timer(timer))
         .try_init();
 
     Router::new()
