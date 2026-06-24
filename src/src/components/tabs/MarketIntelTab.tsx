@@ -20,7 +20,7 @@ export default function MarketIntelTab() {
       sentimentData.taoguba_articles?.length)
   )
 
-  const hotStocks: Array<[string, string, number]> = sentimentData.hot_stocks || []
+  const hotStocks: Array<[string, string, number]> = sentimentData?.hot_stocks || []
   const hotArticles: Array<{
     article_id: string
     title: string
@@ -30,7 +30,7 @@ export default function MarketIntelTab() {
     forward_count: number
     heat_score: number
     content: string
-  }> = sentimentData.hot_articles || []
+  }> = sentimentData?.hot_articles || []
   const taogubaArticles: Array<{
     topic_id: number
     new_topic_id: number
@@ -40,9 +40,9 @@ export default function MarketIntelTab() {
     reply_count: number
     date_time: string
     content: string
-  }> = sentimentData.taoguba_articles || []
+  }> = sentimentData?.taoguba_articles || []
 
-  const trendText = sentimentData.trend || '暂无数据'
+  const trendText = sentimentData?.trend || '暂无数据'
   const trendColor =
     trendText === '偏多' ? 'text-up' : trendText === '中性' ? 'text-ai' : 'text-down'
 
@@ -174,7 +174,7 @@ export default function MarketIntelTab() {
                   <div className="space-y-2">
                     {taogubaArticles.map((a, idx) => (
                       <div
-                        key={a.topic_id}
+                        key={`${a.topic_id}-${idx}`}
                         className="p-card-inner rounded-card border border-hairline-dark bg-white/[0.04] cursor-pointer transition-colors"
                         onClick={() => setExpandedTgbId(expandedTgbId === a.topic_id ? null : a.topic_id)}
                       >
