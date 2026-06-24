@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 
-use crate::utils::html_to_markdown;
+use crate::utils::{gen_jiuyan_token, html_to_markdown};
 
 const BASE_URL: &str = "https://app.jiuyangongshe.com/jystock-app/api/v1";
 
@@ -395,6 +395,7 @@ impl JiuYanSession {
             .client
             .post(&url)
             .header("timestamp", &timestamp)
+            .header("token", gen_jiuyan_token())
             .json(&body)
             .send()
             .await;
