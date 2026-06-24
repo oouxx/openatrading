@@ -113,13 +113,12 @@ fn parse_skill_frontmatter(raw: &str) -> (Option<SkillFrontmatter>, String) {
 
 // ── Name validation ─────────────────────────────────────────────────────
 
-/// Validate a skill name against agentskills.io spec.
+/// Validate a skill name.
 ///
 /// Rules:
 /// - 1-64 characters
-/// - Lowercase alphanumeric and hyphens only
-/// - Must not start or end with hyphen
-/// - Must not contain consecutive hyphens
+/// - Hyphen must not start, end, or appear consecutively
+/// - Must contain at least one letter or digit
 pub fn validate_skill_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("name must not be empty".into());
@@ -136,12 +135,9 @@ pub fn validate_skill_name(name: &str) -> Result<(), String> {
     if name.contains("--") {
         return Err(format!("name must not contain consecutive hyphens: {name}"));
     }
-    for ch in name.chars() {
-        if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '-' {
-            return Err(format!(
-                "name contains invalid character '{ch}': only lowercase letters, digits, and hyphens allowed"
-            ));
-        }
+    let has_alnum = name.chars().any(|c| c.is_alphanumeric());
+    if !has_alnum {
+        return Err("name must contain at least one letter or digit".into());
     }
     Ok(())
 }
@@ -201,10 +197,6 @@ fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
         // Warn on validation issues but still load (lenient)
         if let Err(e) = validate_skill_name(&name) {
             tracing::warn!("skill name validation: {e}");
-        }
-        if description.is_empty() {
-            tracing::warn!("skill '{}' has empty description, skipping", name);
-            continue;
         }
         let (license, compatibility, metadata, allowed_tools) = match &fm {
             Some(f) => (
