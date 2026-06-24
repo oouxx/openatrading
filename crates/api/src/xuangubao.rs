@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use chrono::{Datelike, FixedOffset};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+use crate::utils::to_yahoo_symbol;
 
 /// UTC+8 Beijing time — all A-share market clock calculations should use this.
 fn beijing_tz() -> FixedOffset {
@@ -222,8 +225,9 @@ impl XuanguBaoClient {
     fn build_client() -> reqwest::Client {
         reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+            .timeout(Duration::from_secs(15))
             .build()
-            .unwrap()
+            .expect("reqwest::Client::builder() should never fail with standard settings")
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -666,8 +670,9 @@ impl XuanguBaoClient {
     }
 
     pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
+        let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={symbol}"
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={}",&symbol
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -686,62 +691,58 @@ impl XuanguBaoClient {
             })
             .unwrap_or_default();
 
-        let snap = &resp["data"]["snapshot"][symbol];
+        let snap = &resp["data"]["snapshot"][&symbol];
         if snap.is_null() {
             anyhow::bail!("symbol '{symbol}' not found in realtime snapshot");
         }
         let arr = snap.as_array().context("missing snapshot array")?;
 
-        let get_f64 = |name: &str| -> f64 {
-            fields
-                .iter()
-                .position(|f| f == name)
+        let field_pos = |name: &str| -> Option<usize> { fields.iter().position(|f| f == name) };
+
+        let get_f64 = |name: &str| -> Option<f64> {
+            field_pos(name)
                 .and_then(|i| arr.get(i))
                 .and_then(|v| v.as_f64())
-                .unwrap_or(0.0)
         };
-        let get_str = |name: &str| -> String {
-            fields
-                .iter()
-                .position(|f| f == name)
+        let get_str = |name: &str| -> Option<&str> {
+            field_pos(name)
                 .and_then(|i| arr.get(i))
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()
         };
-        let get_i64 = |name: &str| -> i64 {
-            fields
-                .iter()
-                .position(|f| f == name)
+        let get_i64 = |name: &str| -> Option<i64> {
+            field_pos(name)
                 .and_then(|i| arr.get(i))
                 .and_then(|v| v.as_i64())
-                .unwrap_or(0)
         };
 
         Ok(RealtimeQuote {
             symbol: symbol.to_string(),
-            name: get_str("prod_name"),
-            trade_status: get_str("trade_status"),
-            update_time: get_i64("update_time"),
-            last_px: get_f64("last_px"),
-            px_change: get_f64("px_change"),
-            px_change_rate: get_f64("px_change_rate"),
-            preclose_px: get_f64("preclose_px"),
-            open_px: get_f64("open_px"),
-            high_px: get_f64("high_px"),
-            low_px: get_f64("low_px"),
-            amplitude: get_f64("amplitude"),
-            turnover_ratio: get_f64("turnover_ratio"),
-            pe_rate: get_f64("pe_rate"),
-            dyn_pe: get_f64("dyn_pe"),
-            dyn_pb_rate: get_f64("dyn_pb_rate"),
-            market_value: get_f64("market_value"),
-            circulation_value: get_f64("circulation_value"),
-            turnover_volume: get_f64("turnover_volume"),
-            turnover_value: get_f64("turnover_value"),
-            volume_ratio: get_f64("volume_ratio"),
-            circulation_shares: get_f64("circulation_shares"),
-            total_shares: get_f64("total_shares"),
+            name: get_str("prod_name").unwrap_or("").to_string(),
+            trade_status: get_str("trade_status")
+                .context("missing trade_status in realtime response")?
+                .to_string(),
+            update_time: get_i64("update_time")
+                .context("missing update_time in realtime response")?,
+            last_px: get_f64("last_px").context("missing last_px in realtime response")?,
+            px_change: get_f64("px_change").unwrap_or(0.0),
+            px_change_rate: get_f64("px_change_rate").unwrap_or(0.0),
+            preclose_px: get_f64("preclose_px")
+                .context("missing preclose_px in realtime response")?,
+            open_px: get_f64("open_px").unwrap_or(0.0),
+            high_px: get_f64("high_px").unwrap_or(0.0),
+            low_px: get_f64("low_px").unwrap_or(0.0),
+            amplitude: get_f64("amplitude").unwrap_or(0.0),
+            turnover_ratio: get_f64("turnover_ratio").unwrap_or(0.0),
+            pe_rate: get_f64("pe_rate").unwrap_or(0.0),
+            dyn_pe: get_f64("dyn_pe").unwrap_or(0.0),
+            dyn_pb_rate: get_f64("dyn_pb_rate").unwrap_or(0.0),
+            market_value: get_f64("market_value").unwrap_or(0.0),
+            circulation_value: get_f64("circulation_value").unwrap_or(0.0),
+            turnover_volume: get_f64("turnover_volume").unwrap_or(0.0),
+            turnover_value: get_f64("turnover_value").unwrap_or(0.0),
+            volume_ratio: get_f64("volume_ratio").unwrap_or(0.0),
+            circulation_shares: get_f64("circulation_shares").unwrap_or(0.0),
+            total_shares: get_f64("total_shares").unwrap_or(0.0),
         })
     }
     pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
