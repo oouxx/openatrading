@@ -16,7 +16,6 @@ pub struct AppContext {
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
     pub social: Arc<dyn NotificationSender>,
-    mcp_server_names: Vec<String>,
 }
 
 impl AppContext {
@@ -34,11 +33,6 @@ impl AppContext {
             mcp_servers: mcp_servers.to_vec(),
         };
         let tool_registry = Arc::new(ArcSwap::from_pointee(build_tools(&tool_cfg).await));
-        let mcp_server_names: Vec<String> = mcp_servers
-            .iter()
-            .filter(|s| s.enabled)
-            .map(|s| s.name.clone())
-            .collect();
         Self {
             llm,
             api,
@@ -46,7 +40,6 @@ impl AppContext {
             memory,
             trade,
             social,
-            mcp_server_names,
         }
     }
 
@@ -58,10 +51,5 @@ impl AppContext {
     /// Get only MCP tools.
     pub fn mcp_tools(&self) -> Vec<Arc<DynTool>> {
         self.tool_registry.load().mcp_tools().to_vec()
-    }
-
-    /// Get enabled MCP server names.
-    pub fn mcp_server_names(&self) -> &[String] {
-        &self.mcp_server_names
     }
 }
