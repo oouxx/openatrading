@@ -5,23 +5,17 @@
 //!
 //! 启动后会监听 60 秒，向指定 chat 发送的消息会打印到终端。
 
-use openatrading_channels::adapter::MessageAdapter;
+use openatrading_channels::adapter::{launch_adapters, MessageAdapter};
 use openatrading_channels::telegram::TelegramAdapter;
-use tokio::sync::mpsc;
+use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let token = std::env::var("TELEGRAM_BOT_TOKEN").expect("TELEGRAM_BOT_TOKEN");
     let chat_id = std::env::var("TELEGRAM_CHAT_ID").expect("TELEGRAM_CHAT_ID");
 
-    let adapter = TelegramAdapter::new(token, chat_id);
-    let (tx, mut rx) = mpsc::channel(64);
-
-    let handle = tokio::spawn(async move {
-        if let Err(e) = Box::new(adapter).start(tx).await {
-            eprintln!("adapter error: {e}");
-        }
-    });
+    let adapter: Arc<dyn MessageAdapter> = Arc::new(TelegramAdapter::new(token, chat_id));
+    let (mut rx, adapters, _handles) = launch_adapters(vec![adapter], 64);
 
     println!("监听中… 向 Telegram bot 发一条消息（超时 60 秒）");
 
@@ -34,11 +28,14 @@ async fn main() {
             println!("   channel_id: {}", event.channel_id);
             println!("   message_id: {}", event.message_id);
             println!("   text:       {}", event.text);
+
+            // 回复
+            if let Some(adapter) = adapters.first() {
+                adapter.reply(&event, "收到 ✅").await.ok();
+            }
         }
         _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
             println!("⏳ 超时，未收到消息");
         }
     }
-
-    handle.abort();
 }

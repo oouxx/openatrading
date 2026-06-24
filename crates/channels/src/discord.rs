@@ -173,14 +173,14 @@ impl MessageAdapter for DiscordAdapter {
         "discord"
     }
 
-    async fn start(
-        self: Box<Self>,
-        sender: mpsc::Sender<MessageEvent>,
-    ) -> Result<(), AdapterError> {
+    async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError> {
+        let bot_token = self.bot_token.clone();
+        let allowed_channel_id = self.allowed_channel_id.clone();
+        let mut gateway_url = self.gateway_url.lock().await.clone();
+
         loop {
             // 1. 连接 Gateway
-            let url = self.gateway_url.lock().await.clone();
-            let (ws, _) = match tokio_tungstenite::connect_async(&url).await {
+            let (ws, _) = match tokio_tungstenite::connect_async(&gateway_url).await {
                 Ok(conn) => conn,
                 Err(e) => {
                     tracing::error!("[discord-adapter] connect failed: {e}, retry in 5s");
@@ -231,7 +231,7 @@ impl MessageAdapter for DiscordAdapter {
             let identify = serde_json::json!({
                 "op": op::IDENTIFY,
                 "d": {
-                    "token": self.bot_token,
+                    "token": bot_token,
                     // GUILD_MESSAGES (1<<9) | MESSAGE_CONTENT (1<<15)
                     "intents": 512 | 32768,
                     "properties": {
@@ -326,7 +326,7 @@ impl MessageAdapter for DiscordAdapter {
                                 if let Ok(msg_data) =
                                     serde_json::from_value::<MessageCreateData>(payload.d)
                                 {
-                                    if let Some(ref allowed) = self.allowed_channel_id {
+                                    if let Some(ref allowed) = allowed_channel_id {
                                         if &msg_data.channel_id != allowed {
                                             continue;
                                         }
@@ -361,7 +361,7 @@ impl MessageAdapter for DiscordAdapter {
                                 if let Some(url) =
                                     payload.d.get("resume_gateway_url").and_then(|v| v.as_str())
                                 {
-                                    *self.gateway_url.lock().await = url.to_string();
+                                    gateway_url = url.to_string();
                                 }
                                 tracing::info!("[discord-adapter] ready");
                             },

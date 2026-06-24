@@ -5,6 +5,9 @@ use std::sync::Arc;
 use service_manager::*;
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
+use openatrading_core::channels::adapter::{launch_adapters, MessageAdapter};
+use openatrading_core::channels::discord::DiscordAdapter;
+use openatrading_core::channels::telegram::TelegramAdapter;
 use openatrading_core::social::FilteredSender;
 use openatrading_core::social::NotificationSender;
 use openatrading_core::social::{
@@ -219,7 +222,6 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> Result<()> {
     use openatrading_core::context::AppContext;
     use openatrading_core::cron::{self, CronConfig};
-    use openatrading_core::social::telegram_bot::{TelegramBot, TelegramBotConfig};
 
     let app_config = AppConfig::load()?;
 
@@ -232,7 +234,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     let do_mcp = !cron_only && !web_only && !no_mcp && app_config.mcp_server.enabled;
 
     let roles = build_roles(&app_config);
-    let tg_roles = roles.clone();
     let mut handles = Vec::new();
 
     // Clone for cron/telegram/web use before gateway is moved
@@ -242,7 +243,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     let mcp_servers = app_config.mcp_servers.clone();
     let cron_mcp = mcp_servers.clone();
     let web_mcp = mcp_servers.clone();
-    let tg_mcp = mcp_servers.clone();
 
     // ── Cron (CLI layer) ──────────────────────────
     let social: Arc<dyn NotificationSender> = match &app_config.social {
@@ -277,8 +277,9 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             )
             .await,
         );
+        let cron_roles = roles.clone();
         handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, roles).await {
+            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, cron_roles).await {
                 eprintln!("[gateway] cron error: {e}");
             }
         }));
@@ -339,37 +340,68 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         eprintln!("[gateway] mcp: enabled at http://{mcp_bind}/mcp");
     }
 
-    // ── Telegram Bot (CLI layer) ──────────────────
+    // ── 平台适配器 ─────────────────────────────────
+    let mut adapters: Vec<Arc<dyn MessageAdapter>> = Vec::new();
+
     if let Some(sc) = &app_config.social {
         if let Some(tg) = &sc.telegram {
             if tg.enabled && tg.bot_polling {
                 if let (Some(token), Some(chat_id)) = (&tg.bot_token, &tg.chat_id) {
                     if !token.is_empty() && !chat_id.is_empty() {
-                        let config = TelegramBotConfig {
-                            bot_token: token.clone(),
-                            chat_id: chat_id.clone(),
-                            mcp_servers: tg_mcp.clone(),
-                        };
-                        let tg_ctx = AppContext::build(
-                            app_config.llm.provider.as_deref(),
-                            app_config.llm.model.as_deref(),
-                            &tg_mcp,
-                            memory.clone(),
-                            trade.clone(),
-                            social.clone(),
-                        )
-                        .await;
-                        let bot = TelegramBot::new(config, tg_roles.clone(), tg_ctx);
-                        handles.push(tokio::spawn(async move {
-                            if let Err(e) = bot.start_polling().await {
-                                eprintln!("[gateway] telegram bot error: {e}");
-                            }
-                        }));
-                        eprintln!("[gateway] telegram bot: enabled");
+                        adapters.push(Arc::new(TelegramAdapter::new(
+                            token.clone(),
+                            chat_id.clone(),
+                        )));
+                        eprintln!("[gateway] telegram adapter: enabled");
                     }
                 }
             }
         }
+
+        if let Some(dc) = &sc.discord {
+            if dc.enabled && adapters.iter().any(|a| a.platform_name() == "discord") {
+                if let Some(token) = &dc.bot_token {
+                    if !token.is_empty() {
+                        let mut da = DiscordAdapter::new(token.clone());
+                        if let Some(ch) = &dc.channel_id {
+                            da = da.with_channel(ch);
+                        }
+                        adapters.push(Arc::new(da));
+                        eprintln!("[gateway] discord adapter: enabled");
+                    }
+                }
+            }
+        }
+    }
+
+    if !adapters.is_empty() {
+        let adapter_ctx = Arc::new(
+            AppContext::build(
+                app_config.llm.provider.as_deref(),
+                app_config.llm.model.as_deref(),
+                &mcp_servers,
+                memory.clone(),
+                trade.clone(),
+                social.clone(),
+            )
+            .await,
+        );
+        let (rx, adapter_refs, adapter_handles) = launch_adapters(adapters, 1024);
+        handles.extend(adapter_handles);
+
+        let handler_roles = roles.clone();
+        handles.push(tokio::spawn(async move {
+            if let Err(e) = openatrading_core::social::adapter_handler::run_adapter_handler(
+                rx,
+                adapter_refs,
+                handler_roles,
+                (*adapter_ctx).clone(),
+            )
+            .await
+            {
+                eprintln!("[gateway] adapter handler error: {e}");
+            }
+        }));
     }
 
     if handles.is_empty() {

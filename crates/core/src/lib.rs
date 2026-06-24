@@ -11,6 +11,7 @@ pub mod prompts;
 pub mod roles;
 pub mod skills;
 pub mod social;
+pub use openatrading_channels as channels;
 pub mod trade;
 pub mod types;
 pub mod utils;

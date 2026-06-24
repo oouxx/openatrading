@@ -59,4 +59,5 @@ impl NotificationSender for FilteredSender {
     }
 }
 
+pub mod adapter_handler;
 pub mod telegram_bot;
