@@ -224,8 +224,11 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     use openatrading_core::cron::{self, CronConfig};
 
     let app_config = AppConfig::load()?;
+    let home = openatrading_core::atrading_home();
 
-    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
+    eprintln!("[gateway] home: {}", home.display());
+
+    let db_path = home.join(&app_config.service.db_path);
 
     let gateway = Gateway::init(&db_path)?;
 
