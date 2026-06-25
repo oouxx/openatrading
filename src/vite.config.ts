@@ -27,6 +27,9 @@ export default defineConfig(async ({ mode }) => {
           (mode === "production" && isTauri ? "http://localhost:8080" : ""),
       ),
     },
+    build: {
+      sourcemap: false,
+    },
     server: {
       proxy: {
         "/api": {
