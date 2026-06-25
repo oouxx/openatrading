@@ -81,6 +81,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     <div className="h-full overflow-y-auto bg-bg">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-hairline bg-bg-surface flex-shrink-0">
+        <button onClick={onClose} className="text-lg leading-none p-1 text-ink-muted hover:text-white">&times;</button>
         <span className="text-xl font-bold text-white">{name}</span>
         <span className="text-xs text-ink-muted font-mono">{symbol}</span>
         {quote && (
