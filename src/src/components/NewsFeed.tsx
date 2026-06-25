@@ -110,8 +110,8 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
 
   if (variant === 'tab') {
     return (
-      <div>
-        <div className="flex items-center gap-3 mb-6 text-caption">
+      <div className="h-full min-h-0 flex flex-col">
+        <div className="flex items-center gap-3 mb-6 text-caption flex-shrink-0">
           <span className="text-white/60">
             <b className="text-white">{filteredNews.length}</b> 条资讯
             {source === 'all' && (
@@ -132,7 +132,7 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
         </div>
 
         {error && (
-          <div className="text-center py-12">
+          <div className="text-center py-12 flex-shrink-0">
             <p className="text-caption text-up mb-3">资讯加载失败</p>
             <button
               onClick={() => refetch()}
@@ -143,32 +143,34 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
           </div>
         )}
 
-        {filteredNews.map((item) => (
-          <div
-            key={item.id}
-            className="bg-surface-dark rounded-card border border-hairline-dark px-4 py-3 flex items-start gap-3 hover:bg-bg-hover transition-colors cursor-pointer group"
-          >
-            <span className="text-caption shrink-0 mt-0.5">{item.severity === 'major' ? '🔴' : '⚪'}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-caption text-white/80 leading-relaxed group-hover:text-white transition-colors">
-                <span className="text-ink-muted font-mono mr-2 text-xs">{item.time}</span>
-                {item.title}
-              </p>
-              {item.aiNote && (
-                <p className="text-caption text-ai/70 mt-1 leading-relaxed text-xs">→ {item.aiNote}</p>
-              )}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {!error && filteredNews.map((item) => (
+            <div
+              key={item.id}
+              className="bg-surface-dark rounded-card border border-hairline-dark px-4 py-3 flex items-start gap-3 hover:bg-bg-hover transition-colors cursor-pointer group mb-2"
+            >
+              <span className="text-caption shrink-0 mt-0.5">{item.severity === 'major' ? '🔴' : '⚪'}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-caption text-white/80 leading-relaxed group-hover:text-white transition-colors">
+                  <span className="text-ink-muted font-mono mr-2 text-xs">{item.time}</span>
+                  {item.title}
+                </p>
+                {item.aiNote && (
+                  <p className="text-caption text-ai/70 mt-1 leading-relaxed text-xs">→ {item.aiNote}</p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {isFetchingNextPage && (
-          <div className="text-center py-4 text-caption text-ink-muted">加载更多...</div>
-        )}
-        {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
+          {isFetchingNextPage && (
+            <div className="text-center py-4 text-caption text-ink-muted">加载更多...</div>
+          )}
+          {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
 
-        {!isLoading && !error && filteredNews.length === 0 && (
-          <div className="text-center py-12 text-caption text-ink-muted">暂无资讯</div>
-        )}
+          {!isLoading && !error && filteredNews.length === 0 && (
+            <div className="text-center py-12 text-caption text-ink-muted">暂无资讯</div>
+          )}
+        </div>
       </div>
     )
   }
@@ -191,7 +193,7 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
         <span className="text-caption text-ink-muted font-mono">{filteredNews.length} 条</span>
       </div>
 
-      <div className="max-h-[360px] overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
         {isLoading && !allItems.length ? (
           <div className="text-center py-8 text-caption text-ink-muted">加载中...</div>
         ) : error && !allItems.length ? (

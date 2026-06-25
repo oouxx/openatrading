@@ -5,7 +5,7 @@ pub fn beijing_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
 }
 
-pub fn gen_jiuyan_token() -> String {
+pub fn now_ts() -> i64 {
     // 1. 北京时区（UTC+8）
     let beijing = FixedOffset::east_opt(8 * 3600).unwrap();
 
@@ -14,8 +14,11 @@ pub fn gen_jiuyan_token() -> String {
     let now_bj = now_utc.with_timezone(&beijing);
 
     // 3. 转成毫秒时间戳（注意：timestamp_millis 是 UTC epoch）
-    let timestamp_ms = now_bj.timestamp_millis();
+    
+    now_bj.timestamp_millis()
+}
 
+pub fn gen_jiuyan_token(timestamp_ms: i64) -> String {
     let secret = "Uu0KfOB8iUP69d3c";
     let input = format!("{}:{}", secret, timestamp_ms);
     // 3. MD5 计算
