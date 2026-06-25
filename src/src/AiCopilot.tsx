@@ -189,7 +189,13 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
 
 
   const filteredCommands = slashQuery
-    ? commands.filter((c) => c.name.toLowerCase().includes(slashQuery.toLowerCase())).slice(0, 8)
+    ? commands
+        .filter(
+          (c) =>
+            c.name.toLowerCase().includes(slashQuery.toLowerCase()) ||
+            c.description.toLowerCase().includes(slashQuery.toLowerCase()),
+        )
+        .slice(0, 8)
     : commands.slice(0, 8);
 
   const currentMessages = activeThreadId ? threadMessagesRef.current.get(activeThreadId) ?? [] : [];
@@ -536,7 +542,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                 }}
               >
                 <span className="flex-1 truncate font-medium">/{cmd.name}</span>
-                <span className="text-[10px] text-ink-muted truncate">{cmd.description}</span>
+                {cmd.description && (
+                  <span className="text-[10px] text-ink-muted truncate max-w-[180px]">{cmd.description}</span>
+                )}
                 <span className="text-[9px] px-1.5 py-0.5 rounded-badge bg-bg-hover text-ink-muted uppercase">{cmd.command_type}</span>
               </button>
             ))}
