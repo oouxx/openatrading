@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { useFieldItems } from '@/hooks/query/useFieldItems'
-import { useRightPanelStore } from '@/stores/rightPanelStore'
-import type { FieldPlate } from '@/stores/data'
+import { useState } from "react";
+import { useFieldItems } from "@/hooks/query/useFieldItems";
+import { useRightPanelStore } from "@/stores/rightPanelStore";
+import type { FieldPlate } from "@/stores/data";
 
 export default function PlateTab() {
-  const { data: fieldItems = [] } = useFieldItems()
-  const openKline = useRightPanelStore((s) => s.openKline)
+  const { data: fieldItems = [] } = useFieldItems();
+  const openKline = useRightPanelStore((s) => s.openKline);
 
   return (
     <div className="space-y-3">
@@ -13,12 +13,18 @@ export default function PlateTab() {
         <PlateCard key={plate.name} plate={plate} onOpenKline={openKline} />
       ))}
     </div>
-  )
+  );
 }
 
-function PlateCard({ plate, onOpenKline }: { plate: FieldPlate; onOpenKline: (s: string, n: string) => void }) {
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const isOpen = expanded === plate.name
+function PlateCard({
+  plate,
+  onOpenKline,
+}: {
+  plate: FieldPlate;
+  onOpenKline: (s: string, n: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const isOpen = expanded === plate.name;
 
   return (
     <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
@@ -30,11 +36,15 @@ function PlateCard({ plate, onOpenKline }: { plate: FieldPlate; onOpenKline: (s:
           <span className="text-white text-sm font-semibold">{plate.name}</span>
           <span className="text-caption text-ink-muted">{plate.count}只</span>
         </div>
-        <span className="text-caption text-ink-muted">{isOpen ? '▲' : '▼'}</span>
+        <span className="text-caption text-ink-muted">
+          {isOpen ? "▲" : "▼"}
+        </span>
       </div>
       {plate.reason && (
         <div className="px-4 pb-2">
-          <p className="text-caption text-ink-muted leading-relaxed">{plate.reason}</p>
+          <p className="text-caption text-ink-muted leading-relaxed">
+            {plate.reason}
+          </p>
         </div>
       )}
       {isOpen && plate.list.length > 0 && (
@@ -46,13 +56,17 @@ function PlateCard({ plate, onOpenKline }: { plate: FieldPlate; onOpenKline: (s:
                 className="bg-bg rounded-card border border-hairline p-2 cursor-pointer hover:border-ai/30 transition-colors"
                 onClick={() => onOpenKline(item.code, item.name)}
               >
-                <span className="text-white text-xs font-semibold">{item.name}</span>
-                <span className="text-caption text-ink-muted font-mono ml-2">{item.code.replace(/^(sh|sz|bj)/, '')}</span>
+                <span className="text-white text-xs font-semibold">
+                  {item.name}
+                </span>
+                <span className="text-caption text-ink-muted font-mono ml-2">
+                  {item.code.replace(/^(sh|sz|bj)/, "")}
+                </span>
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
