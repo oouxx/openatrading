@@ -5,7 +5,10 @@ export function getApiBaseUrl(): string {
   return localStorage.getItem("openatrading-api-url") || __API_BASE_URL__;
 }
 
-export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function fetchJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
     if (
@@ -126,8 +129,14 @@ export async function apiChatStream(
           if (currentEvent === "thinking") {
             callbacks.onReasoning?.(decoded);
           } else if (currentEvent === "tool-call") {
-            try { callbacks.onToolCall?.(JSON.parse(data)); } catch { }
-          } else if (currentEvent === "tool-delta" || currentEvent === "tool-exec-start" || currentEvent === "tool-exec-end") {
+            try {
+              callbacks.onToolCall?.(JSON.parse(data));
+            } catch {}
+          } else if (
+            currentEvent === "tool-delta" ||
+            currentEvent === "tool-exec-start" ||
+            currentEvent === "tool-exec-end"
+          ) {
             // tool call internals — not displayed
           } else if (currentEvent === "tool-end") {
             // ignore legacy tool-end event
@@ -197,6 +206,10 @@ export interface FieldPlate {
         time?: string;
         num?: string;
         expound?: string;
+        shares_range?: number;
+        day?: number;
+        edition?: number;
+        price?: number;
       };
     };
   }>;

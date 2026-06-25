@@ -28,6 +28,10 @@ pub struct ActionInfo {
     pub num: Option<String>,
     /// 异动理由/详细描述
     pub expound: Option<String>,
+    pub price: Option<f64>,
+    pub day: Option<i32>,
+    pub edition: Option<i32>,
+    pub shares_range: Option<f64>,
 }
 
 /// 文章信息
