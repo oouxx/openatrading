@@ -3,17 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 
-use crate::utils::{gen_jiuyan_token, html_to_markdown};
+use crate::utils::{gen_jiuyan_token, html_to_markdown, now_ts};
 
 const BASE_URL: &str = "https://app.jiuyangongshe.com/jystock-app/api/v1";
-
-fn now_ts() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .to_string()
-}
 
 // ─── Token & Cookie 凭证 ──────────────────────────────────────
 
@@ -389,13 +381,13 @@ impl JiuYanSession {
             "password": password
         });
 
-        let timestamp = now_ts();
+        let ts = now_ts();
 
         let resp_result = self
             .client
             .post(&url)
-            .header("timestamp", &timestamp)
-            .header("token", gen_jiuyan_token())
+            .header("timestamp", &ts.to_string())
+            .header("token", gen_jiuyan_token(ts))
             .json(&body)
             .send()
             .await;
@@ -486,41 +478,18 @@ impl JiuYanSession {
 
     /// 发起 GET 请求，自动处理认证失败重试
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
-        let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
         let ts = now_ts();
 
         let resp = self
             .client
             .get(&url)
-            .header("token", &creds.token)
-            .header("timestamp", &ts)
-            .header(reqwest::header::COOKIE, &creds.cookie)
+            .header("token", gen_jiuyan_token(ts))
+            .header("timestamp", &ts.to_string())
             .send()
             .await?
             .json::<serde_json::Value>()
             .await?;
-
-        if Self::is_auth_error(&resp) {
-            self.refresh().await?;
-            let creds = self.get_credentials().await?;
-            let ts = now_ts();
-
-            let resp = self
-                .client
-                .get(&url)
-                .header("token", &creds.token)
-                .header("timestamp", &ts)
-                .header(reqwest::header::COOKIE, &creds.cookie)
-                .send()
-                .await?
-                .json::<serde_json::Value>()
-                .await?;
-
-            let json_str = serde_json::to_string(&resp)?;
-            return serde_json::from_str(&json_str)
-                .with_context(|| format!("解析响应失败: {}", json_str));
-        }
 
         let json_str = serde_json::to_string(&resp)?;
         serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
@@ -532,43 +501,19 @@ impl JiuYanSession {
         path: &str,
         body: &impl Serialize,
     ) -> Result<T> {
-        let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
         let ts = now_ts();
 
         let resp = self
             .client
             .post(&url)
-            .header("token", &creds.token)
-            .header("timestamp", &ts)
-            .header(reqwest::header::COOKIE, &creds.cookie)
+            .header("token", gen_jiuyan_token(ts))
+            .header("timestamp", &ts.to_string())
             .json(body)
             .send()
             .await?
             .json::<serde_json::Value>()
             .await?;
-
-        if Self::is_auth_error(&resp) {
-            self.refresh().await?;
-            let creds = self.get_credentials().await?;
-            let ts = now_ts();
-
-            let resp = self
-                .client
-                .post(&url)
-                .header("token", &creds.token)
-                .header("timestamp", &ts)
-                .header(reqwest::header::COOKIE, &creds.cookie)
-                .json(body)
-                .send()
-                .await?
-                .json::<serde_json::Value>()
-                .await?;
-
-            let json_str = serde_json::to_string(&resp)?;
-            return serde_json::from_str(&json_str)
-                .with_context(|| format!("解析响应失败: {}", json_str));
-        }
 
         let json_str = serde_json::to_string(&resp)?;
         serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
