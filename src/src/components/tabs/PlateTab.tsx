@@ -47,7 +47,7 @@ function PlateCard({ plate, onOpenKline }: { plate: FieldPlate; onOpenKline: (s:
                 onClick={() => onOpenKline(item.code, item.name)}
               >
                 <span className="text-white text-xs font-semibold">{item.name}</span>
-                <span className="text-caption text-ink-muted font-mono ml-2">{item.code.replace(/\.[A-Z]+$/, '')}</span>
+                <span className="text-caption text-ink-muted font-mono ml-2">{item.code.replace(/^(sh|sz|bj)/, '')}</span>
               </div>
             ))}
           </div>
