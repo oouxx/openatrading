@@ -1,9 +1,8 @@
 use anyhow::Result;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::fs;
 
 // 淘股吧推荐 API 响应结构体
 #[derive(Deserialize)]
@@ -414,7 +413,7 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
     }
 
     let user_dir = Path::new(output_dir).join(user_id);
-    fs::create_dir_all(&user_dir).await?;
+    fs::create_dir_all(&user_dir)?;
 
     let mut index = format!(
         "# 用户 {} ({}) 的帖子\n\n共 {} 篇\n\n## 列表\n\n",
@@ -461,12 +460,12 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             "# {}\n\n**时间:** {} | **浏览:** {} | **回复:** {}\n\n{}\n\n---\n\n",
             post.title, date, post.view_count, post.reply_count, content
         );
-        fs::write(user_dir.join(filename), md).await?;
+        fs::write(user_dir.join(filename), md)?;
 
         index.push_str(&format!("{}. [{}]({})\n", i + 1, post.title, post.link));
     }
 
-    fs::write(user_dir.join("index.md"), &index).await?;
+    fs::write(user_dir.join("index.md"), &index)?;
 
     let user_md = format!(
         r#"# 用户信息
@@ -480,7 +479,7 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
         username,
         posts.len(),
     );
-    fs::write(user_dir.join("user.md"), user_md).await?;
+    fs::write(user_dir.join("user.md"), user_md)?;
 
     tracing::info!(
         %user_id,

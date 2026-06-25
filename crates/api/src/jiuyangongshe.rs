@@ -476,8 +476,9 @@ impl JiuYanSession {
             .unwrap_or(false)
     }
 
-    /// 发起 GET 请求，自动处理认证失败重试
+    /// 发起 GET 请求，MD5 签名 + Session Cookie 认证
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
+        let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
         let ts = now_ts();
 
@@ -486,6 +487,7 @@ impl JiuYanSession {
             .get(&url)
             .header("token", gen_jiuyan_token(ts))
             .header("timestamp", &ts.to_string())
+            .header(reqwest::header::COOKIE, &creds.cookie)
             .send()
             .await?
             .json::<serde_json::Value>()
@@ -495,12 +497,13 @@ impl JiuYanSession {
         serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
     }
 
-    /// 发起 POST 请求，自动处理认证失败重试
+    /// 发起 POST 请求，MD5 签名 + Session Cookie 认证
     pub async fn post<T: for<'de> Deserialize<'de>>(
         &self,
         path: &str,
         body: &impl Serialize,
     ) -> Result<T> {
+        let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
         let ts = now_ts();
 
@@ -509,6 +512,7 @@ impl JiuYanSession {
             .post(&url)
             .header("token", gen_jiuyan_token(ts))
             .header("timestamp", &ts.to_string())
+            .header(reqwest::header::COOKIE, &creds.cookie)
             .json(body)
             .send()
             .await?
