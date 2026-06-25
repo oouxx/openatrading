@@ -440,9 +440,34 @@ pub async fn get_index_quotes(
 }
 
 /// GET /api/telegraph — all categories
+///
+/// Query params:
+/// - `last_time`: cursor for pagination (omit for initial load)
+/// - `count`: items per page (default 20)
 pub async fn get_telegraph_all(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let last_time = params.get("last_time").and_then(|v| v.parse::<i64>().ok());
+    let count: u32 = params
+        .get("count")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20);
+
+    if let Some(lt) = last_time {
+        // 分页模式：不缓存，调 roll API
+        let client = ApiClient::new();
+        let data = client
+            .cls
+            .fetch_telegraph("cls", Some(lt), count)
+            .await
+            .map_err(|e| {
+                openatrading_core::log::error!("[telegraph] fetch page failed: {e}");
+                StatusCode::SERVICE_UNAVAILABLE
+            })?;
+        return Ok(Json(serde_json::to_value(data).unwrap_or_default()));
+    }
+
     cache::get_or_fetch_json(
         &state.cache,
         "telegraph_all",
@@ -451,14 +476,10 @@ pub async fn get_telegraph_all(
             let client = ApiClient::new();
             let data = client
                 .cls
-                .fetch_telegraph("", None, 20)
+                .fetch_telegraph("", None, count)
                 .await
                 .map_err(|e| {
                     openatrading_core::log::error!("[telegraph] fetch failed: {:#}", e);
-                    openatrading_core::log::error!("[telegraph] error chain:");
-                    for cause in e.chain() {
-                        openatrading_core::log::error!("[telegraph]   caused by: {}", cause);
-                    }
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(data)
