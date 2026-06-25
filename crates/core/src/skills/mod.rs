@@ -190,13 +190,13 @@ fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
         };
         // Warn on name mismatch but still load
         if name != dir_name {
-            tracing::warn!(
+            crate::log::warn!(
                 "skill name mismatch: frontmatter name '{name}' != directory name '{dir_name}'"
             );
         }
         // Warn on validation issues but still load (lenient)
         if let Err(e) = validate_skill_name(&name) {
-            tracing::warn!("skill name validation: {e}");
+            crate::log::warn!("skill name validation: {e}");
         }
         let (license, compatibility, metadata, allowed_tools) = match &fm {
             Some(f) => (
@@ -234,7 +234,7 @@ fn merge_skills(project: Vec<SkillEntry>, user: Vec<SkillEntry>) -> Vec<SkillEnt
     // Project-level overrides
     for s in project {
         if let Some(_existing) = map.get(&s.name) {
-            tracing::warn!(
+            crate::log::warn!(
                 "skill collision: project-level '{name}' overrides user-level scope",
                 name = s.name
             );

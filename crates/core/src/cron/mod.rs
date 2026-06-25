@@ -67,7 +67,7 @@ macro_rules! add_job {
                 $scheduler.add(j).await?;
             },
             Err(e) => {
-                tracing::error!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
+                crate::log::error!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
             },
         }
     };
@@ -95,7 +95,7 @@ pub async fn start_scheduler(
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_collection(&ctx).await {
-                        tracing::error!("[cron] collection error: {e}");
+                        crate::log::error!("[cron] collection error: {e}");
                     }
                 })
             }
@@ -115,7 +115,7 @@ pub async fn start_scheduler(
                 let roles = roles.clone();
                 Box::pin(async move {
                     if let Err(e) = run_decision(&ctx, &roles).await {
-                        tracing::error!("[cron] decision error: {e}");
+                        crate::log::error!("[cron] decision error: {e}");
                     }
                 })
             }
@@ -133,7 +133,7 @@ pub async fn start_scheduler(
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
-                        tracing::error!("[cron] news_push error: {e}");
+                        crate::log::error!("[cron] news_push error: {e}");
                     }
                 })
             }
@@ -152,7 +152,7 @@ pub async fn start_scheduler(
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
-                        tracing::error!("[cron] news_push error: {e}");
+                        crate::log::error!("[cron] news_push error: {e}");
                     }
                 })
             }
@@ -160,10 +160,10 @@ pub async fn start_scheduler(
     }
 
     scheduler.start().await?;
-    tracing::info!("[cron] scheduler started (tz=Asia/Shanghai)");
+    crate::log::info!("[cron] scheduler started (tz=Asia/Shanghai)");
 
     tokio::signal::ctrl_c().await?;
-    tracing::info!("[cron] shutting down...");
+    crate::log::info!("[cron] shutting down...");
 
     Ok(())
 }
@@ -188,7 +188,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         },
         Err(e) => {
-            tracing::warn!("[cron] collection: fetch overview failed: {e}");
+            crate::log::warn!("[cron] collection: fetch overview failed: {e}");
         },
     }
 
@@ -200,7 +200,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         },
         Err(e) => {
-            tracing::warn!("[cron] collection: fetch limit_up failed: {e}");
+            crate::log::warn!("[cron] collection: fetch limit_up failed: {e}");
         },
     }
 
@@ -212,7 +212,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         },
         Err(e) => {
-            tracing::warn!("[cron] collection: fetch super_stock failed: {e}");
+            crate::log::warn!("[cron] collection: fetch super_stock failed: {e}");
         },
     }
 
@@ -228,7 +228,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
                 snapshot_count += 1;
             },
             Err(e) => {
-                tracing::warn!("[cron] collection: fetch jiuyan field failed: {e}");
+                crate::log::warn!("[cron] collection: fetch jiuyan field failed: {e}");
             },
         }
     }
@@ -250,7 +250,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
 }
 
 pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
-    tracing::info!("[cron] decision: starting");
+    crate::log::info!("[cron] decision: starting");
 
     let market_context = match ctx.api.xuangubao.fetch_market_overview().await {
         Ok(o) => crate::prompts::build_market_context(
@@ -260,7 +260,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
                 .to_string(),
         ),
         Err(e) => {
-            tracing::warn!("[cron] fetch market overview failed: {e}");
+            crate::log::warn!("[cron] fetch market overview failed: {e}");
             crate::prompts::MARKET_CONTEXT_ERROR.to_string()
         },
     };
@@ -273,11 +273,11 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
         role_tools.push(create_historical_context_tool(ctx.memory.clone()));
 
         if let Err(e) = run_decision_for_role(ctx, role, &market_context, &role_tools).await {
-            tracing::error!("[cron] decision failed for role '{}': {e}", role.name);
+            crate::log::error!("[cron] decision failed for role '{}': {e}", role.name);
         }
     }
 
-    tracing::info!("[cron] decision: completed");
+    crate::log::info!("[cron] decision: completed");
     Ok(())
 }
 
@@ -285,7 +285,7 @@ async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
     let positions = match trade.list_all_positions() {
         Ok(p) => p,
         Err(e) => {
-            tracing::error!("[cron] list_all_positions failed: {e}");
+            crate::log::error!("[cron] list_all_positions failed: {e}");
             return;
         },
     };
@@ -301,7 +301,7 @@ async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
         match api.xuangubao.fetch_realtime(pos.symbol.as_str()).await {
             Ok(quote) => {
                 if let Err(e) = trade.update_position_price(pos.id, quote.last_px) {
-                    tracing::warn!(
+                    crate::log::warn!(
                         "[cron] update price failed for {} (id={}): {e}",
                         pos.symbol,
                         pos.id
@@ -312,13 +312,13 @@ async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
                 }
             },
             Err(e) => {
-                tracing::warn!("[cron] fetch realtime failed for {}: {e}", pos.symbol);
+                crate::log::warn!("[cron] fetch realtime failed for {}: {e}", pos.symbol);
                 failed += 1;
             },
         }
     }
 
-    tracing::info!("[cron] position prices updated: {updated} ok, {failed} failed");
+    crate::log::info!("[cron] position prices updated: {updated} ok, {failed} failed");
 }
 
 async fn run_decision_for_role(
@@ -327,7 +327,7 @@ async fn run_decision_for_role(
     market_context: &str,
     tools: &[Arc<DynTool>],
 ) -> Result<()> {
-    tracing::info!(
+    crate::log::info!(
         "[cron] decision for '{}': {} tools injected (positions, memory, market)",
         role.name,
         tools.len()
@@ -365,7 +365,7 @@ async fn run_decision_for_role(
         match instr.action {
             crate::trade::TradeAction::Buy => {
                 if let Err(e) = execute_buy(ctx, &role.name, instr).await {
-                    tracing::error!(
+                    crate::log::error!(
                         "[cron] execute buy failed for {} {}: {e}",
                         instr.symbol,
                         instr.name
@@ -386,7 +386,7 @@ async fn run_decision_for_role(
             },
             crate::trade::TradeAction::Sell => {
                 if let Err(e) = execute_sell(ctx, &role.name, instr).await {
-                    tracing::error!(
+                    crate::log::error!(
                         "[cron] execute sell failed for {} {}: {e}",
                         instr.symbol,
                         instr.name
@@ -409,7 +409,7 @@ async fn run_decision_for_role(
                 ));
             },
             crate::trade::TradeAction::Open | crate::trade::TradeAction::Close => {
-                tracing::warn!(
+                crate::log::warn!(
                     "[cron] unexpected action '{}' for {} {}",
                     instr.action,
                     instr.symbol,
@@ -463,7 +463,7 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
     if !NEWS_TIME_INITIALIZED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let now = chrono::Utc::now().timestamp();
         LAST_PUSHED_NEWS_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
-        tracing::info!("[cron] news_push: initialized, skipping existing items");
+        crate::log::info!("[cron] news_push: initialized, skipping existing items");
         return Ok(());
     }
 
@@ -530,11 +530,11 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
             .unwrap_or_default();
         let msg = format!("{} {} {}", level_tag, time_str, text);
         if let Err(e) = social.notify_news(&msg).await {
-            tracing::warn!("[cron] news_push: send failed: {e}");
+            crate::log::warn!("[cron] news_push: send failed: {e}");
         }
     }
 
-    tracing::info!(
+    crate::log::info!(
         "[cron] news_push: pushed {} important items (A/B level)",
         important.len()
     );

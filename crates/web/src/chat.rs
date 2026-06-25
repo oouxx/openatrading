@@ -51,7 +51,7 @@ pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<Com
 
     let all_tools = registry.load().all_tools();
     let mcp_count = registry.load().mcp_tools().len();
-    tracing::info!(
+    openatrading_core::log::info!(
         "get_ai_commands: {} total tools ({} market, {} mcp, {} meta/skill/decision)",
         all_tools.len(),
         registry.load().market_tools().len(),
@@ -125,7 +125,7 @@ pub async fn save_skill(
     }
     let entry = req.into_skill_entry();
     if let Err(e) = SkillRegistry::install_skill(&entry) {
-        tracing::error!("failed to save skill: {e}");
+        openatrading_core::log::error!("failed to save skill: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": "failed to save skill"})),
@@ -149,7 +149,7 @@ pub async fn delete_skill(
     match SkillRegistry::uninstall_skill(&name) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
-            tracing::error!("failed to delete skill '{name}': {e}");
+            openatrading_core::log::error!("failed to delete skill '{name}': {e}");
             StatusCode::NOT_FOUND.into_response()
         },
     }
@@ -287,7 +287,7 @@ pub async fn ai_chat(
             let sp = build_system_prompt(strategy_text);
             let tool_name = req.command_name.as_deref().unwrap_or("");
             if tool_name.is_empty() {
-                tracing::warn!("ai_chat: Tool command with empty command_name");
+                openatrading_core::log::warn!("ai_chat: Tool command with empty command_name");
             }
             let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
                 .load()
@@ -402,7 +402,7 @@ pub async fn ai_chat(
         drop(handle);
     });
 
-    tracing::info!("ai/chat: SSE stream starting");
+    openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         loop {
             match rx.recv().await {
@@ -410,7 +410,7 @@ pub async fn ai_chat(
                     for stream_event in assistant_event_to_stream_events(&assistant_message_event) {
                         match stream_event {
                             StreamEvent::Text(t) => {
-                                tracing::trace!("ai/chat: Text {} chars", t.len());
+                                openatrading_core::log::trace!("ai/chat: Text {} chars", t.len());
                                 yield Ok(Event::default().data(t.replace('\n', "\\n")));
                             }
                             StreamEvent::ReasoningText(t) => {
@@ -431,23 +431,23 @@ pub async fn ai_chat(
                                 yield Ok(Event::default().event("tool-delta").data(data));
                             }
                             StreamEvent::Error(e) => {
-                                tracing::warn!("ai/chat: assistant error: {e}");
+                                openatrading_core::log::warn!("ai/chat: assistant error: {e}");
                                 yield Ok(Event::default().data(format!("[ERROR] {e}")));
                             }
                         }
                     }
                 }
                 Some(AgentEvent::MessageEnd { message }) => {
-                    tracing::info!("ai/chat: MessageEnd received");
+                    openatrading_core::log::info!("ai/chat: MessageEnd received");
                     if let AgentMessage::Assistant { error_message: Some(err), .. } = &message {
                         if !err.is_empty() {
-                            tracing::warn!("ai/chat: MessageEnd carries error: {err}");
+                            openatrading_core::log::warn!("ai/chat: MessageEnd carries error: {err}");
                             yield Ok(Event::default().data(format!("[ERROR] {err}")));
                         }
                     }
                 }
                 Some(AgentEvent::AgentEnd { .. }) => {
-                    tracing::info!("ai/chat: AgentEnd, breaking SSE loop");
+                    openatrading_core::log::info!("ai/chat: AgentEnd, breaking SSE loop");
                     break;
                 }
                 Some(AgentEvent::ToolExecutionStart { .. }) => {
@@ -458,7 +458,7 @@ pub async fn ai_chat(
                 }
                 Some(_) => {}
                 None => {
-                    tracing::warn!("ai/chat: channel closed unexpectedly");
+                    openatrading_core::log::warn!("ai/chat: channel closed unexpectedly");
                     break;
                 }
             }
@@ -664,7 +664,7 @@ pub async fn list_threads(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ThreadResponse>>, StatusCode> {
     let threads = state.chat_threads.list_threads().map_err(|e| {
-        tracing::error!("list_threads: {}", e);
+        openatrading_core::log::error!("list_threads: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(
@@ -687,15 +687,15 @@ pub async fn create_thread(
 ) -> Result<Json<ThreadResponse>, StatusCode> {
     let title = payload.title.unwrap_or_else(|| "新对话".to_string());
     let id = state.chat_threads.create_thread(&title).map_err(|e| {
-        tracing::error!("create_thread: {}", e);
+        openatrading_core::log::error!("create_thread: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let threads = state.chat_threads.list_threads().map_err(|e| {
-        tracing::error!("create_thread: {}", e);
+        openatrading_core::log::error!("create_thread: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        tracing::error!("create_thread: thread not found after insert");
+        openatrading_core::log::error!("create_thread: thread not found after insert");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(ThreadResponse {
@@ -716,15 +716,15 @@ pub async fn rename_thread(
         .chat_threads
         .rename_thread(id, &payload.title)
         .map_err(|e| {
-            tracing::error!("rename_thread: {}", e);
+            openatrading_core::log::error!("rename_thread: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     let threads = state.chat_threads.list_threads().map_err(|e| {
-        tracing::error!("rename_thread: {}", e);
+        openatrading_core::log::error!("rename_thread: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        tracing::error!("rename_thread: thread not found");
+        openatrading_core::log::error!("rename_thread: thread not found");
         StatusCode::NOT_FOUND
     })?;
     Ok(Json(ThreadResponse {
@@ -743,7 +743,7 @@ pub async fn delete_thread(
     match state.chat_threads.delete_thread(id) {
         Ok(()) => StatusCode::NO_CONTENT,
         Err(e) => {
-            tracing::error!("delete_thread: {}", e);
+            openatrading_core::log::error!("delete_thread: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         },
     }
@@ -755,7 +755,7 @@ pub async fn get_thread_messages(
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
     let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        tracing::error!("get_thread_messages: {}", e);
+        openatrading_core::log::error!("get_thread_messages: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(
@@ -782,18 +782,18 @@ pub async fn save_thread_message(
         .chat_threads
         .save_message(id, &payload.role, &payload.content)
         .map_err(|e| {
-            tracing::error!("save_thread_message: {}", e);
+            openatrading_core::log::error!("save_thread_message: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        tracing::error!("save_thread_message: {}", e);
+        openatrading_core::log::error!("save_thread_message: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let msg = messages
         .into_iter()
         .find(|m| m.id == msg_id)
         .ok_or_else(|| {
-            tracing::error!("save_thread_message: message not found after insert");
+            openatrading_core::log::error!("save_thread_message: message not found after insert");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(Json(MessageResponse {

@@ -5,6 +5,7 @@ pub mod commands;
 pub mod context;
 pub mod cron;
 pub mod llm;
+pub mod log;
 pub mod memory;
 pub mod pipelines;
 pub mod prompts;

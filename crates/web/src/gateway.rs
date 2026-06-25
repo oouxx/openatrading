@@ -75,7 +75,7 @@ impl Gateway {
         let addr = SocketAddr::from_str(&config.web_bind)
             .map_err(|e| anyhow::anyhow!("invalid web_bind {}: {e}", config.web_bind))?;
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        tracing::info!("🌐 Web API: http://{addr}");
+        openatrading_core::log::info!("🌐 Web API: http://{addr}");
 
         axum::serve(listener, router).await?;
         Ok(())

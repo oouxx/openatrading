@@ -110,10 +110,10 @@ impl TelegramBot {
             .await?;
 
         if resp.status().is_success() {
-            tracing::info!("[telegram-bot] registered /ask command");
+            crate::log::info!("[telegram-bot] registered /ask command");
         } else {
             let body = resp.text().await.unwrap_or_default();
-            tracing::warn!("[telegram-bot] failed to register commands: {body}");
+            crate::log::warn!("[telegram-bot] failed to register commands: {body}");
         }
         Ok(())
     }
@@ -123,7 +123,7 @@ impl TelegramBot {
 
         let mut offset: i64 = 0;
 
-        tracing::info!("[telegram-bot] polling started");
+        crate::log::info!("[telegram-bot] polling started");
 
         loop {
             let url = format!(
@@ -134,7 +134,7 @@ impl TelegramBot {
             let resp = match self.client.get(&url).send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    tracing::error!("[telegram-bot] getUpdates error: {e}");
+                    crate::log::error!("[telegram-bot] getUpdates error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
                 },
@@ -143,7 +143,7 @@ impl TelegramBot {
             let text = match resp.text().await {
                 Ok(t) => t,
                 Err(e) => {
-                    tracing::error!("[telegram-bot] read response body error: {e}");
+                    crate::log::error!("[telegram-bot] read response body error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
                 },
@@ -152,7 +152,7 @@ impl TelegramBot {
             let body: GetUpdatesResponse = match serde_json::from_str(&text) {
                 Ok(b) => b,
                 Err(e) => {
-                    tracing::error!(
+                    crate::log::error!(
                         "[telegram-bot] parse error: {e}, body: {}",
                         &text[..text.len().min(500)]
                     );
@@ -167,9 +167,9 @@ impl TelegramBot {
                     .error_code
                     .map(|c| c.to_string())
                     .unwrap_or_else(|| "-".into());
-                tracing::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
+                crate::log::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
                 if body.error_code == Some(409) {
-                    tracing::warn!(
+                    crate::log::warn!(
                         "[telegram-bot] multiple bot instances detected, backing off for 30s"
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -190,7 +190,7 @@ impl TelegramBot {
                             }
 
                             if let Err(e) = self.handle_message(&text).await {
-                                tracing::error!("[telegram-bot] handle_message error: {e}");
+                                crate::log::error!("[telegram-bot] handle_message error: {e}");
                             }
                         }
                     }

@@ -6,7 +6,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing;
 
 use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -75,7 +74,7 @@ pub async fn get_overview(
         || async {
             let client = XuanguBaoClient::new();
             let overview = client.fetch_market_overview().await.map_err(|e| {
-                tracing::error!("overview error: {}", e);
+                openatrading_core::log::error!("overview error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
 
@@ -148,10 +147,10 @@ pub async fn get_sentiment_history(
                         });
                     },
                     Ok(None) => {
-                        tracing::error!("sentiment_history: no data for {date}");
+                        openatrading_core::log::error!("sentiment_history: no data for {date}");
                     },
                     Err(e) => {
-                        tracing::error!("sentiment_history error for {date}: {e}");
+                        openatrading_core::log::error!("sentiment_history error for {date}: {e}");
                     },
                 }
             }
@@ -174,7 +173,7 @@ pub async fn get_limit_up(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_limit_up().await.map_err(|e| {
-                tracing::error!("limit_up error: {}", e);
+                openatrading_core::log::error!("limit_up error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -194,7 +193,7 @@ pub async fn get_limit_down(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_limit_down().await.map_err(|e| {
-                tracing::error!("limit_down error: {}", e);
+                openatrading_core::log::error!("limit_down error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -225,7 +224,7 @@ pub async fn get_plate_abnormal(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_plate_abnormal(q.count).await.map_err(|e| {
-                tracing::error!("plate_abnormal error: {}", e);
+                openatrading_core::log::error!("plate_abnormal error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -256,7 +255,7 @@ pub async fn get_field_items(
     cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
-            tracing::error!("field_items error: {}", e);
+            openatrading_core::log::error!("field_items error: {}", e);
             StatusCode::SERVICE_UNAVAILABLE
         })?;
         Ok(data)
@@ -278,7 +277,7 @@ pub async fn get_timeline(
     cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
-            tracing::error!("timeline error: {}", e);
+            openatrading_core::log::error!("timeline error: {}", e);
             StatusCode::SERVICE_UNAVAILABLE
         })?;
         Ok(data)
@@ -300,7 +299,7 @@ pub async fn get_sentiment(
         || async {
             let client = ApiClient::new();
             let data = analyze_sentiment(&client).await.map_err(|e| {
-                tracing::error!("sentiment error: {}", e);
+                openatrading_core::log::error!("sentiment error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -342,7 +341,7 @@ pub async fn get_kline(
             .fetch_kline(&symbol, period, q.count)
             .await
             .map_err(|e| {
-                tracing::error!("kline error: {}", e);
+                openatrading_core::log::error!("kline error: {}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
         Ok(data)
@@ -364,7 +363,7 @@ pub async fn get_realtime(
             let client = XuanguBaoClient::new();
             let data = client.fetch_realtime(&symbol).await.map_err(|e| {
                 let msg = e.to_string();
-                tracing::warn!("realtime unavailable for {symbol}: {msg}");
+                openatrading_core::log::warn!("realtime unavailable for {symbol}: {msg}");
                 if msg.contains("not found") {
                     StatusCode::NOT_FOUND
                 } else {
@@ -388,7 +387,7 @@ pub async fn get_yesterday_limit_up(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_yesterday_limit_up().await.map_err(|e| {
-                tracing::error!("yesterday_limit_up error: {:#}", e);
+                openatrading_core::log::error!("yesterday_limit_up error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -408,7 +407,7 @@ pub async fn get_super_stock(
         || async {
             let client = XuanguBaoClient::new();
             let data = client.fetch_super_stock().await.map_err(|e| {
-                tracing::error!("super_stock error: {:#}", e);
+                openatrading_core::log::error!("super_stock error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -431,7 +430,7 @@ pub async fn get_index_quotes(
                 .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
                 .await
                 .map_err(|e| {
-                    tracing::error!("index_quotes error: {}", e);
+                    openatrading_core::log::error!("index_quotes error: {}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(data)
@@ -455,10 +454,10 @@ pub async fn get_telegraph_all(
                 .fetch_telegraph("", None, 20)
                 .await
                 .map_err(|e| {
-                    tracing::error!("[telegraph] fetch failed: {:#}", e);
-                    tracing::error!("[telegraph] error chain:");
+                    openatrading_core::log::error!("[telegraph] fetch failed: {:#}", e);
+                    openatrading_core::log::error!("[telegraph] error chain:");
                     for cause in e.chain() {
-                        tracing::error!("[telegraph]   caused by: {}", cause);
+                        openatrading_core::log::error!("[telegraph]   caused by: {}", cause);
                     }
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
@@ -485,7 +484,11 @@ pub async fn get_telegraph(
                 .fetch_telegraph(&category, None, 20)
                 .await
                 .map_err(|e| {
-                    tracing::error!("[telegraph/{}] fetch failed: {:#}", category, e);
+                    openatrading_core::log::error!(
+                        "[telegraph/{}] fetch failed: {:#}",
+                        category,
+                        e
+                    );
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(data)
@@ -505,7 +508,7 @@ pub async fn get_dapan_abnormal(
         || async {
             let client = ApiClient::new();
             let data = client.xuangubao.fetch_dapan_abnormal().await.map_err(|e| {
-                tracing::error!("dapan_abnormal error: {:#}", e);
+                openatrading_core::log::error!("dapan_abnormal error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             Ok(data)
@@ -531,7 +534,7 @@ pub async fn get_market_trend(
                 .fetch_market_trend(&symbol)
                 .await
                 .map_err(|e| {
-                    tracing::error!("market_trend error: {:#}", e);
+                    openatrading_core::log::error!("market_trend error: {:#}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(data)
@@ -557,7 +560,7 @@ pub async fn get_plates_by_any_stock(
                 .plates_by_any_stock(&symbol)
                 .await
                 .map_err(|e| {
-                    tracing::error!("get_plates_by_any_stock: error: {}", e);
+                    openatrading_core::log::error!("get_plates_by_any_stock: error: {}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(plates)
@@ -580,7 +583,7 @@ pub async fn get_role_positions(
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let positions = state.ctx.trade.list_positions(&name).map_err(|e| {
-        tracing::error!("get_role_positions error: {e}");
+        openatrading_core::log::error!("get_role_positions error: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let result: Vec<serde_json::Value> = positions
@@ -611,7 +614,7 @@ pub async fn get_role_logs(
         .trade
         .get_trade_logs_by_role(&name, 20)
         .map_err(|e| {
-            tracing::error!("get_role_logs error: {e}");
+            openatrading_core::log::error!("get_role_logs error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     let result: Vec<serde_json::Value> = logs
@@ -639,7 +642,7 @@ pub async fn create_role(
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     openatrading_core::roles::save_role_strategy(&body.name, &body.strategy).map_err(|e| {
-        tracing::error!("create_role error: {}", e);
+        openatrading_core::log::error!("create_role error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     {
@@ -675,7 +678,7 @@ pub async fn update_role_strategy(
         }
     }
     openatrading_core::roles::save_role_strategy(&name, &body.strategy).map_err(|e| {
-        tracing::error!("update_role_strategy error: {}", e);
+        openatrading_core::log::error!("update_role_strategy error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     {
@@ -721,7 +724,7 @@ pub async fn reset_role(
         .trade
         .delete_trade_logs_by_role(&name)
         .map_err(|e| {
-            tracing::error!("reset_role error: {}", e);
+            openatrading_core::log::error!("reset_role error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     state
@@ -729,7 +732,7 @@ pub async fn reset_role(
         .trade
         .delete_positions_by_role(&name)
         .map_err(|e| {
-            tracing::error!("reset_role error: {}", e);
+            openatrading_core::log::error!("reset_role error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(Json(serde_json::json!({"ok": true})))
@@ -750,7 +753,7 @@ pub async fn get_role_pnl_history(
         .trade
         .get_all_trade_logs_by_role(&name)
         .map_err(|e| {
-            tracing::error!("get_role_pnl_history error: {}", e);
+            openatrading_core::log::error!("get_role_pnl_history error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -789,7 +792,7 @@ pub async fn get_role_history(
         .trade
         .get_closed_positions(&name, limit)
         .map_err(|e| {
-            tracing::error!("get_role_history error: {}", e);
+            openatrading_core::log::error!("get_role_history error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(Json(positions))
@@ -808,7 +811,7 @@ pub async fn get_replay_events(
         || async {
             let client = XuanguBaoClient::new();
             let all_events = client.fetch_all_day_events().await.map_err(|e| {
-                tracing::error!("[replay] events error: {:#}", e);
+                openatrading_core::log::error!("[replay] events error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
@@ -844,7 +847,7 @@ pub async fn get_replay_index(
             let data = openatrading_core::api::xuangubao::fetch_index_trends(&client)
                 .await
                 .map_err(|e| {
-                    tracing::error!("[replay] index trend error: {e}");
+                    openatrading_core::log::error!("[replay] index trend error: {e}");
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(data)
@@ -877,7 +880,7 @@ pub async fn get_replay_news(
                 let client = XuanguBaoClient::new();
                 let (items, next_tail, next_msg) =
                     client.fetch_news_stream(None, None).await.map_err(|e| {
-                        tracing::error!("[replay] news error: {e}");
+                        openatrading_core::log::error!("[replay] news error: {e}");
                         StatusCode::SERVICE_UNAVAILABLE
                     })?;
                 let resp = serde_json::json!({
@@ -899,7 +902,7 @@ pub async fn get_replay_news(
         .fetch_news_stream(q.tailmark, q.msg_id_mark.as_deref())
         .await
         .map_err(|e| {
-            tracing::error!("[replay] news error: {e}");
+            openatrading_core::log::error!("[replay] news error: {e}");
             StatusCode::SERVICE_UNAVAILABLE
         })?;
     Ok(Json(serde_json::json!({
@@ -920,7 +923,7 @@ pub async fn get_replay_snapshots(
         || async {
             let client = XuanguBaoClient::new();
             let events = client.fetch_all_day_events().await.map_err(|e| {
-                tracing::error!("[replay] snapshots fetch error: {e}");
+                openatrading_core::log::error!("[replay] snapshots fetch error: {e}");
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             let snaps = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
@@ -934,7 +937,7 @@ pub async fn get_replay_snapshots(
 pub async fn ai_replay_analyze(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    tracing::info!("[replay] POST /api/replay/analyze start");
+    openatrading_core::log::info!("[replay] POST /api/replay/analyze start");
     let llm = state.ctx.llm.clone();
 
     let date = XuanguBaoClient::last_n_trading_days(1)
@@ -945,7 +948,7 @@ pub async fn ai_replay_analyze(
     // Fetch snapshot data upfront
     let client = XuanguBaoClient::new();
     let events = client.fetch_all_day_events().await.map_err(|e| {
-        tracing::error!("[replay] analyze fetch error: {e}");
+        openatrading_core::log::error!("[replay] analyze fetch error: {e}");
         StatusCode::SERVICE_UNAVAILABLE
     })?;
     let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
@@ -980,7 +983,7 @@ pub async fn ai_replay_analyze(
         .chat_stream_with_messages(&serde_json::to_string(&messages).unwrap_or_default())
         .await
         .map_err(|e| {
-            tracing::error!("[replay] analyze llm error: {e}");
+            openatrading_core::log::error!("[replay] analyze llm error: {e}");
             StatusCode::SERVICE_UNAVAILABLE
         })?;
 
@@ -999,12 +1002,12 @@ pub async fn ai_replay_analyze(
                 }
                 Err(e) => {
                     yield Ok(axum::response::sse::Event::default().data(format!("[ERROR] {e}")));
-                    tracing::error!("[replay] analyze stream error after {chunk_count} chunks: {e}");
+                    openatrading_core::log::error!("[replay] analyze stream error after {chunk_count} chunks: {e}");
                     break;
                 }
             }
         }
-        tracing::error!("[replay] analyze stream done: {chunk_count} chunks sent");
+        openatrading_core::log::error!("[replay] analyze stream done: {chunk_count} chunks sent");
         yield Ok(axum::response::sse::Event::default().data("[DONE]"));
     };
 
@@ -1051,7 +1054,7 @@ pub async fn get_dragon_tiger_detail(
                 )
                 .await
                 .map_err(|e| {
-                    tracing::error!("[dragon-tiger] detail fetch error: {:#}", e);
+                    openatrading_core::log::error!("[dragon-tiger] detail fetch error: {:#}", e);
                     StatusCode::SERVICE_UNAVAILABLE
                 })?;
             Ok(serde_json::to_string(&data).unwrap_or_default())
@@ -1175,7 +1178,7 @@ pub async fn search_stocks(
     match client.search_stocks(&q).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(e) => {
-            tracing::error!("search_stocks: {e}");
+            openatrading_core::log::error!("search_stocks: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "search failed"})),

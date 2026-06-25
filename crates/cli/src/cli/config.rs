@@ -170,7 +170,7 @@ pub struct LarkConfig {
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let home = openatrading_core::atrading_home();
-        tracing::info!(?home, "Loading config from home");
+        openatrading_core::log::info!(?home, "Loading config from home");
 
         let mut merged = AppConfig {
             default_role: None,
