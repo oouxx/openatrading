@@ -177,6 +177,19 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // 全局 Escape 关闭 slash 命令弹窗
+  useEffect(() => {
+    if (!showSlash) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowSlash(false);
+        setSlashQuery("");
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [showSlash]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
@@ -355,10 +368,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         e.preventDefault();
         const cmd = filteredCommands[slashIndex];
         if (cmd) {
-          pendingCmdRef.current = { name: cmd.name, type: cmd.command_type };
+          setInput(`/${cmd.name} `);
           setShowSlash(false);
           setSlashQuery("");
-          setInput("");
         }
         return;
       }
