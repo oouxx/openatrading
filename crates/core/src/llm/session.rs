@@ -163,7 +163,7 @@ impl<'a> AgentSession<'a> {
                     if !output.trades.is_empty() {
                         return Ok(output);
                     }
-                    tracing::warn!(
+                    crate::log::warn!(
                         "[session] attempt {}/{}: decision tool returned empty trades, retrying",
                         attempt + 1,
                         max_retries
@@ -179,7 +179,7 @@ impl<'a> AgentSession<'a> {
                 if !output.trades.is_empty() {
                     return Ok(output);
                 }
-                tracing::warn!(
+                crate::log::warn!(
                     "[session] attempt {}/{}: extractor returned empty trades, retrying",
                     attempt + 1,
                     max_retries
@@ -187,7 +187,7 @@ impl<'a> AgentSession<'a> {
                 continue;
             }
 
-            tracing::warn!(
+            crate::log::warn!(
                 "[session] attempt {}/{}: no decision output, retrying",
                 attempt + 1,
                 max_retries
@@ -195,7 +195,7 @@ impl<'a> AgentSession<'a> {
         }
 
         // 3) Last resort — wrap raw text with empty trades
-        tracing::error!(
+        crate::log::error!(
             "[session] all {} attempts exhausted, returning raw text",
             max_retries
         );

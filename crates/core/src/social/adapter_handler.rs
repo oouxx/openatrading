@@ -32,7 +32,7 @@ pub async fn run_adapter_handler(
         let adapter = match adapter_map.get(platform_name) {
             Some(a) => a,
             None => {
-                tracing::warn!("[adapter-handler] no adapter for {platform_name}");
+                crate::log::warn!("[adapter-handler] no adapter for {platform_name}");
                 continue;
             },
         };

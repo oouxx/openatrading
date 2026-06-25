@@ -22,11 +22,11 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
             let bind: std::net::SocketAddr = bind
                 .parse()
                 .map_err(|e| anyhow::anyhow!("invalid bind {bind}: {e}"))?;
-            tracing::info!("[mcp] http server starting on http://{bind}/mcp");
+            openatrading_core::log::info!("[mcp] http server starting on http://{bind}/mcp");
             serve_http(tools, bind, rx).await
         },
         McpTransport::Stdio => {
-            tracing::info!("[mcp] stdio server starting");
+            openatrading_core::log::info!("[mcp] stdio server starting");
             serve_stdio(tools, rx).await
         },
     };

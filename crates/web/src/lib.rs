@@ -12,9 +12,9 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use openatrading_core::log::Level;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-use tracing::Level;
 use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

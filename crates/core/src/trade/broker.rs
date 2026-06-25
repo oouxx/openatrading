@@ -75,7 +75,7 @@ pub async fn execute_buy(
     };
 
     let position_id = ctx.trade.add_position(pos)?;
-    tracing::info!(
+    crate::log::info!(
         "[cron] BUY {} {} {}shares @ {:.2} (last={:.2}) — {} (position_id={})",
         instr.symbol,
         instr.name,
@@ -113,7 +113,7 @@ pub async fn execute_sell(
         let exec_price = broker.sell_price(last_price);
         ctx.trade
             .close_position(pos.id, exec_price, &instr.reason)?;
-        tracing::info!(
+        crate::log::info!(
             "[cron] SELL {} {} (id={}) @ {:.2} (last={:.2}) — {}",
             pos.symbol,
             pos.stock_name,

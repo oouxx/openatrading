@@ -127,7 +127,7 @@ pub async fn serve_stdio(
             res.map_err(|e| anyhow::anyhow!("mcp stdio waiting: {e}"))?;
         }
         _ = shutdown.changed() => {
-            tracing::info!("[mcp] stdio shutdown signal received");
+            crate::log::info!("[mcp] stdio shutdown signal received");
         }
     }
     Ok(())
@@ -160,12 +160,12 @@ pub async fn serve_http(
         .await
         .map_err(|e| anyhow::anyhow!("bind {bind}: {e}"))?;
 
-    tracing::info!("[mcp] http listening on http://{bind}/mcp");
+    crate::log::info!("[mcp] http listening on http://{bind}/mcp");
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
             let _ = shutdown.changed().await;
-            tracing::info!("[mcp] http shutdown signal received");
+            crate::log::info!("[mcp] http shutdown signal received");
         })
         .await
         .map_err(|e| anyhow::anyhow!("mcp http serve: {e}"))?;

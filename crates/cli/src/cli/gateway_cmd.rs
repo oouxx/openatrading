@@ -158,7 +158,9 @@ pub fn create_notification_sender(
         "slack" => sc.slack.as_ref().and_then(create_slack_sender),
         "lark" => sc.lark.as_ref().and_then(create_lark_sender),
         other => {
-            tracing::warn!("unknown notify_channel: {other}, falling back to telegram");
+            openatrading_core::log::warn!(
+                "unknown notify_channel: {other}, falling back to telegram"
+            );
             sc.telegram.as_ref().and_then(create_telegram_sender)
         },
     };
@@ -212,7 +214,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     }
 
     if roles.is_empty() {
-        tracing::warn!("警告: skills/ 目录中未发现任何角色");
+        openatrading_core::log::warn!("警告: skills/ 目录中未发现任何角色");
     }
 
     roles
@@ -234,7 +236,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         )
         .try_init();
 
-    tracing::info!("home: {}", home.display());
+    openatrading_core::log::info!("home: {}", home.display());
 
     let db_path = home.join(&app_config.service.db_path);
 
@@ -291,7 +293,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let cron_roles = roles.clone();
         handles.push(tokio::spawn(async move {
             if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, cron_roles).await {
-                tracing::error!("cron error: {e}");
+                openatrading_core::log::error!("cron error: {e}");
             }
         }));
     }
@@ -322,7 +324,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                 )
                 .await
             {
-                tracing::error!("web error: {e}");
+                openatrading_core::log::error!("web error: {e}");
             }
         });
         handles.push(gh);
@@ -345,10 +347,10 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         tools.push(registry.meta_skill_tool().clone());
         handles.push(tokio::spawn(async move {
             if let Err(e) = openatrading_core::llm::serve_http(tools, mcp_bind, mcp_rx).await {
-                tracing::error!("[gateway] mcp error: {e}");
+                openatrading_core::log::error!("[gateway] mcp error: {e}");
             }
         }));
-        tracing::info!("mcp: enabled at http://{mcp_bind}/mcp");
+        openatrading_core::log::info!("mcp: enabled at http://{mcp_bind}/mcp");
     }
 
     // ── 平台适配器 ─────────────────────────────────
@@ -363,7 +365,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                             token.clone(),
                             chat_id.clone(),
                         )));
-                        tracing::info!("telegram adapter: enabled");
+                        openatrading_core::log::info!("telegram adapter: enabled");
                     }
                 }
             }
@@ -378,7 +380,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                             da = da.with_channel(ch);
                         }
                         adapters.push(Arc::new(da));
-                        tracing::info!("discord adapter: enabled");
+                        openatrading_core::log::info!("discord adapter: enabled");
                     }
                 }
             }
@@ -410,13 +412,13 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             )
             .await
             {
-                tracing::error!("adapter handler error: {e}");
+                openatrading_core::log::error!("adapter handler error: {e}");
             }
         }));
     }
 
     if handles.is_empty() {
-        tracing::info!("nothing to run");
+        openatrading_core::log::info!("nothing to run");
         return Ok(());
     }
 
@@ -424,14 +426,14 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     if let Some(sc) = &app_config.social {
         let channel = sc.notify_channel.as_deref().unwrap_or("telegram");
         match social.send_text("✅ OpenATrading Gateway 已启动").await {
-            Ok(()) => tracing::info!("{channel}: ✅ connected"),
-            Err(e) => tracing::warn!("{channel}: ❌ connection failed: {e}"),
+            Ok(()) => openatrading_core::log::info!("{channel}: ✅ connected"),
+            Err(e) => openatrading_core::log::warn!("{channel}: ❌ connection failed: {e}"),
         }
     }
 
-    tracing::info!("running (Ctrl+C to stop)");
+    openatrading_core::log::info!("running (Ctrl+C to stop)");
     tokio::signal::ctrl_c().await?;
-    tracing::info!("shutting down...");
+    openatrading_core::log::info!("shutting down...");
 
     if let Some(tx) = mcp_shutdown.take() {
         let _ = tx.send(true);
