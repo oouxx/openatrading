@@ -106,14 +106,7 @@ impl Default for AdapterRuntime {
 /// 启动所有适配器，每个适配器的输出都路由到同一个 `Receiver`。
 /// 返回 `(接收端, 适配器列表, JoinHandle 列表)`。
 /// 适配器列表可用于之后调用 `reply()` 回复消息。
-pub fn launch_adapters(
-    adapters: Vec<Arc<dyn MessageAdapter>>,
-    buffer: usize,
-) -> (
-    mpsc::Receiver<MessageEvent>,
-    Vec<Arc<dyn MessageAdapter>>,
-    Vec<tokio::task::JoinHandle<()>>,
-) {
+pub fn launch_adapters(adapters: Vec<Arc<dyn MessageAdapter>>, buffer: usize) -> AdapterStream {
     let (tx, rx) = mpsc::channel(buffer);
     let mut handles = Vec::with_capacity(adapters.len());
 
@@ -129,3 +122,10 @@ pub fn launch_adapters(
 
     (rx, adapters, handles)
 }
+
+/// `launch_adapters` 的返回类型：消息接收端、适配器列表、各适配器任务句柄。
+pub type AdapterStream = (
+    mpsc::Receiver<MessageEvent>,
+    Vec<Arc<dyn MessageAdapter>>,
+    Vec<tokio::task::JoinHandle<()>>,
+);

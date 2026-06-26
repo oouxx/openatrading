@@ -472,14 +472,6 @@ impl JiuYanSession {
         self.login().await
     }
 
-    /// 检查响应是否有业务错误，返回 true 表示需要刷新
-    fn is_auth_error(resp: &serde_json::Value) -> bool {
-        resp.get("errCode")
-            .and_then(|v| v.as_str())
-            .map(|c| c == "1" || c == "9")
-            .unwrap_or(false)
-    }
-
     /// 发起 GET 请求，MD5 签名 + Session Cookie 认证
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
         let creds = self.get_credentials().await?;

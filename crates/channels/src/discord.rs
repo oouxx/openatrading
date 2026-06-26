@@ -112,24 +112,6 @@ struct HelloData {
     heartbeat_interval: u64,
 }
 
-/// OP 2 Identify 参数
-#[derive(serde::Serialize)]
-struct IdentifyParams {
-    token: String,
-    intents: u32,
-    properties: IdentifyProperties,
-}
-
-#[derive(serde::Serialize)]
-struct IdentifyProperties {
-    #[serde(rename = "os")]
-    os: String,
-    #[serde(rename = "browser")]
-    browser: String,
-    #[serde(rename = "device")]
-    device: String,
-}
-
 /// MESSAGE_CREATE 事件数据
 #[derive(Deserialize)]
 struct MessageCreateData {
@@ -259,8 +241,6 @@ impl MessageAdapter for DiscordAdapter {
                 heartbeat_interval.as_millis()
             );
 
-            let mut should_reconnect = false;
-
             loop {
                 // 检查是否该发心跳
                 if last_beat.elapsed() >= heartbeat_interval {
@@ -292,16 +272,13 @@ impl MessageAdapter for DiscordAdapter {
                     },
                     Ok(Some(Ok(Message::Close(_)))) => {
                         tracing::info!("[discord-adapter] connection closed");
-                        should_reconnect = true;
                         break;
                     },
                     Ok(Some(Err(e))) => {
                         tracing::error!("[discord-adapter] ws error: {e}");
-                        should_reconnect = true;
                         break;
                     },
                     Ok(None) => {
-                        should_reconnect = true;
                         break;
                     },
                     Err(_) => continue, // timeout, 继续循环
@@ -367,7 +344,6 @@ impl MessageAdapter for DiscordAdapter {
                             },
                             Some("RECONNECT") => {
                                 tracing::info!("[discord-adapter] reconnect requested");
-                                should_reconnect = true;
                                 break;
                             },
                             _ => {},
@@ -389,16 +365,10 @@ impl MessageAdapter for DiscordAdapter {
                 }
             }
 
-            if should_reconnect {
-                tracing::info!("[discord-adapter] reconnecting in 5s");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                continue;
-            }
-
-            break;
+            // 内层循环退出意味着连接断开或被要求重连，等待 5s 后重连。
+            tracing::info!("[discord-adapter] reconnecting in 5s");
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
-
-        Ok(())
     }
 
     async fn stop(&self) -> Result<(), AdapterError> {

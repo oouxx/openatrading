@@ -49,11 +49,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// 默认：连续 5 次失败熔断 30 秒。
-    pub fn default() -> Self {
-        Self::new(5, std::time::Duration::from_secs(30))
-    }
-
     /// 检查当前是否允许请求通过。
     pub fn is_allowed(&self) -> bool {
         let state = self.inner.state.load(Ordering::Acquire);
@@ -130,6 +125,13 @@ impl Clone for CircuitBreaker {
         Self {
             inner: self.inner.clone(),
         }
+    }
+}
+
+impl Default for CircuitBreaker {
+    /// 默认：连续 5 次失败熔断 30 秒。
+    fn default() -> Self {
+        Self::new(5, std::time::Duration::from_secs(30))
     }
 }
 
