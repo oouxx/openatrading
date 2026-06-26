@@ -88,7 +88,6 @@ struct TgChat {
 struct TgUser {
     id: i64,
     first_name: Option<String>,
-    last_name: Option<String>,
     username: Option<String>,
 }
 
@@ -125,7 +124,6 @@ impl TelegramAdapter {
 
         #[derive(Deserialize)]
         struct SendResp {
-            ok: bool,
             result: Option<SendResult>,
         }
         #[derive(Deserialize)]
