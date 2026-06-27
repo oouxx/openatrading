@@ -5,7 +5,10 @@ edition = "2021"
 
 [dependencies]
 openatrading-core = { path = "../core" }
-envision = { git = "https://github.com/ryanoneill/envision" }
+ratatui = "0.29"
+crossterm = "0.28"
+ratatui-markdown = { version = "0.3", features = ["highlight-lang-all"] }
+unicode-width = "0.2"
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
