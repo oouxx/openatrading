@@ -73,39 +73,39 @@ export default function RightPanel() {
   };
 
   return (
-    <div className="flex flex-shrink-0 h-full">
+    <div className="flex h-full flex-shrink-0">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
-        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden transition-[width] duration-150"
+        className="flex flex-col overflow-hidden border-l border-hairline bg-bg-surface transition-[width] duration-150"
         style={{ width: collapsed ? 48 : width }}
       >
-        <div className="flex items-center gap-1 px-2 py-2 border-b border-hairline flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center gap-1 border-b border-hairline p-2">
           <Button
             variant="ghost"
             size="icon"
-            className="w-6 h-6"
+            className="size-6"
             onClick={toggleCollapse}
             title={collapsed ? "展开面板" : "折叠面板"}
           >
             {collapsed ? (
-              <ChevronLeft className="w-3 h-3" />
+              <ChevronLeft className="size-3" />
             ) : (
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="size-3" />
             )}
           </Button>
           {!collapsed && (
-            <span className="text-xs font-medium text-white flex-1 truncate">
+            <span className="flex-1 truncate text-xs font-medium text-white">
               {TABS.find((t) => t.id === activeView)?.label}
             </span>
           )}
         </div>
 
         {collapsed ? (
-          <div className="flex flex-col items-center gap-1 py-2 flex-1 border-t border-hairline overflow-y-auto">
+          <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto border-t border-hairline py-2">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                className="w-10 h-10 flex items-center justify-center text-[10px] rounded-card hover:bg-bg-hover transition-colors data-[active=true]:text-ai"
+                className="flex size-10 items-center justify-center rounded-card text-[10px] transition-colors hover:bg-bg-hover data-[active=true]:text-ai"
                 data-active={activeView === tab.id}
                 title={tab.label}
                 onClick={() => {
@@ -119,11 +119,11 @@ export default function RightPanel() {
           </div>
         ) : (
           <>
-            <div className="flex gap-0 px-3 border-b border-hairline flex-shrink-0 overflow-x-auto">
+            <div className="flex flex-shrink-0 gap-0 overflow-x-auto border-b border-hairline px-3">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  className="px-3 py-1.5 text-xs transition-colors border-b-2 whitespace-nowrap data-[active=true]:text-ai data-[active=true]:border-ai data-[active=false]:text-ink-muted data-[active=false]:border-transparent data-[active=false]:hover:text-white"
+                  className="border-b-2 px-3 py-1.5 text-xs whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:text-ink-muted data-[active=false]:hover:text-white data-[active=true]:border-ai data-[active=true]:text-ai"
                   data-active={activeView === tab.id}
                   onClick={() => setActiveView(tab.id)}
                 >

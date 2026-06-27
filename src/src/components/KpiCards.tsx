@@ -106,27 +106,27 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4">
         {cards.map((card) => (
           <motion.div
             key={card.label}
-            className={`bg-bg-surface rounded-card p-card-inner border border-hairline ${card.borderClass}`}
+            className={`p-card-inner rounded-card border border-hairline bg-bg-surface ${card.borderClass}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: card.delay }}
           >
-            <p className="text-caption text-ink-muted mb-2">{card.label}</p>
+            <p className="text-caption mb-2 text-ink-muted">{card.label}</p>
             <p className={`font-mono font-semibold ${card.valueClass}`} style={{ fontSize: 22 }}>
               {card.value}
             </p>
-            <p className="text-caption text-ink-muted mt-1">{card.sub}</p>
+            <p className="text-caption mt-1 text-ink-muted">{card.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {decisionSummary && (
-        <div className="bg-bg-surface rounded-card px-5 py-4 border border-hairline flex items-center gap-4">
-          <span className={`px-3 py-1 rounded-button text-caption-strong font-mono ${riskBadgeClass}`}>
+        <div className="flex items-center gap-4 rounded-card border border-hairline bg-bg-surface px-5 py-4">
+          <span className={`text-caption-strong rounded-button px-3 py-1 font-mono ${riskBadgeClass}`}>
             {riskLevel}
           </span>
           <span className="text-body text-ink-muted">{decisionSummary}</span>

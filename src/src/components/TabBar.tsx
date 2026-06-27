@@ -17,15 +17,15 @@ const tabs = [
 
 export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
   return (
-    <div className="flex overflow-x-auto gap-1" style={{ padding: '12px 0' }}>
+    <div className="flex gap-1 overflow-x-auto" style={{ padding: '12px 0' }}>
       {tabs.map((tab) => (
         <motion.button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`flex-shrink-0 px-4 transition-colors duration-200 border-b-2 cursor-pointer ${
+          className={`flex-shrink-0 cursor-pointer border-b-2 px-4 transition-colors duration-200 ${
             activeTab === tab.id
-              ? 'text-white border-ai'
-              : 'text-ink-muted border-transparent hover:text-white/80'
+              ? 'border-ai text-white'
+              : 'border-transparent text-ink-muted hover:text-white/80'
           }`}
           style={{ paddingTop: 10, paddingBottom: 10 }}
           whileHover={{ y: -1 }}

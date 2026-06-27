@@ -59,15 +59,15 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-bg">
       {/* Hero */}
-      <section className="max-w-[1100px] mx-auto px-8 pt-20 pb-14 text-center">
-        <h1 className="font-medium text-white mb-4 leading-tight" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.8rem)' }}>
+      <section className="mx-auto max-w-[1100px] px-8 pt-20 pb-14 text-center">
+        <h1 className="mb-4 leading-tight font-medium text-white" style={{ fontSize: 'clamp(2.2rem, 5vw, 3.8rem)' }}>
           AI 自动交易<span className="text-ai">策略引擎</span>
         </h1>
-        <p className="text-ink-muted text-lg max-w-[640px] mx-auto mb-10 leading-relaxed">
+        <p className="mx-auto mb-10 max-w-[640px] text-lg leading-relaxed text-ink-muted">
           每个角色运行独立策略，AI 自动决策并执行交易。在 Telegram 中与角色对话、查看持仓、调整参数 — 所有盈亏实时追踪。
         </p>
 
-        <div className="flex items-center justify-center gap-4 flex-wrap mb-10 text-sm text-ink-muted">
+        <div className="mb-10 flex flex-wrap items-center justify-center gap-4 text-sm text-ink-muted">
           {[
             { icon: '📝', label: '角色策略' },
             { icon: '🧠', label: 'AI 决策' },
@@ -75,8 +75,8 @@ export default function LandingPage() {
             { icon: '📊', label: '盈亏展示' },
           ].map((node, i) => (
             <span key={node.label} className="flex items-center gap-4">
-              {i > 0 && <span className="text-ai text-lg font-bold">→</span>}
-              <span className="bg-bg-surface border border-hairline rounded-xl px-5 py-3.5 flex items-center gap-2 font-medium">
+              {i > 0 && <span className="text-lg font-bold text-ai">→</span>}
+              <span className="flex items-center gap-2 rounded-xl border border-hairline bg-bg-surface px-5 py-3.5 font-medium">
                 <span className="text-xl">{node.icon}</span>
                 {node.label}
               </span>
@@ -84,22 +84,22 @@ export default function LandingPage() {
           ))}
         </div>
 
-        <div className="flex gap-3 justify-center flex-wrap">
+        <div className="flex flex-wrap justify-center gap-3">
           <Link
             to="/app"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium bg-ai text-white hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-[10px] bg-ai px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             开始使用 →
           </Link>
           <Link
             to="/roles"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium bg-ai text-white hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-[10px] bg-ai px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             管理角色策略 →
           </Link>
           <a
             href="#install"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[10px] text-sm font-medium border border-hairline text-ink hover:border-ai hover:text-ai transition-colors"
+            className="inline-flex items-center gap-2 rounded-[10px] border border-hairline px-6 py-2.5 text-sm font-medium text-ink transition-colors hover:border-ai hover:text-ai"
           >
             📦 下载安装
           </a>
@@ -107,7 +107,7 @@ export default function LandingPage() {
       </section>
 
       {/* Stats Bar */}
-      <div className="max-w-[1000px] mx-auto mb-12 px-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="mx-auto mb-12 grid max-w-[1000px] grid-cols-2 gap-4 px-8 md:grid-cols-4">
         {[
           { num: '6', label: '核心页面' },
           { num: 'A 股', label: '全市场覆盖' },
@@ -116,52 +116,52 @@ export default function LandingPage() {
         ].map((stat) => (
           <div
             key={stat.label}
-            className="text-center py-5 px-4 bg-bg-surface border border-hairline rounded-xl"
+            className="rounded-xl border border-hairline bg-bg-surface px-4 py-5 text-center"
           >
             <div className={`font-mono text-[1.8rem] font-semibold ${stat.up ? 'text-up' : 'text-white'}`}>
               {stat.num}
             </div>
-            <div className="text-xs text-ink-muted mt-1 uppercase tracking-wider">{stat.label}</div>
+            <div className="mt-1 text-xs tracking-wider text-ink-muted uppercase">{stat.label}</div>
           </div>
         ))}
       </div>
 
       {/* Features */}
-      <section className="max-w-[1200px] mx-auto px-8 pb-16">
-        <h2 className="text-2xl font-medium text-white mb-6 flex items-center gap-2.5">
+      <section className="mx-auto max-w-[1200px] px-8 pb-16">
+        <h2 className="mb-6 flex items-center gap-2.5 text-2xl font-medium text-white">
           核心功能
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <Link
               key={f.title}
               to={f.to}
-              className="bg-bg-surface border border-hairline rounded-[14px] overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              className="overflow-hidden rounded-[14px] border border-hairline bg-bg-surface transition-all hover:-translate-y-0.5 hover:shadow-lg"
             >
-              <div className="py-[22px] px-[18px]">
-                <h4 className="text-base font-medium mb-1.5 flex items-center gap-2 text-white">
+              <div className="px-[18px] py-[22px]">
+                <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
                   {f.title}
                   {f.badge === '核心' && (
-                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium bg-ai text-white">
+                    <span className="inline-block rounded-[7px] bg-ai px-2.5 py-[3px] text-[11px] font-medium text-white">
                       核心
                     </span>
                   )}
                   {f.badge === 'A 股专版' && (
-                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium bg-ai text-white">
+                    <span className="inline-block rounded-[7px] bg-ai px-2.5 py-[3px] text-[11px] font-medium text-white">
                       A 股专版
                     </span>
                   )}
                   {f.badge === '新增' && (
-                    <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium text-white"
+                    <span className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
                       style={{ background: 'oklch(55% 0.16 55)' }}>
                       新增
                     </span>
                   )}
                 </h4>
-                <p className="text-[0.8rem] text-ink-muted leading-relaxed mb-2.5">{f.desc}</p>
-                <div className="flex gap-2 flex-wrap">
+                <p className="mb-2.5 text-[0.8rem] leading-relaxed text-ink-muted">{f.desc}</p>
+                <div className="flex flex-wrap gap-2">
                   {f.tags.map((t) => (
-                    <span key={t} className="text-[11px] text-ink-muted px-2.5 py-[3px] rounded-[5px]" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+                    <span key={t} className="rounded-badge px-2.5 py-[3px] text-[11px] text-ink-muted" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
                       {t}
                     </span>
                   ))}
@@ -171,22 +171,22 @@ export default function LandingPage() {
           ))}
 
           {/* Telegram Bot card — design special styling */}
-          <div className="bg-bg-surface rounded-[14px] overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all"
+          <div className="overflow-hidden rounded-[14px] bg-bg-surface transition-all hover:-translate-y-0.5 hover:shadow-lg"
             style={{ border: '1px solid oklch(55% 0.14 240 / 0.4)' }}>
-            <div className="py-[22px] px-[18px]">
-              <h4 className="text-base font-medium mb-1.5 flex items-center gap-2 text-white">
+            <div className="px-[18px] py-[22px]">
+              <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
                 Telegram Bot 交互
-                <span className="inline-block px-2.5 py-[3px] rounded-[7px] text-[11px] font-medium text-white"
+                <span className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
                   style={{ background: 'oklch(55% 0.14 240)' }}>
                   Beta
                 </span>
               </h4>
-              <p className="text-[0.8rem] text-ink-muted leading-relaxed mb-2.5">
+              <p className="mb-2.5 text-[0.8rem] leading-relaxed text-ink-muted">
                 在 Telegram 中与你的交易角色直接对话 — 查看持仓盈亏、接收交易信号、调整策略参数，所有操作实时同步。
               </p>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-wrap gap-2">
                 {['💬 对话交互', '📲 实时推送', '⚙️ 参数调整'].map((t) => (
-                  <span key={t} className="text-[11px] text-ink-muted px-2.5 py-[3px] rounded-[5px]" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+                  <span key={t} className="rounded-badge px-2.5 py-[3px] text-[11px] text-ink-muted" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
                     {t}
                   </span>
                 ))}
@@ -197,20 +197,20 @@ export default function LandingPage() {
       </section>
 
       {/* Install */}
-      <section id="install" className="max-w-[1200px] mx-auto px-8 pb-16">
-        <h2 className="text-2xl font-medium text-white mb-6 flex items-center gap-2.5">
+      <section id="install" className="mx-auto max-w-[1200px] px-8 pb-16">
+        <h2 className="mb-6 flex items-center gap-2.5 text-2xl font-medium text-white">
           📦 下载安装
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {/* Desktop */}
-          <div className="bg-bg-surface border border-hairline rounded-[14px] py-7 px-6">
-            <h4 className="text-base font-medium mb-2 flex items-center gap-2 text-white">
+          <div className="rounded-[14px] border border-hairline bg-bg-surface px-6 py-7">
+            <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
               🖥️ 桌面端
             </h4>
-            <p className="text-xs text-ink-muted mb-5 leading-relaxed">
+            <p className="mb-5 text-xs leading-relaxed text-ink-muted">
               支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。从官网下载对应安装包。
             </p>
-            <div className="flex gap-2 flex-wrap mb-3.5">
+            <div className="mb-3.5 flex flex-wrap gap-2">
               {[
                 { icon: '🍎', label: 'macOS .dmg', platform: 'macos', arch: 'x86_64' },
                 { icon: '🪟', label: 'Windows .exe', platform: 'windows', arch: 'x86_64' },
@@ -219,7 +219,7 @@ export default function LandingPage() {
                 <a
                   key={d.label}
                   href={dl(d.platform, d.arch)}
-                  className="inline-flex items-center gap-1.5 px-[18px] py-2 rounded-lg border border-hairline text-xs font-medium bg-ink-dim text-white hover:border-ai hover:text-ai transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-ink-dim px-[18px] py-2 text-xs font-medium text-white transition-colors hover:border-ai hover:text-ai"
                 >
                   <span className="text-lg">{d.icon}</span>
                   {d.label}
@@ -232,11 +232,11 @@ export default function LandingPage() {
           </div>
 
           {/* CLI */}
-          <div className="bg-bg-surface border border-hairline rounded-[14px] py-7 px-6">
-            <h4 className="text-base font-medium mb-2 flex items-center gap-2 text-white">
+          <div className="rounded-[14px] border border-hairline bg-bg-surface px-6 py-7">
+            <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
               ⌨️ CLI 命令行
             </h4>
-            <p className="text-xs text-ink-muted mb-5 leading-relaxed">
+            <p className="mb-5 text-xs leading-relaxed text-ink-muted">
               适用于 Linux/macOS 环境，支持嵌入量化策略 pipeline、定时任务及 CI/CD 流程。
             </p>
             <CopyCodeBlock
@@ -249,7 +249,7 @@ openatrading --version
 # 启动 Gateway
 openatrading gateway run`}
             />
-            <p className="text-[11px] text-ink-muted mt-2.5">
+            <p className="mt-2.5 text-[11px] text-ink-muted">
               完整 CLI 文档：<a href="https://github.com/oouxx/openatrading" className="text-ai">GitHub</a>
             </p>
           </div>
@@ -257,8 +257,8 @@ openatrading gateway run`}
       </section>
 
       {/* Footer */}
-      <footer className="text-center py-10 px-8 border-t border-hairline text-xs text-ink-muted">
-        <div className="flex gap-6 justify-center flex-wrap mb-3">
+      <footer className="border-t border-hairline px-8 py-10 text-center text-xs text-ink-muted">
+        <div className="mb-3 flex flex-wrap justify-center gap-6">
           <a href="https://github.com/oouxx/openatrading" className="text-ai">GitHub</a>
           <a href="#" className="text-ai">文档</a>
           <a href="#" className="text-ai">API 参考</a>
@@ -272,10 +272,10 @@ openatrading gateway run`}
 
 function CopyCodeBlock({ text }: { text: string }) {
   return (
-    <div className="relative border border-hairline rounded-[10px] p-[14px_18px] font-mono text-xs text-white leading-relaxed whitespace-pre-wrap overflow-x-auto" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
+    <div className="relative overflow-x-auto rounded-[10px] border border-hairline p-[14px_18px] font-mono text-xs leading-relaxed whitespace-pre-wrap text-white" style={{ background: 'var(--color-tag-bg, rgba(255,255,255,0.05))' }}>
       <button
         onClick={() => navigator.clipboard.writeText(text)}
-        className="absolute top-2.5 right-3 px-2.5 py-1 rounded-md border border-hairline bg-bg-surface text-[11px] text-ink-muted hover:border-ai hover:text-ai transition-colors cursor-pointer"
+        className="absolute top-2.5 right-3 cursor-pointer rounded-md border border-hairline bg-bg-surface px-2.5 py-1 text-[11px] text-ink-muted transition-colors hover:border-ai hover:text-ai"
       >
         复制
       </button>

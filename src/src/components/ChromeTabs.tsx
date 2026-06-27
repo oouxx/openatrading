@@ -16,25 +16,25 @@ export default function ChromeTabs({ tabs, activeTab, onSelect, onClose }: Chrom
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex items-stretch h-9 bg-bg-surface overflow-x-auto overflow-y-hidden shrink-0 border-b border-hairline">
+    <div className="flex h-9 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-hairline bg-bg-surface">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
           <div
             key={tab.id}
             onClick={() => onSelect(tab.id)}
-            className={`group flex items-center gap-1.5 px-3 text-xs cursor-pointer select-none whitespace-nowrap shrink-0 border-r border-hairline transition-colors ${
+            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-hairline px-3 text-xs whitespace-nowrap transition-colors select-none ${
               isActive
-                ? "bg-bg text-white border-b-2 border-b-ai"
-                : "bg-bg-surface text-ink-muted hover:text-white hover:bg-bg-hover"
+                ? "border-b-2 border-b-ai bg-bg text-white"
+                : "bg-bg-surface text-ink-muted hover:bg-bg-hover hover:text-white"
             }`}
           >
-            <span className="truncate max-w-[120px]">{tab.label}</span>
+            <span className="max-w-[120px] truncate">{tab.label}</span>
             <button
               onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
-              className="flex items-center justify-center w-4 h-4 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-bg-hover transition-opacity"
+              className="flex size-4 items-center justify-center rounded-sm opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-hover"
             >
-              <X className="w-3 h-3" />
+              <X className="size-3" />
             </button>
           </div>
         );

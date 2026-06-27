@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import type { IndexQuote } from '@/stores/data'
 import { useOverview } from '@/hooks/query/useOverview'
 import { useIndexQuotes } from '@/hooks/query/useIndexQuotes'
@@ -14,7 +14,6 @@ export default function TradingView() {
 
   const { data: overview, isLoading: ovLoading, error: ovError, refetch: refetchOverview } = useOverview()
   const { data: indexQuotes = [], isLoading: idxLoading, error: idxError } = useIndexQuotes()
-  const refreshData = useMemo(() => refetchOverview, [refetchOverview])
 
   const indexCards = useMemo(() => {
     if (!indexQuotes.length) return []
@@ -28,18 +27,18 @@ export default function TradingView() {
 
   return (
     <div className="min-h-screen bg-bg pt-14">
-      <div className="max-w-[1600px] mx-auto px-6 py-4">
+      <div className="mx-auto max-w-[1600px] px-6 py-4">
         {/* 错误状态 */}
         {ovError && (
           <div className="py-4">
-            <div className="bg-up/5 border border-up/20 rounded-card px-5 py-3 flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-card border border-up/20 bg-up/5 px-5 py-3">
               <div className="flex items-center gap-3">
-                <span className="text-up text-sm">⚠</span>
+                <span className="text-sm text-up">⚠</span>
                 <span className="text-caption text-up">{ovError.message}</span>
               </div>
               <button
-                onClick={refreshData}
-                className="text-caption text-up underline cursor-pointer"
+                onClick={() => refetchOverview()}
+                className="text-caption cursor-pointer text-up underline"
               >
                 重试
               </button>
@@ -49,8 +48,8 @@ export default function TradingView() {
 
         {/* 加载状态 */}
         {ovLoading && !overview && (
-          <div className="flex flex-col items-center justify-center py-32 gap-4">
-            <div className="w-3 h-3 rounded-full bg-ai animate-pulse" />
+          <div className="flex flex-col items-center justify-center gap-4 py-32">
+            <div className="size-3 animate-pulse rounded-full bg-ai" />
             <span className="text-caption font-mono text-ink-muted">加载市场数据...</span>
           </div>
         )}
@@ -59,24 +58,24 @@ export default function TradingView() {
           <>
             {/* 指数加载状态 */}
             {idxLoading && !indexQuotes.length && (
-              <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
+              <div className="p-card-inner flex items-center justify-center rounded-card border border-hairline bg-bg-surface py-6">
                 <span className="text-caption font-mono text-ink-muted">加载指数数据...</span>
               </div>
             )}
 
             {/* 指数错误状态 */}
             {!idxLoading && idxError && (
-              <div className="bg-bg-surface rounded-card border border-hairline p-card-inner flex items-center justify-center py-6">
+              <div className="p-card-inner flex items-center justify-center rounded-card border border-hairline bg-bg-surface py-6">
                 <span className="text-caption text-up">{idxError.message}</span>
               </div>
             )}
 
             {indexCards.length > 0 && (
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="mb-6 grid grid-cols-3 gap-4">
                 {indexCards.map((idx) => (
-                  <div key={idx.name} className="bg-bg-surface rounded-card border border-hairline p-card-inner flex flex-col gap-1">
-                    <span className="text-caption text-ink-muted font-mono">{idx.name}</span>
-                    <span className="text-xl font-mono text-white tabular-nums">{idx.lastPx.toFixed(2)}</span>
+                  <div key={idx.name} className="p-card-inner flex flex-col gap-1 rounded-card border border-hairline bg-bg-surface">
+                    <span className="text-caption font-mono text-ink-muted">{idx.name}</span>
+                    <span className="font-mono text-xl text-white tabular-nums">{idx.lastPx.toFixed(2)}</span>
                     <span className={`text-caption font-mono tabular-nums ${idx.isUp ? 'text-up' : 'text-down'}`}>
                       {idx.isUp ? '+' : ''}{idx.pxChangeRate.toFixed(2)}%
                     </span>
@@ -105,7 +104,7 @@ export default function TradingView() {
                 <button
                   key={item.view}
                   onClick={() => setActiveView(item.view)}
-                  className="px-4 py-2 text-xs bg-bg-surface border border-hairline rounded-card hover:border-ai/40 transition-colors text-white"
+                  className="rounded-card border border-hairline bg-bg-surface px-4 py-2 text-xs text-white transition-colors hover:border-ai/40"
                 >
                   {item.label} →
                 </button>

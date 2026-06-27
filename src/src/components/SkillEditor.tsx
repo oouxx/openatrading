@@ -138,8 +138,8 @@ export default function SkillEditor() {
   const selected = selectedIdx !== null ? skills[selectedIdx] : null;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-hairline">
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-hairline px-4 py-2">
         <Button variant="ghost" size="sm" onClick={() => setMode("chat")}>
           ← 返回
         </Button>
@@ -147,12 +147,12 @@ export default function SkillEditor() {
         <span className="text-xs text-ink-muted">{skills.length} 个已安装</span>
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1">
         {/* Left: skill list */}
-        <div className="w-[220px] flex-shrink-0 border-r border-hairline flex flex-col">
-          <div className="px-3 py-2 border-b border-hairline">
+        <div className="flex w-[220px] flex-shrink-0 flex-col border-r border-hairline">
+          <div className="border-b border-hairline px-3 py-2">
             <button
-              className="w-full text-left px-3 py-1.5 text-xs border border-hairline rounded-md text-accent hover:bg-bg-hover transition-colors"
+              className="text-accent w-full rounded-md border border-hairline px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-hover"
               onClick={startNew}
             >
               + 新建技能
@@ -166,15 +166,15 @@ export default function SkillEditor() {
                 <button
                   key={sk.name}
                   onClick={() => selectSkill(i)}
-                  className={`w-full text-left px-3 py-2 border-l-2 transition-colors ${
+                  className={`w-full border-l-2 px-3 py-2 text-left transition-colors ${
                     selectedIdx === i
                       ? "border-ai bg-ai/5 text-white"
-                      : "border-transparent text-ink-muted hover:text-white hover:bg-bg-hover"
+                      : "border-transparent text-ink-muted hover:bg-bg-hover hover:text-white"
                   }`}
                 >
-                  <div className="text-xs font-medium truncate">{sk.name}</div>
-                  <div className="text-[10px] text-ink-muted mt-0.5 truncate">{sk.description}</div>
-                  <div className="text-[10px] text-ink-muted mt-0.5">
+                  <div className="truncate text-xs font-medium">{sk.name}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-ink-muted">{sk.description}</div>
+                  <div className="mt-0.5 text-[10px] text-ink-muted">
                     {sk.scope === "project" ? "项目" : "用户"}
                   </div>
                 </button>
@@ -184,20 +184,20 @@ export default function SkillEditor() {
         </div>
 
         {/* Right: editor */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col">
           {!selected && !isNew ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-ink-muted">
+            <div className="flex flex-1 items-center justify-center text-xs text-ink-muted">
               选择一个技能开始编辑，或新建一个
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-hairline">
+              <div className="flex items-center justify-between border-b border-hairline px-4 py-2">
                 <div className="flex items-center gap-1">
                   {(["manifest", "content"] as EditorTab[]).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`px-3 py-1 text-xs border-b-2 transition-colors ${
+                      className={`border-b-2 px-3 py-1 text-xs transition-colors ${
                         activeTab === tab
                           ? "border-ai text-ai"
                           : "border-transparent text-ink-muted hover:text-white"
@@ -212,7 +212,7 @@ export default function SkillEditor() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-[10px] text-down border-down/30 hover:bg-down/10"
+                      className="border-down/30 text-[10px] text-down hover:bg-down/10"
                       onClick={() => deleteSkill(selected.name)}
                     >
                       删除
@@ -224,12 +224,12 @@ export default function SkillEditor() {
                 </div>
               </div>
 
-              <div className="flex-1 flex min-h-0">
+              <div className="flex min-h-0 flex-1">
                 {activeTab === "manifest" ? (
                   <ScrollArea className="flex-1 p-4">
-                    <div className="space-y-4 max-w-lg">
+                    <div className="max-w-lg space-y-4">
                       <div>
-                        <label className="text-xs text-ink-muted block mb-1">name</label>
+                        <label className="mb-1 block text-xs text-ink-muted">name</label>
                         <Input
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
@@ -238,13 +238,13 @@ export default function SkillEditor() {
                           disabled={!!selected}
                         />
                         {selected && (
-                          <p className="text-[10px] text-ink-muted mt-0.5">
+                          <p className="mt-0.5 text-[10px] text-ink-muted">
                             技能名称不可修改（如需要，请删除后重新创建）
                           </p>
                         )}
                       </div>
                       <div>
-                        <label className="text-xs text-ink-muted block mb-1">description</label>
+                        <label className="mb-1 block text-xs text-ink-muted">description</label>
                         <Textarea
                           value={editDesc}
                           onChange={(e) => setEditDesc(e.target.value)}
@@ -255,7 +255,7 @@ export default function SkillEditor() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-xs text-ink-muted block mb-1">license</label>
+                          <label className="mb-1 block text-xs text-ink-muted">license</label>
                           <Input
                             value={editLicense}
                             onChange={(e) => setEditLicense(e.target.value)}
@@ -264,7 +264,7 @@ export default function SkillEditor() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-ink-muted block mb-1">compatibility</label>
+                          <label className="mb-1 block text-xs text-ink-muted">compatibility</label>
                           <Input
                             value={editCompat}
                             onChange={(e) => setEditCompat(e.target.value)}
@@ -274,7 +274,7 @@ export default function SkillEditor() {
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-ink-muted block mb-1">allowed-tools</label>
+                        <label className="mb-1 block text-xs text-ink-muted">allowed-tools</label>
                         <Input
                           value={editAllowedTools}
                           onChange={(e) => setEditAllowedTools(e.target.value)}
@@ -284,12 +284,12 @@ export default function SkillEditor() {
                       </div>
                       {tools.length > 0 && (
                         <div>
-                          <label className="text-xs text-ink-muted block mb-2">可用工具 ({tools.length})</label>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          <label className="mb-2 block text-xs text-ink-muted">可用工具 ({tools.length})</label>
+                          <div className="max-h-48 space-y-1.5 overflow-y-auto">
                             {tools.map((tool) => (
                               <label
                                 key={tool.name}
-                                className="flex items-center gap-2 cursor-pointer text-xs text-ink-muted hover:text-white"
+                                className="flex cursor-pointer items-center gap-2 text-xs text-ink-muted hover:text-white"
                               >
                                 <Checkbox
                                   checked={editAllowedTools.split(/\s+/).includes(tool.name)}
@@ -311,20 +311,20 @@ export default function SkillEditor() {
                     </div>
                   </ScrollArea>
                 ) : (
-                  <div className="flex-1 flex min-h-0">
+                  <div className="flex min-h-0 flex-1">
                     <div className="flex-1 p-4">
-                      <label className="text-xs text-ink-muted block mb-1">
+                      <label className="mb-1 block text-xs text-ink-muted">
                         指令（Markdown）— 编辑后点击右侧预览
                       </label>
                       <Textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
-                        className="font-mono text-xs min-h-[300px] h-full"
+                        className="h-full min-h-[300px] font-mono text-xs"
                         placeholder="## 角色&#10;&#10;你是一个...&#10;&#10;## 工具&#10;..."
                       />
                     </div>
-                    <div className="w-[380px] flex-shrink-0 border-l border-hairline p-4 bg-bg overflow-y-auto">
-                      <p className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">预览</p>
+                    <div className="w-[380px] flex-shrink-0 overflow-y-auto border-l border-hairline bg-bg p-4">
+                      <p className="mb-2 text-[10px] tracking-wider text-ink-muted uppercase">预览</p>
                       <div className="prose prose-invert prose-sm max-w-none">
                         {editContent ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>

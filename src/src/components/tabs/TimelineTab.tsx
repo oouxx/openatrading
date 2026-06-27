@@ -50,12 +50,12 @@ export default function TimelineTab() {
 
   return (
     <div>
-      <div className="flex items-center gap-1 mb-6">
+      <div className="mb-6 flex items-center gap-1">
         {subViews.map((v) => (
           <button
             key={v.id}
             onClick={() => setActiveSubView(v.id)}
-            className={`px-4 py-1.5 rounded-button text-caption font-mono transition-colors cursor-pointer ${
+            className={`text-caption cursor-pointer rounded-button px-4 py-1.5 font-mono transition-colors ${
               activeSubView === v.id ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white/80'
             }`}
           >
@@ -67,36 +67,36 @@ export default function TimelineTab() {
       {activeSubView === 'dapan' && (
         <>
           {dapanLoading ? (
-            <div className="flex items-center justify-center py-16 gap-3">
-              <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />
+            <div className="flex items-center justify-center gap-3 py-16">
+              <span className="size-2 animate-pulse rounded-full bg-ai" />
               <span className="text-caption font-mono text-white/40">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
-            <div className="bg-surface-dark rounded-card border border-hairline-dark p-card-inner text-center text-caption text-white/40">
+            <div className="p-card-inner text-caption rounded-card border border-hairline-dark bg-surface-dark text-center text-white/40">
               {dapanError.message}
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 mb-6 text-caption">
+              <div className="text-caption mb-6 flex items-center gap-3">
                 <span className="text-white/60">
                   共 <b className="text-white">{dapanList.length}</b> 条异动
                 </span>
               </div>
 
               {dapanList.length === 0 ? (
-                <div className="text-center py-12 text-caption text-white/40">今日暂无大盘异动</div>
+                <div className="text-caption py-12 text-center text-white/40">今日暂无大盘异动</div>
               ) : (
                 <div className="space-y-2">
                   {dapanList.map((item: any, idx: number) => (
                     <div
                       key={item.id || idx}
-                      className="bg-surface-dark rounded-card border border-hairline-dark px-4 py-3 flex items-start gap-3 hover:bg-bg-hover transition-colors"
+                      className="flex items-start gap-3 rounded-card border border-hairline-dark bg-surface-dark px-4 py-3 transition-colors hover:bg-bg-hover"
                     >
-                      <span className="text-caption flex-shrink-0 mt-0.5">{typeEmoji(item.bk_yi_dong_type)}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-caption mt-0.5 flex-shrink-0">{typeEmoji(item.bk_yi_dong_type)}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-body-strong text-white">{item.title}</span>
-                          <span className="text-caption px-2 py-0.5 rounded-badge font-mono bg-ai/15 text-ai">
+                          <span className="text-caption rounded-badge bg-ai/15 px-2 py-0.5 font-mono text-ai">
                             {item.bkj_info?.name || '-'}
                           </span>
                           <span className="text-caption font-mono text-white/40">{formatTs(item.created_at)}</span>
@@ -114,37 +114,37 @@ export default function TimelineTab() {
       {activeSubView === 'timeline' && (
         <>
           {timelineLoading ? (
-            <div className="flex items-center justify-center py-16 gap-3">
-              <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />
+            <div className="flex items-center justify-center gap-3 py-16">
+              <span className="size-2 animate-pulse rounded-full bg-ai" />
               <span className="text-caption font-mono text-white/40">加载时间线数据...</span>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 mb-8 text-caption">
+              <div className="text-caption mb-8 flex items-center gap-3">
                 <span className="text-white/60">
                   <b className="text-white">{totalEvents}</b> 条事件 · <b className="text-white">{timelineDays.length}</b> 天
                 </span>
               </div>
 
               {timelineDays.length === 0 ? (
-                <div className="text-center py-12 text-caption text-white/40">暂无时间线数据</div>
+                <div className="text-caption py-12 text-center text-white/40">暂无时间线数据</div>
               ) : (
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
-                      <h3 className="text-caption-strong font-mono mb-4 px-2 text-ai">{day.date}</h3>
+                      <h3 className="text-caption-strong mb-4 px-2 font-mono text-ai">{day.date}</h3>
                       <div className="space-y-3">
                         {day.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="bg-surface-dark rounded-card border border-hairline-dark pl-4 py-3 pr-4 flex gap-3 items-start"
+                            className="flex items-start gap-3 rounded-card border border-hairline-dark bg-surface-dark px-4 py-3"
                           >
-                            <span className="text-caption flex-shrink-0 mt-0.5">{item.grade_emoji}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-caption mt-0.5 flex-shrink-0">{item.grade_emoji}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-body-strong text-white">{item.title}</span>
                                 {item.tags && (
-                                  <span className="text-caption px-2 py-0.5 rounded-badge font-mono bg-white/10 text-white/40">
+                                  <span className="text-caption rounded-badge bg-white/10 px-2 py-0.5 font-mono text-white/40">
                                     {item.tags}
                                   </span>
                                 )}

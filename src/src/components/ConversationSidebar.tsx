@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Sidebar,
@@ -71,21 +70,21 @@ export default function ConversationSidebar({
         <SidebarGroup>
           <div className="px-3 py-2 group-data-[collapsible=icon]:hidden">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input
                 placeholder="搜索会话..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-8 text-xs"
+                className="h-8 pl-8 text-xs"
               />
             </div>
           </div>
         </SidebarGroup>
 
-        <SidebarGroup className="flex-1 min-h-0">
+        <SidebarGroup className="min-h-0 flex-1">
           <SidebarMenu>
             {filteredThreads.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+              <div className="text-muted-foreground py-8 text-center text-xs group-data-[collapsible=icon]:hidden">
                 {search.trim() ? "未找到匹配会话" : "暂无会话"}
               </div>
             ) : (
@@ -96,15 +95,15 @@ export default function ConversationSidebar({
                     onClick={() => onSelectThread(t.id)}
                     tooltip={t.title}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
+                    <span className={`size-1.5 flex-shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
                     <span className="flex-1 truncate">{t.title}</span>
                   </SidebarMenuButton>
                   <button
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 text-ink-muted hover:text-down transition-opacity z-10"
+                    className="absolute top-1/2 right-1.5 z-10 -translate-y-1/2 text-ink-muted opacity-0 transition-opacity group-hover/item:opacity-100 hover:text-down"
                     onClick={(e) => { e.stopPropagation(); onDeleteThread(t.id); }}
                     title="删除"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="size-3" />
                   </button>
                 </SidebarMenuItem>
               ))

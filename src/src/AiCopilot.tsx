@@ -9,30 +9,30 @@ const mdComponents: Components = {
   code: ({ className, children, ...props }) => {
     const isInline = !className;
     if (isInline) {
-      return <code className="px-1 py-0.5 rounded bg-bg-hover text-xs font-mono text-ink" {...props}>{children}</code>;
+      return <code className="rounded bg-bg-hover px-1 py-0.5 font-mono text-xs text-ink" {...props}>{children}</code>;
     }
     return (
-      <pre className="my-2 p-3 rounded-card bg-bg-hover border border-hairline overflow-x-auto text-xs font-mono leading-relaxed text-ink-muted">
+      <pre className="my-2 overflow-x-auto rounded-card border border-hairline bg-bg-hover p-3 font-mono text-xs leading-relaxed text-ink-muted">
         <code className={className} {...props}>{children}</code>
       </pre>
     );
   },
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full text-xs font-mono border-collapse">{children}</table>
+      <table className="w-full border-collapse font-mono text-xs">{children}</table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="px-3 py-2 text-left font-medium text-ink-muted border-b border-hairline bg-bg-hover">{children}</th>
+    <th className="border-b border-hairline bg-bg-hover px-3 py-2 text-left font-medium text-ink-muted">{children}</th>
   ),
   td: ({ children }) => (
-    <td className="px-3 py-2 border-b border-hairline text-ink-muted">{children}</td>
+    <td className="border-b border-hairline px-3 py-2 text-ink-muted">{children}</td>
   ),
   a: ({ children, href }) => (
     <a href={href} className="text-ai hover:underline" target="_blank" rel="noreferrer">{children}</a>
   ),
-  ul: ({ children }) => <ul className="list-disc pl-5 my-1 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 my-1 space-y-1">{children}</ol>,
+  ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
   hr: () => <hr className="my-3 border-hairline" />,
 };
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -79,7 +79,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const [showSlash, setShowSlash] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
-  const [renderTick, setRenderTick] = useState(0);
+  const [, setRenderTick] = useState(0);
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null);
   const streamThreadRef = useRef<number | null>(null);
   const activeStockTab = useStockTabStore((s) => s.activeStockTab);
@@ -219,7 +219,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   if (showStockTab && activeStockTab) {
     const tab = stockTabs.find((t) => t.id === activeStockTab);
     bodyContent = (
-      <div className="flex-1 min-h-0">
+      <div className="min-h-0 flex-1">
         {tab && (
           <div className="h-full overflow-y-auto">
             <KlineDrawer symbol={activeStockTab} name={tab.name} onClose={() => closeTab(activeStockTab)} />
@@ -401,18 +401,18 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   }, []);
 
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex items-center gap-3 px-4 py-1.5 border-b border-hairline bg-bg-surface flex-shrink-0">
+    <div className="flex size-full flex-col">
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-hairline bg-bg-surface px-4 py-1.5">
         <SidebarTrigger className="flex-shrink-0" />
-        <div className="flex items-center gap-1.5 text-xs text-ink-muted whitespace-nowrap flex-shrink-0">
-          <span className="text-white font-medium">OpenATrading</span>
+        <div className="flex flex-shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-ink-muted">
+          <span className="font-medium text-white">OpenATrading</span>
         </div>
-        <div className="flex-1 flex justify-center">
+        <div className="flex flex-1 justify-center">
           <div className="relative w-full max-w-[200px]" ref={searchContainerRef}>
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
+            <Search className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-ink-muted" />
             <input
               ref={searchRef}
-              className="w-full h-7 pl-7 pr-12 text-xs bg-bg border border-hairline rounded-lg text-white placeholder:text-ink-muted outline-none transition-colors focus:border-ai"
+              className="h-7 w-full rounded-lg border border-hairline bg-bg pr-12 pl-7 text-xs text-white transition-colors outline-none placeholder:text-ink-muted focus:border-ai"
               placeholder="搜索股票..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
@@ -421,17 +421,17 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                 if (e.key === "Escape") { setShowDropdown(false); searchRef.current?.blur(); }
               }}
             />
-            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-ink-muted bg-bg px-1 py-0.5 rounded-badge pointer-events-none leading-none">
+            <span className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded-badge bg-bg px-1 py-0.5 text-[9px] leading-none text-ink-muted">
               ⌘P
             </span>
             {showDropdown && searchQuery.trim() && (
-              <div className="absolute top-full left-0 right-0 mt-0.5 max-h-72 overflow-y-auto bg-bg-surface border border-hairline rounded-card shadow-lg z-50">
+              <div className="absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto rounded-card border border-hairline bg-bg-surface shadow-lg">
                 {searchLoading && <div className="px-3 py-2 text-xs text-ink-muted">搜索中...</div>}
                 {!searchLoading && searchResults.length === 0 && <div className="px-3 py-2 text-xs text-ink-muted">无匹配结果</div>}
                 {searchResults.map((s) => (
                   <button
                     key={s.code}
-                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-bg-hover transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-hover"
                     onClick={() => {
                       openTab(`${s.code}`, s.name);
                       setSearchQuery("");
@@ -440,7 +440,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                     }}
                   >
                     <span className="font-medium text-white">{s.name}</span>
-                    <span className="text-ink-muted font-mono">{s.code}</span>
+                    <span className="font-mono text-ink-muted">{s.code}</span>
                   </button>
                 ))}
               </div>
@@ -448,7 +448,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           </div>
         </div>
         <div className="flex-shrink-0">
-          <button className="w-6 h-6 flex items-center justify-center rounded-button text-sm text-ink-muted hover:text-white hover:bg-bg-hover transition-colors" title="更多">
+          <button className="flex size-6 items-center justify-center rounded-button text-sm text-ink-muted transition-colors hover:bg-bg-hover hover:text-white" title="更多">
             ⋯
           </button>
         </div>
@@ -462,13 +462,13 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       />
 
       {bodyContent ? bodyContent : (
-      <div className="flex-1 flex flex-col min-h-0">
-        <div ref={msgContainerRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div ref={msgContainerRef} className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
           {isEmpty ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center max-w-[500px]">
-                <h2 className="text-2xl font-medium text-white mb-2">AI 行情助手 · A 股专版</h2>
-                <p className="text-sm text-ink-muted leading-relaxed mb-6">
+            <div className="flex flex-1 items-center justify-center">
+              <div className="max-w-[500px] text-center">
+                <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
+                <p className="mb-6 text-sm leading-relaxed text-ink-muted">
                   覆盖上证、深证、北交所全市场数据。支持大盘研判、板块轮动、个股分析、资金面跟踪及策略问答。
                 </p>
               </div>
@@ -479,39 +479,39 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               return (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 max-w-[820px] ${msg.role === "user" ? "self-end flex-row-reverse" : ""}`}
+                  className={`flex max-w-[820px] gap-3 ${msg.role === "user" ? "flex-row-reverse self-end" : ""}`}
                 >
                   <span
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0 ${
+                    className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
                       msg.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
                     }`}
                   >
                     {msg.role === "user" ? "U" : "AI"}
                   </span>
                   <div
-                    className={`px-4 py-3 rounded-xl text-sm leading-relaxed ${
+                    className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
                       msg.role === "user"
-                        ? "rounded-tr-sm max-w-[70%] bg-ink-dim text-white"
-                        : "rounded-tl-sm bg-bg-surface border border-hairline text-white/80"
+                        ? "max-w-[70%] rounded-tr-sm bg-ink-dim text-white"
+                        : "rounded-tl-sm border border-hairline bg-bg-surface text-white/80"
                     }`}
                   >
                     {msg.reasoning && (
                       <details
                         open={streaming && isLastAi}
-                        className="mb-2 text-xs text-ink-muted border-l-2 border-ink-muted/30 pl-3"
+                        className="mb-2 border-l-2 border-ink-muted/30 pl-3 text-xs text-ink-muted"
                       >
                         <summary className="cursor-pointer select-none hover:text-white">
                           思考过程 {streaming && isLastAi && <span className="ml-1 text-ai">●</span>}
                         </summary>
-                        <div className="mt-2 whitespace-pre-wrap leading-relaxed opacity-80">
+                        <div className="mt-2 leading-relaxed whitespace-pre-wrap opacity-80">
                           {msg.reasoning}
                         </div>
                       </details>
                     )}
                     {msg.toolCalls && msg.toolCalls.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
+                      <div className="mb-2 flex flex-wrap gap-1.5">
                         {msg.toolCalls.filter((tc) => tc.name).map((tc, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-card bg-ai/10 text-ai font-mono">
+                          <span key={i} className="inline-flex items-center gap-1 rounded-card bg-ai/10 px-2 py-0.5 font-mono text-[10px] text-ai">
                             🛠️ {tc.name}
                           </span>
                         ))}
@@ -522,9 +522,9 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
                         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={mdComponents}>{msg.content}</ReactMarkdown>
                       ) : streaming && isLastAi && !msg.reasoning ? (
                         <div className="flex gap-1 py-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" style={{ animationDelay: "0.2s" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-pulse" style={{ animationDelay: "0.4s" }} />
+                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" />
+                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" style={{ animationDelay: "0.2s" }} />
+                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" style={{ animationDelay: "0.4s" }} />
                         </div>
                       ) : null
                     ) : (
@@ -538,12 +538,12 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         </div>
 
         {showSlash && filteredCommands.length > 0 && (
-          <div className="absolute bottom-[140px] left-1/2 -translate-x-1/2 w-[420px] max-w-[90vw] bg-bg-surface border border-hairline rounded-card shadow-lg z-50 p-1.5">
-            <div className="text-[10px] text-ink-muted uppercase tracking-wider px-2 py-1 font-medium">Commands</div>
+          <div className="absolute bottom-[140px] left-1/2 z-50 w-[420px] max-w-[90vw] -translate-x-1/2 rounded-card border border-hairline bg-bg-surface p-1.5 shadow-lg">
+            <div className="px-2 py-1 text-[10px] font-medium tracking-wider text-ink-muted uppercase">Commands</div>
             {filteredCommands.map((cmd, i) => (
               <button
                 key={cmd.name}
-                className={`flex items-center gap-2 w-full px-2.5 py-2 text-sm rounded-md text-left transition-colors ${
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
                   i === slashIndex ? "bg-bg-hover text-white" : "text-ink-muted hover:text-white"
                 }`}
                 onClick={() => {
@@ -555,32 +555,32 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               >
                 <span className="flex-1 truncate font-medium">/{cmd.name}</span>
                 {cmd.description && (
-                  <span className="text-[10px] text-ink-muted truncate max-w-[180px]">{cmd.description}</span>
+                  <span className="max-w-[180px] truncate text-[10px] text-ink-muted">{cmd.description}</span>
                 )}
-                <span className="text-[9px] px-1.5 py-0.5 rounded-badge bg-bg-hover text-ink-muted uppercase">{cmd.command_type}</span>
+                <span className="rounded-badge bg-bg-hover px-1.5 py-0.5 text-[9px] text-ink-muted uppercase">{cmd.command_type}</span>
               </button>
             ))}
           </div>
         )}
 
-        <div className="px-4 py-2 border-t border-hairline bg-bg-surface flex-shrink-0">
-          <div className="relative max-w-[820px] mx-auto">
+        <div className="flex-shrink-0 border-t border-hairline bg-bg-surface px-4 py-2">
+          <div className="relative mx-auto max-w-[820px]">
             <Textarea
               value={input}
               onChange={onInputChange}
               onKeyDown={onInputKeyDown}
               placeholder="输入问题，/ 触发命令..."
               disabled={streaming}
-              className="min-h-[44px] max-h-[120px] resize-none text-sm pr-12"
+              className="max-h-[120px] min-h-[44px] resize-none pr-12 text-sm"
               rows={1}
             />
             <Button
               size="icon"
-              className="absolute right-1.5 bottom-1.5 w-8 h-8"
+              className="absolute right-1.5 bottom-1.5 size-8"
               onClick={() => send()}
               disabled={streaming || !input.trim()}
             >
-              <Send className="w-4 h-4" />
+              <Send className="size-4" />
             </Button>
           </div>
         </div>
