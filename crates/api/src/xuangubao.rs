@@ -553,6 +553,13 @@ impl XuanguBaoClient {
 
         all_events.sort_by_key(|e| e.event_timestamp);
         all_events.dedup_by_key(|e| e.id);
+        all_events.retain(|e| {
+            e.plate_abnormal_event_data
+                .as_ref()
+                .and_then(|d| d.pcp)
+                .map(|pcp| pcp.abs() > 0.03)
+                .unwrap_or(false)
+        });
 
         tracing::debug!(
             count = all_events.len(),

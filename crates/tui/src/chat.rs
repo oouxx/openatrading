@@ -173,8 +173,7 @@ impl App for ChatApp {
         if sep_y < area.height {
             let sep_style = Style::default().fg(Color::DarkGray).dim();
             let sep_line = Paragraph::new(
-                std::iter::repeat_n("─", chunks[1].width as usize)
-                    .collect::<String>(),
+                std::iter::repeat_n("─", chunks[1].width as usize).collect::<String>(),
             )
             .style(sep_style);
             let sep_area = Rect::new(0, sep_y, chunks[1].width, 1);
