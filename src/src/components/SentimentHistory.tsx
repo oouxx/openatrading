@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { createChart, LineSeries, type IChartApi, type Time } from 'lightweight-charts'
 
 interface SentimentHistoryProps {
@@ -8,7 +8,21 @@ interface SentimentHistoryProps {
 export default function SentimentHistory({ data }: SentimentHistoryProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
-  const interpretationRef = useRef('')
+
+  const interpretation = useMemo(() => {
+    if (!data?.length) return ''
+    const recent = data.slice(-3)
+    if (recent.length >= 3 && recent.every((d) => d.value >= 75)) {
+      return '连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓'
+    }
+    if (recent.length >= 3 && recent.every((d) => d.value >= 50)) {
+      return '情绪正常偏暖，短线操作环境尚可'
+    }
+    if (data[data.length - 1].value < 50) {
+      return '情绪偏冷，等待回暖信号'
+    }
+    return ''
+  }, [data])
 
   useEffect(() => {
     if (!chartContainerRef.current || !data?.length) return
@@ -52,17 +66,6 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
       })
     }
 
-    const recent = data.slice(-3)
-    if (recent.length >= 3 && recent.every((d) => d.value >= 75)) {
-      interpretationRef.current = '连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓'
-    } else if (recent.length >= 3 && recent.every((d) => d.value >= 50)) {
-      interpretationRef.current = '情绪正常偏暖，短线操作环境尚可'
-    } else if (data.length > 0 && data[data.length - 1].value < 50) {
-      interpretationRef.current = '情绪偏冷，等待回暖信号'
-    } else {
-      interpretationRef.current = ''
-    }
-
     chart.timeScale().fitContent()
     chartRef.current = chart
 
@@ -80,8 +83,8 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
       ) : (
         <>
           <div ref={chartContainerRef} style={{ height: 200 }} />
-          {interpretationRef.current && (
-            <p className="text-caption mt-3 text-ink-muted">{interpretationRef.current}</p>
+          {interpretation && (
+            <p className="text-caption mt-3 text-ink-muted">{interpretation}</p>
           )}
         </>
       )}

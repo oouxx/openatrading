@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, startTransition } from "react";
 import { Search, Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -79,7 +79,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const [showSlash, setShowSlash] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
-  const [, setRenderTick] = useState(0);
+  const [threadMessages, setThreadMessages] = useState<Map<number, DisplayMessage[]>>(new Map());
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null);
   const streamThreadRef = useRef<number | null>(null);
   const activeStockTab = useStockTabStore((s) => s.activeStockTab);
@@ -89,8 +89,11 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab);
 
   // Per-thread message store — persists across thread switches
-  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(new Map());
+  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(threadMessages);
   const loadQueueRef = useRef<Set<number>>(new Set());
+
+  // Keep ref in sync with state (avoids accessing ref during render)
+  useEffect(() => { threadMessagesRef.current = threadMessages; }, [threadMessages]);
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("");
@@ -101,8 +104,6 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const msgContainerRef = useRef<HTMLDivElement>(null);
-
-  const forceRender = useCallback(() => setRenderTick((t) => t + 1), []);
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
@@ -118,12 +119,8 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
 
   // Load messages when active thread changes — but only once per thread
   useEffect(() => {
-    if (activeThreadId === null) {
-      forceRender();
-      return;
-    }
+    if (activeThreadId === null) return;
     if (threadMessagesRef.current.has(activeThreadId)) {
-      forceRender();
       scrollDown();
       return;
     }
@@ -138,16 +135,16 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           content: m.content,
         })),
       );
-      forceRender();
+      setThreadMessages(new Map(threadMessagesRef.current));
       scrollDown();
     });
-  }, [activeThreadId, forceRender, scrollDown]);
+  }, [activeThreadId, scrollDown]);
 
   // Stock search debounce
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!searchQuery.trim()) {
-      setSearchResults([]);
+      startTransition(() => setSearchResults([]));
       return;
     }
     debounceRef.current = setTimeout(async () => {
@@ -211,7 +208,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         .slice(0, 8)
     : commands.slice(0, 8);
 
-  const currentMessages = activeThreadId ? threadMessagesRef.current.get(activeThreadId) ?? [] : [];
+  const currentMessages = activeThreadId !== null ? threadMessages.get(activeThreadId) ?? [] : [];
   const isEmpty = currentMessages.length === 0;
   const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab);
 
@@ -264,7 +261,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
     // Update thread's messages
     const existing = threadMessagesRef.current.get(threadId) ?? [];
     threadMessagesRef.current.set(threadId, [...existing, userMsg, aiMsg]);
-    forceRender();
+    setThreadMessages(new Map(threadMessagesRef.current));
     scrollDown();
 
     setStreaming(true);
@@ -287,7 +284,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             if (last && last.role === "assistant") {
               msgs[msgs.length - 1] = { ...last, content: last.content + data };
               threadMessagesRef.current.set(threadId, msgs);
-              forceRender();
+              setThreadMessages(new Map(threadMessagesRef.current));
               if (activeThreadId === threadId) scrollDown();
             }
           },
@@ -297,7 +294,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             if (last && last.role === "assistant") {
               msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data };
               threadMessagesRef.current.set(threadId, msgs);
-              forceRender();
+              setThreadMessages(new Map(threadMessagesRef.current));
             }
           },
           onToolCall: (tool) => {
@@ -307,7 +304,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
               const calls = last.toolCalls ?? [];
               msgs[msgs.length - 1] = { ...last, toolCalls: [...calls, { name: tool.name, id: tool.id }] };
               threadMessagesRef.current.set(threadId, msgs);
-              forceRender();
+              setThreadMessages(new Map(threadMessagesRef.current));
             }
           },
           onDone: () => {
@@ -335,7 +332,7 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
             if (last && last.role === "assistant") {
               msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` };
               threadMessagesRef.current.set(threadId, msgs);
-              forceRender();
+              setThreadMessages(new Map(threadMessagesRef.current));
             }
           },
         },
@@ -347,10 +344,10 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
       if (last && last.role === "assistant") {
         msgs[msgs.length - 1] = { ...last, content: `[错误] ${(e as Error).message || "网络请求失败"}` };
         threadMessagesRef.current.set(threadId, msgs);
-        forceRender();
+        setThreadMessages(new Map(threadMessagesRef.current));
       }
     }
-  }, [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload, forceRender]);
+  }, [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload]);
 
   const onInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSlash) {

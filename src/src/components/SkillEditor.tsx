@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -47,25 +47,27 @@ export default function SkillEditor() {
   const [editAllowedTools, setEditAllowedTools] = useState("");
   const [isNew, setIsNew] = useState(false);
 
-  const loadSkills = useCallback(async () => {
+  const loadSkills = async () => {
     try {
       const data = await fetchJson<SkillEntry[]>("/api/skills");
       setSkills(data);
     } catch {
       setSkills([]);
     }
-  }, []);
+  };
 
-  const loadTools = useCallback(async () => {
+  const loadTools = async () => {
     try {
       const data = await fetchJson<ToolItem[]>("/api/tools");
       setTools(data);
     } catch {
       setTools([]);
     }
-  }, []);
+  };
 
-  useEffect(() => { loadSkills(); loadTools(); }, [loadSkills, loadTools]);
+  // Mount-time initialization — data must be fetched before user interacts
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadSkills(); loadTools(); }, []);
 
   const selectSkill = (idx: number) => {
     setSelectedIdx(idx);

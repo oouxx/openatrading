@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 import { fetchJson } from "@/stores/data";
 
 export interface ChatThread {
@@ -31,7 +31,7 @@ export function useThreads() {
     }
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { startTransition(() => reload()); }, [reload]);
 
   const createThread = useCallback(async (title = "新对话") => {
     const thread = await fetchJson<ChatThread>("/api/ai/threads", {
