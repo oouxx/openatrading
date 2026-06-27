@@ -7,36 +7,6 @@ import tailwind from "eslint-plugin-tailwindcss";
 import prettier from "eslint-config-prettier";
 
 // =============================================================================
-// Tailwind 白名单
-// =============================================================================
-
-// shadcn 语义色 token（@layer base 非 @theme，v4 不生成 utility）
-// TODO: 迁移到 @theme --color-* 后删除此白名单，见 issue "shadcn 语义色 token 缺失"
-const SHADCN_COLOR_TOKENS = "bg|text|border|ring|fill|stroke";
-const SHADCN_TOKEN_NAMES =
-  "background|foreground|muted|muted-foreground|border|ring|ring-ring|" +
-  "popover|popover-foreground|accent|accent-foreground|card|card-foreground|" +
-  "secondary|secondary-foreground|destructive|destructive-foreground|" +
-  "input|primary-foreground|" +
-  "sidebar|sidebar-foreground|sidebar-accent|sidebar-accent-foreground|" +
-  "sidebar-border|sidebar-ring|sidebar-primary|sidebar-primary-foreground";
-
-// 变体前缀：覆盖 hover: / dark: / aria-*: / data-[slot=x]: / [&>svg]: 等 v4 写法
-const VARIANT = "(?:[^:\\s]+:)*";
-const OPACITY = "(?:\\/[\\d.]+)?";
-
-const TAILWIND_WHITELIST = [
-  // A 类：@theme --font-size-* 生成的 text-* utility
-  `^${VARIANT}text-(?:caption|caption-strong|body|body-strong|display-md)${OPACITY}$`,
-  // A 类：项目自定义 class + clsx 形参误判
-  `^${VARIANT}(?:data-table|markdown-preview|p-card-inner|prose|prose-sm|prose-invert|reasoning-content|inputs)$`,
-  // B 类 TODO：shadcn 语义色（@layer base，非 @theme）
-  `^${VARIANT}(?:${SHADCN_COLOR_TOKENS})-(?:${SHADCN_TOKEN_NAMES})${OPACITY}$`,
-  // B 类 TODO：--font-heading（@layer base，非 @theme）
-  `^${VARIANT}font-heading$`,
-];
-
-// =============================================================================
 // ESLint 配置
 // =============================================================================
 
@@ -85,10 +55,7 @@ export default tseslint.config(
       // --- Tailwind ---
       ...tailwind.configs.recommended.rules,
       "tailwindcss/classnames-order": "off", // 交给 prettier-plugin-tailwindcss
-      "tailwindcss/no-custom-classname": [
-        "warn",
-        { whitelist: TAILWIND_WHITELIST },
-      ],
+      "tailwindcss/no-custom-classname": "warn",
     },
   },
 

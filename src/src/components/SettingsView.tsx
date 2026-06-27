@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/ui";
@@ -30,16 +30,18 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newServer, setNewServer] = useState({ name: "", url: "" });
 
-  const loadServers = useCallback(async () => {
+  const loadServers = async () => {
     try {
       const data = await fetchJson<McpServerConfig[]>("/api/mcp/servers");
       setServers(data);
     } catch {
       // MCP API may not be available
     }
-  }, []);
+  };
 
-  useEffect(() => { loadServers(); }, [loadServers]);
+  // Load on mount — initialization fetch outside React data flow
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadServers(); }, []);
 
   return (
     <div className="flex h-full flex-1 flex-col gap-5 overflow-y-auto p-6">

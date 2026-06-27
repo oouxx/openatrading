@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useReplayEvents } from '@/hooks/query/useReplayEvents'
 
 // ── Constants ──────────────────────────────────────────
@@ -52,7 +52,6 @@ interface DisplayEvent {
 
 export default function ReplayView() {
   const { data: rawPage, isLoading, error } = useReplayEvents();
-  const [allEvents, setAllEvents] = useState<DisplayEvent[]>([])
   const [currentMinute, setCurrentMinute] = useState(AM[0])
   const [isPlaying, setIsPlaying] = useState(false)
   const [playSpeed, setPlaySpeed] = useState(1)
@@ -66,11 +65,12 @@ export default function ReplayView() {
   const chartRef = useRef<HTMLDivElement>(null)
   const lastAnnouncedTs = useRef<number | null>(null)
 
-  useEffect(() => {
-    if (!rawPage) return;
-    const page = rawPage as ReplayPage;
-    const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000;
-    const events: DisplayEvent[] = (page.events ?? [])
+  // Derive events from rawPage
+  const allEvents = useMemo<DisplayEvent[]>(() => {
+    if (!rawPage) return []
+    const page = rawPage as ReplayPage
+    const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000
+    return (page.events ?? [])
       .filter((e: ReplayEvent) => e.plate_name)
       .map((e: ReplayEvent) => ({
         id: e.id,
@@ -80,11 +80,17 @@ export default function ReplayView() {
         goodOrBad: (e.good_or_bad === 1 ? 1 : 2) as 1 | 2,
         relatedStocks: e.related_stocks || [],
       }))
-      .sort((a, b) => a.minute - b.minute);
-    setAllEvents(events);
+      .sort((a, b) => a.minute - b.minute)
   }, [rawPage])
 
+  // Cleanup timer on unmount
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
+
+  const filtered = useMemo(() => allEvents.filter(e => {
+    if (Math.abs(e.pcp) * 100 < minPct) return false
+    if (filter === 'all') return true
+    return (filter === 'good' && e.goodOrBad === 1) || (filter === 'bad' && e.goodOrBad === 2)
+  }), [allEvents, minPct, filter])
 
   const stop = useCallback(() => {
     setIsPlaying(false)
@@ -158,11 +164,6 @@ export default function ReplayView() {
   }
   if (error) return <div className="flex min-h-screen items-center justify-center bg-bg pt-11" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error.message}</p></div>
 
-  const filtered = allEvents.filter(e => {
-    if (Math.abs(e.pcp) * 100 < minPct) return false
-    if (filter === 'all') return true
-    return (filter === 'good' && e.goodOrBad === 1) || (filter === 'bad' && e.goodOrBad === 2)
-  })
   const nowTs = currentMinute
 
   return (

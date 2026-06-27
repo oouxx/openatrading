@@ -247,18 +247,21 @@ export default function RoleView() {
     })),
   })
 
-  // Select first role on load
+  // Select first role on load — mount initialization
   useEffect(() => {
     if (roles.length > 0 && !selectedRole) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedRole(roles[0].name)
     }
   }, [roles])
 
-  // Load strategy into editor when role changes
+  // Sync editor strategy when role changes — controlled editor pattern
   useEffect(() => {
     if (selectedRole) {
       const role = roles.find((r) => r.name === selectedRole)
-      if (role) setEditStrategyText(role.strategy)
+      if (role)
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setEditStrategyText(role.strategy)
     }
   }, [selectedRole, roles])
 

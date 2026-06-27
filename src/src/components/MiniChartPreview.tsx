@@ -68,13 +68,12 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
     return () => document.removeEventListener('keydown', onKeydown)
   }, [enlarged])
 
-  useEffect(() => {
-    if (enlarged) {
-      const w = (window.innerWidth / 3) / baseWidth
-      const h = (window.innerHeight / 3) / baseHeight
-      setScale(Math.min(w, h))
-    }
-  }, [enlarged])
+  const openEnlarged = useCallback(() => {
+    const w = (window.innerWidth / 3) / baseWidth
+    const h = (window.innerHeight / 3) / baseHeight
+    setScale(Math.min(w, h))
+    setEnlarged(true)
+  }, [])
 
   return (
     <>
@@ -97,7 +96,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
             alt=""
             onClick={(e) => {
               e.stopPropagation()
-              setEnlarged(true)
+              openEnlarged()
             }}
           />
           <p className="text-caption mt-1 text-center font-mono text-ink-muted">
