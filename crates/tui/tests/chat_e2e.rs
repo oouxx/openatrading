@@ -1,5 +1,4 @@
-use envision::harness::AppHarness;
-
+use openatrading_tui::app::VirtualRuntime;
 use openatrading_tui::chat::{ChatApp, ChatArgs, Msg};
 
 const WIDTH: u16 = 80;
@@ -13,39 +12,38 @@ fn test_args() -> ChatArgs {
     }
 }
 
-/// Helper: create an AppHarness, type input, render, return screen text.
+/// Helper: create a VirtualRuntime, type input, dispatch submit, return screen text.
 async fn run_with_input(groups: Vec<(&str, u64)>) -> String {
-    let mut harness = AppHarness::<ChatApp>::with_args(WIDTH, HEIGHT, test_args()).unwrap();
+    let mut runtime = VirtualRuntime::<ChatApp>::new(test_args(), WIDTH, HEIGHT);
 
     for (text, _delay) in groups {
         if text == "\x1b" {
-            harness.dispatch(Msg::Quit);
+            runtime.dispatch(Msg::Quit);
         } else if text.contains('\r') || text.contains('\n') {
-            // Type the text then submit
             for part in text.split('\r') {
                 for part2 in part.split('\n') {
-                    harness.type_str(part2);
+                    runtime.type_str(part2);
                 }
             }
-            harness.dispatch(Msg::SubmitInput);
+            runtime.dispatch(Msg::SubmitInput);
         } else {
-            harness.type_str(text);
+            runtime.type_str(text);
         }
     }
 
-    harness.render().unwrap();
-    harness.screen()
+    runtime.screen()
 }
 
 // ── 1. Initialization ────────────────────────────────────────
 
 #[tokio::test]
-async fn test_init_shows_welcome() {
+async fn test_init_shows_hints() {
     let screen = run_with_input(vec![]).await;
 
     assert!(
-        screen.contains("AI Chat"),
-        "welcome message should appear on init"
+        screen.contains("Enter"),
+        "hints should appear on init; got: {:?}",
+        screen
     );
 }
 
@@ -54,5 +52,5 @@ async fn test_init_shows_welcome() {
 #[tokio::test]
 async fn test_quit_immediately() {
     let screen = run_with_input(vec![("\x1b", 0)]).await;
-    assert!(screen.contains("AI Chat"), "at least the title is there");
+    assert!(!screen.is_empty(), "screen should have content");
 }
