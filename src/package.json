@@ -9,7 +9,11 @@
     "build:vercel": "vite build",
     "build:cloudflare": "vite build",
     "build:tauri": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run lint"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
@@ -41,15 +45,22 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.5.0",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "eslint-plugin-tailwindcss": "^4.0.4",
+    "globals": "^15.0.0",
     "postcss": "^8.5.14",
     "tailwindcss": "^4.3.1",
     "typescript": "~5.7.0",
+    "typescript-eslint": "^8.62.0",
     "vite": "^6.0.0"
   }
 }
