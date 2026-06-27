@@ -103,73 +103,73 @@ export default function SentimentChipTab() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <motion.div
-          className="bg-surface-dark rounded-card border border-hairline-dark p-card-inner"
+          className="p-card-inner rounded-card border border-hairline-dark bg-surface-dark"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption-strong text-ink-muted mb-4 uppercase tracking-wider">市场情绪周期判断</h3>
+          <h3 className="text-caption-strong mb-4 tracking-wider text-ink-muted uppercase">市场情绪周期判断</h3>
           {!history.length ? (
-            <div className="text-center py-8 text-caption text-ink-muted">加载中...</div>
+            <div className="text-caption py-8 text-center text-ink-muted">加载中...</div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <span className="text-caption text-ink-muted">当前：</span>
-                <span className={`px-3 py-1 rounded-button text-caption-strong font-mono ${currentPhaseClass}`}>
+                <span className={`text-caption-strong rounded-button px-3 py-1 font-mono ${currentPhaseClass}`}>
                   {currentPhaseLabel}
                 </span>
               </div>
-              <div className="h-2 rounded-full bg-bg overflow-hidden">
+              <div className="h-2 overflow-hidden rounded-full bg-bg">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-down via-ai to-up"
                   style={{ width: currentSentimentPct + '%' }}
                 />
               </div>
-              <div className="flex justify-between text-caption text-ink-muted">
+              <div className="text-caption flex justify-between text-ink-muted">
                 <span>冷淡</span><span>正常</span><span>偏热</span>
               </div>
-              <p className="text-caption text-ink-muted mt-3">{phaseAdvice}</p>
+              <p className="text-caption mt-3 text-ink-muted">{phaseAdvice}</p>
             </div>
           )}
         </motion.div>
 
         {/* 市场筹码结构分析 */}
         <motion.div
-          className="bg-surface-dark rounded-card border border-hairline-dark p-card-inner"
+          className="p-card-inner rounded-card border border-hairline-dark bg-surface-dark"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption-strong text-ink-muted mb-4 uppercase tracking-wider">市场筹码结构分析</h3>
+          <h3 className="text-caption-strong mb-4 tracking-wider text-ink-muted uppercase">市场筹码结构分析</h3>
           {!overview ? (
-            <div className="text-center py-8 text-caption text-ink-muted">加载中...</div>
+            <div className="text-caption py-8 text-center text-ink-muted">加载中...</div>
           ) : (
             <div className="space-y-3">
-              <div className="flex justify-between text-caption">
+              <div className="text-caption flex justify-between">
                 <span className="text-ink-muted">涨停家数</span>
                 <span className="font-mono text-up">{overview.limit_up_count}</span>
               </div>
-              <div className="flex justify-between text-caption">
+              <div className="text-caption flex justify-between">
                 <span className="text-ink-muted">跌停家数</span>
                 <span className="font-mono text-down">{overview.limit_down_count}</span>
               </div>
-              <div className="flex justify-between text-caption">
+              <div className="text-caption flex justify-between">
                 <span className="text-ink-muted">炸板率</span>
                 <span className={`font-mono ${bombRateClass}`}>{bombRate.toFixed(1)}%</span>
               </div>
-              <div className="flex justify-between text-caption">
+              <div className="text-caption flex justify-between">
                 <span className="text-ink-muted">涨跌比</span>
                 <span className={`font-mono ${riseRatio.class}`}>{riseRatio.display}</span>
               </div>
-              <div className="border-t border-hairline-dark pt-3 mt-3">
-                <div className="flex justify-between text-caption">
+              <div className="mt-3 border-t border-hairline-dark pt-3">
+                <div className="text-caption flex justify-between">
                   <span className="text-ink-muted">情绪评价</span>
                   <span className={`font-mono ${sentimentEvalClass}`}>{sentimentEval}</span>
                 </div>
-                <div className="flex justify-between text-caption mt-1">
+                <div className="text-caption mt-1 flex justify-between">
                   <span className="text-ink-muted">风险提示</span>
                   <span className="font-mono text-up">{riskHint}</span>
                 </div>
@@ -181,16 +181,16 @@ export default function SentimentChipTab() {
 
       {/* 情绪历史表格 */}
       <motion.div
-        className="bg-surface-dark rounded-card border border-hairline-dark overflow-hidden"
+        className="overflow-hidden rounded-card border border-hairline-dark bg-surface-dark"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.15 }}
       >
         <div className="p-card-inner border-b border-hairline-dark">
-          <h3 className="text-caption-strong text-ink-muted uppercase tracking-wider">近{history.length}日情绪数据</h3>
+          <h3 className="text-caption-strong tracking-wider text-ink-muted uppercase">近{history.length}日情绪数据</h3>
         </div>
         {!history.length ? (
-          <div className="text-center py-8 text-caption text-ink-muted">暂无数据</div>
+          <div className="text-caption py-8 text-center text-ink-muted">暂无数据</div>
         ) : (
           <table className="data-table">
             <thead>
@@ -207,12 +207,12 @@ export default function SentimentChipTab() {
               {history.map((row) => (
                 <tr key={row.date}>
                   <td className="font-mono">{row.date}</td>
-                  <td className={`font-mono text-right ${row.sentiment >= 75 ? 'text-up' : row.sentiment >= 60 ? 'text-ai' : 'text-down'}`}>
+                  <td className={`text-right font-mono ${row.sentiment >= 75 ? 'text-up' : row.sentiment >= 60 ? 'text-ai' : 'text-down'}`}>
                     {row.sentiment.toFixed(1)}
                   </td>
-                  <td className="font-mono text-right">{row.limit_up_count}</td>
-                  <td className="font-mono text-right">{row.bomb_rate.toFixed(1)}%</td>
-                  <td className="font-mono text-right">{row.rise_ratio.toFixed(2)}</td>
+                  <td className="text-right font-mono">{row.limit_up_count}</td>
+                  <td className="text-right font-mono">{row.bomb_rate.toFixed(1)}%</td>
+                  <td className="text-right font-mono">{row.rise_ratio.toFixed(2)}</td>
                   <td>{getFeature(row)}</td>
                 </tr>
               ))}

@@ -32,10 +32,10 @@ export default function ResizableHandle({ onResize }: Props) {
 
   return (
     <div
-      className="w-1 cursor-col-resize hover:bg-ai/30 active:bg-ai/50 transition-colors flex-shrink-0 relative"
+      className="relative w-1 flex-shrink-0 cursor-col-resize transition-colors hover:bg-ai/30 active:bg-ai/50"
       onMouseDown={onMouseDown}
     >
-      <div className="absolute inset-y-0 -left-1 -right-1" />
+      <div className="absolute -inset-x-1 inset-y-0" />
     </div>
   );
 }

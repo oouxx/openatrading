@@ -84,7 +84,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="fixed z-[60] bg-bg-surface rounded-card border border-hairline p-2"
+          className="fixed z-[60] rounded-card border border-hairline bg-bg-surface p-2"
           style={{ top: pos.y + 'px', left: pos.x + 'px' }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
@@ -93,14 +93,14 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
             src={gifUrl}
             width={baseWidth}
             height={baseHeight}
-            className="rounded-[8px] block cursor-pointer"
+            className="block cursor-pointer rounded-[8px]"
             alt=""
             onClick={(e) => {
               e.stopPropagation()
               setEnlarged(true)
             }}
           />
-          <p className="text-caption font-mono text-center text-ink-muted mt-1">
+          <p className="text-caption mt-1 text-center font-mono text-ink-muted">
             {symbol} {name}
           </p>
         </div>
@@ -112,7 +112,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           onClick={() => setEnlarged(false)}
         >
           <div
-            className="bg-bg-surface rounded-card border border-hairline p-4"
+            className="rounded-card border border-hairline bg-bg-surface p-4"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               const step = 0.5
@@ -122,10 +122,10 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
             <img
               src={gifUrl}
               style={{ width: baseWidth * scale + 'px', height: baseHeight * scale + 'px' }}
-              className="rounded-[8px] block"
+              className="block rounded-[8px]"
               alt=""
             />
-            <p className="text-caption font-mono text-center text-ink-muted mt-2">
+            <p className="text-caption mt-2 text-center font-mono text-ink-muted">
               {symbol} {name} · {scale.toFixed(2)}x 滚轮缩放
             </p>
           </div>

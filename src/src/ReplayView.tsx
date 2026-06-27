@@ -102,7 +102,7 @@ export default function ReplayView() {
     }, 300)
   }, [playSpeed, stop])
 
-  const toggle = () => { isPlaying ? stop() : start() }
+  const toggle = () => { if (isPlaying) { stop() } else { start() } }
   const step = (d: number) => {
     stop()
     setCurrentMinute(prev => {
@@ -149,14 +149,14 @@ export default function ReplayView() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}>
+      <div className="flex min-h-screen items-center justify-center bg-bg pt-11" style={{ height: 'calc(100vh - 44px)' }}>
         <div className="flex items-center gap-3 text-xs text-ink-muted">
-          <span className="w-2 h-2 rounded-full bg-ai animate-pulse" />加载回放数据...
+          <span className="size-2 animate-pulse rounded-full bg-ai" />加载回放数据...
         </div>
       </div>
     )
   }
-  if (error) return <div className="min-h-screen bg-bg pt-11 flex items-center justify-center" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error.message}</p></div>
+  if (error) return <div className="flex min-h-screen items-center justify-center bg-bg pt-11" style={{ height: 'calc(100vh - 44px)' }}><p className="text-xs text-ink-muted">{error.message}</p></div>
 
   const filtered = allEvents.filter(e => {
     if (Math.abs(e.pcp) * 100 < minPct) return false
@@ -166,9 +166,9 @@ export default function ReplayView() {
   const nowTs = currentMinute
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       {/* Control Bar */}
-      <div className="flex items-center gap-2.5 px-5 py-2 bg-bg-surface border-b border-hairline flex-shrink-0 flex-wrap sticky top-0 z-15">
+      <div className="sticky top-0 z-15 flex flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-hairline bg-bg-surface px-5 py-2">
         {[
           { f: 'all' as const, label: '全部' },
           { f: 'good' as const, label: '利好 ↑' },
@@ -177,47 +177,47 @@ export default function ReplayView() {
           <button
             key={f}
             onClick={() => { setFilter(f); setSelectedId(null) }}
-            className={`px-3.5 py-1 rounded-2xl border text-[11px] cursor-pointer font-medium transition-colors ${
+            className={`cursor-pointer rounded-2xl border px-3.5 py-1 text-[11px] font-medium transition-colors ${
               filter === f
-                ? f === 'good' ? 'bg-up border-up text-white'
-                  : f === 'bad' ? 'bg-down border-down text-white'
-                  : 'bg-ai border-ai text-white'
+                ? f === 'good' ? 'border-up bg-up text-white'
+                  : f === 'bad' ? 'border-down bg-down text-white'
+                  : 'border-ai bg-ai text-white'
                 : 'border-hairline text-ink-muted hover:text-white'
             }`}
           >{label}</button>
         ))}
-        <span className="w-px h-5 bg-hairline mx-1" />
+        <span className="mx-1 h-5 w-px bg-hairline" />
         <span className="text-[10px] text-ink-muted">振幅≥</span>
         <div className="flex gap-0.5">
           {[0, 1, 2, 3, 5].map(p => (
             <button key={p}
               onClick={() => setMinPct(p)}
-              className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors ${minPct === p ? 'bg-ai text-white' : 'border border-hairline text-ink-muted hover:text-white'}`}>
+              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-[10px] transition-colors ${minPct === p ? 'bg-ai text-white' : 'border border-hairline text-ink-muted hover:text-white'}`}>
               {p}%
             </button>
           ))}
         </div>
-        <span className="w-px h-5 bg-hairline mx-1" />
-        <button onClick={() => step(-1)} className="w-[26px] h-[26px] rounded-md border border-hairline bg-transparent text-ink-muted cursor-pointer flex items-center justify-center text-[11px] hover:border-ai hover:text-white transition-colors">⏮</button>
-        <button onClick={toggle} className="w-[34px] h-[34px] rounded-full bg-ai text-white cursor-pointer flex items-center justify-center text-sm hover:opacity-90 transition-opacity flex-shrink-0">{isPlaying ? '⏸' : '▶'}</button>
-        <button onClick={() => step(1)} className="w-[26px] h-[26px] rounded-md border border-hairline bg-transparent text-ink-muted cursor-pointer flex items-center justify-center text-[11px] hover:border-ai hover:text-white transition-colors">⏭</button>
+        <span className="mx-1 h-5 w-px bg-hairline" />
+        <button onClick={() => step(-1)} className="flex size-[26px] cursor-pointer items-center justify-center rounded-md border border-hairline bg-transparent text-[11px] text-ink-muted transition-colors hover:border-ai hover:text-white">⏮</button>
+        <button onClick={toggle} className="flex size-[34px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full bg-ai text-sm text-white transition-opacity hover:opacity-90">{isPlaying ? '⏸' : '▶'}</button>
+        <button onClick={() => step(1)} className="flex size-[26px] cursor-pointer items-center justify-center rounded-md border border-hairline bg-transparent text-[11px] text-ink-muted transition-colors hover:border-ai hover:text-white">⏭</button>
         <div className="flex gap-1">
           {[1, 4, 8, 16].map(sp => (
             <button key={sp} onClick={() => setSpeed(sp)}
-              className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors ${playSpeed === sp ? 'bg-ai text-white' : 'border border-hairline text-ink-muted hover:text-white'}`}>{sp}×</button>
+              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-[10px] transition-colors ${playSpeed === sp ? 'bg-ai text-white' : 'border border-hairline text-ink-muted hover:text-white'}`}>{sp}×</button>
           ))}
         </div>
-        <span className="font-mono text-sm font-semibold text-white min-w-[46px] text-center">{minToTime(currentMinute)}</span>
-        <span className="w-px h-5 bg-hairline mx-1" />
+        <span className="min-w-[46px] text-center font-mono text-sm font-semibold text-white">{minToTime(currentMinute)}</span>
+        <span className="mx-1 h-5 w-px bg-hairline" />
         <button onClick={() => { setVoiceOn(v => !v); if (voiceOn) { window.speechSynthesis?.cancel(); lastAnnouncedTs.current = null } }}
-          className={`flex items-center gap-1 px-3 py-1 rounded-2xl border text-[11px] cursor-pointer transition-colors whitespace-nowrap ${voiceOn ? 'bg-[oklch(55%_0.14_240_/_0.12)] border-[oklch(55%_0.14_240)] text-[oklch(55%_0.14_240)]' : 'border-hairline text-ink-muted hover:text-white'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${voiceOn ? 'bg-[oklch(55%_0.14_240)] animate-pulse' : 'bg-ink-muted'}`} /> 语音播报
+          className={`flex cursor-pointer items-center gap-1 rounded-2xl border px-3 py-1 text-[11px] whitespace-nowrap transition-colors ${voiceOn ? 'border-[oklch(55%_0.14_240)] bg-[oklch(55%_0.14_240_/_0.12)] text-[oklch(55%_0.14_240)]' : 'border-hairline text-ink-muted hover:text-white'}`}>
+          <span className={`size-1.5 rounded-full ${voiceOn ? 'animate-pulse bg-[oklch(55%_0.14_240)]' : 'bg-ink-muted'}`} /> 语音播报
         </button>
-        <span className="text-[10px] text-ink-muted ml-auto">{filtered.length} 个事件</span>
+        <span className="ml-auto text-[10px] text-ink-muted">{filtered.length} 个事件</span>
       </div>
 
       {/* Chart Area */}
-      <div ref={chartRef} className="flex-shrink-0 bg-bg-surface border-b border-hairline relative cursor-crosshair" style={{ height: 260 }}>
+      <div ref={chartRef} className="relative flex-shrink-0 cursor-crosshair border-b border-hairline bg-bg-surface" style={{ height: 260 }}>
         <PulseChart
           events={filtered}
           curMin={nowTs}
@@ -235,7 +235,7 @@ export default function ReplayView() {
           onClick={(id) => { if (id) { setSelectedId(id); jumpToEvent(id) } else { setSelectedId(null) } }}
         />
         {tooltip && (
-          <div className="absolute pointer-events-none px-3 py-2 rounded-lg bg-bg-surface border border-hairline text-white text-[11px] z-50 whitespace-nowrap shadow-lg" style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}>
+          <div className="pointer-events-none absolute z-50 rounded-lg border border-hairline bg-bg-surface px-3 py-2 text-[11px] whitespace-nowrap text-white shadow-lg" style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}>
             <span dangerouslySetInnerHTML={{ __html: tooltip.html }} />
           </div>
         )}
@@ -250,23 +250,23 @@ export default function ReplayView() {
           return (
             <div
               key={e.id}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg mb-1 bg-bg-surface border cursor-pointer transition-all ${
+              className={`mb-1 flex cursor-pointer items-center gap-2.5 rounded-lg border bg-bg-surface px-3 py-2 transition-all ${
                 past ? 'opacity-100' : 'opacity-40'
-              } ${now || selectedId === e.id ? '!border-ai shadow-[0_0_0_2px_var(--color-accent)] !opacity-100' : 'border-hairline'}`}
+              } ${now || selectedId === e.id ? '!border-ai !opacity-100 shadow-[0_0_0_2px_var(--color-accent)]' : 'border-hairline'}`}
               onClick={() => { setSelectedId(e.id); jumpToEvent(e.id) }}
             >
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isGood ? 'bg-up' : 'bg-down'}`} />
-              <span className="font-mono text-[11px] text-ink-muted min-w-[42px]">{minToTime(e.minute)}</span>
-              <span className="font-semibold text-xs text-white w-[72px] truncate">{e.plateName}</span>
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${isGood ? 'bg-up/10 text-up' : 'bg-down/10 text-down'}`}>{isGood ? '利好' : '利空'}</span>
-              <span className={`font-mono text-[11px] font-medium w-[64px] ${isGood ? 'text-up' : 'text-down'}`}>
+              <span className={`size-2 flex-shrink-0 rounded-full ${isGood ? 'bg-up' : 'bg-down'}`} />
+              <span className="min-w-[42px] font-mono text-[11px] text-ink-muted">{minToTime(e.minute)}</span>
+              <span className="w-[72px] truncate text-xs font-semibold text-white">{e.plateName}</span>
+              <span className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isGood ? 'bg-up/10 text-up' : 'bg-down/10 text-down'}`}>{isGood ? '利好' : '利空'}</span>
+              <span className={`w-[64px] font-mono text-[11px] font-medium ${isGood ? 'text-up' : 'text-down'}`}>
                 {(e.pcp >= 0 ? '+' : '-')}{(Math.abs(e.pcp) * 100).toFixed(2)}%
               </span>
-              <span className="text-[10px] text-ink-muted flex-1 text-right truncate">
+              <span className="flex-1 truncate text-right text-[10px] text-ink-muted">
                 {e.relatedStocks.map(s => (
                   <span key={s.symbol}>
                     {s.name}
-                    <span className={`font-mono ml-0.5 ${s.pcp >= 0 ? 'text-up' : 'text-down'}`}>
+                    <span className={`ml-0.5 font-mono ${s.pcp >= 0 ? 'text-up' : 'text-down'}`}>
                       {s.pcp >= 0 ? '+' : '-'}{(Math.abs(s.pcp) * 100).toFixed(2)}%
                     </span>
                     {' '}

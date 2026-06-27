@@ -131,7 +131,7 @@ export async function apiChatStream(
           } else if (currentEvent === "tool-call") {
             try {
               callbacks.onToolCall?.(JSON.parse(data));
-            } catch {}
+            } catch { /* ignore parse errors */ }
           } else if (
             currentEvent === "tool-delta" ||
             currentEvent === "tool-exec-start" ||

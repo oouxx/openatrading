@@ -43,27 +43,27 @@ function NewsList({
   isLoading: boolean
 }) {
   if (items.length === 0 && isLoading) {
-    return <div className="text-center py-12 text-caption text-ink-muted">加载中...</div>
+    return <div className="text-caption py-12 text-center text-ink-muted">加载中...</div>
   }
   if (items.length === 0) {
-    return <div className="text-center py-12 text-caption text-ink-muted">暂无资讯</div>
+    return <div className="text-caption py-12 text-center text-ink-muted">暂无资讯</div>
   }
   return (
     <>
       {items.map((item, idx) => (
         <div
           key={`${item.id}-${idx}`}
-          className={`px-4 py-3 border-t border-hairline transition-colors hover:bg-bg-hover cursor-pointer ${idx === 0 ? 'border-t-0' : ''}`}
+          className={`cursor-pointer border-t border-hairline px-4 py-3 transition-colors hover:bg-bg-hover ${idx === 0 ? 'border-t-0' : ''}`}
         >
           <div className="flex items-start gap-2">
-            <span className="text-caption shrink-0 mt-0.5">{item.severity === 'major' ? '🔴' : '⚪'}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-caption text-white/80 leading-relaxed">
-                <span className="text-ink-muted font-mono mr-1">{item.time}</span>
+            <span className="text-caption mt-0.5 shrink-0">{item.severity === 'major' ? '🔴' : '⚪'}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-caption leading-relaxed text-white/80">
+                <span className="mr-1 font-mono text-ink-muted">{item.time}</span>
                 {item.title}
               </p>
               {item.aiNote && (
-                <p className="text-caption text-ai/80 mt-1 leading-relaxed">→ {item.aiNote}</p>
+                <p className="text-caption mt-1 leading-relaxed text-ai/80">→ {item.aiNote}</p>
               )}
             </div>
           </div>
@@ -110,8 +110,8 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
 
   if (variant === 'tab') {
     return (
-      <div className="h-full min-h-0 flex flex-col">
-        <div className="flex items-center gap-3 mb-6 text-caption flex-shrink-0">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="text-caption mb-6 flex flex-shrink-0 items-center gap-3">
           <span className="text-white/60">
             <b className="text-white">{filteredNews.length}</b> 条资讯
             {source === 'all' && (
@@ -123,7 +123,7 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-bg border border-hairline rounded-input px-2 py-0.5 text-caption text-ink-muted outline-none cursor-pointer font-mono"
+            className="text-caption cursor-pointer rounded-input border border-hairline bg-bg px-2 py-0.5 font-mono text-ink-muted outline-none"
           >
             <option value="all">全部来源</option>
             <option value="cls">财联社</option>
@@ -132,43 +132,43 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
         </div>
 
         {error && (
-          <div className="text-center py-12 flex-shrink-0">
-            <p className="text-caption text-up mb-3">资讯加载失败</p>
+          <div className="flex-shrink-0 py-12 text-center">
+            <p className="text-caption mb-3 text-up">资讯加载失败</p>
             <button
               onClick={() => refetch()}
-              className="px-4 py-1.5 border border-hairline rounded text-xs text-ink-muted hover:text-white transition-colors cursor-pointer"
+              className="cursor-pointer rounded border border-hairline px-4 py-1.5 text-xs text-ink-muted transition-colors hover:text-white"
             >
               重试
             </button>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {!error && filteredNews.map((item) => (
             <div
               key={item.id}
-              className="bg-surface-dark rounded-card border border-hairline-dark px-4 py-3 flex items-start gap-3 hover:bg-bg-hover transition-colors cursor-pointer group mb-2"
+              className="group mb-2 flex cursor-pointer items-start gap-3 rounded-card border border-hairline-dark bg-surface-dark px-4 py-3 transition-colors hover:bg-bg-hover"
             >
-              <span className="text-caption shrink-0 mt-0.5">{item.severity === 'major' ? '🔴' : '⚪'}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-caption text-white/80 leading-relaxed group-hover:text-white transition-colors">
-                  <span className="text-ink-muted font-mono mr-2 text-xs">{item.time}</span>
+              <span className="text-caption mt-0.5 shrink-0">{item.severity === 'major' ? '🔴' : '⚪'}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-caption leading-relaxed text-white/80 transition-colors group-hover:text-white">
+                  <span className="mr-2 font-mono text-xs text-ink-muted">{item.time}</span>
                   {item.title}
                 </p>
                 {item.aiNote && (
-                  <p className="text-caption text-ai/70 mt-1 leading-relaxed text-xs">→ {item.aiNote}</p>
+                  <p className="text-caption mt-1 text-xs leading-relaxed text-ai/70">→ {item.aiNote}</p>
                 )}
               </div>
             </div>
           ))}
 
           {isFetchingNextPage && (
-            <div className="text-center py-4 text-caption text-ink-muted">加载更多...</div>
+            <div className="text-caption py-4 text-center text-ink-muted">加载更多...</div>
           )}
           {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
 
           {!isLoading && !error && filteredNews.length === 0 && (
-            <div className="text-center py-12 text-caption text-ink-muted">暂无资讯</div>
+            <div className="text-caption py-12 text-center text-ink-muted">暂无资讯</div>
           )}
         </div>
       </div>
@@ -176,32 +176,32 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
   }
 
   return (
-    <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
+    <div className="overflow-hidden rounded-card border border-hairline bg-bg-surface">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">📡 实时资讯</span>
+          <span className="text-caption-strong font-mono tracking-wider text-ink-muted uppercase">📡 实时资讯</span>
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-bg border border-hairline rounded-input px-2 py-0.5 text-caption text-ink-muted outline-none cursor-pointer font-mono"
+            className="text-caption cursor-pointer rounded-input border border-hairline bg-bg px-2 py-0.5 font-mono text-ink-muted outline-none"
           >
             <option value="all">全部</option>
             <option value="cls">财联社</option>
             <option value="jiuyan">韭研公社</option>
           </select>
         </div>
-        <span className="text-caption text-ink-muted font-mono">{filteredNews.length} 条</span>
+        <span className="text-caption font-mono text-ink-muted">{filteredNews.length} 条</span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
         {isLoading && !allItems.length ? (
-          <div className="text-center py-8 text-caption text-ink-muted">加载中...</div>
+          <div className="text-caption py-8 text-center text-ink-muted">加载中...</div>
         ) : error && !allItems.length ? (
-          <div className="text-center py-8">
-            <p className="text-caption text-up mb-3">资讯加载失败</p>
+          <div className="py-8 text-center">
+            <p className="text-caption mb-3 text-up">资讯加载失败</p>
             <button
               onClick={() => refetch()}
-              className="px-4 py-1.5 border border-hairline rounded text-xs text-ink-muted hover:text-white transition-colors cursor-pointer"
+              className="cursor-pointer rounded border border-hairline px-4 py-1.5 text-xs text-ink-muted transition-colors hover:text-white"
             >
               重试
             </button>
@@ -210,7 +210,7 @@ export default function NewsFeed({ variant = 'default' }: NewsFeedProps) {
           <>
             <NewsList items={filteredNews} isLoading={isLoading} />
             {isFetchingNextPage && (
-              <div className="text-center py-3 text-caption text-ink-muted">加载更多...</div>
+              <div className="text-caption py-3 text-center text-ink-muted">加载更多...</div>
             )}
             {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
           </>

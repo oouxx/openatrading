@@ -43,10 +43,10 @@ export function ReasoningRoot({
 
 export function ReasoningTrigger({ active = false }: { active?: boolean }) {
   return (
-    <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-caption text-ink-muted hover:bg-bg-hover transition-colors">
+    <Collapsible.Trigger className="group text-caption flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-ink-muted transition-colors hover:bg-bg-hover">
       {/* Brain icon */}
       <svg
-        className="w-4 h-4 shrink-0"
+        className="size-4 shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -59,12 +59,12 @@ export function ReasoningTrigger({ active = false }: { active?: boolean }) {
       <span className="font-mono">思考过程</span>
       {active && (
         <span
-          className="w-1.5 h-1.5 rounded-full bg-ai inline-block"
+          className="inline-block size-1.5 rounded-full bg-ai"
           style={{ animation: "reasoning-shimmer 1.2s ease-in-out infinite" }}
         />
       )}
       <svg
-        className="w-3 h-3 ml-auto shrink-0 transition-transform group-data-[state=open]:rotate-180"
+        className="ml-auto size-3 shrink-0 transition-transform group-data-[state=open]:rotate-180"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -111,11 +111,11 @@ export interface ReasoningTextProps {
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="max-h-48 overflow-y-auto px-3 pb-2 pt-1 text-caption text-ink-muted leading-relaxed whitespace-pre-wrap">
+      <div className="text-caption max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap text-ink-muted">
         {children}
       </div>
       <div
-        className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
         style={{
           background:
             "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
@@ -130,7 +130,7 @@ export function ReasoningText({ className = "", children }: ReasoningTextProps) 
 export function ReasoningFade() {
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
       style={{
         background:
           "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",

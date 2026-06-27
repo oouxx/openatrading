@@ -65,13 +65,13 @@ function PlateCard({
   const isOpen = expanded === plate.name;
 
   return (
-    <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
+    <div className="overflow-hidden rounded-card border border-hairline bg-bg-surface">
       <div
-        className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-bg-hover transition-colors"
+        className="flex cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-bg-hover"
         onClick={() => setExpanded(isOpen ? null : plate.name)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-white text-sm font-semibold">{plate.name}</span>
+          <span className="text-sm font-semibold text-white">{plate.name}</span>
           <span className="text-caption text-ink-muted">{plate.count}只</span>
         </div>
         <span className="text-caption text-ink-muted">
@@ -80,14 +80,14 @@ function PlateCard({
       </div>
       {plate.reason && (
         <div className="px-4 pb-2">
-          <p className="text-caption text-ink-muted leading-relaxed">
+          <p className="text-caption leading-relaxed text-ink-muted">
             {plate.reason}
           </p>
         </div>
       )}
       {isOpen && plate.list.length > 0 && (
         <div className="border-t border-hairline">
-          <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2">
             {plate.list.map((item) => (
               <StockCard
                 key={item.code}
@@ -117,32 +117,32 @@ function StockCard({
   return (
     <Collapsible className="group">
       <div
-        className="bg-bg rounded-card border border-hairline cursor-pointer hover:border-ai/30 transition-colors"
+        className="cursor-pointer rounded-card border border-hairline bg-bg transition-colors hover:border-ai/30"
         onClick={() => onOpenKline(item.code, item.name)}
       >
         <div className="flex items-center justify-between p-2">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <span className="text-white text-xs font-semibold truncate">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate text-xs font-semibold text-white">
               {item.name}
             </span>
-            <span className="text-caption text-ink-muted font-mono">
+            <span className="text-caption font-mono text-ink-muted">
               {item.code.replace(/^(sh|sz|bj)/, "")}
             </span>
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex flex-shrink-0 items-center gap-1">
             {ai?.num && (
-              <span className="text-caption text-ai font-semibold">
+              <span className="text-caption font-semibold text-ai">
                 {ai.num}
               </span>
             )}
             {expandable && (
               <CollapsibleTrigger asChild>
                 <button
-                  className="text-caption text-ink-muted hover:text-ai transition-colors"
+                  className="text-caption text-ink-muted transition-colors hover:text-ai"
                   title="异动详情"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <ChevronDown className="w-3 h-3 group-data-[state=open]:rotate-180 transition-transform" />
+                  <ChevronDown className="size-3 transition-transform group-data-[state=open]:rotate-180" />
                 </button>
               </CollapsibleTrigger>
             )}
@@ -152,7 +152,7 @@ function StockCard({
           (ai.time !== undefined ||
             ai.price !== undefined ||
             ai.shares_range !== undefined) && (
-            <div className="px-2 pb-2 -mt-1 flex items-center gap-2 text-caption font-mono flex-wrap">
+            <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
               {ai.time && <span className="text-ink-muted">{ai.time}</span>}
               {ai.price !== undefined && (
                 <span className="text-ink-muted">
@@ -173,8 +173,8 @@ function StockCard({
       </div>
       {expandable && (
         <CollapsibleContent>
-          <div className="px-2 py-2 bg-bg-hover/30 border-t border-hairline rounded-b-card">
-            <p className="text-caption text-ink-muted leading-relaxed whitespace-pre-line">
+          <div className="rounded-b-card border-t border-hairline bg-bg-hover/30 p-2">
+            <p className="text-caption leading-relaxed whitespace-pre-line text-ink-muted">
               {ai!.expound}
             </p>
           </div>

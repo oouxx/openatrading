@@ -23,9 +23,9 @@ export default function StrongStocksTab() {
   const openKline = useRightPanelStore((s) => s.openKline)
 
   return (
-    <div className="bg-bg-surface rounded-card border border-hairline overflow-hidden">
-      <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
-        <span className="text-caption-strong text-ink-muted font-mono uppercase tracking-wider">
+    <div className="overflow-hidden rounded-card border border-hairline bg-bg-surface">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
+        <span className="text-caption-strong font-mono tracking-wider text-ink-muted uppercase">
           涨停股 · {limitUpStocks.length}
         </span>
       </div>
@@ -49,15 +49,15 @@ export default function StrongStocksTab() {
                 <td className="text-ink-muted">{s.symbol.replace(/\.[A-Z]+$/, '')}</td>
                 <td>
                   <MiniChartPreview symbol={s.symbol} name={s.stock_chi_name}>
-                    <span className="text-white hover:text-ai transition-colors">{s.stock_chi_name}</span>
+                    <span className="text-white transition-colors hover:text-ai">{s.stock_chi_name}</span>
                   </MiniChartPreview>
                 </td>
                 <td className={pctClass(s.change_percent)}>{formatPct(s.change_percent)}</td>
-                <td className="text-ai font-semibold">{s.limit_up_days > 1 ? s.limit_up_days + '连板' : '-'}</td>
+                <td className="font-semibold text-ai">{s.limit_up_days > 1 ? s.limit_up_days + '连板' : '-'}</td>
                 <td>{s.break_limit_up_times || '-'}</td>
                 <td>{s.turnover_ratio?.toFixed(2) + '%' || '-'}</td>
                 <td>{formatCap(s.total_capital)}</td>
-                <td className="max-w-[200px] truncate text-ink-muted text-xs">
+                <td className="max-w-[200px] truncate text-xs text-ink-muted">
                   {s.surge_reason?.stock_reason || '-'}
                 </td>
               </tr>
