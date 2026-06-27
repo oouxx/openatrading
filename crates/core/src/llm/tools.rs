@@ -9,7 +9,7 @@ use openatrading_agent::types::{AgentToolResult, DynTool};
 
 use crate::api::cls::ClsClient;
 use crate::api::eastmoney::LhbClient;
-use crate::api::jiuyangongshe::JiuYanSession;
+use crate::api::jiuyangongshe::{CommunityQuery, JiuYanSession};
 use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::memory::sqlite::MemoryStore;
 use crate::trade::sqlite::TradeManager;
@@ -372,6 +372,53 @@ pub fn get_telegraph_allday() -> Arc<DynTool> {
     )
 }
 
+// ─── 社群文章（韭研公社）──────────────────────────
+
+pub fn get_community() -> Arc<DynTool> {
+    tool(
+        "get_community",
+        "获取韭研公社社群文章动态。包含文章标题、内容概要、作者信息(nickname)、\
+        关联股票(stock_list, 含代码和名称)、点赞数、评论数、收藏数、转发数、发布时间。\
+        用法：捕捉社群对特定板块/热点的讨论热度——评论/点赞数高=高关注；\
+        关联股票可发现潜在热点标的；支持按类型筛选观点或资讯。",
+        str_schema(&[
+            ("category_id", "文章分类ID，默认空字符串获取所有分类"),
+            (
+                "article_type",
+                "文章类型：0=所有类型、1=观点、2=资讯，默认0",
+            ),
+            ("page", "页码，从1开始，默认1"),
+            ("page_size", "每页返回条数，默认20，最大50"),
+        ]),
+        Arc::new(|_id, args, _signal, _progress| {
+            Box::pin(async move {
+                let category_id = str_arg(&args, "category_id");
+                let article_type = args
+                    .get("article_type")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
+                let page = args.get("page").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+                let page_size = args
+                    .get("page_size")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(20)
+                    .min(50) as i32;
+                let query = CommunityQuery {
+                    category_id,
+                    article_type,
+                    page,
+                    page_size,
+                };
+                let result = JiuYanSession::new()
+                    .fetch_community(query)
+                    .await
+                    .map_err(to_box_err)?;
+                Ok(text_result(&result))
+            })
+        }),
+    )
+}
+
 // ─── 龙虎榜 ──────────────────────────────────────────
 
 pub fn get_lhb_detail() -> Arc<DynTool> {
@@ -634,6 +681,7 @@ impl ToolRegistry {
                 get_kline(),
                 get_telegraph(),
                 get_telegraph_allday(),
+                get_community(),
                 get_all_day_events(),
                 get_auction_quotes(),
             ],
