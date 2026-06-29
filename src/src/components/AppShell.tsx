@@ -1,46 +1,48 @@
 // src/components/AppShell.tsx
-import { useState, useCallback } from "react";
-import { useAppMode } from "@/contexts/AppModeContext";
-import AiCopilot from "@/AiCopilot";
-import ConversationSidebar from "./ConversationSidebar";
-import { useThreads } from "@/hooks/useChatThreads";
-import { useStockTabStore } from "@/stores/stockTabStore";
-import { useThreadStore } from "@/stores/threadStore";
-import RightPanel from "./RightPanel";
-import SkillEditor from "./SkillEditor";
-import SettingsView from "./SettingsView";
-import SettingsSidebar from "./SettingsSidebar";
-import type { SettingsTab } from "./SettingsSidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { useState, useCallback } from "react"
+import { useAppMode } from "@/contexts/AppModeContext"
+import AiCopilot from "@/AiCopilot"
+import ConversationSidebar from "./ConversationSidebar"
+import { useThreads } from "@/hooks/useChatThreads"
+import { useStockTabStore } from "@/stores/stockTabStore"
+import { useThreadStore } from "@/stores/threadStore"
+import RightPanel from "./RightPanel"
+import SkillEditor from "./SkillEditor"
+import SettingsView from "./SettingsView"
+import SettingsSidebar from "./SettingsSidebar"
+import type { SettingsTab } from "./SettingsSidebar"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 export default function AppShell() {
-  const { mode } = useAppMode();
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
-  const activeThreadId = useThreadStore((s) => s.activeThreadId);
-  const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId);
-  const { threads, createThread, deleteThread, reload } = useThreads();
+  const { mode } = useAppMode()
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance")
+  const activeThreadId = useThreadStore((s) => s.activeThreadId)
+  const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
+  const { threads, createThread, deleteThread, reload } = useThreads()
 
   const handleNewThread = async () => {
-    const thread = await createThread("新对话");
-    setActiveThreadId(thread.id);
-  };
+    const thread = await createThread("新对话")
+    setActiveThreadId(thread.id)
+  }
 
-  const handleDeleteThread = useCallback(async (id: number) => {
-    await deleteThread(id);
-    if (activeThreadId === id) setActiveThreadId(null);
-    reload();
-  }, [activeThreadId, deleteThread, reload]);
+  const handleDeleteThread = useCallback(
+    async (id: number) => {
+      await deleteThread(id)
+      if (activeThreadId === id) setActiveThreadId(null)
+      reload()
+    },
+    [activeThreadId, deleteThread, reload]
+  )
 
-  const handleActiveChange = useCallback((id: number | null) => {
-    setActiveThreadId(id);
-    useStockTabStore.getState().setActiveStockTab(null);
-    reload();
-  }, [reload]);
+  const handleActiveChange = useCallback(
+    (id: number | null) => {
+      setActiveThreadId(id)
+      useStockTabStore.getState().setActiveStockTab(null)
+      reload()
+    },
+    [reload]
+  )
 
   return (
     <TooltipProvider>
@@ -70,7 +72,7 @@ export default function AppShell() {
             </div>
           ) : mode === "skill-editor" ? (
             <div className="flex h-full min-w-0 flex-1 flex-col">
-              <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
+              <div className="border-hairline flex items-center gap-2 border-b px-3 py-2">
                 <SidebarTrigger />
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -79,7 +81,7 @@ export default function AppShell() {
             </div>
           ) : (
             <div className="flex h-full min-w-0 flex-1 flex-col">
-              <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
+              <div className="border-hairline flex items-center gap-2 border-b px-3 py-2">
                 <SidebarTrigger />
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -90,5 +92,5 @@ export default function AppShell() {
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
-  );
+  )
 }

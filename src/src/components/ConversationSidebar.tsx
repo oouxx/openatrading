@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { useMemo, useState } from "react"
+import { Input } from "@/components/ui/input"
 import {
   Sidebar,
   SidebarContent,
@@ -9,17 +9,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
-import { Search, Plus, Settings, Puzzle, Trash2 } from "lucide-react";
-import { useAppMode } from "@/contexts/AppModeContext";
-import type { ChatThread } from "@/hooks/useChatThreads";
+} from "@/components/ui/sidebar"
+import { Search, Plus, Settings, Puzzle, Trash2 } from "lucide-react"
+import { useAppMode } from "@/contexts/AppModeContext"
+import type { ChatThread } from "@/hooks/useChatThreads"
 
 interface ConversationSidebarProps {
-  threads: ChatThread[];
-  activeThreadId: number | null;
-  onSelectThread: (id: number) => void;
-  onNewThread: () => void;
-  onDeleteThread: (id: number) => void;
+  threads: ChatThread[]
+  activeThreadId: number | null
+  onSelectThread: (id: number) => void
+  onNewThread: () => void
+  onDeleteThread: (id: number) => void
 }
 
 export default function ConversationSidebar({
@@ -29,14 +29,14 @@ export default function ConversationSidebar({
   onNewThread,
   onDeleteThread,
 }: ConversationSidebarProps) {
-  const { mode, setMode } = useAppMode();
-  const [search, setSearch] = useState("");
+  const { mode, setMode } = useAppMode()
+  const [search, setSearch] = useState("")
 
   const filteredThreads = useMemo(() => {
-    if (!search.trim()) return threads;
-    const q = search.trim().toLowerCase();
-    return threads.filter((t) => t.title.toLowerCase().includes(q));
-  }, [threads, search]);
+    if (!search.trim()) return threads
+    const q = search.trim().toLowerCase()
+    return threads.filter((t) => t.title.toLowerCase().includes(q))
+  }, [threads, search])
 
   return (
     <Sidebar collapsible="icon">
@@ -95,12 +95,17 @@ export default function ConversationSidebar({
                     onClick={() => onSelectThread(t.id)}
                     tooltip={t.title}
                   >
-                    <span className={`size-1.5 flex-shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`} />
+                    <span
+                      className={`size-1.5 flex-shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
+                    />
                     <span className="flex-1 truncate">{t.title}</span>
                   </SidebarMenuButton>
                   <button
-                    className="absolute top-1/2 right-1.5 z-10 -translate-y-1/2 text-ink-muted opacity-0 transition-opacity group-hover/item:opacity-100 hover:text-down"
-                    onClick={(e) => { e.stopPropagation(); onDeleteThread(t.id); }}
+                    className="text-ink-muted hover:text-down absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeleteThread(t.id)
+                    }}
                     title="删除"
                   >
                     <Trash2 className="size-3" />
@@ -127,5 +132,5 @@ export default function ConversationSidebar({
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
-  );
+  )
 }

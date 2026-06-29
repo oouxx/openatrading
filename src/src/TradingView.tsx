@@ -1,18 +1,23 @@
-import { useMemo } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import type { IndexQuote } from '@/stores/data'
-import { useOverview } from '@/hooks/query/useOverview'
-import { useIndexQuotes } from '@/hooks/query/useIndexQuotes'
-import { useRightPanelStore } from '@/stores/rightPanelStore'
-import KpiCards from '@/components/KpiCards'
-import KlineDrawer from '@/components/KlineDrawer'
+import { useMemo } from "react"
+import { AnimatePresence } from "framer-motion"
+import type { IndexQuote } from "@/stores/data"
+import { useOverview } from "@/hooks/query/useOverview"
+import { useIndexQuotes } from "@/hooks/query/useIndexQuotes"
+import { useRightPanelStore } from "@/stores/rightPanelStore"
+import KpiCards from "@/components/KpiCards"
+import KlineDrawer from "@/components/KlineDrawer"
 
 export default function TradingView() {
   const klineTarget = useRightPanelStore((s) => s.klineTarget)
   const closeKline = useRightPanelStore((s) => s.closeKline)
   const setActiveView = useRightPanelStore((s) => s.setActiveView)
 
-  const { data: overview, isLoading: ovLoading, error: ovError, refetch: refetchOverview } = useOverview()
+  const {
+    data: overview,
+    isLoading: ovLoading,
+    error: ovError,
+    refetch: refetchOverview,
+  } = useOverview()
   const { data: indexQuotes = [], isLoading: idxLoading, error: idxError } = useIndexQuotes()
 
   const indexCards = useMemo(() => {
@@ -26,19 +31,19 @@ export default function TradingView() {
   }, [indexQuotes])
 
   return (
-    <div className="min-h-screen bg-bg pt-14">
+    <div className="bg-bg min-h-screen pt-14">
       <div className="mx-auto max-w-[1600px] px-6 py-4">
         {/* 错误状态 */}
         {ovError && (
           <div className="py-4">
-            <div className="flex items-center justify-between rounded-card border border-up/20 bg-up/5 px-5 py-3">
+            <div className="rounded-card border-up/20 bg-up/5 flex items-center justify-between border px-5 py-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm text-up">⚠</span>
+                <span className="text-up text-sm">⚠</span>
                 <span className="text-caption text-up">{ovError.message}</span>
               </div>
               <button
                 onClick={() => refetchOverview()}
-                className="text-caption cursor-pointer text-up underline"
+                className="text-caption text-up cursor-pointer underline"
               >
                 重试
               </button>
@@ -49,8 +54,8 @@ export default function TradingView() {
         {/* 加载状态 */}
         {ovLoading && !overview && (
           <div className="flex flex-col items-center justify-center gap-4 py-32">
-            <div className="size-3 animate-pulse rounded-full bg-ai" />
-            <span className="text-caption font-mono text-ink-muted">加载市场数据...</span>
+            <div className="bg-ai size-3 animate-pulse rounded-full" />
+            <span className="text-caption text-ink-muted font-mono">加载市场数据...</span>
           </div>
         )}
 
@@ -58,14 +63,14 @@ export default function TradingView() {
           <>
             {/* 指数加载状态 */}
             {idxLoading && !indexQuotes.length && (
-              <div className="p-card-inner flex items-center justify-center rounded-card border border-hairline bg-bg-surface py-6">
-                <span className="text-caption font-mono text-ink-muted">加载指数数据...</span>
+              <div className="p-card-inner rounded-card border-hairline bg-bg-surface flex items-center justify-center border py-6">
+                <span className="text-caption text-ink-muted font-mono">加载指数数据...</span>
               </div>
             )}
 
             {/* 指数错误状态 */}
             {!idxLoading && idxError && (
-              <div className="p-card-inner flex items-center justify-center rounded-card border border-hairline bg-bg-surface py-6">
+              <div className="p-card-inner rounded-card border-hairline bg-bg-surface flex items-center justify-center border py-6">
                 <span className="text-caption text-up">{idxError.message}</span>
               </div>
             )}
@@ -73,11 +78,19 @@ export default function TradingView() {
             {indexCards.length > 0 && (
               <div className="mb-6 grid grid-cols-3 gap-4">
                 {indexCards.map((idx) => (
-                  <div key={idx.name} className="p-card-inner flex flex-col gap-1 rounded-card border border-hairline bg-bg-surface">
-                    <span className="text-caption font-mono text-ink-muted">{idx.name}</span>
-                    <span className="font-mono text-xl text-white tabular-nums">{idx.lastPx.toFixed(2)}</span>
-                    <span className={`text-caption font-mono tabular-nums ${idx.isUp ? 'text-up' : 'text-down'}`}>
-                      {idx.isUp ? '+' : ''}{idx.pxChangeRate.toFixed(2)}%
+                  <div
+                    key={idx.name}
+                    className="p-card-inner rounded-card border-hairline bg-bg-surface flex flex-col gap-1 border"
+                  >
+                    <span className="text-caption text-ink-muted font-mono">{idx.name}</span>
+                    <span className="font-mono text-xl text-white tabular-nums">
+                      {idx.lastPx.toFixed(2)}
+                    </span>
+                    <span
+                      className={`text-caption font-mono tabular-nums ${idx.isUp ? "text-up" : "text-down"}`}
+                    >
+                      {idx.isUp ? "+" : ""}
+                      {idx.pxChangeRate.toFixed(2)}%
                     </span>
                   </div>
                 ))}
@@ -95,16 +108,16 @@ export default function TradingView() {
             {/* 快捷入口 */}
             <div className="mt-6 flex gap-3">
               {[
-                { label: '强势股', view: 'strong-stocks' as const },
-                { label: '晋级分析', view: 'promotion' as const },
-                { label: '板块异动', view: 'plate' as const },
-                { label: '时间线', view: 'timeline' as const },
-                { label: '市场情报', view: 'market-intel' as const },
+                { label: "强势股", view: "strong-stocks" as const },
+                { label: "晋级分析", view: "promotion" as const },
+                { label: "板块异动", view: "plate" as const },
+                { label: "时间线", view: "timeline" as const },
+                { label: "市场情报", view: "market-intel" as const },
               ].map((item) => (
                 <button
                   key={item.view}
                   onClick={() => setActiveView(item.view)}
-                  className="rounded-card border border-hairline bg-bg-surface px-4 py-2 text-xs text-white transition-colors hover:border-ai/40"
+                  className="rounded-card border-hairline bg-bg-surface hover:border-ai/40 border px-4 py-2 text-xs text-white transition-colors"
                 >
                   {item.label} →
                 </button>
@@ -116,11 +129,7 @@ export default function TradingView() {
 
       <AnimatePresence>
         {klineTarget && (
-          <KlineDrawer
-            symbol={klineTarget.symbol}
-            name={klineTarget.name}
-            onClose={closeKline}
-          />
+          <KlineDrawer symbol={klineTarget.symbol} name={klineTarget.name} onClose={closeKline} />
         )}
       </AnimatePresence>
     </div>

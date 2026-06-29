@@ -1,48 +1,43 @@
 // src/hooks/usePanelWidth.ts
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react"
 
 export function usePanelWidth(
   storageKey: string,
   defaultWidth: number,
   min: number,
   max: number,
-  collapsedKey: string,
+  collapsedKey: string
 ) {
   const [width, setWidthRaw] = useState(() => {
     try {
-      return parseInt(
-        localStorage.getItem(storageKey) || String(defaultWidth),
-        10,
-      );
+      return parseInt(localStorage.getItem(storageKey) || String(defaultWidth), 10)
     } catch {
-      return defaultWidth;
+      return defaultWidth
     }
-  });
+  })
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(collapsedKey) === "true";
+      return localStorage.getItem(collapsedKey) === "true"
     } catch {
-      return false;
+      return false
     }
-  });
+  })
 
   useEffect(() => {
-    localStorage.setItem(storageKey, String(width));
-  }, [width, storageKey]);
+    localStorage.setItem(storageKey, String(width))
+  }, [width, storageKey])
   useEffect(() => {
-    localStorage.setItem(collapsedKey, String(collapsed));
-  }, [collapsed, collapsedKey]);
+    localStorage.setItem(collapsedKey, String(collapsed))
+  }, [collapsed, collapsedKey])
 
   const setWidth = useCallback(
     (fn: number | ((prev: number) => number)) => {
-      setWidthRaw((prev) =>
-        Math.max(min, Math.min(max, typeof fn === "function" ? fn(prev) : fn)),
-      );
+      setWidthRaw((prev) => Math.max(min, Math.min(max, typeof fn === "function" ? fn(prev) : fn)))
     },
-    [min, max],
-  );
+    [min, max]
+  )
 
-  const toggleCollapse = useCallback(() => setCollapsed((c) => !c), []);
+  const toggleCollapse = useCallback(() => setCollapsed((c) => !c), [])
 
   return {
     width,
@@ -52,5 +47,5 @@ export function usePanelWidth(
     displayWidth: collapsed ? 0 : width,
     min,
     max,
-  };
+  }
 }

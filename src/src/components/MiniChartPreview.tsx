@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from "react"
 
 interface MiniChartPreviewProps {
   symbol: string
@@ -7,14 +7,14 @@ interface MiniChartPreviewProps {
 }
 
 function normalizeSymbol(raw: string): string {
-  const dot = raw.indexOf('.')
+  const dot = raw.indexOf(".")
   if (dot !== -1) {
     const code = raw.substring(0, dot)
     let suffix = raw.substring(dot + 1).toLowerCase()
-    if (suffix === 'ss') suffix = 'sh'
+    if (suffix === "ss") suffix = "sh"
     return suffix + code
   }
-  return (raw.startsWith('6') ? 'sh' : 'sz') + raw
+  return (raw.startsWith("6") ? "sh" : "sz") + raw
 }
 
 export default function MiniChartPreview({ symbol, name, children }: MiniChartPreviewProps) {
@@ -62,15 +62,15 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
   useEffect(() => {
     if (!enlarged) return
     const onKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setEnlarged(false)
+      if (e.key === "Escape") setEnlarged(false)
     }
-    document.addEventListener('keydown', onKeydown)
-    return () => document.removeEventListener('keydown', onKeydown)
+    document.addEventListener("keydown", onKeydown)
+    return () => document.removeEventListener("keydown", onKeydown)
   }, [enlarged])
 
   const openEnlarged = useCallback(() => {
-    const w = (window.innerWidth / 3) / baseWidth
-    const h = (window.innerHeight / 3) / baseHeight
+    const w = window.innerWidth / 3 / baseWidth
+    const h = window.innerHeight / 3 / baseHeight
     setScale(Math.min(w, h))
     setEnlarged(true)
   }, [])
@@ -83,8 +83,8 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="fixed z-[60] rounded-card border border-hairline bg-bg-surface p-2"
-          style={{ top: pos.y + 'px', left: pos.x + 'px' }}
+          className="rounded-card border-hairline bg-bg-surface fixed z-[60] border p-2"
+          style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
         >
@@ -99,7 +99,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               openEnlarged()
             }}
           />
-          <p className="text-caption mt-1 text-center font-mono text-ink-muted">
+          <p className="text-caption text-ink-muted mt-1 text-center font-mono">
             {symbol} {name}
           </p>
         </div>
@@ -111,7 +111,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           onClick={() => setEnlarged(false)}
         >
           <div
-            className="rounded-card border border-hairline bg-bg-surface p-4"
+            className="rounded-card border-hairline bg-bg-surface border p-4"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               const step = 0.5
@@ -120,11 +120,11 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           >
             <img
               src={gifUrl}
-              style={{ width: baseWidth * scale + 'px', height: baseHeight * scale + 'px' }}
+              style={{ width: baseWidth * scale + "px", height: baseHeight * scale + "px" }}
               className="block rounded-[8px]"
               alt=""
             />
-            <p className="text-caption mt-2 text-center font-mono text-ink-muted">
+            <p className="text-caption text-ink-muted mt-2 text-center font-mono">
               {symbol} {name} · {scale.toFixed(2)}x 滚轮缩放
             </p>
           </div>

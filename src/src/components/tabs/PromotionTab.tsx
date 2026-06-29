@@ -1,16 +1,16 @@
-import { useState, useMemo } from 'react'
-import { type Stock } from '@/stores/data'
-import { useLimitUp } from '@/hooks/query/useLimitUp'
-import { useYesterdayLimitUp } from '@/hooks/query/useYesterdayLimitUp'
-import MiniChartPreview from '@/components/MiniChartPreview'
-import { useRightPanelStore } from '@/stores/rightPanelStore'
+import { useState, useMemo } from "react"
+import { type Stock } from "@/stores/data"
+import { useLimitUp } from "@/hooks/query/useLimitUp"
+import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
+import MiniChartPreview from "@/components/MiniChartPreview"
+import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 interface PromotionItem {
   symbol: string
   name: string
   yesterdayDays: number
   todayDays: number
-  status: 'promoted' | 'broken' | 'first'
+  status: "promoted" | "broken" | "first"
   turnover: number
   capital: number
   changePercent: number
@@ -32,7 +32,7 @@ interface PromotionTabProps {
 }
 
 function isST(name: string) {
-  return name.includes('ST') || name.includes('*')
+  return name.includes("ST") || name.includes("*")
 }
 
 function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] {
@@ -44,22 +44,30 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
   for (const s of todayList) {
     const prev = yesterdayMap.get(s.symbol)
     if (prev) yesterdayMap.delete(s.symbol)
-    const plates = s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || ''
+    const plates = s.surge_reason?.related_plates?.map((p) => p.plate_name).join(", ") || ""
     if (prev) {
       const yestDays = s.yesterday_limit_up_days || prev.yesterday_limit_up_days || 0
       result.push({
-        symbol: s.symbol, name: s.stock_chi_name,
-        yesterdayDays: yestDays, todayDays: s.limit_up_days,
-        status: 'promoted', turnover: s.turnover_ratio,
-        capital: s.total_capital, changePercent: s.change_percent,
+        symbol: s.symbol,
+        name: s.stock_chi_name,
+        yesterdayDays: yestDays,
+        todayDays: s.limit_up_days,
+        status: "promoted",
+        turnover: s.turnover_ratio,
+        capital: s.total_capital,
+        changePercent: s.change_percent,
         reason: plates,
       })
     } else {
       result.push({
-        symbol: s.symbol, name: s.stock_chi_name,
-        yesterdayDays: 0, todayDays: s.limit_up_days,
-        status: 'first', turnover: s.turnover_ratio,
-        capital: s.total_capital, changePercent: s.change_percent,
+        symbol: s.symbol,
+        name: s.stock_chi_name,
+        yesterdayDays: 0,
+        todayDays: s.limit_up_days,
+        status: "first",
+        turnover: s.turnover_ratio,
+        capital: s.total_capital,
+        changePercent: s.change_percent,
         reason: plates,
       })
     }
@@ -67,11 +75,15 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
 
   for (const s of yesterdayMap.values()) {
     result.push({
-      symbol: s.symbol, name: s.stock_chi_name,
-      yesterdayDays: s.yesterday_limit_up_days || 0, todayDays: 0,
-      status: 'broken', turnover: s.turnover_ratio || 0,
-      capital: s.total_capital || 0, changePercent: 0,
-      reason: '',
+      symbol: s.symbol,
+      name: s.stock_chi_name,
+      yesterdayDays: s.yesterday_limit_up_days || 0,
+      todayDays: 0,
+      status: "broken",
+      turnover: s.turnover_ratio || 0,
+      capital: s.total_capital || 0,
+      changePercent: 0,
+      reason: "",
     })
   }
 
@@ -89,7 +101,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
   const handleOpenKline = onOpenKline ?? panelStore.openKline
 
   const isLoading = !stocks.length
-  const error = isLoading ? '' : stocks.length === 0 ? '今日无涨停数据' : ''
+  const error = isLoading ? "" : stocks.length === 0 ? "今日无涨停数据" : ""
   const hasYesterdayData = yesterdayList.length > 0
 
   const allItems = useMemo(() => {
@@ -98,12 +110,15 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
       return stocks.map((s) => {
         const yestDays = s.yesterday_limit_up_days || 0
         return {
-          symbol: s.symbol, name: s.stock_chi_name,
-          yesterdayDays: yestDays, todayDays: s.limit_up_days,
-          status: (yestDays > 0 ? 'promoted' : 'first') as 'promoted' | 'first',
+          symbol: s.symbol,
+          name: s.stock_chi_name,
+          yesterdayDays: yestDays,
+          todayDays: s.limit_up_days,
+          status: (yestDays > 0 ? "promoted" : "first") as "promoted" | "first",
           turnover: s.turnover_ratio,
-          capital: s.total_capital, changePercent: s.change_percent,
-          reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(', ') || '',
+          capital: s.total_capital,
+          changePercent: s.change_percent,
+          reason: s.surge_reason?.related_plates?.map((p) => p.plate_name).join(", ") || "",
         }
       })
     }
@@ -111,22 +126,19 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
   }, [stocks, yesterdayList, hasYesterdayData])
 
   const nonSTItems = useMemo(
-    () => hideST ? allItems.filter((s) => !isST(s.name)) : allItems,
-    [allItems, hideST],
+    () => (hideST ? allItems.filter((s) => !isST(s.name)) : allItems),
+    [allItems, hideST]
   )
 
-  const stFilteredCount = useMemo(
-    () => allItems.filter((s) => isST(s.name)).length,
-    [allItems],
-  )
+  const stFilteredCount = useMemo(() => allItems.filter((s) => isST(s.name)).length, [allItems])
 
   const firstBoard = useMemo(
-    () => nonSTItems.filter((s) => s.status === 'first').sort((a, b) => b.capital - a.capital),
-    [nonSTItems],
+    () => nonSTItems.filter((s) => s.status === "first").sort((a, b) => b.capital - a.capital),
+    [nonSTItems]
   )
 
-  const promoted = useMemo(() => nonSTItems.filter((s) => s.status === 'promoted'), [nonSTItems])
-  const broken = useMemo(() => nonSTItems.filter((s) => s.status === 'broken'), [nonSTItems])
+  const promoted = useMemo(() => nonSTItems.filter((s) => s.status === "promoted"), [nonSTItems])
+  const broken = useMemo(() => nonSTItems.filter((s) => s.status === "broken"), [nonSTItems])
 
   const totalYesterday = promoted.length + broken.length
   const totalToday = promoted.length + firstBoard.length
@@ -155,8 +167,8 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
         brokenCount: g.broken.length,
         rate: total > 0 ? g.promoted.length / total : 0,
         details: [...g.promoted, ...g.broken].sort((a, b) => {
-          if (a.status === 'promoted' && b.status !== 'promoted') return -1
-          if (a.status !== 'promoted' && b.status === 'promoted') return 1
+          if (a.status === "promoted" && b.status !== "promoted") return -1
+          if (a.status !== "promoted" && b.status === "promoted") return 1
           return b.capital - a.capital
         }),
       })
@@ -169,7 +181,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
   if (isLoading) {
     return (
       <div className="flex items-center justify-center gap-3 py-16">
-        <span className="size-2 animate-pulse rounded-full bg-ai" />
+        <span className="bg-ai size-2 animate-pulse rounded-full" />
         <span className="text-caption font-mono text-white/40">加载晋级数据...</span>
       </div>
     )
@@ -177,7 +189,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (error) {
     return (
-      <div className="p-card-inner text-caption rounded-card border border-hairline-dark bg-surface-dark text-center text-white/40">
+      <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
         {error}
       </div>
     )
@@ -185,7 +197,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (ladder.length === 0 && firstBoard.length === 0) {
     return (
-      <div className="p-card-inner text-caption rounded-card border border-hairline-dark bg-surface-dark text-center text-white/40">
+      <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
         今日无涨停数据
       </div>
     )
@@ -195,7 +207,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     <div>
       {/* 昨日数据缺失提示 */}
       {!hasYesterdayData && (
-        <div className="p-card-inner text-caption mb-8 rounded-card border border-hairline-dark bg-surface-dark text-center text-white/40">
+        <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark mb-8 border text-center text-white/40">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
@@ -203,7 +215,12 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
       {/* ST 过滤 */}
       <div className="mb-6 flex items-center gap-4">
         <label className="flex cursor-pointer items-center gap-2 text-white/60 select-none">
-          <input type="checkbox" checked={hideST} onChange={(e) => setHideST(e.target.checked)} className="cursor-pointer" />
+          <input
+            type="checkbox"
+            checked={hideST}
+            onChange={(e) => setHideST(e.target.checked)}
+            className="cursor-pointer"
+          />
           <span className="text-caption">隐藏ST</span>
         </label>
         {hideST && stFilteredCount > 0 && (
@@ -218,37 +235,49 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             <h3 className="text-display-md text-white">连板晋级梯队</h3>
             <span className="text-caption text-white/40">
               昨 {totalYesterday} 只 → 今 {totalToday} 只 · 综合晋级率
-              <b className={overallRate >= 0.5 ? 'text-up' : 'text-white/40'}>
-                {' '}{(overallRate * 100).toFixed(1)}%
+              <b className={overallRate >= 0.5 ? "text-up" : "text-white/40"}>
+                {" "}
+                {(overallRate * 100).toFixed(1)}%
               </b>
             </span>
           </div>
 
-          <div className="p-card-inner rounded-card border border-hairline-dark bg-surface-dark">
+          <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark border">
             {ladder.map((row) => (
               <div key={row.yesterdayDays} className="mb-3 last:mb-0">
                 <div
                   className="text-caption flex cursor-pointer items-center gap-3 font-mono"
-                  onClick={() => setSelectedBoard(selectedBoard === row.yesterdayDays ? null : row.yesterdayDays)}
+                  onClick={() =>
+                    setSelectedBoard(selectedBoard === row.yesterdayDays ? null : row.yesterdayDays)
+                  }
                 >
-                  <span className="text-caption rounded-badge bg-white/10 px-2 py-0.5 text-white/60" style={{ minWidth: 56, textAlign: 'center' }}>
+                  <span
+                    className="text-caption rounded-badge bg-white/10 px-2 py-0.5 text-white/60"
+                    style={{ minWidth: 56, textAlign: "center" }}
+                  >
                     昨{row.yesterdayDays}板
                   </span>
-                  <span className="text-white/40" style={{ minWidth: 40 }}>{row.yesterdayCount}只</span>
+                  <span className="text-white/40" style={{ minWidth: 40 }}>
+                    {row.yesterdayCount}只
+                  </span>
                   <span className="text-white/40">→</span>
                   <span
                     className="text-caption rounded-badge px-2 py-0.5"
-                    style={{ minWidth: 56, textAlign: 'center' }}
+                    style={{ minWidth: 56, textAlign: "center" }}
                   >
                     今{row.yesterdayDays + 1}板
                   </span>
-                  <span className="text-white" style={{ minWidth: 40 }}>{row.promotedCount}只</span>
+                  <span className="text-white" style={{ minWidth: 40 }}>
+                    {row.promotedCount}只
+                  </span>
                   <span className="text-caption text-white/40">晋级率</span>
-                  <b className={row.rate >= 0.5 ? 'text-up' : 'text-white/40'}>{(row.rate * 100).toFixed(1)}%</b>
+                  <b className={row.rate >= 0.5 ? "text-up" : "text-white/40"}>
+                    {(row.rate * 100).toFixed(1)}%
+                  </b>
                   <div className="h-2 flex-1 rounded-full bg-white/10" style={{ minWidth: 60 }}>
                     <div
-                      className={`h-full rounded-full transition-all ${row.rate >= 0.5 ? 'bg-up' : 'bg-down'}`}
-                      style={{ width: (row.rate * 100) + '%' }}
+                      className={`h-full rounded-full transition-all ${row.rate >= 0.5 ? "bg-up" : "bg-down"}`}
+                      style={{ width: row.rate * 100 + "%" }}
                     />
                   </div>
                   <span className="text-caption text-white/40">断板 {row.brokenCount}只</span>
@@ -263,15 +292,18 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                           <th>代码</th>
                           <th>名称</th>
                           <th>昨板→今板</th>
-                          <th style={{ textAlign: 'right' }}>换手率</th>
-                          <th style={{ textAlign: 'right' }}>流通市值</th>
+                          <th style={{ textAlign: "right" }}>换手率</th>
+                          <th style={{ textAlign: "right" }}>流通市值</th>
                           <th>状态</th>
                         </tr>
                       </thead>
                       <tbody>
                         {row.details.map((s) => (
                           <tr key={s.symbol}>
-                            <td className="cursor-pointer font-mono text-ai hover:underline" onClick={() => handleOpenKline(s.symbol, s.name)}>
+                            <td
+                              className="text-ai cursor-pointer font-mono hover:underline"
+                              onClick={() => handleOpenKline(s.symbol, s.name)}
+                            >
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
                                 {s.symbol}
                               </MiniChartPreview>
@@ -282,17 +314,28 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                               </MiniChartPreview>
                             </td>
                             <td className="font-mono">
-                              <span className={s.status === 'promoted' ? 'text-up' : 'text-white/40'}>
-                                {s.yesterdayDays}板 → {s.status === 'promoted' ? s.todayDays + '板' : '断板'}
+                              <span
+                                className={s.status === "promoted" ? "text-up" : "text-white/40"}
+                              >
+                                {s.yesterdayDays}板 →{" "}
+                                {s.status === "promoted" ? s.todayDays + "板" : "断板"}
                               </span>
                             </td>
-                            <td className="text-right font-mono">{s.turnover ? (s.turnover * 100).toFixed(2) + '%' : '-'}</td>
-                            <td className="text-right font-mono">{(s.capital / 1e8).toFixed(1)}亿</td>
+                            <td className="text-right font-mono">
+                              {s.turnover ? (s.turnover * 100).toFixed(2) + "%" : "-"}
+                            </td>
+                            <td className="text-right font-mono">
+                              {(s.capital / 1e8).toFixed(1)}亿
+                            </td>
                             <td>
-                              <span className={`text-caption rounded-badge px-2 py-0.5 font-mono ${
-                                s.status === 'promoted' ? 'bg-up/15 text-up' : 'bg-white/10 text-white/40'
-                              }`}>
-                                {s.status === 'promoted' ? '晋级' : '断板'}
+                              <span
+                                className={`text-caption rounded-badge px-2 py-0.5 font-mono ${
+                                  s.status === "promoted"
+                                    ? "bg-up/15 text-up"
+                                    : "bg-white/10 text-white/40"
+                                }`}
+                              >
+                                {s.status === "promoted" ? "晋级" : "断板"}
                               </span>
                             </td>
                           </tr>
@@ -314,22 +357,25 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             <h3 className="text-display-md text-white">首板新进</h3>
             <span className="text-caption text-white/40">共 {firstBoard.length} 只</span>
           </div>
-          <div className="overflow-hidden rounded-card border border-hairline-dark bg-surface-dark">
+          <div className="rounded-card border-hairline-dark bg-surface-dark overflow-hidden border">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>代码</th>
                   <th>名称</th>
-                  <th style={{ textAlign: 'right' }}>涨跌幅</th>
-                  <th style={{ textAlign: 'right' }}>换手率</th>
-                  <th style={{ textAlign: 'right' }}>流通市值</th>
+                  <th style={{ textAlign: "right" }}>涨跌幅</th>
+                  <th style={{ textAlign: "right" }}>换手率</th>
+                  <th style={{ textAlign: "right" }}>流通市值</th>
                   <th>板块</th>
                 </tr>
               </thead>
               <tbody>
                 {firstBoard.map((s) => (
                   <tr key={s.symbol}>
-                    <td className="cursor-pointer font-mono text-ai hover:underline" onClick={() => handleOpenKline(s.symbol, s.name)}>
+                    <td
+                      className="text-ai cursor-pointer font-mono hover:underline"
+                      onClick={() => handleOpenKline(s.symbol, s.name)}
+                    >
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
                         {s.symbol}
                       </MiniChartPreview>
@@ -339,10 +385,12 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                         {s.name}
                       </MiniChartPreview>
                     </td>
-                    <td className="text-right font-mono text-up">+{(s.changePercent * 100).toFixed(2)}%</td>
+                    <td className="text-up text-right font-mono">
+                      +{(s.changePercent * 100).toFixed(2)}%
+                    </td>
                     <td className="text-right font-mono">{(s.turnover * 100).toFixed(2)}%</td>
                     <td className="text-right font-mono">{(s.capital / 1e8).toFixed(1)}亿</td>
-                    <td className="text-caption text-white/40">{s.reason || '-'}</td>
+                    <td className="text-caption text-white/40">{s.reason || "-"}</td>
                   </tr>
                 ))}
               </tbody>

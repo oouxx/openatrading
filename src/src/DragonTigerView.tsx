@@ -1,98 +1,96 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react"
 import {
   useDragonTigerDetail,
   useDragonTigerStockSeat,
   type DragonTigerDetailItem,
-} from "@/hooks/query/useDragonTiger";
+} from "@/hooks/query/useDragonTiger"
 
 function fmtCap(v: number): string {
-  if (v >= 1e12) return (v / 1e12).toFixed(2) + "万亿";
-  if (v >= 1e8) return (v / 1e8).toFixed(0) + "亿";
-  return v.toFixed(0);
+  if (v >= 1e12) return (v / 1e12).toFixed(2) + "万亿"
+  if (v >= 1e8) return (v / 1e8).toFixed(0) + "亿"
+  return v.toFixed(0)
 }
 
 export default function DragonTigerView() {
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
-  const { data: resp, isLoading, error } = useDragonTigerDetail(page, pageSize);
-  const [dirFilter, setDirFilter] = useState<"all" | "buy" | "sell">("all");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<DragonTigerDetailItem | null>(null);
+  const [page, setPage] = useState(1)
+  const pageSize = 20
+  const { data: resp, isLoading, error } = useDragonTigerDetail(page, pageSize)
+  const [dirFilter, setDirFilter] = useState<"all" | "buy" | "sell">("all")
+  const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState<DragonTigerDetailItem | null>(null)
 
-  const { data: buySeats = [], isLoading: buyLoading } =
-    useDragonTigerStockSeat(
-      selected?.code ?? null,
-      selected?.trade_date
-        ? selected.trade_date.slice(0, 10).replace(/-/g, "")
-        : null,
-      "buy",
-    );
-  const { data: sellSeats = [], isLoading: sellLoading } =
-    useDragonTigerStockSeat(
-      selected?.code ?? null,
-      selected?.trade_date
-        ? selected.trade_date.slice(0, 10).replace(/-/g, "")
-        : null,
-      "sell",
-    );
+  const { data: buySeats = [], isLoading: buyLoading } = useDragonTigerStockSeat(
+    selected?.code ?? null,
+    selected?.trade_date ? selected.trade_date.slice(0, 10).replace(/-/g, "") : null,
+    "buy"
+  )
+  const { data: sellSeats = [], isLoading: sellLoading } = useDragonTigerStockSeat(
+    selected?.code ?? null,
+    selected?.trade_date ? selected.trade_date.slice(0, 10).replace(/-/g, "") : null,
+    "sell"
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelected(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+      if (e.key === "Escape") setSelected(null)
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [])
 
-  const items = resp?.data ?? [];
-  const total = resp?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const items = resp?.data ?? []
+  const total = resp?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const filtered = items.filter((s) => {
-    if (dirFilter === "buy" && (s.billboard_net_amt ?? 0) <= 0) return false;
-    if (dirFilter === "sell" && (s.billboard_net_amt ?? 0) >= 0) return false;
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.code.toLowerCase().includes(search.toLowerCase())) {
-      return false;
+    if (dirFilter === "buy" && (s.billboard_net_amt ?? 0) <= 0) return false
+    if (dirFilter === "sell" && (s.billboard_net_amt ?? 0) >= 0) return false
+    if (
+      search &&
+      !s.name.toLowerCase().includes(search.toLowerCase()) &&
+      !s.code.toLowerCase().includes(search.toLowerCase())
+    ) {
+      return false
     }
-    return true;
-  });
+    return true
+  })
 
   const goPrev = useCallback(() => {
-    setPage((p) => Math.max(1, p - 1));
-    setSelected(null);
-  }, []);
+    setPage((p) => Math.max(1, p - 1))
+    setSelected(null)
+  }, [])
   const goNext = useCallback(() => {
-    setPage((p) => Math.min(totalPages, p + 1));
-    setSelected(null);
-  }, [totalPages]);
+    setPage((p) => Math.min(totalPages, p + 1))
+    setSelected(null)
+  }, [totalPages])
   const goPage = useCallback((p: number) => {
-    setPage(p);
-    setSelected(null);
-  }, []);
+    setPage(p)
+    setSelected(null)
+  }, [])
 
   if (isLoading) {
     return (
       <div
-        className="flex min-h-screen items-center justify-center bg-bg pt-11"
+        className="bg-bg flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <div className="flex items-center gap-3 text-xs text-ink-muted">
-          <span className="size-2 animate-pulse rounded-full bg-ai" />
+        <div className="text-ink-muted flex items-center gap-3 text-xs">
+          <span className="bg-ai size-2 animate-pulse rounded-full" />
           加载龙虎榜数据...
         </div>
       </div>
-    );
+    )
   }
 
   if (error) {
     return (
       <div
-        className="flex min-h-screen items-center justify-center bg-bg pt-11"
+        className="bg-bg flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <p className="text-xs text-ink-muted">{error.message}</p>
+        <p className="text-ink-muted text-xs">{error.message}</p>
       </div>
-    );
+    )
   }
 
   const stats = [
@@ -104,10 +102,7 @@ export default function DragonTigerView() {
     {
       l: "总净买入",
       v: `${((resp?.total_net_amt ?? 0) / 1e8).toFixed(2)}亿`,
-      cl:
-        (resp?.total_net_amt ?? 0) >= 0
-          ? "var(--color-up)"
-          : "var(--color-down)",
+      cl: (resp?.total_net_amt ?? 0) >= 0 ? "var(--color-up)" : "var(--color-down)",
     },
     {
       l: "净买入家数",
@@ -119,7 +114,7 @@ export default function DragonTigerView() {
       v: String(resp?.net_sell_count ?? 0),
       s: `占比${total > 0 ? (((resp?.net_sell_count ?? 0) / total) * 100).toFixed(0) : 0}%`,
     },
-  ];
+  ]
 
   const th = {
     textAlign: "left" as const,
@@ -135,12 +130,12 @@ export default function DragonTigerView() {
     top: 0,
     zIndex: 1,
     whiteSpace: "nowrap" as const,
-  };
+  }
   const td = {
     padding: "7px 10px",
     borderBottom: "1px solid rgb(var(--color-fg-rgb) / 0.04)",
     whiteSpace: "nowrap" as const,
-  };
+  }
 
   return (
     <>
@@ -149,32 +144,28 @@ export default function DragonTigerView() {
           {stats.map((s) => (
             <div
               key={s.l}
-              className={`rounded-[10px] border bg-bg-surface px-4 py-3.5 text-center ${s.hl ? "border-ai bg-ai/5" : "border-hairline"}`}
+              className={`bg-bg-surface rounded-[10px] border px-4 py-3.5 text-center ${s.hl ? "border-ai bg-ai/5" : "border-hairline"}`}
             >
-              <div className="mb-1 text-[11px] tracking-wider text-ink-muted uppercase">
-                {s.l}
-              </div>
+              <div className="text-ink-muted mb-1 text-[11px] tracking-wider uppercase">{s.l}</div>
               <div
                 className="font-mono text-[1.4rem] font-semibold text-white"
                 style={s.cl ? { color: s.cl } : undefined}
               >
                 {s.v}
               </div>
-              {s.s && (
-                <div className="mt-0.5 text-[10px] text-ink-muted">{s.s}</div>
-              )}
+              {s.s && <div className="text-ink-muted mt-0.5 text-[10px]">{s.s}</div>}
             </div>
           ))}
         </div>
 
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[220px_1fr]">
-          <div className="order-2 overflow-hidden rounded-xl border border-hairline bg-bg-surface md:order-none">
-            <div className="border-b border-hairline px-3.5 py-3 text-[13px] font-medium text-white">
+          <div className="border-hairline bg-bg-surface order-2 overflow-hidden rounded-xl border md:order-none">
+            <div className="border-hairline border-b px-3.5 py-3 text-[13px] font-medium text-white">
               筛选
             </div>
             <div className="p-3">
               <div className="mb-3">
-                <div className="mb-1.5 text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
+                <div className="text-ink-muted mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
                   搜索
                 </div>
                 <input
@@ -182,11 +173,11 @@ export default function DragonTigerView() {
                   placeholder="名称或代码…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-lg border border-hairline bg-bg px-2.5 py-1.5 text-xs text-white transition-colors outline-none focus:border-ai"
+                  className="border-hairline bg-bg focus:border-ai w-full rounded-lg border px-2.5 py-1.5 text-xs text-white transition-colors outline-none"
                 />
               </div>
               <div>
-                <div className="mb-1.5 text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
+                <div className="text-ink-muted mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
                   净买卖
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -195,13 +186,13 @@ export default function DragonTigerView() {
                       all: "全部",
                       buy: "净买入",
                       sell: "净卖出",
-                    };
+                    }
                     const activeCls =
                       d === "buy"
                         ? "bg-up border-up text-white"
                         : d === "sell"
                           ? "bg-down border-down text-white"
-                          : "bg-ai border-ai text-white";
+                          : "bg-ai border-ai text-white"
                     return (
                       <button
                         key={d}
@@ -210,27 +201,22 @@ export default function DragonTigerView() {
                       >
                         {labels[d]}
                       </button>
-                    );
+                    )
                   })}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="order-1 overflow-hidden rounded-xl border border-hairline bg-bg-surface md:order-none">
-            <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-2.5">
-              <h3 className="text-[13px] font-medium text-white">
-                龙虎榜上榜个股
-              </h3>
-              <span className="text-[11px] text-ink-muted">
+          <div className="border-hairline bg-bg-surface order-1 overflow-hidden rounded-xl border md:order-none">
+            <div className="border-hairline flex items-center justify-between gap-2.5 border-b px-4 py-2.5">
+              <h3 className="text-[13px] font-medium text-white">龙虎榜上榜个股</h3>
+              <span className="text-ink-muted text-[11px]">
                 第{page}/{totalPages}页 · {total} 只
               </span>
             </div>
             <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
-              <table
-                className="w-full border-collapse"
-                style={{ fontSize: "0.77rem" }}
-              >
+              <table className="w-full border-collapse" style={{ fontSize: "0.77rem" }}>
                 <thead>
                   <tr>
                     <th style={th}>名称</th>
@@ -255,32 +241,25 @@ export default function DragonTigerView() {
                     </tr>
                   ) : (
                     filtered.map((s, i) => {
-                      const up = (s.billboard_net_amt ?? 0) >= 0;
+                      const up = (s.billboard_net_amt ?? 0) >= 0
                       return (
                         <tr
                           key={`${s.code}-${i}`}
-                          className={`cursor-pointer transition-colors [&>td]:hover:bg-bg-hover ${selected?.code === s.code ? "[&>td]:!bg-ai/10" : ""}`}
-                          onClick={() =>
-                            setSelected(
-                              selected?.code === s.code ? null : s,
-                            )
-                          }
+                          className={`[&>td]:hover:bg-bg-hover cursor-pointer transition-colors ${selected?.code === s.code ? "[&>td]:!bg-ai/10" : ""}`}
+                          onClick={() => setSelected(selected?.code === s.code ? null : s)}
                         >
                           <td style={td}>
-                            <span className="cursor-pointer font-medium text-ai hover:underline">
+                            <span className="text-ai cursor-pointer font-medium hover:underline">
                               {s.name}
                             </span>
-                            <span className="ml-1 text-[11px] text-ink-muted">
-                              {s.code}
-                            </span>
+                            <span className="text-ink-muted ml-1 text-[11px]">{s.code}</span>
                           </td>
                           <td style={td}>
                             <span
                               className={`font-mono text-xs font-semibold ${up ? "text-up" : "text-down"}`}
                             >
                               {up ? "+" : ""}
-                              {((s.billboard_net_amt ?? 0) / 1e8).toFixed(2)}
-                              亿
+                              {((s.billboard_net_amt ?? 0) / 1e8).toFixed(2)}亿
                             </span>
                           </td>
                           <td style={td}>
@@ -292,43 +271,43 @@ export default function DragonTigerView() {
                             </span>
                           </td>
                           <td style={td}>
-                            <span className="inline-block max-w-[200px] text-[10px] whitespace-normal text-ink-muted">
+                            <span className="text-ink-muted inline-block max-w-[200px] text-[10px] whitespace-normal">
                               {s.explanation || "—"}
                             </span>
                           </td>
                         </tr>
-                      );
+                      )
                     })
                   )}
                 </tbody>
               </table>
             </div>
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 border-t border-hairline px-4 py-3">
+              <div className="border-hairline flex items-center justify-center gap-2 border-t px-4 py-3">
                 <button
                   onClick={goPrev}
                   disabled={page <= 1}
-                  className="cursor-pointer rounded-lg border border-hairline px-3 py-1 text-[11px] text-ink-muted transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                  className="border-hairline text-ink-muted cursor-pointer rounded-lg border px-3 py-1 text-[11px] transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   上一页
                 </button>
                 {(() => {
-                  const pages: (number | "...")[] = [];
-                  const maxVisible = 5;
+                  const pages: (number | "...")[] = []
+                  const maxVisible = 5
                   if (totalPages <= maxVisible + 2) {
-                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    for (let i = 1; i <= totalPages; i++) pages.push(i)
                   } else {
-                    pages.push(1);
-                    if (page > 3) pages.push("...");
-                    const start = Math.max(2, page - 1);
-                    const end = Math.min(totalPages - 1, page + 1);
-                    for (let i = start; i <= end; i++) pages.push(i);
-                    if (page < totalPages - 2) pages.push("...");
-                    pages.push(totalPages);
+                    pages.push(1)
+                    if (page > 3) pages.push("...")
+                    const start = Math.max(2, page - 1)
+                    const end = Math.min(totalPages - 1, page + 1)
+                    for (let i = start; i <= end; i++) pages.push(i)
+                    if (page < totalPages - 2) pages.push("...")
+                    pages.push(totalPages)
                   }
                   return pages.map((p, i) =>
                     p === "..." ? (
-                      <span key={`e${i}`} className="px-1 text-[11px] text-ink-muted">
+                      <span key={`e${i}`} className="text-ink-muted px-1 text-[11px]">
                         ...
                       </span>
                     ) : (
@@ -339,13 +318,13 @@ export default function DragonTigerView() {
                       >
                         {p}
                       </button>
-                    ),
-                  );
+                    )
+                  )
                 })()}
                 <button
                   onClick={goNext}
                   disabled={page >= totalPages}
-                  className="cursor-pointer rounded-lg border border-hairline px-3 py-1 text-[11px] text-ink-muted transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                  className="border-hairline text-ink-muted cursor-pointer rounded-lg border px-3 py-1 text-[11px] transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   下一页
                 </button>
@@ -360,17 +339,17 @@ export default function DragonTigerView() {
             className="fixed inset-0 z-50 flex items-center justify-center p-5"
             style={{ background: "rgba(0,0,0,0.35)" }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) setSelected(null);
+              if (e.target === e.currentTarget) setSelected(null)
             }}
           >
-            <div className="flex max-h-[90vh] w-[700px] max-w-[95vw] flex-col overflow-hidden rounded-2xl border border-hairline bg-bg-surface shadow-2xl">
-              <div className="flex flex-shrink-0 items-center justify-between border-b border-hairline px-5 py-4">
+            <div className="border-hairline bg-bg-surface flex max-h-[90vh] w-[700px] max-w-[95vw] flex-col overflow-hidden rounded-2xl border shadow-2xl">
+              <div className="border-hairline flex flex-shrink-0 items-center justify-between border-b px-5 py-4">
                 <span className="text-[15px] font-medium text-white">
                   {selected.name} ({selected.code})
                 </span>
                 <button
                   onClick={() => setSelected(null)}
-                  className="cursor-pointer rounded-md px-2 py-0.5 text-xl text-ink-muted hover:text-white"
+                  className="text-ink-muted cursor-pointer rounded-md px-2 py-0.5 text-xl hover:text-white"
                 >
                   ✕
                 </button>
@@ -378,12 +357,8 @@ export default function DragonTigerView() {
               <div className="flex-1 overflow-y-auto p-5">
                 {selected.explanation && (
                   <div className="mb-4">
-                    <h4 className="mb-2 text-[13px] font-medium text-white">
-                      上榜原因
-                    </h4>
-                    <p className="text-xs text-ink-muted">
-                      {selected.explanation}
-                    </p>
+                    <h4 className="mb-2 text-[13px] font-medium text-white">上榜原因</h4>
+                    <p className="text-ink-muted text-xs">{selected.explanation}</p>
                   </div>
                 )}
                 <div className="mb-4 grid grid-cols-2 gap-2.5">
@@ -391,10 +366,7 @@ export default function DragonTigerView() {
                     { l: "收盘价", v: selected.close_price?.toFixed(2) || "—" },
                     {
                       l: "涨跌幅",
-                      v:
-                        selected.change_rate != null
-                          ? `${selected.change_rate.toFixed(2)}%`
-                          : "—",
+                      v: selected.change_rate != null ? `${selected.change_rate.toFixed(2)}%` : "—",
                       up: (selected.change_rate || 0) >= 0,
                     },
                     {
@@ -406,16 +378,11 @@ export default function DragonTigerView() {
                     },
                     {
                       l: "流通市值",
-                      v: selected.free_market_cap
-                        ? fmtCap(selected.free_market_cap)
-                        : "—",
+                      v: selected.free_market_cap ? fmtCap(selected.free_market_cap) : "—",
                     },
                   ].map((m) => (
-                    <div
-                      key={m.l}
-                      className="rounded-lg bg-ink-dim px-3 py-2 text-center"
-                    >
-                      <div className="text-[10px] text-ink-muted">{m.l}</div>
+                    <div key={m.l} className="bg-ink-dim rounded-lg px-3 py-2 text-center">
+                      <div className="text-ink-muted text-[10px]">{m.l}</div>
                       <div
                         className={`font-mono text-xs font-semibold ${m.up ? "text-up" : (m as any).down ? "text-down" : "text-white"}`}
                       >
@@ -426,16 +393,14 @@ export default function DragonTigerView() {
                 </div>
                 {buyLoading || sellLoading ? (
                   <div className="flex items-center justify-center py-8">
-                    <span className="size-2 animate-pulse rounded-full bg-ai" />
-                    <span className="ml-2 text-xs text-ink-muted">
-                      加载席位数据...
-                    </span>
+                    <span className="bg-ai size-2 animate-pulse rounded-full" />
+                    <span className="text-ink-muted ml-2 text-xs">加载席位数据...</span>
                   </div>
                 ) : (
                   <>
                     {buySeats.length > 0 && (
                       <div className="mb-4">
-                        <h4 className="mb-2 text-[13px] font-medium text-up">
+                        <h4 className="text-up mb-2 text-[13px] font-medium">
                           买方席位 ({buySeats.length})
                         </h4>
                         <table className="w-full border-collapse text-xs">
@@ -452,7 +417,7 @@ export default function DragonTigerView() {
                                 <td style={td}>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
-                                    <span className="ml-1 rounded bg-up/10 px-1.5 py-0.5 text-[10px] text-up">
+                                    <span className="bg-up/10 text-up ml-1 rounded px-1.5 py-0.5 text-[10px]">
                                       机构
                                     </span>
                                   ) : null}
@@ -464,9 +429,7 @@ export default function DragonTigerView() {
                                     color: "var(--color-up)",
                                   }}
                                 >
-                                  {s.buy_amt
-                                    ? (s.buy_amt / 1e4).toFixed(0)
-                                    : "—"}
+                                  {s.buy_amt ? (s.buy_amt / 1e4).toFixed(0) : "—"}
                                 </td>
                                 <td
                                   style={{
@@ -474,9 +437,7 @@ export default function DragonTigerView() {
                                     fontFamily: "JetBrains Mono, monospace",
                                   }}
                                 >
-                                  {s.buy_ratio != null
-                                    ? `${(s.buy_ratio * 100).toFixed(1)}%`
-                                    : "—"}
+                                  {s.buy_ratio != null ? `${(s.buy_ratio * 100).toFixed(1)}%` : "—"}
                                 </td>
                               </tr>
                             ))}
@@ -486,7 +447,7 @@ export default function DragonTigerView() {
                     )}
                     {sellSeats.length > 0 && (
                       <div className="mb-4">
-                        <h4 className="mb-2 text-[13px] font-medium text-down">
+                        <h4 className="text-down mb-2 text-[13px] font-medium">
                           卖方席位 ({sellSeats.length})
                         </h4>
                         <table className="w-full border-collapse text-xs">
@@ -503,7 +464,7 @@ export default function DragonTigerView() {
                                 <td style={td}>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
-                                    <span className="ml-1 rounded bg-up/10 px-1.5 py-0.5 text-[10px] text-up">
+                                    <span className="bg-up/10 text-up ml-1 rounded px-1.5 py-0.5 text-[10px]">
                                       机构
                                     </span>
                                   ) : null}
@@ -515,9 +476,7 @@ export default function DragonTigerView() {
                                     color: "var(--color-down)",
                                   }}
                                 >
-                                  {s.sell_amt
-                                    ? (s.sell_amt / 1e4).toFixed(0)
-                                    : "—"}
+                                  {s.sell_amt ? (s.sell_amt / 1e4).toFixed(0) : "—"}
                                 </td>
                                 <td
                                   style={{
@@ -539,9 +498,7 @@ export default function DragonTigerView() {
                 )}
                 {selected.d1_chg != null && (
                   <div className="mb-4">
-                    <h4 className="mb-2 text-[13px] font-medium text-white">
-                      上榜后表现
-                    </h4>
+                    <h4 className="mb-2 text-[13px] font-medium text-white">上榜后表现</h4>
                     <div className="grid grid-cols-4 gap-2">
                       {[
                         { l: "T+1", v: selected.d1_chg },
@@ -549,15 +506,10 @@ export default function DragonTigerView() {
                         { l: "T+5", v: selected.d5_chg },
                         { l: "T+10", v: selected.d10_chg },
                       ].map((d, i) => {
-                        const dv = d.v || 0;
+                        const dv = d.v || 0
                         return (
-                          <div
-                            key={i}
-                            className="rounded-lg bg-ink-dim px-3 py-2 text-center"
-                          >
-                            <div className="text-[10px] text-ink-muted">
-                              {d.l}
-                            </div>
+                          <div key={i} className="bg-ink-dim rounded-lg px-3 py-2 text-center">
+                            <div className="text-ink-muted text-[10px]">{d.l}</div>
                             <div
                               className={`font-mono text-xs font-semibold ${dv >= 0 ? "text-up" : "text-down"}`}
                             >
@@ -565,7 +517,7 @@ export default function DragonTigerView() {
                               {dv.toFixed(2)}%
                             </div>
                           </div>
-                        );
+                        )
                       })}
                     </div>
                   </div>
@@ -576,5 +528,5 @@ export default function DragonTigerView() {
         )}
       </div>
     </>
-  );
+  )
 }
