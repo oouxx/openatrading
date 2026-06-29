@@ -1,15 +1,15 @@
 // src/App.tsx
-import { Routes, Route, Navigate } from "react-router-dom";
-import { AppModeProvider } from "@/contexts/AppModeContext";
-import AppShell from "@/components/AppShell";
-import LandingPage from "./LandingPage";
+import { Routes, Route, Navigate } from "react-router-dom"
+import { AppModeProvider } from "@/contexts/AppModeContext"
+import AppShell from "@/components/AppShell"
+import LandingPage from "./LandingPage"
 
-const isTauri = "__TAURI_INTERNALS__" in window;
+const isTauri = "__TAURI_INTERNALS__" in window
 
 export default function App() {
   return (
     <AppModeProvider>
-      <div className="min-h-screen bg-bg">
+      <div className="bg-bg min-h-screen">
         <Routes>
           {isTauri ? (
             <Route path="/" element={<AppShell />} />
@@ -23,5 +23,5 @@ export default function App() {
         </Routes>
       </div>
     </AppModeProvider>
-  );
+  )
 }

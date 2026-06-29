@@ -1,14 +1,14 @@
-import React, { useState, useCallback } from "react";
-import * as Collapsible from "@radix-ui/react-collapsible";
+import React, { useState, useCallback } from "react"
+import * as Collapsible from "@radix-ui/react-collapsible"
 
 // ── ReasoningRoot ─────────────────────────────────────
 
 export interface ReasoningRootProps {
-  defaultOpen?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  className?: string;
-  children: React.ReactNode;
+  defaultOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  className?: string
+  children: React.ReactNode
 }
 
 export function ReasoningRoot({
@@ -18,32 +18,32 @@ export function ReasoningRoot({
   className = "",
   children,
 }: ReasoningRootProps) {
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-  const isControlled = controlledOpen !== undefined;
-  const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
+  const isControlled = controlledOpen !== undefined
+  const isOpen = isControlled ? controlledOpen : uncontrolledOpen
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (!isControlled) setUncontrolledOpen(open);
-      controlledOnOpenChange?.(open);
+      if (!isControlled) setUncontrolledOpen(open)
+      controlledOnOpenChange?.(open)
     },
-    [isControlled, controlledOnOpenChange],
-  );
+    [isControlled, controlledOnOpenChange]
+  )
   return (
     <Collapsible.Root
       open={isOpen}
       onOpenChange={handleOpenChange}
-      className={`mb-3 w-full rounded-lg border border-hairline ${className}`}
+      className={`border-hairline mb-3 w-full rounded-lg border ${className}`}
     >
       {children}
     </Collapsible.Root>
-  );
+  )
 }
 
 // ── ReasoningTrigger ──────────────────────────────────
 
 export function ReasoningTrigger({ active = false }: { active?: boolean }) {
   return (
-    <Collapsible.Trigger className="group text-caption flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-ink-muted transition-colors hover:bg-bg-hover">
+    <Collapsible.Trigger className="group text-caption text-ink-muted hover:bg-bg-hover flex w-full cursor-pointer items-center gap-2 px-3 py-2 transition-colors">
       {/* Brain icon */}
       <svg
         className="size-4 shrink-0"
@@ -59,7 +59,7 @@ export function ReasoningTrigger({ active = false }: { active?: boolean }) {
       <span className="font-mono">思考过程</span>
       {active && (
         <span
-          className="inline-block size-1.5 rounded-full bg-ai"
+          className="bg-ai inline-block size-1.5 rounded-full"
           style={{ animation: "reasoning-shimmer 1.2s ease-in-out infinite" }}
         />
       )}
@@ -75,54 +75,46 @@ export function ReasoningTrigger({ active = false }: { active?: boolean }) {
         <polyline points="6 9 12 15 18 9" />
       </svg>
     </Collapsible.Trigger>
-  );
+  )
 }
 
 // ── ReasoningContent ──────────────────────────────────
 
 export interface ReasoningContentProps {
-  className?: string;
-  children: React.ReactNode;
-  "aria-busy"?: boolean;
+  className?: string
+  children: React.ReactNode
+  "aria-busy"?: boolean
 }
 
-export function ReasoningContent({
-  className = "",
-  children,
-  ...props
-}: ReasoningContentProps) {
+export function ReasoningContent({ className = "", children, ...props }: ReasoningContentProps) {
   return (
-    <Collapsible.Content
-      className={`reasoning-content ${className}`}
-      {...props}
-    >
+    <Collapsible.Content className={`reasoning-content ${className}`} {...props}>
       {children}
     </Collapsible.Content>
-  );
+  )
 }
 
 // ── ReasoningText ─────────────────────────────────────
 
 export interface ReasoningTextProps {
-  className?: string;
-  children: React.ReactNode;
+  className?: string
+  children: React.ReactNode
 }
 
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="text-caption max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap text-ink-muted">
+      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap">
         {children}
       </div>
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
         style={{
-          background:
-            "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
+          background: "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
         }}
       />
     </div>
-  );
+  )
 }
 
 // ── ReasoningFade (standalone) ────────────────────────
@@ -132,9 +124,8 @@ export function ReasoningFade() {
     <div
       className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
       style={{
-        background:
-          "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
+        background: "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
       }}
     />
-  );
+  )
 }

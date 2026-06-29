@@ -1,28 +1,28 @@
-import { useState } from 'react'
-import { useDapanAbnormal } from '@/hooks/query/useDapanAbnormal'
-import { useTimeline } from '@/hooks/query/useTimeline'
+import { useState } from "react"
+import { useDapanAbnormal } from "@/hooks/query/useDapanAbnormal"
+import { useTimeline } from "@/hooks/query/useTimeline"
 
 const subViews = [
-  { id: 'dapan', label: '今日大盘' },
-  { id: 'timeline', label: '本月事件' },
+  { id: "dapan", label: "今日大盘" },
+  { id: "timeline", label: "本月事件" },
 ]
 
 function typeEmoji(t: number): string {
-  if (t === 1) return '📈'
-  if (t === 2) return '📉'
-  return '📊'
+  if (t === 1) return "📈"
+  if (t === 2) return "📉"
+  return "📊"
 }
 
 function formatTs(ts: number): string {
-  if (!ts) return ''
+  if (!ts) return ""
   const d = new Date(ts * 1000)
-  const h = d.getHours().toString().padStart(2, '0')
-  const m = d.getMinutes().toString().padStart(2, '0')
+  const h = d.getHours().toString().padStart(2, "0")
+  const m = d.getMinutes().toString().padStart(2, "0")
   return `${h}:${m}`
 }
 
 export default function TimelineTab() {
-  const [activeSubView, setActiveSubView] = useState('dapan')
+  const [activeSubView, setActiveSubView] = useState("dapan")
 
   const { data: dapanList = [], isLoading: dapanLoading, error: dapanError } = useDapanAbnormal()
   const { data: timelineRaw = [], isLoading: timelineLoading } = useTimeline()
@@ -39,10 +39,10 @@ export default function TimelineTab() {
   const timelineDays = [...timelineList].reverse().map((day) => ({
     date: day.date,
     items: (day.list || []).map((item) => ({
-      grade_emoji: item.timeline?.grade === 6 ? '🌟' : item.timeline?.grade === 5 ? '⭐' : '•',
-      title: item.title || '',
-      tags: (item.timeline?.theme_list || []).map((t) => t.name).join(', '),
-      content: (item.content || '').replace(/\n/g, ' ').substring(0, 200),
+      grade_emoji: item.timeline?.grade === 6 ? "🌟" : item.timeline?.grade === 5 ? "⭐" : "•",
+      title: item.title || "",
+      tags: (item.timeline?.theme_list || []).map((t) => t.name).join(", "),
+      content: (item.content || "").replace(/\n/g, " ").substring(0, 200),
     })),
   }))
 
@@ -55,8 +55,8 @@ export default function TimelineTab() {
           <button
             key={v.id}
             onClick={() => setActiveSubView(v.id)}
-            className={`text-caption cursor-pointer rounded-button px-4 py-1.5 font-mono transition-colors ${
-              activeSubView === v.id ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white/80'
+            className={`text-caption rounded-button cursor-pointer px-4 py-1.5 font-mono transition-colors ${
+              activeSubView === v.id ? "bg-ai/20 text-ai" : "text-ink-muted hover:text-white/80"
             }`}
           >
             {v.label}
@@ -64,15 +64,15 @@ export default function TimelineTab() {
         ))}
       </div>
 
-      {activeSubView === 'dapan' && (
+      {activeSubView === "dapan" && (
         <>
           {dapanLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
-              <span className="size-2 animate-pulse rounded-full bg-ai" />
+              <span className="bg-ai size-2 animate-pulse rounded-full" />
               <span className="text-caption font-mono text-white/40">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
-            <div className="p-card-inner text-caption rounded-card border border-hairline-dark bg-surface-dark text-center text-white/40">
+            <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
               {dapanError.message}
             </div>
           ) : (
@@ -90,16 +90,20 @@ export default function TimelineTab() {
                   {dapanList.map((item: any, idx: number) => (
                     <div
                       key={item.id || idx}
-                      className="flex items-start gap-3 rounded-card border border-hairline-dark bg-surface-dark px-4 py-3 transition-colors hover:bg-bg-hover"
+                      className="rounded-card border-hairline-dark bg-surface-dark hover:bg-bg-hover flex items-start gap-3 border px-4 py-3 transition-colors"
                     >
-                      <span className="text-caption mt-0.5 flex-shrink-0">{typeEmoji(item.bk_yi_dong_type)}</span>
+                      <span className="text-caption mt-0.5 flex-shrink-0">
+                        {typeEmoji(item.bk_yi_dong_type)}
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-body-strong text-white">{item.title}</span>
-                          <span className="text-caption rounded-badge bg-ai/15 px-2 py-0.5 font-mono text-ai">
-                            {item.bkj_info?.name || '-'}
+                          <span className="text-caption rounded-badge bg-ai/15 text-ai px-2 py-0.5 font-mono">
+                            {item.bkj_info?.name || "-"}
                           </span>
-                          <span className="text-caption font-mono text-white/40">{formatTs(item.created_at)}</span>
+                          <span className="text-caption font-mono text-white/40">
+                            {formatTs(item.created_at)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -111,18 +115,19 @@ export default function TimelineTab() {
         </>
       )}
 
-      {activeSubView === 'timeline' && (
+      {activeSubView === "timeline" && (
         <>
           {timelineLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
-              <span className="size-2 animate-pulse rounded-full bg-ai" />
+              <span className="bg-ai size-2 animate-pulse rounded-full" />
               <span className="text-caption font-mono text-white/40">加载时间线数据...</span>
             </div>
           ) : (
             <>
               <div className="text-caption mb-8 flex items-center gap-3">
                 <span className="text-white/60">
-                  <b className="text-white">{totalEvents}</b> 条事件 · <b className="text-white">{timelineDays.length}</b> 天
+                  <b className="text-white">{totalEvents}</b> 条事件 ·{" "}
+                  <b className="text-white">{timelineDays.length}</b> 天
                 </span>
               </div>
 
@@ -132,14 +137,18 @@ export default function TimelineTab() {
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
-                      <h3 className="text-caption-strong mb-4 px-2 font-mono text-ai">{day.date}</h3>
+                      <h3 className="text-caption-strong text-ai mb-4 px-2 font-mono">
+                        {day.date}
+                      </h3>
                       <div className="space-y-3">
                         {day.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="flex items-start gap-3 rounded-card border border-hairline-dark bg-surface-dark px-4 py-3"
+                            className="rounded-card border-hairline-dark bg-surface-dark flex items-start gap-3 border px-4 py-3"
                           >
-                            <span className="text-caption mt-0.5 flex-shrink-0">{item.grade_emoji}</span>
+                            <span className="text-caption mt-0.5 flex-shrink-0">
+                              {item.grade_emoji}
+                            </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-body-strong text-white">{item.title}</span>
@@ -150,7 +159,9 @@ export default function TimelineTab() {
                                 )}
                               </div>
                               {item.content && (
-                                <p className="text-caption mt-1 leading-relaxed text-white/60">{item.content}</p>
+                                <p className="text-caption mt-1 leading-relaxed text-white/60">
+                                  {item.content}
+                                </p>
                               )}
                             </div>
                           </div>

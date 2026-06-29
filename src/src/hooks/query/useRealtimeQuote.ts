@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchJson } from "@/stores/data";
-import { realtimeKeys } from "./queryKeys";
+import { useQuery } from "@tanstack/react-query"
+import { fetchJson } from "@/stores/data"
+import { realtimeKeys } from "./queryKeys"
 
 export function useRealtimeQuote(symbol: string) {
   return useQuery({
@@ -8,5 +8,5 @@ export function useRealtimeQuote(symbol: string) {
     queryFn: () => fetchJson(`/api/realtime/${symbol}`) as Promise<any>,
     staleTime: 10 * 1000,
     enabled: !!symbol,
-  });
+  })
 }

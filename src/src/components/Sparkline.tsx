@@ -1,5 +1,5 @@
-import { useRef, useEffect } from 'react'
-import type { PnlPoint } from '@/stores/data'
+import { useRef, useEffect } from "react"
+import type { PnlPoint } from "@/stores/data"
 
 interface SparklineProps {
   points: PnlPoint[]
@@ -13,15 +13,15 @@ export default function Sparkline({ points, width = 200, height = 32 }: Sparklin
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !points.length) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext("2d")
     if (!ctx) return
 
     const w = width
     const h = height
     canvas.width = w * devicePixelRatio
     canvas.height = h * devicePixelRatio
-    canvas.style.width = w + 'px'
-    canvas.style.height = h + 'px'
+    canvas.style.width = w + "px"
+    canvas.style.height = h + "px"
     ctx.scale(devicePixelRatio, devicePixelRatio)
     ctx.clearRect(0, 0, w, h)
 
@@ -39,9 +39,9 @@ export default function Sparkline({ points, width = 200, height = 32 }: Sparklin
     const getY = (v: number) => padY + plotH - ((v - min) / range) * plotH
 
     ctx.beginPath()
-    ctx.strokeStyle = values[values.length - 1] >= 0 ? '#FF5C5C' : '#1D9E75'
+    ctx.strokeStyle = values[values.length - 1] >= 0 ? "#FF5C5C" : "#1D9E75"
     ctx.lineWidth = 1.5
-    ctx.lineJoin = 'round'
+    ctx.lineJoin = "round"
 
     ctx.moveTo(getX(0), getY(values[0]))
     for (let i = 1; i < values.length; i++) {

@@ -1,21 +1,27 @@
-import { useCallback, useEffect, useRef, useState, startTransition } from "react";
-import { Search, Send } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import type { Components } from "react-markdown";
-
+import { useCallback, useEffect, useRef, useState, startTransition } from "react"
+import { Search, Send } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeRaw from "rehype-raw"
+import type { Components } from "react-markdown"
+import type { ReactNode } from "react"
 const mdComponents: Components = {
   code: ({ className, children, ...props }) => {
-    const isInline = !className;
+    const isInline = !className
     if (isInline) {
-      return <code className="rounded bg-bg-hover px-1 py-0.5 font-mono text-xs text-ink" {...props}>{children}</code>;
+      return (
+        <code className="bg-bg-hover text-ink rounded px-1 py-0.5 font-mono text-xs" {...props}>
+          {children}
+        </code>
+      )
     }
     return (
-      <pre className="my-2 overflow-x-auto rounded-card border border-hairline bg-bg-hover p-3 font-mono text-xs leading-relaxed text-ink-muted">
-        <code className={className} {...props}>{children}</code>
+      <pre className="rounded-card border-hairline bg-bg-hover text-ink-muted my-2 overflow-x-auto border p-3 font-mono text-xs leading-relaxed">
+        <code className={className} {...props}>
+          {children}
+        </code>
       </pre>
-    );
+    )
   },
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
@@ -23,109 +29,116 @@ const mdComponents: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-b border-hairline bg-bg-hover px-3 py-2 text-left font-medium text-ink-muted">{children}</th>
+    <th className="border-hairline bg-bg-hover text-ink-muted border-b px-3 py-2 text-left font-medium">
+      {children}
+    </th>
   ),
   td: ({ children }) => (
-    <td className="border-b border-hairline px-3 py-2 text-ink-muted">{children}</td>
+    <td className="border-hairline text-ink-muted border-b px-3 py-2">{children}</td>
   ),
   a: ({ children, href }) => (
-    <a href={href} className="text-ai hover:underline" target="_blank" rel="noreferrer">{children}</a>
+    <a href={href} className="text-ai hover:underline" target="_blank" rel="noreferrer">
+      {children}
+    </a>
   ),
   ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
-  hr: () => <hr className="my-3 border-hairline" />,
-};
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { apiChatStream, fetchJson } from "@/stores/data";
-import {
-  getMessages,
-  saveMessage,
-  fetchCommands,
-  type ChatMessage,
-} from "@/hooks/useChatThreads";
-import KlineDrawer from "@/components/KlineDrawer";
-import ChromeTabs from "@/components/ChromeTabs";
-import { useStockTabStore } from "@/stores/stockTabStore";
+  hr: () => <hr className="border-hairline my-3" />,
+}
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { apiChatStream, fetchJson } from "@/stores/data"
+import { getMessages, saveMessage, fetchCommands, type ChatMessage } from "@/hooks/useChatThreads"
+import KlineDrawer from "@/components/KlineDrawer"
+import ChromeTabs from "@/components/ChromeTabs"
+import { useStockTabStore } from "@/stores/stockTabStore"
 
 interface DisplayMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  reasoning?: string;
-  toolCalls?: { name: string; id: string }[];
+  id: string
+  role: "user" | "assistant"
+  content: string
+  reasoning?: string
+  toolCalls?: { name: string; id: string }[]
 }
 
 interface SlashCommand {
-  name: string;
-  description: string;
-  command_type: string;
+  name: string
+  description: string
+  command_type: string
 }
 
 interface AiCopilotProps {
-  activeThreadId: number | null;
-  onActiveThreadChange: (id: number | null) => void;
-  onReload?: () => void;
+  activeThreadId: number | null
+  onActiveThreadChange: (id: number | null) => void
+  onReload?: () => void
 }
 
-let msgSeq = 0;
-const newMsgId = () => `msg-${++msgSeq}`;
+let msgSeq = 0
+const newMsgId = () => `msg-${++msgSeq}`
 
-export default function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [commands, setCommands] = useState<SlashCommand[]>([]);
-  const [showSlash, setShowSlash] = useState(false);
-  const [slashQuery, setSlashQuery] = useState("");
-  const [slashIndex, setSlashIndex] = useState(0);
-  const [threadMessages, setThreadMessages] = useState<Map<number, DisplayMessage[]>>(new Map());
-  const pendingCmdRef = useRef<{ name: string; type: string } | null>(null);
-  const streamThreadRef = useRef<number | null>(null);
-  const activeStockTab = useStockTabStore((s) => s.activeStockTab);
-  const stockTabs = useStockTabStore((s) => s.stockTabs);
-  const openTab = useStockTabStore((s) => s.openTab);
-  const closeTab = useStockTabStore((s) => s.closeTab);
-  const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab);
+export default function AiCopilot({
+  activeThreadId,
+  onActiveThreadChange,
+  onReload,
+}: AiCopilotProps) {
+  const [input, setInput] = useState("")
+  const [streaming, setStreaming] = useState(false)
+  const [commands, setCommands] = useState<SlashCommand[]>([])
+  const [showSlash, setShowSlash] = useState(false)
+  const [slashQuery, setSlashQuery] = useState("")
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [threadMessages, setThreadMessages] = useState<Map<number, DisplayMessage[]>>(new Map())
+  const pendingCmdRef = useRef<{ name: string; type: string } | null>(null)
+  const streamThreadRef = useRef<number | null>(null)
+  const activeStockTab = useStockTabStore((s) => s.activeStockTab)
+  const stockTabs = useStockTabStore((s) => s.stockTabs)
+  const openTab = useStockTabStore((s) => s.openTab)
+  const closeTab = useStockTabStore((s) => s.closeTab)
+  const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
 
   // Per-thread message store — persists across thread switches
-  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(threadMessages);
-  const loadQueueRef = useRef<Set<number>>(new Set());
+  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(threadMessages)
+  const loadQueueRef = useRef<Set<number>>(new Set())
 
   // Keep ref in sync with state (avoids accessing ref during render)
-  useEffect(() => { threadMessagesRef.current = threadMessages; }, [threadMessages]);
+  useEffect(() => {
+    threadMessagesRef.current = threadMessages
+  }, [threadMessages])
 
   // Stock search
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const searchContainerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const msgContainerRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const msgContainerRef = useRef<HTMLDivElement>(null)
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
       if (msgContainerRef.current) {
-        msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight;
+        msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight
       }
-    });
-  }, []);
+    })
+  }, [])
 
   useEffect(() => {
-    fetchCommands().then(setCommands).catch(() => {});
-  }, []);
+    fetchCommands()
+      .then(setCommands)
+      .catch(() => {})
+  }, [])
 
   // Load messages when active thread changes — but only once per thread
   useEffect(() => {
-    if (activeThreadId === null) return;
+    if (activeThreadId === null) return
     if (threadMessagesRef.current.has(activeThreadId)) {
-      scrollDown();
-      return;
+      scrollDown()
+      return
     }
-    if (loadQueueRef.current.has(activeThreadId)) return;
-    loadQueueRef.current.add(activeThreadId);
+    if (loadQueueRef.current.has(activeThreadId)) return
+    loadQueueRef.current.add(activeThreadId)
     getMessages(activeThreadId).then((msgs) => {
       threadMessagesRef.current.set(
         activeThreadId,
@@ -133,311 +146,338 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           id: newMsgId(),
           role: m.role === "user" ? "user" : "assistant",
           content: m.content,
-        })),
-      );
-      setThreadMessages(new Map(threadMessagesRef.current));
-      scrollDown();
-    });
-  }, [activeThreadId, scrollDown]);
+        }))
+      )
+      setThreadMessages(new Map(threadMessagesRef.current))
+      scrollDown()
+    })
+  }, [activeThreadId, scrollDown])
 
   // Stock search debounce
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!searchQuery.trim()) {
-      startTransition(() => setSearchResults([]));
-      return;
+      startTransition(() => setSearchResults([]))
+      return
     }
     debounceRef.current = setTimeout(async () => {
-      setSearchLoading(true);
+      setSearchLoading(true)
       try {
         const data = await fetchJson<{ code: string; name: string }[]>(
-          `/api/search-stocks?q=${encodeURIComponent(searchQuery.trim())}`,
-        );
-        setSearchResults(data);
+          `/api/search-stocks?q=${encodeURIComponent(searchQuery.trim())}`
+        )
+        setSearchResults(data)
       } catch {
-        setSearchResults([]);
+        setSearchResults([])
       } finally {
-        setSearchLoading(false);
+        setSearchLoading(false)
       }
-    }, 200);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [searchQuery]);
+    }, 200)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [searchQuery])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "p") {
-        e.preventDefault();
-        searchRef.current?.focus();
+        e.preventDefault()
+        searchRef.current?.focus()
       }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
 
   // 全局 Escape 关闭 slash 命令弹窗
   useEffect(() => {
-    if (!showSlash) return;
+    if (!showSlash) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setShowSlash(false);
-        setSlashQuery("");
+        setShowSlash(false)
+        setSlashQuery("")
       }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [showSlash]);
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [showSlash])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
+        setShowDropdown(false)
       }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
 
   const filteredCommands = slashQuery
     ? commands
         .filter(
           (c) =>
             c.name.toLowerCase().includes(slashQuery.toLowerCase()) ||
-            c.description.toLowerCase().includes(slashQuery.toLowerCase()),
+            c.description.toLowerCase().includes(slashQuery.toLowerCase())
         )
         .slice(0, 8)
-    : commands.slice(0, 8);
+    : commands.slice(0, 8)
 
-  const currentMessages = activeThreadId !== null ? threadMessages.get(activeThreadId) ?? [] : [];
-  const isEmpty = currentMessages.length === 0;
-  const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab);
+  const currentMessages = activeThreadId !== null ? (threadMessages.get(activeThreadId) ?? []) : []
+  const isEmpty = currentMessages.length === 0
+  const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab)
 
-  let bodyContent: JSX.Element | null = null;
+  let bodyContent: ReactNode | null = null
   if (showStockTab && activeStockTab) {
-    const tab = stockTabs.find((t) => t.id === activeStockTab);
+    const tab = stockTabs.find((t) => t.id === activeStockTab)
     bodyContent = (
       <div className="min-h-0 flex-1">
         {tab && (
           <div className="h-full overflow-y-auto">
-            <KlineDrawer symbol={activeStockTab} name={tab.name} onClose={() => closeTab(activeStockTab)} />
+            <KlineDrawer
+              symbol={activeStockTab}
+              name={tab.name}
+              onClose={() => closeTab(activeStockTab)}
+            />
           </div>
         )}
       </div>
-    );
+    )
   }
 
-  const send = useCallback(async (question?: string) => {
-    const text = (question || input).trim();
-    if (!text) return;
-    // Allow sending in different threads while other thread is streaming
-    if (streaming && streamThreadRef.current === activeThreadId) return;
+  const send = useCallback(
+    async (question?: string) => {
+      const text = (question || input).trim()
+      if (!text) return
+      // Allow sending in different threads while other thread is streaming
+      if (streaming && streamThreadRef.current === activeThreadId) return
 
-    let threadId = activeThreadId;
-    if (threadId === null) {
-      const thread = await fetchJson<{ id: number; title: string }>("/api/ai/threads", {
-        method: "POST",
-        body: JSON.stringify({ title: "新对话" }),
-      });
-      threadId = thread.id;
-      onActiveThreadChange(thread.id);
-    }
+      let threadId = activeThreadId
+      if (threadId === null) {
+        const thread = await fetchJson<{ id: number; title: string }>("/api/ai/threads", {
+          method: "POST",
+          body: JSON.stringify({ title: "新对话" }),
+        })
+        threadId = thread.id
+        onActiveThreadChange(thread.id)
+      }
 
-    const cmd = pendingCmdRef.current;
-    pendingCmdRef.current = null;
-    setShowSlash(false);
-    setSlashQuery("");
-    setInput("");
+      const cmd = pendingCmdRef.current
+      pendingCmdRef.current = null
+      setShowSlash(false)
+      setSlashQuery("")
+      setInput("")
 
-    // Get history from the thread's own message store
-    const threadMsgs = threadMessagesRef.current.get(threadId) ?? [];
-    const history = threadMsgs.map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
-    }));
+      // Get history from the thread's own message store
+      const threadMsgs = threadMessagesRef.current.get(threadId) ?? []
+      const history = threadMsgs.map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
+      }))
 
-    const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text };
-    const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" };
+      const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
+      const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
 
-    // Update thread's messages
-    const existing = threadMessagesRef.current.get(threadId) ?? [];
-    threadMessagesRef.current.set(threadId, [...existing, userMsg, aiMsg]);
-    setThreadMessages(new Map(threadMessagesRef.current));
-    scrollDown();
+      // Update thread's messages
+      const existing = threadMessagesRef.current.get(threadId) ?? []
+      threadMessagesRef.current.set(threadId, [...existing, userMsg, aiMsg])
+      setThreadMessages(new Map(threadMessagesRef.current))
+      scrollDown()
 
-    setStreaming(true);
-    streamThreadRef.current = threadId;
-    saveMessage(threadId, "user", text);
+      setStreaming(true)
+      streamThreadRef.current = threadId
+      saveMessage(threadId, "user", text)
 
-    try {
-      await apiChatStream(
-        {
-          message: text,
-          role: "",
-          history,
-          command_name: cmd?.name,
-          command_type: cmd?.type,
-        },
-        {
-          onText: (data) => {
-            const msgs = threadMessagesRef.current.get(threadId) ?? [];
-            const last = msgs[msgs.length - 1];
-            if (last && last.role === "assistant") {
-              msgs[msgs.length - 1] = { ...last, content: last.content + data };
-              threadMessagesRef.current.set(threadId, msgs);
-              setThreadMessages(new Map(threadMessagesRef.current));
-              if (activeThreadId === threadId) scrollDown();
-            }
+      try {
+        await apiChatStream(
+          {
+            message: text,
+            role: "",
+            history,
+            command_name: cmd?.name,
+            command_type: cmd?.type,
           },
-          onReasoning: (data) => {
-            const msgs = threadMessagesRef.current.get(threadId) ?? [];
-            const last = msgs[msgs.length - 1];
-            if (last && last.role === "assistant") {
-              msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data };
-              threadMessagesRef.current.set(threadId, msgs);
-              setThreadMessages(new Map(threadMessagesRef.current));
-            }
-          },
-          onToolCall: (tool) => {
-            const msgs = threadMessagesRef.current.get(threadId) ?? [];
-            const last = msgs[msgs.length - 1];
-            if (last && last.role === "assistant") {
-              const calls = last.toolCalls ?? [];
-              msgs[msgs.length - 1] = { ...last, toolCalls: [...calls, { name: tool.name, id: tool.id }] };
-              threadMessagesRef.current.set(threadId, msgs);
-              setThreadMessages(new Map(threadMessagesRef.current));
-            }
-          },
-          onDone: () => {
-            setStreaming(false);
-            const msgs = threadMessagesRef.current.get(threadId) ?? [];
-            const last = msgs[msgs.length - 1];
-            if (last && last.role === "assistant" && last.content) {
-              saveMessage(threadId, "assistant", last.content);
-              if (text.length > 0) {
-                fetchJson(`/api/ai/threads/${threadId}`, {
-                  method: "PUT",
-                  body: JSON.stringify({ title: text.slice(0, 30) }),
-                }).then(() => {
-                  if (activeThreadId === threadId || threadMessagesRef.current.has(threadId)) {
-                    onReload?.();
-                  }
-                }).catch(() => {});
+          {
+            onText: (data) => {
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, content: last.content + data }
+                threadMessagesRef.current.set(threadId, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+                if (activeThreadId === threadId) scrollDown()
               }
-            }
-          },
-          onError: (err) => {
-            setStreaming(false);
-            const msgs = threadMessagesRef.current.get(threadId) ?? [];
-            const last = msgs[msgs.length - 1];
-            if (last && last.role === "assistant") {
-              msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` };
-              threadMessagesRef.current.set(threadId, msgs);
-              setThreadMessages(new Map(threadMessagesRef.current));
-            }
-          },
-        },
-      );
-    } catch (e: unknown) {
-      setStreaming(false);
-      const msgs = threadMessagesRef.current.get(threadId) ?? [];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: `[错误] ${(e as Error).message || "网络请求失败"}` };
-        threadMessagesRef.current.set(threadId, msgs);
-        setThreadMessages(new Map(threadMessagesRef.current));
+            },
+            onReasoning: (data) => {
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data }
+                threadMessagesRef.current.set(threadId, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+              }
+            },
+            onToolCall: (tool) => {
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                const calls = last.toolCalls ?? []
+                msgs[msgs.length - 1] = {
+                  ...last,
+                  toolCalls: [...calls, { name: tool.name, id: tool.id }],
+                }
+                threadMessagesRef.current.set(threadId, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+              }
+            },
+            onDone: () => {
+              setStreaming(false)
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant" && last.content) {
+                saveMessage(threadId, "assistant", last.content)
+                if (text.length > 0) {
+                  fetchJson(`/api/ai/threads/${threadId}`, {
+                    method: "PUT",
+                    body: JSON.stringify({ title: text.slice(0, 30) }),
+                  })
+                    .then(() => {
+                      if (activeThreadId === threadId || threadMessagesRef.current.has(threadId)) {
+                        onReload?.()
+                      }
+                    })
+                    .catch(() => {})
+                }
+              }
+            },
+            onError: (err) => {
+              setStreaming(false)
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` }
+                threadMessagesRef.current.set(threadId, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+              }
+            },
+          }
+        )
+      } catch (e: unknown) {
+        setStreaming(false)
+        const msgs = threadMessagesRef.current.get(threadId) ?? []
+        const last = msgs[msgs.length - 1]
+        if (last && last.role === "assistant") {
+          msgs[msgs.length - 1] = {
+            ...last,
+            content: `[错误] ${(e as Error).message || "网络请求失败"}`,
+          }
+          threadMessagesRef.current.set(threadId, msgs)
+          setThreadMessages(new Map(threadMessagesRef.current))
+        }
       }
-    }
-  }, [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload]);
+    },
+    [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload]
+  )
 
-  const onInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showSlash) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSlashIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSlashIndex((i) => Math.max(i - 1, 0));
-        return;
+  const onInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (showSlash) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault()
+          setSlashIndex((i) => Math.min(i + 1, filteredCommands.length - 1))
+          return
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault()
+          setSlashIndex((i) => Math.max(i - 1, 0))
+          return
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault()
+          const cmd = filteredCommands[slashIndex]
+          if (cmd) {
+            setInput(`/${cmd.name} `)
+            setShowSlash(false)
+            setSlashQuery("")
+          }
+          return
+        }
+        if (e.key === "Escape") {
+          e.preventDefault()
+          setShowSlash(false)
+          setSlashQuery("")
+          return
+        }
       }
       if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        const cmd = filteredCommands[slashIndex];
-        if (cmd) {
-          setInput(`/${cmd.name} `);
-          setShowSlash(false);
-          setSlashQuery("");
-        }
-        return;
+        e.preventDefault()
+        send()
       }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowSlash(false);
-        setSlashQuery("");
-        return;
-      }
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  }, [showSlash, filteredCommands, slashIndex, send]);
+    },
+    [showSlash, filteredCommands, slashIndex, send]
+  )
 
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setInput(val);
+    const val = e.target.value
+    setInput(val)
     if (val.startsWith("/")) {
-      setShowSlash(true);
-      setSlashQuery(val.slice(1));
-      setSlashIndex(0);
+      setShowSlash(true)
+      setSlashQuery(val.slice(1))
+      setSlashIndex(0)
     } else {
-      setShowSlash(false);
-      setSlashQuery("");
+      setShowSlash(false)
+      setSlashQuery("")
     }
-  }, []);
+  }, [])
 
   return (
     <div className="flex size-full flex-col">
-      <div className="flex flex-shrink-0 items-center gap-3 border-b border-hairline bg-bg-surface px-4 py-1.5">
+      <div className="border-hairline bg-bg-surface flex flex-shrink-0 items-center gap-3 border-b px-4 py-1.5">
         <SidebarTrigger className="flex-shrink-0" />
-        <div className="flex flex-shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-ink-muted">
+        <div className="text-ink-muted flex flex-shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
           <span className="font-medium text-white">OpenATrading</span>
         </div>
         <div className="flex flex-1 justify-center">
           <div className="relative w-full max-w-[200px]" ref={searchContainerRef}>
-            <Search className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-ink-muted" />
+            <Search className="text-ink-muted pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="h-7 w-full rounded-lg border border-hairline bg-bg pr-12 pl-7 text-xs text-white transition-colors outline-none placeholder:text-ink-muted focus:border-ai"
+              className="border-hairline bg-bg placeholder:text-ink-muted focus:border-ai h-7 w-full rounded-lg border pr-12 pl-7 text-xs text-white transition-colors outline-none"
               placeholder="搜索股票..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setShowDropdown(true)
+              }}
               onFocus={() => setShowDropdown(true)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") { setShowDropdown(false); searchRef.current?.blur(); }
+                if (e.key === "Escape") {
+                  setShowDropdown(false)
+                  searchRef.current?.blur()
+                }
               }}
             />
-            <span className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded-badge bg-bg px-1 py-0.5 text-[9px] leading-none text-ink-muted">
+            <span className="rounded-badge bg-bg text-ink-muted pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 px-1 py-0.5 text-[9px] leading-none">
               ⌘P
             </span>
             {showDropdown && searchQuery.trim() && (
-              <div className="absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto rounded-card border border-hairline bg-bg-surface shadow-lg">
-                {searchLoading && <div className="px-3 py-2 text-xs text-ink-muted">搜索中...</div>}
-                {!searchLoading && searchResults.length === 0 && <div className="px-3 py-2 text-xs text-ink-muted">无匹配结果</div>}
+              <div className="rounded-card border-hairline bg-bg-surface absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto border shadow-lg">
+                {searchLoading && <div className="text-ink-muted px-3 py-2 text-xs">搜索中...</div>}
+                {!searchLoading && searchResults.length === 0 && (
+                  <div className="text-ink-muted px-3 py-2 text-xs">无匹配结果</div>
+                )}
                 {searchResults.map((s) => (
                   <button
                     key={s.code}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-hover"
+                    className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors"
                     onClick={() => {
-                      openTab(`${s.code}`, s.name);
-                      setSearchQuery("");
-                      setShowDropdown(false);
-                      searchRef.current?.blur();
+                      openTab(`${s.code}`, s.name)
+                      setSearchQuery("")
+                      setShowDropdown(false)
+                      searchRef.current?.blur()
                     }}
                   >
                     <span className="font-medium text-white">{s.name}</span>
-                    <span className="font-mono text-ink-muted">{s.code}</span>
+                    <span className="text-ink-muted font-mono">{s.code}</span>
                   </button>
                 ))}
               </div>
@@ -445,7 +485,10 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
           </div>
         </div>
         <div className="flex-shrink-0">
-          <button className="flex size-6 items-center justify-center rounded-button text-sm text-ink-muted transition-colors hover:bg-bg-hover hover:text-white" title="更多">
+          <button
+            className="rounded-button text-ink-muted hover:bg-bg-hover flex size-6 items-center justify-center text-sm transition-colors hover:text-white"
+            title="更多"
+          >
             ⋯
           </button>
         </div>
@@ -458,132 +501,160 @@ export default function AiCopilot({ activeThreadId, onActiveThreadChange, onRelo
         onClose={closeTab}
       />
 
-      {bodyContent ? bodyContent : (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div ref={msgContainerRef} className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
-          {isEmpty ? (
-            <div className="flex flex-1 items-center justify-center">
-              <div className="max-w-[500px] text-center">
-                <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
-                <p className="mb-6 text-sm leading-relaxed text-ink-muted">
-                  覆盖上证、深证、北交所全市场数据。支持大盘研判、板块轮动、个股分析、资金面跟踪及策略问答。
-                </p>
-              </div>
-            </div>
-          ) : (
-            currentMessages.map((msg, idx) => {
-              const isLastAi = msg.role === "assistant" && idx === currentMessages.length - 1;
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex max-w-[820px] gap-3 ${msg.role === "user" ? "flex-row-reverse self-end" : ""}`}
-                >
-                  <span
-                    className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                      msg.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
-                    }`}
-                  >
-                    {msg.role === "user" ? "U" : "AI"}
-                  </span>
-                  <div
-                    className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "max-w-[70%] rounded-tr-sm bg-ink-dim text-white"
-                        : "rounded-tl-sm border border-hairline bg-bg-surface text-white/80"
-                    }`}
-                  >
-                    {msg.reasoning && (
-                      <details
-                        open={streaming && isLastAi}
-                        className="mb-2 border-l-2 border-ink-muted/30 pl-3 text-xs text-ink-muted"
-                      >
-                        <summary className="cursor-pointer select-none hover:text-white">
-                          思考过程 {streaming && isLastAi && <span className="ml-1 text-ai">●</span>}
-                        </summary>
-                        <div className="mt-2 leading-relaxed whitespace-pre-wrap opacity-80">
-                          {msg.reasoning}
-                        </div>
-                      </details>
-                    )}
-                    {msg.toolCalls && msg.toolCalls.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {msg.toolCalls.filter((tc) => tc.name).map((tc, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 rounded-card bg-ai/10 px-2 py-0.5 font-mono text-[10px] text-ai">
-                            🛠️ {tc.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {msg.role === "assistant" ? (
-                      msg.content ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={mdComponents}>{msg.content}</ReactMarkdown>
-                      ) : streaming && isLastAi && !msg.reasoning ? (
-                        <div className="flex gap-1 py-1">
-                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" />
-                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" style={{ animationDelay: "0.2s" }} />
-                          <span className="size-1.5 animate-pulse rounded-full bg-ink-muted" style={{ animationDelay: "0.4s" }} />
-                        </div>
-                      ) : null
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
+      {bodyContent ? (
+        bodyContent
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            ref={msgContainerRef}
+            className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5"
+          >
+            {isEmpty ? (
+              <div className="flex flex-1 items-center justify-center">
+                <div className="max-w-[500px] text-center">
+                  <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
+                  <p className="text-ink-muted mb-6 text-sm leading-relaxed">
+                    覆盖上证、深证、北交所全市场数据。支持大盘研判、板块轮动、个股分析、资金面跟踪及策略问答。
+                  </p>
                 </div>
-              );
-            })
+              </div>
+            ) : (
+              currentMessages.map((msg, idx) => {
+                const isLastAi = msg.role === "assistant" && idx === currentMessages.length - 1
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex max-w-[820px] gap-3 ${msg.role === "user" ? "flex-row-reverse self-end" : ""}`}
+                  >
+                    <span
+                      className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        msg.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
+                      }`}
+                    >
+                      {msg.role === "user" ? "U" : "AI"}
+                    </span>
+                    <div
+                      className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-ink-dim max-w-[70%] rounded-tr-sm text-white"
+                          : "border-hairline bg-bg-surface rounded-tl-sm border text-white/80"
+                      }`}
+                    >
+                      {msg.reasoning && (
+                        <details
+                          open={streaming && isLastAi}
+                          className="border-ink-muted/30 text-ink-muted mb-2 border-l-2 pl-3 text-xs"
+                        >
+                          <summary className="cursor-pointer select-none hover:text-white">
+                            思考过程{" "}
+                            {streaming && isLastAi && <span className="text-ai ml-1">●</span>}
+                          </summary>
+                          <div className="mt-2 leading-relaxed whitespace-pre-wrap opacity-80">
+                            {msg.reasoning}
+                          </div>
+                        </details>
+                      )}
+                      {msg.toolCalls && msg.toolCalls.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          {msg.toolCalls
+                            .filter((tc) => tc.name)
+                            .map((tc, i) => (
+                              <span
+                                key={i}
+                                className="rounded-card bg-ai/10 text-ai inline-flex items-center gap-1 px-2 py-0.5 font-mono text-[10px]"
+                              >
+                                🛠️ {tc.name}
+                              </span>
+                            ))}
+                        </div>
+                      )}
+                      {msg.role === "assistant" ? (
+                        msg.content ? (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[rehypeRaw]}
+                            components={mdComponents}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        ) : streaming && isLastAi && !msg.reasoning ? (
+                          <div className="flex gap-1 py-1">
+                            <span className="bg-ink-muted size-1.5 animate-pulse rounded-full" />
+                            <span
+                              className="bg-ink-muted size-1.5 animate-pulse rounded-full"
+                              style={{ animationDelay: "0.2s" }}
+                            />
+                            <span
+                              className="bg-ink-muted size-1.5 animate-pulse rounded-full"
+                              style={{ animationDelay: "0.4s" }}
+                            />
+                          </div>
+                        ) : null
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {showSlash && filteredCommands.length > 0 && (
+            <div className="rounded-card border-hairline bg-bg-surface absolute bottom-[140px] left-1/2 z-50 w-[420px] max-w-[90vw] -translate-x-1/2 border p-1.5 shadow-lg">
+              <div className="text-ink-muted px-2 py-1 text-[10px] font-medium tracking-wider uppercase">
+                Commands
+              </div>
+              {filteredCommands.map((cmd, i) => (
+                <button
+                  key={cmd.name}
+                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+                    i === slashIndex ? "bg-bg-hover text-white" : "text-ink-muted hover:text-white"
+                  }`}
+                  onClick={() => {
+                    pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
+                    setShowSlash(false)
+                    setSlashQuery("")
+                    setInput("")
+                  }}
+                >
+                  <span className="flex-1 truncate font-medium">/{cmd.name}</span>
+                  {cmd.description && (
+                    <span className="text-ink-muted max-w-[180px] truncate text-[10px]">
+                      {cmd.description}
+                    </span>
+                  )}
+                  <span className="rounded-badge bg-bg-hover text-ink-muted px-1.5 py-0.5 text-[9px] uppercase">
+                    {cmd.command_type}
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
-        </div>
 
-        {showSlash && filteredCommands.length > 0 && (
-          <div className="absolute bottom-[140px] left-1/2 z-50 w-[420px] max-w-[90vw] -translate-x-1/2 rounded-card border border-hairline bg-bg-surface p-1.5 shadow-lg">
-            <div className="px-2 py-1 text-[10px] font-medium tracking-wider text-ink-muted uppercase">Commands</div>
-            {filteredCommands.map((cmd, i) => (
-              <button
-                key={cmd.name}
-                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
-                  i === slashIndex ? "bg-bg-hover text-white" : "text-ink-muted hover:text-white"
-                }`}
-                onClick={() => {
-                  pendingCmdRef.current = { name: cmd.name, type: cmd.command_type };
-                  setShowSlash(false);
-                  setSlashQuery("");
-                  setInput("");
-                }}
+          <div className="border-hairline bg-bg-surface flex-shrink-0 border-t px-4 py-2">
+            <div className="relative mx-auto max-w-[820px]">
+              <Textarea
+                value={input}
+                onChange={onInputChange}
+                onKeyDown={onInputKeyDown}
+                placeholder="输入问题，/ 触发命令..."
+                disabled={streaming}
+                className="max-h-[120px] min-h-[44px] resize-none pr-12 text-sm"
+                rows={1}
+              />
+              <Button
+                size="icon"
+                className="absolute right-1.5 bottom-1.5 size-8"
+                onClick={() => send()}
+                disabled={streaming || !input.trim()}
               >
-                <span className="flex-1 truncate font-medium">/{cmd.name}</span>
-                {cmd.description && (
-                  <span className="max-w-[180px] truncate text-[10px] text-ink-muted">{cmd.description}</span>
-                )}
-                <span className="rounded-badge bg-bg-hover px-1.5 py-0.5 text-[9px] text-ink-muted uppercase">{cmd.command_type}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex-shrink-0 border-t border-hairline bg-bg-surface px-4 py-2">
-          <div className="relative mx-auto max-w-[820px]">
-            <Textarea
-              value={input}
-              onChange={onInputChange}
-              onKeyDown={onInputKeyDown}
-              placeholder="输入问题，/ 触发命令..."
-              disabled={streaming}
-              className="max-h-[120px] min-h-[44px] resize-none pr-12 text-sm"
-              rows={1}
-            />
-            <Button
-              size="icon"
-              className="absolute right-1.5 bottom-1.5 size-8"
-              onClick={() => send()}
-              disabled={streaming || !input.trim()}
-            >
-              <Send className="size-4" />
-            </Button>
+                <Send className="size-4" />
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
       )}
-
     </div>
-  );
+  )
 }

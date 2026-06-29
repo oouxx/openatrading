@@ -14,6 +14,6 @@ export function useIsMobile() {
       return () => mql.removeEventListener("change", onChange)
     },
     getMobileSnapshot,
-    () => false, // SSR fallback
+    () => false // SSR fallback
   )
 }

@@ -1,19 +1,18 @@
-import { create } from "zustand";
+import { create } from "zustand"
 
 interface UiState {
   /** 当前主题: 'dark' | 'light'，默认跟随系统或 localStorage */
-  theme: "dark" | "light";
-  setTheme: (theme: "dark" | "light") => void;
+  theme: "dark" | "light"
+  setTheme: (theme: "dark" | "light") => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  theme: (localStorage.getItem("openatrading-theme") as "dark" | "light") ||
-    (window.matchMedia?.("(prefers-color-scheme: light)").matches
-      ? "light"
-      : "dark"),
+  theme:
+    (localStorage.getItem("openatrading-theme") as "dark" | "light") ||
+    (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark"),
   setTheme: (theme) => {
-    localStorage.setItem("openatrading-theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    set({ theme });
+    localStorage.setItem("openatrading-theme", theme)
+    document.documentElement.setAttribute("data-theme", theme)
+    set({ theme })
   },
-}));
+}))

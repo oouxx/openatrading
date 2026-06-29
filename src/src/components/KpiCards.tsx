@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion } from "framer-motion"
 
 interface KpiCardsProps {
   overview: {
@@ -24,46 +24,55 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
     if (total === 0) return 50
     const riseRatio = overview.rise_count / total
     const bombFactor = 1 - bombPct / 100
-    const limitRatio = Math.min(overview.limit_up_count / Math.max(overview.limit_down_count, 1), 10) / 10
+    const limitRatio =
+      Math.min(overview.limit_up_count / Math.max(overview.limit_down_count, 1), 10) / 10
     return Math.round(riseRatio * 60 + bombFactor * 20 + limitRatio * 20)
   })()
 
-  const ratio = overview.fall_count === 0 ? '∞' : (overview.rise_count / overview.fall_count).toFixed(2)
+  const ratio =
+    overview.fall_count === 0 ? "∞" : (overview.rise_count / overview.fall_count).toFixed(2)
 
   const ratioColorClass = (() => {
     const r = overview.rise_count / Math.max(overview.fall_count, 1)
-    if (r >= 2) return 'text-up'
-    if (r >= 1) return 'text-ai'
-    return 'text-down'
+    if (r >= 2) return "text-up"
+    if (r >= 1) return "text-ai"
+    return "text-down"
   })()
 
-  const bombColorClass = bombPct > 30 ? 'text-up' : bombPct > 20 ? 'text-ai' : 'text-down'
-  const bombLabel = bombPct > 30 ? '偏高 注意' : bombPct > 20 ? '正常偏高' : '偏低 惜售'
+  const bombColorClass = bombPct > 30 ? "text-up" : bombPct > 20 ? "text-ai" : "text-down"
+  const bombLabel = bombPct > 30 ? "偏高 注意" : bombPct > 20 ? "正常偏高" : "偏低 惜售"
 
   const prevLimitUpClass = (() => {
     const v = overview.yesterday_limit_up_avg_pcp
-    if (v == null || v === 0) return 'text-ink-muted'
-    return v > 0 ? 'text-up' : 'text-down'
+    if (v == null || v === 0) return "text-ink-muted"
+    return v > 0 ? "text-up" : "text-down"
   })()
 
   const prevLimitUpLabel = (() => {
     const v = overview.yesterday_limit_up_avg_pcp
-    if (v == null) return '暂无数据'
-    if (v > 0.03) return '赚钱效应强'
-    if (v > 0) return '微利'
-    if (v > -0.03) return '微亏'
-    return '亏钱效应'
+    if (v == null) return "暂无数据"
+    if (v > 0.03) return "赚钱效应强"
+    if (v > 0) return "微利"
+    if (v > -0.03) return "微亏"
+    return "亏钱效应"
   })()
 
-  const riskBadgeClass = riskLevel === '高' ? 'bg-up/10 text-up' : riskLevel === '中' ? 'bg-up/5 text-up' : 'bg-down/10 text-down'
+  const riskBadgeClass =
+    riskLevel === "高"
+      ? "bg-up/10 text-up"
+      : riskLevel === "中"
+        ? "bg-up/5 text-up"
+        : "bg-down/10 text-down"
 
-  const sentimentLabel = sentimentTemp >= 75 ? '偏热' : sentimentTemp >= 50 ? '正常' : '偏冷'
-  const sentimentColorClass = sentimentTemp >= 75 ? 'text-up' : sentimentTemp >= 50 ? 'text-ai' : 'text-down'
-  const sentimentBorderClass = sentimentTemp >= 75 ? 'border-l-up' : sentimentTemp >= 50 ? 'border-l-ai' : 'border-l-down'
+  const sentimentLabel = sentimentTemp >= 75 ? "偏热" : sentimentTemp >= 50 ? "正常" : "偏冷"
+  const sentimentColorClass =
+    sentimentTemp >= 75 ? "text-up" : sentimentTemp >= 50 ? "text-ai" : "text-down"
+  const sentimentBorderClass =
+    sentimentTemp >= 75 ? "border-l-up" : sentimentTemp >= 50 ? "border-l-ai" : "border-l-down"
 
   const cards = [
     {
-      label: '情绪温度',
+      label: "情绪温度",
       value: sentimentTemp.toFixed(0),
       sub: `/100 ${sentimentLabel}`,
       valueClass: sentimentColorClass,
@@ -71,35 +80,38 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
       delay: 0,
     },
     {
-      label: '涨停家数',
+      label: "涨停家数",
       value: String(overview.limit_up_count),
       sub: `跌停 ${overview.limit_down_count}`,
-      valueClass: 'text-up',
-      borderClass: 'border-l-2 border-l-up',
+      valueClass: "text-up",
+      borderClass: "border-l-2 border-l-up",
       delay: 0.06,
     },
     {
-      label: '炸板率',
+      label: "炸板率",
       value: `${bombPct.toFixed(1)}%`,
       sub: bombLabel,
       valueClass: bombColorClass,
-      borderClass: '',
+      borderClass: "",
       delay: 0.12,
     },
     {
-      label: '昨日涨停表现',
-      value: overview.yesterday_limit_up_avg_pcp != null ? `${(overview.yesterday_limit_up_avg_pcp * 100).toFixed(2)}%` : '--',
+      label: "昨日涨停表现",
+      value:
+        overview.yesterday_limit_up_avg_pcp != null
+          ? `${(overview.yesterday_limit_up_avg_pcp * 100).toFixed(2)}%`
+          : "--",
       sub: prevLimitUpLabel,
       valueClass: prevLimitUpClass,
-      borderClass: '',
+      borderClass: "",
       delay: 0.18,
     },
     {
-      label: '涨跌比',
+      label: "涨跌比",
       value: ratio,
       sub: `上${overview.rise_count} 下${overview.fall_count}`,
       valueClass: ratioColorClass,
-      borderClass: 'border-l-2 border-l-ai',
+      borderClass: "border-l-2 border-l-ai",
       delay: 0.24,
     },
   ]
@@ -110,23 +122,25 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
         {cards.map((card) => (
           <motion.div
             key={card.label}
-            className={`p-card-inner rounded-card border border-hairline bg-bg-surface ${card.borderClass}`}
+            className={`p-card-inner rounded-card border-hairline bg-bg-surface border ${card.borderClass}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: card.delay }}
           >
-            <p className="text-caption mb-2 text-ink-muted">{card.label}</p>
+            <p className="text-caption text-ink-muted mb-2">{card.label}</p>
             <p className={`font-mono font-semibold ${card.valueClass}`} style={{ fontSize: 22 }}>
               {card.value}
             </p>
-            <p className="text-caption mt-1 text-ink-muted">{card.sub}</p>
+            <p className="text-caption text-ink-muted mt-1">{card.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {decisionSummary && (
-        <div className="flex items-center gap-4 rounded-card border border-hairline bg-bg-surface px-5 py-4">
-          <span className={`text-caption-strong rounded-button px-3 py-1 font-mono ${riskBadgeClass}`}>
+        <div className="rounded-card border-hairline bg-bg-surface flex items-center gap-4 border px-5 py-4">
+          <span
+            className={`text-caption-strong rounded-button px-3 py-1 font-mono ${riskBadgeClass}`}
+          >
             {riskLevel}
           </span>
           <span className="text-body text-ink-muted">{decisionSummary}</span>

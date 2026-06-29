@@ -1,5 +1,5 @@
-import { useRef, useEffect, useMemo } from 'react'
-import { createChart, LineSeries, type IChartApi, type Time } from 'lightweight-charts'
+import { useRef, useEffect, useMemo } from "react"
+import { createChart, LineSeries, type IChartApi, type Time } from "lightweight-charts"
 
 interface SentimentHistoryProps {
   data?: { date: string; value: number }[]
@@ -10,18 +10,18 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
   const chartRef = useRef<IChartApi | null>(null)
 
   const interpretation = useMemo(() => {
-    if (!data?.length) return ''
+    if (!data?.length) return ""
     const recent = data.slice(-3)
     if (recent.length >= 3 && recent.every((d) => d.value >= 75)) {
-      return '连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓'
+      return "连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓"
     }
     if (recent.length >= 3 && recent.every((d) => d.value >= 50)) {
-      return '情绪正常偏暖，短线操作环境尚可'
+      return "情绪正常偏暖，短线操作环境尚可"
     }
     if (data[data.length - 1].value < 50) {
-      return '情绪偏冷，等待回暖信号'
+      return "情绪偏冷，等待回暖信号"
     }
-    return ''
+    return ""
   }, [data])
 
   useEffect(() => {
@@ -35,21 +35,27 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: 200,
-      layout: { background: { color: '#111124' }, textColor: '#888780', fontSize: 10 },
-      grid: { vertLines: { color: 'rgba(255,255,255,0.06)' }, horzLines: { color: 'rgba(255,255,255,0.06)' } },
-      timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: false },
-      rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)', autoScale: true },
-      crosshair: { vertLine: { color: 'rgba(255,255,255,0.1)' }, horzLine: { color: 'rgba(255,255,255,0.1)' } },
+      layout: { background: { color: "#111124" }, textColor: "#888780", fontSize: 10 },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.06)" },
+        horzLines: { color: "rgba(255,255,255,0.06)" },
+      },
+      timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: false },
+      rightPriceScale: { borderColor: "rgba(255,255,255,0.06)", autoScale: true },
+      crosshair: {
+        vertLine: { color: "rgba(255,255,255,0.1)" },
+        horzLine: { color: "rgba(255,255,255,0.1)" },
+      },
     })
 
     const series = chart.addSeries(LineSeries, {
-      color: '#7F77DD',
+      color: "#7F77DD",
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
       lastValueVisible: true,
       priceLineVisible: false,
-      priceFormat: { type: 'custom', formatter: (p: number) => p.toFixed(0) },
+      priceFormat: { type: "custom", formatter: (p: number) => p.toFixed(0) },
     })
 
     series.setData(data.map((d) => ({ time: d.date as Time, value: d.value })))
@@ -58,7 +64,7 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
     if (last) {
       series.createPriceLine({
         price: last.value,
-        color: '#7F77DD',
+        color: "#7F77DD",
         lineStyle: 2,
         lineWidth: 1,
         axisLabelVisible: true,
@@ -76,16 +82,16 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
   }, [data])
 
   return (
-    <div className="p-card-inner rounded-card border border-hairline bg-bg-surface">
-      <h3 className="text-caption-strong mb-4 tracking-wider text-ink-muted uppercase">情绪历史走势（近10日）</h3>
+    <div className="p-card-inner rounded-card border-hairline bg-bg-surface border">
+      <h3 className="text-caption-strong text-ink-muted mb-4 tracking-wider uppercase">
+        情绪历史走势（近10日）
+      </h3>
       {!data?.length ? (
-        <div className="text-caption py-8 text-center text-ink-muted">暂无情绪历史数据</div>
+        <div className="text-caption text-ink-muted py-8 text-center">暂无情绪历史数据</div>
       ) : (
         <>
           <div ref={chartContainerRef} style={{ height: 200 }} />
-          {interpretation && (
-            <p className="text-caption mt-3 text-ink-muted">{interpretation}</p>
-          )}
+          {interpretation && <p className="text-caption text-ink-muted mt-3">{interpretation}</p>}
         </>
       )}
     </div>
