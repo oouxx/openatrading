@@ -1208,3 +1208,124 @@ pub async fn search_stocks(
         },
     }
 }
+
+// ── Watchlist ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistItem {
+    pub code: String,
+    pub name: String,
+    pub added_at: String,
+}
+
+fn watchlist_path() -> std::path::PathBuf {
+    openatrading_core::atrading_home().join("watchlist.json")
+}
+
+fn load_watchlist() -> Vec<WatchlistItem> {
+    let path = watchlist_path();
+    if !path.exists() {
+        return Vec::new();
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_watchlist(items: &[WatchlistItem]) -> Result<(), String> {
+    let path = watchlist_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(items).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// GET /api/watchlist
+pub async fn get_watchlist() -> impl IntoResponse {
+    let items = load_watchlist();
+    (StatusCode::OK, Json(items)).into_response()
+}
+
+/// POST /api/watchlist
+pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    let code = match body.get("code").and_then(|v| v.as_str()) {
+        Some(c) => c.to_string(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "missing code"})),
+            )
+                .into_response()
+        },
+    };
+    let name = match body.get("name").and_then(|v| v.as_str()) {
+        Some(n) => n.to_string(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "missing name"})),
+            )
+                .into_response()
+        },
+    };
+
+    let mut items = load_watchlist();
+    // 去重
+    if items.iter().any(|i| i.code == code) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "already exists"})),
+        )
+            .into_response();
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    items.push(WatchlistItem {
+        code,
+        name,
+        added_at: now,
+    });
+
+    match save_watchlist(&items) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(items))).into_response(),
+        Err(e) => {
+            openatrading_core::log::error!("save_watchlist: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "save failed"})),
+            )
+                .into_response()
+        },
+    }
+}
+
+/// DELETE /api/watchlist/:code
+pub async fn delete_watchlist(Path(code): Path<String>) -> impl IntoResponse {
+    let mut items = load_watchlist();
+    let before = items.len();
+    items.retain(|i| i.code != code);
+    if items.len() == before {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "not found"})),
+        )
+            .into_response();
+    }
+
+    match save_watchlist(&items) {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!(items))).into_response(),
+        Err(e) => {
+            openatrading_core::log::error!("save_watchlist: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "save failed"})),
+            )
+                .into_response()
+        },
+    }
+}

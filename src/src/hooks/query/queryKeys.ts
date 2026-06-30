@@ -85,3 +85,7 @@ export const roleKeys = {
     [...roleKeys.all, "pnl-history", name, days] as const,
   history: (name: string, limit?: number) => [...roleKeys.all, "history", name, limit] as const,
 }
+
+export const watchlistKeys = {
+  all: ["watchlist"] as const,
+}

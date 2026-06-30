@@ -10,7 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Search, Plus, Settings, Puzzle, Users, Trash2 } from "lucide-react"
+import { Search, Plus, Settings, Puzzle, Users, Star, Trash2 } from "lucide-react"
 import { useAppMode } from "@/contexts/AppModeContext"
 import type { ChatThread } from "@/hooks/useChatThreads"
 
@@ -62,6 +62,16 @@ export default function ConversationSidebar({
               >
                 <Puzzle />
                 <span>技能</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setMode(mode === "watchlist" ? "chat" : "watchlist")}
+                isActive={mode === "watchlist"}
+                tooltip="自选"
+              >
+                <Star />
+                <span>自选</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

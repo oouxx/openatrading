@@ -24,13 +24,6 @@ import {
   useResetRole,
 } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 function formatPct(v: number) {
   return (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%"
@@ -418,52 +411,69 @@ export default function RoleView() {
   }, [selectedRole, editStrategyText, updateStrategyMutation])
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar replaced with Select at top for narrow right panel */}
-        <div className="border-hairline flex-shrink-0 border-b px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedRole || ""}
-              onValueChange={(v) => {
-                setSelectedRole(v)
-                setShowCreate(v === "__create__")
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择角色..." />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((r) => (
-                  <SelectItem key={r.name} value={r.name}>
-                    {r.display_name || r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="bg-ai flex-shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-            >
-              + 新建
-            </button>
-          </div>
+    <>
+      <div className="flex h-full flex-row">
+        {/* Left sidebar — role list */}
+      <div className="border-hairline bg-bg-surface flex w-56 flex-shrink-0 flex-col border-r">
+        <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
+          <span className="text-xs font-semibold text-white">角色列表</span>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="bg-ai cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+          >
+            + 新建
+          </button>
         </div>
-
-        {/* Main Content */}
-        <main className="flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
-          {!selectedRole ? (
-            <div className="text-ink-muted flex flex-1 items-center justify-center text-xs">
-              ← 选择或创建一个角色
-            </div>
+        <div className="flex-1 overflow-y-auto">
+          {roles.length === 0 ? (
+            <div className="text-ink-muted px-4 py-8 text-center text-xs">暂无角色</div>
           ) : (
-            <>
-              {/* Header + Tabs */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5 p-2">
+              {roles.map((r) => {
+                const isActive = selectedRole === r.name
+                return (
+                  <button
+                    key={r.name}
+                    className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                      isActive
+                        ? "bg-ai/15 text-ai border-ai/30 border font-medium"
+                        : "text-ink-muted hover:bg-bg-hover hover:text-white border border-transparent"
+                    }`}
+                    onClick={() => {
+                      setSelectedRole(r.name)
+                      setShowCreate(false)
+                    }}
+                  >
+                    <div className="truncate">{r.name}</div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <main className="flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
+        {!selectedRole ? (
+          <div className="text-ink-muted flex flex-1 items-center justify-center text-xs">
+            选择或创建一个角色
+          </div>
+        ) : (
+          <>
+            {/* Header + Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-baseline gap-3">
                 <h1 className="text-2xl leading-tight font-medium text-white">
-                  {currentRole?.display_name || currentRole?.name}
+                  {currentRole?.name}
                 </h1>
-                <div className="bg-bg-hover flex gap-1 rounded-[10px] p-1">
+                {currentRole?.readonly && (
+                  <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-white/50">
+                    只读
+                  </span>
+                )}
+              </div>
+              <div className="bg-bg-hover flex gap-1 rounded-[10px] p-1">
                   {TABS.map((t) => (
                     <button
                       key={t.id}
@@ -811,7 +821,7 @@ export default function RoleView() {
           />
         )}
       </AnimatePresence>
-    </div>
+    </>
   )
 }
 
