@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react"
 import { getKlineImageUrl } from "@/lib/stock-utils"
 import { useRealtimeQuote } from "@/hooks/query/useRealtimeQuote"
 import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
+import { useFieldItems } from "@/hooks/query/useFieldItems"
 
 interface KlineDrawerProps {
   symbol: string
@@ -42,6 +43,18 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const xgSymbol = toXuangubaoSymbol(symbol)
   const { data: quote } = useRealtimeQuote(xgSymbol)
   const { data: plates } = usePlatesByStock(xgSymbol)
+  const { data: fieldItems } = useFieldItems()
+  const expound = useMemo(() => {
+    if (!fieldItems) return undefined
+    for (const plate of fieldItems) {
+      for (const item of plate.list) {
+        if (item.code === symbol && item.article?.action_info?.expound) {
+          return item.article.action_info.expound
+        }
+      }
+    }
+    return undefined
+  }, [fieldItems, symbol])
   const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<{
     plate_id: number
@@ -180,6 +193,18 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI 异动解读 */}
+      {expound && (
+        <div className="border-hairline mt-2 border-t px-6 py-2.5">
+          <p className="text-ink-muted mb-2 text-xs">AI 异动解读</p>
+          <div className="rounded-card border-hairline bg-bg-surface border p-3">
+            <p className="text-caption text-ink-muted leading-relaxed whitespace-pre-line">
+              {expound}
+            </p>
           </div>
         </div>
       )}
