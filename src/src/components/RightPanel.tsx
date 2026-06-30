@@ -9,7 +9,6 @@ import KlineDrawer from "./KlineDrawer"
 import DragonTigerView from "@/DragonTigerView"
 import BreakoutView from "@/BreakoutView"
 import ReplayView from "@/ReplayView"
-import RoleView from "@/RoleView"
 import StrongStocksTab from "@/components/tabs/StrongStocksTab"
 import PromotionTab from "@/components/tabs/PromotionTab"
 import PlateTab from "@/components/tabs/PlateTab"
@@ -29,7 +28,6 @@ const TABS: { id: RightPanelView; label: string }[] = [
   { id: "market-intel", label: "市场情报" },
   { id: "news", label: "资讯" },
   { id: "replay", label: "行情回放" },
-  { id: "roles", label: "角色策略" },
 ]
 
 export default function RightPanel() {
@@ -65,8 +63,6 @@ export default function RightPanel() {
         return <BreakoutView />
       case "replay":
         return <ReplayView />
-      case "roles":
-        return <RoleView />
       case "strong-stocks":
         return <StrongStocksTab />
       case "promotion":
