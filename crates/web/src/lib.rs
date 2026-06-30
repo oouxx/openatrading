@@ -127,6 +127,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/mcp/servers", post(mcp::add_handler))
         .route("/api/mcp/servers/:name", delete(mcp::delete_handler))
         .route("/api/mcp/servers/:name/toggle", get(mcp::toggle_handler))
+        .route("/api/watchlist", get(handlers::get_watchlist))
+        .route("/api/watchlist", post(handlers::add_watchlist))
+        .route("/api/watchlist/:code", delete(handlers::delete_watchlist))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

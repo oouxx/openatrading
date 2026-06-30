@@ -9,6 +9,7 @@ import { useThreadStore } from "@/stores/threadStore"
 import RightPanel from "./RightPanel"
 import SkillEditor from "./SkillEditor"
 import RoleView from "@/RoleView"
+import WatchlistView from "./WatchlistView"
 import SettingsView from "./SettingsView"
 import SettingsSidebar from "./SettingsSidebar"
 import type { SettingsTab } from "./SettingsSidebar"
@@ -87,6 +88,15 @@ export default function AppShell() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 <RoleView />
+              </div>
+            </div>
+          ) : mode === "watchlist" ? (
+            <div className="flex h-full min-w-0 flex-1 flex-col">
+              <div className="border-hairline flex items-center gap-2 border-b px-3 py-2">
+                <SidebarTrigger />
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <WatchlistView />
               </div>
             </div>
           ) : (
