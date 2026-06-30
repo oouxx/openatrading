@@ -4,7 +4,6 @@ export type RightPanelView =
   | "dragon-tiger"
   | "breakout"
   | "replay"
-  | "roles"
   | "strong-stocks"
   | "promotion"
   | "plate"
@@ -20,7 +19,6 @@ const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
   "dragon-tiger",
   "breakout",
   "replay",
-  "roles",
   "strong-stocks",
   "promotion",
   "plate",
