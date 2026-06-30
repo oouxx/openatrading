@@ -264,6 +264,21 @@ impl<A: App> VirtualRuntime<A> {
         }
     }
 
+    /// Drain all pending messages from the internal channel, simulating
+    /// the chain-processing that `TerminalRuntime::run` does between ticks.
+    ///
+    /// Call after `dispatch` (or a series of dispatches) to ensure every
+    /// `Command::Message(m)` that was returned by `A::update` is consumed
+    /// and its downstream messages are also processed.
+    pub fn drain(&mut self) {
+        while let Ok(msg) = self.msg_rx.try_recv() {
+            let cmd = A::update(&mut self.state, msg);
+            if let Command::Message(m) = cmd {
+                let _ = self.msg_tx.send(m);
+            }
+        }
+    }
+
     /// Render the current state and return the screen content as a string.
     pub fn screen(&mut self) -> String {
         self.terminal.draw(|frame| A::view(&self.state, frame)).ok();
