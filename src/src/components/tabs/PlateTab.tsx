@@ -1,8 +1,6 @@
 import { useState } from "react"
-import { ChevronDown } from "lucide-react"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import type { FieldPlate } from "@/stores/data"
 
 type StockItem = FieldPlate["list"][number]
@@ -22,13 +20,8 @@ function formatTurnover(range: number): string {
 function hasActionInfo(ai: ActionInfo | undefined): ai is ActionInfo {
   if (!ai) return false
   return Boolean(
-    ai.num || ai.time || ai.expound || ai.price || ai.day || ai.edition || ai.shares_range
+    ai.num || ai.time || ai.price || ai.day || ai.edition || ai.shares_range
   )
-}
-
-/** 展开区目前只放 expound；无 expound 时不显示展开按钮 */
-function hasExpandableDetail(ai: ActionInfo | undefined): ai is ActionInfo {
-  return Boolean(ai?.expound)
 }
 
 export default function PlateTab() {
@@ -92,62 +85,39 @@ function StockCard({
   onOpenKline: (s: string, n: string) => void
 }) {
   const ai = hasActionInfo(item.article?.action_info) ? item.article!.action_info : undefined
-  const expandable = hasExpandableDetail(ai)
 
   return (
-    <Collapsible className="group">
-      <div
-        className="rounded-card border-hairline bg-bg hover:border-ai/30 cursor-pointer border transition-colors"
-        onClick={() => onOpenKline(item.code, item.name)}
-      >
-        <div className="flex items-center justify-between p-2">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate text-xs font-semibold text-white">{item.name}</span>
-            <span className="text-caption text-ink-muted font-mono">
-              {item.code.replace(/^(sh|sz|bj)/, "")}
-            </span>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-1">
-            {ai?.num && <span className="text-caption text-ai font-semibold">{ai.num}</span>}
-            {expandable && (
-              <CollapsibleTrigger asChild>
-                <button
-                  className="text-caption text-ink-muted hover:text-ai transition-colors"
-                  title="异动详情"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ChevronDown className="size-3 transition-transform group-data-[state=open]:rotate-180" />
-                </button>
-              </CollapsibleTrigger>
+    <div
+      className="rounded-card border-hairline bg-bg hover:border-ai/30 cursor-pointer border transition-colors"
+      onClick={() => onOpenKline(item.code, item.name)}
+    >
+      <div className="flex items-center justify-between p-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-xs font-semibold text-white">{item.name}</span>
+          <span className="text-caption text-ink-muted font-mono">
+            {item.code.replace(/^(sh|sz|bj)/, "")}
+          </span>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          {ai?.num && <span className="text-caption text-ai font-semibold">{ai.num}</span>}
+        </div>
+      </div>
+      {ai &&
+        (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
+          <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
+            {ai.time && <span className="text-ink-muted">{ai.time}</span>}
+            {ai.price !== undefined && (
+              <span className="text-ink-muted">
+                价格 <span className="text-white">{formatPrice(ai.price)}</span>
+              </span>
+            )}
+            {ai.shares_range !== undefined && (
+              <span className="text-ink-muted">
+                涨幅 <span className="text-up">{formatTurnover(ai.shares_range)}</span>
+              </span>
             )}
           </div>
-        </div>
-        {ai &&
-          (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
-            <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
-              {ai.time && <span className="text-ink-muted">{ai.time}</span>}
-              {ai.price !== undefined && (
-                <span className="text-ink-muted">
-                  价格 <span className="text-white">{formatPrice(ai.price)}</span>
-                </span>
-              )}
-              {ai.shares_range !== undefined && (
-                <span className="text-ink-muted">
-                  涨幅 <span className="text-up">{formatTurnover(ai.shares_range)}</span>
-                </span>
-              )}
-            </div>
-          )}
-      </div>
-      {expandable && (
-        <CollapsibleContent>
-          <div className="rounded-b-card border-hairline bg-bg-hover/30 border-t p-2">
-            <p className="text-caption text-ink-muted leading-relaxed whitespace-pre-line">
-              {ai!.expound}
-            </p>
-          </div>
-        </CollapsibleContent>
-      )}
-    </Collapsible>
+        )}
+    </div>
   )
 }

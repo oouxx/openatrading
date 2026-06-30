@@ -85,7 +85,7 @@ export default function RightPanel() {
   }
 
   return (
-    <div className="flex h-full flex-shrink-0">
+    <div className="relative flex h-full flex-shrink-0">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
         className="border-hairline bg-bg-surface flex flex-col overflow-hidden border-l transition-[width] duration-150"
@@ -140,16 +140,24 @@ export default function RightPanel() {
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto">{renderView()}</div>
+            <div className="relative flex flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">{renderView()}</div>
+
+              <AnimatePresence>
+                {klineTarget && (
+                  <div className="absolute inset-0 z-10 bg-bg-surface overflow-y-auto">
+                    <KlineDrawer
+                      symbol={klineTarget.symbol}
+                      name={klineTarget.name}
+                      onClose={closeKline}
+                    />
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           </>
         )}
       </div>
-
-      <AnimatePresence>
-        {klineTarget && (
-          <KlineDrawer symbol={klineTarget.symbol} name={klineTarget.name} onClose={closeKline} />
-        )}
-      </AnimatePresence>
     </div>
   )
 }
