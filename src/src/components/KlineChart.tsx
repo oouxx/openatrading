@@ -88,12 +88,7 @@ export interface CrosshairInfo {
   changeNum: number
 }
 
-export default function KlineChart({
-  data,
-  period,
-  preclose,
-  symbol,
-}: KlineChartProps) {
+export default function KlineChart({ data, period, preclose, symbol }: KlineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
@@ -132,7 +127,8 @@ export default function KlineChart({
       width: el.clientWidth,
       height: 420,
       layout: {
-        background: { color: "#111124" },
+        attributionLogo: false,
+        background: { type: "solid", color: "transparent" } as any,
         textColor: "#888780",
         fontSize: 10,
         panes: {
@@ -150,8 +146,7 @@ export default function KlineChart({
         timeVisible: true,
         secondsVisible: false,
         borderColor: "rgba(255,255,255,0.06)",
-        tickMarkFormatter: (time: Time) =>
-          timeLabelMapRef.current.get(time as number) || "",
+        tickMarkFormatter: (time: Time) => timeLabelMapRef.current.get(time as number) || "",
       },
       rightPriceScale: {
         borderVisible: false,
@@ -167,8 +162,8 @@ export default function KlineChart({
     })
 
     priceSeriesRef.current = chart.addSeries(LineSeries, {
-      color: "#ffffff",
-      lineWidth: 1,
+      color: "#7F77DD",
+      lineWidth: 2,
       priceScaleId: "left",
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
@@ -196,8 +191,7 @@ export default function KlineChart({
       crosshairMarkerVisible: false,
       priceFormat: {
         type: "custom",
-        formatter: (v: number) =>
-          `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`,
+        formatter: (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`,
         minMove: 0.01,
       },
     })
@@ -218,7 +212,7 @@ export default function KlineChart({
           minMove: 1,
         },
       },
-      1,
+      1
     )
 
     chart.panes()[0].setHeight(320)
@@ -234,9 +228,7 @@ export default function KlineChart({
       const ts = param.time as number
       const c = data.find((d) => d.time === ts)
       if (!c || !onCrosshairRef.current) return
-      const chgRate = preclose
-        ? ((c.close - preclose) / preclose) * 100
-        : c.change_rate ?? 0
+      const chgRate = preclose ? ((c.close - preclose) / preclose) * 100 : (c.change_rate ?? 0)
       const label = timeLabelMapRef.current.get(ts) || ""
       onCrosshairRef.current({
         time: label,
@@ -261,7 +253,8 @@ export default function KlineChart({
       width: el.clientWidth,
       height: 420,
       layout: {
-        background: { color: "#111124" },
+        attributionLogo: false,
+        background: { type: "solid", color: "transparent" } as any,
         textColor: "#888780",
         fontSize: 10,
         panes: {
@@ -284,6 +277,10 @@ export default function KlineChart({
       rightPriceScale: {
         borderColor: "rgba(255,255,255,0.06)",
         autoScale: true,
+        scaleMargins: {
+          top: 0.08,
+          bottom: 0.08,
+        },
       },
       leftPriceScale: {
         visible: false,
@@ -317,7 +314,7 @@ export default function KlineChart({
           minMove: 1,
         },
       },
-      1,
+      1
     )
 
     chart.panes()[0].setHeight(340)
@@ -326,6 +323,10 @@ export default function KlineChart({
     chart.priceScale("right", 1).applyOptions({
       borderVisible: false,
       autoScale: true,
+      scaleMargins: {
+        top: 0.08,
+        bottom: 0.08,
+      },
     })
 
     chart.subscribeCrosshairMove((param) => {
@@ -367,10 +368,11 @@ export default function KlineChart({
 
     const filtered = period === "minute" ? data.filter((c) => isTradingTime(c.time)) : data
 
+    if (filtered.length === 0) return
+
     if (period === "minute") {
       timeLabelMapRef.current = buildTimeLabels(filtered)
       initIntradayChart()
-
       const price = priceSeriesRef.current
       const avgPrice = avgPriceSeriesRef.current
       const volume = volumeSeriesRef.current
@@ -382,23 +384,17 @@ export default function KlineChart({
         const priceRange = preclose * (limitPct / 100)
 
         chartRef.current.priceScale("left", 0).setAutoScale(false)
-        chartRef.current
-          .priceScale("left", 0)
-          .setVisibleRange({
-            from: preclose - priceRange,
-            to: preclose + priceRange,
-          })
+        chartRef.current.priceScale("left", 0).setVisibleRange({
+          from: preclose - priceRange,
+          to: preclose + priceRange,
+        })
 
         chartRef.current.priceScale("right", 0).setAutoScale(false)
-        chartRef.current
-          .priceScale("right", 0)
-          .setVisibleRange({ from: -limitPct, to: limitPct })
+        chartRef.current.priceScale("right", 0).setVisibleRange({ from: -limitPct, to: limitPct })
       }
 
       // Price line
-      price.setData(
-        filtered.map((c) => ({ time: c.time as Time, value: c.close })),
-      )
+      price.setData(filtered.map((c) => ({ time: c.time as Time, value: c.close })))
 
       // VWAP line
       let cumValue = 0
@@ -411,7 +407,7 @@ export default function KlineChart({
             time: c.time as Time,
             value: cumVolume > 0 ? cumValue / cumVolume : c.close,
           }
-        }),
+        })
       )
 
       // Intraday volume
@@ -423,13 +419,13 @@ export default function KlineChart({
             c.close >= (c.open ?? preclose ?? c.close)
               ? "rgba(255,92,92,0.3)"
               : "rgba(29,158,117,0.3)",
-        })),
+        }))
       )
 
-      if (preclose && preclose > 0 && chartRef.current) {
+      if (preclose && preclose > 0 && chartRef.current && filtered.length > 0) {
         const limitPct = getLimitPct(symbol)
-        const firstTime = filtered[0].time as Time
-        const lastTime = filtered[filtered.length - 1].time as Time
+        const firstTime = filtered[0]?.time as Time
+        const lastTime = filtered[filtered.length - 1]?.time as Time
 
         pctAnchor.setData([
           { time: firstTime, value: -limitPct },
@@ -445,7 +441,7 @@ export default function KlineChart({
             lineWidth: 1,
             axisLabelVisible: true,
             title: `昨收 ${preclose.toFixed(2)}`,
-          }),
+          })
         )
         priceLinesRef.current.push(
           pctAnchor.createPriceLine({
@@ -455,18 +451,17 @@ export default function KlineChart({
             lineWidth: 1,
             axisLabelVisible: true,
             title: "0.00%",
-          }),
+          })
         )
 
         chartRef.current.timeScale().fitContent()
 
+        const prRange = preclose * (limitPct / 100)
         chartRef.current.priceScale("left", 0).setAutoScale(false)
-        chartRef.current
-          .priceScale("left", 0)
-          .setVisibleRange({
-            from: preclose - priceRange,
-            to: preclose + priceRange,
-          })
+        chartRef.current.priceScale("left", 0).setVisibleRange({
+          from: preclose - prRange,
+          to: preclose + prRange,
+        })
         chartRef.current.priceScale("right", 0).setVisibleRange({
           from: -limitPct,
           to: limitPct,
@@ -487,18 +482,15 @@ export default function KlineChart({
           high: c.high ?? c.close,
           low: c.low ?? c.close,
           close: c.close,
-        })),
+        }))
       )
 
       volume.setData(
         filtered.map((c) => ({
           time: c.time as Time,
           value: c.volume || 0,
-          color:
-            c.close >= (c.open ?? c.close)
-              ? "rgba(255,92,92,0.3)"
-              : "rgba(29,158,117,0.3)",
-        })),
+          color: c.close >= (c.open ?? c.close) ? "rgba(255,92,92,0.3)" : "rgba(29,158,117,0.3)",
+        }))
       )
 
       // Anchor series
@@ -510,15 +502,15 @@ export default function KlineChart({
           priceLineVisible: false,
           crosshairMarkerVisible: false,
         })
-        const firstTime = filtered[0].time as Time
-        const lastTime = filtered[filtered.length - 1].time as Time
+        const firstTime = filtered[0]?.time as Time
+        const lastTime = filtered[filtered.length - 1]?.time as Time
         let maxUpper = 0
         let maxLower = 0
         for (const c of filtered) {
           if (c.high && c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
           if (c.low && c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
         }
-        const range = Math.max(maxUpper, maxLower) * 1.15 || preclose * 0.02
+        const range = Math.max(maxUpper, maxLower) * 1.05 || preclose * 0.01
         anchor.setData([
           { time: firstTime, value: preclose - range },
           { time: lastTime, value: preclose + range },
@@ -527,9 +519,9 @@ export default function KlineChart({
       }
 
       const visible = (() => {
-        if (period === "day") return 60
-        if (period === "week") return 52
-        return 24
+        if (period === "day") return 90
+        if (period === "week") return 20
+        return 12
       })()
       const to = filtered.length - 1
       const from = Math.max(0, to - visible + 1)
