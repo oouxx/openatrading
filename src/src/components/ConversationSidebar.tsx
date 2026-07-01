@@ -112,7 +112,10 @@ export default function ConversationSidebar({
                 <SidebarMenuItem key={t.id} className="group/item">
                   <SidebarMenuButton
                     isActive={activeThreadId === t.id}
-                    onClick={() => onSelectThread(t.id)}
+                    onClick={() => {
+                      setMode("chat")
+                      onSelectThread(t.id)
+                    }}
                     tooltip={t.title}
                   >
                     <span

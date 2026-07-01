@@ -1,6 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::commands::CommandType;
+use openatrading_core::llm::{
+    assistant_event_to_stream_events, AgentEvent, AgentMessage, StreamEvent,
+};
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
 use std::sync::Arc;
@@ -222,6 +226,34 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .collect();
             Ok(serde_json::json!(list))
         },
+        "/api/ai/commands" => {
+            let registry = state.ctx.tool_registry.load();
+            let skills = openatrading_core::skills::SkillRegistry::from_disk();
+            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
+            let mut commands: Vec<serde_json::Value> = Vec::new();
+            for t in registry.all_tools() {
+                commands.push(serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "command_type": "tool",
+                }));
+            }
+            for s in skills.skills() {
+                commands.push(serde_json::json!({
+                    "name": s.name,
+                    "description": s.description,
+                    "command_type": "skill",
+                }));
+            }
+            for p in pipelines.commands() {
+                commands.push(serde_json::json!({
+                    "name": p.name,
+                    "description": p.description,
+                    "command_type": "pipeline",
+                }));
+            }
+            Ok(serde_json::json!(commands))
+        },
         "/api/ai/threads" => {
             let threads = state
                 .chat_threads
@@ -232,6 +264,28 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/roles" => {
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
+        },
+        "/api/watchlist" => {
+            #[derive(serde::Serialize, serde::Deserialize)]
+            struct WsItem {
+                code: String,
+                name: String,
+                added_at: String,
+            }
+            fn path_buf() -> std::path::PathBuf {
+                openatrading_core::atrading_home().join("watchlist.json")
+            }
+            fn load() -> Vec<WsItem> {
+                let p = path_buf();
+                if !p.exists() {
+                    return vec![];
+                }
+                std::fs::read_to_string(&p)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default()
+            }
+            Ok(serde_json::to_value(load()).unwrap_or_default())
         },
         "/api/replay/events" => {
             let client = XuanguBaoClient::new();
@@ -361,8 +415,8 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     .api
                     .eastmoney
                     .lhb_detail(
-                        dates.first().map(|s| s.as_str()).unwrap_or(""),
                         dates.last().map(|s| s.as_str()).unwrap_or(""),
+                        dates.first().map(|s| s.as_str()).unwrap_or(""),
                     )
                     .await
                     .map_err(|e| format!("{e}"))?;
@@ -795,11 +849,98 @@ async fn dispatch_post(
                         Ok(serde_json::json!({"ok": true}))
                     }
                 }
+            } else if path.starts_with("/api/watchlist") {
+                #[derive(serde::Serialize, serde::Deserialize)]
+                struct WsItem {
+                    code: String,
+                    name: String,
+                    added_at: String,
+                }
+                fn wl_path() -> std::path::PathBuf {
+                    openatrading_core::atrading_home().join("watchlist.json")
+                }
+                fn wl_load() -> Vec<WsItem> {
+                    let p = wl_path();
+                    if !p.exists() {
+                        return vec![];
+                    }
+                    std::fs::read_to_string(&p)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_default()
+                }
+                fn wl_save(items: &[WsItem]) -> Result<(), String> {
+                    let p = wl_path();
+                    if let Some(parent) = p.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                    }
+                    std::fs::write(
+                        &p,
+                        serde_json::to_string_pretty(items).map_err(|e| e.to_string())?,
+                    )
+                    .map_err(|e| e.to_string())
+                }
+
+                if let Some(code) = path.strip_prefix("/api/watchlist/") {
+                    // DELETE /api/watchlist/CODE
+                    let code = url_decode(code);
+                    let mut items = wl_load();
+                    let before = items.len();
+                    items.retain(|i| i.code != code);
+                    if items.len() == before {
+                        return Err(format!("not found: {code}"));
+                    }
+                    wl_save(&items).map_err(|e| e.to_string())?;
+                    Ok(serde_json::to_value(items).unwrap_or_default())
+                } else {
+                    // POST /api/watchlist
+                    let code = body
+                        .get("code")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "missing code".to_string())?
+                        .to_string();
+                    let name = body
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "missing name".to_string())?
+                        .to_string();
+                    let mut items = wl_load();
+                    if items.iter().any(|i| i.code == code) {
+                        return Err("already exists".to_string());
+                    }
+                    items.push(WsItem {
+                        code,
+                        name,
+                        added_at: chrono::Utc::now().to_rfc3339(),
+                    });
+                    wl_save(&items).map_err(|e| e.to_string())?;
+                    Ok(serde_json::to_value(items).unwrap_or_default())
+                }
             } else {
                 Err(format!("unknown path: {path}"))
             }
         },
     }
+}
+
+fn url_decode(s: &str) -> String {
+    let s = s.replace('+', " ");
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let hex: String = chars.by_ref().take(2).collect();
+            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                result.push(byte as char);
+            } else {
+                result.push('%');
+                result.push_str(&hex);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 fn extract_query(path: &str, key: &str) -> Option<String> {
@@ -839,9 +980,9 @@ async fn api_chat_stream(
 ) -> Result<(), String> {
     eprintln!("[chat_stream] start, body={}", body);
 
-    let llm = state.ctx.llm.clone();
     let api = state.ctx.api.clone();
     let roles = state.roles.clone();
+    let tools_registry = &state.ctx.tool_registry;
 
     let role_name = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
     eprintln!("[chat_stream] role={role_name}");
@@ -875,34 +1016,78 @@ async fn api_chat_stream(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    let strategy_text: String = match command_type_str {
-        "skill" => {
+    let effective_command_type = match command_type_str {
+        "tool" => Some(CommandType::Tool),
+        "skill" => Some(CommandType::Skill),
+        "pipeline" => Some(CommandType::Pipeline),
+        _ => None,
+    };
+
+    let (system_prompt, tools) = match &effective_command_type {
+        Some(CommandType::Tool) => {
+            let strategy_text = roles_guard
+                .iter()
+                .find(|r| r.name == role_name)
+                .map(|r| r.strategy.as_str())
+                .unwrap_or(default_strategy);
+            let sp = openatrading_web::chat::build_system_prompt(strategy_text);
+            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .load()
+                .all_tools()
+                .iter()
+                .filter(|t| t.name == command_name)
+                .cloned()
+                .collect();
+            (sp, filtered)
+        },
+        Some(CommandType::Skill) => {
             let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            skills
+            let prompt = skills
                 .skills()
                 .iter()
                 .find(|s| s.name == command_name)
-                .map(|s| s.content.clone())
-                .unwrap_or_else(|| default_strategy.to_string())
+                .map(|s| s.content.as_str())
+                .unwrap_or(default_strategy);
+            (
+                openatrading_web::chat::build_system_prompt(prompt),
+                tools_registry.load().all_tools().to_vec(),
+            )
         },
-        "pipeline" => {
+        Some(CommandType::Pipeline) => {
             let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            pipelines
-                .find(command_name)
-                .map(|s| s.prompt.clone())
-                .unwrap_or_else(|| default_strategy.to_string())
+            let spec = pipelines.find(command_name);
+            let prompt = spec
+                .as_ref()
+                .map(|s| s.prompt.as_str())
+                .unwrap_or(default_strategy);
+            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
+            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
+                .load()
+                .all_tools()
+                .iter()
+                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
+                .cloned()
+                .collect();
+            (
+                openatrading_web::chat::build_system_prompt(prompt),
+                filtered,
+            )
         },
-        _ => {
-            // "tool" or None: use role strategy
-            roles_guard
+        None => {
+            let strategy_text = roles_guard
                 .iter()
                 .find(|r| r.name == role_name)
-                .map(|r| r.strategy.clone())
-                .unwrap_or_else(|| default_strategy.to_string())
+                .map(|r| r.strategy.as_str())
+                .unwrap_or(default_strategy);
+            (
+                openatrading_web::chat::build_system_prompt(strategy_text),
+                tools_registry.load().all_tools().to_vec(),
+            )
         },
     };
 
-    let system_prompt = openatrading_web::chat::build_system_prompt(&strategy_text);
+    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
+
     let user_message = openatrading_web::chat::build_user_message(
         &overview,
         field_items.as_deref(),
@@ -914,73 +1099,194 @@ async fn api_chat_stream(
         user_message.len()
     );
 
-    let mut messages_vec: Vec<serde_json::Value> = vec![
-        serde_json::json!({"role": "system", "content": system_prompt}),
-        serde_json::json!({"role": "user", "content": user_message}),
-        serde_json::json!({"role": "assistant", "content": "已收到市场数据，请提问。"}),
-    ];
+    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
 
+    let mut pi_messages: Vec<AgentMessage> = Vec::new();
+    // Data context as first user message
+    pi_messages.push(AgentMessage::User {
+        content: vec![ContentBlock::Text {
+            text: user_message,
+            text_signature: None,
+        }],
+        timestamp: 0,
+    });
+    // Assistant ack
+    pi_messages.push(AgentMessage::Assistant {
+        content: vec![ContentBlock::Text {
+            text: "已收到市场数据，请提问。".into(),
+            text_signature: None,
+        }],
+        api: String::new(),
+        provider: String::new(),
+        model: String::new(),
+        usage: Default::default(),
+        stop_reason: Some(StopReason::Stop),
+        error_message: None,
+        timestamp: 0,
+    });
+
+    // History
     if let Some(history) = body.get("history").and_then(|h| h.as_array()) {
         eprintln!("[chat_stream] history len={}", history.len());
         for msg in history {
-            messages_vec.push(msg.clone());
+            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            match role {
+                "user" => {
+                    pi_messages.push(AgentMessage::User {
+                        content: vec![ContentBlock::Text {
+                            text: content.to_string(),
+                            text_signature: None,
+                        }],
+                        timestamp: 0,
+                    });
+                },
+                "assistant" => {
+                    pi_messages.push(AgentMessage::Assistant {
+                        content: vec![ContentBlock::Text {
+                            text: content.to_string(),
+                            text_signature: None,
+                        }],
+                        api: String::new(),
+                        provider: String::new(),
+                        model: String::new(),
+                        usage: Default::default(),
+                        stop_reason: Some(StopReason::Stop),
+                        error_message: None,
+                        timestamp: 0,
+                    });
+                },
+                _ => {},
+            }
         }
     }
 
+    // Current user message
     if let Some(message) = body.get("message").and_then(|m| m.as_str()) {
         eprintln!("[chat_stream] user message: {message}");
-        messages_vec.push(serde_json::json!({
-            "role": "user",
-            "content": message,
-        }));
+        pi_messages.push(AgentMessage::User {
+            content: vec![ContentBlock::Text {
+                text: message.to_string(),
+                text_signature: None,
+            }],
+            timestamp: 0,
+        });
     }
 
-    let prompt = serde_json::json!(messages_vec).to_string();
-    eprintln!(
-        "[chat_stream] calling llm chat_stream_with_messages_marked, prompt len={}",
-        prompt.len()
+    eprintln!("[chat_stream] creating agent and subscribing to events");
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+
+    let listener = Arc::new(
+        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        },
     );
 
-    let mut llm_stream = llm
-        .chat_stream_with_messages_marked(&prompt)
-        .await
-        .map_err(|e| {
-            eprintln!("[chat_stream] llm error: {e}");
-            format!("llm error: {e}")
-        })?;
-    eprintln!("[chat_stream] llm stream started");
+    let handle = agent.subscribe(listener).await;
 
-    use futures_util::StreamExt;
+    let agent_clone = Arc::clone(&agent);
+    tokio::spawn(async move {
+        let _ = agent_clone.process(pi_messages).await;
+        drop(handle);
+    });
 
-    let mut chunk_count = 0u32;
-    let mut empty_count = 0u32;
-    while let Some(chunk) = llm_stream.next().await {
-        let chunk: Result<String, _> = chunk;
-        match chunk {
-            Ok(text) if !text.is_empty() => {
-                chunk_count += 1;
-                if chunk_count <= 3 || chunk_count.is_multiple_of(20) {
-                    eprintln!(
-                        "[chat_stream] chunk #{chunk_count}: {:?}",
-                        &text[..text.len().min(80)]
-                    );
+    eprintln!("[chat_stream] reading events from channel");
+
+    let mut text_count = 0u32;
+    loop {
+        match rx.recv().await {
+            Some(AgentEvent::MessageUpdate {
+                assistant_message_event,
+                ..
+            }) => {
+                let stream_events = assistant_event_to_stream_events(&assistant_message_event);
+                for se in stream_events {
+                    match se {
+                        StreamEvent::Text(t) => {
+                            text_count += 1;
+                            if text_count <= 3 || text_count.is_multiple_of(20) {
+                                eprintln!(
+                                    "[chat_stream] text #{text_count}: {:?}",
+                                    &t[..t.len().min(80)]
+                                );
+                            }
+                            channel
+                                .send(format!("\x00TEXT\x00{}", t.replace('\n', "\\n")))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        StreamEvent::ReasoningText(t) => {
+                            channel
+                                .send(format!("\x00THINKING\x00{}", t.replace('\n', "\\n")))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        StreamEvent::ToolCallStart(tc) => {
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "id": tc.id,
+                                "name": tc.function_name,
+                                "args": tc.arguments,
+                            }))
+                            .unwrap_or_default();
+                            channel
+                                .send(format!("\x00TOOL_CALL\x00{data}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        StreamEvent::Error(e) => {
+                            channel
+                                .send(format!("[ERROR] {e}"))
+                                .map_err(|f| format!("channel error: {f}"))?;
+                        },
+                        _ => {},
+                    }
                 }
-                channel.send(text).map_err(|e| {
-                    eprintln!("[chat_stream] channel send error: {e}");
-                    format!("channel error: {e}")
-                })?;
             },
-            Ok(_) => {
-                empty_count += 1;
+            Some(AgentEvent::AgentEnd { .. }) => {
+                eprintln!("[chat_stream] AgentEnd, done");
+                break;
             },
-            Err(e) => {
-                eprintln!("[chat_stream] stream error: {e}");
-                return Err(format!("stream error: {e}"));
+            Some(_) => {},
+            None => {
+                eprintln!("[chat_stream] channel closed unexpectedly");
+                break;
             },
         }
     }
 
-    eprintln!("[chat_stream] done, total chunks={chunk_count}, empty chunks={empty_count}");
+    eprintln!("[chat_stream] done, total text chunks={text_count}");
+    Ok(())
+}
+
+#[tauri::command]
+async fn api_realtime_stream(
+    symbol: String,
+    channel: tauri::ipc::Channel<String>,
+    _state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let client = openatrading_core::api::xuangubao::XuanguBaoClient::new();
+    loop {
+        match client.fetch_realtime(&symbol).await {
+            Ok(data) => {
+                let json = serde_json::to_string(&data).unwrap_or_default();
+                channel
+                    .send(json)
+                    .map_err(|e| format!("channel error: {e}"))?;
+            },
+            Err(e) => {
+                let msg = e.to_string();
+                eprintln!("[realtime-stream] {symbol}: {msg}");
+                if msg.contains("not found") {
+                    break;
+                }
+                channel
+                    .send(format!(r#"{{"error":"{msg}"}}"#))
+                    .map_err(|f| format!("channel error: {f}"))?;
+            },
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
     Ok(())
 }
 
@@ -1062,6 +1368,7 @@ fn main() {
             api_fetch,
             api_post,
             api_chat_stream,
+            api_realtime_stream,
             api_replay_analyze
         ])
         .run(tauri::generate_context!())

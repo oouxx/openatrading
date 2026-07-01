@@ -60,11 +60,16 @@ export async function apiChatStream(
       if (chunkCount <= 3 || chunkCount % 20 === 0) {
         console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80))
       }
-      // Parse \x00TEXT\x00 / \x00THINKING\x00 markers from Tauri path
+      // Parse \x00TEXT\x00 / \x00THINKING\x00 / \x00TOOL_CALL\x00 markers from Tauri path
       if (text.startsWith("\x00THINKING\x00")) {
         callbacks.onReasoning?.(text.slice(11).replace(/\\n/g, "\n"))
       } else if (text.startsWith("\x00TEXT\x00")) {
         callbacks.onText(text.slice(6).replace(/\\n/g, "\n"))
+      } else if (text.startsWith("\x00TOOL_CALL\x00")) {
+        try {
+          const tc = JSON.parse(text.slice(12))
+          callbacks.onToolCall?.({ id: tc.id, name: tc.name, args: tc.args })
+        } catch { /* ignore parse errors */ }
       } else {
         callbacks.onText(text)
       }

@@ -1,4 +1,3 @@
-// src/components/AppShell.tsx
 import { useState, useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
 import AiCopilot from "@/AiCopilot"

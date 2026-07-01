@@ -1,5 +1,4 @@
-import { useState, useMemo, useCallback } from "react"
-import { useQueries } from "@tanstack/react-query"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Star, Plus, Trash2, X, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import {
   useWatchlist,
@@ -7,8 +6,7 @@ import {
   useDeleteWatchlist,
   type WatchlistItem,
 } from "@/hooks/query/useWatchlist"
-import { realtimeKeys } from "@/hooks/query/queryKeys"
-import { fetchJson } from "@/stores/data"
+import { subscribeRealtime } from "@/hooks/useRealtimeStream"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import KlineDrawer from "./KlineDrawer"
@@ -30,7 +28,7 @@ interface QuoteData {
   circulation_value?: number
 }
 
-/** Pair a watchlist item with its realtime quote (loaded via useQueries). */
+/** Pair a watchlist item with its realtime quote. */
 interface RichStock extends WatchlistItem {
   quote: QuoteData | undefined
 }
@@ -40,18 +38,20 @@ export default function WatchlistView() {
   const addWatchlist = useAddWatchlist()
   const deleteWatchlist = useDeleteWatchlist()
 
-  // Batch-fetch all watchlist quotes with stable query options (same identity each render)
-  const quoteOptions = useMemo(
-    () =>
-      items.map((item) => ({
-        queryKey: realtimeKeys.bySymbol(item.code),
-        queryFn: () => fetchJson<QuoteData>(`/api/realtime/${item.code}`),
-        staleTime: 10 * 1000,
-        enabled: true,
-      })),
-    [items]
-  )
-  const quoteResults = useQueries({ queries: quoteOptions })
+  // ── Real-time quotes via streams ──
+  const quotesRef = useRef<Map<string, QuoteData>>(new Map())
+  const [quoteTick, setQuoteTick] = useState(0)
+
+  useEffect(() => {
+    quotesRef.current = new Map()
+    const unsubs = items.map((item) =>
+      subscribeRealtime(item.code, (data: any) => {
+        quotesRef.current.set(item.code, data)
+        setQuoteTick((n) => n + 1)
+      })
+    )
+    return () => unsubs.forEach((fn) => fn())
+  }, [items])
 
   // ── KlineDrawer ──
   const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
@@ -116,9 +116,10 @@ export default function WatchlistView() {
   const richList = useMemo((): RichStock[] => {
     return items.map((item, i) => ({
       ...item,
-      quote: quoteResults[i]?.data,
+      quote: quotesRef.current.get(item.code),
     }))
-  }, [items, quoteResults])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, quoteTick])
 
   const sorted = useMemo(() => {
     let list = richList

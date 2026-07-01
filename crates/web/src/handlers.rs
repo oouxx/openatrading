@@ -1,11 +1,13 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{sse::Event, IntoResponse, Sse},
     Json,
 };
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 
 use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -349,7 +351,7 @@ pub async fn get_kline(
     .await
 }
 
-/// GET /api/realtime/:symbol
+/// GET /api/realtime/:symbol — single shot
 pub async fn get_realtime(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
@@ -374,6 +376,36 @@ pub async fn get_realtime(
         },
     )
     .await
+}
+
+/// GET /api/realtime/:symbol/stream — SSE, every 3s
+pub async fn get_realtime_stream(
+    State(_state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    let client = XuanguBaoClient::new();
+    let stream = async_stream::stream! {
+        loop {
+            match client.fetch_realtime(&symbol).await {
+                Ok(data) => {
+                    let json = serde_json::to_string(&data).unwrap_or_default();
+                    yield Ok(Event::default().data(json));
+                },
+                Err(e) => {
+                    let msg = e.to_string();
+                    openatrading_core::log::warn!("[realtime-stream] {symbol}: {msg}");
+                    if msg.contains("not found") {
+                        yield Ok(Event::default().data(r#"{"error":"not_found"}"#));
+                        break;
+                    }
+                    // Otherwise just emit the error and keep polling
+                    yield Ok(Event::default().data(format!(r#"{{"error":"{msg}"}}"#)));
+                },
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    };
+    Ok(Sse::new(stream))
 }
 
 /// GET /api/yesterday-limit-up

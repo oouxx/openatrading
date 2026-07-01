@@ -38,3 +38,4 @@ certs/
 .claude/worktrees/
 .codegraph/daemon.pid
 .mcp.json
+.tokensave

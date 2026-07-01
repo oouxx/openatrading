@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { getKlineImageUrl } from "@/lib/stock-utils"
-import { useRealtimeQuote } from "@/hooks/query/useRealtimeQuote"
+import { subscribeRealtime } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 
@@ -16,12 +16,6 @@ const periods = [
   { label: "周K", value: "week" },
   { label: "月K", value: "month" },
 ]
-
-interface KlineDrawerProps {
-  symbol: string
-  name: string
-  onClose: () => void
-}
 
 function formatVolume(v: number) {
   if (!v) return "-"
@@ -41,7 +35,12 @@ function toXuangubaoSymbol(code: string): string {
 export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps) {
   const [period, setPeriod] = useState("minute")
   const xgSymbol = toXuangubaoSymbol(symbol)
-  const { data: quote } = useRealtimeQuote(xgSymbol)
+  const [quote, setQuote] = useState<any>(null)
+  useEffect(() => {
+    return subscribeRealtime(xgSymbol, setQuote, (err) =>
+      console.warn("[realtime-stream]", err)
+    )
+  }, [xgSymbol])
   const { data: plates } = usePlatesByStock(xgSymbol)
   const { data: fieldItems } = useFieldItems()
   const expound = useMemo(() => {
