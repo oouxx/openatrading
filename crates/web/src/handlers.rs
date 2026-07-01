@@ -310,6 +310,40 @@ pub async fn get_sentiment(
     .await
 }
 
+/// GET /api/kline/:symbol/stream — SSE, every 3s, re-fetches on period change
+pub async fn get_kline_stream(
+    State(_state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+    Query(q): Query<KlineQuery>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    let period = match q.period.as_str() {
+        "week" => KlinePeriod::Week,
+        "month" => KlinePeriod::Month,
+        "minute" => KlinePeriod::Minute,
+        _ => KlinePeriod::Day,
+    };
+    let count = q.count;
+    let client = XuanguBaoClient::new();
+
+    let stream = async_stream::stream! {
+        loop {
+            match client.fetch_kline(&symbol, period, count).await {
+                Ok(data) => {
+                    let json = serde_json::to_string(&data).unwrap_or_default();
+                    yield Ok(Event::default().data(json));
+                },
+                Err(e) => {
+                    let msg = e.to_string();
+                    openatrading_core::log::warn!("[kline-stream] {symbol}: {msg}");
+                    yield Ok(Event::default().data(format!(r#"{{"error":"{msg}"}}"#)));
+                },
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    };
+    Ok(Sse::new(stream))
+}
+
 /// GET /api/kline/:symbol
 #[derive(serde::Deserialize)]
 pub struct KlineQuery {

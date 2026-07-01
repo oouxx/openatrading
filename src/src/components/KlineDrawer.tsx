@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react"
-import { getKlineImageUrl } from "@/lib/stock-utils"
-import { subscribeRealtime } from "@/hooks/useRealtimeStream"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { subscribeKline, subscribeRealtime } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
+import KlineChart, { type KlineCandle, type CrosshairInfo } from "./KlineChart"
 
 interface KlineDrawerProps {
   symbol: string
@@ -36,11 +36,36 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const [period, setPeriod] = useState("minute")
   const xgSymbol = toXuangubaoSymbol(symbol)
   const [quote, setQuote] = useState<any>(null)
+
+  // Kline data from SSE
+  const [klineData, setKlineData] = useState<KlineCandle[]>([])
+  const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null)
+  const crosshairRef = useRef<CrosshairInfo | null>(null)
+
+  // Set crosshair listener from KlineChart
+  const chartReady = useRef(false)
+  const setChartCrosshair = useCallback((info: CrosshairInfo) => {
+    crosshairRef.current = info
+    setCrosshair(info)
+  }, [])
+
   useEffect(() => {
     return subscribeRealtime(xgSymbol, setQuote, (err) =>
       console.warn("[realtime-stream]", err)
     )
   }, [xgSymbol])
+
+  // Subscribe to kline SSE stream
+  useEffect(() => {
+    setKlineData([])
+    crosshairRef.current = null
+    setCrosshair(null)
+    return subscribeKline(xgSymbol, period, 256, (data: any) => {
+      if (data.candles) {
+        setKlineData(data.candles)
+      }
+    })
+  }, [xgSymbol, period])
   const { data: plates } = usePlatesByStock(xgSymbol)
   const { data: fieldItems } = useFieldItems()
   const expound = useMemo(() => {
@@ -91,7 +116,31 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     return () => document.removeEventListener("keydown", handler)
   }, [onClose])
 
-  const klineUrl = getKlineImageUrl(symbol, period)
+  // Default crosshair from last candle
+  const defaultCrosshair = useMemo((): CrosshairInfo | null => {
+    if (klineData.length === 0) return null
+    const c = klineData[klineData.length - 1]
+    const pre = quote?.preclose_px
+    const chg = pre ? ((c.close - pre) / pre) * 100 : c.change_rate ?? 0
+    const d = new Date(c.time * 1000)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const ts =
+      period === "minute"
+        ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+        : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    return {
+      time: ts,
+      open: c.open?.toFixed(2) || "-",
+      high: c.high?.toFixed(2) || "-",
+      low: c.low?.toFixed(2) || "-",
+      close: c.close?.toFixed(2) || "-",
+      volume: formatVolume(c.volume || 0),
+      change: chg >= 0 ? `+${chg.toFixed(2)}%` : `${chg.toFixed(2)}%`,
+      changeNum: chg,
+    }
+  }, [klineData, quote, period])
+
+  const currCrosshair = crosshair ?? defaultCrosshair
 
   const up = quote && quote.px_change_rate >= 0
   const _changeClass = up ? "text-up" : "text-down"
@@ -138,13 +187,32 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         ))}
       </div>
 
+      {/* Crosshair info bar */}
+      {currCrosshair && (
+        <div className="flex items-center justify-between border-hairline border-b bg-bg-surface px-3 py-1 font-mono text-xs">
+          <span className="text-white shrink-0">{currCrosshair.time}</span>
+          <div className="flex items-center gap-1.5 text-white/40 shrink-0">
+            <span>开 <span className="text-white">{currCrosshair.open}</span></span>
+            <span>高 <span className="text-white">{currCrosshair.high}</span></span>
+            <span>低 <span className="text-white">{currCrosshair.low}</span></span>
+            <span>价 <span className="text-white">{currCrosshair.close}</span></span>
+            <span>量 <span className="text-white">{currCrosshair.volume}</span></span>
+            <span
+              className={currCrosshair.changeNum >= 0 ? "text-up" : "text-down"}
+            >
+              {currCrosshair.change}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Chart */}
-      <div className="px-6 py-2.5">
-        <img
-          src={klineUrl}
-          alt={`${name} K线图`}
-          className="rounded-card w-full"
-          style={{ minHeight: 300, maxHeight: 420 }}
+      <div className="px-0">
+        <KlineChart
+          data={klineData}
+          period={period}
+          preclose={quote?.preclose_px}
+          symbol={xgSymbol}
         />
       </div>
 
