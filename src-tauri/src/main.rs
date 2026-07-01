@@ -1291,6 +1291,40 @@ async fn api_realtime_stream(
 }
 
 #[tauri::command]
+async fn api_kline_stream(
+    symbol: String,
+    period: String,
+    count: u32,
+    channel: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+    let kline_period = match period.as_str() {
+        "week" => KlinePeriod::Week,
+        "month" => KlinePeriod::Month,
+        "minute" => KlinePeriod::Minute,
+        _ => KlinePeriod::Day,
+    };
+    let client = XuanguBaoClient::new();
+    loop {
+        match client.fetch_kline(&symbol, kline_period, count).await {
+            Ok(data) => {
+                let json = serde_json::to_string(&data).unwrap_or_default();
+                channel
+                    .send(json)
+                    .map_err(|e| format!("channel error: {e}"))?;
+            },
+            Err(e) => {
+                eprintln!("[kline-stream] {symbol}: {e}");
+                channel
+                    .send(format!(r#"{{"error":"{e}"}}"#))
+                    .map_err(|f| format!("channel error: {f}"))?;
+            },
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+#[tauri::command]
 async fn api_replay_analyze(
     channel: tauri::ipc::Channel<String>,
     state: tauri::State<'_, Arc<AppState>>,
@@ -1369,6 +1403,7 @@ fn main() {
             api_post,
             api_chat_stream,
             api_realtime_stream,
+            api_kline_stream,
             api_replay_analyze
         ])
         .run(tauri::generate_context!())
