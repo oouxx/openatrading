@@ -38,7 +38,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   }
 
   // Load on mount — initialization fetch outside React data flow
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     loadServers()
   }, [])

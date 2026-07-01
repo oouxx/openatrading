@@ -4,7 +4,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
-import { useAppMode } from "@/contexts/AppModeContext"
 import { fetchJson } from "@/stores/data"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -31,7 +30,6 @@ interface ToolItem {
 type EditorTab = "manifest" | "content"
 
 export default function SkillEditor() {
-  const { setMode } = useAppMode()
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [tools, setTools] = useState<ToolItem[]>([])
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
@@ -66,7 +64,7 @@ export default function SkillEditor() {
   }
 
   // Mount-time initialization — data must be fetched before user interacts
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     loadSkills()
     loadTools()
@@ -145,9 +143,6 @@ export default function SkillEditor() {
   return (
     <div className="flex h-full flex-col">
       <div className="border-hairline flex items-center gap-2 border-b px-4 py-2">
-        <Button variant="ghost" size="sm" onClick={() => setMode("chat")}>
-          ← 返回
-        </Button>
         <span className="text-sm font-medium text-white">技能管理</span>
         <span className="text-ink-muted text-xs">{skills.length} 个已安装</span>
       </div>
