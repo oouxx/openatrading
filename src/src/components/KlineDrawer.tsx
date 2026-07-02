@@ -42,12 +42,20 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null)
   const crosshairRef = useRef<CrosshairInfo | null>(null)
 
-  // Set crosshair listener from KlineChart
-  const chartReady = useRef(false)
   const setChartCrosshair = useCallback((info: CrosshairInfo) => {
     crosshairRef.current = info
     setCrosshair(info)
   }, [])
+
+  // Set pending crosshair listener in render phase so KlineChart can pick it up
+  // immediately on remount (handles HMR where KlineChart remounts but this effect
+  // doesn't re-run because deps haven't changed)
+  ;(KlineChart as any).__pendingCrosshairListener = setChartCrosshair
+
+  // Wire crosshair listener from KlineChart (re-wire on klineData change since chart is recreated)
+  useEffect(() => {
+    ;(KlineChart as any).setCrosshairListener?.(setChartCrosshair)
+  }, [setChartCrosshair, klineData])
 
   useEffect(() => {
     return subscribeRealtime(xgSymbol, setQuote, (err) =>
