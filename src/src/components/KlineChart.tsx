@@ -153,13 +153,13 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       rightPriceScale: {
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0.01, bottom: 0.01 },
+        scaleMargins: { top: 0.03, bottom: 0.03 },
       },
       leftPriceScale: {
         visible: true,
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0.01, bottom: 0.01 },
+        scaleMargins: { top: 0.03, bottom: 0.03 },
       },
     })
 
