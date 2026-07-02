@@ -7,8 +7,6 @@ import {
   CrosshairMode,
   type IChartApi,
   type ISeriesApi,
-  type CandlestickData,
-  type HistogramData,
   type Time,
   type IPriceLine,
 } from "lightweight-charts"
@@ -96,6 +94,11 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const avgPriceSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const pctAnchorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
+  const ma5SeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
+  const ma10SeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
+  const ma20SeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
+  const ma30SeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
+  const seriesRefs = useRef<ISeriesApi<"Line">[]>([])
   const priceLinesRef = useRef<IPriceLine[]>([])
   const timeLabelMapRef = useRef<Map<number, string>>(new Map())
   const onCrosshairRef = useRef<((info: CrosshairInfo) => void) | null>(null)
@@ -140,7 +143,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         vertLines: { color: "rgba(255,255,255,0.06)" },
         horzLines: { color: "rgba(255,255,255,0.06)" },
       },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: CrosshairMode.Magnet },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
@@ -150,13 +153,13 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       rightPriceScale: {
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0, bottom: 0 },
+        scaleMargins: { top: 0.01, bottom: 0.01 },
       },
       leftPriceScale: {
         visible: true,
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0, bottom: 0 },
+        scaleMargins: { top: 0.01, bottom: 0.01 },
       },
     })
 
@@ -266,7 +269,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         vertLines: { color: "rgba(255,255,255,0.06)" },
         horzLines: { color: "rgba(255,255,255,0.06)" },
       },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: { mode: CrosshairMode.Magnet },
       timeScale: {
         timeVisible: period === "minute",
         secondsVisible: false,
@@ -295,6 +298,27 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       wickDownColor: "#1D9E75",
       priceScaleId: "right",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+    })
+
+    // Moving averages
+    const maConfig = [
+      { ref: ma5SeriesRef, color: "#F5A623", label: "MA5" },
+      { ref: ma10SeriesRef, color: "#4A90D9", label: "MA10" },
+      { ref: ma20SeriesRef, color: "#D0021B", label: "MA20" },
+      { ref: ma30SeriesRef, color: "#7ED321", label: "MA30" },
+    ] as const
+    seriesRefs.current = maConfig.map(({ ref, color, label }) => {
+      const series = chart.addSeries(LineSeries, {
+        color,
+        lineWidth: 1,
+        priceScaleId: "right",
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      })
+      ref.current = series
+      return series
     })
 
     chart.addPane(true)
@@ -362,6 +386,11 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     avgPriceSeriesRef.current = null
     pctAnchorSeriesRef.current = null
     volumeSeriesRef.current = null
+    ma5SeriesRef.current = null
+    ma10SeriesRef.current = null
+    ma20SeriesRef.current = null
+    ma30SeriesRef.current = null
+    seriesRefs.current = []
     timeLabelMapRef.current = new Map<number, string>()
 
     const filtered = period === "minute" ? data.filter((c) => isTradingTime(c.time)) : data
@@ -434,21 +463,21 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         priceLinesRef.current.push(
           price.createPriceLine({
             price: preclose,
-            color: "rgba(255,255,255,0.20)",
+            color: "rgba(0,0,0,0.20)",
             lineStyle: 2,
             lineWidth: 1,
             axisLabelVisible: true,
-            title: `昨收 ${preclose.toFixed(2)}`,
+            // title: `${preclose.toFixed(2)}`,
           })
         )
         priceLinesRef.current.push(
           pctAnchor.createPriceLine({
             price: 0,
-            color: "rgba(255,255,255,0.20)",
+            color: "rgba(0,0,0,0.20)",
             lineStyle: 2,
             lineWidth: 1,
             axisLabelVisible: true,
-            title: "0.00%",
+            // title: "0.00%",
           })
         )
 
@@ -491,26 +520,28 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         }))
       )
 
-      // FIX: previously a transparent "anchor" LineSeries was added here with
-      // two points spanning the *entire* filtered history's high/low vs preclose.
-      // Its last point landed inside the visible logical range (see setVisibleLogicalRange
-      // below), so autoScale on the right price scale included that far-away value when
-      // computing the Y-axis range for day/week/month charts — this is what made the
-      // candles look flat. A price line does the same visual job (marking preclose)
-      // without ever participating in autoScale.
-      clearPriceLines()
-      if (preclose && preclose > 0) {
-        priceLinesRef.current.push(
-          candle.createPriceLine({
-            price: preclose,
-            color: "rgba(255,255,255,0.20)",
-            lineStyle: 2,
-            lineWidth: 1,
-            axisLabelVisible: true,
-            title: `昨收 ${preclose.toFixed(2)}`,
-          })
-        )
+      // Moving averages (MA5, MA10, MA20, MA30)
+      const closes = filtered.map((c) => c.close)
+      const ma = (period: number, i: number) => {
+        if (i < period - 1) return null
+        let sum = 0
+        for (let j = i - period + 1; j <= i; j++) sum += closes[j]
+        return sum / period
       }
+      const maPeriods = [5, 10, 20, 30]
+      maPeriods.forEach((p, idx) => {
+        const series = seriesRefs.current[idx]
+        if (!series) return
+        const data = filtered
+          .map((c, i) => {
+            const v = ma(p, i)
+            return v !== null ? { time: c.time as Time, value: v } : null
+          })
+          .filter(Boolean) as { time: Time; value: number }[]
+        if (data.length > 0) series.setData(data)
+      })
+
+      clearPriceLines()
 
       const visible = (() => {
         if (period === "day") return 60
@@ -528,12 +559,22 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     return () => {
       clearPriceLines()
       chartRef.current?.remove()
+      chartRef.current = null
     }
   }, [clearPriceLines])
 
-  // Wrap ref for reuse in KlineDrawer
+  // Expose crosshair ref + listener for KlineDrawer
+  ;(KlineChart as any).__crosshairRef = onCrosshairRef
   ;(KlineChart as any).setCrosshairListener = setCrosshairListener
   ;(KlineChart as any).chartRef = chartRef
+
+  // Auto-restore external crosshair listener on mount (handles HMR remount)
+  useEffect(() => {
+    const pending = (KlineChart as any).__pendingCrosshairListener
+    if (pending) {
+      onCrosshairRef.current = pending
+    }
+  }, [])
 
   return <div ref={containerRef} className="w-full" style={{ height: 420 }} />
 }
