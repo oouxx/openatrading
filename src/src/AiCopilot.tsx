@@ -48,6 +48,15 @@ const mdComponents: Components = {
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { apiChatStream, fetchJson } from "@/stores/data"
 import { getMessages, saveMessage, fetchCommands, type ChatMessage } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
@@ -86,8 +95,6 @@ export default function AiCopilot({
   const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
-  const [slashQuery, setSlashQuery] = useState("")
-  const [slashIndex, setSlashIndex] = useState(0)
   const [threadMessages, setThreadMessages] = useState<Map<number, DisplayMessage[]>>(new Map())
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null)
   const streamThreadRef = useRef<number | null>(null)
@@ -189,19 +196,6 @@ export default function AiCopilot({
     return () => window.removeEventListener("keydown", handler)
   }, [])
 
-  // 全局 Escape 关闭 slash 命令弹窗
-  useEffect(() => {
-    if (!showSlash) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowSlash(false)
-        setSlashQuery("")
-      }
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [showSlash])
-
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
@@ -211,16 +205,6 @@ export default function AiCopilot({
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [])
-
-  const filteredCommands = slashQuery
-    ? commands
-        .filter(
-          (c) =>
-            c.name.toLowerCase().includes(slashQuery.toLowerCase()) ||
-            c.description.toLowerCase().includes(slashQuery.toLowerCase())
-        )
-        .slice(0, 8)
-    : commands.slice(0, 8)
 
   const currentMessages = activeThreadId !== null ? (threadMessages.get(activeThreadId) ?? []) : []
   const isEmpty = currentMessages.length === 0
@@ -264,7 +248,6 @@ export default function AiCopilot({
       const cmd = pendingCmdRef.current
       pendingCmdRef.current = null
       setShowSlash(false)
-      setSlashQuery("")
       setInput("")
 
       // Get history from the thread's own message store
@@ -380,40 +363,12 @@ export default function AiCopilot({
 
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (showSlash) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault()
-          setSlashIndex((i) => Math.min(i + 1, filteredCommands.length - 1))
-          return
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault()
-          setSlashIndex((i) => Math.max(i - 1, 0))
-          return
-        }
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault()
-          const cmd = filteredCommands[slashIndex]
-          if (cmd) {
-            setInput(`/${cmd.name} `)
-            setShowSlash(false)
-            setSlashQuery("")
-          }
-          return
-        }
-        if (e.key === "Escape") {
-          e.preventDefault()
-          setShowSlash(false)
-          setSlashQuery("")
-          return
-        }
-      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
         send()
       }
     },
-    [showSlash, filteredCommands, slashIndex, send]
+    [send]
   )
 
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -421,11 +376,8 @@ export default function AiCopilot({
     setInput(val)
     if (val.startsWith("/")) {
       setShowSlash(true)
-      setSlashQuery(val.slice(1))
-      setSlashIndex(0)
     } else {
       setShowSlash(false)
-      setSlashQuery("")
     }
   }, [])
 
@@ -600,36 +552,42 @@ export default function AiCopilot({
             )}
           </div>
 
-          {showSlash && filteredCommands.length > 0 && (
-            <div className="rounded-card border-hairline bg-bg-surface absolute bottom-[140px] left-1/2 z-50 w-[420px] max-w-[90vw] -translate-x-1/2 border p-1.5 shadow-lg">
-              <div className="text-ink-muted px-2 py-1 text-[10px] font-medium tracking-wider uppercase">
-                Commands
-              </div>
-              {filteredCommands.map((cmd, i) => (
-                <button
-                  key={cmd.name}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
-                    i === slashIndex ? "bg-bg-hover text-white" : "text-ink-muted hover:text-white"
-                  }`}
-                  onClick={() => {
-                    pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
-                    setShowSlash(false)
-                    setSlashQuery("")
-                    setInput("")
-                  }}
-                >
-                  <span className="flex-1 truncate font-medium">/{cmd.name}</span>
-                  {cmd.description && (
-                    <span className="text-ink-muted max-w-[180px] truncate text-[10px]">
-                      {cmd.description}
-                    </span>
-                  )}
-                  <span className="rounded-badge bg-bg-hover text-ink-muted px-1.5 py-0.5 text-[9px] uppercase">
-                    {cmd.command_type}
-                  </span>
-                </button>
-              ))}
-            </div>
+          {showSlash && (
+            <CommandDialog
+              open={showSlash}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setShowSlash(false)
+                }
+              }}
+            >
+              <Command>
+                <CommandInput placeholder="搜索命令..." />
+
+                <CommandList>
+                  <CommandEmpty>无匹配命令</CommandEmpty>
+                  <CommandGroup heading="Commands">
+                    {commands.map((cmd) => (
+                      <CommandItem
+                        key={cmd.name}
+                        onSelect={() => {
+                          pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
+                          setInput(`/${cmd.name} `)
+                          setShowSlash(false)
+                        }}
+                      >
+                        <span className="flex-1 truncate font-medium">/{cmd.name}</span>
+                        {cmd.description && (
+                          <span className="text-ink-muted ml-auto max-w-[180px] truncate text-[10px]">
+                            {cmd.description}
+                          </span>
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </CommandDialog>
           )}
 
           <div className="border-hairline bg-bg-surface flex-shrink-0 border-t px-4 py-2">
