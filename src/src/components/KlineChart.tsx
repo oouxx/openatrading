@@ -96,7 +96,6 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const avgPriceSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const pctAnchorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null)
-  const anchorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const priceLinesRef = useRef<IPriceLine[]>([])
   const timeLabelMapRef = useRef<Map<number, string>>(new Map())
   const onCrosshairRef = useRef<((info: CrosshairInfo) => void) | null>(null)
@@ -363,7 +362,6 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     avgPriceSeriesRef.current = null
     pctAnchorSeriesRef.current = null
     volumeSeriesRef.current = null
-    anchorSeriesRef.current = null
     timeLabelMapRef.current = new Map<number, string>()
 
     const filtered = period === "minute" ? data.filter((c) => isTradingTime(c.time)) : data
@@ -468,7 +466,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         })
       }
     } else {
-      // Kline chart
+      // Kline chart (day/week/month)
       initKlineChart()
 
       const candle = candleSeriesRef.current
@@ -493,35 +491,31 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         }))
       )
 
-      // Anchor series
+      // FIX: previously a transparent "anchor" LineSeries was added here with
+      // two points spanning the *entire* filtered history's high/low vs preclose.
+      // Its last point landed inside the visible logical range (see setVisibleLogicalRange
+      // below), so autoScale on the right price scale included that far-away value when
+      // computing the Y-axis range for day/week/month charts — this is what made the
+      // candles look flat. A price line does the same visual job (marking preclose)
+      // without ever participating in autoScale.
+      clearPriceLines()
       if (preclose && preclose > 0) {
-        const anchor = chartRef.current.addSeries(LineSeries, {
-          color: "transparent",
-          priceScaleId: "right",
-          lastValueVisible: false,
-          priceLineVisible: false,
-          crosshairMarkerVisible: false,
-        })
-        const firstTime = filtered[0]?.time as Time
-        const lastTime = filtered[filtered.length - 1]?.time as Time
-        let maxUpper = 0
-        let maxLower = 0
-        for (const c of filtered) {
-          if (c.high && c.high > preclose) maxUpper = Math.max(maxUpper, c.high - preclose)
-          if (c.low && c.low < preclose) maxLower = Math.max(maxLower, preclose - c.low)
-        }
-        const range = Math.max(maxUpper, maxLower) * 1.05 || preclose * 0.01
-        anchor.setData([
-          { time: firstTime, value: preclose - range },
-          { time: lastTime, value: preclose + range },
-        ])
-        anchorSeriesRef.current = anchor
+        priceLinesRef.current.push(
+          candle.createPriceLine({
+            price: preclose,
+            color: "rgba(255,255,255,0.20)",
+            lineStyle: 2,
+            lineWidth: 1,
+            axisLabelVisible: true,
+            title: `昨收 ${preclose.toFixed(2)}`,
+          })
+        )
       }
 
       const visible = (() => {
-        if (period === "day") return 90
-        if (period === "week") return 20
-        return 12
+        if (period === "day") return 60
+        if (period === "week") return 60
+        return 36
       })()
       const to = filtered.length - 1
       const from = Math.max(0, to - visible + 1)
