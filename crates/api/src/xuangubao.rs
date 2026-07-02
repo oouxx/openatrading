@@ -622,6 +622,7 @@ impl XuanguBaoClient {
         period: KlinePeriod,
         count: u32,
     ) -> Result<KlineData> {
+        let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/kline?prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward&fields=tick_at,open_px,close_px,high_px,low_px,turnover_volume,px_change_rate",
             period_sec = period.as_seconds()
@@ -634,7 +635,7 @@ impl XuanguBaoClient {
             resp["message"]
         );
 
-        let candle_data = &resp["data"]["candle"][symbol];
+        let candle_data = &resp["data"]["candle"][&symbol];
         let lines = candle_data["lines"]
             .as_array()
             .context("missing kline lines array")?;
