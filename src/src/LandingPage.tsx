@@ -110,28 +110,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Stats Bar */}
-      <div className="mx-auto mb-12 grid max-w-[1000px] grid-cols-2 gap-4 px-8 md:grid-cols-4">
-        {[
-          { num: "6", label: "核心页面" },
-          { num: "A 股", label: "全市场覆盖" },
-          { num: "+12.8%", label: "本月 AI 策略收益", up: true },
-          { num: "8", label: "活跃角色" },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="border-hairline bg-bg-surface rounded-xl border px-4 py-5 text-center"
-          >
-            <div
-              className={`font-mono text-[1.8rem] font-semibold ${stat.up ? "text-up" : "text-white"}`}
-            >
-              {stat.num}
-            </div>
-            <div className="text-ink-muted mt-1 text-xs tracking-wider uppercase">{stat.label}</div>
-          </div>
-        ))}
-      </div>
-
       {/* Features */}
       <section className="mx-auto max-w-[1200px] px-8 pb-16">
         <h2 className="mb-6 flex items-center gap-2.5 text-2xl font-medium text-white">核心功能</h2>
