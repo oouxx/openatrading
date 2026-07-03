@@ -7,13 +7,14 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar"
-import { ArrowLeft, Palette, Plug, Info } from "lucide-react"
+import { ArrowLeft, Palette, Plug, Info, Bell } from "lucide-react"
 import { useAppMode } from "@/contexts/AppModeContext"
 
-type SettingsTab = "appearance" | "mcp" | "about"
+type SettingsTab = "appearance" | "social" | "mcp" | "about"
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "外观", icon: Palette },
+  { id: "social", label: "通知", icon: Bell },
   { id: "mcp", label: "MCP", icon: Plug },
   { id: "about", label: "关于", icon: Info },
 ]

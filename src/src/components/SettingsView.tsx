@@ -5,6 +5,16 @@ import { useUiStore } from "@/stores/ui"
 import { fetchJson } from "@/stores/data"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
+const isTauri = "__TAURI_INTERNALS__" in window
+
+async function setConfig(section: string, key: string, value: string) {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("update_config", { section, key, value })
+  }
+  localStorage.setItem(`openatrading-${key}`, value)
+}
+
 interface McpServerConfig {
   name: string
   transport: { type: string; url?: string; command?: string; args?: string[] }
@@ -18,12 +28,29 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const setTheme = useUiStore((s) => s.setTheme)
 
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("openatrading-api-key") || "")
+  const [provider, setProvider] = useState(
+    () => localStorage.getItem("openatrading-provider") || "openrouter"
+  )
   const [model, setModel] = useState(
     () => localStorage.getItem("openatrading-model") || "claude-sonnet-4-6"
   )
   const [apiUrl, setApiUrl] = useState(
     () => localStorage.getItem("openatrading-api-url") || "http://localhost:8080"
   )
+  const [restarting, setRestarting] = useState(false)
+  // Social notification state
+  const [social, setSocial] = useState({
+    notify_channel: "telegram",
+    notify_on_collect: true,
+    notify_on_decision: true,
+    notify_on_trade: true,
+    notify_on_news: true,
+    telegram_bot_token: "",
+    telegram_chat_id: "",
+    discord_bot_token: "",
+    discord_channel_id: "",
+  })
+  const [socialLoaded, setSocialLoaded] = useState(false)
   const [servers, setServers] = useState<McpServerConfig[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
   const [newServer, setNewServer] = useState({ name: "", url: "" })
@@ -38,9 +65,27 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   }
 
   // Load on mount — initialization fetch outside React data flow
-   
+
   useEffect(() => {
     loadServers()
+    if (isTauri) {
+      ;(async () => {
+        const { invoke } = await import("@tauri-apps/api/core")
+        try {
+          const cfg = await invoke("get_config") as any
+          if (cfg?.social) {
+            setSocial((s) => ({ ...s, ...cfg.social }))
+          }
+          if (cfg?.llm) {
+            if (cfg.llm.provider) setProvider(cfg.llm.provider)
+            if (cfg.llm.model) setModel(cfg.llm.model)
+          }
+        } catch { /* ignore */ }
+        setSocialLoaded(true)
+      })()
+    } else {
+      setSocialLoaded(true)
+    }
   }, [])
 
   return (
@@ -95,12 +140,32 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 />
               </div>
               <div>
+                <label className="text-ink-muted mb-1 block text-xs">Provider</label>
+                <select
+                  value={provider}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setProvider(v)
+                    await setConfig("llm", "provider", v)
+                  }}
+                  className="border-hairline bg-bg-tertiary text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
+                >
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="siliconflow">硅基流动 (SiliconFlow)</option>
+                  <option value="github">GitHub Models</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-ink-muted mb-1 block text-xs">默认模型</label>
                 <Input
                   value={model}
-                  onChange={(e) => {
-                    setModel(e.target.value)
-                    localStorage.setItem("openatrading-model", e.target.value)
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setModel(v)
+                    await setConfig("llm", "model", v)
                   }}
                   placeholder="claude-sonnet-4-6"
                   className="font-mono text-xs"
@@ -108,6 +173,33 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               </div>
             </div>
           </section>
+
+          {isTauri && (
+            <section>
+              <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+                操作
+              </h2>
+              <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-white">重启客户端</span>
+                    <p className="text-ink-muted mt-0.5 text-[11px]">修改 Provider/Model 后重启生效</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={restarting}
+                    onClick={async () => {
+                      setRestarting(true)
+                      const { invoke } = await import("@tauri-apps/api/core")
+                      await invoke("restart_app")
+                    }}
+                  >
+                    {restarting ? "重启中…" : "重启"}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
@@ -127,6 +219,121 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             </div>
           </section>
         </>
+      )}
+
+      {activeTab === "social" && (
+        <div className="space-y-5">
+          <section>
+            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+              通知渠道
+            </h2>
+            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+              <div>
+                <label className="text-ink-muted mb-1 block text-xs">默认通知渠道</label>
+                <select
+                  value={social.notify_channel}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setSocial((s) => ({ ...s, notify_channel: v }))
+                    if (isTauri) await setConfig("social", "notify_channel", v)
+                  }}
+                  className="border-hairline bg-bg-tertiary text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
+                >
+                  <option value="telegram">Telegram</option>
+                  <option value="discord">Discord</option>
+                  <option value="slack">Slack</option>
+                  <option value="lark">飞书 (Lark)</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                {(["collect", "decision", "trade", "news"] as const).map((k) => (
+                  <label key={k} className="flex items-center gap-2 text-xs text-white">
+                    <input
+                      type="checkbox"
+                      checked={social[`notify_on_${k}` as keyof typeof social] as boolean}
+                      onChange={async (e) => {
+                        const v = e.target.checked
+                        setSocial((s) => ({ ...s, [`notify_on_${k}`]: v }))
+                        if (isTauri) await setConfig("social", `notify_on_${k}`, String(v))
+                      }}
+                    />
+                    {k === "collect" ? "采集" : k === "decision" ? "决策" : k === "trade" ? "交易" : "新闻"}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+              Telegram
+            </h2>
+            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+              <div>
+                <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
+                <Input
+                  type="password"
+                  value={social.telegram_bot_token}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setSocial((s) => ({ ...s, telegram_bot_token: v }))
+                    if (isTauri) await setConfig("social.telegram", "bot_token", v)
+                  }}
+                  placeholder="123456:ABC-DEF1234gh..."
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-ink-muted mb-1 block text-xs">Chat ID</label>
+                <Input
+                  value={social.telegram_chat_id}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setSocial((s) => ({ ...s, telegram_chat_id: v }))
+                    if (isTauri) await setConfig("social.telegram", "chat_id", v)
+                  }}
+                  placeholder="-1001234567890"
+                  className="font-mono text-xs"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+              Discord
+            </h2>
+            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+              <div>
+                <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
+                <Input
+                  type="password"
+                  value={social.discord_bot_token}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setSocial((s) => ({ ...s, discord_bot_token: v }))
+                    if (isTauri) await setConfig("social.discord", "bot_token", v)
+                  }}
+                  placeholder="MTE4..."
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-ink-muted mb-1 block text-xs">Channel ID</label>
+                <Input
+                  value={social.discord_channel_id}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    setSocial((s) => ({ ...s, discord_channel_id: v }))
+                    if (isTauri) await setConfig("social.discord", "channel_id", v)
+                  }}
+                  placeholder="123456789012345678"
+                  className="font-mono text-xs"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
       )}
 
       {activeTab === "mcp" && (

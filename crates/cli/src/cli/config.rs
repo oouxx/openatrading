@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -347,6 +347,78 @@ impl AppConfig {
                 enabled: entry.enabled,
             });
         }
+    }
+
+    pub fn config_path() -> PathBuf {
+        openatrading_core::atrading_home().join("config.toml")
+    }
+
+    /// Read LLM provider from config.
+    pub fn llm_provider(&self) -> Option<&str> {
+        self.llm.provider.as_deref()
+    }
+
+    /// Read LLM model from config.
+    pub fn llm_model(&self) -> Option<&str> {
+        self.llm.model.as_deref()
+    }
+
+    /// Read LLM provider from config.
+    pub fn social_notify_channel(&self) -> Option<&str> {
+        self.social.as_ref()?.notify_channel.as_deref()
+    }
+    pub fn social_telegram(&self) -> Option<&TelegramConfig> {
+        self.social.as_ref()?.telegram.as_ref()
+    }
+    pub fn social_discord(&self) -> Option<&DiscordConfig> {
+        self.social.as_ref()?.discord.as_ref()
+    }
+    pub fn social_slack(&self) -> Option<&SlackConfig> {
+        self.social.as_ref()?.slack.as_ref()
+    }
+    pub fn social_lark(&self) -> Option<&LarkConfig> {
+        self.social.as_ref()?.lark.as_ref()
+    }
+
+    /// Write one key under `section` to config.toml.
+    /// `section` is a dotted path, e.g. "llm" or "social.telegram".
+    /// Uses serde + toml for round-trip — safe and correct.
+    pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
+        let path = Self::config_path();
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut doc: toml::Value = content
+            .parse()
+            .unwrap_or(toml::Value::Table(toml::value::Table::new()));
+
+        // Navigate/create sub-tables along the dotted section path
+        let mut current = &mut doc;
+        for part in section.split('.') {
+            current = current
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?
+                .entry(part)
+                .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+        }
+
+        // Insert the key-value pair
+        // Insert the key-value pair
+        let table = current
+            .as_table_mut()
+            .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?;
+        let entry_line = format!("{key} = {value:?}");
+        match entry_line.parse::<toml::Value>() {
+            Ok(toml::Value::Table(mut kv)) => {
+                if let Some((_, v)) = kv.iter_mut().next() {
+                    table.insert(key.to_string(), v.clone());
+                }
+            },
+            _ => {
+                table.insert(key.to_string(), toml::Value::String(value.to_string()));
+            },
+        }
+
+        std::fs::write(&path, doc.to_string())?;
+        Ok(())
     }
 }
 

@@ -8,6 +8,7 @@ use openatrading_core::llm::{
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::sync::RwLock;
 
 fn load_env() {
@@ -1368,6 +1369,116 @@ async fn api_replay_analyze(
     Ok(())
 }
 
+fn load_llm_config_from_toml() -> (Option<String>, Option<String>) {
+    match openatrading_cli::cli::config::AppConfig::load() {
+        Ok(cfg) => (
+            cfg.llm_provider().map(String::from),
+            cfg.llm_model().map(String::from),
+        ),
+        Err(_) => (None, None),
+    }
+}
+
+#[tauri::command]
+async fn get_config() -> Result<serde_json::Value, String> {
+    let cfg = openatrading_cli::cli::config::AppConfig::load()
+        .map_err(|e| format!("加载配置失败: {e}"))?;
+
+    let social = cfg
+        .social
+        .as_ref()
+        .map(|s| {
+            let mut m = serde_json::Map::new();
+            if let Some(ch) = &s.notify_channel {
+                m.insert(
+                    "notify_channel".into(),
+                    serde_json::Value::String(ch.clone()),
+                );
+            }
+            m.insert(
+                "notify_on_collect".into(),
+                serde_json::Value::Bool(s.notify_on_collect),
+            );
+            m.insert(
+                "notify_on_decision".into(),
+                serde_json::Value::Bool(s.notify_on_decision),
+            );
+            m.insert(
+                "notify_on_trade".into(),
+                serde_json::Value::Bool(s.notify_on_trade),
+            );
+            m.insert(
+                "notify_on_news".into(),
+                serde_json::Value::Bool(s.notify_on_news),
+            );
+            if let Some(tg) = &s.telegram {
+                m.insert(
+                    "telegram_bot_token".into(),
+                    tg.bot_token
+                        .as_ref()
+                        .map(|v| serde_json::Value::String(v.clone()))
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                m.insert(
+                    "telegram_chat_id".into(),
+                    tg.chat_id
+                        .as_ref()
+                        .map(|v| serde_json::Value::String(v.clone()))
+                        .unwrap_or(serde_json::Value::Null),
+                );
+            }
+            if let Some(dc) = &s.discord {
+                m.insert(
+                    "discord_bot_token".into(),
+                    dc.bot_token
+                        .as_ref()
+                        .map(|v| serde_json::Value::String(v.clone()))
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                m.insert(
+                    "discord_channel_id".into(),
+                    dc.channel_id
+                        .as_ref()
+                        .map(|v| serde_json::Value::String(v.clone()))
+                        .unwrap_or(serde_json::Value::Null),
+                );
+            }
+            serde_json::Value::Object(m)
+        })
+        .unwrap_or(serde_json::Value::Null);
+
+    let llm = serde_json::json!({
+        "provider": cfg.llm.provider,
+        "model": cfg.llm.model,
+    });
+
+    Ok(serde_json::json!({ "llm": llm, "social": social }))
+}
+
+#[tauri::command]
+async fn update_config(
+    app_handle: tauri::AppHandle,
+    section: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    openatrading_cli::cli::config::AppConfig::set_value(&section, &key, &value)
+        .map_err(|e| format!("写入配置失败: {e}"))?;
+    let _ = app_handle.emit("config-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Spawn a brief delay so the IPC response can reach the frontend
+    let h = app_handle.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        h.restart();
+    });
+    Ok(())
+}
+
 fn main() {
     load_env();
 
@@ -1377,10 +1488,12 @@ fn main() {
 
     let roles = build_roles();
 
+    let (provider, model) = load_llm_config_from_toml();
+
     let app_ctx = tokio::runtime::Runtime::new().unwrap().block_on(
         openatrading_core::context::AppContext::build(
-            Some("deepseek"),
-            Some("deepseek-v4-flash"),
+            provider.as_deref(),
+            model.as_deref(),
             &[],
             gateway.memory.clone(),
             gateway.trade.clone(),
@@ -1404,7 +1517,10 @@ fn main() {
             api_chat_stream,
             api_realtime_stream,
             api_kline_stream,
-            api_replay_analyze
+            api_replay_analyze,
+            get_config,
+            update_config,
+            restart_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
