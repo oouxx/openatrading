@@ -17,11 +17,27 @@ async function setConfig(section: string, key: string, value: string) {
 
 interface McpServerConfig {
   name: string
-  transport: { type: string; url?: string; command?: string; args?: string[] }
+  transport: McpTransportConfig
   enabled: boolean
 }
 
+interface McpTransportConfig {
+  type: "streamable-http" | "stdio" | "sse"
+  url?: string
+  auth_token?: string
+  post_url?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
+
+const TRANSPORT_OPTIONS = [
+  { value: "streamable-http" as const, label: "HTTP (Streamable)" },
+  { value: "stdio" as const, label: "STDIO" },
+  { value: "sse" as const, label: "SSE" },
+]
 
 export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) {
   const theme = useUiStore((s) => s.theme)
@@ -52,8 +68,14 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   })
   const [socialLoaded, setSocialLoaded] = useState(false)
   const [servers, setServers] = useState<McpServerConfig[]>([])
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [newServer, setNewServer] = useState({ name: "", url: "" })
+  const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
+  const [showNewForm, setShowNewForm] = useState(false)
+
+  const newServerTemplate = (): McpServerConfig => ({
+    name: "",
+    enabled: true,
+    transport: { type: "streamable-http", url: "" },
+  })
 
   const loadServers = async () => {
     try {
@@ -91,39 +113,41 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   return (
     <div className="flex h-full flex-1 flex-col gap-5 overflow-y-auto p-6">
       {activeTab === "appearance" && (
+        <section>
+          <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+            外观
+          </h2>
+          <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm text-white">主题</span>
+                <p className="text-ink-muted mt-0.5 text-[11px]">选择深色或浅色主题</p>
+              </div>
+              <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
+                {(["dark", "light"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`px-3 py-1.5 text-xs transition-colors ${
+                      theme === t
+                        ? "bg-ai text-white"
+                        : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-white"
+                    }`}
+                  >
+                    {THEME_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {activeTab === "agent" && (
         <>
           <section>
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
-              外观
-            </h2>
-            <div className="border-hairline bg-bg-surface rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm text-white">主题</span>
-                  <p className="text-ink-muted mt-0.5 text-[11px]">选择深色或浅色主题</p>
-                </div>
-                <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
-                  {(["dark", "light"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTheme(t)}
-                      className={`px-3 py-1.5 text-xs transition-colors ${
-                        theme === t
-                          ? "bg-ai text-white"
-                          : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-white"
-                      }`}
-                    >
-                      {THEME_LABELS[t]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
-              Agent 配置
+              LLM 配置
             </h2>
             <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
               <div>
@@ -174,6 +198,24 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             </div>
           </section>
 
+          <section>
+            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+              数据源
+            </h2>
+            <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+              <label className="text-ink-muted mb-1 block text-xs">API 地址</label>
+              <Input
+                value={apiUrl}
+                onChange={(e) => {
+                  setApiUrl(e.target.value)
+                  localStorage.setItem("openatrading-api-url", e.target.value)
+                }}
+                placeholder="http://localhost:8080"
+                className="font-mono text-xs"
+              />
+            </div>
+          </section>
+
           {isTauri && (
             <section>
               <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
@@ -200,24 +242,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               </div>
             </section>
           )}
-
-          <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
-              数据源
-            </h2>
-            <div className="border-hairline bg-bg-surface rounded-lg border p-4">
-              <label className="text-ink-muted mb-1 block text-xs">API 地址</label>
-              <Input
-                value={apiUrl}
-                onChange={(e) => {
-                  setApiUrl(e.target.value)
-                  localStorage.setItem("openatrading-api-url", e.target.value)
-                }}
-                placeholder="http://localhost:8080"
-                className="font-mono text-xs"
-              />
-            </div>
-          </section>
         </>
       )}
 
@@ -337,126 +361,62 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       )}
 
       {activeTab === "mcp" && (
-        <section>
+        <>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-ink-muted text-xs font-medium tracking-wider uppercase">
               MCP 服务器 ({servers.length})
             </h2>
-            <Button variant="outline" size="sm" onClick={() => setShowAddForm(!showAddForm)}>
+            <Button variant="outline" size="sm" onClick={() => {
+              setEditingServer(newServerTemplate())
+              setShowNewForm(true)
+            }}>
               + 添加
             </Button>
           </div>
 
-          {showAddForm && (
-            <div className="border-hairline bg-bg-surface mb-3 space-y-3 rounded-lg border p-4">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-ink-muted mb-1 block text-xs">名称</label>
-                  <Input
-                    value={newServer.name}
-                    onChange={(e) => setNewServer((s) => ({ ...s, name: e.target.value }))}
-                    placeholder="例如: 文件系统"
-                    className="text-xs"
-                  />
-                </div>
-                <div className="flex-[2]">
-                  <label className="text-ink-muted mb-1 block text-xs">URL</label>
-                  <Input
-                    value={newServer.url}
-                    onChange={(e) => setNewServer((s) => ({ ...s, url: e.target.value }))}
-                    placeholder="http://localhost:8081/mcp"
-                    className="font-mono text-xs"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowAddForm(false)}>
-                  取消
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!newServer.name || !newServer.url}
-                  onClick={async () => {
-                    const config: McpServerConfig = {
-                      name: newServer.name,
-                      enabled: true,
-                      transport: { type: "streamable-http", url: newServer.url },
-                    }
-                    try {
-                      await fetchJson("/api/mcp/servers", {
-                        method: "POST",
-                        body: JSON.stringify(config),
-                      })
-                      setNewServer({ name: "", url: "" })
-                      setShowAddForm(false)
-                      loadServers()
-                    } catch {
-                      /* silently fail */
-                    }
-                  }}
-                >
-                  添加
-                </Button>
-              </div>
-            </div>
+          {/* ── 编辑/新建表单 ── */}
+          {editingServer && showNewForm && (
+            <McpServerForm
+              server={editingServer}
+              onChange={setEditingServer}
+              onCancel={() => { setShowNewForm(false); setEditingServer(null) }}
+              onSave={async () => {
+                await fetchJson("/api/mcp/servers", {
+                  method: "POST",
+                  body: JSON.stringify(editingServer),
+                })
+                setShowNewForm(false)
+                setEditingServer(null)
+                loadServers()
+              }}
+            />
           )}
 
+          {/* ── 已配置列表 ── */}
           <div className="space-y-2">
-            {servers.length === 0 && !showAddForm && (
+            {servers.length === 0 && !showNewForm && (
               <div className="border-hairline bg-bg-surface rounded-lg border p-8 text-center">
-                <p className="text-ink-muted text-xs">暂无 MCP 服务器配置</p>
+                <p className="text-ink-muted text-xs">暂无 MCP 服务器配置，点击右上角「+ 添加」开始</p>
               </div>
             )}
             {servers.map((s) => (
-              <div
+              <McpServerCard
                 key={s.name}
-                className="border-hairline bg-bg-surface flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10"
-              >
-                <span
-                  className={`size-1.5 flex-shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm text-white">{s.name}</span>
-                  <p className="text-ink-muted truncate font-mono text-[11px]">
-                    {s.transport.type === "stdio"
-                      ? `${s.transport.command} ${(s.transport as { args: string[] }).args?.join(" ") ?? ""}`
-                      : (s.transport as { url: string }).url}
-                  </p>
-                </div>
-                <div className="flex flex-shrink-0 gap-1">
-                  <button
-                    className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white"
-                    onClick={async () => {
-                      try {
-                        await fetchJson(`/api/mcp/servers/${encodeURIComponent(s.name)}/toggle`)
-                        loadServers()
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    {s.enabled ? "停用" : "启用"}
-                  </button>
-                  <button
-                    className="text-ink-muted hover:bg-bg-hover hover:text-down rounded px-2 py-1 text-[10px] transition-colors"
-                    onClick={async () => {
-                      try {
-                        await fetchJson(`/api/mcp/servers/${encodeURIComponent(s.name)}`, {
-                          method: "DELETE",
-                        })
-                        loadServers()
-                      } catch {
-                        /* noop */
-                      }
-                    }}
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
+                server={s}
+                onToggle={async () => {
+                  await fetchJson(`/api/mcp/servers/${encodeURIComponent(s.name)}/toggle`)
+                  loadServers()
+                }}
+                onDelete={async () => {
+                  await fetchJson(`/api/mcp/servers/${encodeURIComponent(s.name)}`, {
+                    method: "DELETE",
+                  })
+                  loadServers()
+                }}
+              />
             ))}
           </div>
-        </section>
+        </>
       )}
 
       {activeTab === "about" && (
@@ -477,6 +437,293 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           </div>
         </section>
       )}
+    </div>
+  )
+}
+
+/* ── MCP Server 编辑表单 ── */
+function McpServerForm({ server, onChange, onCancel, onSave }: {
+  server: McpServerConfig
+  onChange: (s: McpServerConfig) => void
+  onCancel: () => void
+  onSave: () => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+
+  const updateTransport = (patch: Partial<McpTransportConfig>) => {
+    onChange({ ...server, transport: { ...server.transport, ...patch } })
+  }
+
+  const setArgs = (args: string[]) => {
+    updateTransport({ args })
+  }
+
+  const setEnv = (env: Record<string, string>) => {
+    updateTransport({ env })
+  }
+
+  const isStdio = server.transport.type === "stdio"
+
+  return (
+    <div className="border-hairline bg-bg-surface mb-4 space-y-4 rounded-lg border p-4">
+      {/* 名称 */}
+      <div>
+        <label className="text-ink-muted mb-1 block text-xs">名称</label>
+        <Input
+          value={server.name}
+          onChange={(e) => onChange({ ...server, name: e.target.value })}
+          placeholder="例如: 文件系统"
+          className="text-xs"
+        />
+      </div>
+
+      {/* 通信方式 */}
+      <div>
+        <label className="text-ink-muted mb-1 block text-xs">通信方式</label>
+        <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
+          {TRANSPORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange({
+                ...server,
+                transport: opt.value === "streamable-http"
+                  ? { type: "streamable-http", url: "", auth_token: undefined }
+                  : opt.value === "sse"
+                    ? { type: "sse", url: "", post_url: undefined }
+                    : { type: "stdio", command: "", args: [], env: {} },
+              })}
+              className={`flex-1 px-3 py-1.5 text-xs transition-colors ${
+                server.transport.type === opt.value
+                  ? "bg-ai text-white"
+                  : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-white"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* URL / 命令 */}
+      {isStdio ? (
+        <div>
+          <label className="text-ink-muted mb-1 block text-xs">命令</label>
+          <Input
+            value={server.transport.command ?? ""}
+            onChange={(e) => updateTransport({ command: e.target.value })}
+            placeholder="npx"
+            className="font-mono text-xs"
+          />
+        </div>
+      ) : (
+        <div>
+          <label className="text-ink-muted mb-1 block text-xs">
+            URL {server.transport.type === "sse" && "(SSE Endpoint)"}
+          </label>
+          <Input
+            value={server.transport.url ?? ""}
+            onChange={(e) => updateTransport({ url: e.target.value })}
+            placeholder={server.transport.type === "streamable-http" ? "http://localhost:8081/mcp" : "http://localhost:8081/sse"}
+            className="font-mono text-xs"
+          />
+          {server.transport.type === "sse" && (
+            <div className="mt-2">
+              <label className="text-ink-muted mb-1 block text-xs">POST URL (可选)</label>
+              <Input
+                value={server.transport.post_url ?? ""}
+                onChange={(e) => updateTransport({ post_url: e.target.value || undefined })}
+                placeholder="留空则自动推断"
+                className="font-mono text-xs"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Auth Token (仅 HTTP) */}
+      {!isStdio && (
+        <div>
+          <label className="text-ink-muted mb-1 block text-xs">Auth Token (可选)</label>
+          <Input
+            type="password"
+            value={server.transport.auth_token ?? ""}
+            onChange={(e) => updateTransport({ auth_token: e.target.value || undefined })}
+            placeholder="Bearer token..."
+            className="font-mono text-xs"
+          />
+        </div>
+      )}
+
+      {/* 参数列表 (仅 STDIO) */}
+      {isStdio && (
+        <div>
+          <label className="text-ink-muted mb-1 block text-xs">参数</label>
+          <KeyValueList
+            items={(server.transport.args ?? []).map((v, i) => `arg_${i}=${v}`)}
+            onChange={(entries) => setArgs(
+              entries
+                .map((e) => e.split("=").slice(1).join("="))
+                .filter(Boolean)
+            )}
+            keyPlaceholder="序号"
+            valuePlaceholder="--port"
+            hideKey
+          />
+        </div>
+      )}
+
+      {/* 环境变量 (仅 STDIO) */}
+      {isStdio && (
+        <div>
+          <label className="text-ink-muted mb-1 block text-xs">环境变量</label>
+          <KeyValueList
+            items={Object.entries(server.transport.env ?? {}).map(([k, v]) => `${k}=${v}`)}
+            onChange={(entries) => {
+              const env: Record<string, string> = {}
+              for (const e of entries) {
+                const idx = e.indexOf("=")
+                if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1)
+              }
+              setEnv(env)
+            }}
+            keyPlaceholder="KEY"
+            valuePlaceholder="VALUE"
+          />
+        </div>
+      )}
+
+      {/* 操作按钮 */}
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={onCancel}>取消</Button>
+        <Button
+          size="sm"
+          disabled={saving || !server.name}
+          onClick={async () => {
+            setSaving(true)
+            try { await onSave() } finally { setSaving(false) }
+          }}
+        >
+          {saving ? "保存中…" : "保存"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/* ── MCP Server 卡片 ── */
+function McpServerCard({ server: s, onToggle, onDelete }: {
+  server: McpServerConfig
+  onToggle: () => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [toggling, setToggling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const transportSummary = () => {
+    if (s.transport.type === "stdio") {
+      return `${s.transport.command ?? ""} ${(s.transport.args ?? []).join(" ")}`.trim()
+    }
+    return s.transport.url ?? ""
+  }
+
+  return (
+    <div className="border-hairline bg-bg-surface flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10">
+      <span className={`size-1.5 flex-shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-white">{s.name}</span>
+          <span className="text-ink-muted rounded border border-white/10 px-1.5 py-0.5 text-[10px]">
+            {s.transport.type}
+          </span>
+        </div>
+        <p className="text-ink-muted truncate font-mono text-[11px]">{transportSummary()}</p>
+      </div>
+      <div className="flex flex-shrink-0 gap-1">
+        <button
+          className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white disabled:opacity-40"
+          disabled={toggling}
+          onClick={async () => {
+            setToggling(true)
+            try { await onToggle() } finally { setToggling(false) }
+          }}
+        >
+          {s.enabled ? "停用" : "启用"}
+        </button>
+        <button
+          className="text-ink-muted hover:bg-bg-hover hover:text-down rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-40"
+          disabled={deleting}
+          onClick={async () => {
+            setDeleting(true)
+            try { await onDelete() } finally { setDeleting(false) }
+          }}
+        >
+          删除
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ── 键值对列表编辑器（通用） ── */
+function KeyValueList({ items, onChange, keyPlaceholder, valuePlaceholder, hideKey }: {
+  items: string[]
+  onChange: (entries: string[]) => void
+  keyPlaceholder?: string
+  valuePlaceholder?: string
+  hideKey?: boolean
+}) {
+  const entries = items.length > 0 ? items : [""]
+  // Normalize: store as "key=value" strings
+  const normalize = (list: string[]) => list.filter((e) => e.trim())
+
+  return (
+    <div className="space-y-1.5">
+      {entries.map((entry, i) => {
+        const eqIdx = entry.indexOf("=")
+        const key = eqIdx > 0 ? entry.slice(0, eqIdx) : ""
+        const val = eqIdx > 0 ? entry.slice(eqIdx + 1) : entry
+        return (
+          <div key={i} className="flex gap-1.5">
+            {!hideKey && (
+              <Input
+                value={key}
+                onChange={(e) => {
+                  const next = [...entries]
+                  next[i] = `${e.target.value}=${val}`
+                  onChange(normalize(next))
+                }}
+                placeholder={keyPlaceholder ?? "KEY"}
+                className="w-28 font-mono text-xs"
+              />
+            )}
+            <Input
+              value={val}
+              onChange={(e) => {
+                const next = [...entries]
+                next[i] = hideKey ? e.target.value : `${key}=${e.target.value}`
+                onChange(normalize(next))
+              }}
+              placeholder={valuePlaceholder ?? "VALUE"}
+              className="flex-1 font-mono text-xs"
+            />
+            <button
+              type="button"
+              className="text-ink-muted hover:text-down shrink-0 self-center px-1 text-xs"
+              onClick={() => onChange(normalize(entries.filter((_, j) => j !== i)))}
+            >
+              ✕
+            </button>
+          </div>
+        )
+      })}
+      <button
+        type="button"
+        className="text-ink-muted hover:text-white text-xs"
+        onClick={() => onChange(normalize([...entries, ""]))}
+      >
+        + 添加
+      </button>
     </div>
   )
 }
