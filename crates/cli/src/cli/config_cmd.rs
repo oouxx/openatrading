@@ -1,4 +1,4 @@
-use crate::cli::app::ConfigAction;
+use crate::cli::app::{ConfigAction, ConfigSetter};
 use crate::cli::config::AppConfig;
 use anyhow::Result;
 
@@ -48,31 +48,38 @@ pub fn cmd_config(action: ConfigAction) -> Result<()> {
                 println!("discord.channel_id = {:?}", dc.channel_id);
             }
         },
-        ConfigAction::SetProvider { value } => {
+        ConfigAction::Set { action } => cmd_set(cfg, action)?,
+    }
+    Ok(())
+}
+
+fn cmd_set(_cfg: AppConfig, action: ConfigSetter) -> Result<()> {
+    match action {
+        ConfigSetter::Provider { value } => {
             AppConfig::set_value("llm", "provider", &value)?;
             println!("✅ llm.provider = {value:?}");
         },
-        ConfigAction::SetModel { value } => {
+        ConfigSetter::Model { value } => {
             AppConfig::set_value("llm", "model", &value)?;
             println!("✅ llm.model = {value:?}");
         },
-        ConfigAction::SetNotifyChannel { value } => {
+        ConfigSetter::NotifyChannel { value } => {
             AppConfig::set_value("social", "notify_channel", &value)?;
             println!("✅ social.notify_channel = {value:?}");
         },
-        ConfigAction::SetTelegramToken { value } => {
+        ConfigSetter::TelegramToken { value } => {
             AppConfig::set_value("social.telegram", "bot_token", &value)?;
             println!("✅ social.telegram.bot_token = {value:?}");
         },
-        ConfigAction::SetTelegramChatId { value } => {
+        ConfigSetter::TelegramChatId { value } => {
             AppConfig::set_value("social.telegram", "chat_id", &value)?;
             println!("✅ social.telegram.chat_id = {value:?}");
         },
-        ConfigAction::SetDiscordToken { value } => {
+        ConfigSetter::DiscordToken { value } => {
             AppConfig::set_value("social.discord", "bot_token", &value)?;
             println!("✅ social.discord.bot_token = {value:?}");
         },
-        ConfigAction::SetDiscordChannelId { value } => {
+        ConfigSetter::DiscordChannelId { value } => {
             AppConfig::set_value("social.discord", "channel_id", &value)?;
             println!("✅ social.discord.channel_id = {value:?}");
         },
