@@ -28,6 +28,7 @@ clap = { version = "4", features = ["derive"] }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 toml = "0.8"
+toml_edit = "0.22"
 cron = "0.12"
 shellexpand = "3"
 service-manager = "0.9"

@@ -91,6 +91,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: McpAction,
     },
+    /// 查看/修改配置
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -141,6 +146,30 @@ pub enum McpAction {
 pub enum McpTransport {
     Http,
     Stdio,
+}
+
+#[derive(Subcommand)]
+pub enum ConfigAction {
+    /// 查看所有配置
+    Show,
+    /// 查看 LLM 配置
+    Llm,
+    /// 查看 Social 通知配置
+    Social,
+    /// 修改 LLM provider
+    SetProvider { value: String },
+    /// 修改 LLM model
+    SetModel { value: String },
+    /// 修改 social notify_channel
+    SetNotifyChannel { value: String },
+    /// 修改 Telegram bot_token
+    SetTelegramToken { value: String },
+    /// 修改 Telegram chat_id
+    SetTelegramChatId { value: String },
+    /// 修改 Discord bot_token
+    SetDiscordToken { value: String },
+    /// 修改 Discord channel_id
+    SetDiscordChannelId { value: String },
 }
 
 #[derive(Subcommand)]

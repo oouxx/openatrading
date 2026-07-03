@@ -1,5 +1,6 @@
 pub mod app;
 pub mod config;
+pub mod config_cmd;
 pub mod doctor;
 pub mod gateway_cmd;
 pub mod mcp_cmd;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 
 use crate::cli::app::{Commands, GatewayAction, McpAction, SkillAction, ToolsAction, TradeAction};
 use crate::cli::config::{cmd_init, AppConfig};
+use crate::cli::config_cmd::cmd_config;
 use crate::cli::doctor::cmd_doctor;
 use crate::cli::gateway_cmd::{
     cmd_gateway_install, cmd_gateway_run, cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop,
@@ -214,6 +216,11 @@ pub async fn run() -> Result<()> {
             } => cmd_mcp_call(&endpoint, &name, &args).await,
             McpAction::Serve { transport, bind } => cmd_mcp_serve(transport, &bind).await,
         };
+    }
+
+    // Handle `config` subcommand
+    if let Some(Commands::Config { action }) = cli.command {
+        return cmd_config(action);
     }
 
     // Load config

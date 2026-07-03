@@ -382,40 +382,26 @@ impl AppConfig {
 
     /// Write one key under `section` to config.toml.
     /// `section` is a dotted path, e.g. "llm" or "social.telegram".
-    /// Uses serde + toml for round-trip — safe and correct.
+    /// Uses toml_edit for round-trip preserving comments and section style.
     pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
         let path = Self::config_path();
         let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let mut doc: toml::Value = content
-            .parse()
-            .unwrap_or(toml::Value::Table(toml::value::Table::new()));
+        let mut doc: toml_edit::DocumentMut = content.parse().unwrap_or_default();
 
         // Navigate/create sub-tables along the dotted section path
-        let mut current = &mut doc;
+        let mut current = doc.as_table_mut();
         for part in section.split('.') {
+            if !current.contains_table(part) {
+                current.insert(part, toml_edit::table());
+            }
             current = current
-                .as_table_mut()
-                .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?
                 .entry(part)
-                .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+                .or_insert(toml_edit::table())
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?;
         }
 
-        // Insert the key-value pair
-        // Insert the key-value pair
-        let table = current
-            .as_table_mut()
-            .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?;
-        let entry_line = format!("{key} = {value:?}");
-        match entry_line.parse::<toml::Value>() {
-            Ok(toml::Value::Table(mut kv)) => {
-                if let Some((_, v)) = kv.iter_mut().next() {
-                    table.insert(key.to_string(), v.clone());
-                }
-            },
-            _ => {
-                table.insert(key.to_string(), toml::Value::String(value.to_string()));
-            },
-        }
+        current.insert(key, value.into());
 
         std::fs::write(&path, doc.to_string())?;
         Ok(())
