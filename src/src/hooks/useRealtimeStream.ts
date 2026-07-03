@@ -50,11 +50,13 @@ export function subscribeRealtime(
   const es = new EventSource(`${base}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`)
   es.onmessage = (e) => {
     try {
-      const data = JSON.parse(e.data)
-      if (data.error) {
-        onError?.(data.error)
+      const parsed = JSON.parse(e.data)
+      if (parsed.error) {
+        onError?.(parsed.error)
       } else {
-        onData(data)
+        // Backend returns { "symbol": {...}, ... } — extract the one we asked for
+        const found = parsed[symbol] ?? Object.values(parsed)[0]
+        if (found) onData(found)
       }
     } catch {
       /* ignore */
@@ -239,9 +241,21 @@ export function subscribeKline(
     }
   }
 
+  // Web: sseStream passes raw JSON — unwrap batch map to extract single symbol data
+  const wrappedOnData = (data: unknown) => {
+    const map = data as Record<string, unknown>
+    if (map[symbol]) {
+      onData(map[symbol])
+    } else {
+      // fallback: take first entry
+      const first = Object.values(map)[0]
+      if (first) onData(first)
+    }
+  }
+
   return sseStream(
     `/api/kline/stream?symbols=${encodeURIComponent(symbol)}&period=${period}&count=${count}`,
-    onData,
+    wrappedOnData,
     onError,
   )
 }
