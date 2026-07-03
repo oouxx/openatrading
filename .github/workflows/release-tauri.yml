@@ -14,6 +14,17 @@ env:
   UPLOAD_SERVER_PATH: ${{ secrets.UPLOAD_SERVER_PATH }}
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+
   filter:
     runs-on: ubuntu-latest
     outputs:
@@ -33,7 +44,7 @@ jobs:
           fi
 
   build-tauri-macos:
-    needs: filter
+    needs: [filter, create-release]
     if: needs.filter.outputs.proceed == 'true'
     runs-on: macos-latest
     steps:
@@ -79,7 +90,7 @@ jobs:
           pattern: src-tauri/target/release/bundle/dmg/*.dmg
 
   build-tauri-linux-amd64:
-    needs: filter
+    needs: [filter, create-release]
     if: needs.filter.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -135,7 +146,7 @@ jobs:
           pattern: src-tauri/target/release/bundle/appimage/*.AppImage
 
   build-tauri-linux-arm64:
-    needs: filter
+    needs: [filter, create-release]
     if: needs.filter.outputs.proceed == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
@@ -191,7 +202,7 @@ jobs:
           pattern: src-tauri/target/release/bundle/appimage/*.AppImage
 
   build-tauri-windows:
-    needs: filter
+    needs: [filter, create-release]
     if: needs.filter.outputs.proceed == 'true'
     runs-on: windows-latest
     steps:
