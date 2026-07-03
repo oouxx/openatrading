@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import type { Components } from "react-markdown"
 import type { ReactNode } from "react"
+import { ToolCaseIcon } from "lucide-react"
 const mdComponents: Components = {
   code: ({ className, children, ...props }) => {
     const isInline = !className
@@ -122,6 +123,8 @@ export default function AiCopilot({
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const msgContainerRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const prevInputRef = useRef("")
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
@@ -373,10 +376,13 @@ export default function AiCopilot({
 
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
+    const prev = prevInputRef.current
+    prevInputRef.current = val
     setInput(val)
-    if (val.startsWith("/")) {
+    // Only trigger slash dialog when user actually types "/" (not when value already has "/" from command select)
+    if (val.startsWith("/") && !prev.startsWith("/")) {
       setShowSlash(true)
-    } else {
+    } else if (!val.startsWith("/")) {
       setShowSlash(false)
     }
   }, [])
@@ -558,6 +564,7 @@ export default function AiCopilot({
               onOpenChange={(open) => {
                 if (!open) {
                   setShowSlash(false)
+                  requestAnimationFrame(() => textareaRef.current?.focus())
                 }
               }}
             >
@@ -566,7 +573,7 @@ export default function AiCopilot({
 
                 <CommandList>
                   <CommandEmpty>无匹配命令</CommandEmpty>
-                  <CommandGroup heading="Commands">
+                  <CommandGroup heading="Tools">
                     {commands.map((cmd) => (
                       <CommandItem
                         key={cmd.name}
@@ -574,9 +581,11 @@ export default function AiCopilot({
                           pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
                           setInput(`/${cmd.name} `)
                           setShowSlash(false)
+                          requestAnimationFrame(() => textareaRef.current?.focus())
                         }}
                       >
-                        <span className="flex-1 truncate font-medium">/{cmd.name}</span>
+                        <ToolCaseIcon />
+                        <span className="flex-1 truncate font-medium">{cmd.name}</span>
                         {cmd.description && (
                           <span className="text-ink-muted ml-auto max-w-[180px] truncate text-[10px]">
                             {cmd.description}
@@ -593,6 +602,7 @@ export default function AiCopilot({
           <div className="border-hairline bg-bg-surface flex-shrink-0 border-t px-4 py-2">
             <div className="relative mx-auto max-w-[820px]">
               <Textarea
+                ref={textareaRef}
                 value={input}
                 onChange={onInputChange}
                 onKeyDown={onInputKeyDown}
