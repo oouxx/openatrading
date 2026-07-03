@@ -677,6 +677,84 @@ impl XuanguBaoClient {
         })
     }
 
+    /// Fetch kline for multiple symbols in a single API call.
+    /// Returns a map keyed by normalized (yahoo) symbol.
+    pub async fn fetch_kline_batch(
+        &self,
+        symbols: &[String],
+        period: KlinePeriod,
+        count: u32,
+    ) -> Result<std::collections::HashMap<String, KlineData>> {
+        let yahoo_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| to_yahoo_symbol(s))
+            .collect::<Result<Vec<_>>>()?;
+
+        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward&fields=tick_at,open_px,close_px,high_px,low_px,turnover_volume,px_change_rate",
+            prod_codes.join(","),
+            period_sec = period.as_seconds()
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Kline API error: {}",
+            resp["message"]
+        );
+
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let candle_data = &resp["data"]["candle"];
+        let mut result = std::collections::HashMap::new();
+
+        for yahoo_sym in &yahoo_symbols {
+            let lines = candle_data[yahoo_sym]["lines"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+
+            let candles: Vec<KlineCandle> = lines
+                .iter()
+                .filter_map(|line| {
+                    let arr = line.as_array()?;
+                    let get = |name: &str| -> Option<f64> {
+                        let idx = fields.iter().position(|f| f == name)?;
+                        arr.get(idx)?.as_f64()
+                    };
+                    Some(KlineCandle {
+                        time: get("tick_at")? as i64,
+                        open: get("open_px"),
+                        close: get("close_px")?,
+                        high: get("high_px"),
+                        low: get("low_px"),
+                        volume: get("turnover_volume"),
+                        change_rate: get("px_change_rate"),
+                    })
+                })
+                .collect();
+
+            result.insert(
+                yahoo_sym.clone(),
+                KlineData {
+                    symbol: yahoo_sym.clone(),
+                    period: period.as_str().to_string(),
+                    candles,
+                },
+            );
+        }
+
+        Ok(result)
+    }
+
     pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
@@ -752,6 +830,97 @@ impl XuanguBaoClient {
             circulation_shares: get_f64("circulation_shares").unwrap_or(0.0),
             total_shares: get_f64("total_shares").unwrap_or(0.0),
         })
+    }
+
+    /// Fetch realtime quotes for multiple symbols in a single API call.
+    /// Returns a map keyed by normalized (yahoo) symbol.
+    pub async fn fetch_realtime_batch(
+        &self,
+        symbols: &[String],
+    ) -> Result<std::collections::HashMap<String, RealtimeQuote>> {
+        let yahoo_symbols: Vec<String> = symbols
+            .iter()
+            .map(|s| to_yahoo_symbol(s))
+            .collect::<Result<Vec<_>>>()?;
+
+        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={}",
+            prod_codes.join(","),
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+        anyhow::ensure!(
+            resp["code"] == 20000,
+            "Realtime API error: {}",
+            resp["message"]
+        );
+
+        let fields: Vec<String> = resp["data"]["fields"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let field_pos = |name: &str| -> Option<usize> { fields.iter().position(|f| f == name) };
+        let get_f64 = |arr: &[serde_json::Value], name: &str| -> Option<f64> {
+            field_pos(name)
+                .and_then(|i| arr.get(i))
+                .and_then(|v| v.as_f64())
+        };
+        let get_str_for_arr = |arr: &[serde_json::Value], name: &str| -> Option<String> {
+            let idx = fields.iter().position(|f| f == name)?;
+            arr.get(idx).and_then(|v| v.as_str()).map(String::from)
+        };
+        let get_i64 = |arr: &[serde_json::Value], name: &str| -> Option<i64> {
+            field_pos(name)
+                .and_then(|i| arr.get(i))
+                .and_then(|v| v.as_i64())
+        };
+
+        let snapshots = &resp["data"]["snapshot"];
+        let mut result = std::collections::HashMap::new();
+        for yahoo_sym in &yahoo_symbols {
+            let snap = &snapshots[yahoo_sym];
+            if snap.is_null() {
+                continue;
+            }
+            if let Some(arr) = snap.as_array() {
+                result.insert(
+                    yahoo_sym.clone(),
+                    RealtimeQuote {
+                        symbol: yahoo_sym.clone(),
+                        name: get_str_for_arr(arr, "prod_name").unwrap_or_default(),
+                        trade_status: get_str_for_arr(arr, "trade_status").unwrap_or_default(),
+                        update_time: get_i64(arr, "update_time").unwrap_or(0),
+                        last_px: get_f64(arr, "last_px").unwrap_or(0.0),
+                        px_change: get_f64(arr, "px_change").unwrap_or(0.0),
+                        px_change_rate: get_f64(arr, "px_change_rate").unwrap_or(0.0),
+                        preclose_px: get_f64(arr, "preclose_px").unwrap_or(0.0),
+                        open_px: get_f64(arr, "open_px").unwrap_or(0.0),
+                        high_px: get_f64(arr, "high_px").unwrap_or(0.0),
+                        low_px: get_f64(arr, "low_px").unwrap_or(0.0),
+                        amplitude: get_f64(arr, "amplitude").unwrap_or(0.0),
+                        turnover_ratio: get_f64(arr, "turnover_ratio").unwrap_or(0.0),
+                        pe_rate: get_f64(arr, "pe_rate").unwrap_or(0.0),
+                        dyn_pe: get_f64(arr, "dyn_pe").unwrap_or(0.0),
+                        dyn_pb_rate: get_f64(arr, "dyn_pb_rate").unwrap_or(0.0),
+                        market_value: get_f64(arr, "market_value").unwrap_or(0.0),
+                        circulation_value: get_f64(arr, "circulation_value").unwrap_or(0.0),
+                        turnover_volume: get_f64(arr, "turnover_volume").unwrap_or(0.0),
+                        turnover_value: get_f64(arr, "turnover_value").unwrap_or(0.0),
+                        volume_ratio: get_f64(arr, "volume_ratio").unwrap_or(0.0),
+                        circulation_shares: get_f64(arr, "circulation_shares").unwrap_or(0.0),
+                        total_shares: get_f64(arr, "total_shares").unwrap_or(0.0),
+                    },
+                );
+            }
+        }
+
+        Ok(result)
     }
     pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
         let url = format!(

@@ -6,7 +6,7 @@ import {
   useDeleteWatchlist,
   type WatchlistItem,
 } from "@/hooks/query/useWatchlist"
-import { subscribeRealtime } from "@/hooks/useRealtimeStream"
+import { subscribeRealtimeBatch } from "@/hooks/useRealtimeStream"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import KlineDrawer from "./KlineDrawer"
@@ -38,23 +38,27 @@ export default function WatchlistView() {
   const addWatchlist = useAddWatchlist()
   const deleteWatchlist = useDeleteWatchlist()
 
-  // ── Real-time quotes via streams ──
+  // ── KlineDrawer ──
+  const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
+
+  // ── Real-time quotes via streams — single SSE for all symbols ──
   const quotesRef = useRef<Map<string, QuoteData>>(new Map())
   const [quoteTick, setQuoteTick] = useState(0)
 
   useEffect(() => {
+    if (items.length === 0) return
     quotesRef.current = new Map()
-    const unsubs = items.map((item) =>
-      subscribeRealtime(item.code, (data: any) => {
-        quotesRef.current.set(item.code, data)
-        setQuoteTick((n) => n + 1)
+    const codes = items.map((item) => item.code)
+    return subscribeRealtimeBatch(codes, (code, data: any) => {
+      quotesRef.current.set(code, {
+        last_px: data.last_px,
+        px_change_rate: data.px_change_rate,
+        market_value: data.market_value,
+        circulation_value: data.circulation_value,
       })
-    )
-    return () => unsubs.forEach((fn) => fn())
+      setQuoteTick((n) => n + 1)
+    })
   }, [items])
-
-  // ── KlineDrawer ──
-  const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
 
   // ── Add-stock search ──
   const [showAdd, setShowAdd] = useState(false)
