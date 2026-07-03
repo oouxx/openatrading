@@ -335,3 +335,11 @@
 [data-slot="command-shortcut"] {
   color: rgb(var(--color-muted-rgb)) !important;
 }
+
+/* Input / Textarea 聚焦时只保留边框变色，去掉外圈 ring（避免双层 border 视觉效果） */
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus-visible {
+  --tw-ring-color: transparent !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: none !important;
+}
