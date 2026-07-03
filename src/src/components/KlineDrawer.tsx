@@ -3,6 +3,12 @@ import { subscribeKline, subscribeRealtime } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 import KlineChart, { type KlineCandle, type CrosshairInfo } from "./KlineChart"
+import {
+  useWatchlist,
+  useAddWatchlist,
+  useDeleteWatchlist,
+} from "@/hooks/query/useWatchlist"
+import { Star } from "lucide-react"
 
 interface KlineDrawerProps {
   symbol: string
@@ -36,6 +42,12 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const [period, setPeriod] = useState("minute")
   const xgSymbol = toXuangubaoSymbol(symbol)
   const [quote, setQuote] = useState<any>(null)
+
+  // Watchlist
+  const { data: watchlist = [] } = useWatchlist()
+  const addWatchlist = useAddWatchlist()
+  const deleteWatchlist = useDeleteWatchlist()
+  const inWatchlist = watchlist.some((w) => w.code === symbol)
 
   // Kline data from SSE
   const [klineData, setKlineData] = useState<KlineCandle[]>([])
@@ -165,6 +177,20 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         </button>
         <span className="text-xl font-bold text-white">{name}</span>
         <span className="text-ink-muted font-mono text-xs">{symbol}</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (inWatchlist) {
+              deleteWatchlist.mutate(symbol)
+            } else {
+              addWatchlist.mutate({ code: symbol, name })
+            }
+          }}
+          className="ml-1 flex size-7 items-center justify-center rounded-full text-xs transition-colors hover:bg-white/10"
+          title={inWatchlist ? "取消自选" : "添加自选"}
+        >
+          <Star className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-ink-muted"}`} />
+        </button>
         {quote && (
           <div className="ml-auto flex items-center gap-3">
             <span className="font-mono text-[22px] font-bold">{quote.last_px?.toFixed(2)}</span>

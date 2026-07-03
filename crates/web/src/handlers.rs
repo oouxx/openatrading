@@ -310,11 +310,20 @@ pub async fn get_sentiment(
     .await
 }
 
-/// GET /api/kline/:symbol/stream — SSE, every 3s, re-fetches on period change
+/// GET /api/kline/stream — SSE, every 3s, comma-separated symbols
+#[derive(serde::Deserialize)]
+pub struct KlineStreamQuery {
+    #[serde(default = "default_kline_period")]
+    period: String,
+    #[serde(default = "default_kline_count")]
+    count: u32,
+    /// Comma-separated stock symbols
+    symbols: String,
+}
+
 pub async fn get_kline_stream(
     State(_state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
-    Query(q): Query<KlineQuery>,
+    Query(q): Query<KlineStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     let period = match q.period.as_str() {
         "week" => KlinePeriod::Week,
@@ -323,21 +332,25 @@ pub async fn get_kline_stream(
         _ => KlinePeriod::Day,
     };
     let count = q.count;
+    let symbols: Vec<String> = q
+        .symbols
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     let client = XuanguBaoClient::new();
 
     let stream = async_stream::stream! {
         loop {
-            match client.fetch_kline(&symbol, period, count).await {
-                Ok(data) => {
-                    let json = serde_json::to_string(&data).unwrap_or_default();
-                    yield Ok(Event::default().data(json));
-                },
+            let json = match client.fetch_kline_batch(&symbols, period, count).await {
+                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
                 Err(e) => {
                     let msg = e.to_string();
-                    openatrading_core::log::warn!("[kline-stream] {symbol}: {msg}");
-                    yield Ok(Event::default().data(format!(r#"{{"error":"{msg}"}}"#)));
+                    openatrading_core::log::warn!("[kline-stream] {:?}: {msg}", symbols);
+                    format!(r#"{{"error":"{msg}"}}"#)
                 },
-            }
+            };
+            yield Ok(Event::default().data(json));
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     };
@@ -412,30 +425,35 @@ pub async fn get_realtime(
     .await
 }
 
-/// GET /api/realtime/:symbol/stream — SSE, every 3s
+/// GET /api/realtime/stream — SSE, every 3s, comma-separated symbols
+#[derive(serde::Deserialize)]
+pub struct RealtimeStreamQuery {
+    /// Comma-separated stock symbols
+    symbols: String,
+}
+
 pub async fn get_realtime_stream(
     State(_state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
+    Query(q): Query<RealtimeStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    let symbols: Vec<String> = q
+        .symbols
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     let client = XuanguBaoClient::new();
     let stream = async_stream::stream! {
         loop {
-            match client.fetch_realtime(&symbol).await {
-                Ok(data) => {
-                    let json = serde_json::to_string(&data).unwrap_or_default();
-                    yield Ok(Event::default().data(json));
-                },
+            let json = match client.fetch_realtime_batch(&symbols).await {
+                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
                 Err(e) => {
                     let msg = e.to_string();
-                    openatrading_core::log::warn!("[realtime-stream] {symbol}: {msg}");
-                    if msg.contains("not found") {
-                        yield Ok(Event::default().data(r#"{"error":"not_found"}"#));
-                        break;
-                    }
-                    // Otherwise just emit the error and keep polling
-                    yield Ok(Event::default().data(format!(r#"{{"error":"{msg}"}}"#)));
+                    openatrading_core::log::warn!("[realtime-stream] {:?}: {msg}", symbols);
+                    format!(r#"{{"error":"{msg}"}}"#)
                 },
-            }
+            };
+            yield Ok(Event::default().data(json));
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     };
