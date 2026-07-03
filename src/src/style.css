@@ -89,8 +89,8 @@
     --accent: 0.97 0 0;
     --accent-foreground: 0.2 0 0;
     --destructive: 0.577 0.245 27.325;
-    --border: 0 0 0 / 0.08;
-    --input: 0 0 0 / 0.08;
+    --border: 0 0 0 / 0.06;
+    --input: 0 0 0 / 0.06;
     --ring: 0.55 0.09 290;
     --radius: 0.625rem;
     --sidebar: 0.97 0 0;
@@ -175,7 +175,7 @@
     --accent-foreground: 0.92 0.004 285;
     --destructive: 0.58 0.22 25;
     --border: 1 0 0 / 0.06;
-    --input: 0.053 0.008 285;
+    --input: 1 0 0 / 0.06;
     --ring: 0.55 0.09 290;
     --sidebar: 0.072 0.011 288;
     --sidebar-foreground: 0.92 0.004 285;
