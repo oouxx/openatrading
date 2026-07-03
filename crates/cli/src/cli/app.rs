@@ -156,20 +156,29 @@ pub enum ConfigAction {
     Llm,
     /// 查看 Social 通知配置
     Social,
+    /// 修改配置项
+    Set {
+        #[command(subcommand)]
+        action: ConfigSetter,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigSetter {
     /// 修改 LLM provider
-    SetProvider { value: String },
+    Provider { value: String },
     /// 修改 LLM model
-    SetModel { value: String },
+    Model { value: String },
     /// 修改 social notify_channel
-    SetNotifyChannel { value: String },
+    NotifyChannel { value: String },
     /// 修改 Telegram bot_token
-    SetTelegramToken { value: String },
+    TelegramToken { value: String },
     /// 修改 Telegram chat_id
-    SetTelegramChatId { value: String },
+    TelegramChatId { value: String },
     /// 修改 Discord bot_token
-    SetDiscordToken { value: String },
+    DiscordToken { value: String },
     /// 修改 Discord channel_id
-    SetDiscordChannelId { value: String },
+    DiscordChannelId { value: String },
 }
 
 #[derive(Subcommand)]
