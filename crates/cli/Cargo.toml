@@ -7,6 +7,10 @@ edition = "2021"
 name = "openatrading"
 path = "src/main.rs"
 
+[lib]
+name = "openatrading_cli"
+path = "src/lib.rs"
+
 [dependencies]
 openatrading-core = { path = "../core" }
 openatrading-tui = { path = "../tui" }
