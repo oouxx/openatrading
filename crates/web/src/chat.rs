@@ -301,16 +301,25 @@ pub async fn ai_chat(
         Some(CommandType::Skill) => {
             let skill_name = effective_command_name.as_deref().unwrap_or("");
             let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let prompt = skills
-                .skills()
-                .iter()
-                .find(|s| s.name == skill_name)
+            let skill = skills.skills().iter().find(|s| s.name == skill_name);
+            let prompt = skill
                 .map(|s| s.content.as_str())
                 .unwrap_or(default_strategy);
-            (
-                build_system_prompt(prompt),
-                tools_registry.load().all_tools().to_vec(),
-            )
+            let allowed = skill
+                .and_then(|s| s.allowed_tools.as_ref())
+                .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
+                .filter(|v| !v.is_empty());
+            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = match allowed {
+                Some(names) => tools_registry
+                    .load()
+                    .all_tools()
+                    .iter()
+                    .filter(|t| names.contains(&t.name))
+                    .cloned()
+                    .collect(),
+                None => tools_registry.load().all_tools().to_vec(),
+            };
+            (build_system_prompt(prompt), filtered)
         },
         Some(CommandType::Pipeline) => {
             let pipeline_name = req.command_name.as_deref().unwrap_or("");
