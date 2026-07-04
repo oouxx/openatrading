@@ -94,7 +94,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       ;(async () => {
         const { invoke } = await import("@tauri-apps/api/core")
         try {
-          const cfg = await invoke("get_config") as any
+          const cfg = (await invoke("get_config")) as any
           if (cfg?.social) {
             setSocial((s) => ({ ...s, ...cfg.social }))
           }
@@ -102,7 +102,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             if (cfg.llm.provider) setProvider(cfg.llm.provider)
             if (cfg.llm.model) setModel(cfg.llm.model)
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         setSocialLoaded(true)
       })()
     } else {
@@ -114,9 +116,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     <div className="flex h-full flex-1 flex-col gap-5 overflow-y-auto p-6">
       {activeTab === "appearance" && (
         <section>
-          <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
-            外观
-          </h2>
+          <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">外观</h2>
           <div className="border-hairline bg-bg-surface rounded-lg border p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -178,8 +178,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                   <option value="deepseek">DeepSeek</option>
-                  <option value="siliconflow">硅基流动 (SiliconFlow)</option>
-                  <option value="github">GitHub Models</option>
                 </select>
               </div>
               <div>
@@ -225,7 +223,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm text-white">重启客户端</span>
-                    <p className="text-ink-muted mt-0.5 text-[11px]">修改 Provider/Model 后重启生效</p>
+                    <p className="text-ink-muted mt-0.5 text-[11px]">
+                      修改 Provider/Model 后重启生效
+                    </p>
                   </div>
                   <Button
                     size="sm"
@@ -281,7 +281,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                         if (isTauri) await setConfig("social", `notify_on_${k}`, String(v))
                       }}
                     />
-                    {k === "collect" ? "采集" : k === "decision" ? "决策" : k === "trade" ? "交易" : "新闻"}
+                    {k === "collect"
+                      ? "采集"
+                      : k === "decision"
+                        ? "决策"
+                        : k === "trade"
+                          ? "交易"
+                          : "新闻"}
                   </label>
                 ))}
               </div>
@@ -366,10 +372,14 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted text-xs font-medium tracking-wider uppercase">
               MCP 服务器 ({servers.length})
             </h2>
-            <Button variant="outline" size="sm" onClick={() => {
-              setEditingServer(newServerTemplate())
-              setShowNewForm(true)
-            }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditingServer(newServerTemplate())
+                setShowNewForm(true)
+              }}
+            >
               + 添加
             </Button>
           </div>
@@ -379,10 +389,17 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <McpServerForm
               server={editingServer}
               onChange={setEditingServer}
-              onCancel={() => { setShowNewForm(false); setEditingServer(null) }}
+              onCancel={() => {
+                setShowNewForm(false)
+                setEditingServer(null)
+              }}
               onSave={async () => {
-                await fetchJson("/api/mcp/servers", {
-                  method: "POST",
+                const isEditing = servers.some((s) => s.name === editingServer.name)
+                const url = isEditing
+                  ? `/api/mcp/servers/${encodeURIComponent(editingServer.name)}`
+                  : "/api/mcp/servers"
+                await fetchJson(url, {
+                  method: isEditing ? "PUT" : "POST",
                   body: JSON.stringify(editingServer),
                 })
                 setShowNewForm(false)
@@ -396,7 +413,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           <div className="space-y-2">
             {servers.length === 0 && !showNewForm && (
               <div className="border-hairline bg-bg-surface rounded-lg border p-8 text-center">
-                <p className="text-ink-muted text-xs">暂无 MCP 服务器配置，点击右上角「+ 添加」开始</p>
+                <p className="text-ink-muted text-xs">
+                  暂无 MCP 服务器配置，点击右上角「+ 添加」开始
+                </p>
               </div>
             )}
             {servers.map((s) => (
@@ -412,6 +431,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     method: "DELETE",
                   })
                   loadServers()
+                }}
+                onEdit={() => {
+                  setEditingServer(s)
+                  setShowNewForm(true)
                 }}
               />
             ))}
@@ -442,7 +465,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 }
 
 /* ── MCP Server 编辑表单 ── */
-function McpServerForm({ server, onChange, onCancel, onSave }: {
+function McpServerForm({
+  server,
+  onChange,
+  onCancel,
+  onSave,
+}: {
   server: McpServerConfig
   onChange: (s: McpServerConfig) => void
   onCancel: () => void
@@ -485,14 +513,17 @@ function McpServerForm({ server, onChange, onCancel, onSave }: {
             <button
               key={opt.value}
               type="button"
-              onClick={() => onChange({
-                ...server,
-                transport: opt.value === "streamable-http"
-                  ? { type: "streamable-http", url: "", auth_token: undefined }
-                  : opt.value === "sse"
-                    ? { type: "sse", url: "", post_url: undefined }
-                    : { type: "stdio", command: "", args: [], env: {} },
-              })}
+              onClick={() =>
+                onChange({
+                  ...server,
+                  transport:
+                    opt.value === "streamable-http"
+                      ? { type: "streamable-http", url: "", auth_token: undefined }
+                      : opt.value === "sse"
+                        ? { type: "sse", url: "", post_url: undefined }
+                        : { type: "stdio", command: "", args: [], env: {} },
+                })
+              }
               className={`flex-1 px-3 py-1.5 text-xs transition-colors ${
                 server.transport.type === opt.value
                   ? "bg-ai text-white"
@@ -524,7 +555,11 @@ function McpServerForm({ server, onChange, onCancel, onSave }: {
           <Input
             value={server.transport.url ?? ""}
             onChange={(e) => updateTransport({ url: e.target.value })}
-            placeholder={server.transport.type === "streamable-http" ? "http://localhost:8081/mcp" : "http://localhost:8081/sse"}
+            placeholder={
+              server.transport.type === "streamable-http"
+                ? "http://localhost:8081/mcp"
+                : "http://localhost:8081/sse"
+            }
             className="font-mono text-xs"
           />
           {server.transport.type === "sse" && (
@@ -561,11 +596,17 @@ function McpServerForm({ server, onChange, onCancel, onSave }: {
           <label className="text-ink-muted mb-1 block text-xs">参数</label>
           <KeyValueList
             items={(server.transport.args ?? []).map((v, i) => `arg_${i}=${v}`)}
-            onChange={(entries) => setArgs(
-              entries
-                .map((e) => e.split("=").slice(1).join("="))
-                .filter(Boolean)
-            )}
+            onChange={(entries) =>
+              setArgs(
+                entries
+                  .map((e) => {
+                    const idx = e.indexOf("=")
+                    // hideKey 模式：edited → 裸值；untouched → "arg_i=VALUE"，切掉前缀
+                    return idx === -1 ? e : e.slice(idx + 1)
+                  })
+                  .filter(Boolean),
+              )
+            }
             keyPlaceholder="序号"
             valuePlaceholder="--port"
             hideKey
@@ -595,13 +636,19 @@ function McpServerForm({ server, onChange, onCancel, onSave }: {
 
       {/* 操作按钮 */}
       <div className="flex justify-end gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={onCancel}>取消</Button>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          取消
+        </Button>
         <Button
           size="sm"
           disabled={saving || !server.name}
           onClick={async () => {
             setSaving(true)
-            try { await onSave() } finally { setSaving(false) }
+            try {
+              await onSave()
+            } finally {
+              setSaving(false)
+            }
           }}
         >
           {saving ? "保存中…" : "保存"}
@@ -612,10 +659,16 @@ function McpServerForm({ server, onChange, onCancel, onSave }: {
 }
 
 /* ── MCP Server 卡片 ── */
-function McpServerCard({ server: s, onToggle, onDelete }: {
+function McpServerCard({
+  server: s,
+  onToggle,
+  onDelete,
+  onEdit,
+}: {
   server: McpServerConfig
   onToggle: () => Promise<void>
   onDelete: () => Promise<void>
+  onEdit: () => void
 }) {
   const [toggling, setToggling] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -629,7 +682,9 @@ function McpServerCard({ server: s, onToggle, onDelete }: {
 
   return (
     <div className="border-hairline bg-bg-surface flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10">
-      <span className={`size-1.5 flex-shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`} />
+      <span
+        className={`size-1.5 flex-shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm text-white">{s.name}</span>
@@ -641,11 +696,21 @@ function McpServerCard({ server: s, onToggle, onDelete }: {
       </div>
       <div className="flex flex-shrink-0 gap-1">
         <button
+          className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white"
+          onClick={onEdit}
+        >
+          编辑
+        </button>
+        <button
           className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white disabled:opacity-40"
           disabled={toggling}
           onClick={async () => {
             setToggling(true)
-            try { await onToggle() } finally { setToggling(false) }
+            try {
+              await onToggle()
+            } finally {
+              setToggling(false)
+            }
           }}
         >
           {s.enabled ? "停用" : "启用"}
@@ -655,7 +720,11 @@ function McpServerCard({ server: s, onToggle, onDelete }: {
           disabled={deleting}
           onClick={async () => {
             setDeleting(true)
-            try { await onDelete() } finally { setDeleting(false) }
+            try {
+              await onDelete()
+            } finally {
+              setDeleting(false)
+            }
           }}
         >
           删除
@@ -666,7 +735,13 @@ function McpServerCard({ server: s, onToggle, onDelete }: {
 }
 
 /* ── 键值对列表编辑器（通用） ── */
-function KeyValueList({ items, onChange, keyPlaceholder, valuePlaceholder, hideKey }: {
+function KeyValueList({
+  items,
+  onChange,
+  keyPlaceholder,
+  valuePlaceholder,
+  hideKey,
+}: {
   items: string[]
   onChange: (entries: string[]) => void
   keyPlaceholder?: string
@@ -719,7 +794,7 @@ function KeyValueList({ items, onChange, keyPlaceholder, valuePlaceholder, hideK
       })}
       <button
         type="button"
-        className="text-ink-muted hover:text-white text-xs"
+        className="text-ink-muted text-xs hover:text-white"
         onClick={() => onChange(normalize([...entries, ""]))}
       >
         + 添加
