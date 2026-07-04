@@ -1,8 +1,10 @@
+import { useSettingsStore } from "@/stores/settingsStore"
+
 const isTauri = "__TAURI_INTERNALS__" in window
 
 export function getApiBaseUrl(): string {
   if (isTauri) return ""
-  return localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
+  return useSettingsStore.getState().apiUrl || __API_BASE_URL__
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

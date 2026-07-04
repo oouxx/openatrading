@@ -175,77 +175,75 @@ export default function MarketIntelTab() {
                   <div className="text-caption py-4 text-center text-white/40">今日暂无数据</div>
                 )}
               </div>
-
-              {/* 淘股吧推荐 */}
-              {taogubaArticles.length > 0 && (
-                <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark mb-6 border">
-                  <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
-                    淘股吧推荐 · {taogubaArticles.length}篇
-                  </h3>
-                  <div className="space-y-2">
-                    {taogubaArticles.map((a, idx) => (
-                      <div
-                        key={`${a.topic_id}-${idx}`}
-                        className="p-card-inner rounded-card border-hairline-dark cursor-pointer border bg-white/[0.04] transition-colors"
-                        onClick={() =>
-                          setExpandedTgbId(expandedTgbId === a.topic_id ? null : a.topic_id)
-                        }
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="mb-1 flex items-center gap-1.5">
-                              <span className="text-caption shrink-0 font-mono text-white/40">
-                                #{idx + 1}
-                              </span>
-                              <span className="text-caption truncate font-medium text-white">
-                                {a.subject}
-                              </span>
-                            </div>
-                            <div className="text-caption flex items-center gap-3 text-white/40">
-                              <span>{a.user_name}</span>
-                              <span>👁️ {a.view_count}</span>
-                              <span>💬 {a.reply_count}</span>
-                              <span>{a.date_time}</span>
-                            </div>
-                          </div>
-                          <span
-                            className="text-caption shrink-0 text-white/40 transition-transform"
-                            style={{
-                              transform: expandedTgbId === a.topic_id ? "rotate(180deg)" : "",
-                            }}
-                          >
-                            ▼
-                          </span>
-                        </div>
-                        {expandedTgbId === a.topic_id && (
-                          <div className="border-hairline-dark mt-3 border-t pt-3">
-                            <div
-                              className="text-caption leading-relaxed text-white/60"
-                              dangerouslySetInnerHTML={{ __html: a.content }}
-                            />
-                            <a
-                              href={`https://www.tgb.cn/article/${a.new_topic_id}`}
-                              target="_blank"
-                              className="text-caption text-ai mt-2 inline-block hover:underline"
-                              rel="noreferrer"
-                            >
-                              📎 查看原文
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
       )}
 
       {activeSection === "posts" && (
-        <div className="py-16 text-center">
-          <span className="text-caption font-mono text-white/40">淘股吧 — 需配置 TAOGUBA_USER</span>
+        <div className="py-1 text-center">
+          {/* 淘股吧推荐 */}
+          {taogubaArticles.length > 0 && (
+            <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark mb-6 border">
+              <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
+                淘股吧推荐 · {taogubaArticles.length}篇
+              </h3>
+              <div className="space-y-2">
+                {taogubaArticles.map((a, idx) => (
+                  <div
+                    key={`${a.topic_id}-${idx}`}
+                    className="p-card-inner rounded-card border-hairline-dark cursor-pointer border bg-white/[0.04] transition-colors"
+                    onClick={() =>
+                      setExpandedTgbId(expandedTgbId === a.topic_id ? null : a.topic_id)
+                    }
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-1.5">
+                          <span className="text-caption shrink-0 font-mono text-white/40">
+                            #{idx + 1}
+                          </span>
+                          <span className="text-caption truncate font-medium text-white">
+                            {a.subject}
+                          </span>
+                        </div>
+                        <div className="text-caption flex items-center gap-3 text-white/40">
+                          <span>{a.user_name}</span>
+                          <span>👁️ {a.view_count}</span>
+                          <span>💬 {a.reply_count}</span>
+                          <span>{a.date_time}</span>
+                        </div>
+                      </div>
+                      <span
+                        className="text-caption shrink-0 text-white/40 transition-transform"
+                        style={{
+                          transform: expandedTgbId === a.topic_id ? "rotate(180deg)" : "",
+                        }}
+                      >
+                        ▼
+                      </span>
+                    </div>
+                    {expandedTgbId === a.topic_id && (
+                      <div className="border-hairline-dark mt-3 border-t pt-3">
+                        <div
+                          className="text-caption leading-relaxed text-white/60"
+                          dangerouslySetInnerHTML={{ __html: a.content }}
+                        />
+                        <a
+                          href={`https://www.tgb.cn/article/${a.new_topic_id}`}
+                          target="_blank"
+                          className="text-caption text-ai mt-2 inline-block hover:underline"
+                          rel="noreferrer"
+                        >
+                          📎 查看原文
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

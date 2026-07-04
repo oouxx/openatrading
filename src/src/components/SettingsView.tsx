@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/stores/ui"
+import { useSettingsStore } from "@/stores/settingsStore"
 import { fetchJson } from "@/stores/data"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
@@ -43,16 +44,14 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
 
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("openatrading-api-key") || "")
-  const [provider, setProvider] = useState(
-    () => localStorage.getItem("openatrading-provider") || "openrouter"
-  )
-  const [model, setModel] = useState(
-    () => localStorage.getItem("openatrading-model") || "claude-sonnet-4-6"
-  )
-  const [apiUrl, setApiUrl] = useState(
-    () => localStorage.getItem("openatrading-api-url") || "http://localhost:8080"
-  )
+  const apiKey = useSettingsStore((s) => s.apiKey)
+  const setApiKey = useSettingsStore((s) => s.setApiKey)
+  const provider = useSettingsStore((s) => s.provider)
+  const setProvider = useSettingsStore((s) => s.setProvider)
+  const model = useSettingsStore((s) => s.model)
+  const setModel = useSettingsStore((s) => s.setModel)
+  const apiUrl = useSettingsStore((s) => s.apiUrl)
+  const setApiUrl = useSettingsStore((s) => s.setApiUrl)
   const [restarting, setRestarting] = useState(false)
   // Social notification state
   const [social, setSocial] = useState({
@@ -157,7 +156,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   value={apiKey}
                   onChange={(e) => {
                     setApiKey(e.target.value)
-                    localStorage.setItem("openatrading-api-key", e.target.value)
                   }}
                   placeholder="sk-..."
                   className="font-mono text-xs"
@@ -170,7 +168,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setProvider(v)
-                    await setConfig("llm", "provider", v)
+                    if (isTauri) {
+                      const { invoke } = await import("@tauri-apps/api/core")
+                      await invoke("update_config", { section: "llm", key: "provider", value: v })
+                    }
                   }}
                   className="border-hairline bg-bg-tertiary text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
                 >
@@ -187,7 +188,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setModel(v)
-                    await setConfig("llm", "model", v)
+                    if (isTauri) {
+                      const { invoke } = await import("@tauri-apps/api/core")
+                      await invoke("update_config", { section: "llm", key: "model", value: v })
+                    }
                   }}
                   placeholder="claude-sonnet-4-6"
                   className="font-mono text-xs"
@@ -206,7 +210,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 value={apiUrl}
                 onChange={(e) => {
                   setApiUrl(e.target.value)
-                  localStorage.setItem("openatrading-api-url", e.target.value)
                 }}
                 placeholder="http://localhost:8080"
                 className="font-mono text-xs"
