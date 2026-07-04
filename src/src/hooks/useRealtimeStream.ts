@@ -1,5 +1,30 @@
 const isTauri = "__TAURI_INTERNALS__" in window
 
+function getApiBase(): string {
+  return localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
+}
+
+/**
+ * Try to match a raw symbol (e.g. "000001") against a batch-response map
+ * whose keys may carry market suffixes (e.g. "000001.SZ").
+ */
+function matchSymbol(parsed: Record<string, unknown>, rawCode: string): unknown {
+  if (rawCode in parsed) return parsed[rawCode]
+  for (const [k, v] of Object.entries(parsed)) {
+    if (k.replace(/\.(SS|SZ|BJ)$/i, "") === rawCode) return v
+  }
+  return undefined
+}
+
+function safeParse(raw: string, context: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    console.warn(`[${context}] failed to parse SSE payload:`, raw, e)
+    return null
+  }
+}
+
 /**
  * Subscribe to realtime quotes, updated every 3 seconds.
  *
@@ -11,7 +36,7 @@ const isTauri = "__TAURI_INTERNALS__" in window
 export function subscribeRealtime(
   symbol: string,
   onData: (data: unknown) => void,
-  onError?: (err: string) => void,
+  onError?: (err: string) => void
 ): () => void {
   if (!symbol) return () => {}
 
@@ -22,15 +47,12 @@ export function subscribeRealtime(
       const channel = new Channel<string>()
       channel.onmessage = (text) => {
         if (!active) return
-        try {
-          const parsed = JSON.parse(text)
-          if (parsed.error) {
-            onError?.(parsed.error)
-          } else {
-            onData(parsed)
-          }
-        } catch {
-          /* ignore parse errors */
+        const parsed = safeParse(text, "realtime")
+        if (!parsed) return
+        if (parsed.error) {
+          onError?.(String(parsed.error))
+        } else {
+          onData(parsed)
         }
       }
       try {
@@ -45,26 +67,25 @@ export function subscribeRealtime(
   }
 
   // Web: EventSource
-  const base =
-    localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
-  const es = new EventSource(`${base}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`)
+  const es = new EventSource(
+    `${getApiBase()}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`
+  )
   es.onmessage = (e) => {
-    try {
-      const parsed = JSON.parse(e.data)
-      if (parsed.error) {
-        onError?.(parsed.error)
-      } else {
-        // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-        const found = parsed[symbol] ?? Object.values(parsed)[0]
-        if (found) onData(found)
-      }
-    } catch {
-      /* ignore */
+    const parsed = safeParse(e.data, "realtime")
+    if (!parsed) return
+    if (parsed.error) {
+      onError?.(String(parsed.error))
+    } else {
+      // Backend returns { "symbol": {...}, ... } — extract the one we asked for
+      const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+      if (found) onData(found)
     }
   }
   es.onerror = () => {
     onError?.("connection error")
-    es.close()
+    if (es.readyState === EventSource.CLOSED) {
+      es.close()
+    }
   }
   return () => es.close()
 }
@@ -81,7 +102,7 @@ export function subscribeRealtime(
 export function subscribeRealtimeBatch(
   symbols: string[],
   onData: (code: string, data: unknown) => void,
-  onError?: (err: string) => void,
+  onError?: (err: string) => void
 ): () => void {
   if (symbols.length === 0) return () => {}
 
@@ -94,31 +115,15 @@ export function subscribeRealtimeBatch(
       const channel = new Channel<string>()
       channel.onmessage = (text) => {
         if (!active) return
-        try {
-          const parsed = JSON.parse(text)
-          if (parsed.error) {
-            onError?.(parsed.error)
-          } else {
-            // parsed is { "000001.SZ": {...}, ... }
-            for (const rawCode of symbols) {
-              // Try exact key first, then look for symbol matching rawCode
-              let found: unknown = parsed[rawCode]
-              if (!found) {
-                // Try matching by stripping .SS/.SZ suffix
-                for (const [k, v] of Object.entries(parsed)) {
-                  if (k.replace(/\.(SS|SZ|BJ)$/i, "") === rawCode) {
-                    found = v
-                    break
-                  }
-                }
-              }
-              if (found) {
-                onData(rawCode, found)
-              }
-            }
+        const parsed = safeParse(text, "realtime-batch")
+        if (!parsed) return
+        if (parsed.error) {
+          onError?.(String(parsed.error))
+        } else {
+          for (const rawCode of symbols) {
+            const found = matchSymbol(parsed, rawCode)
+            if (found) onData(rawCode, found)
           }
-        } catch {
-          /* ignore parse errors */
         }
       }
       try {
@@ -133,38 +138,26 @@ export function subscribeRealtimeBatch(
   }
 
   // Web: EventSource
-  const base =
-    localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
-  const es = new EventSource(`${base}/api/realtime/stream?symbols=${encodeURIComponent(code)}`)
+  const es = new EventSource(
+    `${getApiBase()}/api/realtime/stream?symbols=${encodeURIComponent(code)}`
+  )
   es.onmessage = (e) => {
-    try {
-      const parsed = JSON.parse(e.data)
-      if (parsed.error) {
-        onError?.(parsed.error)
-      } else {
-        // parsed is { "000001.SZ": {...}, ... }
-        for (const rawCode of symbols) {
-          let found: unknown = parsed[rawCode]
-          if (!found) {
-            for (const [k, v] of Object.entries(parsed)) {
-              if (k.replace(/\.(SS|SZ|BJ)$/i, "") === rawCode) {
-                found = v
-                break
-              }
-            }
-          }
-          if (found) {
-            onData(rawCode, found)
-          }
-        }
+    const parsed = safeParse(e.data, "realtime-batch")
+    if (!parsed) return
+    if (parsed.error) {
+      onError?.(String(parsed.error))
+    } else {
+      for (const rawCode of symbols) {
+        const found = matchSymbol(parsed, rawCode)
+        if (found) onData(rawCode, found)
       }
-    } catch {
-      /* ignore */
     }
   }
   es.onerror = () => {
     onError?.("connection error")
-    es.close()
+    if (es.readyState === EventSource.CLOSED) {
+      es.close()
+    }
   }
   return () => es.close()
 }
@@ -172,26 +165,24 @@ export function subscribeRealtimeBatch(
 function sseStream(
   urlPath: string,
   onData: (data: unknown) => void,
-  onError?: (err: string) => void,
+  onError?: (err: string) => void
 ): () => void {
-  const base =
-    localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
-  const es = new EventSource(`${base}${urlPath}`)
+  const es = new EventSource(`${getApiBase()}${urlPath}`)
+
   es.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data)
-      if (data.error) {
-        onError?.(data.error)
-      } else {
-        onData(data)
-      }
-    } catch {
-      /* ignore */
+    const data = safeParse(e.data, urlPath)
+    if (!data) return
+    if (data.error) {
+      onError?.(String(data.error))
+    } else {
+      onData(data)
     }
   }
   es.onerror = () => {
     onError?.("connection error")
-    es.close()
+    if (es.readyState === EventSource.CLOSED) {
+      es.close()
+    }
   }
   return () => es.close()
 }
@@ -208,7 +199,7 @@ export function subscribeKline(
   period: string,
   count: number,
   onData: (data: unknown) => void,
-  onError?: (err: string) => void,
+  onError?: (err: string) => void
 ): () => void {
   if (!symbol) return () => {}
 
@@ -219,15 +210,12 @@ export function subscribeKline(
       const channel = new Channel<string>()
       channel.onmessage = (text) => {
         if (!active) return
-        try {
-          const parsed = JSON.parse(text)
-          if (parsed.error) {
-            onError?.(parsed.error)
-          } else {
-            onData(parsed)
-          }
-        } catch {
-          /* ignore parse errors */
+        const parsed = safeParse(text, "kline")
+        if (!parsed) return
+        if (parsed.error) {
+          onError?.(String(parsed.error))
+        } else {
+          onData(parsed)
         }
       }
       try {
@@ -244,18 +232,13 @@ export function subscribeKline(
   // Web: sseStream passes raw JSON — unwrap batch map to extract single symbol data
   const wrappedOnData = (data: unknown) => {
     const map = data as Record<string, unknown>
-    if (map[symbol]) {
-      onData(map[symbol])
-    } else {
-      // fallback: take first entry
-      const first = Object.values(map)[0]
-      if (first) onData(first)
-    }
+    const found = matchSymbol(map, symbol) ?? Object.values(map)[0]
+    if (found) onData(found)
   }
 
   return sseStream(
     `/api/kline/stream?symbols=${encodeURIComponent(symbol)}&period=${period}&count=${count}`,
     wrappedOnData,
-    onError,
+    onError
   )
 }

@@ -73,7 +73,7 @@ pub fn current_market_phase() -> MarketPhase {
     }
 }
 
-fn is_trading_hours() -> bool {
+pub fn is_trading_hours() -> bool {
     matches!(
         current_market_phase(),
         MarketPhase::MorningOpen | MarketPhase::AfternoonOpen
