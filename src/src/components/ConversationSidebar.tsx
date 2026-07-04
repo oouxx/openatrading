@@ -66,22 +66,22 @@ export default function ConversationSidebar({
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => setMode(mode === "watchlist" ? "chat" : "watchlist")}
-                isActive={mode === "watchlist"}
-                tooltip="自选"
-              >
-                <Star />
-                <span>自选</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
                 onClick={() => setMode(mode === "roles" ? "chat" : "roles")}
                 isActive={mode === "roles"}
                 tooltip="角色策略"
               >
                 <Users />
                 <span>角色策略</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setMode(mode === "watchlist" ? "chat" : "watchlist")}
+                isActive={mode === "watchlist"}
+                tooltip="自选"
+              >
+                <Star />
+                <span>自选</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

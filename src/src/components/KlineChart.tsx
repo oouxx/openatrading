@@ -66,11 +66,21 @@ function formatVolume(v: number): string {
 }
 
 function getLimitPct(symbol: string): number {
-  const code = symbol.replace(/\.[A-Z]+$/, "")
-  if (/^[48]\d{5}$/.test(code)) return 30
+  const raw = symbol.trim()
+  // 去掉后缀 (.SZ/.sh/.BJ 等，大小写都要匹配)
+  let code = raw.replace(/\.[A-Za-z]+$/, "")
+  // 去掉前缀 (sz/sh/bj，大小写都要匹配)
+  code = code.replace(/^(sz|sh|bj)/i, "")
+
+  if (!/^\d{6}$/.test(code)) {
+    // 兜底：格式不对时不应该静默返回10%
+    return 10
+  }
+
+  if (/^(83|87|88|92)\d{4}$/.test(code)) return 30
   if (/^68\d{4}$/.test(code)) return 20
   if (/^30\d{4}$/.test(code)) return 20
-  if (/^60\d{4}$/.test(code)) return 10
+  if (/^[46]0\d{4}$/.test(code)) return 10
   if (/^00\d{4}$/.test(code)) return 10
   return 10
 }
