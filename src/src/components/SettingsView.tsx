@@ -750,7 +750,8 @@ function KeyValueList({
 }) {
   const entries = items.length > 0 ? items : [""]
   // Normalize: store as "key=value" strings
-  const normalize = (list: string[]) => list.filter((e) => e.trim())
+  const normalize = (list: string[]) =>
+    hideKey ? list : list.filter((e) => e.trim())
 
   return (
     <div className="space-y-1.5">
@@ -802,3 +803,4 @@ function KeyValueList({
     </div>
   )
 }
+
