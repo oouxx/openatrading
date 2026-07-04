@@ -1,7 +1,9 @@
+import { useSettingsStore } from "@/stores/settingsStore"
+
 const isTauri = "__TAURI_INTERNALS__" in window
 
 function getApiBase(): string {
-  return localStorage.getItem("openatrading-api-url") || __API_BASE_URL__
+  return useSettingsStore.getState().apiUrl || __API_BASE_URL__
 }
 
 /**

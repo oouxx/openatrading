@@ -8,6 +8,7 @@ import { useRightPanelStore } from "@/stores/rightPanelStore"
 interface PromotionItem {
   symbol: string
   name: string
+  price: number
   yesterdayDays: number
   todayDays: number
   status: "promoted" | "broken" | "first"
@@ -49,6 +50,7 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
       const yestDays = s.yesterday_limit_up_days || prev.yesterday_limit_up_days || 0
       result.push({
         symbol: s.symbol,
+        price: s.price,
         name: s.stock_chi_name,
         yesterdayDays: yestDays,
         todayDays: s.limit_up_days,
@@ -62,6 +64,7 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
       result.push({
         symbol: s.symbol,
         name: s.stock_chi_name,
+        price: s.price,
         yesterdayDays: 0,
         todayDays: s.limit_up_days,
         status: "first",
@@ -76,6 +79,7 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
   for (const s of yesterdayMap.values()) {
     result.push({
       symbol: s.symbol,
+      price: s.price,
       name: s.stock_chi_name,
       yesterdayDays: s.yesterday_limit_up_days || 0,
       todayDays: 0,
@@ -112,6 +116,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
         return {
           symbol: s.symbol,
           name: s.stock_chi_name,
+          price: s.price,
           yesterdayDays: yestDays,
           todayDays: s.limit_up_days,
           status: (yestDays > 0 ? "promoted" : "first") as "promoted" | "first",
@@ -363,6 +368,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                 <tr>
                   <th>代码</th>
                   <th>名称</th>
+                  <th>现价</th>
                   <th style={{ textAlign: "right" }}>涨跌幅</th>
                   <th style={{ textAlign: "right" }}>换手率</th>
                   <th style={{ textAlign: "right" }}>流通市值</th>
@@ -384,6 +390,9 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
                         {s.name}
                       </MiniChartPreview>
+                    </td>
+                    <td>
+                      <span className="font-mono text-white/40">{s.price}</span>
                     </td>
                     <td className="text-up text-right font-mono">
                       +{(s.changePercent * 100).toFixed(2)}%
