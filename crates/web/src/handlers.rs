@@ -1,13 +1,17 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{sse::Event, IntoResponse, Sse},
+    response::{
+        sse::{Event, KeepAlive},
+        IntoResponse, Sse,
+    },
     Json,
 };
-use futures::stream::Stream;
+use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -340,21 +344,72 @@ pub async fn get_kline_stream(
         .collect();
     let client = XuanguBaoClient::new();
 
-    let stream = async_stream::stream! {
-        loop {
-            let json = match client.fetch_kline_batch(&symbols, period, count).await {
-                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
+    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
+    tokio::spawn(async move {
+        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
+        let json = match client.fetch_kline_batch(&symbols, period, count).await {
+            Ok(data) => match serde_json::to_string(&data) {
+                Ok(s) => s,
                 Err(e) => {
-                    let msg = e.to_string();
-                    openatrading_core::log::warn!("[kline-stream] {:?}: {msg}", symbols);
-                    format!(r#"{{"error":"{msg}"}}"#)
+                    openatrading_core::log::error!(
+                        "[kline-stream] initial serialize failed {:?}: {e}",
+                        symbols
+                    );
+                    return;
                 },
-            };
-            yield Ok(Event::default().data(json));
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            },
+            Err(e) => {
+                openatrading_core::log::warn!("[kline-stream] initial fetch {:?}: {e}", symbols);
+                serde_json::json!({ "error": e.to_string() }).to_string()
+            },
+        };
+        if tx.send(Ok(Event::default().data(json))).await.is_err() {
+            return;
         }
-    };
-    Ok(Sse::new(stream))
+
+        loop {
+            let is_trading = cache::is_trading_hours();
+            let delay = if is_trading {
+                Duration::from_secs(3)
+            } else {
+                Duration::from_secs(30)
+            };
+
+            tokio::select! {
+                _ = tx.closed() => break,
+                _ = tokio::time::sleep(delay) => {},
+            }
+
+            if is_trading {
+                openatrading_core::log::info!("[kline-stream] kline streaming {:?}", symbols);
+                let json = match client.fetch_kline_batch(&symbols, period, count).await {
+                    Ok(data) => match serde_json::to_string(&data) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            openatrading_core::log::error!(
+                                "[kline-stream] serialize failed {:?}: {e}",
+                                symbols
+                            );
+                            continue;
+                        },
+                    },
+                    Err(e) => {
+                        openatrading_core::log::warn!("[kline-stream] {:?}: {e}", symbols);
+                        serde_json::json!({ "error": e.to_string() }).to_string()
+                    },
+                };
+                if tx.send(Ok(Event::default().data(json))).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    let stream = stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    });
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
 }
 
 /// GET /api/kline/:symbol
@@ -443,21 +498,56 @@ pub async fn get_realtime_stream(
         .filter(|s| !s.is_empty())
         .collect();
     let client = XuanguBaoClient::new();
-    let stream = async_stream::stream! {
-        loop {
-            let json = match client.fetch_realtime_batch(&symbols).await {
-                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-                Err(e) => {
-                    let msg = e.to_string();
-                    openatrading_core::log::warn!("[realtime-stream] {:?}: {msg}", symbols);
-                    format!(r#"{{"error":"{msg}"}}"#)
-                },
-            };
-            yield Ok(Event::default().data(json));
-            tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
+    tokio::spawn(async move {
+        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
+        let json = match client.fetch_realtime_batch(&symbols).await {
+            Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
+            Err(e) => {
+                openatrading_core::log::warn!("[realtime-stream] initial fetch {:?}: {e}", symbols);
+                serde_json::json!({ "error": e.to_string() }).to_string()
+            },
+        };
+        if tx.send(Ok(Event::default().data(json))).await.is_err() {
+            return;
         }
-    };
-    Ok(Sse::new(stream))
+
+        loop {
+            let is_trading = cache::is_trading_hours();
+            let delay = if is_trading {
+                Duration::from_secs(3)
+            } else {
+                Duration::from_secs(30)
+            };
+
+            tokio::select! {
+                _ = tx.closed() => break,
+                _ = tokio::time::sleep(delay) => {},
+            }
+
+            if is_trading {
+                openatrading_core::log::info!("[realtime-stream] realtime streaming {:?}", symbols);
+                let json = match client.fetch_realtime_batch(&symbols).await {
+                    Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
+                    Err(e) => {
+                        openatrading_core::log::warn!("[realtime-stream] {:?}: {e}", symbols);
+                        serde_json::json!({ "error": e.to_string() }).to_string()
+                    },
+                };
+                if tx.send(Ok(Event::default().data(json))).await.is_err() {
+                    break;
+                }
+            }
+            // 非交易时间：不拉取、不发事件；keep-alive 保持连接，前端保留最后一笔数据。
+        }
+    });
+
+    let stream = stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    });
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
 }
 
 /// GET /api/yesterday-limit-up
