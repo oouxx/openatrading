@@ -288,31 +288,6 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             }
             Ok(serde_json::to_value(load()).unwrap_or_default())
         },
-        "/api/replay/events" => {
-            let min_pcp: f64 = extract_query(path, "min_pcp")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.03);
-            let client = XuanguBaoClient::new();
-            let all_events = client
-                .fetch_all_day_events(min_pcp)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
-                .iter()
-                .map(openatrading_core::api::xuangubao::ReplayEvent::from)
-                .collect();
-            let date = XuanguBaoClient::last_n_trading_days(1)
-                .first()
-                .cloned()
-                .unwrap_or_default();
-            let page = openatrading_core::api::xuangubao::ReplayPage {
-                date,
-                market_phase: String::new(),
-                events,
-                next_cursor: None,
-            };
-            Ok(serde_json::to_value(page).unwrap_or_default())
-        },
         "/api/replay/snapshots" => {
             let client = XuanguBaoClient::new();
             let events = client
@@ -331,6 +306,31 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             Ok(serde_json::to_value(data).unwrap_or_default())
         },
         _ => {
+            if path.strip_prefix("/api/replay/events").is_some() {
+                let min_pcp: f64 = extract_query(path, "min_pcp")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0.03);
+                let client = XuanguBaoClient::new();
+                let all_events = client
+                    .fetch_all_day_events(min_pcp)
+                    .await
+                    .map_err(|e| format!("{e}"))?;
+                let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
+                    .iter()
+                    .map(openatrading_core::api::xuangubao::ReplayEvent::from)
+                    .collect();
+                let date = XuanguBaoClient::last_n_trading_days(1)
+                    .first()
+                    .cloned()
+                    .unwrap_or_default();
+                let page = openatrading_core::api::xuangubao::ReplayPage {
+                    date,
+                    market_phase: String::new(),
+                    events,
+                    next_cursor: None,
+                };
+                return Ok(serde_json::to_value(page).unwrap_or_default());
+            }
             if path.strip_prefix("/api/replay/news").is_some() {
                 let client = XuanguBaoClient::new();
                 let tailmark = extract_query(path, "tailmark").and_then(|s| s.parse().ok());

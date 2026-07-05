@@ -41,6 +41,7 @@ interface ReplayPage {
 
 interface DisplayEvent {
   id: number
+  event_type: number
   minute: number
   plateName: string
   pcp: number
@@ -54,24 +55,29 @@ export default function ReplayView() {
   const [minPct, setMinPct] = useState(2)
   const { data: rawPage, isLoading, error } = useReplayEvents(minPct)
   const [currentMinute, setCurrentMinute] = useState(AM[0])
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [playSpeed, setPlaySpeed] = useState(1)
   const [filter, setFilter] = useState<"all" | "good" | "bad">("all")
+  const [eventTypeFilter, setEventTypeFilter] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
   // Derive events from rawPage
   const allEvents = useMemo<DisplayEvent[]>(() => {
     if (!rawPage) return []
     const page = rawPage as ReplayPage
-    const base = new Date(`${page.date}T00:00:00+08:00`).getTime() / 1000
-    return (page.events ?? [])
+    const evs = page.events ?? []
+    if (evs.length === 0) return []
+    // Compute midnight Beijing from the events' timestamps themselves,
+    // avoiding date mismatch when the trading day differs from `page.date`.
+    const firstTs = evs[0].event_timestamp
+    const beijingOffset = 8 * 3600
+    const base = firstTs - ((firstTs + beijingOffset) % 86400)
+    return evs
       .filter((e: ReplayEvent) => e.plate_name)
       .map((e: ReplayEvent) => ({
         id: e.id,
+        event_type: e.event_type,
         minute: Math.round((e.event_timestamp - base) / 60),
         plateName: e.plate_name!,
         pcp: e.pcp || 0,
@@ -81,68 +87,31 @@ export default function ReplayView() {
       .sort((a, b) => a.minute - b.minute)
   }, [rawPage])
 
-  // Cleanup timer on unmount
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    },
-    []
-  )
-
   const filtered = useMemo(
     () =>
       allEvents.filter((e) => {
         if (Math.abs(e.pcp) * 100 < minPct) return false
+        if (eventTypeFilter != null && e.event_type !== eventTypeFilter) return false
         if (filter === "all") return true
         return (filter === "good" && e.goodOrBad === 1) || (filter === "bad" && e.goodOrBad === 2)
       }),
-    [allEvents, minPct, filter]
+    [allEvents, minPct, filter, eventTypeFilter]
   )
 
-  const stop = useCallback(() => {
-    setIsPlaying(false)
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-  }, [])
+  const eventTypes = useMemo(() => {
+    const types = new Set(allEvents.map((e) => e.event_type))
+    return Array.from(types).sort()
+  }, [allEvents])
 
-  const start = useCallback(() => {
-    setIsPlaying(true)
-    timerRef.current = setInterval(() => {
-      setCurrentMinute((prev) => {
-        const idx = TRADING_MINUTES.indexOf(prev) + playSpeed
-        if (idx >= TRADING_MINUTES.length) stop()
-        return idx >= TRADING_MINUTES.length ? prev : TRADING_MINUTES[idx]
-      })
-    }, 300)
-  }, [playSpeed, stop])
-
-  const toggle = () => {
-    if (isPlaying) {
-      stop()
-    } else {
-      start()
-    }
-  }
   const step = (d: number) => {
-    stop()
     setCurrentMinute((prev) => {
       const idx = TRADING_MINUTES.indexOf(prev) + d
       return idx >= 0 && idx < TRADING_MINUTES.length ? TRADING_MINUTES[idx] : prev
     })
   }
-  const setSpeed = (sp: number) => {
-    setPlaySpeed(sp)
-    if (isPlaying) {
-      stop()
-      setTimeout(() => start(), 0)
-    }
-  }
   const jumpToEvent = (id: number) => {
     const ev = allEvents.find((e) => e.id === id)
     if (ev) {
-      stop()
       setCurrentMinute(ev.minute)
       setSelectedId(id)
     }
@@ -159,17 +128,13 @@ export default function ReplayView() {
         e.preventDefault()
         step(-1)
       }
-      if (e.key === " ") {
-        e.preventDefault()
-        toggle()
-      }
       if (e.key === "Escape") {
         setSelectedId(null)
       }
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [isPlaying, playSpeed])
+  }, [])
 
   if (isLoading) {
     return (
@@ -200,6 +165,7 @@ export default function ReplayView() {
     <div className="flex h-full flex-col">
       {/* Control Bar */}
       <div className="border-hairline bg-bg-surface sticky top-0 z-15 flex flex-shrink-0 flex-wrap items-center gap-2.5 border-b px-5 py-2">
+        {/* 方向 */}
         {[
           { f: "all" as const, label: "全部" },
           { f: "good" as const, label: "利好 ↑" },
@@ -225,6 +191,25 @@ export default function ReplayView() {
           </button>
         ))}
         <span className="bg-hairline mx-1 h-5 w-px" />
+        {/* 类型 */}
+        {eventTypes.map((t) => {
+          const label = t === 11000 ? "板块异动" : t === 11001 ? "个股异动" : String(t)
+          return (
+            <button
+              key={t}
+              onClick={() => setEventTypeFilter(eventTypeFilter === t ? null : t)}
+              className={`cursor-pointer rounded-2xl border px-3 py-1 text-[11px] font-medium transition-colors ${
+                eventTypeFilter === t
+                  ? "border-ai bg-ai text-white"
+                  : "border-hairline text-ink-muted hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+        <span className="bg-hairline mx-1 h-5 w-px" />
+        {/* 振幅 */}
         <span className="text-ink-muted text-[10px]">振幅≥</span>
         <div className="flex gap-0.5">
           {[0, 1, 2, 3, 5].map((p) => (
@@ -238,35 +223,6 @@ export default function ReplayView() {
           ))}
         </div>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <button
-          onClick={() => step(-1)}
-          className="border-hairline text-ink-muted hover:border-ai flex size-[26px] cursor-pointer items-center justify-center rounded-md border bg-transparent text-[11px] transition-colors hover:text-white"
-        >
-          ⏮
-        </button>
-        <button
-          onClick={toggle}
-          className="bg-ai flex size-[34px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-sm text-white transition-opacity hover:opacity-90"
-        >
-          {isPlaying ? "⏸" : "▶"}
-        </button>
-        <button
-          onClick={() => step(1)}
-          className="border-hairline text-ink-muted hover:border-ai flex size-[26px] cursor-pointer items-center justify-center rounded-md border bg-transparent text-[11px] transition-colors hover:text-white"
-        >
-          ⏭
-        </button>
-        <div className="flex gap-1">
-          {[1, 4, 8, 16].map((sp) => (
-            <button
-              key={sp}
-              onClick={() => setSpeed(sp)}
-              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-[10px] transition-colors ${playSpeed === sp ? "bg-ai text-white" : "border-hairline text-ink-muted border hover:text-white"}`}
-            >
-              {sp}×
-            </button>
-          ))}
-        </div>
         <span className="min-w-[46px] text-center font-mono text-sm font-semibold text-white">
           {minToTime(currentMinute)}
         </span>
