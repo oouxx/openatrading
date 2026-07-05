@@ -31,7 +31,12 @@ export default function SentimentHistory() {
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 200,
-      layout: { background: { color: "#111124" }, textColor: "#888780", fontSize: 10 },
+      layout: {
+        attributionLogo: false,
+        background: { type: "solid", color: "transparent" } as any,
+        textColor: "#888780",
+        fontSize: 10,
+      },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.06)" },
         horzLines: { color: "rgba(255,255,255,0.06)" },
@@ -63,7 +68,7 @@ export default function SentimentHistory() {
         lineStyle: 2 as const,
         lineWidth: 1,
         axisLabelVisible: true,
-        title: `今日 ${last.value.toFixed(1)}`,
+        // title: `今日 ${last.value.toFixed(1)}`,
       })
     }
 
@@ -83,9 +88,7 @@ export default function SentimentHistory() {
       ) : (
         <div ref={containerRef} style={{ height: 200 }} />
       )}
-      {interpretation && (
-        <p className="text-caption text-ink-muted mt-3">{interpretation}</p>
-      )}
+      {interpretation && <p className="text-caption text-ink-muted mt-3">{interpretation}</p>}
     </div>
   )
 }
