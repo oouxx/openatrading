@@ -676,7 +676,10 @@ impl XuanguBaoClient {
         Ok(events)
     }
 
-    pub async fn fetch_all_day_events(&self) -> Result<Vec<PlateOrStockAbnormalEvent>> {
+    pub async fn fetch_all_day_events(
+        &self,
+        min_pcp: f64,
+    ) -> Result<Vec<PlateOrStockAbnormalEvent>> {
         let day_close_ts = Self::latest_trading_day_close_ts();
         let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
 
@@ -713,7 +716,7 @@ impl XuanguBaoClient {
             e.plate_abnormal_event_data
                 .as_ref()
                 .and_then(|d| d.pcp)
-                .map(|pcp| pcp.abs() > 0.03)
+                .map(|pcp| pcp.abs() > min_pcp)
                 .unwrap_or(false)
         });
 

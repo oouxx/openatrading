@@ -289,47 +289,34 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             Ok(serde_json::to_value(load()).unwrap_or_default())
         },
         "/api/replay/events" => {
+            let min_pcp: f64 = extract_query(path, "min_pcp")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.03);
             let client = XuanguBaoClient::new();
-            let has_cursor = extract_query(path, "cursor").is_some();
-            let timestamp = extract_query(path, "cursor")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or_else(XuanguBaoClient::latest_trading_day_close_ts);
-            let raw = client
-                .fetch_events_page(timestamp, 1000, "11000,11001")
+            let all_events = client
+                .fetch_all_day_events(min_pcp)
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = raw
+            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
                 .iter()
                 .map(openatrading_core::api::xuangubao::ReplayEvent::from)
                 .collect();
-            let next_cursor = events.last().map(|e| e.event_timestamp);
-            let date = if has_cursor {
-                String::new()
-            } else {
-                XuanguBaoClient::last_n_trading_days(1)
-                    .first()
-                    .cloned()
-                    .unwrap_or_default()
-            };
-            let market_phase = if has_cursor {
-                String::new()
-            } else {
-                openatrading_web::cache::current_market_phase()
-                    .as_str()
-                    .to_string()
-            };
+            let date = XuanguBaoClient::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default();
             let page = openatrading_core::api::xuangubao::ReplayPage {
                 date,
-                market_phase,
+                market_phase: String::new(),
                 events,
-                next_cursor,
+                next_cursor: None,
             };
             Ok(serde_json::to_value(page).unwrap_or_default())
         },
         "/api/replay/snapshots" => {
             let client = XuanguBaoClient::new();
             let events = client
-                .fetch_all_day_events()
+                .fetch_all_day_events(0.03)
                 .await
                 .map_err(|e| format!("{e}"))?;
             let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
@@ -357,6 +344,16 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     "tailmark": next_tail,
                     "msgIdMark": next_msg,
                 }));
+            }
+            if path.strip_prefix("/api/search-stocks").is_some() {
+                let q = extract_query(path, "q").unwrap_or_default();
+                if q.is_empty() {
+                    return Err("missing q".to_string());
+                }
+                use openatrading_core::api::eastmoney::LhbClient;
+                let client = LhbClient::new();
+                let items = client.search_stocks(&q).await.map_err(|e| format!("{e}"))?;
+                return Ok(serde_json::to_value(items).unwrap_or_default());
             }
             if path.strip_prefix("/api/field-items").is_some() {
                 let date = extract_query(path, "date").unwrap_or_else(|| {
@@ -394,12 +391,9 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 for date in &trading_days {
                     if let Ok(Some(d)) = client.fetch_market_overview_for_date(date).await {
                         let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-                        let sentiment = d.market_temperature * 0.5
-                            + (1.0 - d.bomb_rate) * 25.0
-                            + (rise_ratio / 3.0).min(1.0) * 25.0;
                         days.push(serde_json::json!({
                             "date": d.date,
-                            "sentiment": (sentiment * 10.0).round() / 10.0,
+                            "sentiment": (d.market_temperature * 10.0).round() / 10.0,
                             "limit_up_count": d.limit_up_count,
                             "bomb_rate": (d.bomb_rate * 100.0).round() / 100.0,
                             "rise_ratio": (rise_ratio * 100.0).round() / 100.0,
@@ -1266,9 +1260,15 @@ async fn api_realtime_stream(
     channel: tauri::ipc::Channel<String>,
     _state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
+    let symbols: Vec<String> = symbol
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     let client = openatrading_core::api::xuangubao::XuanguBaoClient::new();
+
     loop {
-        match client.fetch_realtime(&symbol).await {
+        match client.fetch_realtime_batch(&symbols).await {
             Ok(data) => {
                 let json = serde_json::to_string(&data).unwrap_or_default();
                 channel
@@ -1277,10 +1277,7 @@ async fn api_realtime_stream(
             },
             Err(e) => {
                 let msg = e.to_string();
-                eprintln!("[realtime-stream] {symbol}: {msg}");
-                if msg.contains("not found") {
-                    break;
-                }
+                eprintln!("[realtime-stream] {:?}: {msg}", symbols);
                 channel
                     .send(format!(r#"{{"error":"{msg}"}}"#))
                     .map_err(|f| format!("channel error: {f}"))?;
@@ -1288,7 +1285,6 @@ async fn api_realtime_stream(
         }
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
-    Ok(())
 }
 
 #[tauri::command]
@@ -1334,7 +1330,7 @@ async fn api_replay_analyze(
 
     let client = XuanguBaoClient::new();
     let events = client
-        .fetch_all_day_events()
+        .fetch_all_day_events(0.03)
         .await
         .map_err(|e| format!("fetch error: {e}"))?;
     let date = XuanguBaoClient::last_n_trading_days(1)
@@ -1469,6 +1465,18 @@ async fn update_config(
 }
 
 #[tauri::command]
+async fn api_search_stocks(
+    q: String,
+) -> Result<Vec<openatrading_core::api::eastmoney::StockSearchItem>, String> {
+    use openatrading_core::api::eastmoney::LhbClient;
+    let client = LhbClient::new();
+    client
+        .search_stocks(&q)
+        .await
+        .map_err(|e| format!("search failed: {e}"))
+}
+
+#[tauri::command]
 async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     // Spawn a brief delay so the IPC response can reach the frontend
     let h = app_handle.clone();
@@ -1518,6 +1526,7 @@ fn main() {
             api_realtime_stream,
             api_kline_stream,
             api_replay_analyze,
+            api_search_stocks,
             get_config,
             update_config,
             restart_app

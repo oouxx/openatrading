@@ -86,6 +86,7 @@ export default function WatchlistView() {
   )
 
   // ── Add-stock search ──
+  const isTauri = "__TAURI_INTERNALS__" in window
   const handleAddSearch = useCallback(async (q: string) => {
     setAddQuery(q)
     if (!q.trim()) {
@@ -94,17 +95,23 @@ export default function WatchlistView() {
     }
     setAddSearching(true)
     try {
-      const res = await fetch(`/api/search-stocks?q=${encodeURIComponent(q.trim())}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAddResults(data)
+      if (isTauri) {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const data = await invoke("api_search_stocks", { q: q.trim() })
+        setAddResults(data as { code: string; name: string }[])
+      } else {
+        const res = await fetch(`/api/search-stocks?q=${encodeURIComponent(q.trim())}`)
+        if (res.ok) {
+          const data = await res.json()
+          setAddResults(data)
+        }
       }
     } catch {
       // ignore
     } finally {
       setAddSearching(false)
     }
-  }, [])
+  }, [isTauri])
 
   const handleAdd = useCallback(
     (code: string, name: string) => {
