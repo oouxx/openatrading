@@ -193,6 +193,132 @@ pub struct MarketOverviewDay {
     pub bomb_rate: f64,
     pub market_temperature: f64,
 }
+/// 选股宝 API `fields` 请求参数中的单个字段。
+///
+/// 通过 `ApiField::join(&[variant, ...])` 生成逗号分隔字符串，
+/// 每个 endpoint 在其方法中显式声明所需的字段列表。
+#[derive(Debug, Clone, Copy)]
+pub enum ApiField {
+    /// 上涨家数
+    RiseCount,
+    /// 下跌家数
+    FallCount,
+    /// 涨停家数
+    LimitUpCount,
+    /// 跌停家数
+    LimitDownCount,
+    /// 炸板率
+    LimitUpBrokenRatio,
+    /// 市场情绪温度
+    MarketTemperature,
+    /// 昨日涨停股今日平均涨幅
+    YesterdayLimitUpAvgPcp,
+    /// 时间戳（分时/K线）
+    TickAt,
+    /// 最新价（分时/K线）
+    ClosePx,
+    /// 开盘价
+    OpenPx,
+    /// 最高价
+    HighPx,
+    /// 最低价
+    LowPx,
+    /// 成交量
+    TurnoverVolume,
+    /// 涨跌幅
+    PxChangeRate,
+    /// 产品名称
+    ProdName,
+    /// 最新价（实时）
+    LastPx,
+    /// 涨跌额
+    PxChange,
+    /// 股票代码
+    Symbol,
+    /// 交易状态
+    TradeStatus,
+    /// 更新时间
+    UpdateTime,
+    /// 昨收价
+    PreclosePx,
+    /// 振幅
+    Amplitude,
+    /// 换手率
+    TurnoverRatio,
+    /// 市盈率
+    PeRate,
+    /// 动态市盈率
+    DynPe,
+    /// 市净率
+    DynPbRate,
+    /// 总市值
+    MarketValue,
+    /// 流通市值
+    CirculationValue,
+    /// 成交额
+    TurnoverValue,
+    /// 量比
+    VolumeRatio,
+    /// 流通股本
+    CirculationShares,
+    /// 总股本
+    TotalShares,
+    /// 板块核心涨幅
+    CoreAvgPcp,
+    /// 板块名称
+    PlateName,
+}
+
+impl ApiField {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::RiseCount => "rise_count",
+            Self::FallCount => "fall_count",
+            Self::LimitUpCount => "limit_up_count",
+            Self::LimitDownCount => "limit_down_count",
+            Self::LimitUpBrokenRatio => "limit_up_broken_ratio",
+            Self::MarketTemperature => "market_temperature",
+            Self::YesterdayLimitUpAvgPcp => "yesterday_limit_up_avg_pcp",
+            Self::TickAt => "tick_at",
+            Self::ClosePx => "close_px",
+            Self::OpenPx => "open_px",
+            Self::HighPx => "high_px",
+            Self::LowPx => "low_px",
+            Self::TurnoverVolume => "turnover_volume",
+            Self::PxChangeRate => "px_change_rate",
+            Self::ProdName => "prod_name",
+            Self::LastPx => "last_px",
+            Self::PxChange => "px_change",
+            Self::Symbol => "symbol",
+            Self::TradeStatus => "trade_status",
+            Self::UpdateTime => "update_time",
+            Self::PreclosePx => "preclose_px",
+            Self::Amplitude => "amplitude",
+            Self::TurnoverRatio => "turnover_ratio",
+            Self::PeRate => "pe_rate",
+            Self::DynPe => "dyn_pe",
+            Self::DynPbRate => "dyn_pb_rate",
+            Self::MarketValue => "market_value",
+            Self::CirculationValue => "circulation_value",
+            Self::TurnoverValue => "turnover_value",
+            Self::VolumeRatio => "volume_ratio",
+            Self::CirculationShares => "circulation_shares",
+            Self::TotalShares => "total_shares",
+            Self::CoreAvgPcp => "core_avg_pcp",
+            Self::PlateName => "plate_name",
+        }
+    }
+
+    /// 将多个字段拼接为逗号分隔的字符串（即 `fields=...` 参数值）。
+    pub fn join(fields: &[Self]) -> String {
+        fields
+            .iter()
+            .map(|f| f.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 
 pub struct MarketTrend {
@@ -260,7 +386,15 @@ impl XuanguBaoClient {
     }
 
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
-        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature,yesterday_limit_up_avg_pcp";
+        let fields = ApiField::join(&[
+            ApiField::RiseCount,
+            ApiField::FallCount,
+            ApiField::LimitUpCount,
+            ApiField::LimitDownCount,
+            ApiField::LimitUpBrokenRatio,
+            ApiField::MarketTemperature,
+            ApiField::YesterdayLimitUpAvgPcp,
+        ]);
         let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -287,7 +421,14 @@ impl XuanguBaoClient {
         &self,
         days: usize,
     ) -> Result<Vec<MarketOverviewDay>> {
-        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature";
+        let fields = ApiField::join(&[
+            ApiField::RiseCount,
+            ApiField::FallCount,
+            ApiField::LimitUpCount,
+            ApiField::LimitDownCount,
+            ApiField::LimitUpBrokenRatio,
+            ApiField::MarketTemperature,
+        ]);
         let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -343,10 +484,17 @@ impl XuanguBaoClient {
         &self,
         date: &str,
     ) -> Result<Option<MarketOverviewDay>> {
-        let fields = "rise_count,fall_count,limit_up_count,limit_down_count,limit_up_broken_ratio,market_temperature";
+        let fields = ApiField::join(&[
+            ApiField::RiseCount,
+            ApiField::FallCount,
+            ApiField::LimitUpCount,
+            ApiField::LimitDownCount,
+            ApiField::LimitUpBrokenRatio,
+            ApiField::MarketTemperature,
+        ]);
         let url = format!(
             "{}/market_indicator/line?fields={fields}&date={date}",
-            self.base_url
+            self.base_url,
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -370,8 +518,9 @@ impl XuanguBaoClient {
     }
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
         let url = format!(
-            "{}/market/trend?fields=tick_at,close_px&prod_code={symbol}",
-            "https://api-ddc-wscn.xuangubao.com.cn"
+            "{}/market/trend?fields={}&prod_code={symbol}",
+            "https://api-ddc-wscn.xuangubao.com.cn",
+            &ApiField::join(&[ApiField::TickAt, ApiField::ClosePx]),
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
@@ -418,9 +567,16 @@ impl XuanguBaoClient {
     }
     pub async fn fetch_market_real(&self, symbols: &[&str]) -> Result<Vec<IndexQuote>> {
         let joined = symbols.join(",");
-        let fields = "prod_name,last_px,px_change,px_change_rate,symbol,trade_status";
+        let fields = ApiField::join(&[
+            ApiField::ProdName,
+            ApiField::LastPx,
+            ApiField::PxChange,
+            ApiField::PxChangeRate,
+            ApiField::Symbol,
+            ApiField::TradeStatus,
+        ]);
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={fields}&prod_code={joined}"
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={fields}&prod_code={joined}",
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -624,7 +780,16 @@ impl XuanguBaoClient {
     ) -> Result<KlineData> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward&fields=tick_at,open_px,close_px,high_px,low_px,turnover_volume,px_change_rate",
+            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            &ApiField::join(&[
+                ApiField::TickAt,
+                ApiField::OpenPx,
+                ApiField::ClosePx,
+                ApiField::HighPx,
+                ApiField::LowPx,
+                ApiField::TurnoverVolume,
+                ApiField::PxChangeRate,
+            ]),
             period_sec = period.as_seconds()
         );
 
@@ -692,7 +857,16 @@ impl XuanguBaoClient {
 
         let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward&fields=tick_at,open_px,close_px,high_px,low_px,turnover_volume,px_change_rate",
+            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            &ApiField::join(&[
+                ApiField::TickAt,
+                ApiField::OpenPx,
+                ApiField::ClosePx,
+                ApiField::HighPx,
+                ApiField::LowPx,
+                ApiField::TurnoverVolume,
+                ApiField::PxChangeRate,
+            ]),
             prod_codes.join(","),
             period_sec = period.as_seconds()
         );
@@ -758,7 +932,32 @@ impl XuanguBaoClient {
     pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={}",&symbol
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
+            &ApiField::join(&[
+                ApiField::ProdName,
+                ApiField::TradeStatus,
+                ApiField::UpdateTime,
+                ApiField::LastPx,
+                ApiField::PxChange,
+                ApiField::PxChangeRate,
+                ApiField::PreclosePx,
+                ApiField::OpenPx,
+                ApiField::HighPx,
+                ApiField::LowPx,
+                ApiField::Amplitude,
+                ApiField::TurnoverRatio,
+                ApiField::PeRate,
+                ApiField::DynPe,
+                ApiField::DynPbRate,
+                ApiField::MarketValue,
+                ApiField::CirculationValue,
+                ApiField::TurnoverVolume,
+                ApiField::TurnoverValue,
+                ApiField::VolumeRatio,
+                ApiField::CirculationShares,
+                ApiField::TotalShares,
+            ]),
+            &symbol
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -845,7 +1044,31 @@ impl XuanguBaoClient {
 
         let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields=prod_name,trade_status,update_time,last_px,px_change,px_change_rate,preclose_px,open_px,high_px,low_px,amplitude,turnover_ratio,pe_rate,dyn_pe,dyn_pb_rate,market_value,circulation_value,turnover_volume,turnover_value,volume_ratio,circulation_shares,total_shares&prod_code={}",
+            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
+            &ApiField::join(&[
+                ApiField::ProdName,
+                ApiField::TradeStatus,
+                ApiField::UpdateTime,
+                ApiField::LastPx,
+                ApiField::PxChange,
+                ApiField::PxChangeRate,
+                ApiField::PreclosePx,
+                ApiField::OpenPx,
+                ApiField::HighPx,
+                ApiField::LowPx,
+                ApiField::Amplitude,
+                ApiField::TurnoverRatio,
+                ApiField::PeRate,
+                ApiField::DynPe,
+                ApiField::DynPbRate,
+                ApiField::MarketValue,
+                ApiField::CirculationValue,
+                ApiField::TurnoverVolume,
+                ApiField::TurnoverValue,
+                ApiField::VolumeRatio,
+                ApiField::CirculationShares,
+                ApiField::TotalShares,
+            ]),
             prod_codes.join(","),
         );
 
@@ -924,8 +1147,9 @@ impl XuanguBaoClient {
     }
     pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
         let url = format!(
-            "{}/stage2/plates_by_any_stock?symbol={symbol}&fields=core_avg_pcp,plate_name",
-            self.base_url
+            "{}/stage2/plates_by_any_stock?symbol={symbol}&fields={}",
+            self.base_url,
+            &ApiField::join(&[ApiField::CoreAvgPcp, ApiField::PlateName]),
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -1317,8 +1541,10 @@ pub async fn fetch_index_trends(client: &XuanguBaoClient) -> Result<IndexTrendDa
 
 impl XuanguBaoClient {
     async fn fetch_index_trend(&self, prod_code: &str) -> Result<Vec<IndexTick>> {
-        let url =
-            format!("https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields=tick_at,close_px&prod_code={prod_code}");
+        let url = format!(
+            "https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields={}&prod_code={prod_code}",
+            &ApiField::join(&[ApiField::TickAt, ApiField::ClosePx])
+        );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
             resp["code"] == 20000,
