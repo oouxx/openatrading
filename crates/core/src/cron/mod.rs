@@ -540,8 +540,3 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
     );
     Ok(())
 }
-
-// ── Tests ──────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {}

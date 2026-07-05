@@ -432,30 +432,3 @@ pub fn cmd_init() -> Result<()> {
     eprintln!("   (可运行 `openatrading skills install` 查看更多可安装技能)");
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mcp_server_defaults() {
-        let cfg = McpServerTomlConfig::default();
-        assert!(cfg.enabled);
-        assert_eq!(cfg.bind, "0.0.0.0:8082");
-    }
-
-    #[test]
-    fn config_loads_without_mcp_server_section() -> Result<()> {
-        let toml_text = r#"
-            [llm]
-            provider = "anthropic"
-            model = "claude-sonnet-4-6"
-
-            [service]
-            db_path = "data.db"
-        "#;
-        let raw: RawConfig = toml::from_str(toml_text)?;
-        assert!(raw.mcp_server.is_none());
-        Ok(())
-    }
-}
