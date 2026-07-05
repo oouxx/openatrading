@@ -51,19 +51,17 @@ interface DisplayEvent {
 // ── Main Component ────────────────────────────────────
 
 export default function ReplayView() {
-  const { data: rawPage, isLoading, error } = useReplayEvents()
+  const [minPct, setMinPct] = useState(2)
+  const { data: rawPage, isLoading, error } = useReplayEvents(minPct)
   const [currentMinute, setCurrentMinute] = useState(AM[0])
   const [isPlaying, setIsPlaying] = useState(false)
   const [playSpeed, setPlaySpeed] = useState(1)
   const [filter, setFilter] = useState<"all" | "good" | "bad">("all")
-  const [minPct, setMinPct] = useState(2)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null)
-  const [voiceOn, setVoiceOn] = useState(false)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
-  const lastAnnouncedTs = useRef<number | null>(null)
 
   // Derive events from rawPage
   const allEvents = useMemo<DisplayEvent[]>(() => {
@@ -149,24 +147,6 @@ export default function ReplayView() {
       setSelectedId(id)
     }
   }
-
-  // Voice
-  useEffect(() => {
-    if (!voiceOn || !window.speechSynthesis) return
-    const nowEv = filtered.find((e) => e.minute === currentMinute)
-    if (nowEv && nowEv.id !== lastAnnouncedTs.current) {
-      lastAnnouncedTs.current = nowEv.id
-      const isGood = nowEv.goodOrBad === 1
-      const pct = (Math.abs(nowEv.pcp) * 100).toFixed(1)
-      const text = `${minToTime(currentMinute)}，${nowEv.plateName}${isGood ? "利好" : "利空"}，${isGood ? "上涨" : "下跌"}百分之${pct}`
-      const u = new SpeechSynthesisUtterance(text)
-      u.lang = "zh-CN"
-      u.rate = 0.85
-      u.pitch = 1
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(u)
-    }
-  }, [currentMinute, voiceOn])
 
   // Keyboard
   useEffect(() => {
@@ -291,21 +271,6 @@ export default function ReplayView() {
           {minToTime(currentMinute)}
         </span>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <button
-          onClick={() => {
-            setVoiceOn((v) => !v)
-            if (voiceOn) {
-              window.speechSynthesis?.cancel()
-              lastAnnouncedTs.current = null
-            }
-          }}
-          className={`flex cursor-pointer items-center gap-1 rounded-2xl border px-3 py-1 text-[11px] whitespace-nowrap transition-colors ${voiceOn ? "border-[oklch(55%_0.14_240)] bg-[oklch(55%_0.14_240_/_0.12)] text-[oklch(55%_0.14_240)]" : "border-hairline text-ink-muted hover:text-white"}`}
-        >
-          <span
-            className={`size-1.5 rounded-full ${voiceOn ? "animate-pulse bg-[oklch(55%_0.14_240)]" : "bg-ink-muted"}`}
-          />{" "}
-          语音播报
-        </button>
         <span className="text-ink-muted ml-auto text-[10px]">{filtered.length} 个事件</span>
       </div>
 

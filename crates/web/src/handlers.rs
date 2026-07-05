@@ -995,14 +995,19 @@ pub async fn get_role_history(
 /// GET /api/replay/events — fetch all events for latest trading day
 pub async fn get_replay_events(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let min_pcp: f64 = params
+        .get("min_pcp")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.03);
     cache::get_or_fetch_json(
         &state.cache,
         "replay_events",
         CachePolicy::replay(),
-        || async {
+        || async move {
             let client = XuanguBaoClient::new();
-            let all_events = client.fetch_all_day_events().await.map_err(|e| {
+            let all_events = client.fetch_all_day_events(min_pcp).await.map_err(|e| {
                 openatrading_core::log::error!("[replay] events error: {:#}", e);
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
@@ -1114,7 +1119,7 @@ pub async fn get_replay_snapshots(
         CachePolicy::replay(),
         || async {
             let client = XuanguBaoClient::new();
-            let events = client.fetch_all_day_events().await.map_err(|e| {
+            let events = client.fetch_all_day_events(0.03).await.map_err(|e| {
                 openatrading_core::log::error!("[replay] snapshots fetch error: {e}");
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
@@ -1139,7 +1144,7 @@ pub async fn ai_replay_analyze(
 
     // Fetch snapshot data upfront
     let client = XuanguBaoClient::new();
-    let events = client.fetch_all_day_events().await.map_err(|e| {
+    let events = client.fetch_all_day_events(0.03).await.map_err(|e| {
         openatrading_core::log::error!("[replay] analyze fetch error: {e}");
         StatusCode::SERVICE_UNAVAILABLE
     })?;

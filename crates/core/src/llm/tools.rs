@@ -508,7 +508,7 @@ pub fn get_all_day_events() -> Arc<DynTool> {
         Arc::new(|_id, _args, _signal, _progress| {
             Box::pin(async move {
                 let result = XuanguBaoClient::new()
-                    .fetch_all_day_events()
+                    .fetch_all_day_events(0.03)
                     .await
                     .map_err(to_box_err)?;
                 Ok(text_result(&result))

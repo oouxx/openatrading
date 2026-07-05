@@ -54,7 +54,9 @@ export function subscribeRealtime(
         if (parsed.error) {
           onError?.(String(parsed.error))
         } else {
-          onData(parsed)
+          // Backend returns { "symbol": {...}, ... } — extract the one we asked for
+          const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+          if (found) onData(found)
         }
       }
       try {
