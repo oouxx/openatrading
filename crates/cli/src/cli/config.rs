@@ -373,13 +373,6 @@ impl AppConfig {
     pub fn social_discord(&self) -> Option<&DiscordConfig> {
         self.social.as_ref()?.discord.as_ref()
     }
-    pub fn social_slack(&self) -> Option<&SlackConfig> {
-        self.social.as_ref()?.slack.as_ref()
-    }
-    pub fn social_lark(&self) -> Option<&LarkConfig> {
-        self.social.as_ref()?.lark.as_ref()
-    }
-
     /// Write one key under `section` to config.toml.
     /// `section` is a dotted path, e.g. "llm" or "social.telegram".
     /// Uses toml_edit for round-trip preserving comments and section style.
