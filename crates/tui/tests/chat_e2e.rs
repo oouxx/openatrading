@@ -1,5 +1,5 @@
-use openatrading_tui::app::VirtualChatRuntime;
-use openatrading_tui::chat::{ChatArgs, Msg};
+use openatrading_tui::app::VirtualRuntime;
+use openatrading_tui::chat::{ChatApp, ChatArgs, Msg};
 
 const WIDTH: u16 = 80;
 const HEIGHT: u16 = 24;
@@ -14,7 +14,7 @@ fn test_args() -> ChatArgs {
 
 /// Helper: create a VirtualRuntime, type input, dispatch submit, return screen text.
 async fn run_with_input(groups: Vec<(&str, u64)>) -> String {
-    let mut runtime = VirtualChatRuntime::new(test_args(), WIDTH, HEIGHT);
+    let mut runtime = VirtualRuntime::<ChatApp>::new(test_args(), WIDTH, HEIGHT);
 
     for (text, _delay) in groups {
         if text == "\x1b" {
