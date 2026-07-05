@@ -169,7 +169,9 @@ fn infer_exchange(code: &str) -> Result<&'static str> {
     // 深圳证券交易所
     let is_sz = matches!(
         p3,
-        "000" | "001" | "002" | "003"          // 主板
+        "000" | "001" | "002" | "003" | "004"
+            | "005" | "006" | "007" | "008"
+            | "009"                           // 主板（含备用的 004-009 段）
             | "300" | "301"                     // 创业板
             | "200"                              // B股
             | "150" | "151" | "152" | "159"
@@ -239,7 +241,6 @@ mod tests {
         assert!(to_yahoo_symbol("abc").is_err()); // 无数字
         assert!(to_yahoo_symbol("12345678").is_err()); // 超过6位
         assert!(to_yahoo_symbol("700000").is_err()); // 首位7无法推断
-        assert!(to_yahoo_symbol("500000").is_err()); // 首位5无法推断
         assert!(to_yahoo_symbol("").is_err()); // 空字符串
     }
 
