@@ -1025,7 +1025,7 @@ pub async fn get_replay_events(
                 events,
                 next_cursor: None,
             };
-            Ok(serde_json::to_string(&page).unwrap_or_default())
+            Ok(page)
         },
     )
     .await
@@ -1124,7 +1124,7 @@ pub async fn get_replay_snapshots(
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
             let snaps = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-            Ok(serde_json::to_string(&snaps).unwrap_or_default())
+            Ok(snaps)
         },
     )
     .await
