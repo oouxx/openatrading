@@ -1,39 +1,35 @@
 import { useRef, useEffect, useMemo } from "react"
-import { createChart, LineSeries, type IChartApi, type Time } from "lightweight-charts"
+import { createChart, type IChartApi, type Time, LineSeries } from "lightweight-charts"
+import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 
-interface SentimentHistoryProps {
-  data?: { date: string; value: number }[]
-}
-
-export default function SentimentHistory({ data }: SentimentHistoryProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null)
+export default function SentimentHistory() {
+  const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const { data: raw = [] } = useSentimentHistory()
+
+  const chartData = useMemo(() => {
+    const rows = (raw as Array<{ date: string; sentiment: number }>).slice(-10)
+    return rows.map((d) => ({ time: d.date as Time, value: d.sentiment }))
+  }, [raw])
 
   const interpretation = useMemo(() => {
-    if (!data?.length) return ""
-    const recent = data.slice(-3)
-    if (recent.length >= 3 && recent.every((d) => d.value >= 75)) {
+    const recent = (raw as Array<{ date: string; sentiment: number }>).slice(-3)
+    if (recent.length >= 3 && recent.every((d) => d.sentiment >= 75))
       return "连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓"
-    }
-    if (recent.length >= 3 && recent.every((d) => d.value >= 50)) {
+    if (recent.length >= 3 && recent.every((d) => d.sentiment >= 50))
       return "情绪正常偏暖，短线操作环境尚可"
-    }
-    if (data[data.length - 1].value < 50) {
+    if (recent.length > 0 && recent[recent.length - 1].sentiment < 50)
       return "情绪偏冷，等待回暖信号"
-    }
     return ""
-  }, [data])
+  }, [raw])
 
   useEffect(() => {
-    if (!chartContainerRef.current || !data?.length) return
+    if (!containerRef.current || !chartData.length) return
 
-    if (chartRef.current) {
-      chartRef.current.remove()
-      chartRef.current = null
-    }
+    chartRef.current?.remove()
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
       height: 200,
       layout: { background: { color: "#111124" }, textColor: "#888780", fontSize: 10 },
       grid: {
@@ -55,44 +51,40 @@ export default function SentimentHistory({ data }: SentimentHistoryProps) {
       crosshairMarkerRadius: 4,
       lastValueVisible: true,
       priceLineVisible: false,
-      priceFormat: { type: "custom", formatter: (p: number) => p.toFixed(0) },
     })
 
-    series.setData(data.map((d) => ({ time: d.date as Time, value: d.value })))
+    series.setData(chartData)
 
-    const last = data[data.length - 1]
+    const last = chartData[chartData.length - 1]
     if (last) {
       series.createPriceLine({
         price: last.value,
         color: "#7F77DD",
-        lineStyle: 2,
+        lineStyle: 2 as const,
         lineWidth: 1,
         axisLabelVisible: true,
-        title: `今日 ${last.value}`,
+        title: `今日 ${last.value.toFixed(1)}`,
       })
     }
 
     chart.timeScale().fitContent()
     chartRef.current = chart
 
-    return () => {
-      chart.remove()
-      chartRef.current = null
-    }
-  }, [data])
+    return () => chart.remove()
+  }, [chartData])
 
   return (
-    <div className="p-card-inner rounded-card border-hairline bg-bg-surface border">
+    <div className="rounded-card border-hairline bg-bg-surface p-card-inner">
       <h3 className="text-caption-strong text-ink-muted mb-4 tracking-wider uppercase">
         情绪历史走势（近10日）
       </h3>
-      {!data?.length ? (
+      {!chartData.length ? (
         <div className="text-caption text-ink-muted py-8 text-center">暂无情绪历史数据</div>
       ) : (
-        <>
-          <div ref={chartContainerRef} style={{ height: 200 }} />
-          {interpretation && <p className="text-caption text-ink-muted mt-3">{interpretation}</p>}
-        </>
+        <div ref={containerRef} style={{ height: 200 }} />
+      )}
+      {interpretation && (
+        <p className="text-caption text-ink-muted mt-3">{interpretation}</p>
       )}
     </div>
   )

@@ -5,6 +5,7 @@ import { useOverview } from "@/hooks/query/useOverview"
 import { useIndexQuotes } from "@/hooks/query/useIndexQuotes"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 import KpiCards from "@/components/KpiCards"
+import SentimentHistory from "@/components/SentimentHistory"
 import KlineDrawer from "@/components/KlineDrawer"
 
 export default function TradingView() {
@@ -104,6 +105,10 @@ export default function TradingView() {
                 decisionSummary={overview.decision_summary}
               />
             )}
+
+            <div className="mt-6">
+              <SentimentHistory />
+            </div>
 
             {/* 快捷入口 */}
             <div className="mt-6 flex gap-3">
