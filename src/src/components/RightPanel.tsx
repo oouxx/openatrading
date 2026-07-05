@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from "react"
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useDragControls } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { usePanelWidth } from "@/hooks/usePanelWidth"
 import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore"
@@ -38,6 +38,7 @@ export default function RightPanel() {
   const [popoutView, setPopoutView] = useState<RightPanelView | null>(null)
   const [popoutSize, setPopoutSize] = useState({ w: 896, h: 600 })
   const isResizing = useRef(false)
+  const dragControls = useDragControls()
   const { width, setWidth, collapsed, toggleCollapse } = usePanelWidth(
     "layout:right-width",
     400,
@@ -106,7 +107,7 @@ export default function RightPanel() {
                 {TABS.find((t) => t.id === activeView)?.label}
               </span>
               <button
-                className="text-ink-muted hover:text-white ml-1 cursor-pointer"
+                className="text-ink-muted ml-1 cursor-pointer hover:text-white"
                 onClick={() => setPopoutView(activeView)}
                 title="弹出到独立窗口"
               >
@@ -174,14 +175,22 @@ export default function RightPanel() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => { if (!isResizing.current) setPopoutView(null) }}
+            onClick={() => {
+              if (!isResizing.current) setPopoutView(null)
+            }}
           >
             <motion.div
               className="border-hairline bg-bg-surface relative flex flex-col rounded-lg border shadow-2xl"
-              style={{ width: popoutSize.w, height: popoutSize.h, maxWidth: "90vw", maxHeight: "90vh" }}
+              style={{
+                width: popoutSize.w,
+                height: popoutSize.h,
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+              }}
               drag
               dragMomentum={false}
-              dragHandleClassName="modal-drag-handle"
+              dragListener={false}
+              dragControls={dragControls}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
@@ -189,13 +198,17 @@ export default function RightPanel() {
               onClick={(e) => e.stopPropagation()}
             >
               <div
-                className="modal-drag-handle border-hairline flex cursor-grab items-center justify-between border-b px-4 py-3 active:cursor-grabbing"
+                className="border-hairline flex cursor-grab items-center justify-between border-b px-4 py-3 active:cursor-grabbing"
+                onPointerDown={(e) => {
+                  if (e.target instanceof HTMLElement && e.target.closest("button")) return
+                  dragControls.start(e)
+                }}
               >
                 <span className="text-sm font-medium text-white">
                   {TABS.find((t) => t.id === popoutView)?.label}
                 </span>
                 <button
-                  className="text-ink-muted hover:text-white cursor-pointer"
+                  className="text-ink-muted cursor-pointer hover:text-white"
                   onClick={() => setPopoutView(null)}
                 >
                   <X className="size-4" />
@@ -237,7 +250,9 @@ export default function RightPanel() {
                     window.removeEventListener("mousemove", onMove)
                     window.removeEventListener("mouseup", onUp)
                     // Reset after click event had a chance to fire
-                    setTimeout(() => { isResizing.current = false }, 0)
+                    setTimeout(() => {
+                      isResizing.current = false
+                    }, 0)
                   }
                   window.addEventListener("mousemove", onMove)
                   window.addEventListener("mouseup", onUp)

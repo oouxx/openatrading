@@ -189,7 +189,6 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         </div>
         <span className="text-caption text-ink-muted font-mono">{filteredNews.length} 条</span>
       </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: "calc(100vh - 300px)" }}>
         {isLoading && !allItems.length ? (
           <div className="text-caption text-ink-muted py-8 text-center">加载中...</div>
