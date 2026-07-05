@@ -403,6 +403,27 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     seriesRefs.current = []
     timeLabelMapRef.current = new Map<number, string>()
 
+    // Insert whitespace data points between trading days so lightweight-charts
+    // doesn't connect yesterday's close to today's open.
+    // Place whitespace right after the last candle of the previous day,
+    // not at midnight, to avoid extra ticks on the time axis.
+    const insertDayGaps = <T extends { time: number }>(
+      items: T[]
+    ): (T | { time: number })[] => {
+      const result: (T | { time: number })[] = []
+      for (let i = 0; i < items.length; i++) {
+        if (i > 0) {
+          const prevDay = Math.floor(items[i - 1].time / 86400)
+          const currDay = Math.floor(items[i].time / 86400)
+          if (currDay !== prevDay) {
+            result.push({ time: items[i - 1].time + 60 })
+          }
+        }
+        result.push(items[i])
+      }
+      return result
+    }
+
     const filtered = period === "minute" ? data.filter((c) => isTradingTime(c.time)) : data
 
     if (filtered.length === 0) return
@@ -430,33 +451,38 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         chartRef.current.priceScale("right", 0).setVisibleRange({ from: -limitPct, to: limitPct })
       }
 
-      // Price line
-      price.setData(filtered.map((c) => ({ time: c.time as Time, value: c.close })))
+      // Price line — with day gaps
+      const gapped = insertDayGaps(filtered)
+      price.setData(gapped.map((c) => ({ time: (c as any).time as Time, value: (c as KlineCandle).close })))
 
-      // VWAP line
+      // VWAP line — with day gaps
       let cumValue = 0
       let cumVolume = 0
-      avgPrice.setData(
-        filtered.map((c) => {
-          cumValue += c.close * (c.volume || 0)
-          cumVolume += c.volume || 0
+      const vwapData = gapped.map((c) => {
+        if (!("close" in c)) return { time: c.time as Time }
+        cumValue += (c as KlineCandle).close * ((c as KlineCandle).volume || 0)
+        cumVolume += (c as KlineCandle).volume || 0
+        return {
+          time: c.time as Time,
+          value: cumVolume > 0 ? cumValue / cumVolume : (c as KlineCandle).close,
+        }
+      })
+      avgPrice.setData(vwapData)
+
+      // Intraday volume — with day gaps
+      volume.setData(
+        gapped.map((c) => {
+          if (!("close" in c)) return { time: c.time as Time }
+          const kc = c as KlineCandle
           return {
-            time: c.time as Time,
-            value: cumVolume > 0 ? cumValue / cumVolume : c.close,
+            time: kc.time as Time,
+            value: kc.volume || 0,
+            color:
+              kc.close >= (kc.open ?? preclose ?? kc.close)
+                ? "rgba(255,92,92,0.3)"
+                : "rgba(29,158,117,0.3)",
           }
         })
-      )
-
-      // Intraday volume
-      volume.setData(
-        filtered.map((c) => ({
-          time: c.time as Time,
-          value: c.volume || 0,
-          color:
-            c.close >= (c.open ?? preclose ?? c.close)
-              ? "rgba(255,92,92,0.3)"
-              : "rgba(29,158,117,0.3)",
-        }))
       )
 
       if (preclose && preclose > 0 && chartRef.current && filtered.length > 0) {
