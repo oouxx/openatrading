@@ -133,36 +133,39 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {!error &&
-            filteredNews.map((item) => (
-              <div
-                key={item.id}
-                className="group rounded-card border-hairline-dark bg-surface-dark hover:bg-bg-hover mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
-              >
-                <span className="text-caption mt-0.5 shrink-0">
-                  {item.severity === "major" ? "🔴" : "⚪"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-caption leading-relaxed text-white/80 transition-colors group-hover:text-white">
-                    <span className="text-ink-muted mr-2 font-mono text-xs">{item.time}</span>
-                    {item.title}
-                  </p>
-                  {item.aiNote && (
-                    <p className="text-caption text-ai/70 mt-1 text-xs leading-relaxed">
-                      → {item.aiNote}
+        <div className="min-h-0 flex-1 overflow-y-auto flex flex-col">
+          {error ? null : filteredNews.length > 0 ? (
+            <>
+              {filteredNews.map((item) => (
+                <div
+                  key={item.id}
+                  className="group rounded-card border-hairline-dark bg-surface-dark hover:bg-bg-hover mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
+                >
+                  <span className="text-caption mt-0.5 shrink-0">
+                    {item.severity === "major" ? "🔴" : "⚪"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-caption leading-relaxed text-white/80 transition-colors group-hover:text-white">
+                      <span className="text-ink-muted mr-2 font-mono text-xs">{item.time}</span>
+                      {item.title}
                     </p>
-                  )}
+                    {item.aiNote && (
+                      <p className="text-caption text-ai/70 mt-1 text-xs leading-relaxed">
+                        → {item.aiNote}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-
-          {isFetchingNextPage && (
-            <div className="text-caption text-ink-muted py-4 text-center">加载更多...</div>
-          )}
-          {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
-
-          {!isLoading && !error && filteredNews.length === 0 && (
+              ))}
+              <div className="flex-1" />
+              {isFetchingNextPage && (
+                <div className="text-caption text-ink-muted py-4 text-center">加载更多...</div>
+              )}
+              {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
+            </>
+          ) : isLoading ? (
+            <div className="text-caption text-ink-muted py-12 text-center">加载中...</div>
+          ) : (
             <div className="text-caption text-ink-muted py-12 text-center">暂无资讯</div>
           )}
         </div>
@@ -171,7 +174,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   }
 
   return (
-    <div className="rounded-card border-hairline bg-bg-surface overflow-hidden border">
+    <div className="flex h-full min-h-0 flex-col rounded-card border-hairline bg-bg-surface overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-caption-strong text-ink-muted font-mono tracking-wider uppercase">
@@ -189,7 +192,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         </div>
         <span className="text-caption text-ink-muted font-mono">{filteredNews.length} 条</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: "calc(100vh - 300px)" }}>
+      <div className="min-h-0 flex-1 overflow-y-auto max-h-full">
         {isLoading && !allItems.length ? (
           <div className="text-caption text-ink-muted py-8 text-center">加载中...</div>
         ) : error && !allItems.length ? (
