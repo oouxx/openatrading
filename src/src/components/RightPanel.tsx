@@ -6,15 +6,15 @@ import { usePanelWidth } from "@/hooks/usePanelWidth"
 import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore"
 import ResizableHandle from "./ResizableHandle"
 import KlineDrawer from "./KlineDrawer"
-import DragonTigerView from "@/DragonTigerView"
-import BreakoutView from "@/BreakoutView"
-import ReplayView from "@/ReplayView"
-import StrongStocksTab from "@/components/tabs/StrongStocksTab"
-import PromotionTab from "@/components/tabs/PromotionTab"
-import PlateTab from "@/components/tabs/PlateTab"
-import TimelineTab from "@/components/tabs/TimelineTab"
-import SentimentChipTab from "@/components/tabs/SentimentChipTab"
-import MarketIntelTab from "@/components/tabs/MarketIntelTab"
+import DragonTigerView from "@/components/DragonTigerView"
+import BreakoutView from "@/components/BreakoutView"
+import ReplayView from "@/components/ReplayView"
+import StrongStocksTab from "@/components/StrongStocksTab"
+import PromotionTab from "@/components/PromotionTab"
+import PlateTab from "@/components/PlateTab"
+import TimelineTab from "@/components/TimelineTab"
+import SentimentChipTab from "@/components/SentimentChipTab"
+import MarketIntelTab from "@/components/MarketIntelTab"
 import NewsFeed from "@/components/NewsFeed"
 
 const TABS: { id: RightPanelView; label: string }[] = [
@@ -141,7 +141,7 @@ export default function RightPanel() {
 
               <AnimatePresence>
                 {klineTarget && (
-                  <div className="absolute inset-0 z-10 bg-bg-surface overflow-y-auto">
+                  <div className="bg-bg-surface absolute inset-0 z-10 overflow-y-auto">
                     <KlineDrawer
                       symbol={klineTarget.symbol}
                       name={klineTarget.name}
