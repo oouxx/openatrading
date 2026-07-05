@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { type SentimentHistoryDay } from "@/stores/data"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { useOverview } from "@/hooks/query/useOverview"
+import SentimentHistory from "./SentimentHistory"
 
 function getFeature(row: SentimentHistoryDay): string {
   const s = row.sentiment
@@ -190,6 +191,7 @@ export default function SentimentChipTab() {
           )}
         </motion.div>
       </div>
+      <SentimentHistory />
 
       {/* 情绪历史表格 */}
       <motion.div

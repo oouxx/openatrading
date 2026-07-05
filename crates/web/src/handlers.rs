@@ -141,12 +141,9 @@ pub async fn get_sentiment_history(
                 match client.fetch_market_overview_for_date(date).await {
                     Ok(Some(d)) => {
                         let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-                        let sentiment = d.market_temperature * 0.5
-                            + (1.0 - d.bomb_rate) * 25.0
-                            + (rise_ratio / 3.0).min(1.0) * 25.0;
                         days.push(SentimentHistoryDay {
                             date: d.date,
-                            sentiment: (sentiment * 10.0).round() / 10.0,
+                            sentiment: (d.market_temperature * 10.0).round() / 10.0,
                             limit_up_count: d.limit_up_count,
                             bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
                             rise_ratio: (rise_ratio * 100.0).round() / 100.0,
