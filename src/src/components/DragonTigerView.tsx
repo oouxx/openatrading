@@ -139,7 +139,7 @@ export default function DragonTigerView() {
 
   return (
     <>
-      <div className="w-full p-4">
+      <div className="min-h-full w-full p-4">
         <div className="mb-[18px] grid grid-cols-2 gap-3 md:grid-cols-4">
           {stats.map((s) => (
             <div
@@ -158,7 +158,7 @@ export default function DragonTigerView() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[220px_1fr]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
           <div className="border-hairline bg-bg-surface order-2 overflow-hidden rounded-xl border md:order-none">
             <div className="border-hairline border-b px-3.5 py-3 text-[13px] font-medium text-white">
               筛选
