@@ -14,27 +14,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  filter:
-    runs-on: ubuntu-latest
-    outputs:
-      proceed: ${{ steps.check.outputs.proceed }}
-    steps:
-      - id: check
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          else
-            TAG="${{ github.ref_name }}"
-            if echo "$TAG" | grep -qP '^v\d+\.\d+\.0$'; then
-              echo "proceed=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
   build-docker:
-    needs: filter
-    if: needs.filter.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,8 +44,6 @@ jobs:
             GIT_VERSION=${{ github.ref_name }}
 
   build-docker-frontend:
-    needs: filter
-    if: needs.filter.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

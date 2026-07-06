@@ -161,15 +161,17 @@ release-tauri-local: build-tauri
 		--repo oouxx/homebrew-openatrading \
 		--title "$(TAG)" \
 		--notes "OpenATrading $(V)" \
-		--verify-tag 2>/dev/null || echo "⚠ Release $(TAG) 已存在"
-	@for f in src-tauri/target/release/bundle/dmg/*.dmg \
-	          src-tauri/target/release/bundle/deb/*.deb \
-	          src-tauri/target/release/bundle/appimage/*.AppImage \
-	          src-tauri/target/release/bundle/msi/*.msi \
-	          src-tauri/target/release/bundle/nsis/*.exe; do \
-		[ -f "$$f" ] || continue; \
+		--notes-start-tag "" 2>/dev/null || echo "⚠ Release $(TAG) 已存在"
+	@found=0; \
+	for f in $$(find target/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.msi' -o -name '*.exe' \) ! -name 'rw.*' 2>/dev/null); do \
+		found=1; \
+		echo "📤 上传 $$(basename "$$f")"; \
 		gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
-	done
+	done; \
+	if [ "$$found" -eq 0 ]; then \
+		echo "❌ 未找到编译产物，请先运行 make build-tauri"; \
+		exit 1; \
+	fi
 	@echo "✅ 已上传本机构建产物到 oouxx/homebrew-openatrading"
 
 # ─── Help ────────────────────────────────────────────
