@@ -4,6 +4,19 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      macos:
+        description: 'Build macOS'
+        type: boolean
+        default: false
+      linux:
+        description: 'Build Linux'
+        type: boolean
+        default: true
+      windows:
+        description: 'Build Windows'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,27 +38,9 @@ jobs:
           name: ${{ github.ref_name }}
           generate_release_notes: true
 
-  filter:
-    runs-on: ubuntu-latest
-    outputs:
-      proceed: ${{ steps.check.outputs.proceed }}
-    steps:
-      - id: check
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          else
-            TAG="${{ github.ref_name }}"
-            if echo "$TAG" | grep -qP '^v\d+\.\d+\.0$'; then
-              echo "proceed=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
   build-tauri-macos:
-    needs: [filter, create-release]
-    if: needs.filter.outputs.proceed == 'true'
+    needs: create-release
+    if: (vars.MACOS_BUILD == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.macos == 'true'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +86,7 @@ jobs:
             --repo oouxx/homebrew-openatrading \
             --title "$TAG" \
             --notes "OpenATrading $VERSION" \
-            --verify-tag 2>/dev/null || echo "Release $TAG already exists"
+            2>/dev/null || echo "Release $TAG already exists" >&2
 
           # Upload DMG to public tap repo
           for f in src-tauri/target/release/bundle/dmg/*.dmg; do
@@ -116,9 +111,9 @@ jobs:
           git push
 
   build-tauri-linux-amd64:
-    needs: [filter, create-release]
-    if: needs.filter.outputs.proceed == 'true'
-    runs-on: self-hosted
+    needs: create-release
+    if: (vars.LINUX_BUILD != 'false' || (github.event_name == 'workflow_dispatch' && github.event.inputs.linux == 'true'))
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -155,16 +150,10 @@ jobs:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
-      - name: Copy artifacts to /root/openatrading/downloads
-        run: |
-          mkdir -p /root/openatrading/downloads
-          cp -v src-tauri/target/release/bundle/deb/*.deb /root/openatrading/downloads/ 2>/dev/null || true
-          cp -v src-tauri/target/release/bundle/appimage/*.AppImage /root/openatrading/downloads/ 2>/dev/null || true
-          ls -lh /root/openatrading/downloads/
 
   build-tauri-linux-arm64:
-    needs: [filter, create-release]
-    if: needs.filter.outputs.proceed == 'true'
+    needs: create-release
+    if: (vars.LINUX_BUILD != 'false' || (github.event_name == 'workflow_dispatch' && github.event.inputs.linux == 'true'))
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -202,25 +191,10 @@ jobs:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
-      - name: Setup SSH agent for server upload
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
-      - name: Upload .deb to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/deb/*.deb
-      - name: Upload .AppImage to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/appimage/*.AppImage
 
   build-tauri-windows:
-    needs: [filter, create-release]
-    if: needs.filter.outputs.proceed == 'true'
+    needs: create-release
+    if: (vars.WINDOWS_BUILD == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.windows == 'true'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -252,18 +226,3 @@ jobs:
           files: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-      - name: Setup SSH agent for server upload
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
-      - name: Upload .msi to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/msi/*.msi
-      - name: Upload .exe to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/nsis/*.exe
