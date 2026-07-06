@@ -152,14 +152,13 @@ _release:
 
 # ─── Release Tauri (local build + gh upload) ─────────
 
-V := $(shell grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-TAG := v$(V)
-
 release-tauri-local: build-tauri
 	@if ! which gh >/dev/null 2>&1; then echo "❌ 需要 gh CLI（brew install gh）"; exit 1; fi
-	@echo "🚀 发布 OpenATrading $(V)"
+	$(eval V := $(shell grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
+	$(eval TAG := v$(V))
+	@echo "🚀 发布 OpenATrading $(V) → 公开 tap 仓库"
 	@gh release create "$(TAG)" \
-		--repo oouxx/openatrading \
+		--repo oouxx/homebrew-openatrading \
 		--title "$(TAG)" \
 		--notes "OpenATrading $(V)" \
 		--verify-tag 2>/dev/null || echo "⚠ Release $(TAG) 已存在"
@@ -169,10 +168,9 @@ release-tauri-local: build-tauri
 	          src-tauri/target/release/bundle/msi/*.msi \
 	          src-tauri/target/release/bundle/nsis/*.exe; do \
 		[ -f "$$f" ] || continue; \
-		gh release upload "$(TAG)" "$$f" --repo oouxx/openatrading --clobber; \
 		gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
 	done
-	@echo "✅ 已上传本机构建产物到私有仓库 + 公开 tap 仓库"
+	@echo "✅ 已上传本机构建产物到 oouxx/homebrew-openatrading"
 
 # ─── Help ────────────────────────────────────────────
 
