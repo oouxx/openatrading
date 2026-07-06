@@ -74,25 +74,51 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SKIP_SIGNING: "true"
         run: cargo tauri build
-      - name: Upload DMG
+      - name: Upload DMG to private repo
         uses: softprops/action-gh-release@v2
         with:
           files: src-tauri/target/release/bundle/dmg/*.dmg
-      - name: Setup SSH agent for server upload
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
-      - name: Upload to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/dmg/*.dmg
+      - name: Upload DMG to public tap repo & update Cask
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          TAG="${{ github.ref_name }}"
+
+          # Create release in public tap repo (idempotent, reuse if exists)
+          gh release create "$TAG" \
+            --repo oouxx/homebrew-openatrading \
+            --title "$TAG" \
+            --notes "OpenATrading $VERSION" \
+            --verify-tag 2>/dev/null || echo "Release $TAG already exists"
+
+          # Upload DMG to public tap repo
+          for f in src-tauri/target/release/bundle/dmg/*.dmg; do
+            [ -f "$f" ] || continue
+            gh release upload "$TAG" "$f" --repo oouxx/homebrew-openatrading --clobber
+          done
+
+          # Update Cask formula's version
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/oouxx/homebrew-openatrading.git /tmp/homebrew-openatrading
+          cd /tmp/homebrew-openatrading
+
+          OLD_VER=$(grep 'version "' Casks/openatrading.rb | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$OLD_VER" = "$VERSION" ]; then
+            echo "Cask already at $VERSION, skipping"
+            exit 0
+          fi
+
+          sed -i '' "s/version \".*\"/version \"$VERSION\"/" Casks/openatrading.rb
+          git add -A
+          git -c user.name="github-actions" -c user.email="actions@github.com" commit -m "openatrading $VERSION"
+          git push
+          git push
 
   build-tauri-linux-amd64:
     needs: [filter, create-release]
     if: needs.filter.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -129,21 +155,12 @@ jobs:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
-      - name: Setup SSH agent for server upload
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.UPLOAD_SERVER_SSH_KEY }}
-      - name: Upload .deb to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/deb/*.deb
-      - name: Upload .AppImage to server
-        if: env.UPLOAD_SERVER_HOST != ''
-        uses: ./.github/actions/upload-to-server
-        with:
-          pattern: src-tauri/target/release/bundle/appimage/*.AppImage
+      - name: Copy artifacts to /root/openatrading/downloads
+        run: |
+          mkdir -p /root/openatrading/downloads
+          cp -v src-tauri/target/release/bundle/deb/*.deb /root/openatrading/downloads/ 2>/dev/null || true
+          cp -v src-tauri/target/release/bundle/appimage/*.AppImage /root/openatrading/downloads/ 2>/dev/null || true
+          ls -lh /root/openatrading/downloads/
 
   build-tauri-linux-arm64:
     needs: [filter, create-release]

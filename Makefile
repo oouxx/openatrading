@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision run-mcp-http run-mcp-stdio
+.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision run-mcp-http run-mcp-stdio release-tauri-local
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -150,6 +150,30 @@ _release:
 	git push origin main --tags; \
 	echo "✅ 已推送 $$tag，等待 GitHub Actions 构建"
 
+# ─── Release Tauri (local build + gh upload) ─────────
+
+V := $(shell grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+TAG := v$(V)
+
+release-tauri-local: build-tauri
+	@if ! which gh >/dev/null 2>&1; then echo "❌ 需要 gh CLI（brew install gh）"; exit 1; fi
+	@echo "🚀 发布 OpenATrading $(V)"
+	@gh release create "$(TAG)" \
+		--repo oouxx/openatrading \
+		--title "$(TAG)" \
+		--notes "OpenATrading $(V)" \
+		--verify-tag 2>/dev/null || echo "⚠ Release $(TAG) 已存在"
+	@for f in src-tauri/target/release/bundle/dmg/*.dmg \
+	          src-tauri/target/release/bundle/deb/*.deb \
+	          src-tauri/target/release/bundle/appimage/*.AppImage \
+	          src-tauri/target/release/bundle/msi/*.msi \
+	          src-tauri/target/release/bundle/nsis/*.exe; do \
+		[ -f "$$f" ] || continue; \
+		gh release upload "$(TAG)" "$$f" --repo oouxx/openatrading --clobber; \
+		gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
+	done
+	@echo "✅ 已上传本机构建产物到私有仓库 + 公开 tap 仓库"
+
 # ─── Help ────────────────────────────────────────────
 
 help:
@@ -182,6 +206,9 @@ help:
 	@echo "  release-major  发版 major (0.1.0 -> 1.0.0)"
 	@echo "  release-set    指定版本发版 (make release-set VERSION=0.6.0)"
 	@echo "  release        用当前版本号发版 (不 bump)"
+	@echo ""
+	@echo "Release Tauri:"
+	@echo "  release-tauri-local  本地编译 Tauri 并 gh 上传到 GitHub Release"
 	@echo ""
 	@echo "Deploy:"
 	@echo "  deploy         deploy all (gateway + web)"
