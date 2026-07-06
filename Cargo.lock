@@ -3207,7 +3207,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openatrading-agent"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "pi-agent-core",
  "pi-ai",
@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3237,7 +3237,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3253,7 +3253,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-provider"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3330,7 +3330,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tui"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.12.7"
+version = "0.12.8"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3943,9 +3943,9 @@ dependencies = [
 
 [[package]]
 name = "pxfm"
-version = "0.1.29"
+version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0c5ccf5294c6ccd63a74f1565028353830a9c2f5eb0c682c355c471726a6e3f"
+checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "quick-error"
@@ -6303,9 +6303,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-cmake"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c1b35d1dd7396d24b3e826bb0f975b915ec7e9125b989d5e9d24ebb6a08509a"
+checksum = "98cd30b7fdc0e09af3b2acaaa2c1b06c81ae31413de911e70dab66e4e8d58a83"
 dependencies = [
  "cc",
  "tree-sitter-language",
