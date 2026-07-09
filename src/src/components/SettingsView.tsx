@@ -65,9 +65,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     discord_bot_token: "",
     discord_channel_id: "",
   })
-  const [socialLoaded, setSocialLoaded] = useState(false)
   const [servers, setServers] = useState<McpServerConfig[]>([])
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
+  const [editingOriginalName, setEditingOriginalName] = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
 
   const newServerTemplate = (): McpServerConfig => ({
@@ -104,10 +104,22 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         } catch {
           /* ignore */
         }
-        setSocialLoaded(true)
       })()
     } else {
-      setSocialLoaded(true)
+      // ponytail: load social settings from localStorage (written by setConfig)
+      const keys = [
+        "notify_channel", "notify_on_collect", "notify_on_decision",
+        "notify_on_trade", "notify_on_news", "telegram_bot_token",
+        "telegram_chat_id", "discord_bot_token", "discord_channel_id",
+      ] as const
+      const stored: Record<string, string | boolean> = {}
+      for (const key of keys) {
+        const val = localStorage.getItem(`openatrading-${key}`)
+        if (val !== null) {
+          stored[key] = key.startsWith("notify_on_") ? val === "true" : val
+        }
+      }
+      if (Object.keys(stored).length > 0) setSocial((s) => ({ ...s, ...stored }))
     }
   }, [])
 
@@ -380,6 +392,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               size="sm"
               onClick={() => {
                 setEditingServer(newServerTemplate())
+                setEditingOriginalName(null)
                 setShowNewForm(true)
               }}
             >
@@ -397,9 +410,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 setEditingServer(null)
               }}
               onSave={async () => {
-                const isEditing = servers.some((s) => s.name === editingServer.name)
+                const isEditing = editingOriginalName !== null
                 const url = isEditing
-                  ? `/api/mcp/servers/${encodeURIComponent(editingServer.name)}`
+                  ? `/api/mcp/servers/${encodeURIComponent(editingOriginalName)}`
                   : "/api/mcp/servers"
                 await fetchJson(url, {
                   method: isEditing ? "PUT" : "POST",
@@ -407,6 +420,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 })
                 setShowNewForm(false)
                 setEditingServer(null)
+                setEditingOriginalName(null)
                 loadServers()
               }}
             />
@@ -437,6 +451,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 }}
                 onEdit={() => {
                   setEditingServer(s)
+                  setEditingOriginalName(s.name)
                   setShowNewForm(true)
                 }}
               />
