@@ -12,6 +12,11 @@ members = [
     "crates/tui",
 ]
 
+[workspace.package]
+version = "0.12.9"
+edition = "2021"
+license = "MIT"
+
 [workspace.dependencies]
 tokio = { version = "1", default-features = false, features = ["rt", "sync", "macros", "time", "io-util", "signal"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "rustls-tls", "gzip", "charset"] }

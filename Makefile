@@ -91,10 +91,10 @@ deploy-web:
 
 # ─── Release ──────────────────────────────────────────
 
-VERSION_FILES := crates/core/Cargo.toml crates/cli/Cargo.toml crates/api/Cargo.toml crates/channels/Cargo.toml crates/provider/Cargo.toml crates/web/Cargo.toml crates/agent/Cargo.toml crates/tui/Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json
+VERSION_FILES := Cargo.toml src-tauri/tauri.conf.json
 
 version:
-	@echo "Current: $$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
+	@echo "Current: $$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
 
 release-patch: check _bump-patch _release
 release-minor: check _bump-minor _release
@@ -103,21 +103,21 @@ release-set: check _bump-set _release
 release: check _release
 
 _bump-patch:
-	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	@v=$$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	IFS='.' read -r major minor patch <<< "$$v"; \
 	new="$${major}.$${minor}.$$((patch + 1))"; \
 	echo "⬆  $$v → $$new (patch)"; \
 	$(call _set_version,$$new)
 
 _bump-minor:
-	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	@v=$$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	IFS='.' read -r major minor patch <<< "$$v"; \
 	new="$${major}.$$((minor + 1)).0"; \
 	echo "⬆  $$v → $$new (minor)"; \
 	$(call _set_version,$$new)
 
 _bump-major:
-	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	@v=$$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	IFS='.' read -r major minor patch <<< "$$v"; \
 	new="$$((major + 1)).0.0"; \
 	echo "⬆  $$v → $$new (major)"; \
@@ -125,7 +125,7 @@ _bump-major:
 
 _bump-set:
 	@if [ -z "$(VERSION)" ]; then echo "❌ 用法: make release-set VERSION=0.6.0"; exit 1; fi
-	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	@v=$$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	echo "⬆  $$v → $(VERSION) (set)"; \
 	$(call _set_version,$(VERSION))
 
@@ -140,7 +140,7 @@ define _set_version
 endef
 
 _release:
-	@v=$$(grep '^version' crates/cli/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	@v=$$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
 	tag="v$$v"; \
 	git tag -l "$$tag" | grep -q "$$tag" && { echo "❌ Tag $$tag 已存在"; exit 1; }; \
 	echo "🚀 发版 $$tag"; \
@@ -154,7 +154,7 @@ _release:
 
 release-tauri-local: build-tauri
 	@if ! which gh >/dev/null 2>&1; then echo "❌ 需要 gh CLI（brew install gh）"; exit 1; fi
-	$(eval V := $(shell grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
+	$(eval V := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
 	$(eval TAG := v$(V))
 	@echo "🚀 发布 OpenATrading $(V) → 公开 tap 仓库"
 	@gh release create "$(TAG)" \
