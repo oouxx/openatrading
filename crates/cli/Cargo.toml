@@ -15,7 +15,6 @@ path = "src/lib.rs"
 openatrading-core = { path = "../core" }
 openatrading-tui = { path = "../tui" }
 openatrading-web = { path = "../web" }
-openatrading-provider = { path = "../provider" }
 owo-colors = "4"
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

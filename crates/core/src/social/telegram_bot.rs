@@ -19,13 +19,13 @@ struct ChatSession {
 pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
-    pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
+    pub mcp_servers: Vec<crate::llm::McpServerConfig>,
 }
 
 pub struct TelegramBot {
     bot_token: String,
     chat_id: String,
-    mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
+    mcp_servers: Vec<crate::llm::McpServerConfig>,
     ctx: AppContext,
     roles: Vec<RoleEntry>,
     session: Arc<Mutex<Option<ChatSession>>>,
