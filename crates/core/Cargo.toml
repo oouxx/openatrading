@@ -12,6 +12,7 @@ openatrading-channels = { path = "../channels" }
 openatrading-api = { path = "../api" }
 openatrading-agent = { path = "../agent" }
 pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.8" }
+pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.8" }
 arc-swap = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
