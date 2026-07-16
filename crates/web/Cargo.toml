@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [dependencies]
 openatrading-core = { path = "../core" }
 openatrading-channels = { path = "../channels" }
-openatrading-provider = { path = "../provider" }
 arc-swap = "1"
 tokio = { workspace = true }
 serde = { workspace = true }

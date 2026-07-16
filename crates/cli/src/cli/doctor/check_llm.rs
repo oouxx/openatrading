@@ -36,7 +36,7 @@ impl Check for LlmCheck {
             None => (None, None),
         };
 
-        let client = openatrading_provider::llm::LlmClient::from_config(provider, model);
+        let client = openatrading_core::llm::LlmClient::from_config(provider, model);
         let start = std::time::Instant::now();
         match tokio::time::timeout(
             NETWORK_TIMEOUT,
