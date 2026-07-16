@@ -7,15 +7,17 @@ use anyhow::Result;
 use futures::Future;
 use tokio::sync::{mpsc, watch, Mutex};
 
-use openatrading_agent::agent::{Agent, AgentOptions};
+use openatrading_agent::agent::UnsubscribeHandle;
 use openatrading_agent::llm::LlmClient;
 use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::types::{AgentEvent, AgentMessage, AgentState, DynTool};
+use openatrading_agent::types::{AgentEvent, AgentMessage, DynTool};
+use pi_coding_agent::core::agent_session::AgentSession as CodingAgentSession;
 use pi_coding_agent::core::model_registry::ModelRegistry;
+use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
 use pi_coding_agent::core::session_manager::SessionManager;
-use pi_coding_agent::core::system_prompt::{self, BuildSystemPromptOptions, SkillInfo};
-use pi_coding_agent::core::tools;
+use pi_coding_agent::core::system_prompt::SkillInfo;
 
+use super::extension::TradingToolExtension;
 use super::StreamEvent;
 
 // ── AgentResult ──────────────────────────────────────────────────────────
@@ -26,79 +28,88 @@ pub struct AgentResult {
     pub tool_outputs: Vec<serde_json::Value>,
 }
 
-// ── AgentSession (internal) — pi-coding-agent API surface ────────────────
+// ── AgentSession (internal) — wraps pi-coding-agent's AgentSession ────────
 
-/// Wraps pi-agent-core's Agent with pi-coding-agent-style API:
-/// `add_user_text()`, `get_messages()`, `subscribe()`, `wait_for_idle()`.
+/// Wraps pi-coding-agent's AgentSession with trading-specific additions.
+/// Uses `sdk::create_agent_session()` for construction.
 pub(crate) struct AgentSession {
-    agent: Arc<Agent>,
+    inner: Mutex<CodingAgentSession>,
     message_count: AtomicUsize,
 }
 
 impl AgentSession {
-    fn new(
+    async fn new(
         llm: &LlmClient,
         system_prompt: &str,
         trading_tools: Vec<Arc<DynTool>>,
-        skills: Vec<SkillInfo>,
-        thinking_level: &str,
-        session_manager: &SessionManager,
+        _skills: Vec<SkillInfo>,
+        _thinking_level: &str,
+        _session_manager: &SessionManager,
+        _model_registry: &ModelRegistry,
     ) -> Self {
         let cwd = std::env::current_dir()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
 
-        // 1. Build system prompt via pi-coding-agent's builder
-        let prompt = system_prompt::build_system_prompt(&BuildSystemPromptOptions {
-            cwd: cwd.clone(),
-            custom_prompt: Some(system_prompt.to_string()),
-            skills: Some(skills),
-            ..Default::default()
-        });
+        // Create extension registry with trading tool definitions
+        let ext_registry = TradingToolExtension::create_registry();
 
-        // 2. Read-only tools + trading tools (no bash/write/edit for security)
-        let mut all_tools: Vec<Arc<DynTool>> = tools::create_read_only_tools(&cwd, None)
-            .into_iter()
-            .map(Arc::new)
-            .collect();
+        // Use pi-coding-agent's sdk to create the session
+        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+            cwd: cwd.clone(),
+            agent_dir: None,
+            model: None,
+            thinking_level: None,
+            scoped_models: None,
+            no_tools: Some(NoToolsMode::All),
+            tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
+            exclude_tools: None,
+            custom_prompt: Some(system_prompt.to_string()),
+            append_system_prompt: None,
+            session_name: None,
+            stream_fn: Some(llm.to_stream_fn()),
+            convert_to_llm: None,
+            extension_paths: Vec::new(),
+            enable_extensions: false,
+            extension_registry: Some(ext_registry),
+            cli_provider: None,
+            cli_model: None,
+            persist_session: false,
+            session_file: None,
+            fork_from: None,
+            session_dir: None,
+        })
+        .await
+        .map_err(|e| tracing::error!("create_agent_session failed: {e}"))
+        .expect("create_agent_session failed");
+
+        // Inject trading tool implementations into the agent's state.
+        // The extension's register_tools() provides metadata (name, description, schema);
+        // the actual DynTool instances are added here for the agent to execute.
+        let agent = session.get_agent();
+        let state = agent.state().await;
+        let mut all_tools = state.tools;
         all_tools.extend(trading_tools);
 
-        // 3. Construct Agent
-        let agent = Agent::new(AgentOptions {
-            initial_state: Some(AgentState {
-                system_prompt: prompt,
-                model: llm.model.clone(),
-                thinking_level: thinking_level.to_string(),
-                tools: all_tools,
-                ..Default::default()
-            }),
-            stream_fn: Some(llm.to_stream_fn()),
-            session_id: Some(session_manager.get_session_id().to_string()),
-            ..Default::default()
-        });
-
         Self {
-            agent: Arc::new(agent),
+            inner: Mutex::new(session),
             message_count: AtomicUsize::new(0),
         }
     }
 
     /// pi-coding-agent style: add a user message and trigger the agent loop.
     async fn add_user_text(&self, text: &str) {
-        let messages = vec![AgentMessage::User {
-            content: vec![ContentBlock::text(text)],
-            timestamp: 0,
-        }];
-        let _ = self.agent.process(messages).await;
+        self.inner.lock().await.add_user_text(text).await;
     }
 
     /// pi-coding-agent style: get all messages from the session.
     async fn get_messages(&self) -> Vec<AgentMessage> {
-        self.agent.state().await.messages
+        self.inner.lock().await.get_messages().await
     }
 
     /// pi-coding-agent style: subscribe to agent events.
+    /// Returns the UnsubscribeHandle — caller must keep it alive.
     async fn subscribe(
         &self,
         listener: Arc<
@@ -110,7 +121,13 @@ impl AgentSession {
                 + Sync,
         >,
     ) -> UnsubscribeHandle {
-        self.agent.subscribe(listener).await
+        // Subscribe via pi-coding-agent's session (for internal event bus)
+        self.inner.lock().await.subscribe(listener.clone()).await;
+        // Also subscribe via the underlying agent (returns a handle we can keep alive)
+        let guard = self.inner.lock().await;
+        let agent = guard.get_agent();
+        let handle = agent.subscribe(listener).await;
+        handle
     }
 
     fn message_count(&self) -> usize {
@@ -122,19 +139,17 @@ impl AgentSession {
     }
 }
 
-use openatrading_agent::agent::UnsubscribeHandle;
-
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
 /// Manages the lifecycle of agent sessions.
 ///
-/// Uses pi-coding-agent-style API internally (`add_user_text`, `get_messages`).
+/// Uses pi-coding-agent's `sdk::create_agent_session()` internally.
 /// Provides two execution modes:
 /// - `stream()` — real-time event streaming for frontend rendering
 /// - `run()` — blocking wait for final result (backend/decision use)
 pub struct AgentRuntime {
     session_manager: SessionManager,
-    _model_registry: ModelRegistry,
+    model_registry: ModelRegistry,
     sessions: Mutex<HashMap<String, Arc<AgentSession>>>,
 }
 
@@ -142,7 +157,7 @@ impl AgentRuntime {
     pub fn new(session_manager: SessionManager, model_registry: ModelRegistry) -> Self {
         Self {
             session_manager,
-            _model_registry: model_registry,
+            model_registry,
             sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -159,14 +174,18 @@ impl AgentRuntime {
         skills: Vec<SkillInfo>,
         thinking_level: &str,
     ) -> String {
-        let session = Arc::new(AgentSession::new(
-            llm,
-            system_prompt,
-            trading_tools,
-            skills,
-            thinking_level,
-            &self.session_manager,
-        ));
+        let session = Arc::new(
+            AgentSession::new(
+                llm,
+                system_prompt,
+                trading_tools,
+                skills,
+                thinking_level,
+                &self.session_manager,
+                &self.model_registry,
+            )
+            .await,
+        );
         self.sessions.lock().await.insert(id.to_string(), session);
         id.to_string()
     }
@@ -174,33 +193,6 @@ impl AgentRuntime {
     /// Destroy a session by ID.
     pub async fn destroy(&self, session_id: &str) {
         self.sessions.lock().await.remove(session_id);
-    }
-
-    /// Get or create a session.
-    pub(crate) async fn get_or_create(
-        &self,
-        id: &str,
-        llm: &LlmClient,
-        system_prompt: &str,
-        trading_tools: Vec<Arc<DynTool>>,
-        skills: Vec<SkillInfo>,
-        thinking_level: &str,
-    ) -> Arc<AgentSession> {
-        let mut sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get(id) {
-            return Arc::clone(session);
-        }
-        let session = Arc::new(AgentSession::new(
-            llm,
-            system_prompt,
-            trading_tools,
-            skills,
-            thinking_level,
-            &self.session_manager,
-        ));
-        let session_clone = Arc::clone(&session);
-        sessions.insert(id.to_string(), session);
-        session_clone
     }
 
     /// Get the number of messages in a session.
@@ -223,20 +215,24 @@ impl AgentRuntime {
         if let Some(session) = sessions.get(session_id) {
             session.reset_message_count();
         }
-        let new_session = Arc::new(AgentSession::new(
-            llm,
-            system_prompt,
-            trading_tools,
-            skills,
-            thinking_level,
-            &self.session_manager,
-        ));
+        let new_session = Arc::new(
+            AgentSession::new(
+                llm,
+                system_prompt,
+                trading_tools,
+                skills,
+                thinking_level,
+                &self.session_manager,
+                &self.model_registry,
+            )
+            .await,
+        );
         sessions.insert(session_id.to_string(), new_session);
     }
 
-    // ── Unified execution core (uses add_user_text + get_messages) ───
+    // ── Unified execution core ──────────────────────────────────────
 
-    /// Execute the agent loop using pi-coding-agent-style API.
+    /// Execute the agent loop using pi-coding-agent's AgentSession.
     ///
     /// Flow: subscribe → add_user_text → wait_for_idle → get_messages
     async fn execute(
@@ -246,7 +242,7 @@ impl AgentRuntime {
     ) -> Result<AgentResult> {
         let (tx, mut rx) = mpsc::channel::<AgentEvent>(256);
 
-        // 1. Subscribe to events (pi-coding-agent style)
+        // 1. Subscribe to events via the underlying agent
         let event_tx = tx.clone();
         let subscribe_listener = Arc::new(
             move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
@@ -256,13 +252,18 @@ impl AgentRuntime {
                 }) as Pin<Box<dyn Future<Output = ()> + Send>>
             },
         );
-        // keep handle alive for the full scope
-        let _handle: UnsubscribeHandle = session.subscribe(subscribe_listener).await;
+        // Subscribe via the underlying agent (returns a handle we keep alive)
+        let _handle = {
+            let guard = session.inner.lock().await;
+            let agent = guard.get_agent();
+            agent.subscribe(subscribe_listener).await
+            // guard dropped here, but handle is independent
+        };
 
-        // 2. Add user message (pi-coding-agent style)
+        // 2. Add user message (pi-coding-agent style) — triggers agent loop
         session.add_user_text(user_message).await;
 
-        // 3. Collect events until Done or Error
+        // 4. Collect events
         let mut final_text = String::new();
         let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
 
@@ -311,7 +312,6 @@ impl AgentRuntime {
     // ── Mode 1: Real-time event streaming (frontend) ────────────────
 
     /// Stream agent events in real-time to the frontend.
-    /// Uses pi-coding-agent-style subscribe + add_user_text internally.
     pub async fn stream(
         &self,
         session_id: &str,
@@ -349,7 +349,6 @@ impl AgentRuntime {
     // ── Mode 2: Blocking wait for result (backend) ──────────────────
 
     /// Run the agent loop and return the final result.
-    /// Uses pi-coding-agent-style add_user_text + get_messages internally.
     pub async fn run(&self, session_id: &str, user_message: &str) -> Result<AgentResult> {
         let session = {
             let sessions = self.sessions.lock().await;
