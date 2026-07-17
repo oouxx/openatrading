@@ -349,8 +349,6 @@ pub async fn ai_chat(
         },
     };
 
-    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
-
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     for h in req.history {
         match h.role.as_str() {
@@ -389,26 +387,15 @@ pub async fn ai_chat(
         timestamp: 0,
     });
 
-    // ── 注册事件监听器，实现渐进式 SSE 推送 ──
+    // ── 通过 AgentRuntime 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-            let tx = tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event);
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        },
-    );
-
-    let handle = agent.subscribe(listener).await;
-
-    let agent_clone = Arc::clone(&agent);
+    let runtime = state.ctx.agent_runtime.clone();
+    let llm = state.ctx.llm.clone();
     tokio::spawn(async move {
-        let _ = agent_clone.process(pi_messages).await;
-        // Keep handle alive until process completes (Drop replaces listener
-        // with no-op, causing the SSE stream to miss events).
-        drop(handle);
+        let _ = runtime
+            .process_messages(&llm, &system_prompt, tools, pi_messages, tx)
+            .await;
     });
 
     openatrading_core::log::info!("ai/chat: SSE stream starting");
@@ -462,8 +449,15 @@ pub async fn ai_chat(
                 Some(AgentEvent::ToolExecutionStart { .. }) => {
                     yield Ok(Event::default().event("tool-exec-start"));
                 }
-                Some(AgentEvent::ToolExecutionEnd { .. }) => {
-                    yield Ok(Event::default().event("tool-exec-end"));
+                Some(AgentEvent::ToolExecutionEnd { tool_call_id, tool_name, result, is_error }) => {
+                    let status = if is_error { "error" } else { "success" };
+                    let data = serde_json::to_string(&serde_json::json!({
+                        "id": tool_call_id,
+                        "name": tool_name,
+                        "result": result,
+                        "status": status,
+                    })).unwrap_or_default();
+                    yield Ok(Event::default().event("tool-exec-end").data(data));
                 }
                 Some(_) => {}
                 None => {

@@ -532,18 +532,23 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
         AssistantMessageEvent::Done { message, .. } => {
             for block in &message.content {
                 use pi_ai::types::ContentBlock;
-                if let ContentBlock::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                    ..
-                } = block
-                {
-                    events.push(StreamEvent::ToolCallStart(ToolCall {
-                        id: id.clone(),
-                        function_name: name.clone(),
-                        arguments: arguments.to_string(),
-                    }));
+                match block {
+                    ContentBlock::Text { text, .. } => {
+                        events.push(StreamEvent::Text(text.clone()));
+                    },
+                    ContentBlock::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                        ..
+                    } => {
+                        events.push(StreamEvent::ToolCallStart(ToolCall {
+                            id: id.clone(),
+                            function_name: name.clone(),
+                            arguments: arguments.to_string(),
+                        }));
+                    },
+                    _ => {},
                 }
             }
         },
