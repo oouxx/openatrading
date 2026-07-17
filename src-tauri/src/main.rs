@@ -1081,7 +1081,9 @@ async fn api_chat_stream(
         },
     };
 
-    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
+    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
+
+    // ── 构建市场数据上下文消息 ──
 
     let user_message = openatrading_web::chat::build_user_message(
         &overview,
@@ -1093,8 +1095,6 @@ async fn api_chat_stream(
         system_prompt.len(),
         user_message.len()
     );
-
-    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     // Data context as first user message
@@ -1172,21 +1172,12 @@ async fn api_chat_stream(
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-            let tx = tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event);
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        },
-    );
-
-    let handle = agent.subscribe(listener).await;
-
-    let agent_clone = Arc::clone(&agent);
+    let runtime = state.ctx.agent_runtime.clone();
+    let llm = state.ctx.llm.clone();
     tokio::spawn(async move {
-        let _ = agent_clone.process(pi_messages).await;
-        drop(handle);
+        let _ = runtime
+            .process_messages(&llm, &system_prompt, tools, pi_messages, tx)
+            .await;
     });
 
     eprintln!("[chat_stream] reading events from channel");
@@ -1237,6 +1228,24 @@ async fn api_chat_stream(
                         _ => {},
                     }
                 }
+            },
+            Some(AgentEvent::ToolExecutionEnd {
+                tool_call_id,
+                tool_name,
+                result,
+                is_error,
+            }) => {
+                let status = if is_error { "error" } else { "success" };
+                let data = serde_json::to_string(&serde_json::json!({
+                    "id": tool_call_id,
+                    "name": tool_name,
+                    "result": result,
+                    "status": status,
+                }))
+                .unwrap_or_default();
+                channel
+                    .send(format!("\x00TOOL_RESULT\x00{data}"))
+                    .map_err(|e| format!("channel error: {e}"))?;
             },
             Some(AgentEvent::AgentEnd { .. }) => {
                 eprintln!("[chat_stream] AgentEnd, done");

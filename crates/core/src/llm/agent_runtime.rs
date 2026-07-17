@@ -55,6 +55,26 @@ impl AgentSession {
         // Create extension registry with trading tool definitions
         let ext_registry = TradingToolExtension::create_registry();
 
+        // Convert trading tools to ToolDefinitions for the SDK's custom_tools field
+        use openatrading_agent::pi_ai_types::ToolExecutionMode;
+        use pi_coding_agent::core::extensions::ToolDefinition;
+        let tool_defs: Vec<ToolDefinition> = trading_tools
+            .iter()
+            .map(|t| ToolDefinition {
+                name: t.name.clone(),
+                label: Some(t.label.clone()),
+                description: t.description.clone(),
+                prompt_snippet: None,
+                prompt_guidelines: None,
+                parameters: Some(t.parameters_schema.clone()),
+                render_shell: None,
+                execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                    ToolExecutionMode::Sequential => "sequential".to_string(),
+                    ToolExecutionMode::Parallel => "parallel".to_string(),
+                }),
+            })
+            .collect();
+
         // Use pi-coding-agent's sdk to create the session
         let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd: cwd.clone(),
@@ -70,6 +90,7 @@ impl AgentSession {
             session_name: None,
             stream_fn: Some(llm.to_stream_fn()),
             convert_to_llm: None,
+            custom_tools: Some(tool_defs),
             extension_paths: Vec::new(),
             enable_extensions: false,
             extension_registry: Some(ext_registry),
@@ -85,12 +106,10 @@ impl AgentSession {
         .expect("create_agent_session failed");
 
         // Inject trading tool implementations into the agent's state.
-        // The extension's register_tools() provides metadata (name, description, schema);
-        // the actual DynTool instances are added here for the agent to execute.
+        // Replaces stub entries created from custom_tools metadata
+        // with real execute implementations.
         let agent = session.get_agent();
-        let state = agent.state().await;
-        let mut all_tools = state.tools;
-        all_tools.extend(trading_tools);
+        agent.add_tools(trading_tools).await;
 
         Self {
             inner: Mutex::new(session),
@@ -300,6 +319,124 @@ impl AgentRuntime {
                     ..
                 } => break,
                 _ => {},
+            }
+        }
+
+        Ok(AgentResult {
+            final_text,
+            tool_outputs,
+        })
+    }
+
+    // ── One-shot message processing (ai_chat / web frontend) ────────
+
+    /// Process pre-built messages in a one-shot session.
+    ///
+    /// Creates a temporary session, subscribes for events, processes the given
+    /// messages via the underlying agent, streams all `AgentEvent`s through
+    /// `tx`, and destroys the session when done.  Returns the accumulated
+    /// `AgentResult`.
+    ///
+    /// Uses the same pattern as `send_message`: subscribes before the agent
+    /// loop, wraps with a 300s timeout, calls `agent.abort()` on timeout,
+    /// and reads the final transcript via `get_messages()`.
+    pub async fn process_messages(
+        &self,
+        llm: &LlmClient,
+        system_prompt: &str,
+        trading_tools: Vec<Arc<DynTool>>,
+        messages: Vec<AgentMessage>,
+        tx: mpsc::UnboundedSender<AgentEvent>,
+    ) -> Result<AgentResult> {
+        use futures::Future;
+        use std::pin::Pin;
+        use std::time::Duration;
+
+        static CHAT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let id = format!(
+            "_chat_{}",
+            CHAT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+
+        self.create(&id, llm, system_prompt, trading_tools, vec![], "off")
+            .await;
+
+        let session = {
+            let sessions = self.sessions.lock().await;
+            sessions
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("session {id} not found after create"))?
+        };
+
+        // Subscribe via underlying agent → forward all events to caller's channel
+        let event_tx = tx.clone();
+        let listener = Arc::new(
+            move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
+                let tx = event_tx.clone();
+                Box::pin(async move {
+                    let _ = tx.send(event);
+                }) as Pin<Box<dyn Future<Output = ()> + Send>>
+            },
+        );
+
+        let _handle = {
+            let guard = session.inner.lock().await;
+            let agent = guard.get_agent();
+            agent.subscribe(listener).await
+        };
+
+        // Process with 300s timeout, mirroring the send_message pattern.
+        // The inner lock is held across await (same as add_user_text).
+        let process_result = {
+            let guard = session.inner.lock().await;
+            let agent = guard.get_agent();
+            let process_fut = agent.process(messages);
+            tokio::time::timeout(Duration::from_secs(300), process_fut).await
+        };
+
+        match process_result {
+            Ok(Ok(_)) => {}, // success, fall through to get_messages
+            Ok(Err(e)) => {
+                let err_msg = format!("agent process failed: {e}");
+                self.destroy(&id).await;
+                return Err(anyhow::anyhow!(err_msg));
+            },
+            Err(_elapsed) => {
+                tracing::warn!("process_messages timed out after 300s, aborting");
+                // Lock was released with the block; re-acquire to abort.
+                if let Ok(guard) = session.inner.try_lock() {
+                    guard.get_agent().abort().await;
+                }
+                self.destroy(&id).await;
+                return Err(anyhow::anyhow!("agent processing timed out after 300s"));
+            },
+        }
+
+        // Get full transcript via session (same as send_message pattern)
+        let all_messages = {
+            let guard = session.inner.lock().await;
+            guard.get_messages().await
+        };
+
+        self.destroy(&id).await;
+
+        // Build AgentResult from assistant messages
+        use openatrading_agent::pi_ai_types::ContentBlock;
+        let mut final_text = String::new();
+        let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
+
+        for msg in &all_messages {
+            if let AgentMessage::Assistant { content, .. } = msg {
+                for block in content {
+                    match block {
+                        ContentBlock::Text { text, .. } => final_text.push_str(text),
+                        ContentBlock::ToolCall { arguments, .. } => {
+                            tool_outputs.push(arguments.clone());
+                        },
+                        _ => {},
+                    }
+                }
             }
         }
 
