@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
-import AiCopilot from "@/components/AiCopilot"
+import AiCopilot from "@/components/ChatView"
 import ConversationSidebar from "./ConversationSidebar"
 import { useThreads } from "@/hooks/useChatThreads"
 import { useStockTabStore } from "@/stores/stockTabStore"

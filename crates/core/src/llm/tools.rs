@@ -1,10 +1,9 @@
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
-use openatrading_agent::mcp::McpHandle;
+use openatrading_agent::mcp_tools::{McpHandle, McpRegistry, ToolConfig};
 use openatrading_agent::pi_ai_types::ContentBlock;
+use openatrading_agent::tools::{empty_schema, str_arg, str_schema, text_result, to_box_err, tool};
 use openatrading_agent::types::{AgentToolResult, DynTool};
 
 use crate::api::cls::ClsClient;
@@ -13,85 +12,6 @@ use crate::api::jiuyangongshe::{CommunityQuery, JiuYanSession};
 use crate::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use crate::memory::sqlite::MemoryStore;
 use crate::trade::sqlite::TradeManager;
-
-pub(crate) type ExecuteFn = Arc<
-    dyn Fn(
-            String,
-            serde_json::Value,
-            Option<tokio::sync::watch::Receiver<bool>>,
-            Option<Arc<dyn Fn(AgentToolResult<serde_json::Value>) + Send + Sync>>,
-        ) -> Pin<
-            Box<
-                dyn Future<
-                        Output = Result<
-                            AgentToolResult<serde_json::Value>,
-                            Box<dyn Error + Send + Sync>,
-                        >,
-                    > + Send,
-            >,
-        > + Send
-        + Sync,
->;
-
-pub(crate) fn empty_schema() -> serde_json::Value {
-    serde_json::json!({"type": "object", "properties": {}, "required": []})
-}
-
-fn str_schema(params: &[(&str, &str)]) -> serde_json::Value {
-    let properties: serde_json::Map<String, serde_json::Value> = params
-        .iter()
-        .map(|(name, desc)| {
-            (
-                (*name).to_string(),
-                serde_json::json!({"type": "string", "description": desc}),
-            )
-        })
-        .collect();
-    let required: Vec<String> = params.iter().map(|(n, _)| (*n).to_string()).collect();
-    serde_json::json!({
-        "type": "object",
-        "properties": properties,
-        "required": required,
-    })
-}
-
-fn str_arg(args: &serde_json::Value, name: &str) -> String {
-    args.get(name)
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string()
-}
-
-pub(crate) fn text_result<T: serde::Serialize>(value: &T) -> AgentToolResult<serde_json::Value> {
-    AgentToolResult {
-        content: vec![ContentBlock::text(
-            serde_json::to_string(value).unwrap_or_default(),
-        )],
-        details: serde_json::Value::Null,
-        terminate: None,
-    }
-}
-
-pub(crate) fn to_box_err(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
-    e.to_string().into()
-}
-
-pub(crate) fn tool(
-    name: &str,
-    description: &str,
-    parameters_schema: serde_json::Value,
-    execute: ExecuteFn,
-) -> Arc<DynTool> {
-    Arc::new(DynTool {
-        name: name.to_string(),
-        description: description.to_string(),
-        parameters_schema,
-        label: String::new(),
-        execution_mode: None,
-        prepare_arguments: None,
-        execute,
-    })
-}
 
 // Macro for simple no-param tools: single client call → text_result.
 // Usage: simple_tool!(get_limit_up, "...desc...", XuanguBaoClient, fetch_limit_up);
@@ -730,6 +650,21 @@ impl ToolRegistry {
         }
         t
     }
+}
+
+// ============================================================================
+// build_tools — create ToolRegistry with MCP tools
+// ============================================================================
+
+pub async fn build_tools(config: &ToolConfig) -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    let mcp = McpRegistry::from_config(&config.mcp_servers);
+    let (tools, handle) = mcp.discover().await;
+    for t in tools {
+        registry.add_mcp(t);
+    }
+    registry.set_mcp_handle(handle);
+    registry
 }
 
 // ============================================================================

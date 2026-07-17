@@ -39,6 +39,8 @@ export interface ChatStreamCallbacks {
   onText: (text: string) => void
   onReasoning?: (text: string) => void
   onToolCall?: (tool: { id: string; name: string; args: string }) => void
+  onToolDelta?: (tool: { id: string; args: string }) => void
+  onToolResult?: (tool: { id: string; name: string; result: string }) => void
   onDone: () => void
   onError: (err: string) => void
 }
@@ -71,6 +73,16 @@ export async function apiChatStream(
         try {
           const tc = JSON.parse(text.slice(12))
           callbacks.onToolCall?.({ id: tc.id, name: tc.name, args: tc.args })
+        } catch { /* ignore parse errors */ }
+      } else if (text.startsWith("\x00TOOL_DELTA\x00")) {
+        try {
+          const td = JSON.parse(text.slice(13))
+          callbacks.onToolDelta?.({ id: td.id, args: td.args })
+        } catch { /* ignore parse errors */ }
+      } else if (text.startsWith("\x00TOOL_RESULT\x00")) {
+        try {
+          const tr = JSON.parse(text.slice(14))
+          callbacks.onToolResult?.({ id: tr.id, name: tr.name, result: tr.result })
         } catch { /* ignore parse errors */ }
       } else {
         callbacks.onText(text)
@@ -134,12 +146,16 @@ export async function apiChatStream(
             } catch {
               /* ignore parse errors */
             }
-          } else if (
-            currentEvent === "tool-delta" ||
-            currentEvent === "tool-exec-start" ||
-            currentEvent === "tool-exec-end"
-          ) {
-            // tool call internals — not displayed
+          } else if (currentEvent === "tool-delta") {
+            try {
+              callbacks.onToolDelta?.(JSON.parse(data))
+            } catch { /* ignore parse errors */ }
+          } else if (currentEvent === "tool-exec-start") {
+            // tool execution started — no UI update needed
+          } else if (currentEvent === "tool-exec-end") {
+            try {
+              callbacks.onToolResult?.(JSON.parse(data))
+            } catch { /* ignore parse errors */ }
           } else if (currentEvent === "tool-end") {
             // ignore legacy tool-end event
           } else {

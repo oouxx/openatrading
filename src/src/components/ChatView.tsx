@@ -1,51 +1,9 @@
 import { useCallback, useEffect, useRef, useState, startTransition } from "react"
-import { Search, Send } from "lucide-react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import rehypeRaw from "rehype-raw"
-import type { Components } from "react-markdown"
 import type { ReactNode } from "react"
-import { ToolCaseIcon } from "lucide-react"
-const mdComponents: Components = {
-  code: ({ className, children, ...props }) => {
-    const isInline = !className
-    if (isInline) {
-      return (
-        <code className="bg-bg-hover text-ink rounded px-1 py-0.5 font-mono text-xs" {...props}>
-          {children}
-        </code>
-      )
-    }
-    return (
-      <pre className="rounded-card border-hairline bg-bg-hover text-ink-muted my-2 overflow-x-auto border p-3 font-mono text-xs leading-relaxed">
-        <code className={className} {...props}>
-          {children}
-        </code>
-      </pre>
-    )
-  },
-  table: ({ children }) => (
-    <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse font-mono text-xs">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="border-hairline bg-bg-hover text-ink-muted border-b px-3 py-2 text-left font-medium">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="border-hairline text-ink-muted border-b px-3 py-2">{children}</td>
-  ),
-  a: ({ children, href }) => (
-    <a href={href} className="text-ai hover:underline" target="_blank" rel="noreferrer">
-      {children}
-    </a>
-  ),
-  ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
-  hr: () => <hr className="border-hairline my-3" />,
-}
+import { Search, Send, ToolCaseIcon } from "lucide-react"
+import TextBlock from "@/components/chat/TextBlock"
+import ThinkingBlock from "@/components/chat/ThinkingBlock"
+import ToolCallBlock from "@/components/chat/ToolCallBlock"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -61,7 +19,7 @@ import {
 import { apiChatStream, fetchJson } from "@/stores/data"
 import { getMessages, saveMessage, fetchCommands, type ChatMessage } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
-import ChromeTabs from "@/components/ChromeTabs"
+import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
 
 interface DisplayMessage {
@@ -69,7 +27,13 @@ interface DisplayMessage {
   role: "user" | "assistant"
   content: string
   reasoning?: string
-  toolCalls?: { name: string; id: string }[]
+  toolCalls?: {
+    name: string
+    id: string
+    args?: string
+    result?: string
+    status?: "streaming" | "running" | "success" | "error"
+  }[]
 }
 
 interface SlashCommand {
@@ -309,10 +273,45 @@ export default function AiCopilot({
                 const calls = last.toolCalls ?? []
                 msgs[msgs.length - 1] = {
                   ...last,
-                  toolCalls: [...calls, { name: tool.name, id: tool.id }],
+                  toolCalls: [
+                    ...calls,
+                    { name: tool.name, id: tool.id, args: tool.args, status: "streaming" },
+                  ],
                 }
                 threadMessagesRef.current.set(threadId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
+              }
+            },
+            onToolDelta: (delta) => {
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                const calls = last.toolCalls ?? []
+                const idx = calls.findIndex((tc) => tc.id === delta.id)
+                if (idx !== -1) {
+                  calls[idx] = {
+                    ...calls[idx],
+                    args: (calls[idx].args ?? "") + delta.args,
+                    status: "streaming",
+                  }
+                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
+                  threadMessagesRef.current.set(threadId, msgs)
+                  setThreadMessages(new Map(threadMessagesRef.current))
+                }
+              }
+            },
+            onToolResult: (result) => {
+              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                const calls = last.toolCalls ?? []
+                const idx = calls.findIndex((tc) => tc.id === result.id)
+                if (idx !== -1) {
+                  calls[idx] = { ...calls[idx], result: result.result, status: "success" }
+                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
+                  threadMessagesRef.current.set(threadId, msgs)
+                  setThreadMessages(new Map(threadMessagesRef.current))
+                }
               }
             },
             onDone: () => {
@@ -498,56 +497,24 @@ export default function AiCopilot({
                           : "border-hairline bg-bg-surface rounded-tl-sm border text-white/80"
                       }`}
                     >
-                      {msg.reasoning && (
-                        <details
-                          open={streaming && isLastAi}
-                          className="border-ink-muted/30 text-ink-muted mb-2 border-l-2 pl-3 text-xs"
-                        >
-                          <summary className="cursor-pointer select-none hover:text-white">
-                            思考过程{" "}
-                            {streaming && isLastAi && <span className="text-ai ml-1">●</span>}
-                          </summary>
-                          <div className="mt-2 leading-relaxed whitespace-pre-wrap opacity-80">
-                            {msg.reasoning}
-                          </div>
-                        </details>
-                      )}
-                      {msg.toolCalls && msg.toolCalls.length > 0 && (
-                        <div className="mb-2 flex flex-wrap gap-1.5">
-                          {msg.toolCalls
-                            .filter((tc) => tc.name)
-                            .map((tc, i) => (
-                              <span
-                                key={i}
-                                className="rounded-card bg-ai/10 text-ai inline-flex items-center gap-1 px-2 py-0.5 font-mono text-[10px]"
-                              >
-                                🛠️ {tc.name}
-                              </span>
-                            ))}
-                        </div>
-                      )}
                       {msg.role === "assistant" ? (
-                        msg.content ? (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeRaw]}
-                            components={mdComponents}
-                          >
-                            {msg.content}
-                          </ReactMarkdown>
-                        ) : streaming && isLastAi && !msg.reasoning ? (
-                          <div className="flex gap-1 py-1">
-                            <span className="bg-ink-muted size-1.5 animate-pulse rounded-full" />
-                            <span
-                              className="bg-ink-muted size-1.5 animate-pulse rounded-full"
-                              style={{ animationDelay: "0.2s" }}
-                            />
-                            <span
-                              className="bg-ink-muted size-1.5 animate-pulse rounded-full"
-                              style={{ animationDelay: "0.4s" }}
-                            />
-                          </div>
-                        ) : null
+                        <>
+                          <ThinkingBlock
+                            content={msg.reasoning ?? ""}
+                            isStreaming={streaming && isLastAi}
+                          />
+                          <ToolCallBlock
+                            toolCalls={(msg.toolCalls ?? []).map((tc) => ({
+                              id: tc.id,
+                              name: tc.name,
+                              args: tc.args,
+                              result: tc.result,
+                              status: tc.status,
+                            }))}
+                            isStreaming={streaming && isLastAi}
+                          />
+                          <TextBlock content={msg.content} isStreaming={streaming && isLastAi} />
+                        </>
                       ) : (
                         msg.content
                       )}
