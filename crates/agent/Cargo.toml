@@ -9,9 +9,28 @@ name = "openatrading_agent"
 path = "src/lib.rs"
 
 [dependencies]
-pi-agent-core = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.14", features = ["extraction"] }
-pi-ai = {git = "https://github.com/oouxx/pi-rs", tag = "v1.78.14" }
+pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.8" }
+pi-agent-core = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.8", features = ["extraction", "mcp"] }
+pi-ai = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.8" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+async-stream = "0.3"
+thiserror = "2"
+schemars = { version = "0.8", features = ["derive"] }
+tracing = "0.1"
+axum = "0.7"
+rmcp = { version = "1.7", features = [
+    "client",
+    "server",
+    "transport-streamable-http-client-reqwest",
+    "transport-streamable-http-server",
+    "transport-io",
+    "transport-child-process",
+] }
 
 [features]
 default = []
-mcp = ["pi-agent-core/mcp"]

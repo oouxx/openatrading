@@ -39,3 +39,4 @@ certs/
 .codegraph/daemon.pid
 .mcp.json
 .tokensave
+.codegraph

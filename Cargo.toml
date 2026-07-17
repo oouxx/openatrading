@@ -5,7 +5,6 @@ members = [
     "crates/core",
     "crates/cli",
     "crates/channels",
-    "crates/provider",
     "crates/web",
     "src-tauri",
     "crates/agent",

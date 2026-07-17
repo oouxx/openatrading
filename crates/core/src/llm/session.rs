@@ -2,82 +2,17 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::types::{AgentMessage, DynTool};
+use openatrading_agent::llm::LlmClient;
+use openatrading_agent::session::invoke_agent;
+use openatrading_agent::types::DynTool;
 
 use super::tools::create_decision_tool;
-use super::LlmClient;
 
-// ── Helper: one-shot agent invoke ────────────────────────────────────────
+// ── AgentSession (trading-specific) ─────────────────────────────────────
 
-struct AgentResult {
-    final_text: String,
-    tool_output: Option<serde_json::Value>,
-}
-
-async fn invoke_agent(
-    llm: &LlmClient,
-    tools: Vec<Arc<DynTool>>,
-    system_prompt: &str,
-    user_message: &str,
-) -> Result<AgentResult> {
-    let agent = llm.create_agent(tools, system_prompt);
-
-    let messages = vec![AgentMessage::User {
-        content: vec![ContentBlock::text(user_message)],
-        timestamp: 0,
-    }];
-
-    let result = agent
-        .process(messages)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    let final_text: String = result
-        .iter()
-        .rev()
-        .find_map(|msg| match msg {
-            AgentMessage::Assistant { content, .. } => {
-                let text: String = content
-                    .iter()
-                    .filter_map(|b| match b {
-                        ContentBlock::Text { text, .. } => Some(text.as_str()),
-                        ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                if text.is_empty() {
-                    None
-                } else {
-                    Some(text)
-                }
-            },
-            _ => None,
-        })
-        .unwrap_or_default();
-
-    let tool_output = result.iter().rev().find_map(|msg| match msg {
-        AgentMessage::Assistant { content, .. } => content.iter().find_map(|b| {
-            if let ContentBlock::ToolCall { arguments, .. } = b {
-                Some(arguments.clone())
-            } else {
-                None
-            }
-        }),
-        _ => None,
-    });
-
-    Ok(AgentResult {
-        final_text,
-        tool_output,
-    })
-}
-
-// ── AgentSession ─────────────────────────────────────────────────────────
-
-/// Builder for a single agent invocation.
+/// Builder for a single agent invocation with trading decision support.
 ///
-/// Wraps upstream `Agent` + decision-tool injection + result extraction into one
+/// Wraps upstream `invoke_agent` + decision-tool injection + retry logic into one
 /// call, so entry points (cron, CLI, Telegram) don't repeat the
 /// assemble → call → extract pattern.
 ///
