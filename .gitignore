@@ -36,8 +36,8 @@ certs/
 
 # claude
 .claude/worktrees/
-.codegraph/daemon.pid
 .mcp.json
 .tokensave
-.codegraph
+
 .pi-rs
+.codegraph/
