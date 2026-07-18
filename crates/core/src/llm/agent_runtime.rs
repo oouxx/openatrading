@@ -7,11 +7,8 @@ use futures::Future;
 use tokio::sync::{mpsc, watch};
 
 use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::pi_ai_types::ToolExecutionMode;
 use openatrading_agent::types::{AgentEvent, AgentMessage, DynTool};
-use pi_coding_agent::core::extensions::ToolDefinition;
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-use pi_extension_api::ToolExecuteFn;
 
 // ── AgentResult ──────────────────────────────────────────────────────────
 
@@ -19,51 +16,6 @@ use pi_extension_api::ToolExecuteFn;
 pub struct AgentResult {
     pub final_text: String,
     pub tool_outputs: Vec<serde_json::Value>,
-}
-
-// ── Tool definition helper ──────────────────────────────────────────────
-
-fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
-    trading_tools
-        .iter()
-        .map(
-            |t: &Arc<sdk::prelude::AgentTool<serde_json::Value, serde_json::Value>>| {
-                let exec: ToolExecuteFn = {
-                    let inner = t.execute.clone();
-                    Arc::new(move |id, params, signal| {
-                        let inner = inner.clone();
-                        Box::pin(async move {
-                            let result = inner(id, params, signal, None).await?;
-                            let content: Vec<serde_json::Value> = result
-                                .content
-                                .iter()
-                                .filter_map(|cb| serde_json::to_value(cb).ok())
-                                .collect();
-                            Ok(pi_extension_api::ToolCallOutput {
-                                content,
-                                details: Some(result.details),
-                                is_error: false,
-                            })
-                        })
-                    })
-                };
-                ToolDefinition {
-                    name: t.name.clone(),
-                    label: Some(t.label.clone()),
-                    description: t.description.clone(),
-                    prompt_snippet: None,
-                    prompt_guidelines: None,
-                    parameters: Some(t.parameters_schema.clone()),
-                    render_shell: None,
-                    execution_mode: t.execution_mode.as_ref().map(|m| match m {
-                        ToolExecutionMode::Sequential => "sequential".to_string(),
-                        ToolExecutionMode::Parallel => "parallel".to_string(),
-                    }),
-                    execute: Some(exec),
-                }
-            },
-        )
-        .collect()
 }
 
 // ── create_session ──────────────────────────────────────
