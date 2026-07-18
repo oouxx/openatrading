@@ -111,19 +111,21 @@ export default function AiCopilot({
       scrollDown()
       return
     }
-    fetchJson<{ role: string; content: string }[]>(`/api/ai/sessions/${activeThreadId}/messages`).then((msgs) => {
-      if (!msgs || msgs.length === 0) return
-      threadMessagesRef.current.set(
-        activeThreadId,
-        msgs.map((m) => ({
-          id: newMsgId(),
-          role: m.role === "user" ? "user" : "assistant",
-          content: m.content,
-        }))
-      )
-      setThreadMessages(new Map(threadMessagesRef.current))
-      scrollDown()
-    }).catch(() => {})
+    fetchJson<{ role: string; content: string }[]>(`/api/ai/sessions/${activeThreadId}/messages`)
+      .then((msgs) => {
+        if (!msgs || msgs.length === 0) return
+        threadMessagesRef.current.set(
+          activeThreadId,
+          msgs.map((m) => ({
+            id: newMsgId(),
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.content,
+          }))
+        )
+        setThreadMessages(new Map(threadMessagesRef.current))
+        scrollDown()
+      })
+      .catch(() => {})
   }, [activeThreadId, scrollDown])
 
   // Stock search debounce
@@ -200,7 +202,7 @@ export default function AiCopilot({
       if (!text) return
       if (streaming && streamThreadRef.current === activeThreadId) return
 
-      const threadId = activeThreadId  // null = new conversation (backend generates session_id)
+      const threadId = activeThreadId // null = new conversation (backend generates session_id)
       const cmd = pendingCmdRef.current
       pendingCmdRef.current = null
       setShowSlash(false)
@@ -209,12 +211,13 @@ export default function AiCopilot({
       // When continuing a session, pi-coding-agent loads history from JSONL.
       // Only send history for new sessions (no session_id).
       const earlyMsgs = threadMessagesRef.current.get(threadId ?? "__new__") ?? []
-      const history = threadId === null
-        ? earlyMsgs.map((m) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
-            content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
-          }))
-        : []
+      const history =
+        threadId === null
+          ? earlyMsgs.map((m) => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
+            }))
+          : []
 
       const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
       const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
@@ -480,7 +483,7 @@ export default function AiCopilot({
                 return (
                   <div
                     key={msg.id}
-                    className={`flex max-w-[820px] gap-3 ${msg.role === "user" ? "flex-row-reverse self-end" : ""}`}
+                    className={`flex w-full gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <span
                       className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
@@ -490,10 +493,8 @@ export default function AiCopilot({
                       {msg.role === "user" ? "U" : "AI"}
                     </span>
                     <div
-                      className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
-                        msg.role === "user"
-                          ? "bg-ink-dim max-w-[70%] rounded-tr-sm text-white"
-                          : "border-hairline bg-bg-surface rounded-tl-sm border text-white/80"
+                      className={`min-w-0 flex-1 text-sm leading-relaxed ${
+                        msg.role === "user" ? "flex items-center justify-end" : "text-white/90"
                       }`}
                     >
                       {msg.role === "assistant" ? (
@@ -515,7 +516,9 @@ export default function AiCopilot({
                           <TextBlock content={msg.content} isStreaming={streaming && isLastAi} />
                         </>
                       ) : (
-                        msg.content
+                        <div className="bg-ink-dim inline-block max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-white">
+                          {msg.content}
+                        </div>
                       )}
                     </div>
                   </div>
