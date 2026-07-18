@@ -26,41 +26,43 @@ pub struct AgentResult {
 fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
     trading_tools
         .iter()
-        .map(|t| {
-            let exec: ToolExecuteFn = {
-                let inner = t.execute.clone();
-                Arc::new(move |id, params, signal| {
-                    let inner = inner.clone();
-                    Box::pin(async move {
-                        let result = inner(id, params, signal, None).await?;
-                        let content: Vec<serde_json::Value> = result
-                            .content
-                            .iter()
-                            .filter_map(|cb| serde_json::to_value(cb).ok())
-                            .collect();
-                        Ok(pi_extension_api::ToolCallOutput {
-                            content,
-                            details: Some(result.details),
-                            is_error: false,
+        .map(
+            |t: &Arc<sdk::prelude::AgentTool<serde_json::Value, serde_json::Value>>| {
+                let exec: ToolExecuteFn = {
+                    let inner = t.execute.clone();
+                    Arc::new(move |id, params, signal| {
+                        let inner = inner.clone();
+                        Box::pin(async move {
+                            let result = inner(id, params, signal, None).await?;
+                            let content: Vec<serde_json::Value> = result
+                                .content
+                                .iter()
+                                .filter_map(|cb| serde_json::to_value(cb).ok())
+                                .collect();
+                            Ok(pi_extension_api::ToolCallOutput {
+                                content,
+                                details: Some(result.details),
+                                is_error: false,
+                            })
                         })
                     })
-                })
-            };
-            ToolDefinition {
-                name: t.name.clone(),
-                label: Some(t.label.clone()),
-                description: t.description.clone(),
-                prompt_snippet: None,
-                prompt_guidelines: None,
-                parameters: Some(t.parameters_schema.clone()),
-                render_shell: None,
-                execution_mode: t.execution_mode.as_ref().map(|m| match m {
-                    ToolExecutionMode::Sequential => "sequential".to_string(),
-                    ToolExecutionMode::Parallel => "parallel".to_string(),
-                }),
-                execute: Some(exec),
-            }
-        })
+                };
+                ToolDefinition {
+                    name: t.name.clone(),
+                    label: Some(t.label.clone()),
+                    description: t.description.clone(),
+                    prompt_snippet: None,
+                    prompt_guidelines: None,
+                    parameters: Some(t.parameters_schema.clone()),
+                    render_shell: None,
+                    execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                        ToolExecutionMode::Sequential => "sequential".to_string(),
+                        ToolExecutionMode::Parallel => "parallel".to_string(),
+                    }),
+                    execute: Some(exec),
+                }
+            },
+        )
         .collect()
 }
 
@@ -101,7 +103,7 @@ pub fn create_session() -> Result<(String, String)> {
 /// Callers should persist it and pass it back on subsequent messages to continue the conversation.
 pub async fn process_messages(
     system_prompt: &str,
-    trading_tools: Vec<Arc<DynTool>>,
+    _: Vec<Arc<DynTool>>,
     messages: Vec<AgentMessage>,
     tx: mpsc::Sender<AgentEvent>,
     session_id: Option<String>,
@@ -111,7 +113,6 @@ pub async fn process_messages(
         .to_string_lossy()
         .to_string();
 
-    let tool_defs = build_tool_defs(&trading_tools);
     let ext_registry = openatrading_extension::create_registry();
 
     let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
@@ -152,9 +153,9 @@ pub async fn process_messages(
         session_name: Some(sid.clone()),
         stream_fn: None,
         convert_to_llm: None,
-        custom_tools: Some(tool_defs),
+        custom_tools: None,
         extension_paths: Vec::new(),
-        enable_extensions: false,
+        enable_extensions: true,
         extension_registry: Some(ext_registry),
         cli_provider: None,
         cli_model: None,

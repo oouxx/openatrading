@@ -41,6 +41,7 @@ use openatrading_web::gateway::Gateway;
 /// TUI 独占终端，任何写到 stdout/stderr 的日志都会破坏 alternate screen 渲染。
 /// 这里把日志全部落盘到 `$ATRADING_HOME/logs/tui.log`，默认 level info，
 /// 可被 `RUST_LOG` 覆盖。返回的 guard 必须保持在调用栈上以确保日志刷新。
+#[allow(dead_code)]
 fn init_chat_file_logger() -> Result<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 

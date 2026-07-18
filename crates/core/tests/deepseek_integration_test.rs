@@ -12,26 +12,7 @@ use std::sync::Arc;
 
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::{tools, AgentMessage, LlmClient};
-use pi_coding_agent::core::extensions::ToolDefinition;
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-use pi_coding_agent::pi_agent_core::pi_ai_types::ToolExecutionMode;
-
-fn tool_def(t: &Arc<openatrading_core::llm::DynTool>) -> ToolDefinition {
-    ToolDefinition {
-        name: t.name.clone(),
-        label: Some(t.label.clone()),
-        description: t.description.clone(),
-        parameters: Some(t.parameters_schema.clone()),
-        prompt_snippet: None,
-        prompt_guidelines: None,
-        render_shell: None,
-        execution_mode: t.execution_mode.as_ref().map(|m| match m {
-            ToolExecutionMode::Sequential => "sequential".to_string(),
-            ToolExecutionMode::Parallel => "parallel".to_string(),
-        }),
-        execute: None,
-    }
-}
 
 #[ignore = "integration test"]
 #[tokio::test]
@@ -52,7 +33,7 @@ async fn test_deepseek_v4_flash_agent_process() {
         model: Some(llm.model.clone()),
         no_tools: Some(NoToolsMode::All),
         custom_prompt: Some(system_prompt.to_string()),
-        custom_tools: Some(tools.iter().map(tool_def).collect()),
+        custom_tools: None,
         tools: Some(tools.iter().map(|t| t.name.clone()).collect()),
         agent_dir: None,
         thinking_level: None,
@@ -63,7 +44,7 @@ async fn test_deepseek_v4_flash_agent_process() {
         stream_fn: None,
         convert_to_llm: None,
         extension_paths: Vec::new(),
-        enable_extensions: false,
+        enable_extensions: true,
         extension_registry: None,
         cli_provider: None,
         cli_model: None,
