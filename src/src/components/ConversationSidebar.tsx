@@ -12,14 +12,14 @@ import {
 } from "@/components/ui/sidebar"
 import { Search, Plus, Settings, Puzzle, Users, Star, Trash2 } from "lucide-react"
 import { useAppMode } from "@/contexts/AppModeContext"
-import type { ChatThread } from "@/hooks/useChatThreads"
+import type { ChatSession } from "@/hooks/useChatThreads"
 
 interface ConversationSidebarProps {
-  threads: ChatThread[]
-  activeThreadId: number | null
-  onSelectThread: (id: number) => void
+  threads: ChatSession[]
+  activeThreadId: string | null
+  onSelectThread: (id: string) => void
   onNewThread: () => void
-  onDeleteThread: (id: number) => void
+  onDeleteThread: (id: string) => void
 }
 
 export default function ConversationSidebar({

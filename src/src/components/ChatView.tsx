@@ -16,8 +16,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { apiChatStream, fetchJson } from "@/stores/data"
-import { getMessages, saveMessage, fetchCommands, type ChatMessage } from "@/hooks/useChatThreads"
+import { apiChatStream } from "@/stores/data"
+import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
@@ -43,8 +43,8 @@ interface SlashCommand {
 }
 
 interface AiCopilotProps {
-  activeThreadId: number | null
-  onActiveThreadChange: (id: number | null) => void
+  activeThreadId: string | null
+  onActiveThreadChange: (id: string | null) => void
   onReload?: () => void
 }
 
@@ -60,9 +60,9 @@ export default function AiCopilot({
   const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
-  const [threadMessages, setThreadMessages] = useState<Map<number, DisplayMessage[]>>(new Map())
+  const [threadMessages, setThreadMessages] = useState<Map<string, DisplayMessage[]>>(new Map())
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null)
-  const streamThreadRef = useRef<number | null>(null)
+  const streamThreadRef = useRef<string | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
   const openTab = useStockTabStore((s) => s.openTab)
@@ -70,8 +70,8 @@ export default function AiCopilot({
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
 
   // Per-thread message store — persists across thread switches
-  const threadMessagesRef = useRef<Map<number, DisplayMessage[]>>(threadMessages)
-  const loadQueueRef = useRef<Set<number>>(new Set())
+  const threadMessagesRef = useRef<Map<string, DisplayMessage[]>>(threadMessages)
+  const loadQueueRef = useRef<Set<string>>(new Set())
 
   // Keep ref in sync with state (avoids accessing ref during render)
   useEffect(() => {
@@ -199,26 +199,15 @@ export default function AiCopilot({
     async (question?: string) => {
       const text = (question || input).trim()
       if (!text) return
-      // Allow sending in different threads while other thread is streaming
       if (streaming && streamThreadRef.current === activeThreadId) return
 
-      let threadId = activeThreadId
-      if (threadId === null) {
-        const thread = await fetchJson<{ id: number; title: string }>("/api/ai/threads", {
-          method: "POST",
-          body: JSON.stringify({ title: "新对话" }),
-        })
-        threadId = thread.id
-        onActiveThreadChange(thread.id)
-      }
-
+      const threadId = activeThreadId  // null = new conversation (backend generates session_id)
       const cmd = pendingCmdRef.current
       pendingCmdRef.current = null
       setShowSlash(false)
       setInput("")
 
-      // Get history from the thread's own message store
-      const threadMsgs = threadMessagesRef.current.get(threadId) ?? []
+      const threadMsgs = threadMessagesRef.current.get(threadId ?? "__new__") ?? []
       const history = threadMsgs.map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
@@ -227,47 +216,66 @@ export default function AiCopilot({
       const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
       const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
 
-      // Update thread's messages
-      const existing = threadMessagesRef.current.get(threadId) ?? []
-      threadMessagesRef.current.set(threadId, [...existing, userMsg, aiMsg])
+      // Use a stable key for the in-memory message store
+      const msgKey = threadId ?? `_new_${Date.now()}`
+      const existing = threadMessagesRef.current.get(msgKey) ?? []
+      threadMessagesRef.current.set(msgKey, [...existing, userMsg, aiMsg])
       setThreadMessages(new Map(threadMessagesRef.current))
       scrollDown()
 
       setStreaming(true)
-      streamThreadRef.current = threadId
-      saveMessage(threadId, "user", text)
+      streamThreadRef.current = msgKey
+
+      // Track the last session_id for this message store key
+      const sessionIdRef = { current: threadId }
 
       try {
         await apiChatStream(
           {
             message: text,
+            session_id: threadId ?? undefined,
             role: "",
             history,
             command_name: cmd?.name,
             command_type: cmd?.type,
+            skill_name: cmd?.type === "skill" ? cmd.name : undefined,
           },
           {
+            onSession: (sid) => {
+              sessionIdRef.current = sid
+              onActiveThreadChange(sid)
+              // Move messages from temp key to the real session key
+              const msgs = threadMessagesRef.current.get(msgKey) ?? []
+              if (msgKey !== sid) {
+                threadMessagesRef.current.delete(msgKey)
+                threadMessagesRef.current.set(sid, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+              }
+            },
             onText: (data) => {
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 msgs[msgs.length - 1] = { ...last, content: last.content + data }
-                threadMessagesRef.current.set(threadId, msgs)
+                threadMessagesRef.current.set(key, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
-                if (activeThreadId === threadId) scrollDown()
+                if (activeThreadId === key) scrollDown()
               }
             },
             onReasoning: (data) => {
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data }
-                threadMessagesRef.current.set(threadId, msgs)
+                threadMessagesRef.current.set(key, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
             onToolCall: (tool) => {
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -278,12 +286,13 @@ export default function AiCopilot({
                     { name: tool.name, id: tool.id, args: tool.args, status: "streaming" },
                   ],
                 }
-                threadMessagesRef.current.set(threadId, msgs)
+                threadMessagesRef.current.set(key, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
             onToolDelta: (delta) => {
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -295,13 +304,14 @@ export default function AiCopilot({
                     status: "streaming",
                   }
                   msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(threadId, msgs)
+                  threadMessagesRef.current.set(key, msgs)
                   setThreadMessages(new Map(threadMessagesRef.current))
                 }
               }
             },
             onToolResult: (result) => {
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -309,38 +319,23 @@ export default function AiCopilot({
                 if (idx !== -1) {
                   calls[idx] = { ...calls[idx], result: result.result, status: "success" }
                   msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(threadId, msgs)
+                  threadMessagesRef.current.set(key, msgs)
                   setThreadMessages(new Map(threadMessagesRef.current))
                 }
               }
             },
             onDone: () => {
               setStreaming(false)
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant" && last.content) {
-                saveMessage(threadId, "assistant", last.content)
-                if (text.length > 0) {
-                  fetchJson(`/api/ai/threads/${threadId}`, {
-                    method: "PUT",
-                    body: JSON.stringify({ title: text.slice(0, 30) }),
-                  })
-                    .then(() => {
-                      if (activeThreadId === threadId || threadMessagesRef.current.has(threadId)) {
-                        onReload?.()
-                      }
-                    })
-                    .catch(() => {})
-                }
-              }
+              onReload?.()
             },
             onError: (err) => {
               setStreaming(false)
-              const msgs = threadMessagesRef.current.get(threadId) ?? []
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` }
-                threadMessagesRef.current.set(threadId, msgs)
+                threadMessagesRef.current.set(key, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
@@ -348,14 +343,15 @@ export default function AiCopilot({
         )
       } catch (e: unknown) {
         setStreaming(false)
-        const msgs = threadMessagesRef.current.get(threadId) ?? []
+        const key = sessionIdRef.current ?? msgKey
+        const msgs = threadMessagesRef.current.get(key) ?? []
         const last = msgs[msgs.length - 1]
         if (last && last.role === "assistant") {
           msgs[msgs.length - 1] = {
             ...last,
             content: `[错误] ${(e as Error).message || "网络请求失败"}`,
           }
-          threadMessagesRef.current.set(threadId, msgs)
+          threadMessagesRef.current.set(key, msgs)
           setThreadMessages(new Map(threadMessagesRef.current))
         }
       }

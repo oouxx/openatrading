@@ -109,6 +109,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/dragon-tiger/stock-seat",
             get(handlers::get_dragon_tiger_stock_seat),
         )
+        .route("/api/ai/sessions", get(chat::list_sessions))
+        .route("/api/ai/sessions/:id", delete(chat::delete_session))
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))
         .route("/api/mcp/servers/:name", delete(mcp::delete_handler))

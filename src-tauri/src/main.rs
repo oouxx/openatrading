@@ -239,6 +239,36 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             }
             Ok(serde_json::json!(commands))
         },
+        "/api/ai/sessions" => {
+            let cwd = std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let dir = std::path::Path::new(&cwd).join(".pi-rs/sessions");
+            let mut sessions: Vec<serde_json::Value> = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                        continue;
+                    }
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    sessions.push(serde_json::json!({
+                        "id": stem,
+                        "title": stem,
+                        "created_at": "",
+                        "updated_at": "",
+                        "message_count": 0,
+                    }));
+                }
+            }
+            sessions.sort_by(|a, b| b["id"].as_str().cmp(&a["id"].as_str()));
+            Ok(serde_json::to_value(sessions).unwrap_or_default())
+        },
         "/api/roles" => {
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
@@ -735,6 +765,21 @@ async fn dispatch_post(
                         Ok(serde_json::json!({"ok": true}))
                     },
                     _ => Err(format!("unknown roles action: {action}")),
+                }
+            } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
+                // DELETE /api/ai/sessions/:id
+                let cwd = std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let fpath = std::path::Path::new(&cwd)
+                    .join(".pi-rs/sessions")
+                    .join(format!("{sid}.jsonl"));
+                if fpath.exists() {
+                    std::fs::remove_file(&fpath).map_err(|e| format!("{e}"))?;
+                    Ok(serde_json::json!({"ok": true}))
+                } else {
+                    Err(format!("session not found: {sid}"))
                 }
             } else if path.starts_with("/api/watchlist") {
                 #[derive(serde::Serialize, serde::Deserialize)]

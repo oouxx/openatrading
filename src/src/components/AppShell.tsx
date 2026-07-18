@@ -20,24 +20,23 @@ export default function AppShell() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance")
   const activeThreadId = useThreadStore((s) => s.activeThreadId)
   const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
-  const { threads, createThread, deleteThread, reload } = useThreads()
+  const { sessions, deleteSession, reload } = useThreads()
 
-  const handleNewThread = async () => {
-    const thread = await createThread("新对话")
-    setActiveThreadId(thread.id)
+  const handleNewThread = () => {
+    setActiveThreadId(null)
   }
 
   const handleDeleteThread = useCallback(
-    async (id: number) => {
-      await deleteThread(id)
+    async (id: string) => {
+      await deleteSession(id)
       if (activeThreadId === id) setActiveThreadId(null)
       reload()
     },
-    [activeThreadId, deleteThread, reload]
+    [activeThreadId, deleteSession, reload]
   )
 
   const handleActiveChange = useCallback(
-    (id: number | null) => {
+    (id: string | null) => {
       setActiveThreadId(id)
       useStockTabStore.getState().setActiveStockTab(null)
       reload()
