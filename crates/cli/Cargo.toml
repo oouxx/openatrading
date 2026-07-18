@@ -14,7 +14,6 @@ path = "src/lib.rs"
 
 [dependencies]
 openatrading-core = { path = "../core" }
-openatrading-tui = { path = "../tui" }
 openatrading-web = { path = "../web" }
 owo-colors = "4"
 async-trait = { workspace = true }

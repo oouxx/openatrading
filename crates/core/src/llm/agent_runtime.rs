@@ -39,7 +39,7 @@ pub(crate) struct AgentSession {
 
 impl AgentSession {
     async fn new(
-        llm: &LlmClient,
+        _llm: &LlmClient,
         system_prompt: &str,
         trading_tools: Vec<Arc<DynTool>>,
         _skills: Vec<SkillInfo>,
@@ -55,27 +55,53 @@ impl AgentSession {
         // Create extension registry with trading tool definitions
         let ext_registry = TradingToolExtension::create_registry();
 
-        // Convert trading tools to ToolDefinitions for the SDK's custom_tools field
+        // Convert trading tools to ToolDefinitions with execute callbacks.
+        // v1.79.13+: ToolDefinition supports `execute`, so stubs are eliminated —
+        // tools are immediately executable without a separate add_tools() call.
         use openatrading_agent::pi_ai_types::ToolExecutionMode;
         use pi_coding_agent::core::extensions::ToolDefinition;
+        use pi_extension_api::ToolExecuteFn;
         let tool_defs: Vec<ToolDefinition> = trading_tools
             .iter()
-            .map(|t| ToolDefinition {
-                name: t.name.clone(),
-                label: Some(t.label.clone()),
-                description: t.description.clone(),
-                prompt_snippet: None,
-                prompt_guidelines: None,
-                parameters: Some(t.parameters_schema.clone()),
-                render_shell: None,
-                execution_mode: t.execution_mode.as_ref().map(|m| match m {
-                    ToolExecutionMode::Sequential => "sequential".to_string(),
-                    ToolExecutionMode::Parallel => "parallel".to_string(),
-                }),
+            .map(|t| {
+                let exec: ToolExecuteFn = {
+                    let inner = t.execute.clone();
+                    Arc::new(move |id, params, signal| {
+                        let inner = inner.clone();
+                        Box::pin(async move {
+                            let result = inner(id, params, signal, None).await?;
+                            let content: Vec<serde_json::Value> = result
+                                .content
+                                .iter()
+                                .filter_map(|cb| serde_json::to_value(cb).ok())
+                                .collect();
+                            Ok(pi_extension_api::ToolCallOutput {
+                                content,
+                                details: Some(result.details),
+                                is_error: false,
+                            })
+                        })
+                    })
+                };
+                ToolDefinition {
+                    name: t.name.clone(),
+                    label: Some(t.label.clone()),
+                    description: t.description.clone(),
+                    prompt_snippet: None,
+                    prompt_guidelines: None,
+                    parameters: Some(t.parameters_schema.clone()),
+                    render_shell: None,
+                    execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                        ToolExecutionMode::Sequential => "sequential".to_string(),
+                        ToolExecutionMode::Parallel => "parallel".to_string(),
+                    }),
+                    execute: Some(exec),
+                }
             })
             .collect();
 
-        // Use pi-coding-agent's sdk to create the session
+        // Use pi-coding-agent's sdk to create the session.
+        // No add_tools() needed — tools have execute callbacks baked in.
         let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd: cwd.clone(),
             agent_dir: None,
@@ -88,7 +114,7 @@ impl AgentSession {
             custom_prompt: Some(system_prompt.to_string()),
             append_system_prompt: None,
             session_name: None,
-            stream_fn: Some(llm.to_stream_fn()),
+            stream_fn: None,
             convert_to_llm: None,
             custom_tools: Some(tool_defs),
             extension_paths: Vec::new(),
@@ -104,12 +130,6 @@ impl AgentSession {
         .await
         .map_err(|e| tracing::error!("create_agent_session failed: {e}"))
         .expect("create_agent_session failed");
-
-        // Inject trading tool implementations into the agent's state.
-        // Replaces stub entries created from custom_tools metadata
-        // with real execute implementations.
-        let agent = session.get_agent();
-        agent.add_tools(trading_tools).await;
 
         Self {
             inner: Mutex::new(session),

@@ -62,32 +62,9 @@ fn init_chat_file_logger() -> Result<tracing_appender::non_blocking::WorkerGuard
     Ok(guard)
 }
 
-/// 用 `AppConfig` 装配 chat TUI 的依赖：LLM 客户端、工具集、system prompt。
-///
-/// 通过 `AppContext::build()` 统一构造 llm + api + tools。
-async fn build_chat_args(app_config: &AppConfig) -> openatrading_tui::chat::ChatArgs {
-    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
-    let gateway = Gateway::init(&db_path).expect("Failed to open database");
-
-    let ctx = AppContext::build(
-        app_config.llm.provider.as_deref(),
-        app_config.llm.model.as_deref(),
-        &app_config.mcp_servers,
-        gateway.memory.clone(),
-        gateway.trade.clone(),
-        Arc::new(NoopChannel),
-    )
-    .await;
-
-    let system_prompt = openatrading_core::skills::SkillRegistry::build_chat_prompt(
-        openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT,
-    );
-
-    openatrading_tui::chat::ChatArgs {
-        llm: ctx.llm.clone(),
-        tools: ctx.all_tools(),
-        system_prompt,
-    }
+#[allow(dead_code)]
+async fn build_chat_args(_app_config: &AppConfig) -> () {
+    // Temporarily disabled (TUI under refactoring)
 }
 
 pub async fn run() -> Result<()> {
@@ -111,12 +88,10 @@ pub async fn run() -> Result<()> {
         return cmd_doctor(json, fix, skip_network).await;
     }
 
-    // Handle `chat` subcommand
+    // Handle `chat` subcommand — temporarily disabled (TUI under refactor)
     if let Some(Commands::Chat) = cli.command {
-        let _guard = init_chat_file_logger()?;
-        let app_config = AppConfig::load()?;
-        let chat_args = build_chat_args(&app_config).await;
-        return openatrading_tui::chat::run_chat(chat_args).await;
+        tracing::info!("chat subcommand is disabled during refactoring");
+        return Ok(());
     }
 
     // Handle `init` subcommand

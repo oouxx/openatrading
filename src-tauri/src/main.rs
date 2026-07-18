@@ -186,15 +186,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
         },
-        "/api/sentiment" => {
-            if std::env::var("JIUYAN_PHONE").is_err() {
-                return Err("JIUYAN_PHONE not set".into());
-            }
-            let data = openatrading_core::agents::sentiment::analyze_sentiment(&state.ctx.api)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+
         "/api/telegraph" => {
             let data = state
                 .ctx
@@ -230,7 +222,6 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/ai/commands" => {
             let registry = state.ctx.tool_registry.load();
             let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
             let mut commands: Vec<serde_json::Value> = Vec::new();
             for t in registry.all_tools() {
                 commands.push(serde_json::json!({
@@ -244,13 +235,6 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     "name": s.name,
                     "description": s.description,
                     "command_type": "skill",
-                }));
-            }
-            for p in pipelines.commands() {
-                commands.push(serde_json::json!({
-                    "name": p.name,
-                    "description": p.description,
-                    "command_type": "pipeline",
                 }));
             }
             Ok(serde_json::json!(commands))
@@ -1014,7 +998,6 @@ async fn api_chat_stream(
     let effective_command_type = match command_type_str {
         "tool" => Some(CommandType::Tool),
         "skill" => Some(CommandType::Skill),
-        "pipeline" => Some(CommandType::Pipeline),
         _ => None,
     };
 
@@ -1046,26 +1029,6 @@ async fn api_chat_stream(
             (
                 openatrading_web::chat::build_system_prompt(prompt),
                 tools_registry.load().all_tools().to_vec(),
-            )
-        },
-        Some(CommandType::Pipeline) => {
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            let spec = pipelines.find(command_name);
-            let prompt = spec
-                .as_ref()
-                .map(|s| s.prompt.as_str())
-                .unwrap_or(default_strategy);
-            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
-            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
-                .cloned()
-                .collect();
-            (
-                openatrading_web::chat::build_system_prompt(prompt),
-                filtered,
             )
         },
         None => {

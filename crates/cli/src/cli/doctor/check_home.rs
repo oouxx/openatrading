@@ -35,7 +35,7 @@ impl Check for HomeCheck {
             error_count += 1;
         }
 
-        let subdirs = ["skills", "logs", "pipelines"];
+        let subdirs = ["skills", "logs"];
         for name in &subdirs {
             let p = home.join(name);
             if !p.exists() {
@@ -67,7 +67,7 @@ impl Check for HomeCheck {
     async fn fix(&self, ctx: &CheckContext) -> Result<FixResult> {
         let home = &ctx.atrading_home;
         std::fs::create_dir_all(home)?;
-        for name in &["skills", "logs", "pipelines"] {
+        for name in &["skills", "logs"] {
             std::fs::create_dir_all(home.join(name))?;
         }
         Ok(FixResult {

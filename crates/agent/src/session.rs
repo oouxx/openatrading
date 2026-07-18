@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use pi_agent_core::pi_ai_types::ContentBlock;
-use pi_agent_core::types::{AgentMessage, DynTool};
+use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
+use pi_coding_agent::pi_agent_core::pi_ai_types::ToolExecutionMode;
+use pi_coding_agent::pi_agent_core::types::DynTool;
+use pi_coding_agent::pi_ai_types::ContentBlock;
+use pi_extension_api::{ToolCallOutput, ToolDefinition, ToolExecuteFn};
 
 use crate::llm::LlmClient;
 
@@ -16,27 +19,95 @@ pub struct AgentResult {
 
 pub async fn invoke_agent(
     llm: &LlmClient,
-    tools: Vec<Arc<DynTool>>,
+    trading_tools: Vec<Arc<DynTool>>,
     system_prompt: &str,
     user_message: &str,
 ) -> Result<AgentResult> {
-    let agent = llm.create_agent(tools, system_prompt);
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
-    let messages = vec![AgentMessage::User {
-        content: vec![ContentBlock::text(user_message)],
-        timestamp: 0,
-    }];
+    let tool_defs: Vec<ToolDefinition> = trading_tools
+        .iter()
+        .map(|t| {
+            let exec: ToolExecuteFn = {
+                let inner = t.execute.clone();
+                Arc::new(move |id, params, signal| {
+                    let inner = inner.clone();
+                    Box::pin(async move {
+                        let result = inner(id, params, signal, None).await?;
+                        let content: Vec<serde_json::Value> = result
+                            .content
+                            .iter()
+                            .filter_map(|cb| serde_json::to_value(cb).ok())
+                            .collect();
+                        Ok(ToolCallOutput {
+                            content,
+                            details: Some(result.details),
+                            is_error: false,
+                        })
+                    })
+                })
+            };
+            ToolDefinition {
+                name: t.name.clone(),
+                label: Some(t.label.clone()),
+                description: t.description.clone(),
+                prompt_snippet: None,
+                prompt_guidelines: None,
+                parameters: Some(t.parameters_schema.clone()),
+                render_shell: None,
+                execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                    ToolExecutionMode::Sequential => "sequential".to_string(),
+                    ToolExecutionMode::Parallel => "parallel".to_string(),
+                }),
+                execute: Some(exec),
+            }
+        })
+        .collect();
 
-    let result = agent
-        .process(messages)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+        cwd,
+        model: Some(llm.model.clone()),
+        no_tools: Some(NoToolsMode::All),
+        custom_prompt: Some(system_prompt.to_string()),
+        tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
+        exclude_tools: None,
+        custom_tools: Some(tool_defs),
+        persist_session: false,
+        session_file: None,
+        enable_extensions: false,
+        extension_paths: Vec::new(),
+        extension_registry: None,
+        stream_fn: None,
+        convert_to_llm: None,
+        agent_dir: None,
+        thinking_level: None,
+        scoped_models: None,
+        append_system_prompt: None,
+        session_name: None,
+        cli_provider: None,
+        cli_model: None,
+        fork_from: None,
+        session_dir: None,
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-    let final_text: String = result
+    // Tools have execute callbacks baked in — no add_tools() needed.
+    // Add user message and run agent loop
+    session.add_user_text(user_message).await;
+    let messages = session.get_messages().await;
+
+    let final_text: String = messages
         .iter()
         .rev()
-        .find_map(|msg| match msg {
-            AgentMessage::Assistant { content, .. } => {
+        .filter_map(|msg| {
+            if let pi_coding_agent::pi_agent_core::types::AgentMessage::Assistant {
+                content, ..
+            } = msg
+            {
                 let text: String = content
                     .iter()
                     .filter_map(|b| match b {
@@ -50,20 +121,26 @@ pub async fn invoke_agent(
                 } else {
                     Some(text)
                 }
-            },
-            _ => None,
-        })
-        .unwrap_or_default();
-
-    let tool_output = result.iter().rev().find_map(|msg| match msg {
-        AgentMessage::Assistant { content, .. } => content.iter().find_map(|b| {
-            if let ContentBlock::ToolCall { arguments, .. } = b {
-                Some(arguments.clone())
             } else {
                 None
             }
-        }),
-        _ => None,
+        })
+        .next()
+        .unwrap_or_default();
+
+    let tool_output = messages.iter().rev().find_map(|msg| {
+        if let pi_coding_agent::pi_agent_core::types::AgentMessage::Assistant { content, .. } = msg
+        {
+            content.iter().find_map(|b| {
+                if let ContentBlock::ToolCall { arguments, .. } = b {
+                    Some(arguments.clone())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
     });
 
     Ok(AgentResult {
@@ -72,18 +149,15 @@ pub async fn invoke_agent(
     })
 }
 
-// ── AgentSession (generic, no trading-specific logic) ────────────────────
+// ── AgentSession wrapper (generic, kept for backward compat) ────────────
 
-/// Builder for a single agent invocation.
-///
-/// Wraps upstream `Agent` + result extraction into one call.
-pub struct AgentSession<'a> {
+pub struct LlmAgentSession<'a> {
     llm: &'a LlmClient,
     system_prompt: &'a str,
     tools: Vec<Arc<DynTool>>,
 }
 
-impl<'a> AgentSession<'a> {
+impl<'a> LlmAgentSession<'a> {
     pub fn new(llm: &'a LlmClient, system_prompt: &'a str) -> Self {
         Self {
             llm,
@@ -92,13 +166,11 @@ impl<'a> AgentSession<'a> {
         }
     }
 
-    /// Attach agent tools.
     pub fn with_tools(mut self, tools: &[Arc<DynTool>]) -> Self {
         self.tools = tools.to_vec();
         self
     }
 
-    /// Run the agent and return the final text reply.
     pub async fn process_chat(&self, user_message: &str) -> Result<String> {
         let result = invoke_agent(
             self.llm,

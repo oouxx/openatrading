@@ -1,4 +1,3 @@
-pub mod agents;
 pub mod api;
 pub mod chat;
 pub mod commands;
@@ -7,7 +6,6 @@ pub mod cron;
 pub mod llm;
 pub mod log;
 pub mod memory;
-pub mod pipelines;
 pub mod prompts;
 pub mod roles;
 pub mod skills;

@@ -3,8 +3,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use pi_agent_core::pi_ai_types::ContentBlock;
-use pi_agent_core::types::{AgentToolResult, DynTool};
+use pi_coding_agent::pi_agent_core::types::AgentToolResult;
+use pi_coding_agent::pi_agent_core::types::DynTool;
+use pi_coding_agent::pi_ai_types::ContentBlock;
 
 pub type ExecuteFn = Arc<
     dyn Fn(
