@@ -36,6 +36,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 }
 
 export interface ChatStreamCallbacks {
+  onSession?: (sessionId: string) => void
   onText: (text: string) => void
   onReasoning?: (text: string) => void
   onToolCall?: (tool: { id: string; name: string; args: string }) => void
@@ -48,10 +49,12 @@ export interface ChatStreamCallbacks {
 export async function apiChatStream(
   body: {
     message: string
+    session_id?: string
     role: string
     history: Array<{ role: string; content: string }>
     command_name?: string
     command_type?: string
+    skill_name?: string
   },
   callbacks: ChatStreamCallbacks
 ): Promise<void> {
@@ -65,7 +68,11 @@ export async function apiChatStream(
         console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80))
       }
       // Parse \x00TEXT\x00 / \x00THINKING\x00 / \x00TOOL_CALL\x00 markers from Tauri path
-      if (text.startsWith("\x00THINKING\x00")) {
+      if (text.startsWith("\x00SESSION\x00")) {
+        callbacks.onSession?.(text.slice(9))
+      } else if (text.startsWith("\x00ERROR\x00")) {
+        callbacks.onError(text.slice(7))
+      } else if (text.startsWith("\x00THINKING\x00")) {
         callbacks.onReasoning?.(text.slice(11).replace(/\\n/g, "\n"))
       } else if (text.startsWith("\x00TEXT\x00")) {
         callbacks.onText(text.slice(6).replace(/\\n/g, "\n"))
@@ -136,6 +143,14 @@ export async function apiChatStream(
         } else if (data.startsWith("[ERROR]")) {
           // 非致命错误（如 finish_reason 缺失），内容已流出，只记录日志不中断对话
           console.warn("[chat_stream]", data)
+        } else if (currentEvent === "session") {
+          try {
+            const parsed = JSON.parse(data)
+            callbacks.onSession?.(parsed.session_id)
+          } catch { /* ignore */ }
+        } else if (currentEvent === "error") {
+          callbacks.onError(data.replace(/\\n/g, "\n"))
+          return
         } else {
           const decoded = data.replace(/\\n/g, "\n")
           if (currentEvent === "thinking") {
