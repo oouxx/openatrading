@@ -256,7 +256,7 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
     use openatrading_core::llm::{AgentEvent, AgentMessage};
 
     // Use the pre-built tool registry from AppContext (startup lifetime)
@@ -277,7 +277,7 @@ pub async fn ai_chat(
 
     let (system_prompt, tools) = match effective_command_type {
         Some(CommandType::Tool) => {
-            let strategy_text = roles_guard
+            let strategy_text: &str = roles_guard
                 .iter()
                 .find(|r| r.name == role_name)
                 .map(|r| r.strategy.as_str())
@@ -333,35 +333,6 @@ pub async fn ai_chat(
     };
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    for h in req.history {
-        match h.role.as_str() {
-            "user" => {
-                pi_messages.push(AgentMessage::User {
-                    content: vec![ContentBlock::Text {
-                        text: h.content,
-                        text_signature: None,
-                    }],
-                    timestamp: 0,
-                });
-            },
-            "assistant" => {
-                pi_messages.push(AgentMessage::Assistant {
-                    content: vec![ContentBlock::Text {
-                        text: h.content,
-                        text_signature: None,
-                    }],
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    usage: Default::default(),
-                    stop_reason: Some(StopReason::Stop),
-                    error_message: None,
-                    timestamp: 0,
-                });
-            },
-            _ => {},
-        }
-    }
     pi_messages.push(AgentMessage::User {
         content: vec![ContentBlock::Text {
             text: req.message,

@@ -35,7 +35,7 @@ impl LlmClient {
             persist_session: false,
             session_file: None,
             extension_paths: Vec::new(),
-            enable_extensions: false,
+            enable_extensions: true,
             agent_dir: None,
             thinking_level: None,
             scoped_models: None,
