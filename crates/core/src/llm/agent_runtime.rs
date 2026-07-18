@@ -72,7 +72,7 @@ pub fn create_session() -> Result<(String, String)> {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let session_dir = format!("{cwd}/.pi-rs/sessions");
+    let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
     use pi_coding_agent::core::session_manager::SessionManager;
     let sm = SessionManager::new(&cwd, &session_dir, None, true, None);
@@ -114,7 +114,7 @@ pub async fn process_messages(
     let tool_defs = build_tool_defs(&trading_tools);
     let ext_registry = openatrading_extension::create_registry();
 
-    let session_dir = format!("{cwd}/.pi-rs/sessions");
+    let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
     // Sanitize user-provided session_id: reject empty, too long, path separators, null bytes
     let sid = match session_id {
