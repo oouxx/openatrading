@@ -51,7 +51,7 @@ export default function AppShell() {
           <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
         ) : (
           <ConversationSidebar
-            threads={threads}
+            threads={sessions}
             activeThreadId={activeThreadId}
             onSelectThread={handleActiveChange}
             onNewThread={handleNewThread}

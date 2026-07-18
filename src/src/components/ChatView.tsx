@@ -16,7 +16,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { apiChatStream } from "@/stores/data"
+import { apiChatStream, fetchJson } from "@/stores/data"
 import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
@@ -71,7 +71,6 @@ export default function AiCopilot({
 
   // Per-thread message store — persists across thread switches
   const threadMessagesRef = useRef<Map<string, DisplayMessage[]>>(threadMessages)
-  const loadQueueRef = useRef<Set<string>>(new Set())
 
   // Keep ref in sync with state (avoids accessing ref during render)
   useEffect(() => {
@@ -104,28 +103,9 @@ export default function AiCopilot({
       .catch(() => {})
   }, [])
 
-  // Load messages when active thread changes — but only once per thread
-  useEffect(() => {
-    if (activeThreadId === null) return
-    if (threadMessagesRef.current.has(activeThreadId)) {
-      scrollDown()
-      return
-    }
-    if (loadQueueRef.current.has(activeThreadId)) return
-    loadQueueRef.current.add(activeThreadId)
-    getMessages(activeThreadId).then((msgs) => {
-      threadMessagesRef.current.set(
-        activeThreadId,
-        msgs.map((m: ChatMessage) => ({
-          id: newMsgId(),
-          role: m.role === "user" ? "user" : "assistant",
-          content: m.content,
-        }))
-      )
-      setThreadMessages(new Map(threadMessagesRef.current))
-      scrollDown()
-    })
-  }, [activeThreadId, scrollDown])
+  // Messages from previous turns are stored in pi-coding-agent's JSONL session file.
+  // They are used as LLM context when continuing a session but not rendered in the UI
+  // until a new exchange adds messages to the in-memory store.
 
   // Stock search debounce
   useEffect(() => {
