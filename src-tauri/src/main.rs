@@ -1135,12 +1135,9 @@ async fn api_chat_stream(
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
-    let runtime = state.ctx.agent_runtime.clone();
-    let llm = state.ctx.llm.clone();
     tokio::spawn(async move {
-        let _ = runtime
-            .process_messages(&llm, &system_prompt, tools, pi_messages, tx)
-            .await;
+        let _ =
+            openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx).await;
     });
 
     eprintln!("[chat_stream] reading events from channel");

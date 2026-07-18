@@ -368,15 +368,12 @@ pub async fn ai_chat(
         timestamp: 0,
     });
 
-    // ── 通过 AgentRuntime 执行 agent loop ──
+    // ── 通过 pi-coding-agent 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
-    let runtime = state.ctx.agent_runtime.clone();
-    let llm = state.ctx.llm.clone();
     tokio::spawn(async move {
-        let _ = runtime
-            .process_messages(&llm, &system_prompt, tools, pi_messages, tx)
-            .await;
+        let _ =
+            openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx).await;
     });
 
     openatrading_core::log::info!("ai/chat: SSE stream starting");

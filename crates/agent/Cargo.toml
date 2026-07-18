@@ -9,8 +9,8 @@ name = "openatrading_agent"
 path = "src/lib.rs"
 
 [dependencies]
-pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.13" }
-pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.13" }
+pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.14" }
+pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.14" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
