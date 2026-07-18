@@ -5,9 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.14" }
-pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.14" }
+pi-extension-api = { workspace = true }
+pi-extensions = {workspace= true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 tracing = "0.1"
+openatrading-api = { path = "../api" }
