@@ -23,8 +23,6 @@ pub struct AgentResult {
 
 // ── Tool definition helper ──────────────────────────────────────────────
 
-/// Convert trading tools to pi-coding-agent ToolDefinitions with execute callbacks
-/// baked in (so tools are immediately executable without add_tools()).
 fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
     trading_tools
         .iter()
@@ -66,20 +64,21 @@ fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
         .collect()
 }
 
-// ── process_messages (chat, used by web / tauri frontends) ──────────────
+// ── process_messages ────────────────────────────────────────────────────
 
 /// Process a user message through a pi-coding-agent session.
 ///
 /// ## Session lifecycle
 /// - `session_id = None`  → creates a new session, persists to JSONL, returns its ID
-/// - `session_id = Some("...")` → loads existing session from JSONL, appends the message
+/// - `session_id = Some(id)` → loads existing session from JSONL, appends the message
 ///
-/// All session persistence is delegated to pi-coding-agent (JSONL files).
+/// The session_id is the **file stem** of the JSONL file on disk (e.g. `2026-07-18T12-34-56_uuid`).
+/// Callers should persist it and pass it back on subsequent messages to continue the conversation.
 pub async fn process_messages(
     system_prompt: &str,
     trading_tools: Vec<Arc<DynTool>>,
     messages: Vec<AgentMessage>,
-    tx: mpsc::UnboundedSender<AgentEvent>,
+    tx: mpsc::Sender<AgentEvent>,
     session_id: Option<String>,
 ) -> Result<(AgentResult, String)> {
     let cwd = std::env::current_dir()
@@ -90,16 +89,22 @@ pub async fn process_messages(
     let tool_defs = build_tool_defs(&trading_tools);
     let ext_registry = openatrading_extension::create_registry();
 
-    // Session file path: {cwd}/.pi-rs/sessions/chat_{session_id}.jsonl
     let session_dir = format!("{cwd}/.pi-rs/sessions");
-    let sid = session_id.unwrap_or_else(|| {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        format!("chat_{ts:x}")
-    });
+
+    // Sanitize user-provided session_id: reject anything with path separators
+    let sid = match session_id {
+        Some(ref id) if id.contains('/') || id.contains('\\') || id.contains("..") => {
+            return Err(anyhow::anyhow!(
+                "invalid session_id: path separators not allowed"
+            ))
+        },
+        Some(id) => id,
+        None => pi_coding_agent::core::session_manager::derive_short_session_id(),
+    };
+
+    // session_file: when the file already exists, pi-coding-agent loads it.
+    // When it doesn't, pi-coding-agent creates a new session with auto-generated
+    // filename `{timestamp}_{uuid}.jsonl`. We query the actual path after creation.
     let session_file = format!("{session_dir}/{sid}.jsonl");
 
     let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
@@ -122,13 +127,17 @@ pub async fn process_messages(
         extension_registry: Some(ext_registry),
         cli_provider: None,
         cli_model: None,
-        persist_session: false, // session_file implies persistence
-        session_file: Some(session_file),
+        persist_session: true,
+        session_file: Some(session_file.clone()),
         fork_from: None,
-        session_dir: Some(session_dir),
+        session_dir: Some(session_dir.clone()),
     })
     .await
     .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
+
+    // Get the actual session ID (may differ from our computed sid on a new session
+    // because pi-coding-agent renames the file internally).
+    let actual_id = session.get_session_id();
 
     // Subscribe → forward all AgentEvents to caller's channel
     let event_tx = tx.clone();
@@ -166,10 +175,8 @@ pub async fn process_messages(
         },
     }
 
-    // Get full transcript
     let all_messages = session.get_messages().await;
 
-    // Build AgentResult from assistant messages
     let mut final_text = String::new();
     let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
 
@@ -192,6 +199,6 @@ pub async fn process_messages(
             final_text,
             tool_outputs,
         },
-        sid,
+        actual_id,
     ))
 }

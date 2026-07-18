@@ -371,16 +371,32 @@ pub async fn ai_chat(
     });
 
     // ── 通过 pi-coding-agent 执行 agent loop ──
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
 
     let sid = req.session_id.clone();
+    let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<anyhow::Result<String>>();
     tokio::spawn(async move {
-        let _ =
+        let result =
             openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx, sid)
                 .await;
+        let _ = sid_tx.send(result.map(|(_, id)| id));
     });
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
+        // Emit session_id first so the frontend can store it
+        match sid_rx.await {
+            Ok(Ok(id)) => {
+                let data = serde_json::to_string(&serde_json::json!({"session_id": id})).unwrap_or_default();
+                yield Ok(Event::default().event("session").data(data));
+            },
+            Ok(Err(e)) => {
+                let err = format!("agent error: {e}");
+                openatrading_core::log::error!("ai/chat: {err}");
+                yield Ok(Event::default().event("error").data(err.replace('\n', "\\n")));
+                return;
+            },
+            Err(_) => return,
+        }
         loop {
             match rx.recv().await {
                 Some(AgentEvent::MessageUpdate { assistant_message_event, .. }) => {
