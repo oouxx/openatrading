@@ -64,6 +64,31 @@ fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
         .collect()
 }
 
+// ── create_session ──────────────────────────────────────
+
+/// Create a new empty pi-coding-agent session and return its info.
+pub fn create_session() -> Result<(String, String)> {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let session_dir = format!("{cwd}/.pi-rs/sessions");
+
+    use pi_coding_agent::core::session_manager::SessionManager;
+    let sm = SessionManager::new(&cwd, &session_dir, None, true, None);
+    let sid = sm.get_session_id().to_string();
+    let file_stem = sm
+        .get_session_file()
+        .and_then(|p| {
+            let p: &std::path::Path = p;
+            p.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| sid.clone());
+    Ok((file_stem, sid))
+}
+
 // ── process_messages ────────────────────────────────────────────────────
 
 /// Process a user message through a pi-coding-agent session.

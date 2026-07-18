@@ -481,6 +481,19 @@ pub struct SessionItem {
     pub message_count: usize,
 }
 
+/// POST /api/ai/sessions — create a new empty session via pi-coding-agent
+pub async fn create_session() -> Json<serde_json::Value> {
+    let (id, title) = openatrading_core::llm::create_session()
+        .unwrap_or_else(|_| (String::new(), String::new()));
+    Json(serde_json::json!({
+        "id": id,
+        "title": title,
+        "created_at": "",
+        "updated_at": "",
+        "message_count": 0,
+    }))
+}
+
 /// GET /api/ai/sessions — list all saved sessions
 pub async fn list_sessions(State(_state): State<Arc<AppState>>) -> Json<Vec<SessionItem>> {
     let cwd = std::env::current_dir()
