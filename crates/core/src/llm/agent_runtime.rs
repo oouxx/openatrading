@@ -91,12 +91,17 @@ pub async fn process_messages(
 
     let session_dir = format!("{cwd}/.pi-rs/sessions");
 
-    // Sanitize user-provided session_id: reject anything with path separators
+    // Sanitize user-provided session_id: reject empty, too long, path separators, null bytes
     let sid = match session_id {
-        Some(ref id) if id.contains('/') || id.contains('\\') || id.contains("..") => {
-            return Err(anyhow::anyhow!(
-                "invalid session_id: path separators not allowed"
-            ))
+        Some(ref id)
+            if id.is_empty()
+                || id.len() > 256
+                || id.contains('/')
+                || id.contains('\\')
+                || id.contains("..")
+                || id.contains('\0') =>
+        {
+            return Err(anyhow::anyhow!("invalid session_id"))
         },
         Some(id) => id,
         None => pi_coding_agent::core::session_manager::derive_short_session_id(),
@@ -104,7 +109,8 @@ pub async fn process_messages(
 
     // session_file: when the file already exists, pi-coding-agent loads it.
     // When it doesn't, pi-coding-agent creates a new session with auto-generated
-    // filename `{timestamp}_{uuid}.jsonl`. We query the actual path after creation.
+    // filename `{timestamp}_{uuid}.jsonl`. We query the actual path after creation
+    // and return the real file stem.
     let session_file = format!("{session_dir}/{sid}.jsonl");
 
     let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
@@ -135,9 +141,13 @@ pub async fn process_messages(
     .await
     .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-    // Get the actual session ID (may differ from our computed sid on a new session
-    // because pi-coding-agent renames the file internally).
-    let actual_id = session.get_session_id();
+    // Get the actual session file stem (pi-coding-agent may have renamed the file
+    // to `{timestamp}_{uuid}.jsonl`). Return the stem so the caller can pass it
+    // back on the next request and we can reconstruct the correct file path.
+    let actual_id = session
+        .get_session_file()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+        .unwrap_or(sid);
 
     // Subscribe → forward all AgentEvents to caller's channel
     let event_tx = tx.clone();
@@ -145,7 +155,7 @@ pub async fn process_messages(
         move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
             let tx = event_tx.clone();
             Box::pin(async move {
-                let _ = tx.send(event);
+                let _ = tx.send(event).await;
             }) as Pin<Box<dyn Future<Output = ()> + Send>>
         },
     );
