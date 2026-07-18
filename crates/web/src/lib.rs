@@ -18,14 +18,12 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use openatrading_core::chat::ChatThreadStore;
 use openatrading_core::context::AppContext;
 use openatrading_core::llm::McpServerConfig;
 pub use openatrading_core::RoleEntry;
 
 pub struct AppState {
     pub ctx: AppContext,
-    pub chat_threads: Arc<ChatThreadStore>,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
@@ -103,7 +101,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/replay/index", get(handlers::get_replay_index))
         .route("/api/replay/news", get(handlers::get_replay_news))
         .route("/api/replay/snapshots", get(handlers::get_replay_snapshots))
-        // .route("/api/replay/analyze", post(handlers::ai_replay_analyze))
         .route(
             "/api/dragon-tiger/detail",
             get(handlers::get_dragon_tiger_detail),
@@ -111,18 +108,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/dragon-tiger/stock-seat",
             get(handlers::get_dragon_tiger_stock_seat),
-        )
-        .route("/api/ai/threads", get(chat::list_threads))
-        .route("/api/ai/threads", post(chat::create_thread))
-        .route("/api/ai/threads/:id", put(chat::rename_thread))
-        .route("/api/ai/threads/:id", delete(chat::delete_thread))
-        .route(
-            "/api/ai/threads/:id/messages",
-            get(chat::get_thread_messages),
-        )
-        .route(
-            "/api/ai/threads/:id/messages",
-            post(chat::save_thread_message),
         )
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))

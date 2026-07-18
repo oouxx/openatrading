@@ -28,6 +28,8 @@ pub struct ChatMessage {
 pub struct ChatRequest {
     message: String,
     #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
     role: Option<String>,
     #[serde(default)]
     history: Vec<ChatMessage>,
@@ -371,11 +373,12 @@ pub async fn ai_chat(
     // ── 通过 pi-coding-agent 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
 
+    let sid = req.session_id.clone();
     tokio::spawn(async move {
         let _ =
-            openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx).await;
+            openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx, sid)
+                .await;
     });
-
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         loop {
@@ -448,185 +451,4 @@ pub async fn ai_chat(
     };
 
     Ok(Sse::new(sse_stream))
-}
-
-// ── Chat Thread CRUD ─────────────────────────────────
-
-#[derive(Serialize)]
-pub struct ThreadResponse {
-    pub id: i64,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct MessageResponse {
-    pub id: i64,
-    pub thread_id: i64,
-    pub role: String,
-    pub content: String,
-    pub created_at: String,
-}
-
-#[derive(Deserialize)]
-pub struct CreateThreadPayload {
-    pub title: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct RenameThreadPayload {
-    pub title: String,
-}
-
-#[derive(Deserialize)]
-pub struct SaveMessagePayload {
-    pub role: String,
-    pub content: String,
-}
-
-/// GET /api/ai/threads — list all threads
-pub async fn list_threads(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<ThreadResponse>>, StatusCode> {
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("list_threads: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(
-        threads
-            .into_iter()
-            .map(|t| ThreadResponse {
-                id: t.id,
-                title: t.title,
-                created_at: t.created_at,
-                updated_at: t.updated_at,
-            })
-            .collect(),
-    ))
-}
-
-/// POST /api/ai/threads — create a new thread
-pub async fn create_thread(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<CreateThreadPayload>,
-) -> Result<Json<ThreadResponse>, StatusCode> {
-    let title = payload.title.unwrap_or_else(|| "新对话".to_string());
-    let id = state.chat_threads.create_thread(&title).map_err(|e| {
-        openatrading_core::log::error!("create_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("create_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        openatrading_core::log::error!("create_thread: thread not found after insert");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(ThreadResponse {
-        id: thread.id,
-        title: thread.title,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
-    }))
-}
-
-/// PUT /api/ai/threads/:id — rename a thread
-pub async fn rename_thread(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-    Json(payload): Json<RenameThreadPayload>,
-) -> Result<Json<ThreadResponse>, StatusCode> {
-    state
-        .chat_threads
-        .rename_thread(id, &payload.title)
-        .map_err(|e| {
-            openatrading_core::log::error!("rename_thread: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("rename_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        openatrading_core::log::error!("rename_thread: thread not found");
-        StatusCode::NOT_FOUND
-    })?;
-    Ok(Json(ThreadResponse {
-        id: thread.id,
-        title: thread.title,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
-    }))
-}
-
-/// DELETE /api/ai/threads/:id — delete a thread
-pub async fn delete_thread(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-) -> StatusCode {
-    match state.chat_threads.delete_thread(id) {
-        Ok(()) => StatusCode::NO_CONTENT,
-        Err(e) => {
-            openatrading_core::log::error!("delete_thread: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        },
-    }
-}
-
-/// GET /api/ai/threads/:id/messages — get messages for a thread
-pub async fn get_thread_messages(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
-    let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        openatrading_core::log::error!("get_thread_messages: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(
-        messages
-            .into_iter()
-            .map(|m| MessageResponse {
-                id: m.id,
-                thread_id: m.thread_id,
-                role: m.role,
-                content: m.content,
-                created_at: m.created_at,
-            })
-            .collect(),
-    ))
-}
-
-/// POST /api/ai/threads/:id/messages — save a message to a thread
-pub async fn save_thread_message(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-    Json(payload): Json<SaveMessagePayload>,
-) -> Result<Json<MessageResponse>, StatusCode> {
-    let msg_id = state
-        .chat_threads
-        .save_message(id, &payload.role, &payload.content)
-        .map_err(|e| {
-            openatrading_core::log::error!("save_thread_message: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        openatrading_core::log::error!("save_thread_message: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let msg = messages
-        .into_iter()
-        .find(|m| m.id == msg_id)
-        .ok_or_else(|| {
-            openatrading_core::log::error!("save_thread_message: message not found after insert");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(MessageResponse {
-        id: msg.id,
-        thread_id: msg.thread_id,
-        role: msg.role,
-        content: msg.content,
-        created_at: msg.created_at,
-    }))
 }
