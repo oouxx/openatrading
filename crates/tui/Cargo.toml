@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 openatrading-core = { path = "../core" }
+pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.12" }
 ratatui = "0.29"
 crossterm = "0.28"
 ratatui-markdown = { version = "0.3", features = ["highlight-lang-all"] }

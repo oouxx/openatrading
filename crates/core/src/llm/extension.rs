@@ -236,6 +236,7 @@ fn tool_def(name: &str, description: &str, parameters: Value) -> ToolDefinition 
         parameters: Some(parameters),
         render_shell: None,
         execution_mode: None,
+        execute: None,
     }
 }
 

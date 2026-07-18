@@ -79,10 +79,6 @@ pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<Com
         });
     }
 
-    // Pipeline commands from PipelineRegistry
-    let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-    commands.extend(pipelines.commands());
-
     Json(commands)
 }
 
@@ -319,21 +315,6 @@ pub async fn ai_chat(
                     .collect(),
                 None => tools_registry.load().all_tools().to_vec(),
             };
-            (build_system_prompt(prompt), filtered)
-        },
-        Some(CommandType::Pipeline) => {
-            let pipeline_name = req.command_name.as_deref().unwrap_or("");
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            let spec = pipelines.find(pipeline_name);
-            let prompt = spec.map(|s| s.prompt.as_str()).unwrap_or(default_strategy);
-            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
-                .cloned()
-                .collect();
             (build_system_prompt(prompt), filtered)
         },
         None => {

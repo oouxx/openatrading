@@ -56,7 +56,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/plate-abnormal", get(handlers::get_plate_abnormal))
         .route("/api/field-items", get(handlers::get_field_items))
         .route("/api/timeline", get(handlers::get_timeline))
-        .route("/api/sentiment", get(handlers::get_sentiment))
         .route("/api/kline/stream", get(handlers::get_kline_stream))
         .route("/api/kline/:symbol", get(handlers::get_kline))
         .route("/api/realtime/stream", get(handlers::get_realtime_stream))

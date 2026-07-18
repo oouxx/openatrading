@@ -8,11 +8,11 @@ use rmcp::{RoleClient, ServiceExt};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use pi_agent_core::pi_ai_types::ContentBlock;
-use pi_agent_core::types::AgentToolResult;
+use pi_coding_agent::pi_agent_core::types::AgentToolResult;
+use pi_coding_agent::pi_ai_types::ContentBlock;
 
 use crate::tools::{to_box_err, tool};
-use pi_agent_core::types::DynTool;
+use pi_coding_agent::pi_agent_core::types::DynTool;
 
 #[derive(Debug, Error)]
 pub enum McpError {
@@ -356,6 +356,7 @@ fn default_enabled() -> bool {
 
 /// Registry of MCP server connections.
 pub struct McpRegistry {
+    #[allow(dead_code)]
     servers: Vec<McpServerConfig>,
 }
 
@@ -388,75 +389,15 @@ impl McpRegistry {
     }
 
     pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {
-        if self.servers.is_empty() {
-            tracing::warn!("[mcp] discover: no servers configured");
-            return (Vec::new(), None);
-        }
-
-        tracing::info!(
-            "[mcp] discover: starting discovery for {} servers: {:?}",
-            self.servers.len(),
-            self.servers.iter().map(|s| &s.name).collect::<Vec<_>>()
-        );
-
-        // Convert our config to upstream format and batch-discover via pi-agent-core
-        let upstream_cfg = UpstreamMcpConfig {
-            mcp_servers: self
-                .servers
-                .iter()
-                .map(|s| {
-                    let upstream_server = match &s.transport {
-                        McpTransportConfig::StreamableHttp { url, .. }
-                        | McpTransportConfig::Sse { url, .. } => UpstreamMcpServerConfig::Http {
-                            url: url.clone(),
-                            headers: Default::default(),
-                        },
-                        McpTransportConfig::Stdio { command, args, env } => {
-                            UpstreamMcpServerConfig::Stdio {
-                                command: command.clone(),
-                                args: args.clone(),
-                                env: env.clone(),
-                            }
-                        },
-                    };
-                    (s.name.clone(), upstream_server)
-                })
-                .collect(),
-        };
-
-        tracing::info!(
-            "[mcp] upstream_cfg: {} servers in config",
-            upstream_cfg.mcp_servers.len()
-        );
-
-        match upstream_load_mcp_tools(&upstream_cfg).await {
-            Ok(mcp_tools) => {
-                let count = mcp_tools.tools.len();
-                let tools: Vec<Arc<DynTool>> = mcp_tools.tools.into_iter().map(Arc::new).collect();
-                tracing::info!(
-                    "[mcp] discovered {count} tools across {} servers",
-                    self.servers.len()
-                );
-                tracing::info!(
-                    "[mcp] McpHandle has {} connections",
-                    mcp_tools.handle.server_count()
-                );
-                (tools, Some(mcp_tools.handle))
-            },
-            Err(e) => {
-                tracing::error!("[mcp] discovery FAILED: {e:?}");
-                (Vec::new(), None)
-            },
-        }
+        tracing::warn!("[mcp] discovery requires pi-agent-core's `mcp` feature — stubbed");
+        (Vec::new(), None)
     }
 }
 
-// Re-export upstream MCP types used by discover()
-pub use pi_agent_core::mcp::McpHandle;
-use pi_agent_core::mcp::{
-    load_mcp_tools_from_config as upstream_load_mcp_tools, McpConfig as UpstreamMcpConfig,
-    McpServerConfig as UpstreamMcpServerConfig,
-};
+/// Stub: pi-agent-core's `McpHandle` requires its `mcp` feature.
+/// Re-enable when pi-coding-agent propagates the feature.
+#[derive(Clone)]
+pub struct McpHandle;
 
 // ============================================================================
 // ToolConfig

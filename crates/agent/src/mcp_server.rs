@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use pi_agent_core::types::DynTool;
+use pi_coding_agent::pi_agent_core::types::DynTool;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, ErrorCode, Implementation, ListToolsResult,
@@ -63,8 +63,10 @@ impl MarketToolsServer {
             .content
             .into_iter()
             .map(|cb| match cb {
-                pi_agent_core::pi_ai_types::ContentBlock::Text { text, .. } => Content::text(text),
-                pi_agent_core::pi_ai_types::ContentBlock::Image {
+                pi_coding_agent::pi_ai_types::ContentBlock::Text { text, .. } => {
+                    Content::text(text)
+                },
+                pi_coding_agent::pi_ai_types::ContentBlock::Image {
                     data, mime_type, ..
                 } => Content::image(data, mime_type),
                 other => Content::text(format!("{other:?}")),

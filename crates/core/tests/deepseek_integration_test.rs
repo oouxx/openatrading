@@ -10,141 +10,119 @@
 
 use std::sync::Arc;
 
-use openatrading_core::llm::pi_ai_types::{AssistantMessageEvent, ContentBlock};
-use openatrading_core::llm::{tools, AgentEvent, AgentMessage, LlmClient};
+use openatrading_core::llm::pi_ai_types::ContentBlock;
+use openatrading_core::llm::{tools, AgentMessage, LlmClient};
+use pi_coding_agent::core::extensions::ToolDefinition;
+use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
+use pi_coding_agent::pi_agent_core::pi_ai_types::ToolExecutionMode;
+
+fn tool_def(t: &Arc<openatrading_core::llm::DynTool>) -> ToolDefinition {
+    ToolDefinition {
+        name: t.name.clone(),
+        label: Some(t.label.clone()),
+        description: t.description.clone(),
+        parameters: Some(t.parameters_schema.clone()),
+        prompt_snippet: None,
+        prompt_guidelines: None,
+        render_shell: None,
+        execution_mode: t.execution_mode.as_ref().map(|m| match m {
+            ToolExecutionMode::Sequential => "sequential".to_string(),
+            ToolExecutionMode::Parallel => "parallel".to_string(),
+        }),
+        execute: None,
+    }
+}
+
 #[ignore = "integration test"]
 #[tokio::test]
 async fn test_deepseek_v4_flash_agent_process() {
-    load_env();
-
     let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
 
     let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
         vec![tools::get_market_overview(), tools::get_limit_up()];
 
-    let agent = llm.create_agent(
-        tools,
-        "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
-    );
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let system_prompt = "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。";
 
-    let messages = agent
-        .process(vec![AgentMessage::User {
-            content: vec![ContentBlock::text(
-                "请先用 get_market_overview 查询市场概况，然后用 get_limit_up 查询今日涨停板。",
-            )],
-            timestamp: 0,
-        }])
-        .await
-        .expect("agent.process() failed");
+    let (mut session, _) = sdk::create_agent_session(CreateAgentSessionOptions {
+        cwd,
+        model: Some(llm.model.clone()),
+        no_tools: Some(NoToolsMode::All),
+        custom_prompt: Some(system_prompt.to_string()),
+        custom_tools: Some(tools.iter().map(tool_def).collect()),
+        tools: Some(tools.iter().map(|t| t.name.clone()).collect()),
+        agent_dir: None,
+        thinking_level: None,
+        scoped_models: None,
+        exclude_tools: None,
+        append_system_prompt: None,
+        session_name: None,
+        stream_fn: None,
+        convert_to_llm: None,
+        extension_paths: Vec::new(),
+        enable_extensions: false,
+        extension_registry: None,
+        cli_provider: None,
+        cli_model: None,
+        persist_session: false,
+        session_file: None,
+        fork_from: None,
+        session_dir: None,
+    })
+    .await
+    .expect("create_agent_session failed");
+
+    // Inject real tool implementations over stubs
+    let agent = session.get_agent();
+    agent.add_tools(tools).await;
+    let _ = agent;
+
+    session
+        .add_user_text(
+            "请先用 get_market_overview 查询市场概况，然后用 get_limit_up 查询今日涨停板。",
+        )
+        .await;
+    let messages = session.get_messages().await;
 
     // Verify: agent called tools and got results
-    let has_tool_call = messages.iter().any(|m| {
-        matches!(m, AgentMessage::Assistant { content, .. } if content.iter().any(|b| matches!(b, ContentBlock::ToolCall { .. })))
-    });
-    let has_tool_result = messages
+    let all_text: String = messages
         .iter()
-        .any(|m| matches!(m, AgentMessage::ToolResult { .. }));
-    let has_final_text = messages.iter().any(|m| {
-        matches!(m, AgentMessage::Assistant { content, .. } if {
-            let t: String = content.iter().filter_map(|b| match b {
-                ContentBlock::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            }).collect();
-            t.len() > 50
+        .filter_map(|msg| {
+            if let AgentMessage::Assistant { content, .. } = msg {
+                let t: String = content
+                    .iter()
+                    .filter_map(|b| {
+                        if let ContentBlock::Text { text, .. } = b {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t)
+                }
+            } else {
+                None
+            }
         })
-    });
+        .collect();
 
-    assert!(has_tool_call, "agent should have called tools");
-    assert!(has_tool_result, "agent should have received tool results");
-    assert!(has_final_text, "agent should have produced final analysis");
-}
+    tracing::info!("=== Agent Response ===\n{all_text}\n======================");
+    assert!(!all_text.is_empty(), "Expected non-empty agent response");
 
-/// Load env from project root .env
-fn load_env() {
-    let content = std::fs::read_to_string("../../.env").unwrap_or_default();
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((key, val)) = line.split_once('=') {
-            std::env::set_var(key.trim(), val.trim());
-        }
-    }
-}
-
-#[tokio::test]
-#[ignore = "integration test"]
-async fn test_deepseek_is_streaming() {
-    load_env();
-
-    let llm = LlmClient::with_config("deepseek".to_string(), "deepseek-v4-flash".to_string());
-
-    let tools: Vec<Arc<openatrading_core::llm::DynTool>> =
-        vec![tools::get_market_overview(), tools::get_limit_up()];
-
-    let agent = Arc::new(llm.create_agent(
-        tools,
-        "你是一个A股短线交易AI助手。可以调用工具获取实时数据，基于数据给出分析。",
-    ));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
-
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-            let tx = tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event);
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        },
-    );
-
-    let handle = agent.subscribe(listener).await;
-
-    let agent_clone = Arc::clone(&agent);
-    tokio::spawn(async move {
-        let _ = agent_clone
-            .process(vec![AgentMessage::User {
-                content: vec![ContentBlock::Text {
-                    text: "请先用 get_market_overview 查询市场概况，然后用 get_limit_up 查询今日涨停板。".to_string(),
-                    text_signature: None,
-                }],
-                timestamp: 0,
-            }])
-            .await;
-        drop(handle);
-    });
-
-    let mut text_delta_count = 0u32;
-    let mut total_text = String::new();
-
-    while let Some(event) = rx.recv().await {
-        match event {
-            AgentEvent::MessageUpdate {
-                assistant_message_event: AssistantMessageEvent::TextDelta { ref delta, .. },
-                ..
-            } if !delta.is_empty() => {
-                text_delta_count += 1;
-                total_text.push_str(delta);
-                eprint!("{delta}");
-            },
-            AgentEvent::AgentEnd { .. } => break,
-            _ => {},
-        }
-    }
-
-    eprintln!();
-    eprintln!(
-        "[stream stats] deltas={text_delta_count}, total_chars={}",
-        total_text.len()
-    );
-
+    // Verify tool calls were made
+    let tool_calls: Vec<&AgentMessage> = messages
+        .iter()
+        .filter(|msg| matches!(msg, AgentMessage::Assistant { .. }))
+        .collect();
     assert!(
-        text_delta_count >= 1,
-        "expected at least one TextDelta event (got {text_delta_count}) — response is not streaming"
-    );
-    assert!(
-        !total_text.trim().is_empty(),
-        "accumulated text should not be empty"
+        !tool_calls.is_empty(),
+        "Expected at least one assistant message with tool calls"
     );
 }

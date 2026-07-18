@@ -14,9 +14,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
+use openatrading_core::api::utils::last_n_trading_days;
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::Client as ApiClient;
-use openatrading_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
 
 use crate::cache::{self, CachePolicy};
 use crate::{AppState, RoleEntry};
@@ -285,29 +285,6 @@ pub async fn get_timeline(
         })?;
         Ok(data)
     })
-    .await
-}
-
-/// GET /api/sentiment
-pub async fn get_sentiment(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    cache::get_or_fetch_json(
-        &state.cache,
-        "sentiment",
-        CachePolicy::snapshot(),
-        || async {
-            let client = ApiClient::new();
-            let data = analyze_sentiment(&client).await.map_err(|e| {
-                openatrading_core::log::error!("sentiment error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            Ok(data)
-        },
-    )
     .await
 }
 

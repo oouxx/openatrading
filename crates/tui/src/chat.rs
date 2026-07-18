@@ -7,9 +7,7 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use openatrading_core::llm::{
-    pi_ai_types::ContentBlock, AgentEvent, AgentMessage, DynTool, LlmClient,
-};
+use openatrading_core::llm::{AgentEvent, DynTool, LlmClient};
 
 use crate::app::{App, Command, TerminalRuntime};
 use crate::conversation::{
@@ -292,39 +290,88 @@ async fn run_llm(
     args: ChatArgs,
     llm_messages: Vec<serde_json::Value>,
 ) {
-    use std::pin::Pin;
+    use pi_coding_agent::core::extensions::ToolDefinition;
+    use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
+    use pi_coding_agent::pi_agent_core::pi_ai_types::ToolExecutionMode;
 
-    let agent = Arc::new(args.llm.create_agent(args.tools, &args.system_prompt));
+    let tool_defs: Vec<ToolDefinition> = args
+        .tools
+        .iter()
+        .map(|t| ToolDefinition {
+            name: t.name.clone(),
+            label: Some(t.label.clone()),
+            description: t.description.clone(),
+            prompt_snippet: None,
+            prompt_guidelines: None,
+            parameters: Some(t.parameters_schema.clone()),
+            render_shell: None,
+            execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                ToolExecutionMode::Sequential => "sequential".to_string(),
+                ToolExecutionMode::Parallel => "parallel".to_string(),
+            }),
+        })
+        .collect();
 
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    for msg in &llm_messages {
-        if msg["role"] == "user" {
-            pi_messages.push(AgentMessage::User {
-                content: vec![ContentBlock::Text {
-                    text: msg["content"].as_str().unwrap_or("").to_string(),
-                    text_signature: None,
-                }],
-                timestamp: 0,
-            });
-        }
-    }
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let (mut session, _) = sdk::create_agent_session(CreateAgentSessionOptions {
+        cwd: cwd.clone(),
+        model: Some(args.llm.model.clone()),
+        no_tools: Some(NoToolsMode::All),
+        custom_prompt: Some(args.system_prompt.clone()),
+        custom_tools: Some(tool_defs),
+        tools: Some(args.tools.iter().map(|t| t.name.clone()).collect()),
+        agent_dir: None,
+        thinking_level: None,
+        scoped_models: None,
+        exclude_tools: None,
+        append_system_prompt: None,
+        session_name: None,
+        stream_fn: None,
+        convert_to_llm: None,
+        extension_paths: Vec::new(),
+        enable_extensions: false,
+        extension_registry: None,
+        cli_provider: None,
+        cli_model: None,
+        persist_session: false,
+        session_file: None,
+        fork_from: None,
+        session_dir: None,
+    })
+    .await
+    .expect("create_agent_session failed");
+
+    // Inject real tool implementations
+    let agent = session.get_agent();
+    agent.add_tools(args.tools).await;
+    let _ = agent;
+
+    // Combine conversation history into one user text
+    let user_text: String = llm_messages
+        .iter()
+        .filter_map(|m| match m.get("role").and_then(|r| r.as_str()) {
+            Some("user") => m.get("content").and_then(|c| c.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
-    let listener = Arc::new(
+    let listener = std::sync::Arc::new(
         move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
             let tx = tx.clone();
             Box::pin(async move {
                 let _ = tx.send(event).await;
-            }) as Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         },
     );
 
-    let handle = agent.subscribe(listener).await;
-    let agent_clone = Arc::clone(&agent);
-    tokio::spawn(async move {
-        let _ = agent_clone.process(pi_messages).await;
-        drop(handle);
-    });
+    session.subscribe(listener).await;
+    session.add_user_text(&user_text).await;
 
     let mut response = String::new();
     while let Some(event) = rx.recv().await {

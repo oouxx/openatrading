@@ -1,19 +1,14 @@
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
-use pi_ai::env_api_keys::get_env_api_key;
-use pi_ai::models::get_model;
-use pi_ai::providers::register_builtins::register_built_in_api_providers;
-use pi_ai::stream;
-use pi_ai::types::{
-    AssistantMessageEvent, ContentBlock, Context, Message, Model, SimpleStreamOptions,
-    StreamOptions, Tool as PiTool,
-};
-
-pub use pi_agent_core::types::{StreamFn, StreamFnOptions};
+use pi_coding_agent::core::agent_session::AgentSession;
+use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
+use pi_coding_agent::pi_agent_core::types::AgentEvent;
+use pi_coding_agent::pi_ai_types::{get_env_api_key, AssistantMessageEvent, ContentBlock, Model};
+// ponytail: get_model / register_built_in_api_providers aren't in pi_ai_types
+// re-exports. Accessed through pi-coding-agent's pi_agent_core re-export chain.
+use pi_coding_agent::pi_agent_core::pi_ai::models::get_model;
+use pi_coding_agent::pi_agent_core::pi_ai::providers::register_builtins::register_built_in_api_providers;
+pub use pi_coding_agent::pi_agent_core::types::{StreamFn, StreamFnOptions};
 
 #[derive(Clone)]
 pub struct LlmClient {
@@ -22,82 +17,46 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    /// Build a pi-agent-core-compatible `StreamFn` from this client.
-    /// This bridges `LlmClient::create_stream` into the generic `StreamFn`
-    /// interface that `pi_agent_core::agent::Agent` and `run_agent_loop` expect.
     pub fn to_stream_fn(&self) -> StreamFn {
-        let api_key = self.api_key.clone();
-        let stream_llm = self.clone();
-        Arc::new(move |_model, ctx, _thinking, opts| {
-            let api_key = api_key.clone();
-            let stream_llm = stream_llm.clone();
-            Box::pin(async move {
-                let mut options = StreamOptions {
-                    api_key: Some(api_key),
-                    max_tokens: Some(4096),
-                    temperature: Some(0.7),
-                    ..Default::default()
-                };
-                if let Some(key) = opts.api_key.clone() {
-                    options.api_key = Some(key);
-                }
-                if let Some(session_id) = opts.session_id {
-                    options.session_id = Some(session_id);
-                }
-                if let Some(transport) = opts.transport {
-                    options.transport = Some(match transport.as_str() {
-                        "websocket" => pi_ai::types::Transport::Websocket,
-                        "websocket-cached" => pi_ai::types::Transport::WebsocketCached,
-                        "auto" => pi_ai::types::Transport::Auto,
-                        _ => pi_ai::types::Transport::Sse,
-                    });
-                }
-                let event_stream = stream_llm.create_stream(&_model, &ctx, options);
-                let response: pi_agent_core::pi_ai_types::StreamResponse = Box::new(event_stream);
-                Ok(response)
-            })
-        })
+        pi_coding_agent::core::sdk::create_default_stream_fn()
     }
 
-    /// Create a pi-agent-core `Agent` pre-configured with this client's LLM.
-    pub fn create_agent(
-        &self,
-        tools: Vec<std::sync::Arc<pi_agent_core::types::DynTool>>,
-        system_prompt: &str,
-    ) -> pi_agent_core::agent::Agent {
-        use pi_agent_core::agent::{Agent, AgentOptions};
-        use pi_agent_core::types::{AgentState, GetApiKeyFn};
-
-        let stream_fn = self.to_stream_fn();
-        let get_api_key: GetApiKeyFn = std::sync::Arc::new({
-            let api_key = self.api_key.clone();
-            move |_provider| {
-                let key = api_key.clone();
-                Box::pin(async move { Some(key) })
-            }
-        });
-
-        Agent::new(AgentOptions {
-            initial_state: Some(AgentState {
-                system_prompt: system_prompt.to_string(),
-                model: self.model.clone(),
-                thinking_level: "off".into(),
-                tools,
-                messages: Vec::new(),
-                is_streaming: false,
-                streaming_message: None,
-                pending_tool_calls: HashSet::new(),
-                error_message: None,
-            }),
-            stream_fn: Some(stream_fn),
-            get_api_key: Some(get_api_key),
-            ..Default::default()
+    /// Create an in-memory agent session via the SDK.
+    async fn create_session(&self, system_prompt: Option<&str>) -> Result<AgentSession> {
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+            cwd,
+            model: Some(self.model.clone()),
+            no_tools: Some(NoToolsMode::All),
+            custom_prompt: system_prompt.map(|s| s.to_string()),
+            persist_session: false,
+            session_file: None,
+            extension_paths: Vec::new(),
+            enable_extensions: false,
+            agent_dir: None,
+            thinking_level: None,
+            scoped_models: None,
+            tools: None,
+            exclude_tools: None,
+            append_system_prompt: None,
+            session_name: None,
+            stream_fn: None,
+            convert_to_llm: None,
+            custom_tools: None,
+            extension_registry: None,
+            cli_provider: None,
+            cli_model: None,
+            fork_from: None,
+            session_dir: None,
         })
+        .await
+        .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
+        Ok(session)
     }
 
-    /// Return a sensible base_url for a known provider when the model is
-    /// not in the built-in registry.  Falls back to empty (which pi-ai's
-    /// HTTP transport treats as "use the registered API endpoint").
     fn default_base_url(provider: &str) -> String {
         match provider {
             "deepseek" => "https://api.deepseek.com",
@@ -146,14 +105,10 @@ impl LlmClient {
         Self { model, api_key }
     }
 
-    /// Create LlmClient with explicit provider + model (override env/defaults).
-    /// Call from_env() first, then override provider and model.
     pub fn with_config(provider: String, model_id: String) -> Self {
         Self::from_env(provider, model_id)
     }
 
-    /// Create LlmClient from config-provided provider/model, with env var fallback.
-    /// Priority: config field > env var > built-in default.
     pub fn from_config(config_provider: Option<&str>, config_model: Option<&str>) -> Self {
         let provider = config_provider
             .filter(|s| !s.is_empty())
@@ -168,35 +123,43 @@ impl LlmClient {
         Self::with_config(provider, model_id)
     }
 
+    // ── Public chat API (unified via create_agent_session) ──────────────
+
+    /// One-shot chat — wraps text as JSON and collects the response.
     pub async fn chat(&self, prompt: &str) -> Result<String> {
-        let context = Context {
-            system_prompt: None,
-            messages: vec![Message::User {
-                content: vec![ContentBlock::text(prompt)],
-                timestamp: 0,
-            }],
-            tools: None,
-        };
+        let mut session = self.create_session(None).await?;
+        session.add_user_text(prompt).await;
+        let messages = session.get_messages().await;
 
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let msg = stream::complete(&self.model, &context, Some(options))
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-        let text: String = msg
-            .content
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::Text { text, .. } => Some(text.as_str()),
-                _ => None,
+        let text: String = messages
+            .into_iter()
+            .rev()
+            .find_map(|msg| {
+                if let pi_coding_agent::pi_agent_core::types::AgentMessage::Assistant {
+                    content,
+                    ..
+                } = msg
+                {
+                    let t: String = content
+                        .iter()
+                        .filter_map(|b| {
+                            if let ContentBlock::Text { text, .. } = b {
+                                Some(text.as_str())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if t.is_empty() {
+                        None
+                    } else {
+                        Some(t)
+                    }
+                } else {
+                    None
+                }
             })
-            .collect();
+            .unwrap_or_default();
 
         if text.is_empty() {
             anyhow::bail!("LLM returned empty response");
@@ -204,114 +167,121 @@ impl LlmClient {
         Ok(text)
     }
 
-    pub async fn chat_stream(&self, prompt: &str) -> Result<StreamResult> {
-        let context = Context {
-            system_prompt: None,
-            messages: vec![Message::User {
-                content: vec![ContentBlock::text(prompt)],
-                timestamp: 0,
-            }],
-            tools: None,
-        };
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let event_stream = stream::stream(&self.model, &context, Some(options));
-        let result_stream = event_stream_to_text_stream(event_stream);
-        Ok(Box::pin(result_stream))
+    /// Stream chat — input is JSON messages array `[{"role":"user","content":"..."}]`.
+    pub async fn chat_stream(&self, messages_json: &str) -> Result<StreamResult> {
+        let system_prompt = extract_system_prompt(messages_json);
+        let user_text = extract_user_text(messages_json);
+        let session = self.create_session(system_prompt.as_deref()).await?;
+        let stream = session_to_stream(session, user_text, false);
+        Ok(Box::pin(stream))
     }
 
+    /// Stream chat with `\x00TEXT\x00` / `\x00THINKING\x00` markers.
+    pub async fn chat_stream_marked(&self, messages_json: &str) -> Result<StreamResult> {
+        let system_prompt = extract_system_prompt(messages_json);
+        let user_text = extract_user_text(messages_json);
+        let session = self.create_session(system_prompt.as_deref()).await?;
+        let stream = session_to_stream(session, user_text, true);
+        Ok(Box::pin(stream))
+    }
+
+    /// Streaming chat with message history (backward compat alias).
+    /// Delegates to [`chat_stream`].
     pub async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
-        let messages_val: serde_json::Value =
-            serde_json::from_str(messages_json).unwrap_or_default();
-
-        let context = json_to_context(&messages_val, None);
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let event_stream = stream::stream(&self.model, &context, Some(options));
-        let result_stream = event_stream_to_text_stream(event_stream);
-        Ok(Box::pin(result_stream))
-    }
-
-    /// Stream text from the model with per-chunk markers that distinguish
-    /// normal text from thinking/reasoning content.
-    ///
-    /// See [`event_stream_to_marked_stream`] for the marker format.
-    pub async fn chat_stream_with_messages_marked(
-        &self,
-        messages_json: &str,
-    ) -> Result<StreamResult> {
-        let messages_val: serde_json::Value =
-            serde_json::from_str(messages_json).unwrap_or_default();
-
-        let context = json_to_context(&messages_val, None);
-
-        let options = StreamOptions {
-            api_key: Some(self.api_key.clone()),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
-            ..Default::default()
-        };
-
-        let event_stream = stream::stream(&self.model, &context, Some(options));
-        let result_stream = event_stream_to_marked_stream(event_stream);
-        Ok(Box::pin(result_stream))
-    }
-
-    pub fn stream_simple(
-        &self,
-        context: &Context,
-        reasoning: Option<&str>,
-    ) -> pi_ai::utils::event_stream::AssistantMessageEventStream {
-        let options = SimpleStreamOptions {
-            base: StreamOptions {
-                api_key: Some(self.api_key.clone()),
-                max_tokens: Some(4096),
-                temperature: Some(0.7),
-                ..Default::default()
-            },
-            reasoning: reasoning.map(|s| s.to_string()),
-            thinking_budgets: None,
-        };
-
-        stream::stream_simple(&self.model, context, Some(options))
-    }
-
-    /// Create a stream for the given model and context. Used by the agent's
-    /// `StreamFn` so the agent crate does not have to depend on `pi-ai`.
-    pub fn create_stream(
-        &self,
-        model: &Model,
-        context: &Context,
-        options: StreamOptions,
-    ) -> pi_ai::utils::event_stream::AssistantMessageEventStream {
-        let mut options = options;
-        if options.api_key.as_ref().is_none_or(|k| k.is_empty()) {
-            options.api_key = Some(self.api_key.clone());
-        }
-        if options.max_tokens.is_none() {
-            options.max_tokens = Some(4096);
-        }
-        if options.temperature.is_none() {
-            options.temperature = Some(0.7);
-        }
-        stream::stream(model, context, Some(options))
+        self.chat_stream(messages_json).await
     }
 }
 
-/// Trait for abstracting the LLM chat stream provider.
-/// Enables the TUI to accept either a real [`LlmClient`] or a mock in tests.
+// ── SDK session → Stream ─────────────────────────────────────────────────────
+
+/// Spawn an AgentSession and forward text deltas through a channel.
+/// When `marked` is true, chunks are prefixed with \x00TEXT\x00 / \x00THINKING\x00.
+fn session_to_stream(
+    mut session: AgentSession,
+    text: String,
+    marked: bool,
+) -> impl futures::Stream<Item = Result<String>> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Result<String>>();
+    let tx2 = tx.clone();
+
+    tokio::spawn(async move {
+        session
+            .subscribe(std::sync::Arc::new(move |event, _signal| {
+                let tx = tx2.clone();
+                Box::pin(async move {
+                    if let AgentEvent::MessageUpdate {
+                        assistant_message_event,
+                        ..
+                    } = event
+                    {
+                        match assistant_message_event {
+                            AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
+                                let chunk = if marked {
+                                    format!("\x00TEXT\x00{}", delta.replace('\n', "\\n"))
+                                } else {
+                                    delta
+                                };
+                                let _ = tx.send(Ok(chunk));
+                            },
+                            AssistantMessageEvent::ThinkingDelta { delta, .. }
+                                if !delta.is_empty() && marked =>
+                            {
+                                let _ = tx.send(Ok(format!(
+                                    "\x00THINKING\x00{}",
+                                    delta.replace('\n', "\\n")
+                                )));
+                            },
+                            AssistantMessageEvent::Error { error, .. } => {
+                                let msg = error.error_message.unwrap_or_else(|| "unknown".into());
+                                let _ = tx.send(Err(anyhow::anyhow!("{msg}")));
+                            },
+                            _ => {},
+                        }
+                    }
+                })
+            }))
+            .await;
+        session.add_user_text(&text).await;
+    });
+
+    async_stream::stream! {
+        while let Some(item) = rx.recv().await {
+            yield item;
+        }
+    }
+}
+
+/// Extract the system prompt from a JSON messages array (first system message).
+fn extract_system_prompt(messages_json: &str) -> Option<String> {
+    let val: serde_json::Value = serde_json::from_str(messages_json).ok()?;
+    let arr = val.as_array()?;
+    for msg in arr {
+        if msg.get("role").and_then(|r| r.as_str()) == Some("system") {
+            return msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_string());
+        }
+    }
+    None
+}
+
+/// Extract the last user text from a JSON messages array.
+fn extract_user_text(messages_json: &str) -> String {
+    let val: serde_json::Value = serde_json::from_str(messages_json).unwrap_or_default();
+    let arr = val.as_array().map(|v| v.as_slice()).unwrap_or_default();
+    for msg in arr.iter().rev() {
+        if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
+            if let Some(text) = msg.get("content").and_then(|c| c.as_str()) {
+                return text.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+// ── Trait (kept for TUI backward compat) ─────────────────────────────────────
+
 #[async_trait]
 pub trait ChatStreamProvider: Clone + Send + 'static {
     async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult>;
@@ -320,189 +290,13 @@ pub trait ChatStreamProvider: Clone + Send + 'static {
 #[async_trait]
 impl ChatStreamProvider for LlmClient {
     async fn chat_stream_with_messages(&self, messages_json: &str) -> Result<StreamResult> {
-        self.chat_stream_with_messages(messages_json).await
+        self.chat_stream(messages_json).await
     }
 }
 
-fn json_to_context(
-    messages_val: &serde_json::Value,
-    tools_val: Option<&serde_json::Value>,
-) -> Context {
-    let mut system_prompt = None;
-    let mut messages = Vec::new();
-
-    if let Some(arr) = messages_val.as_array() {
-        for msg in arr {
-            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
-
-            match role {
-                "system" => {
-                    system_prompt = Some(content.to_string());
-                },
-                "user" => {
-                    messages.push(Message::User {
-                        content: vec![ContentBlock::text(content)],
-                        timestamp: 0,
-                    });
-                },
-                "assistant" => {
-                    let mut blocks = Vec::new();
-                    if !content.is_empty() {
-                        blocks.push(ContentBlock::text(content));
-                    }
-                    if let Some(tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
-                        for tc in tool_calls {
-                            let id = tc
-                                .get("id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let name = tc
-                                .get("function")
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let arguments = tc
-                                .get("function")
-                                .and_then(|f| f.get("arguments"))
-                                .and_then(|a| a.as_str())
-                                .unwrap_or("{}");
-                            let args_val: serde_json::Value =
-                                serde_json::from_str(arguments).unwrap_or_default();
-                            blocks.push(ContentBlock::ToolCall {
-                                id,
-                                name,
-                                arguments: args_val,
-                                thought_signature: None,
-                            });
-                        }
-                    }
-                    if !blocks.is_empty() {
-                        messages.push(Message::Assistant {
-                            content: blocks,
-                            api: String::new(),
-                            provider: String::new(),
-                            model: String::new(),
-                            response_model: None,
-                            response_id: None,
-                            diagnostics: None,
-                            usage: Default::default(),
-                            stop_reason: pi_ai::types::StopReason::Stop,
-                            error_message: None,
-                            timestamp: 0,
-                        });
-                    }
-                },
-                "tool" => {
-                    let tool_call_id = msg
-                        .get("tool_call_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let tool_name = msg
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    messages.push(Message::ToolResult {
-                        tool_call_id,
-                        tool_name,
-                        content: vec![ContentBlock::text(content)],
-                        details: None,
-                        is_error: false,
-                        timestamp: 0,
-                    });
-                },
-                _ => {},
-            }
-        }
-    }
-
-    let tools = tools_val.and_then(|v| v.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|t| {
-                let func = t.get("function")?;
-                Some(PiTool {
-                    name: func.get("name")?.as_str()?.to_string(),
-                    description: func
-                        .get("description")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    parameters: func.get("parameters").cloned().unwrap_or_default(),
-                })
-            })
-            .collect::<Vec<_>>()
-    });
-
-    Context {
-        system_prompt,
-        messages,
-        tools,
-    }
-}
-
-fn event_stream_to_text_stream(
-    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
-) -> impl futures::Stream<Item = Result<String>> {
-    async_stream::stream! {
-        let mut stream = Box::pin(event_stream);
-        while let Some(event) = stream.next().await {
-            match event {
-                AssistantMessageEvent::TextDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        yield Ok(delta);
-                    }
-                AssistantMessageEvent::Error { error, .. } => {
-                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
-                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
-                    break;
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-/// Like [`event_stream_to_text_stream`] but prefixes each chunk so the
-/// consumer can distinguish text from reasoning/thinking content.
-///
-/// - Text chunks are prefixed with `\x00TEXT\x00`
-/// - Thinking chunks are prefixed with `\x00THINKING\x00`
-///
-/// The null-byte prefix is chosen because it cannot appear in LLM output,
-/// making parsing unambiguous.
-fn event_stream_to_marked_stream(
-    event_stream: pi_ai::utils::event_stream::AssistantMessageEventStream,
-) -> impl futures::Stream<Item = Result<String>> {
-    async_stream::stream! {
-        let mut stream = Box::pin(event_stream);
-        while let Some(event) = stream.next().await {
-            match event {
-                AssistantMessageEvent::TextDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        yield Ok(format!("\x00TEXT\x00{}", delta.replace('\n', "\\n")));
-                    }
-                AssistantMessageEvent::ThinkingDelta { delta, .. }
-                    if !delta.is_empty() => {
-                        yield Ok(format!("\x00THINKING\x00{}", delta.replace('\n', "\\n")));
-                    }
-                AssistantMessageEvent::Error { error, .. } => {
-                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
-                    yield Err(anyhow::anyhow!("LLM stream error: {msg}"));
-                    break;
-                }
-                _ => {}
-            }
-        }
-    }
-}
+// ── Event types & converters ─────────────────────────────────────────────────
 
 /// Convert a single AssistantMessageEvent into StreamEvent(s), if relevant.
-/// Shared between stream-based (event_stream_to_tool_stream) and
-/// channel-based (SSE handler) consumers.
 pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<StreamEvent> {
     let mut events = Vec::new();
     match event {
@@ -512,9 +306,7 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
         AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
             events.push(StreamEvent::ReasoningText(delta.clone()));
         },
-        AssistantMessageEvent::ToolCallStart { .. } => {
-            // Name not available until ToolCallEnd — skip empty start
-        },
+        AssistantMessageEvent::ToolCallStart { .. } => {},
         AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
             events.push(StreamEvent::ToolCallDelta(ToolCall {
                 id: String::new(),
@@ -531,7 +323,7 @@ pub fn assistant_event_to_stream_events(event: &AssistantMessageEvent) -> Vec<St
         },
         AssistantMessageEvent::Done { message, .. } => {
             for block in &message.content {
-                use pi_ai::types::ContentBlock;
+                use pi_coding_agent::pi_ai_types::ContentBlock;
                 match block {
                     ContentBlock::Text { text, .. } => {
                         events.push(StreamEvent::Text(text.clone()));
