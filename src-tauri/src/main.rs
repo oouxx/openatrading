@@ -257,12 +257,42 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                         .and_then(|s| s.to_str())
                         .unwrap_or("")
                         .to_string();
+                    // Parse session header and count messages
+                    let (title, created_at) = std::fs::read_to_string(&path)
+                        .ok()
+                        .and_then(|c| {
+                            let first = c.lines().next().unwrap_or("");
+                            serde_json::from_str::<serde_json::Value>(first)
+                                .ok()
+                                .map(|h| {
+                                    let name = h
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(&stem)
+                                        .to_string();
+                                    let ts = h
+                                        .get("timestamp")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    (name, ts)
+                                })
+                        })
+                        .unwrap_or_else(|| (stem.clone(), String::new()));
+                    let msg_count = std::fs::read_to_string(&path)
+                        .ok()
+                        .map(|c| {
+                            c.lines()
+                                .filter(|l| l.contains(r#""type":"message""#))
+                                .count()
+                        })
+                        .unwrap_or(0);
                     sessions.push(serde_json::json!({
                         "id": stem,
-                        "title": stem,
-                        "created_at": "",
+                        "title": title,
+                        "created_at": created_at,
                         "updated_at": "",
-                        "message_count": 0,
+                        "message_count": msg_count,
                     }));
                 }
             }
@@ -993,11 +1023,26 @@ async fn api_chat_stream(
         .get("command_name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let skill_name = body
+        .get("skill_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     let effective_command_type = match command_type_str {
         "tool" => Some(CommandType::Tool),
         "skill" => Some(CommandType::Skill),
-        _ => None,
+        _ => {
+            if !skill_name.is_empty() {
+                Some(CommandType::Skill)
+            } else {
+                None
+            }
+        },
+    };
+    let effective_command_name = if !command_name.is_empty() {
+        command_name
+    } else {
+        skill_name
     };
 
     let (system_prompt, tools) = match &effective_command_type {
@@ -1012,7 +1057,7 @@ async fn api_chat_stream(
                 .load()
                 .all_tools()
                 .iter()
-                .filter(|t| t.name == command_name)
+                .filter(|t| t.name == effective_command_name)
                 .cloned()
                 .collect();
             (sp, filtered)
@@ -1022,7 +1067,7 @@ async fn api_chat_stream(
             let prompt = skills
                 .skills()
                 .iter()
-                .find(|s| s.name == command_name)
+                .find(|s| s.name == effective_command_name)
                 .map(|s| s.content.as_str())
                 .unwrap_or(default_strategy);
             (
