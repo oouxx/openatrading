@@ -1041,14 +1041,15 @@ async fn api_chat_stream(
 
     eprintln!("[chat_stream] creating agent and subscribing to events");
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
 
     let session_id = body
         .get("session_id")
         .and_then(|v| v.as_str())
         .map(String::from);
+    let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
     tokio::spawn(async move {
-        let _ = openatrading_core::llm::process_messages(
+        let result = openatrading_core::llm::process_messages(
             &system_prompt,
             tools,
             pi_messages,
@@ -1056,9 +1057,28 @@ async fn api_chat_stream(
             session_id,
         )
         .await;
+        let _ = sid_tx.send(result.map(|(_, id)| id).map_err(|e| e.to_string()));
     });
 
     eprintln!("[chat_stream] reading events from channel");
+
+    // Send session_id first so the frontend can store it
+    match sid_rx.await {
+        Ok(Ok(id)) => {
+            channel
+                .send(format!("\x00SESSION\x00{}", id))
+                .map_err(|e| format!("channel error: {e}"))?;
+        },
+        Ok(Err(e)) => {
+            let err = format!("agent error: {e}");
+            eprintln!("[chat_stream] {err}");
+            channel
+                .send(format!("\x00ERROR\x00{}", err))
+                .map_err(|e| format!("channel error: {e}"))?;
+            return Ok(());
+        },
+        Err(_) => return Ok(()),
+    }
 
     let mut text_count = 0u32;
     loop {
