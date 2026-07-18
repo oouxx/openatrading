@@ -703,6 +703,13 @@ async fn dispatch_post(
     state: &Arc<AppState>,
 ) -> Result<serde_json::Value, String> {
     match path {
+        "/api/ai/sessions" => {
+            let (id, title) = openatrading_core::llm::create_session()
+                .unwrap_or_else(|_| (String::new(), String::new()));
+            Ok(
+                serde_json::json!({"id": id, "title": title, "created_at": "", "updated_at": "", "message_count": 0}),
+            )
+        },
         "/api/roles" => {
             let name = body
                 .get("name")

@@ -28,7 +28,7 @@ pub use openatrading_agent::types::{
 };
 
 // AgentRuntime — standalone one-shot agent invocation (no persistent session management)
-pub use self::agent_runtime::{process_messages, AgentResult};
+pub use self::agent_runtime::{create_session, process_messages, AgentResult};
 
 // Business-specific tool registry (stays in core, references market tools)
 pub use self::tools::ToolRegistry;

@@ -110,6 +110,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::get_dragon_tiger_stock_seat),
         )
         .route("/api/ai/sessions", get(chat::list_sessions))
+        .route("/api/ai/sessions", post(chat::create_session))
         .route(
             "/api/ai/sessions/:id/messages",
             get(chat::get_session_messages),
