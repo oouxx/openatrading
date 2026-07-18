@@ -244,7 +244,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            let dir = std::path::Path::new(&cwd).join(".pi-rs/sessions");
+            let dir = std::path::Path::new(&cwd).join(".pi-rs/agent/sessions");
             let mut sessions: Vec<serde_json::Value> = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
@@ -603,7 +603,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                         .to_string_lossy()
                         .to_string();
                     let fpath = std::path::Path::new(&cwd)
-                        .join(".pi-rs/sessions")
+                        .join(".pi-rs/agent/sessions")
                         .join(format!("{msg_id}.jsonl"));
                     if !fpath.exists() {
                         return Err("session not found".to_string());
@@ -849,7 +849,7 @@ async fn dispatch_post(
                     .to_string_lossy()
                     .to_string();
                 let fpath = std::path::Path::new(&cwd)
-                    .join(".pi-rs/sessions")
+                    .join(".pi-rs/agent/sessions")
                     .join(format!("{sid}.jsonl"));
                 if fpath.exists() {
                     std::fs::remove_file(&fpath).map_err(|e| format!("{e}"))?;
