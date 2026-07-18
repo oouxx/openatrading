@@ -1,0 +1,13 @@
+[package]
+name = "openatrading-extension"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.13" }
+pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.13" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing = "0.1"

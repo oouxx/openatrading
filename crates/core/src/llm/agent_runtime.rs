@@ -17,7 +17,6 @@ use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
 use pi_coding_agent::core::session_manager::SessionManager;
 use pi_coding_agent::core::system_prompt::SkillInfo;
 
-use super::extension::TradingToolExtension;
 use super::StreamEvent;
 
 // ── AgentResult ──────────────────────────────────────────────────────────
@@ -52,8 +51,8 @@ impl AgentSession {
             .to_string_lossy()
             .to_string();
 
-        // Create extension registry with trading tool definitions
-        let ext_registry = TradingToolExtension::create_registry();
+        // Create extension registry with trading tools + pi-rs built-in extensions
+        let ext_registry = openatrading_extension::create_registry();
 
         // Convert trading tools to ToolDefinitions with execute callbacks.
         // v1.79.13+: ToolDefinition supports `execute`, so stubs are eliminated —

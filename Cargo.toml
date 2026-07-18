@@ -8,6 +8,7 @@ members = [
     "crates/web",
     "src-tauri",
     "crates/agent",
+    "crates/extension",
 ]
 
 [workspace.package]

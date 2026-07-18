@@ -1,41 +1,32 @@
-//! Trading tool extension — wraps market data tools as pi-coding-agent extensions.
+//! Market data extension — A-share trading tools for the agent.
 //!
-//! Tools are registered via `ExtensionAPI::register_tools()` and executed
-//! via `ExtensionAPI::handle_tool_call()`. The extension registry is passed
-//! to `create_agent_session()` through `CreateAgentSessionOptions.extension_registry`.
+//! Registered tools appear in the agent's tool list via prompt guidelines.
+//! Actual tool execution is handled by `DynTool` instances passed through
+//! `CreateAgentSessionOptions.custom_tools` with `execute` callbacks.
 
 use async_trait::async_trait;
-use pi_coding_agent::core::extensions::{
-    ExtensionAPI, ExtensionContext, ExtensionRegistry, ToolCallOutput, ToolDefinition, ToolRegistry,
+use pi_extension_api::{
+    EventResult, ExtensionAPI, ExtensionContext, ExtensionEvent, ToolDefinition, ToolRegistry,
 };
 use serde_json::Value;
 
-// ── TradingToolExtension ────────────────────────────────────────────────
+/// Market data extension providing A-share trading tools.
+pub struct MarketDataExtension;
 
-/// Extension that provides A-share market data tools to the agent.
-pub struct TradingToolExtension;
+impl MarketDataExtension {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
-impl Default for TradingToolExtension {
+impl Default for MarketDataExtension {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TradingToolExtension {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Create an ExtensionRegistry with this extension registered.
-    pub fn create_registry() -> ExtensionRegistry {
-        let mut registry = ExtensionRegistry::new();
-        registry.register(Box::new(Self::new()));
-        registry
-    }
-}
-
 #[async_trait]
-impl ExtensionAPI for TradingToolExtension {
+impl ExtensionAPI for MarketDataExtension {
     fn name(&self) -> &'static str {
         "openatrading-market"
     }
@@ -211,15 +202,11 @@ impl ExtensionAPI for TradingToolExtension {
         ));
     }
 
-    async fn handle_tool_call(
+    async fn on_event(
         &self,
-        _tool_name: &str,
-        _params: Value,
+        _event: &ExtensionEvent,
         _ctx: &ExtensionContext,
-    ) -> Option<ToolCallOutput> {
-        // All trading tools are stateless — they create fresh API clients per call.
-        // The actual execution is handled by the DynTool instances in the agent's tool list.
-        // This handler is a fallback for when the extension system intercepts the call.
+    ) -> Option<EventResult> {
         None
     }
 }
