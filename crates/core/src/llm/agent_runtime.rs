@@ -66,31 +66,41 @@ fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
         .collect()
 }
 
-// ── process_messages (one-shot chat, used by web / tauri frontends) ─────
+// ── process_messages (chat, used by web / tauri frontends) ──────────────
 
-/// Process pre-built messages through pi-coding-agent in a one-shot session.
+/// Process a user message through a pi-coding-agent session.
 ///
-/// Creates a temporary session, subscribes for events, processes the given
-/// messages via pi-coding-agent, streams all `AgentEvent`s through `tx`,
-/// and returns the accumulated `AgentResult` when done.
+/// ## Session lifecycle
+/// - `session_id = None`  → creates a new session, persists to JSONL, returns its ID
+/// - `session_id = Some("...")` → loads existing session from JSONL, appends the message
 ///
-/// All session management is delegated to pi-coding-agent.
+/// All session persistence is delegated to pi-coding-agent (JSONL files).
 pub async fn process_messages(
     system_prompt: &str,
     trading_tools: Vec<Arc<DynTool>>,
     messages: Vec<AgentMessage>,
     tx: mpsc::UnboundedSender<AgentEvent>,
-) -> Result<AgentResult> {
+    session_id: Option<String>,
+) -> Result<(AgentResult, String)> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
-    // Build tools with execute callbacks
     let tool_defs = build_tool_defs(&trading_tools);
-
-    // Create extension registry with trading tools + pi-rs built-in extensions
     let ext_registry = openatrading_extension::create_registry();
+
+    // Session file path: {cwd}/.pi-rs/sessions/chat_{session_id}.jsonl
+    let session_dir = format!("{cwd}/.pi-rs/sessions");
+    let sid = session_id.unwrap_or_else(|| {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        format!("chat_{ts:x}")
+    });
+    let session_file = format!("{session_dir}/{sid}.jsonl");
 
     let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
         cwd: cwd.clone(),
@@ -99,11 +109,11 @@ pub async fn process_messages(
         thinking_level: None,
         scoped_models: None,
         no_tools: Some(NoToolsMode::All),
-        tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
+        tools: None,
         exclude_tools: None,
         custom_prompt: Some(system_prompt.to_string()),
         append_system_prompt: None,
-        session_name: None,
+        session_name: Some(sid.clone()),
         stream_fn: None,
         convert_to_llm: None,
         custom_tools: Some(tool_defs),
@@ -112,15 +122,15 @@ pub async fn process_messages(
         extension_registry: Some(ext_registry),
         cli_provider: None,
         cli_model: None,
-        persist_session: false,
-        session_file: None,
+        persist_session: false, // session_file implies persistence
+        session_file: Some(session_file),
         fork_from: None,
-        session_dir: None,
+        session_dir: Some(session_dir),
     })
     .await
     .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-    // Subscribe via underlying agent → forward all events to caller's channel
+    // Subscribe → forward all AgentEvents to caller's channel
     let event_tx = tx.clone();
     let listener = Arc::new(
         move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
@@ -177,8 +187,11 @@ pub async fn process_messages(
         }
     }
 
-    Ok(AgentResult {
-        final_text,
-        tool_outputs,
-    })
+    Ok((
+        AgentResult {
+            final_text,
+            tool_outputs,
+        },
+        sid,
+    ))
 }
