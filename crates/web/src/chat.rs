@@ -555,6 +555,73 @@ pub async fn list_sessions(State(_state): State<Arc<AppState>>) -> Json<Vec<Sess
     Json(sessions)
 }
 
+#[derive(Serialize)]
+pub struct SessionMessage {
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+/// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
+pub async fn get_session_messages(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let path = std::path::Path::new(&cwd)
+        .join(".pi-rs/sessions")
+        .join(format!("{id}.jsonl"));
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Ok(Json(Vec::new())),
+    };
+
+    let mut messages: Vec<SessionMessage> = Vec::new();
+    for line in content.lines().skip(1) {
+        // skip header line
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            let ts = entry
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if let Some(msg) = entry.get("message") {
+                let role = msg
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let content = msg
+                    .get("content")
+                    .and_then(|v| v.as_array())
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+                if !role.is_empty() {
+                    messages.push(SessionMessage {
+                        role,
+                        content,
+                        created_at: ts,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(Json(messages))
+}
+
 /// DELETE /api/ai/sessions/:id — delete a saved session
 pub async fn delete_session(axum::extract::Path(id): axum::extract::Path<String>) -> StatusCode {
     let cwd = std::env::current_dir()

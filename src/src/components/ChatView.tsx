@@ -104,8 +104,27 @@ export default function AiCopilot({
   }, [])
 
   // Messages from previous turns are stored in pi-coding-agent's JSONL session file.
-  // They are used as LLM context when continuing a session but not rendered in the UI
-  // until a new exchange adds messages to the in-memory store.
+  // Load messages from session JSONL when switching to an existing session
+  useEffect(() => {
+    if (activeThreadId === null) return
+    if (threadMessagesRef.current.has(activeThreadId)) {
+      scrollDown()
+      return
+    }
+    fetchJson<{ role: string; content: string }[]>(`/api/ai/sessions/${activeThreadId}/messages`).then((msgs) => {
+      if (!msgs || msgs.length === 0) return
+      threadMessagesRef.current.set(
+        activeThreadId,
+        msgs.map((m) => ({
+          id: newMsgId(),
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content,
+        }))
+      )
+      setThreadMessages(new Map(threadMessagesRef.current))
+      scrollDown()
+    }).catch(() => {})
+  }, [activeThreadId, scrollDown])
 
   // Stock search debounce
   useEffect(() => {
@@ -187,11 +206,15 @@ export default function AiCopilot({
       setShowSlash(false)
       setInput("")
 
-      const threadMsgs = threadMessagesRef.current.get(threadId ?? "__new__") ?? []
-      const history = threadMsgs.map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
-      }))
+      // When continuing a session, pi-coding-agent loads history from JSONL.
+      // Only send history for new sessions (no session_id).
+      const earlyMsgs = threadMessagesRef.current.get(threadId ?? "__new__") ?? []
+      const history = threadId === null
+        ? earlyMsgs.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
+          }))
+        : []
 
       const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
       const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }

@@ -566,6 +566,45 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     .map_err(|e| format!("{e}"))?;
                 return Ok(serde_json::to_value(data).unwrap_or_default());
             }
+            if let Some(rest) = path.strip_prefix("/api/ai/sessions/") {
+                if let Some(msg_id) = rest.strip_suffix("/messages") {
+                    let cwd = std::env::current_dir()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    let fpath = std::path::Path::new(&cwd)
+                        .join(".pi-rs/sessions")
+                        .join(format!("{msg_id}.jsonl"));
+                    if !fpath.exists() {
+                        return Err("session not found".to_string());
+                    }
+                    let content = std::fs::read_to_string(&fpath).map_err(|e| format!("{e}"))?;
+                    let mut messages: Vec<serde_json::Value> = Vec::new();
+                    for line in content.lines().skip(1) {
+                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+                            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
+                                continue;
+                            }
+                            if let Some(msg) = entry.get("message") {
+                                let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                                let text = msg
+                                    .get("content")
+                                    .and_then(|v| v.as_array())
+                                    .map(|blocks| {
+                                        blocks
+                                            .iter()
+                                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    })
+                                    .unwrap_or_default();
+                                messages.push(serde_json::json!({"role": role, "content": text}));
+                            }
+                        }
+                    }
+                    return Ok(serde_json::to_value(messages).unwrap_or_default());
+                }
+            }
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 return dispatch_roles_get(rest, state).await;
             }
