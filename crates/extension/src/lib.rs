@@ -7,7 +7,6 @@
 //! `CreateAgentSessionOptions.extension_registry` to register extension-provided
 //! tool metadata, prompt guidelines, and event hooks.
 
-pub mod goal;
 pub mod trading;
 
 use pi_extension_api::ExtensionRegistry;
@@ -16,6 +15,6 @@ use pi_extension_api::ExtensionRegistry;
 pub fn create_registry() -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
     registry.register(Box::new(trading::MarketDataExtension));
-    registry.register(Box::new(goal::GoalExt::new()));
+    registry.register(Box::new(pi_extensions::goal::GoalExtension::new()));
     registry
 }
