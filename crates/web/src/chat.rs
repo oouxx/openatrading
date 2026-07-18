@@ -18,6 +18,30 @@ use openatrading_core::skills::SkillRequest;
 use crate::handlers::OverviewResponse;
 use crate::AppState;
 
+/// Extract the human-readable text from a serialized `AgentToolResult`.
+///
+/// The `ToolExecutionEnd` event carries `result` as the full
+/// `AgentToolResult` JSON (`{ content: [...], details, terminate }`).
+/// The frontend tool-call block expects a plain string, so we concatenate
+/// the `text` of every `content` block. Falls back to the raw JSON string
+/// when the shape is unexpected.
+fn extract_tool_result_text(result: &serde_json::Value) -> String {
+    let content = match result.get("content") {
+        Some(serde_json::Value::Array(items)) => items,
+        _ => return result.to_string(),
+    };
+    let mut texts: Vec<String> = Vec::new();
+    for item in content {
+        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+            texts.push(text.to_string());
+        }
+    }
+    if texts.is_empty() {
+        return result.to_string();
+    }
+    texts.join("\n")
+}
+
 #[derive(Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -419,10 +443,15 @@ pub async fn ai_chat(
                 }
                 Some(AgentEvent::ToolExecutionEnd { tool_call_id, tool_name, result, is_error }) => {
                     let status = if is_error { "error" } else { "success" };
+                    // `result` is a serialized `AgentToolResult`:
+                    // { "content": [ { "type": "text", "text": "..." }, ... ], "details": ..., "terminate": ... }
+                    // Extract the concatenated text so the frontend receives a plain string
+                    // (Claude/ChatGPT-style tool call block), not a nested JSON object.
+                    let result_text = extract_tool_result_text(&result);
                     let data = serde_json::to_string(&serde_json::json!({
                         "id": tool_call_id,
                         "name": tool_name,
-                        "result": result,
+                        "result": result_text,
                         "status": status,
                     })).unwrap_or_default();
                     yield Ok(Event::default().event("tool-exec-end").data(data));
