@@ -483,8 +483,8 @@ pub struct SessionItem {
 
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
 pub async fn create_session() -> Json<serde_json::Value> {
-    let (id, title) = openatrading_core::llm::create_session()
-        .unwrap_or_else(|_| (String::new(), String::new()));
+    let (id, title) =
+        openatrading_core::llm::create_session().unwrap_or_else(|_| (String::new(), String::new()));
     Json(serde_json::json!({
         "id": id,
         "title": title,
@@ -500,7 +500,7 @@ pub async fn list_sessions(State(_state): State<Arc<AppState>>) -> Json<Vec<Sess
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let session_dir = std::path::Path::new(&cwd).join(".pi-rs/sessions");
+    let session_dir = std::path::Path::new(&cwd).join(".pi-rs/agent/sessions");
 
     let mut sessions: Vec<SessionItem> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&session_dir) {
@@ -584,7 +584,7 @@ pub async fn get_session_messages(
         .to_string_lossy()
         .to_string();
     let path = std::path::Path::new(&cwd)
-        .join(".pi-rs/sessions")
+        .join(".pi-rs/agent/sessions")
         .join(format!("{id}.jsonl"));
 
     let content = match std::fs::read_to_string(&path) {
@@ -642,7 +642,7 @@ pub async fn delete_session(axum::extract::Path(id): axum::extract::Path<String>
         .to_string_lossy()
         .to_string();
     let path = std::path::Path::new(&cwd)
-        .join(".pi-rs/sessions")
+        .join(".pi-rs/agent/sessions")
         .join(format!("{id}.jsonl"));
     if path.exists() {
         match std::fs::remove_file(&path) {

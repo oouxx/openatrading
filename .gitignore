@@ -40,3 +40,4 @@ certs/
 .mcp.json
 .tokensave
 .codegraph
+.pi-rs
