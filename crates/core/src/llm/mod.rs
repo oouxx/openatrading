@@ -2,7 +2,6 @@
 // Core's business-specific agent code lives in the sibling modules below.
 pub mod agent_runtime;
 pub mod decision;
-pub mod extension;
 pub mod session;
 pub mod tools;
 

@@ -3095,6 +3095,7 @@ dependencies = [
  "openatrading-agent",
  "openatrading-api",
  "openatrading-channels",
+ "openatrading-extension",
  "pi-coding-agent",
  "pi-extension-api",
  "reqwest 0.12.28",
@@ -3108,6 +3109,18 @@ dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "openatrading-extension"
+version = "0.12.9"
+dependencies = [
+ "async-trait",
+ "pi-extension-api",
+ "pi-extensions",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
