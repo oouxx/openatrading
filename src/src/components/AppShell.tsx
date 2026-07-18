@@ -16,7 +16,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 export default function AppShell() {
-  const { mode } = useAppMode()
+  const { mode, setMode } = useAppMode()
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance")
   const activeThreadId = useThreadStore((s) => s.activeThreadId)
   const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
@@ -24,6 +24,8 @@ export default function AppShell() {
 
   const handleNewThread = () => {
     setActiveThreadId(null)
+    useStockTabStore.getState().setActiveStockTab(null)
+    setMode("chat")
   }
 
   const handleDeleteThread = useCallback(
