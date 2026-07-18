@@ -1,7 +1,6 @@
 // Re-exports from openatrading-agent (the canonical agent crate).
 // Core's business-specific agent code lives in the sibling modules below.
 pub mod agent_runtime;
-pub mod decision;
 pub mod session;
 pub mod tools;
 
@@ -28,11 +27,8 @@ pub use openatrading_agent::types::{
     ConvertToLlmFn, DynTool, QueueMode, ShouldStopAfterTurnContext,
 };
 
-// AgentRuntime — manages agent session lifecycle
-pub use self::agent_runtime::{AgentResult, AgentRuntime};
-
-// Decision — structured output extraction on top of AgentRuntime
-pub use self::decision::run_decision;
+// AgentRuntime — standalone one-shot agent invocation (no persistent session management)
+pub use self::agent_runtime::{process_messages, AgentResult};
 
 // Business-specific tool registry (stays in core, references market tools)
 pub use self::tools::ToolRegistry;

@@ -1,23 +1,17 @@
-use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures::Future;
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{mpsc, watch};
 
-use openatrading_agent::agent::UnsubscribeHandle;
-use openatrading_agent::llm::LlmClient;
 use openatrading_agent::pi_ai_types::ContentBlock;
+use openatrading_agent::pi_ai_types::ToolExecutionMode;
 use openatrading_agent::types::{AgentEvent, AgentMessage, DynTool};
-use pi_coding_agent::core::agent_session::AgentSession as CodingAgentSession;
-use pi_coding_agent::core::model_registry::ModelRegistry;
+use pi_coding_agent::core::extensions::ToolDefinition;
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-use pi_coding_agent::core::session_manager::SessionManager;
-use pi_coding_agent::core::system_prompt::SkillInfo;
-
-use super::StreamEvent;
+use pi_extension_api::ToolExecuteFn;
 
 // ── AgentResult ──────────────────────────────────────────────────────────
 
@@ -27,495 +21,164 @@ pub struct AgentResult {
     pub tool_outputs: Vec<serde_json::Value>,
 }
 
-// ── AgentSession (internal) — wraps pi-coding-agent's AgentSession ────────
+// ── Tool definition helper ──────────────────────────────────────────────
 
-/// Wraps pi-coding-agent's AgentSession with trading-specific additions.
-/// Uses `sdk::create_agent_session()` for construction.
-pub(crate) struct AgentSession {
-    inner: Mutex<CodingAgentSession>,
-    message_count: AtomicUsize,
-}
-
-impl AgentSession {
-    async fn new(
-        _llm: &LlmClient,
-        system_prompt: &str,
-        trading_tools: Vec<Arc<DynTool>>,
-        _skills: Vec<SkillInfo>,
-        _thinking_level: &str,
-        _session_manager: &SessionManager,
-        _model_registry: &ModelRegistry,
-    ) -> Self {
-        let cwd = std::env::current_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-
-        // Create extension registry with trading tools + pi-rs built-in extensions
-        let ext_registry = openatrading_extension::create_registry();
-
-        // Convert trading tools to ToolDefinitions with execute callbacks.
-        // v1.79.13+: ToolDefinition supports `execute`, so stubs are eliminated —
-        // tools are immediately executable without a separate add_tools() call.
-        use openatrading_agent::pi_ai_types::ToolExecutionMode;
-        use pi_coding_agent::core::extensions::ToolDefinition;
-        use pi_extension_api::ToolExecuteFn;
-        let tool_defs: Vec<ToolDefinition> = trading_tools
-            .iter()
-            .map(|t| {
-                let exec: ToolExecuteFn = {
-                    let inner = t.execute.clone();
-                    Arc::new(move |id, params, signal| {
-                        let inner = inner.clone();
-                        Box::pin(async move {
-                            let result = inner(id, params, signal, None).await?;
-                            let content: Vec<serde_json::Value> = result
-                                .content
-                                .iter()
-                                .filter_map(|cb| serde_json::to_value(cb).ok())
-                                .collect();
-                            Ok(pi_extension_api::ToolCallOutput {
-                                content,
-                                details: Some(result.details),
-                                is_error: false,
-                            })
+/// Convert trading tools to pi-coding-agent ToolDefinitions with execute callbacks
+/// baked in (so tools are immediately executable without add_tools()).
+fn build_tool_defs(trading_tools: &[Arc<DynTool>]) -> Vec<ToolDefinition> {
+    trading_tools
+        .iter()
+        .map(|t| {
+            let exec: ToolExecuteFn = {
+                let inner = t.execute.clone();
+                Arc::new(move |id, params, signal| {
+                    let inner = inner.clone();
+                    Box::pin(async move {
+                        let result = inner(id, params, signal, None).await?;
+                        let content: Vec<serde_json::Value> = result
+                            .content
+                            .iter()
+                            .filter_map(|cb| serde_json::to_value(cb).ok())
+                            .collect();
+                        Ok(pi_extension_api::ToolCallOutput {
+                            content,
+                            details: Some(result.details),
+                            is_error: false,
                         })
                     })
-                };
-                ToolDefinition {
-                    name: t.name.clone(),
-                    label: Some(t.label.clone()),
-                    description: t.description.clone(),
-                    prompt_snippet: None,
-                    prompt_guidelines: None,
-                    parameters: Some(t.parameters_schema.clone()),
-                    render_shell: None,
-                    execution_mode: t.execution_mode.as_ref().map(|m| match m {
-                        ToolExecutionMode::Sequential => "sequential".to_string(),
-                        ToolExecutionMode::Parallel => "parallel".to_string(),
-                    }),
-                    execute: Some(exec),
-                }
-            })
-            .collect();
-
-        // Use pi-coding-agent's sdk to create the session.
-        // No add_tools() needed — tools have execute callbacks baked in.
-        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
-            cwd: cwd.clone(),
-            agent_dir: None,
-            model: None,
-            thinking_level: None,
-            scoped_models: None,
-            no_tools: Some(NoToolsMode::All),
-            tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
-            exclude_tools: None,
-            custom_prompt: Some(system_prompt.to_string()),
-            append_system_prompt: None,
-            session_name: None,
-            stream_fn: None,
-            convert_to_llm: None,
-            custom_tools: Some(tool_defs),
-            extension_paths: Vec::new(),
-            enable_extensions: false,
-            extension_registry: Some(ext_registry),
-            cli_provider: None,
-            cli_model: None,
-            persist_session: false,
-            session_file: None,
-            fork_from: None,
-            session_dir: None,
+                })
+            };
+            ToolDefinition {
+                name: t.name.clone(),
+                label: Some(t.label.clone()),
+                description: t.description.clone(),
+                prompt_snippet: None,
+                prompt_guidelines: None,
+                parameters: Some(t.parameters_schema.clone()),
+                render_shell: None,
+                execution_mode: t.execution_mode.as_ref().map(|m| match m {
+                    ToolExecutionMode::Sequential => "sequential".to_string(),
+                    ToolExecutionMode::Parallel => "parallel".to_string(),
+                }),
+                execute: Some(exec),
+            }
         })
-        .await
-        .map_err(|e| tracing::error!("create_agent_session failed: {e}"))
-        .expect("create_agent_session failed");
-
-        Self {
-            inner: Mutex::new(session),
-            message_count: AtomicUsize::new(0),
-        }
-    }
-
-    /// pi-coding-agent style: add a user message and trigger the agent loop.
-    async fn add_user_text(&self, text: &str) {
-        self.inner.lock().await.add_user_text(text).await;
-    }
-
-    /// pi-coding-agent style: get all messages from the session.
-    async fn get_messages(&self) -> Vec<AgentMessage> {
-        self.inner.lock().await.get_messages().await
-    }
-
-    /// pi-coding-agent style: subscribe to agent events.
-    /// Returns the UnsubscribeHandle — caller must keep it alive.
-    async fn subscribe(
-        &self,
-        listener: Arc<
-            dyn Fn(
-                    AgentEvent,
-                    Option<watch::Receiver<bool>>,
-                ) -> Pin<Box<dyn Future<Output = ()> + Send>>
-                + Send
-                + Sync,
-        >,
-    ) -> UnsubscribeHandle {
-        // Subscribe via pi-coding-agent's session (for internal event bus)
-        self.inner.lock().await.subscribe(listener.clone()).await;
-        // Also subscribe via the underlying agent (returns a handle we can keep alive)
-        let guard = self.inner.lock().await;
-        let agent = guard.get_agent();
-        let handle = agent.subscribe(listener).await;
-        handle
-    }
-
-    fn message_count(&self) -> usize {
-        self.message_count.load(Ordering::Relaxed)
-    }
-
-    fn reset_message_count(&self) {
-        self.message_count.store(0, Ordering::Relaxed);
-    }
+        .collect()
 }
 
-// ── AgentRuntime ─────────────────────────────────────────────────────────
+// ── process_messages (one-shot chat, used by web / tauri frontends) ─────
 
-/// Manages the lifecycle of agent sessions.
+/// Process pre-built messages through pi-coding-agent in a one-shot session.
 ///
-/// Uses pi-coding-agent's `sdk::create_agent_session()` internally.
-/// Provides two execution modes:
-/// - `stream()` — real-time event streaming for frontend rendering
-/// - `run()` — blocking wait for final result (backend/decision use)
-pub struct AgentRuntime {
-    session_manager: SessionManager,
-    model_registry: ModelRegistry,
-    sessions: Mutex<HashMap<String, Arc<AgentSession>>>,
-}
+/// Creates a temporary session, subscribes for events, processes the given
+/// messages via pi-coding-agent, streams all `AgentEvent`s through `tx`,
+/// and returns the accumulated `AgentResult` when done.
+///
+/// All session management is delegated to pi-coding-agent.
+pub async fn process_messages(
+    system_prompt: &str,
+    trading_tools: Vec<Arc<DynTool>>,
+    messages: Vec<AgentMessage>,
+    tx: mpsc::UnboundedSender<AgentEvent>,
+) -> Result<AgentResult> {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
-impl AgentRuntime {
-    pub fn new(session_manager: SessionManager, model_registry: ModelRegistry) -> Self {
-        Self {
-            session_manager,
-            model_registry,
-            sessions: Mutex::new(HashMap::new()),
-        }
-    }
+    // Build tools with execute callbacks
+    let tool_defs = build_tool_defs(&trading_tools);
 
-    // ── Lifecycle ────────────────────────────────────────────────────
+    // Create extension registry with trading tools + pi-rs built-in extensions
+    let ext_registry = openatrading_extension::create_registry();
 
-    /// Create a new agent session.
-    pub async fn create(
-        &self,
-        id: &str,
-        llm: &LlmClient,
-        system_prompt: &str,
-        trading_tools: Vec<Arc<DynTool>>,
-        skills: Vec<SkillInfo>,
-        thinking_level: &str,
-    ) -> String {
-        let session = Arc::new(
-            AgentSession::new(
-                llm,
-                system_prompt,
-                trading_tools,
-                skills,
-                thinking_level,
-                &self.session_manager,
-                &self.model_registry,
-            )
-            .await,
-        );
-        self.sessions.lock().await.insert(id.to_string(), session);
-        id.to_string()
-    }
+    let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+        cwd: cwd.clone(),
+        agent_dir: None,
+        model: None,
+        thinking_level: None,
+        scoped_models: None,
+        no_tools: Some(NoToolsMode::All),
+        tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
+        exclude_tools: None,
+        custom_prompt: Some(system_prompt.to_string()),
+        append_system_prompt: None,
+        session_name: None,
+        stream_fn: None,
+        convert_to_llm: None,
+        custom_tools: Some(tool_defs),
+        extension_paths: Vec::new(),
+        enable_extensions: false,
+        extension_registry: Some(ext_registry),
+        cli_provider: None,
+        cli_model: None,
+        persist_session: false,
+        session_file: None,
+        fork_from: None,
+        session_dir: None,
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-    /// Destroy a session by ID.
-    pub async fn destroy(&self, session_id: &str) {
-        self.sessions.lock().await.remove(session_id);
-    }
+    // Subscribe via underlying agent → forward all events to caller's channel
+    let event_tx = tx.clone();
+    let listener = Arc::new(
+        move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
+            let tx = event_tx.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            }) as Pin<Box<dyn Future<Output = ()> + Send>>
+        },
+    );
 
-    /// Get the number of messages in a session.
-    pub async fn message_count(&self, session_id: &str) -> Option<usize> {
-        let sessions = self.sessions.lock().await;
-        sessions.get(session_id).map(|s| s.message_count())
-    }
+    let _handle = {
+        let agent = session.get_agent();
+        agent.subscribe(listener).await
+    };
 
-    /// Compact a session: rebuild with fresh agent.
-    pub async fn compact(
-        &self,
-        session_id: &str,
-        llm: &LlmClient,
-        system_prompt: &str,
-        trading_tools: Vec<Arc<DynTool>>,
-        skills: Vec<SkillInfo>,
-        thinking_level: &str,
-    ) {
-        let mut sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get(session_id) {
-            session.reset_message_count();
-        }
-        let new_session = Arc::new(
-            AgentSession::new(
-                llm,
-                system_prompt,
-                trading_tools,
-                skills,
-                thinking_level,
-                &self.session_manager,
-                &self.model_registry,
-            )
-            .await,
-        );
-        sessions.insert(session_id.to_string(), new_session);
-    }
+    // Process with 300s timeout
+    let process_result = {
+        let agent = session.get_agent();
+        let process_fut = agent.process(messages);
+        tokio::time::timeout(Duration::from_secs(300), process_fut).await
+    };
 
-    // ── Unified execution core ──────────────────────────────────────
-
-    /// Execute the agent loop using pi-coding-agent's AgentSession.
-    ///
-    /// Flow: subscribe → add_user_text → wait_for_idle → get_messages
-    async fn execute(
-        session: &AgentSession,
-        user_message: &str,
-        listener: Option<Arc<dyn Fn(AgentEvent) + Send + Sync>>,
-    ) -> Result<AgentResult> {
-        let (tx, mut rx) = mpsc::channel::<AgentEvent>(256);
-
-        // 1. Subscribe to events via the underlying agent
-        let event_tx = tx.clone();
-        let subscribe_listener = Arc::new(
-            move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
-                let tx = event_tx.clone();
-                Box::pin(async move {
-                    let _ = tx.send(event).await;
-                }) as Pin<Box<dyn Future<Output = ()> + Send>>
-            },
-        );
-        // Subscribe via the underlying agent (returns a handle we keep alive)
-        let _handle = {
-            let guard = session.inner.lock().await;
-            let agent = guard.get_agent();
-            agent.subscribe(subscribe_listener).await
-            // guard dropped here, but handle is independent
-        };
-
-        // 2. Add user message (pi-coding-agent style) — triggers agent loop
-        session.add_user_text(user_message).await;
-
-        // 4. Collect events
-        let mut final_text = String::new();
-        let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
-
-        while let Some(event) = rx.recv().await {
-            if let Some(ref cb) = listener {
-                cb(event.clone());
-            }
-
-            match &event {
-                AgentEvent::MessageUpdate {
-                    assistant_message_event:
-                        openatrading_agent::pi_ai_types::AssistantMessageEvent::TextDelta {
-                            delta, ..
-                        },
-                    ..
-                } => {
-                    final_text.push_str(delta);
-                },
-                AgentEvent::MessageUpdate {
-                    assistant_message_event:
-                        openatrading_agent::pi_ai_types::AssistantMessageEvent::Done { message, .. },
-                    ..
-                } => {
-                    for block in &message.content {
-                        if let ContentBlock::ToolCall { arguments, .. } = block {
-                            tool_outputs.push(arguments.clone());
-                        }
-                    }
-                    break;
-                },
-                AgentEvent::MessageUpdate {
-                    assistant_message_event:
-                        openatrading_agent::pi_ai_types::AssistantMessageEvent::Error { .. },
-                    ..
-                } => break,
-                _ => {},
-            }
-        }
-
-        Ok(AgentResult {
-            final_text,
-            tool_outputs,
-        })
-    }
-
-    // ── One-shot message processing (ai_chat / web frontend) ────────
-
-    /// Process pre-built messages in a one-shot session.
-    ///
-    /// Creates a temporary session, subscribes for events, processes the given
-    /// messages via the underlying agent, streams all `AgentEvent`s through
-    /// `tx`, and destroys the session when done.  Returns the accumulated
-    /// `AgentResult`.
-    ///
-    /// Uses the same pattern as `send_message`: subscribes before the agent
-    /// loop, wraps with a 300s timeout, calls `agent.abort()` on timeout,
-    /// and reads the final transcript via `get_messages()`.
-    pub async fn process_messages(
-        &self,
-        llm: &LlmClient,
-        system_prompt: &str,
-        trading_tools: Vec<Arc<DynTool>>,
-        messages: Vec<AgentMessage>,
-        tx: mpsc::UnboundedSender<AgentEvent>,
-    ) -> Result<AgentResult> {
-        use futures::Future;
-        use std::pin::Pin;
-        use std::time::Duration;
-
-        static CHAT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let id = format!(
-            "_chat_{}",
-            CHAT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        );
-
-        self.create(&id, llm, system_prompt, trading_tools, vec![], "off")
-            .await;
-
-        let session = {
-            let sessions = self.sessions.lock().await;
-            sessions
-                .get(&id)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("session {id} not found after create"))?
-        };
-
-        // Subscribe via underlying agent → forward all events to caller's channel
-        let event_tx = tx.clone();
-        let listener = Arc::new(
-            move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
-                let tx = event_tx.clone();
-                Box::pin(async move {
-                    let _ = tx.send(event);
-                }) as Pin<Box<dyn Future<Output = ()> + Send>>
-            },
-        );
-
-        let _handle = {
-            let guard = session.inner.lock().await;
-            let agent = guard.get_agent();
-            agent.subscribe(listener).await
-        };
-
-        // Process with 300s timeout, mirroring the send_message pattern.
-        // The inner lock is held across await (same as add_user_text).
-        let process_result = {
-            let guard = session.inner.lock().await;
-            let agent = guard.get_agent();
-            let process_fut = agent.process(messages);
-            tokio::time::timeout(Duration::from_secs(300), process_fut).await
-        };
-
-        match process_result {
-            Ok(Ok(_)) => {}, // success, fall through to get_messages
-            Ok(Err(e)) => {
-                let err_msg = format!("agent process failed: {e}");
-                self.destroy(&id).await;
-                return Err(anyhow::anyhow!(err_msg));
-            },
-            Err(_elapsed) => {
-                tracing::warn!("process_messages timed out after 300s, aborting");
-                // Lock was released with the block; re-acquire to abort.
-                if let Ok(guard) = session.inner.try_lock() {
-                    guard.get_agent().abort().await;
-                }
-                self.destroy(&id).await;
-                return Err(anyhow::anyhow!("agent processing timed out after 300s"));
-            },
-        }
-
-        // Get full transcript via session (same as send_message pattern)
-        let all_messages = {
-            let guard = session.inner.lock().await;
-            guard.get_messages().await
-        };
-
-        self.destroy(&id).await;
-
-        // Build AgentResult from assistant messages
-        use openatrading_agent::pi_ai_types::ContentBlock;
-        let mut final_text = String::new();
-        let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
-
-        for msg in &all_messages {
-            if let AgentMessage::Assistant { content, .. } = msg {
-                for block in content {
-                    match block {
-                        ContentBlock::Text { text, .. } => final_text.push_str(text),
-                        ContentBlock::ToolCall { arguments, .. } => {
-                            tool_outputs.push(arguments.clone());
-                        },
-                        _ => {},
-                    }
-                }
-            }
-        }
-
-        Ok(AgentResult {
-            final_text,
-            tool_outputs,
-        })
-    }
-
-    // ── Mode 1: Real-time event streaming (frontend) ────────────────
-
-    /// Stream agent events in real-time to the frontend.
-    pub async fn stream(
-        &self,
-        session_id: &str,
-        user_message: &str,
-        tx: mpsc::Sender<StreamEvent>,
-    ) -> Result<AgentResult> {
-        let session = {
-            let sessions = self.sessions.lock().await;
-            sessions
-                .get(session_id)
-                .ok_or_else(|| anyhow::anyhow!("session not found: {session_id}"))?
-                .clone()
-        };
-
-        let listener = Arc::new(move |event: AgentEvent| {
-            let tx = tx.clone();
-            if let AgentEvent::MessageUpdate {
-                assistant_message_event,
-                ..
-            } = event
+    match process_result {
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => return Err(anyhow::anyhow!("agent process failed: {e}")),
+        Err(_elapsed) => {
+            tracing::warn!("process_messages timed out after 300s, aborting");
             {
-                let stream_events =
-                    super::assistant_event_to_stream_events(&assistant_message_event);
-                for se in stream_events {
-                    let _ = tx.try_send(se);
+                let agent = session.get_agent();
+                agent.abort().await;
+            }
+            return Err(anyhow::anyhow!("agent processing timed out after 300s"));
+        },
+    }
+
+    // Get full transcript
+    let all_messages = session.get_messages().await;
+
+    // Build AgentResult from assistant messages
+    let mut final_text = String::new();
+    let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
+
+    for msg in &all_messages {
+        if let AgentMessage::Assistant { content, .. } = msg {
+            for block in content {
+                match block {
+                    ContentBlock::Text { text, .. } => final_text.push_str(text),
+                    ContentBlock::ToolCall { arguments, .. } => {
+                        tool_outputs.push(arguments.clone());
+                    },
+                    _ => {},
                 }
             }
-        });
-
-        let result = Self::execute(&session, user_message, Some(listener)).await?;
-        session.message_count.fetch_add(1, Ordering::Relaxed);
-        Ok(result)
+        }
     }
 
-    // ── Mode 2: Blocking wait for result (backend) ──────────────────
-
-    /// Run the agent loop and return the final result.
-    pub async fn run(&self, session_id: &str, user_message: &str) -> Result<AgentResult> {
-        let session = {
-            let sessions = self.sessions.lock().await;
-            sessions
-                .get(session_id)
-                .ok_or_else(|| anyhow::anyhow!("session not found: {session_id}"))?
-                .clone()
-        };
-
-        let result = Self::execute(&session, user_message, None).await?;
-        session.message_count.fetch_add(1, Ordering::Relaxed);
-        Ok(result)
-    }
+    Ok(AgentResult {
+        final_text,
+        tool_outputs,
+    })
 }
