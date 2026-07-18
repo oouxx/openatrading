@@ -119,7 +119,7 @@ export default function ConversationSidebar({
                     tooltip={t.title}
                   >
                     <span
-                      className={`size-1.5 flex-shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
+                      className={`size-1.5 shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
                     />
                     <span className="flex-1 truncate">{t.title}</span>
                   </SidebarMenuButton>
