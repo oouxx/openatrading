@@ -32,7 +32,10 @@ impl AppContext {
         let tool_cfg = ToolConfig {
             mcp_servers: mcp_servers.to_vec(),
         };
-        let tool_registry = Arc::new(ArcSwap::from_pointee(build_tools(&tool_cfg).await));
+        let mut registry = build_tools(&tool_cfg).await;
+        let ext_registry = openatrading_extension::create_registry();
+        registry.set_extension_tools(&ext_registry);
+        let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
 
         Self {
             llm,
@@ -44,7 +47,7 @@ impl AppContext {
         }
     }
 
-    /// Get all tools (market + meta + MCP + decision).
+    /// Get all tools (extension + MCP).
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.tool_registry.load().all_tools()
     }

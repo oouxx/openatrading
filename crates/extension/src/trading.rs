@@ -53,6 +53,7 @@ impl MarketDataExtension {
             lhb_detail_tool(),
             lhb_combined_tool(),
             lhb_active_yyb_tool(),
+            submit_trading_decision_tool(),
         ]
     }
 
@@ -277,6 +278,16 @@ impl MarketDataExtension {
                 })
                 .await
             },
+            "submit_trading_decision" => {
+                // The tool does nothing except receive structured data;
+                // terminate: true stops the agent loop immediately.
+                return Some(ToolCallOutput {
+                    content: vec![json!({ "type": "text", "text": "决策已接收" })],
+                    details: None,
+                    is_error: false,
+                    terminate: Some(true),
+                });
+            },
             _ => return None,
         };
 
@@ -285,6 +296,7 @@ impl MarketDataExtension {
                 content: vec![json!({ "type": "text", "text": text })],
                 details: None,
                 is_error: false,
+                terminate: None,
             },
             Err(err) => {
                 tracing::warn!(tool = tool_name, error = %err, "market tool failed");
@@ -292,6 +304,7 @@ impl MarketDataExtension {
                     content: vec![json!({ "type": "text", "text": err })],
                     details: None,
                     is_error: true,
+                    terminate: None,
                 }
             },
         })
@@ -673,4 +686,50 @@ fn str_schema(params: &[(&str, &str)]) -> Value {
 #[allow(dead_code)]
 fn today_beijing() -> String {
     utils::beijing_now().format("%Y-%m-%d").to_string()
+}
+
+// ─── Decision tool ────────────────────────────────────────────────────────
+
+fn submit_trading_decision_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "submit_trading_decision".into(),
+        label: Some("提交交易决策".into()),
+        description: "提交交易决策。调用此工具表示已完成分析，输出结构化的分析报告和交易指令列表。\
+            每个交易指令包含：action(Buy/Sell/Hold)、symbol(股票代码)、\
+            name(股票名称)、shares(股数，100的整数倍)、reason(决策理由)。\
+            ⚠️ symbol 必须使用 Yahoo Finance 风格带市场后缀：\
+            沪市主板/科创板用 .SS（如 600519.SS、688981.SS），\
+            深市主板/中小板/创业板用 .SZ（如 000001.SZ、002008.SZ、300750.SZ），\
+            北交所用 .BJ（如 873169.BJ）。\
+            禁止输出裸 6 位代码（如 002008），否则后续行情拉取会失败。\
+            注意：必须基于实际工具返回的数据做决策，不得凭空猜测。"
+            .into(),
+        prompt_guidelines: Some(vec![
+            "完成分析后必须调用此工具提交结构化决策".into(),
+            "symbol 必须带市场后缀（.SS/.SZ/.BJ）".into(),
+        ]),
+        parameters: Some(json!({
+            "type": "object",
+            "properties": {
+                "analysis": {"type": "string", "description": "市场分析总结"},
+                "trades": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "action": {"type": "string", "enum": ["Buy", "Sell", "Hold"], "description": "交易动作"},
+                            "symbol": {"type": "string", "description": "股票代码（带后缀）"},
+                            "name": {"type": "string", "description": "股票名称"},
+                            "shares": {"type": "integer", "description": "股数，100的整数倍"},
+                            "reason": {"type": "string", "description": "决策理由"}
+                        },
+                        "required": ["action", "symbol", "name", "shares", "reason"]
+                    },
+                    "description": "交易指令列表"
+                }
+            },
+            "required": ["analysis", "trades"]
+        })),
+        ..Default::default()
+    }
 }

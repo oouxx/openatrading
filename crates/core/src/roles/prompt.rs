@@ -21,10 +21,8 @@ pub struct DecisionOutput {
     pub trades: Vec<TradeInstruction>,
 }
 
-pub async fn extract_decision_output(
-    llm: &crate::llm::LlmClient,
-    text: &str,
-) -> anyhow::Result<DecisionOutput> {
+pub async fn extract_decision_output(text: &str) -> anyhow::Result<DecisionOutput> {
+    let llm = crate::llm::LlmClient::from_config(None, None);
     let extractor = Extractor::<DecisionOutput>::new(llm.model.clone())
         .with_api_key(&llm.api_key)
         .with_system_prompt(crate::prompts::EXTRACTION_SYSTEM_PROMPT)

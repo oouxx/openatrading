@@ -340,8 +340,7 @@ async fn run_decision_for_role(
     }
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    let decision = match crate::llm::session::AgentSession::new(&ctx.llm, &system)
-        .with_tools(tools)
+    let decision = match crate::llm::session::AgentSession::new(&system)
         .process_decision(&market_user_message)
         .await
     {

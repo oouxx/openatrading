@@ -1,12 +1,8 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-use pi_coding_agent::pi_agent_core::types::DynTool;
 use pi_coding_agent::pi_ai_types::ContentBlock;
-
-use crate::llm::LlmClient;
+use pi_extension_api::ToolDefinition;
 
 // ── Helper: one-shot agent invoke ────────────────────────────────────────
 
@@ -15,47 +11,60 @@ pub struct AgentResult {
     pub tool_output: Option<serde_json::Value>,
 }
 
+/// One-shot agent invocation using pi-coding-agent SDK + extension registry.
+///
+/// Creates an in-memory session (no persistence), runs the agent loop,
+/// and returns the final text and any tool call output.
+///
+/// `custom_tools` are additional `ToolDefinition`s with execute callbacks
+/// (e.g. per-role positions/memory tools) that are injected alongside
+/// the extension-provided tools.
 pub async fn invoke_agent(
-    llm: &LlmClient,
-    trading_tools: Vec<Arc<DynTool>>,
     system_prompt: &str,
     user_message: &str,
+    custom_tools: Vec<ToolDefinition>,
 ) -> Result<AgentResult> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
+    let ext_registry = openatrading_extension::create_registry();
+
+    let custom_tools_opt = if custom_tools.is_empty() {
+        None
+    } else {
+        Some(custom_tools)
+    };
+
     let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
         cwd,
-        model: Some(llm.model.clone()),
-        no_tools: Some(NoToolsMode::All),
-        custom_prompt: Some(system_prompt.to_string()),
-        tools: Some(trading_tools.iter().map(|t| t.name.clone()).collect()),
-        exclude_tools: None,
-        custom_tools: None,
-        persist_session: false,
-        session_file: None,
-        enable_extensions: true,
-        extension_paths: Vec::new(),
-        extension_registry: None,
-        stream_fn: None,
-        convert_to_llm: None,
         agent_dir: None,
+        model: None,
         thinking_level: None,
         scoped_models: None,
+        no_tools: Some(NoToolsMode::All),
+        tools: None,
+        exclude_tools: None,
+        custom_prompt: Some(system_prompt.to_string()),
         append_system_prompt: None,
         session_name: None,
+        stream_fn: None,
+        convert_to_llm: None,
+        custom_tools: custom_tools_opt,
+        extension_paths: Vec::new(),
+        enable_extensions: true,
+        extension_registry: Some(ext_registry),
         cli_provider: None,
         cli_model: None,
+        persist_session: false,
+        session_file: None,
         fork_from: None,
         session_dir: None,
     })
     .await
     .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-    // Tools have execute callbacks baked in — no add_tools() needed.
-    // Add user message and run agent loop
     session.add_user_text(user_message).await;
     let messages = session.get_messages().await;
 
@@ -106,38 +115,4 @@ pub async fn invoke_agent(
         final_text,
         tool_output,
     })
-}
-
-// ── AgentSession wrapper (generic, kept for backward compat) ────────────
-
-pub struct LlmAgentSession<'a> {
-    llm: &'a LlmClient,
-    system_prompt: &'a str,
-    tools: Vec<Arc<DynTool>>,
-}
-
-impl<'a> LlmAgentSession<'a> {
-    pub fn new(llm: &'a LlmClient, system_prompt: &'a str) -> Self {
-        Self {
-            llm,
-            system_prompt,
-            tools: Vec::new(),
-        }
-    }
-
-    pub fn with_tools(mut self, tools: &[Arc<DynTool>]) -> Self {
-        self.tools = tools.to_vec();
-        self
-    }
-
-    pub async fn process_chat(&self, user_message: &str) -> Result<String> {
-        let result = invoke_agent(
-            self.llm,
-            self.tools.clone(),
-            self.system_prompt,
-            user_message,
-        )
-        .await?;
-        Ok(result.final_text)
-    }
 }
