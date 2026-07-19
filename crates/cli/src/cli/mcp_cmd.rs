@@ -7,8 +7,7 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
     use tokio::sync::watch;
 
     let registry = ToolRegistry::new();
-    let mut tools = registry.market_tools().to_vec();
-    tools.push(registry.meta_skill_tool().clone());
+    let tools = registry.all_tools();
     let (tx, rx) = watch::channel(false);
 
     let signal_task = tokio::spawn(async move {

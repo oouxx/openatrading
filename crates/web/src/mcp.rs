@@ -75,7 +75,9 @@ async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) 
     let cfg = llm::ToolConfig {
         mcp_servers: servers.to_vec(),
     };
-    let new_registry = llm::build_tools(&cfg).await;
+    let mut new_registry = llm::build_tools(&cfg).await;
+    let ext_registry = openatrading_core::create_extension_registry();
+    new_registry.set_extension_tools(&ext_registry);
 
     state.ctx.tool_registry.store(Arc::new(new_registry));
 

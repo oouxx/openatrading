@@ -4,9 +4,8 @@ use openatrading_core::llm::DynTool;
 
 pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     // ── Collect all tools ─────────────────────────────
-    let mut all_tools: Vec<Arc<DynTool>> = openatrading_core::llm::tools::ToolRegistry::new()
-        .market_tools()
-        .to_vec();
+    let mut all_tools: Vec<Arc<DynTool>> =
+        openatrading_core::llm::tools::ToolRegistry::new().all_tools();
 
     let mcp = openatrading_core::llm::McpRegistry::single(endpoint);
     all_tools.extend(mcp.discover().await.0);

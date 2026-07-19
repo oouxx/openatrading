@@ -10,6 +10,7 @@ pub mod roles;
 pub mod skills;
 pub mod social;
 pub use openatrading_channels as channels;
+pub use openatrading_extension::create_registry as create_extension_registry;
 pub mod trade;
 pub mod types;
 pub mod utils;

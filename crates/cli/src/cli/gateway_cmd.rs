@@ -343,8 +343,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         mcp_shutdown.replace(mcp_tx);
 
         let registry = openatrading_core::llm::ToolRegistry::new();
-        let mut tools = registry.market_tools().to_vec();
-        tools.push(registry.meta_skill_tool().clone());
+        let tools = registry.all_tools();
         handles.push(tokio::spawn(async move {
             if let Err(e) = openatrading_core::llm::serve_http(tools, mcp_bind, mcp_rx).await {
                 openatrading_core::log::error!("[gateway] mcp error: {e}");

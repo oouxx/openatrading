@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod chat;
+pub mod chat_session;
 pub mod gateway;
 pub mod handlers;
 pub mod mcp;

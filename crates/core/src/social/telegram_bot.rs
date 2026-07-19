@@ -475,14 +475,6 @@ impl TelegramBot {
             None => crate::prompts::MARKET_CONTEXT_ERROR.to_string(),
         };
 
-        let tool_cfg = crate::llm::ToolConfig {
-            mcp_servers: self.mcp_servers.clone(),
-        };
-        let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
-
         let mut user_msg = market_context;
         {
             let session = self.session.lock().await;
@@ -497,8 +489,7 @@ impl TelegramBot {
         user_msg.push_str(&format!("\n\nuser: {}", question));
 
         let system = crate::skills::SkillRegistry::build_role_prompt(role);
-        let accumulated = AgentSession::new(&self.ctx.llm, &system)
-            .with_tools(&tools)
+        let accumulated = AgentSession::new(&system)
             .process_chat(&user_msg)
             .await
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));

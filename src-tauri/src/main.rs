@@ -1,10 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use openatrading_core::commands::CommandType;
-use openatrading_core::llm::{
-    assistant_event_to_stream_events, AgentEvent, AgentMessage, StreamEvent,
-};
+
+use openatrading_core::llm::{AgentEvent, AgentMessage};
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
 use std::sync::Arc;
@@ -980,30 +978,6 @@ fn extract_query(path: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Extract the human-readable text from a serialized `AgentToolResult`.
-///
-/// The `ToolExecutionEnd` event carries `result` as the full
-/// `AgentToolResult` JSON (`{ content: [...], details, terminate }`).
-/// The frontend tool-call block expects a plain string, so we concatenate
-/// the `text` of every `content` block. Falls back to the raw JSON string
-/// when the shape is unexpected.
-fn extract_tool_result_text(result: &serde_json::Value) -> String {
-    let content = match result.get("content") {
-        Some(serde_json::Value::Array(items)) => items,
-        _ => return result.to_string(),
-    };
-    let mut texts: Vec<String> = Vec::new();
-    for item in content {
-        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-            texts.push(text.to_string());
-        }
-    }
-    if texts.is_empty() {
-        return result.to_string();
-    }
-    texts.join("\n")
-}
-
 #[tauri::command]
 async fn api_chat_stream(
     body: serde_json::Value,
@@ -1037,8 +1011,6 @@ async fn api_chat_stream(
     );
 
     let roles_guard = roles.read().await;
-    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
-
     let command_type_str = body
         .get("command_type")
         .and_then(|v| v.as_str())
@@ -1051,66 +1023,38 @@ async fn api_chat_stream(
         .get("skill_name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-
     let effective_command_type = match command_type_str {
-        "tool" => Some(CommandType::Tool),
-        "skill" => Some(CommandType::Skill),
+        "tool" => Some(openatrading_core::commands::CommandType::Tool),
+        "skill" => Some(openatrading_core::commands::CommandType::Skill),
         _ => {
             if !skill_name.is_empty() {
-                Some(CommandType::Skill)
+                Some(openatrading_core::commands::CommandType::Skill)
             } else {
                 None
             }
         },
     };
-    let effective_command_name = if !command_name.is_empty() {
-        command_name
-    } else {
-        skill_name
-    };
-
-    let (system_prompt, tools) = match &effective_command_type {
-        Some(CommandType::Tool) => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            let sp = openatrading_web::chat::build_system_prompt(strategy_text);
-            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| t.name == effective_command_name)
-                .cloned()
-                .collect();
-            (sp, filtered)
+    let config = openatrading_web::chat_session::resolve_chat_config(
+        openatrading_web::chat_session::ChatConfigInput {
+            role_name,
+            command_type: effective_command_type,
+            command_name: if command_name.is_empty() {
+                None
+            } else {
+                Some(command_name)
+            },
+            skill_name: if skill_name.is_empty() {
+                None
+            } else {
+                Some(skill_name)
+            },
+            roles: &roles_guard,
+            all_tools: tools_registry.load().all_tools(),
         },
-        Some(CommandType::Skill) => {
-            let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let prompt = skills
-                .skills()
-                .iter()
-                .find(|s| s.name == effective_command_name)
-                .map(|s| s.content.as_str())
-                .unwrap_or(default_strategy);
-            (
-                openatrading_web::chat::build_system_prompt(prompt),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-        None => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            (
-                openatrading_web::chat::build_system_prompt(strategy_text),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-    };
+    );
+    let system_prompt = config.system_prompt;
+    let tools = config.tools;
+    drop(roles_guard);
 
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
 
@@ -1243,14 +1187,10 @@ async fn api_chat_stream(
     let mut text_count = 0u32;
     loop {
         match rx.recv().await {
-            Some(AgentEvent::MessageUpdate {
-                assistant_message_event,
-                ..
-            }) => {
-                let stream_events = assistant_event_to_stream_events(&assistant_message_event);
-                for se in stream_events {
-                    match se {
-                        StreamEvent::Text(t) => {
+            Some(event) => {
+                for frame in openatrading_web::chat_session::serialize_chat_event(event) {
+                    match frame {
+                        openatrading_web::chat_session::ChatFrame::Text(t) => {
                             text_count += 1;
                             if text_count <= 3 || text_count.is_multiple_of(20) {
                                 eprintln!(
@@ -1262,57 +1202,66 @@ async fn api_chat_stream(
                                 .send(format!("\x00TEXT\x00{}", t.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        StreamEvent::ReasoningText(t) => {
+                        openatrading_web::chat_session::ChatFrame::Thinking(t) => {
                             channel
                                 .send(format!("\x00THINKING\x00{}", t.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        StreamEvent::ToolCallStart(tc) => {
+                        openatrading_web::chat_session::ChatFrame::ToolCall { id, name, args } => {
                             let data = serde_json::to_string(&serde_json::json!({
-                                "id": tc.id,
-                                "name": tc.function_name,
-                                "args": tc.arguments,
+                                "id": id,
+                                "name": name,
+                                "args": args,
                             }))
                             .unwrap_or_default();
                             channel
                                 .send(format!("\x00TOOL_CALL\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        StreamEvent::Error(e) => {
+                        openatrading_web::chat_session::ChatFrame::ToolDelta { args } => {
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "args": args,
+                            }))
+                            .unwrap_or_default();
+                            channel
+                                .send(format!("\x00TOOL_DELTA\x00{data}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        openatrading_web::chat_session::ChatFrame::Error(e) => {
                             channel
                                 .send(format!("[ERROR] {e}"))
-                                .map_err(|f| format!("channel error: {f}"))?;
+                                .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        _ => {},
+                        openatrading_web::chat_session::ChatFrame::ToolExecStart => {
+                            channel
+                                .send("\x00TOOL_EXEC_START\x00".to_string())
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        openatrading_web::chat_session::ChatFrame::ToolExecEnd {
+                            id,
+                            name,
+                            result,
+                            is_error,
+                        } => {
+                            let status = if is_error { "error" } else { "success" };
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "id": id,
+                                "name": name,
+                                "result": result,
+                                "status": status,
+                            }))
+                            .unwrap_or_default();
+                            channel
+                                .send(format!("\x00TOOL_RESULT\x00{data}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        openatrading_web::chat_session::ChatFrame::Done => {
+                            eprintln!("[chat_stream] AgentEnd, done");
+                            break;
+                        },
                     }
                 }
             },
-            Some(AgentEvent::ToolExecutionEnd {
-                tool_call_id,
-                tool_name,
-                result,
-                is_error,
-            }) => {
-                let status = if is_error { "error" } else { "success" };
-                // `result` is a serialized `AgentToolResult` ({ content: [...], details, terminate }).
-                // Extract the concatenated text so the frontend receives a plain string.
-                let result_text = extract_tool_result_text(&result);
-                let data = serde_json::to_string(&serde_json::json!({
-                    "id": tool_call_id,
-                    "name": tool_name,
-                    "result": result_text,
-                    "status": status,
-                }))
-                .unwrap_or_default();
-                channel
-                    .send(format!("\x00TOOL_RESULT\x00{data}"))
-                    .map_err(|e| format!("channel error: {e}"))?;
-            },
-            Some(AgentEvent::AgentEnd { .. }) => {
-                eprintln!("[chat_stream] AgentEnd, done");
-                break;
-            },
-            Some(_) => {},
             None => {
                 eprintln!("[chat_stream] channel closed unexpectedly");
                 break;

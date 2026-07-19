@@ -10,37 +10,20 @@ use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
-use openatrading_core::llm::{assistant_event_to_stream_events, StreamEvent};
 use openatrading_core::skills::SkillEntry;
 use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
 
+use crate::chat_session::ChatFrame;
 use crate::handlers::OverviewResponse;
 use crate::AppState;
 
 /// Extract the human-readable text from a serialized `AgentToolResult`.
 ///
-/// The `ToolExecutionEnd` event carries `result` as the full
-/// `AgentToolResult` JSON (`{ content: [...], details, terminate }`).
-/// The frontend tool-call block expects a plain string, so we concatenate
-/// the `text` of every `content` block. Falls back to the raw JSON string
-/// when the shape is unexpected.
-fn extract_tool_result_text(result: &serde_json::Value) -> String {
-    let content = match result.get("content") {
-        Some(serde_json::Value::Array(items)) => items,
-        _ => return result.to_string(),
-    };
-    let mut texts: Vec<String> = Vec::new();
-    for item in content {
-        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-            texts.push(text.to_string());
-        }
-    }
-    if texts.is_empty() {
-        return result.to_string();
-    }
-    texts.join("\n")
-}
+/// NOTE: moved to `chat_session::extract_tool_result_text` as the single
+/// source of truth shared with the Tauri backend. This re-export keeps any
+/// external callers working.
+pub use crate::chat_session::extract_tool_result_text;
 
 #[derive(Deserialize)]
 pub struct ChatMessage {
@@ -78,11 +61,10 @@ pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<Com
     let all_tools = registry.load().all_tools();
     let mcp_count = registry.load().mcp_tools().len();
     openatrading_core::log::info!(
-        "get_ai_commands: {} total tools ({} market, {} mcp, {} meta/skill/decision)",
+        "get_ai_commands: {} total tools ({} mcp, {} extension-provided)",
         all_tools.len(),
-        registry.load().market_tools().len(),
         mcp_count,
-        all_tools.len() - registry.load().market_tools().len() - mcp_count,
+        all_tools.len() - mcp_count,
     );
 
     // All tools (market + meta skill + MCP + decision)
@@ -285,76 +267,22 @@ pub async fn ai_chat(
 
     // Use the pre-built tool registry from AppContext (startup lifetime)
     let tools_registry = &state.ctx.tool_registry;
+    let all_tools = tools_registry.load().all_tools();
 
-    // ── Command-aware configuration ──
+    // ── Command-aware configuration (shared with the Tauri backend) ──
     let role_name = req.role.as_deref().unwrap_or("");
     let roles_guard = state.roles.read().await;
-    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
-
-    // skill_name support: route to Skill command if skill_name present
-    let effective_command_type = req.command_type.clone().or_else(|| {
-        req.skill_name
-            .as_ref()
-            .map(|_| openatrading_core::commands::CommandType::Skill)
+    let config = crate::chat_session::resolve_chat_config(crate::chat_session::ChatConfigInput {
+        role_name,
+        command_type: req.command_type.clone(),
+        command_name: req.command_name.as_deref(),
+        skill_name: req.skill_name.as_deref(),
+        roles: &roles_guard,
+        all_tools,
     });
-    let effective_command_name = req.command_name.clone().or_else(|| req.skill_name.clone());
-
-    let (system_prompt, tools) = match effective_command_type {
-        Some(CommandType::Tool) => {
-            let strategy_text: &str = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            let sp = build_system_prompt(strategy_text);
-            let tool_name = req.command_name.as_deref().unwrap_or("");
-            if tool_name.is_empty() {
-                openatrading_core::log::warn!("ai_chat: Tool command with empty command_name");
-            }
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| t.name == tool_name)
-                .cloned()
-                .collect();
-            (sp, filtered)
-        },
-        Some(CommandType::Skill) => {
-            let skill_name = effective_command_name.as_deref().unwrap_or("");
-            let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let skill = skills.skills().iter().find(|s| s.name == skill_name);
-            let prompt = skill
-                .map(|s| s.content.as_str())
-                .unwrap_or(default_strategy);
-            let allowed = skill
-                .and_then(|s| s.allowed_tools.as_ref())
-                .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
-                .filter(|v| !v.is_empty());
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = match allowed {
-                Some(names) => tools_registry
-                    .load()
-                    .all_tools()
-                    .iter()
-                    .filter(|t| names.contains(&t.name))
-                    .cloned()
-                    .collect(),
-                None => tools_registry.load().all_tools().to_vec(),
-            };
-            (build_system_prompt(prompt), filtered)
-        },
-        None => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            (
-                build_system_prompt(strategy_text),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-    };
+    let system_prompt = config.system_prompt;
+    let tools = config.tools;
+    drop(roles_guard);
 
     let mut pi_messages: Vec<AgentMessage> = Vec::new();
     pi_messages.push(AgentMessage::User {
@@ -394,73 +322,55 @@ pub async fn ai_chat(
         }
         loop {
             match rx.recv().await {
-                Some(AgentEvent::MessageUpdate { assistant_message_event, .. }) => {
-                    for stream_event in assistant_event_to_stream_events(&assistant_message_event) {
-                        match stream_event {
-                            StreamEvent::Text(t) => {
+                Some(event) => {
+                    for frame in crate::chat_session::serialize_chat_event(event) {
+                        match frame {
+                            ChatFrame::Text(t) => {
                                 openatrading_core::log::trace!("ai/chat: Text {} chars", t.len());
                                 yield Ok(Event::default().data(t.replace('\n', "\\n")));
-                            }
-                            StreamEvent::ReasoningText(t) => {
+                            },
+                            ChatFrame::Thinking(t) => {
                                 yield Ok(Event::default().event("thinking").data(t.replace('\n', "\\n")));
-                            }
-                            StreamEvent::ToolCallStart(tc) => {
+                            },
+                            ChatFrame::ToolCall { id, name, args } => {
                                 let data = serde_json::to_string(&serde_json::json!({
-                                    "id": tc.id,
-                                    "name": tc.function_name,
-                                    "args": tc.arguments,
+                                    "id": id,
+                                    "name": name,
+                                    "args": args,
                                 })).unwrap_or_default();
                                 yield Ok(Event::default().event("tool-call").data(data));
-                            }
-                            StreamEvent::ToolCallDelta(tc) => {
+                            },
+                            ChatFrame::ToolDelta { args } => {
                                 let data = serde_json::to_string(&serde_json::json!({
-                                    "args": tc.arguments,
+                                    "args": args,
                                 })).unwrap_or_default();
                                 yield Ok(Event::default().event("tool-delta").data(data));
-                            }
-                            StreamEvent::Error(e) => {
+                            },
+                            ChatFrame::Error(e) => {
                                 openatrading_core::log::warn!("ai/chat: assistant error: {e}");
                                 yield Ok(Event::default().data(format!("[ERROR] {e}")));
-                            }
+                            },
+                            ChatFrame::ToolExecStart => {
+                                yield Ok(Event::default().event("tool-exec-start"));
+                            },
+                            ChatFrame::ToolExecEnd { id, name, result, is_error } => {
+                                let status = if is_error { "error" } else { "success" };
+                                let data = serde_json::to_string(&serde_json::json!({
+                                    "id": id,
+                                    "name": name,
+                                    "result": result,
+                                    "status": status,
+                                })).unwrap_or_default();
+                                yield Ok(Event::default().event("tool-exec-end").data(data));
+                            },
+                            ChatFrame::Done => break,
                         }
                     }
-                }
-                Some(AgentEvent::MessageEnd { message }) => {
-                    openatrading_core::log::info!("ai/chat: MessageEnd received");
-                    if let AgentMessage::Assistant { error_message: Some(err), .. } = &message {
-                        if !err.is_empty() {
-                            openatrading_core::log::warn!("ai/chat: MessageEnd carries error: {err}");
-                            yield Ok(Event::default().data(format!("[ERROR] {err}")));
-                        }
-                    }
-                }
-                Some(AgentEvent::AgentEnd { .. }) => {
-                    openatrading_core::log::info!("ai/chat: AgentEnd, breaking SSE loop");
-                    break;
-                }
-                Some(AgentEvent::ToolExecutionStart { .. }) => {
-                    yield Ok(Event::default().event("tool-exec-start"));
-                }
-                Some(AgentEvent::ToolExecutionEnd { tool_call_id, tool_name, result, is_error }) => {
-                    let status = if is_error { "error" } else { "success" };
-                    // `result` is a serialized `AgentToolResult`:
-                    // { "content": [ { "type": "text", "text": "..." }, ... ], "details": ..., "terminate": ... }
-                    // Extract the concatenated text so the frontend receives a plain string
-                    // (Claude/ChatGPT-style tool call block), not a nested JSON object.
-                    let result_text = extract_tool_result_text(&result);
-                    let data = serde_json::to_string(&serde_json::json!({
-                        "id": tool_call_id,
-                        "name": tool_name,
-                        "result": result_text,
-                        "status": status,
-                    })).unwrap_or_default();
-                    yield Ok(Event::default().event("tool-exec-end").data(data));
-                }
-                Some(_) => {}
+                },
                 None => {
                     openatrading_core::log::warn!("ai/chat: channel closed unexpectedly");
                     break;
-                }
+                },
             }
         }
         yield Ok(Event::default().data("[DONE]"));

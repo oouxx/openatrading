@@ -154,10 +154,7 @@ async fn handle_ask(
         .await;
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    match AgentSession::new(&ctx.llm, &system)
-        .process_chat(question)
-        .await
-    {
+    match AgentSession::new(&system).process_chat(question).await {
         Ok(response) => {
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))
