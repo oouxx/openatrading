@@ -78,8 +78,8 @@ pub async fn run_adapter_handler(
                     }
                 },
                 "model" => {
-                    let llm = ctx.llm_client();
-                    let msg = format!("当前模型: {:?}", llm.model);
+                    // TODO 实现这个slash command
+                    let msg = format!("当前模型: {:?}", "");
                     adapter.reply(&event, &msg).await.ok();
                 },
                 "mcp" => {

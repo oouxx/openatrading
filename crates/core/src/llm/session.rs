@@ -1,5 +1,5 @@
+use super::types::DesktopState;
 use anyhow::Result;
-
 // ── AgentSession (trading-specific) ─────────────────────────────────────
 
 /// Builder for a single agent invocation with trading decision support.
@@ -120,4 +120,8 @@ impl<'a> AgentSession<'a> {
         let result = handle.run_with_timeout(user_message, 300).await?;
         Ok(result.final_text)
     }
+}
+/// Select a session by ID.
+pub fn select_session_by_id(state: &mut DesktopState, session_id: &str) {
+    state.selected_session_id = session_id.to_string();
 }
