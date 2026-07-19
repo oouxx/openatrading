@@ -65,10 +65,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
         .command_type
         .clone()
         .or_else(|| input.skill_name.map(|_| CommandType::Skill));
-    let effective_command_name = input
-        .command_name
-        .or_else(|| input.skill_name)
-        .unwrap_or("");
+    let effective_command_name = input.command_name.or(input.skill_name).unwrap_or("");
 
     let all_tools = input.all_tools;
 
