@@ -6,7 +6,6 @@ use tokio::sync::Mutex;
 use crate::api::xuangubao::MarketOverview;
 use crate::context::AppContext;
 use crate::cron::run_decision;
-use crate::llm::session::AgentSession;
 use crate::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
