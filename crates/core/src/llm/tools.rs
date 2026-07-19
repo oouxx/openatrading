@@ -53,7 +53,7 @@ pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> 
     )
 }
 
-// ─── ToolDefinition variants (for custom_tools in invoke_agent) ──────────
+// ─── ToolDefinition variants (for custom_tools in AgentRuntime) ──────────
 
 /// Create a `ToolDefinition` for querying current positions.
 pub fn create_positions_tool_def(trade: Arc<TradeManager>, role_name: String) -> ToolDefinition {

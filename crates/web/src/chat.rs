@@ -262,8 +262,7 @@ pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::pi_ai_types::ContentBlock;
-    use openatrading_core::llm::{AgentEvent, AgentMessage};
+    use openatrading_core::llm::AgentEvent;
 
     // Use the pre-built tool registry from AppContext (startup lifetime)
     let tools_registry = &state.ctx.tool_registry;
@@ -281,28 +280,32 @@ pub async fn ai_chat(
         all_tools,
     });
     let system_prompt = config.system_prompt;
-    let tools = config.tools;
     drop(roles_guard);
-
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    pi_messages.push(AgentMessage::User {
-        content: vec![ContentBlock::Text {
-            text: req.message,
-            text_signature: None,
-        }],
-        timestamp: 0,
-    });
 
     // ── 通过 pi-coding-agent 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
 
     let sid = req.session_id.clone();
     let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<anyhow::Result<String>>();
+    // Clone what the spawned task needs; the runtime is cheap to reference via Arc.
+    let runtime = state.ctx.runtime.clone();
+    let system_prompt = system_prompt.clone();
+    let user_message = req.message.clone();
     tokio::spawn(async move {
-        let result =
-            openatrading_core::llm::process_messages(&system_prompt, tools, pi_messages, tx, sid)
-                .await;
-        let _ = sid_tx.send(result.map(|(_, id)| id));
+        let mut handle = match runtime
+            .create_session(&system_prompt, Vec::new(), true, sid.as_deref())
+            .await
+        {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = sid_tx.send(Err(e));
+                return;
+            },
+        };
+        let id = handle.session_id().to_string();
+        handle.subscribe(tx).await;
+        handle.send(&user_message).await;
+        let _ = sid_tx.send(Ok(id));
     });
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {

@@ -4,8 +4,9 @@ use anyhow::Result;
 
 /// Builder for a single agent invocation with trading decision support.
 ///
-/// Wraps upstream `invoke_agent` + retry logic into one call, so entry points
-/// (cron, CLI, Telegram) don't repeat the assemble → call → extract pattern.
+/// Wraps the unified `AgentRuntime` (create_session → subscribe → send →
+/// collect) plus retry logic into one call, so entry points (cron, CLI,
+/// Telegram) don't repeat the assemble → call → extract pattern.
 ///
 /// All tools (market data, `submit_trading_decision`, etc.) are provided by
 /// `MarketDataExtension` via the `ExtensionRegistry` — no manual tool injection.
@@ -13,17 +14,21 @@ use anyhow::Result;
 /// # Example
 ///
 /// ```rust,ignore
-/// let output = AgentSession::new(&role.strategy)
+/// let output = AgentSession::new(&ctx.runtime, &role.strategy)
 ///     .process_decision(user_msg)
 ///     .await?;
 /// ```
 pub struct AgentSession<'a> {
+    runtime: &'a crate::llm::AgentRuntime,
     system_prompt: &'a str,
 }
 
 impl<'a> AgentSession<'a> {
-    pub fn new(system_prompt: &'a str) -> Self {
-        Self { system_prompt }
+    pub fn new(runtime: &'a crate::llm::AgentRuntime, system_prompt: &'a str) -> Self {
+        Self {
+            runtime,
+            system_prompt,
+        }
     }
 
     /// Run the agent and extract structured `DecisionOutput`.
@@ -49,12 +54,15 @@ impl<'a> AgentSession<'a> {
                 )
             };
 
-            let result =
-                openatrading_agent::session::invoke_agent(self.system_prompt, &msg).await?;
+            let mut handle = self
+                .runtime
+                .create_session(self.system_prompt, Vec::new(), false, None)
+                .await?;
+            let result = handle.run_with_timeout(&msg, 300).await?;
             last_text = result.final_text.clone();
 
             // 1) Decision-tool path (preferred — no extra LLM call)
-            if let Some(ref tv) = result.tool_output {
+            if let Some(ref tv) = result.tool_outputs.into_iter().next() {
                 if let Ok(output) =
                     serde_json::from_value::<crate::roles::prompt::DecisionOutput>(tv.clone())
                 {
@@ -105,8 +113,11 @@ impl<'a> AgentSession<'a> {
 
     /// Run the agent and return the final text reply.
     pub async fn process_chat(&self, user_message: &str) -> Result<String> {
-        let result =
-            openatrading_agent::session::invoke_agent(self.system_prompt, user_message).await?;
+        let mut handle = self
+            .runtime
+            .create_session(self.system_prompt, Vec::new(), false, None)
+            .await?;
+        let result = handle.run_with_timeout(user_message, 300).await?;
         Ok(result.final_text)
     }
 }

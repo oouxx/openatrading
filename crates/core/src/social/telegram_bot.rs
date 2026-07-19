@@ -489,7 +489,7 @@ impl TelegramBot {
         user_msg.push_str(&format!("\n\nuser: {}", question));
 
         let system = crate::skills::SkillRegistry::build_role_prompt(role);
-        let accumulated = AgentSession::new(&system)
+        let accumulated = crate::llm::session::AgentSession::new(&self.ctx.runtime, &system)
             .process_chat(&user_msg)
             .await
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));

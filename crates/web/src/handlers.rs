@@ -1112,7 +1112,7 @@ pub async fn ai_replay_analyze(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     openatrading_core::log::info!("[replay] POST /api/replay/analyze start");
-    let llm = state.ctx.llm.clone();
+    let llm = state.ctx.llm_client();
 
     let date = XuanguBaoClient::last_n_trading_days(1)
         .first()
