@@ -1,26 +1,16 @@
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
-
 use anyhow::Result;
-use futures::Future;
-use tokio::sync::{mpsc, watch};
-
-use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::types::{AgentEvent, AgentMessage, DynTool};
-use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-
-// ── AgentResult ──────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct AgentResult {
-    pub final_text: String,
-    pub tool_outputs: Vec<serde_json::Value>,
-}
 
 // ── create_session ──────────────────────────────────────
 
 /// Create a new empty pi-coding-agent session and return its info.
+///
+/// Returns `(file_stem, session_id)` where `file_stem` is the JSONL file stem
+/// used as the session identifier by callers that persist conversations.
+///
+/// Note: for new streaming flows, prefer [`crate::llm::AgentRuntime::create_session`]
+/// which returns a [`crate::llm::SessionHandle`] and supports `subscribe`/`send`.
+/// This function is retained for the legacy "create empty session" HTTP/IPC
+/// endpoints that only need a session id up front.
 pub fn create_session() -> Result<(String, String)> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
@@ -41,152 +31,4 @@ pub fn create_session() -> Result<(String, String)> {
         })
         .unwrap_or_else(|| sid.clone());
     Ok((file_stem, sid))
-}
-
-// ── process_messages ────────────────────────────────────────────────────
-
-/// Process a user message through a pi-coding-agent session.
-///
-/// ## Session lifecycle
-/// - `session_id = None`  → creates a new session, persists to JSONL, returns its ID
-/// - `session_id = Some(id)` → loads existing session from JSONL, appends the message
-///
-/// The session_id is the **file stem** of the JSONL file on disk (e.g. `2026-07-18T12-34-56_uuid`).
-/// Callers should persist it and pass it back on subsequent messages to continue the conversation.
-pub async fn process_messages(
-    system_prompt: &str,
-    _: Vec<Arc<DynTool>>,
-    messages: Vec<AgentMessage>,
-    tx: mpsc::Sender<AgentEvent>,
-    session_id: Option<String>,
-) -> Result<(AgentResult, String)> {
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-
-    let ext_registry = openatrading_extension::create_registry();
-
-    let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
-
-    // Sanitize user-provided session_id: reject empty, too long, path separators, null bytes
-    let sid = match session_id {
-        Some(ref id)
-            if id.is_empty()
-                || id.len() > 256
-                || id.contains('/')
-                || id.contains('\\')
-                || id.contains("..")
-                || id.contains('\0') =>
-        {
-            return Err(anyhow::anyhow!("invalid session_id"))
-        },
-        Some(id) => id,
-        None => pi_coding_agent::core::session_manager::derive_short_session_id(),
-    };
-
-    // session_file: when the file already exists, pi-coding-agent loads it.
-    // When it doesn't, pi-coding-agent creates a new session with auto-generated
-    // filename `{timestamp}_{uuid}.jsonl`. We query the actual path after creation
-    // and return the real file stem.
-    let session_file = format!("{session_dir}/{sid}.jsonl");
-
-    let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
-        cwd: cwd.clone(),
-        agent_dir: None,
-        model: None,
-        thinking_level: None,
-        scoped_models: None,
-        no_tools: Some(NoToolsMode::All),
-        tools: None,
-        exclude_tools: None,
-        custom_prompt: Some(system_prompt.to_string()),
-        append_system_prompt: None,
-        session_name: Some(sid.clone()),
-        stream_fn: None,
-        convert_to_llm: None,
-        custom_tools: None,
-        extension_paths: Vec::new(),
-        enable_extensions: true,
-        extension_registry: Some(ext_registry),
-        cli_provider: None,
-        cli_model: None,
-        persist_session: true,
-        session_file: Some(session_file.clone()),
-        fork_from: None,
-        session_dir: Some(session_dir.clone()),
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
-
-    // Get the actual session file stem (pi-coding-agent may have renamed the file
-    // to `{timestamp}_{uuid}.jsonl`). Return the stem so the caller can pass it
-    // back on the next request and we can reconstruct the correct file path.
-    let actual_id = session
-        .get_session_file()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-        .unwrap_or(sid);
-
-    // Subscribe → forward all AgentEvents to caller's channel
-    let event_tx = tx.clone();
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
-            let tx = event_tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event).await;
-            }) as Pin<Box<dyn Future<Output = ()> + Send>>
-        },
-    );
-
-    let _handle = {
-        let agent = session.get_agent();
-        agent.subscribe(listener).await
-    };
-
-    // Process with 300s timeout
-    let process_result = {
-        let agent = session.get_agent();
-        let process_fut = agent.process(messages);
-        tokio::time::timeout(Duration::from_secs(300), process_fut).await
-    };
-
-    match process_result {
-        Ok(Ok(_)) => {},
-        Ok(Err(e)) => return Err(anyhow::anyhow!("agent process failed: {e}")),
-        Err(_elapsed) => {
-            tracing::warn!("process_messages timed out after 300s, aborting");
-            {
-                let agent = session.get_agent();
-                agent.abort().await;
-            }
-            return Err(anyhow::anyhow!("agent processing timed out after 300s"));
-        },
-    }
-
-    let all_messages = session.get_messages().await;
-
-    let mut final_text = String::new();
-    let mut tool_outputs: Vec<serde_json::Value> = Vec::new();
-
-    for msg in &all_messages {
-        if let AgentMessage::Assistant { content, .. } = msg {
-            for block in content {
-                match block {
-                    ContentBlock::Text { text, .. } => final_text.push_str(text),
-                    ContentBlock::ToolCall { arguments, .. } => {
-                        tool_outputs.push(arguments.clone());
-                    },
-                    _ => {},
-                }
-            }
-        }
-    }
-
-    Ok((
-        AgentResult {
-            final_text,
-            tool_outputs,
-        },
-        actual_id,
-    ))
 }

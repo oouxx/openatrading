@@ -79,7 +79,8 @@ pub async fn run_adapter_handler(
                     }
                 },
                 "model" => {
-                    let msg = format!("当前模型: {:?}", ctx.llm.model);
+                    let llm = ctx.llm_client();
+                    let msg = format!("当前模型: {:?}", llm.model);
                     adapter.reply(&event, &msg).await.ok();
                 },
                 "mcp" => {
@@ -154,7 +155,10 @@ async fn handle_ask(
         .await;
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    match AgentSession::new(&system).process_chat(question).await {
+    match crate::llm::session::AgentSession::new(&ctx.runtime, &system)
+        .process_chat(question)
+        .await
+    {
         Ok(response) => {
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))

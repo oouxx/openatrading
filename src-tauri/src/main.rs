@@ -986,29 +986,11 @@ async fn api_chat_stream(
 ) -> Result<(), String> {
     eprintln!("[chat_stream] start, body={}", body);
 
-    let api = state.ctx.api.clone();
     let roles = state.roles.clone();
     let tools_registry = &state.ctx.tool_registry;
 
     let role_name = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
     eprintln!("[chat_stream] role={role_name}");
-
-    eprintln!("[chat_stream] fetching overview...");
-    let overview = openatrading_web::chat::fetch_overview_data(&api)
-        .await
-        .map_err(|e| {
-            eprintln!("[chat_stream] overview error: {e}");
-            format!("overview error: {e}")
-        })?;
-    eprintln!("[chat_stream] overview ok");
-
-    let field_items = openatrading_web::chat::fetch_field_json(&api).await;
-    let super_stocks = openatrading_web::chat::fetch_super_stock_json(&api).await;
-    eprintln!(
-        "[chat_stream] field_items={}, super_stocks={}",
-        field_items.is_some(),
-        super_stocks.is_some()
-    );
 
     let roles_guard = roles.read().await;
     let command_type_str = body
@@ -1053,49 +1035,14 @@ async fn api_chat_stream(
         },
     );
     let system_prompt = config.system_prompt;
-    let tools = config.tools;
     drop(roles_guard);
 
     use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
+    use openatrading_core::llm::AgentEvent;
 
-    // ── 构建市场数据上下文消息 ──
-
-    let user_message = openatrading_web::chat::build_user_message(
-        &overview,
-        field_items.as_deref(),
-        super_stocks.as_deref(),
-    );
-    eprintln!(
-        "[chat_stream] system_prompt len={}, user_message len={}",
-        system_prompt.len(),
-        user_message.len()
-    );
-
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    // Data context as first user message
-    pi_messages.push(AgentMessage::User {
-        content: vec![ContentBlock::Text {
-            text: user_message,
-            text_signature: None,
-        }],
-        timestamp: 0,
-    });
-    // Assistant ack
-    pi_messages.push(AgentMessage::Assistant {
-        content: vec![ContentBlock::Text {
-            text: "已收到市场数据，请提问。".into(),
-            text_signature: None,
-        }],
-        api: String::new(),
-        provider: String::new(),
-        model: String::new(),
-        usage: Default::default(),
-        stop_reason: Some(StopReason::Stop),
-        error_message: None,
-        timestamp: 0,
-    });
-
-    // History
+    // ── 构建完整对话历史（数据上下文 + 历史 + 当前消息）──
+    let mut pi_messages: Vec<openatrading_core::llm::AgentMessage> = Vec::new();
+    // History from the request body (frontend-maintained conversation)
     if let Some(history) = body.get("history").and_then(|h| h.as_array()) {
         eprintln!("[chat_stream] history len={}", history.len());
         for msg in history {
@@ -1103,7 +1050,7 @@ async fn api_chat_stream(
             let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
             match role {
                 "user" => {
-                    pi_messages.push(AgentMessage::User {
+                    pi_messages.push(openatrading_core::llm::AgentMessage::User {
                         content: vec![ContentBlock::Text {
                             text: content.to_string(),
                             text_signature: None,
@@ -1112,7 +1059,7 @@ async fn api_chat_stream(
                     });
                 },
                 "assistant" => {
-                    pi_messages.push(AgentMessage::Assistant {
+                    pi_messages.push(openatrading_core::llm::AgentMessage::Assistant {
                         content: vec![ContentBlock::Text {
                             text: content.to_string(),
                             text_signature: None,
@@ -1130,11 +1077,10 @@ async fn api_chat_stream(
             }
         }
     }
-
     // Current user message
     if let Some(message) = body.get("message").and_then(|m| m.as_str()) {
         eprintln!("[chat_stream] user message: {message}");
-        pi_messages.push(AgentMessage::User {
+        pi_messages.push(openatrading_core::llm::AgentMessage::User {
             content: vec![ContentBlock::Text {
                 text: message.to_string(),
                 text_signature: None,
@@ -1145,6 +1091,7 @@ async fn api_chat_stream(
 
     eprintln!("[chat_stream] creating agent and subscribing to events");
 
+    // ── 通过 pi-coding-agent 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
 
     let session_id = body
@@ -1152,16 +1099,29 @@ async fn api_chat_stream(
         .and_then(|v| v.as_str())
         .map(String::from);
     let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let runtime = state.ctx.runtime.clone();
+    let system_prompt_clone = system_prompt.clone();
+    let pi_messages_clone = pi_messages.clone();
     tokio::spawn(async move {
-        let result = openatrading_core::llm::process_messages(
-            &system_prompt,
-            tools,
-            pi_messages,
-            tx,
-            session_id,
-        )
-        .await;
-        let _ = sid_tx.send(result.map(|(_, id)| id).map_err(|e| e.to_string()));
+        let mut handle = match runtime
+            .create_session(
+                &system_prompt_clone,
+                Vec::new(),
+                true,
+                session_id.as_deref(),
+            )
+            .await
+        {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = sid_tx.send(Err(e.to_string()));
+                return;
+            },
+        };
+        let id = handle.session_id().to_string();
+        handle.subscribe(tx).await;
+        handle.send_messages(pi_messages_clone).await;
+        let _ = sid_tx.send(Ok(id));
     });
 
     eprintln!("[chat_stream] reading events from channel");
@@ -1345,7 +1305,7 @@ async fn api_replay_analyze(
     channel: tauri::ipc::Channel<String>,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    let llm = state.ctx.llm.clone();
+    let llm = state.ctx.llm_client();
 
     let client = XuanguBaoClient::new();
     let events = client

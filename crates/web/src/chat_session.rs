@@ -2,7 +2,7 @@
 //! backends.
 //!
 //! Both `chat::ai_chat` and `src-tauri`'s `api_chat_stream` drive the same
-//! agent loop (`openatrading_core::llm::process_messages`) and translate its
+//! agent loop (`openatrading_core::llm::AgentRuntime`) and translate its
 //! `AgentEvent`s into a frontend wire protocol. This module centralizes the
 //! two pieces that were previously copy-pasted with subtle drift:
 //!

@@ -10,7 +10,7 @@ use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::{AgentEvent, AgentMessage};
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions, NoToolsMode};
-use pi_extension_api::{ExtensionRegistry, ToolDefinition};
+use pi_extension_api::ToolDefinition;
 
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ use pi_extension_api::{ExtensionRegistry, ToolDefinition};
 ///
 /// Every LLM call goes through `create_session()` → `subscribe()` → `send()`.
 /// No one-shot shortcuts — all invocations are streaming.
+#[derive(Clone)]
 pub struct AgentRuntime {
     _private: (),
 }
@@ -149,6 +150,17 @@ impl SessionHandle {
     /// Events are delivered through the channel passed to `subscribe()`.
     pub async fn send(&mut self, message: &str) {
         self.session.add_user_text(message).await;
+    }
+
+    /// Send a full message history and run the agent loop.
+    ///
+    /// Used by callers (web/tauri) that assemble the entire conversation
+    /// (data context, prior turns, current user message) into `AgentMessage`s
+    /// and want the agent to process them in one turn. Events are delivered
+    /// through the channel passed to `subscribe()`.
+    pub async fn send_messages(&mut self, messages: Vec<AgentMessage>) {
+        let agent = self.session.get_agent();
+        let _ = agent.process(messages).await;
     }
 
     /// Get all messages in the current session.

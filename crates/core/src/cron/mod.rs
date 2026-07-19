@@ -7,8 +7,6 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
 use crate::context::AppContext;
-use crate::llm::tools::{create_historical_context_tool, create_positions_tool};
-use crate::llm::DynTool;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
 use crate::trade::{execute_buy, execute_sell};
@@ -268,11 +266,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
     update_all_position_prices(&ctx.trade, &ctx.api).await;
 
     for role in roles {
-        let mut role_tools = ctx.all_tools();
-        role_tools.push(create_positions_tool(ctx.trade.clone(), role.name.clone()));
-        role_tools.push(create_historical_context_tool(ctx.memory.clone()));
-
-        if let Err(e) = run_decision_for_role(ctx, role, &market_context, &role_tools).await {
+        if let Err(e) = run_decision_for_role(ctx, role, &market_context).await {
             crate::log::error!("[cron] decision failed for role '{}': {e}", role.name);
         }
     }
@@ -325,13 +319,8 @@ async fn run_decision_for_role(
     ctx: &AppContext,
     role: &RoleEntry,
     market_context: &str,
-    tools: &[Arc<DynTool>],
 ) -> Result<()> {
-    crate::log::info!(
-        "[cron] decision for '{}': {} tools injected (positions, memory, market)",
-        role.name,
-        tools.len()
-    );
+    crate::log::info!("[cron] decision for '{}' starting", role.name,);
 
     let mut market_user_message =
         crate::prompts::build_decision_user_message(market_context, &role.display_name);
@@ -340,7 +329,7 @@ async fn run_decision_for_role(
     }
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    let decision = match crate::llm::session::AgentSession::new(&system)
+    let decision = match crate::llm::session::AgentSession::new(&ctx.runtime, &system)
         .process_decision(&market_user_message)
         .await
     {
