@@ -1299,50 +1299,6 @@ async fn api_kline_stream(
     }
 }
 
-#[tauri::command]
-async fn api_replay_analyze(
-    channel: tauri::ipc::Channel<String>,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<(), String> {
-    let llm = state.ctx.llm_client();
-
-    let client = XuanguBaoClient::new();
-    let events = client
-        .fetch_all_day_events(0.03)
-        .await
-        .map_err(|e| format!("fetch error: {e}"))?;
-    let date = XuanguBaoClient::last_n_trading_days(1)
-        .first()
-        .cloned()
-        .unwrap_or_default();
-    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-    let prompt = openatrading_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
-
-    let mut llm_stream = llm
-        .chat_stream(&prompt)
-        .await
-        .map_err(|e| format!("llm error: {e}"))?;
-
-    use futures_util::StreamExt;
-    while let Some(chunk) = llm_stream.next().await {
-        match chunk {
-            Ok(text) if !text.is_empty() => {
-                channel
-                    .send(text)
-                    .map_err(|e| format!("channel error: {e}"))?;
-            },
-            Err(e) => {
-                channel
-                    .send(format!("[ERROR] {e}"))
-                    .map_err(|e| format!("channel error: {e}"))?;
-                break;
-            },
-            _ => {},
-        }
-    }
-    Ok(())
-}
-
 fn load_llm_config_from_toml() -> (Option<String>, Option<String>) {
     match openatrading_cli::cli::config::AppConfig::load() {
         Ok(cfg) => (
@@ -1502,7 +1458,6 @@ fn main() {
             api_chat_stream,
             api_realtime_stream,
             api_kline_stream,
-            api_replay_analyze,
             api_search_stocks,
             get_config,
             update_config,

@@ -24,7 +24,6 @@ pub struct TelegramBotConfig {
 pub struct TelegramBot {
     bot_token: String,
     chat_id: String,
-    mcp_servers: Vec<crate::llm::McpServerConfig>,
     ctx: AppContext,
     roles: Vec<RoleEntry>,
     session: Arc<Mutex<Option<ChatSession>>>,
@@ -73,7 +72,6 @@ impl TelegramBot {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
-            mcp_servers: config.mcp_servers,
             ctx,
             roles,
             session: Arc::new(Mutex::new(None)),
