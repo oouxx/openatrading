@@ -57,7 +57,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                 <Wrench className="text-ink-muted size-3.5 shrink-0" />
                 <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
-                {(tc.args || tc.result || hasPartial) && (
+                {(tc.args || hasPartial) && (
                   <span className="text-ink-muted/50 ml-auto">
                     {isExpanded ? (
                       <ChevronDown className="size-3" />
@@ -68,7 +68,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                 )}
               </button>
 
-              {(tc.args || tc.result || hasPartial) && isExpanded && (
+              {(tc.args || hasPartial) && isExpanded && (
                 <div className="border-hairline space-y-2 border-t px-3 py-2">
                   {tc.args && (
                     <Section title="参数">
@@ -91,13 +91,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                       </pre>
                     </Section>
                   )}
-                  {tc.result && (
-                    <Section title="结果">
-                      <pre className="text-ink-muted max-h-60 overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                        {tc.result.length > 800 ? tc.result.slice(0, 800) + "\n…" : tc.result}
-                      </pre>
-                    </Section>
-                  )}
+
                 </div>
               )}
             </div>
