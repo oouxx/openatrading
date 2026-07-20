@@ -63,7 +63,7 @@ export default function SkillEditor() {
   }
 
   // Mount-time initialization — data must be fetched before user interacts
-   
+
   useEffect(() => {
     loadSkills()
     loadTools()
@@ -154,10 +154,10 @@ export default function SkillEditor() {
 
       <div className="flex min-h-0 flex-1">
         {/* Left: skill list */}
-        <div className="border-hairline flex w-[220px] flex-shrink-0 flex-col border-r">
+        <div className="border-hairline flex w-[220px] shrink-0 flex-col border-r">
           <div className="border-hairline border-b px-3 py-2">
             <input
-              className="text-ink-muted bg-bg-hover w-full rounded-md border-0 px-2 py-1.5 text-xs outline-none placeholder:text-white/20"
+              className="bg-bg-hover text-ink-muted w-full rounded-md border-0 px-2 py-1.5 text-xs outline-none placeholder:text-white/20"
               placeholder="搜索技能..."
               readOnly
             />
@@ -180,17 +180,13 @@ export default function SkillEditor() {
                     <span className="truncate text-xs font-medium">{sk.name}</span>
                     <span
                       className={`rounded-full px-1.5 py-[1px] text-[9px] ${
-                        sk.scope === "project"
-                          ? "bg-ai/10 text-ai"
-                          : "bg-white/5 text-white/40"
+                        sk.scope === "project" ? "bg-ai/10 text-ai" : "bg-white/5 text-white/40"
                       }`}
                     >
                       {sk.scope === "project" ? "项目" : "用户"}
                     </span>
                   </div>
-                  <div className="text-ink-muted mt-0.5 truncate text-[10px]">
-                    {sk.description}
-                  </div>
+                  <div className="text-ink-muted mt-0.5 truncate text-[10px]">{sk.description}</div>
                 </button>
               ))
             )}
@@ -201,8 +197,18 @@ export default function SkillEditor() {
         <div className="flex min-w-0 flex-1 flex-col">
           {!selected && !isNew ? (
             <div className="text-ink-muted flex flex-1 flex-col items-center justify-center gap-2">
-              <svg className="size-8 opacity-20" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+              <svg
+                className="size-8 opacity-20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                />
               </svg>
               <span className="text-xs">选择一个技能开始编辑，或新建一个</span>
             </div>
@@ -215,9 +221,7 @@ export default function SkillEditor() {
                       key={tab}
                       onClick={() => setActiveTab(tab)}
                       className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                        activeTab === tab
-                          ? "bg-ai/10 text-ai"
-                          : "text-ink-muted hover:text-white"
+                        activeTab === tab ? "bg-ai/10 text-ai" : "text-ink-muted hover:text-white"
                       }`}
                     >
                       {tab === "manifest" ? "配置" : "内容"}
@@ -229,7 +233,7 @@ export default function SkillEditor() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-down/30 text-down hover:bg-down/10 h-7 text-[10px]"
+                      className="border-down/30 hover:bg-down/10 text-down h-7 text-[10px]"
                       onClick={() => deleteSkill(selected.name)}
                     >
                       删除
@@ -277,7 +281,7 @@ export default function SkillEditor() {
                       </CardContent>
                     </Card>
 
-                    <Card size="sm" className="border-hairline border ring-0 mt-3">
+                    <Card size="sm" className="border-hairline mt-3 border ring-0">
                       <CardHeader>
                         <CardTitle className="text-xs font-medium">元数据</CardTitle>
                       </CardHeader>
@@ -293,7 +297,9 @@ export default function SkillEditor() {
                             />
                           </div>
                           <div>
-                            <label className="text-ink-muted mb-1 block text-xs">compatibility</label>
+                            <label className="text-ink-muted mb-1 block text-xs">
+                              compatibility
+                            </label>
                             <Input
                               value={editCompat}
                               onChange={(e) => setEditCompat(e.target.value)}
@@ -305,7 +311,7 @@ export default function SkillEditor() {
                       </CardContent>
                     </Card>
 
-                    <Card size="sm" className="border-hairline border ring-0 mt-3">
+                    <Card size="sm" className="border-hairline mt-3 border ring-0">
                       <CardHeader>
                         <CardTitle className="text-xs font-medium">工具权限</CardTitle>
                       </CardHeader>
@@ -353,9 +359,7 @@ export default function SkillEditor() {
                 ) : (
                   <div className="flex min-h-0 flex-1 p-4">
                     <div className="flex flex-1 flex-col">
-                      <label className="text-ink-muted mb-1 block text-xs">
-                        指令（Markdown）
-                      </label>
+                      <label className="text-ink-muted mb-1 block text-xs">指令（Markdown）</label>
                       <Textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}

@@ -20,15 +20,15 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   }, [children])
 
   return (
-    <div className="group rounded-card border-hairline bg-bg-hover my-2 overflow-hidden border">
+    <div className="bg-bg-hover border-hairline group rounded-card my-2 overflow-hidden border">
       {/* Header bar */}
       <div className="border-hairline flex items-center justify-between border-b px-3 py-1.5">
-        <span className="text-ink-muted/60 font-mono text-[10px] uppercase tracking-wider">
+        <span className="text-ink-muted/60 font-mono text-[10px] tracking-wider uppercase">
           {language || "code"}
         </span>
         <button
           onClick={handleCopy}
-          className="text-ink-muted/50 hover:text-ink-muted flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors opacity-0 group-hover:opacity-100"
+          className="hover:text-ink-muted text-ink-muted/50 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition-colors group-hover:opacity-100"
         >
           {copied ? (
             <>
@@ -44,7 +44,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
         </button>
       </div>
       {/* Code content */}
-      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed">
+      <pre className="overflow-x-auto p-3 font-mono text-xs/relaxed">
         <code className={className} {...props}>
           {children}
         </code>
@@ -83,7 +83,7 @@ const mdComponents: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-hairline bg-bg-hover text-ink-muted border-b px-3 py-2 text-left font-medium">
+    <th className="bg-bg-hover border-hairline text-ink-muted border-b px-3 py-2 text-left font-medium">
       {children}
     </th>
   ),
@@ -98,9 +98,9 @@ const mdComponents: Components = {
   ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
   hr: () => <hr className="border-hairline my-3" />,
-  h1: ({ children }) => <h1 className="text-ink mb-2 mt-4 text-base font-semibold">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-ink mb-1.5 mt-3.5 text-sm font-semibold">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-ink mb-1 mt-3 text-sm font-medium">{children}</h3>,
+  h1: ({ children }) => <h1 className="text-ink mt-4 mb-2 text-base font-semibold">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-ink mt-3.5 mb-1.5 text-sm font-semibold">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-ink mt-3 mb-1 text-sm font-medium">{children}</h3>,
   p: ({ children }) => <p className="my-1.5 leading-relaxed">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="border-ai/30 text-ink-muted my-2 border-l-2 pl-3 text-xs italic">
@@ -153,7 +153,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
   if (!content) return null
 
   return (
-    <div className="prose-custom text-sm leading-relaxed">
+    <div className="prose-custom text-sm/relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}

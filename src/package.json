@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run lint",
     "format": "prettier --write src/",
-    "format:check": "prettier --check src/"
+    "format:check": "prettier --check src/",
+    "canonicalize": "bun scripts/canonicalize-classes.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",

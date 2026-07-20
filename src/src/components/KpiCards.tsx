@@ -137,7 +137,7 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
       </div>
 
       {decisionSummary && (
-        <div className="rounded-card border-hairline bg-bg-surface flex items-center gap-4 border px-5 py-4">
+        <div className="bg-bg-surface border-hairline rounded-card flex items-center gap-4 border px-5 py-4">
           <span
             className={`text-caption-strong rounded-button px-3 py-1 font-mono ${riskBadgeClass}`}
           >

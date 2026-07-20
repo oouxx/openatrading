@@ -159,7 +159,7 @@ export default function DragonTigerView() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
-          <div className="border-hairline bg-bg-surface order-2 overflow-hidden rounded-xl border md:order-none">
+          <div className="bg-bg-surface border-hairline order-2 overflow-hidden rounded-xl border md:order-0">
             <div className="border-hairline border-b px-3.5 py-3 text-[13px] font-medium text-white">
               筛选
             </div>
@@ -173,7 +173,7 @@ export default function DragonTigerView() {
                   placeholder="名称或代码…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="border-hairline bg-bg focus:border-ai w-full rounded-lg border px-2.5 py-1.5 text-xs text-white transition-colors outline-none"
+                  className="bg-bg border-hairline focus:border-ai w-full rounded-lg border px-2.5 py-1.5 text-xs text-white transition-colors outline-none"
                 />
               </div>
               <div>
@@ -208,7 +208,7 @@ export default function DragonTigerView() {
             </div>
           </div>
 
-          <div className="border-hairline bg-bg-surface order-1 overflow-hidden rounded-xl border md:order-none">
+          <div className="bg-bg-surface border-hairline order-1 overflow-hidden rounded-xl border md:order-0">
             <div className="border-hairline flex items-center justify-between gap-2.5 border-b px-4 py-2.5">
               <h3 className="text-[13px] font-medium text-white">龙虎榜上榜个股</h3>
               <span className="text-ink-muted text-[11px]">
@@ -342,8 +342,8 @@ export default function DragonTigerView() {
               if (e.target === e.currentTarget) setSelected(null)
             }}
           >
-            <div className="border-hairline bg-bg-surface flex max-h-[90vh] w-[700px] max-w-[95vw] flex-col overflow-hidden rounded-2xl border shadow-2xl">
-              <div className="border-hairline flex flex-shrink-0 items-center justify-between border-b px-5 py-4">
+            <div className="bg-bg-surface border-hairline flex max-h-[90vh] w-[700px] max-w-[95vw] flex-col overflow-hidden rounded-2xl border shadow-2xl">
+              <div className="border-hairline flex shrink-0 items-center justify-between border-b px-5 py-4">
                 <span className="text-[15px] font-medium text-white">
                   {selected.name} ({selected.code})
                 </span>

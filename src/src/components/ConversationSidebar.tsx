@@ -124,7 +124,7 @@ export default function ConversationSidebar({
                     <span className="flex-1 truncate">{t.title}</span>
                   </SidebarMenuButton>
                   <button
-                    className="text-ink-muted hover:text-down absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
+                    className="hover:text-down text-ink-muted absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDeleteThread(t.id)
