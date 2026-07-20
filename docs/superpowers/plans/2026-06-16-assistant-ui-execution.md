@@ -13,6 +13,7 @@
 ### Task 1: Command types + shared module
 
 **Files:**
+
 - Create: `crates/core/src/commands/mod.rs`
 
 Backend shared types for command metadata. No tests needed (data-only types).
@@ -67,6 +68,7 @@ git commit -m "feat: add CommandSpec types + commands module"
 ### Task 2: PipelineRegistry — scan PIPELINE.md from disk
 
 **Files:**
+
 - Create: `crates/core/src/pipelines/mod.rs`
 - Modify: `crates/core/src/lib.rs` (already added in Task 1)
 
@@ -74,7 +76,7 @@ Pipeline discovery parallel to SkillRegistry. Scans `~/.atrading/pipelines/<name
 
 - [ ] **Create `crates/core/src/pipelines/mod.rs`**
 
-```rust
+````rust
 use crate::commands::{CommandSpec, CommandType, PipelineSpec};
 
 /// Registry of installed pipelines loaded from `~/.atrading/pipelines/`.
@@ -247,7 +249,7 @@ mod tests {
         assert!(reg.is_empty());
     }
 }
-```
+````
 
 - [ ] **Run tests**
 
@@ -266,6 +268,7 @@ git commit -m "feat: add PipelineRegistry with PIPELINE.md frontmatter parser"
 ### Task 3: GET /api/ai/commands endpoint — merge three registries
 
 **Files:**
+
 - Modify: `crates/web/src/chat.rs`
 - Modify: `crates/web/src/lib.rs`
 
@@ -341,6 +344,7 @@ git commit -m "feat: add GET /api/ai/commands merging tools/skills/pipelines"
 ### Task 4: Extend ChatRequest + command-aware ai_chat handler
 
 **Files:**
+
 - Modify: `crates/web/src/chat.rs`
 
 Add `command_name` and `command_type` fields to ChatRequest, then branch on `command_type` in `ai_chat` to filter tools and inject prompt.
@@ -463,6 +467,7 @@ git commit -m "feat: command-aware ai_chat with tool filtering + prompt injectio
 ### Task 5: Update Tauri api_chat_stream for command awareness
 
 **Files:**
+
 - Modify: `src-tauri/src/main.rs`
 
 The Tauri `api_chat_stream` command needs to accept command_name/command_type and apply the same branching logic. Since Tauri doesn't use the Axum handler, we add the command-aware logic inline.
@@ -533,11 +538,13 @@ git commit -m "feat: command-aware prompt injection in Tauri api_chat_stream"
 ### Task 6: Install assistant-ui dependency
 
 **Files:**
+
 - Modify: `src/package.json`
 
 - [ ] **Add `@assistant-ui/react` dependency**
 
 Run:
+
 ```bash
 cd /Users/wxx/Desktop/github/trading-agent/src
 bun add @assistant-ui/react
@@ -557,6 +564,7 @@ git commit -m "feat: add @assistant-ui/react dependency"
 ### Task 7: Create shared useAssistantChat hook
 
 **Files:**
+
 - Create: `src/src/hooks/useAssistantChat.ts`
 
 The shared hook that manages messages, streaming, command ref, and handles both controlled ExternalThread and slash command registration.
@@ -603,7 +611,10 @@ export function useAssistantChat() {
   }, []);
 
   const handleNew = useCallback(
-    (content: string, commandContext?: { name: string; type: string } | null) => {
+    (
+      content: string,
+      commandContext?: { name: string; type: string } | null,
+    ) => {
       const cmd = commandContext ?? cmdRef.current;
       cmdRef.current = null;
 
@@ -642,10 +653,10 @@ export function useAssistantChat() {
               }
               return updated;
             }),
-        }
+        },
       );
     },
-    [messages, appendToLastMessage]
+    [messages, appendToLastMessage],
   );
 
   const sendCommand = useCallback(
@@ -657,7 +668,7 @@ export function useAssistantChat() {
       }
       // Skill/pipeline: fill composer text — handled by caller via the returned cmdRef
     },
-    [handleNew]
+    [handleNew],
   );
 
   const clearChat = useCallback(() => {
@@ -688,6 +699,7 @@ git commit -m "feat: create shared useAssistantChat hook"
 ### Task 8: Rewrite AiCopilot.tsx with assistant-ui ExternalThread
 
 **Files:**
+
 - Modify: `src/src/AiCopilot.tsx`
 
 Replace the custom implementation with assistant-ui `<ExternalThread>` pattern. Keep TickerStrip, remove ContextSidebar, remove quick prompts.
@@ -759,7 +771,7 @@ function TickerStrip() {
               className="inline-flex items-center gap-2.5 py-2.5 px-[18px] border-r border-hairline last:border-r-0 min-w-[178px] cursor-pointer hover:opacity-80 transition-opacity"
             >
               <span
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${iconBg[m.icon.cls] || "bg-ai"}`}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${iconBg[m.icon.cls] || "bg-ai"}`}
               >
                 {m.icon.label}
               </span>
@@ -852,6 +864,7 @@ git commit -m "feat: rewrite AiCopilot with assistant-ui ExternalThread"
 ### Task 9: Rewrite AiSidebar.tsx with assistant-ui ExternalThread
 
 **Files:**
+
 - Modify: `src/src/components/AiSidebar.tsx`
 
 Replace the custom implementation — remove role selector dropdown, suggested questions, custom input/messages. Use compact `<ExternalThread>`.
@@ -894,7 +907,7 @@ export default function AiSidebar(_props: AiSidebarProps) {
       </div>
 
       {messages.length > 0 && (
-        <div className="px-3 py-2 border-t border-hairline flex justify-center flex-shrink-0">
+        <div className="px-3 py-2 border-t border-hairline flex justify-center shrink-0">
           <button
             onClick={clearChat}
             className="px-3 py-1.5 rounded-lg border border-hairline text-xs text-ink-muted hover:text-white transition-colors cursor-pointer"
@@ -920,6 +933,7 @@ git commit -m "feat: rewrite AiSidebar with assistant-ui ExternalThread"
 ### Task 10: Update WEB.md documentation
 
 **Files:**
+
 - Modify: `.claude/context/WEB.md` (or project documentation)
 
 - [ ] **Update API docs**
@@ -938,6 +952,7 @@ git commit -m "docs: add /api/ai/commands and command-aware chat fields"
 ## Self-Review
 
 **Spec coverage:**
+
 1. ✅ `CommandType` enum + `CommandSpec` struct — Task 1
 2. ✅ `PipelineRegistry` scanning `~/.atrading/pipelines/` — Task 2
 3. ✅ `GET /api/ai/commands` merging Tool/Skill/Pipeline — Task 3
