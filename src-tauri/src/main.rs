@@ -1196,6 +1196,23 @@ async fn api_chat_stream(
                                 .send("\x00TOOL_EXEC_START\x00".to_string())
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
+                        openatrading_web::chat_session::ChatFrame::ToolExecutionUpdate {
+                            id,
+                            name,
+                            args,
+                            partial_result,
+                        } => {
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "id": id,
+                                "name": name,
+                                "args": args,
+                                "partial_result": partial_result,
+                            }))
+                            .unwrap_or_default();
+                            channel
+                                .send(format!("\x00TOOL_EXEC_UPDATE\x00{data}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
                         openatrading_web::chat_session::ChatFrame::ToolExecEnd {
                             id,
                             name,
@@ -1212,6 +1229,20 @@ async fn api_chat_stream(
                             .unwrap_or_default();
                             channel
                                 .send(format!("\x00TOOL_RESULT\x00{data}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        openatrading_web::chat_session::ChatFrame::TurnStart => {
+                            channel
+                                .send("\x00TURN_START\x00".to_string())
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        openatrading_web::chat_session::ChatFrame::TurnEnd { tool_results } => {
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "tool_results": tool_results,
+                            }))
+                            .unwrap_or_default();
+                            channel
+                                .send(format!("\x00TURN_END\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
                         openatrading_web::chat_session::ChatFrame::Done => {
@@ -1440,6 +1471,8 @@ fn main() {
             gateway.memory.clone(),
             gateway.trade.clone(),
             Arc::new(openatrading_core::social::NoopChannel),
+            Arc::new(openatrading_core::platform::cli::StdoutEmitter::new(false)),
+            Arc::new(openatrading_core::platform::cli::NoopPersister),
         ),
     );
 

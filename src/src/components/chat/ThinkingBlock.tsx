@@ -20,8 +20,11 @@ export default function ThinkingBlock({ content, isStreaming }: ThinkingBlockPro
         <ReasoningText>
           {content}
           {isStreaming && (
-            <span className="text-ai ml-0.5 inline-block h-3 w-1 animate-pulse align-middle">
-              |
+            <span className="text-ai relative ml-0.5 inline-block h-3 w-1.5 align-middle">
+              <span
+                className="absolute inset-y-0 left-0 w-0.5 animate-pulse rounded-full bg-current"
+                style={{ animationDuration: "0.8s" }}
+              />
             </span>
           )}
         </ReasoningText>

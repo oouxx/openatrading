@@ -2,6 +2,9 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
+use crate::llm::runtime::{EventEmitter, StatePersister};
+use crate::llm::types::{DesktopState, FrontendEvent};
+
 /// TUI 主循环消费的统一事件类型，把 agent 事件和其它 UI 事件包在一起，
 /// 这样 select! 里可以用一个 channel 而不是好几个。
 #[derive(Debug, Clone)]
@@ -10,7 +13,7 @@ pub enum TuiEvent {
     StateChanged(DesktopState),
     TranscriptChanged {
         session_id: String,
-        transcript: serde_json::Value,
+        transcript: Vec<serde_json::Value>,
     },
 }
 
@@ -36,7 +39,7 @@ impl EventEmitter for TuiEmitter {
         let _ = self.tx.send(TuiEvent::StateChanged(state.clone()));
     }
 
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: serde_json::Value) {
+    async fn emit_transcript_changed(&self, session_id: &str, transcript: Vec<serde_json::Value>) {
         let _ = self.tx.send(TuiEvent::TranscriptChanged {
             session_id: session_id.to_string(),
             transcript,
@@ -50,9 +53,7 @@ pub struct LocalFilePersister {
 
 impl LocalFilePersister {
     pub fn new(app_name: &str) -> Self {
-        let path = dirs::home_dir()
-            .unwrap_or_default()
-            .join(format!(".{app_name}/state.json"));
+        let path = crate::atrading_home().join(format!("{app_name}/state.json"));
         Self { path }
     }
 }

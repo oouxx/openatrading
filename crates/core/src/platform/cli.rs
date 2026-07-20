@@ -2,6 +2,9 @@
 use async_trait::async_trait;
 use std::io::Write;
 
+use crate::llm::runtime::{EventEmitter, StatePersister};
+use crate::llm::types::{DesktopState, FrontendEvent};
+
 pub struct StdoutEmitter {
     verbose: bool,
 }
@@ -52,7 +55,11 @@ impl EventEmitter for StdoutEmitter {
         // CLI 无侧边栏/UI 状态需要同步，忽略。
     }
 
-    async fn emit_transcript_changed(&self, _session_id: &str, _transcript: serde_json::Value) {
+    async fn emit_transcript_changed(
+        &self,
+        _session_id: &str,
+        _transcript: Vec<serde_json::Value>,
+    ) {
         // 同上。
     }
 }

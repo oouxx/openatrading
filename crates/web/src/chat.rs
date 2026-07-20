@@ -283,46 +283,38 @@ pub async fn ai_chat(
     drop(roles_guard);
 
     // ── 通过 pi-coding-agent 执行 agent loop ──
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
-
-    let sid = req.session_id.clone();
-    let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<anyhow::Result<String>>();
-    // Clone what the spawned task needs; the runtime is cheap to reference via Arc.
+    // 注意：SessionHandle 必须在整个 SSE 流生命周期内保持存活，
+    // 因为 listener 注册在 AgentSession 上，handle 一旦 drop，
+    // AgentSession 被销毁，listener 中的 tx clone 也会被 drop，
+    // 导致 rx.recv() 返回 None，流提前结束。
     let runtime = state.ctx.runtime.clone();
     let system_prompt = system_prompt.clone();
     let user_message = req.message.clone();
-    tokio::spawn(async move {
+    let sid = req.session_id.clone();
+    openatrading_core::log::info!("ai/chat: SSE stream starting");
+    let sse_stream = async_stream::stream! {
+        // 在流内部创建 session，handle 随流生命周期存活
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
         let mut handle = match runtime
             .create_session(&system_prompt, Vec::new(), true, sid.as_deref())
             .await
         {
             Ok(h) => h,
             Err(e) => {
-                let _ = sid_tx.send(Err(e));
+                let err = format!("agent error: {e}");
+                openatrading_core::log::error!("ai/chat: {err}");
+                yield Ok(Event::default().event("error").data(err.replace('\n', "\\n")));
                 return;
             },
         };
         let id = handle.session_id().to_string();
         handle.subscribe(tx).await;
         handle.send(&user_message).await;
-        let _ = sid_tx.send(Ok(id));
-    });
-    openatrading_core::log::info!("ai/chat: SSE stream starting");
-    let sse_stream = async_stream::stream! {
+
         // Emit session_id first so the frontend can store it
-        match sid_rx.await {
-            Ok(Ok(id)) => {
-                let data = serde_json::to_string(&serde_json::json!({"session_id": id})).unwrap_or_default();
-                yield Ok(Event::default().event("session").data(data));
-            },
-            Ok(Err(e)) => {
-                let err = format!("agent error: {e}");
-                openatrading_core::log::error!("ai/chat: {err}");
-                yield Ok(Event::default().event("error").data(err.replace('\n', "\\n")));
-                return;
-            },
-            Err(_) => return,
-        }
+        let data = serde_json::to_string(&serde_json::json!({"session_id": id})).unwrap_or_default();
+        yield Ok(Event::default().event("session").data(data));
+
         loop {
             match rx.recv().await {
                 Some(event) => {
@@ -356,6 +348,15 @@ pub async fn ai_chat(
                             ChatFrame::ToolExecStart => {
                                 yield Ok(Event::default().event("tool-exec-start"));
                             },
+                            ChatFrame::ToolExecutionUpdate { id, name, args, partial_result } => {
+                                let data = serde_json::to_string(&serde_json::json!({
+                                    "id": id,
+                                    "name": name,
+                                    "args": args,
+                                    "partial_result": partial_result,
+                                })).unwrap_or_default();
+                                yield Ok(Event::default().event("tool-exec-update").data(data));
+                            },
                             ChatFrame::ToolExecEnd { id, name, result, is_error } => {
                                 let status = if is_error { "error" } else { "success" };
                                 let data = serde_json::to_string(&serde_json::json!({
@@ -366,16 +367,27 @@ pub async fn ai_chat(
                                 })).unwrap_or_default();
                                 yield Ok(Event::default().event("tool-exec-end").data(data));
                             },
+                            ChatFrame::TurnStart => {
+                                yield Ok(Event::default().event("turn-start"));
+                            },
+                            ChatFrame::TurnEnd { tool_results } => {
+                                let data = serde_json::to_string(&serde_json::json!({
+                                    "tool_results": tool_results,
+                                })).unwrap_or_default();
+                                yield Ok(Event::default().event("turn-end").data(data));
+                            },
                             ChatFrame::Done => break,
                         }
                     }
                 },
                 None => {
-                    openatrading_core::log::warn!("ai/chat: channel closed unexpectedly");
+                    // handle 存活期内 channel 不应关闭；若关闭说明 agent 内部异常
+                    openatrading_core::log::warn!("ai/chat: channel closed unexpectedly (handle still alive)");
                     break;
                 },
             }
         }
+        // handle 在此处 drop，AgentSession 随之销毁
         yield Ok(Event::default().data("[DONE]"));
     };
 

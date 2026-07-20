@@ -32,6 +32,7 @@ interface DisplayMessage {
     id: string
     args?: string
     result?: string
+    partialResult?: string
     status?: "streaming" | "running" | "success" | "error"
   }[]
 }
@@ -330,6 +331,55 @@ export default function AiCopilot({
                 }
               }
             },
+            onToolExecUpdate: (update) => {
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant") {
+                const calls = last.toolCalls ?? []
+                const idx = calls.findIndex((tc) => tc.id === update.id)
+                if (idx !== -1) {
+                  calls[idx] = {
+                    ...calls[idx],
+                    partialResult: update.partial_result,
+                    status: "running",
+                  }
+                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
+                  threadMessagesRef.current.set(key, msgs)
+                  setThreadMessages(new Map(threadMessagesRef.current))
+                }
+              }
+            },
+            onTurnStart: () => {
+              // Finalize current assistant message and start a new one
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant" && last.content) {
+                // Add a new assistant message for the next turn
+                const newMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
+                msgs.push(newMsg)
+                threadMessagesRef.current.set(key, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+                scrollDown()
+              }
+            },
+            onTurnEnd: (data) => {
+              // Append tool results to the current message
+              const key = sessionIdRef.current ?? msgKey
+              const msgs = threadMessagesRef.current.get(key) ?? []
+              const last = msgs[msgs.length - 1]
+              if (last && last.role === "assistant" && data.tool_results.length > 0) {
+                const resultsText = data.tool_results.join("\n\n")
+                msgs[msgs.length - 1] = {
+                  ...last,
+                  content: last.content + (last.content ? "\n\n" : "") + resultsText,
+                }
+                threadMessagesRef.current.set(key, msgs)
+                setThreadMessages(new Map(threadMessagesRef.current))
+                scrollDown()
+              }
+            },
             onDone: () => {
               setStreaming(false)
               onReload?.()
@@ -509,6 +559,7 @@ export default function AiCopilot({
                               name: tc.name,
                               args: tc.args,
                               result: tc.result,
+                              partialResult: tc.partialResult,
                               status: tc.status,
                             }))}
                             isStreaming={streaming && isLastAi}

@@ -33,6 +33,7 @@ use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
 use openatrading_core::context::AppContext;
 use openatrading_core::cron::run_decision;
+use openatrading_core::platform::cli::{NoopPersister, StdoutEmitter};
 use openatrading_core::social::{NoopChannel, NotificationSender, StdoutChannel};
 use openatrading_web::gateway::Gateway;
 
@@ -251,6 +252,8 @@ async fn cmd_decision(
         gateway.memory.clone(),
         gateway.trade.clone(),
         social,
+        Arc::new(StdoutEmitter::new(false)),
+        Arc::new(NoopPersister),
     )
     .await;
     run_decision(&ctx, &filtered_roles).await?;

@@ -53,31 +53,6 @@ impl AppContext {
         }
     }
 
-    /// Convenience constructor for desktop (Tauri) — wires up the Tauri
-    /// emitter/persister so call sites don't need to know about them.
-    #[cfg(feature = "tauri")]
-    pub async fn build_desktop(
-        provider: Option<&str>,
-        model: Option<&str>,
-        mcp_servers: &[McpServerConfig],
-        memory: Arc<MemoryStore>,
-        trade: Arc<TradeManager>,
-        social: Arc<dyn NotificationSender>,
-        app: tauri::AppHandle,
-    ) -> Self {
-        Self::build(
-            provider,
-            model,
-            mcp_servers,
-            memory,
-            trade,
-            social,
-            Arc::new(TauriEmitter(app)),
-            Arc::new(TauriFilePersister),
-        )
-        .await
-    }
-
     /// Get all tools (extension + MCP).
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.tool_registry.load().all_tools()
