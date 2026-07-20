@@ -51,87 +51,6 @@ pub trait StatePersister: Send + Sync {
     async fn persist(&self, state: &DesktopState);
 }
 
-// ── Tauri (desktop) implementations ─────────────────────────────────────
-// Feature-gate these if the web build doesn't depend on the `tauri` crate.
-
-#[cfg(feature = "tauri")]
-pub struct TauriEmitter(pub tauri::AppHandle);
-
-#[cfg(feature = "tauri")]
-#[async_trait]
-impl EventEmitter for TauriEmitter {
-    async fn emit_agent_event(&self, event: FrontendEvent) {
-        let _ = self.0.emit("agent-event", event);
-    }
-    async fn emit_state_changed(&self, state: &DesktopState) {
-        let _ = self.0.emit("pi-gui:state-changed", state);
-    }
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: serde_json::Value) {
-        let payload = json!({"sessionId": session_id, "transcript": transcript});
-        let _ = self.0.emit("pi-gui:selected-transcript-changed", &payload);
-    }
-}
-
-#[cfg(feature = "tauri")]
-pub struct TauriFilePersister;
-
-#[cfg(feature = "tauri")]
-#[async_trait]
-impl StatePersister for TauriFilePersister {
-    async fn persist(&self, state: &DesktopState) {
-        ui::persist_state(state);
-    }
-}
-
-// ── Web (Axum/SSE) implementations ──────────────────────────────────────
-// Sketch — adapt to your actual transport (SSE broadcast channel, DB pool, etc).
-
-#[cfg(feature = "web")]
-pub struct SseEmitter {
-    pub agent_tx: tokio::sync::broadcast::Sender<FrontendEvent>,
-    pub state_tx: tokio::sync::broadcast::Sender<DesktopState>,
-}
-
-#[cfg(feature = "web")]
-#[async_trait]
-impl EventEmitter for SseEmitter {
-    async fn emit_agent_event(&self, event: FrontendEvent) {
-        let _ = self.agent_tx.send(event);
-    }
-    async fn emit_state_changed(&self, state: &DesktopState) {
-        let _ = self.state_tx.send(state.clone());
-    }
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: serde_json::Value) {
-        let _ = self.agent_tx.send(FrontendEvent {
-            event_type: "transcript_changed".into(),
-            session_id: session_id.to_string(),
-            data: transcript,
-        });
-    }
-}
-
-#[cfg(feature = "web")]
-pub struct DbPersister {
-    pub pool: sqlx::PgPool,
-    pub user_id: String,
-}
-
-#[cfg(feature = "web")]
-#[async_trait]
-impl StatePersister for DbPersister {
-    async fn persist(&self, state: &DesktopState) {
-        let data = serde_json::to_value(state).unwrap_or_default();
-        let _ = sqlx::query!(
-            "insert into agent_state (user_id, data) values ($1, $2)
-             on conflict (user_id) do update set data = $2",
-            self.user_id,
-            data
-        )
-        .execute(&self.pool)
-        .await;
-    }
-}
-
 // ── ActiveSession ────────────────────────────────────────────────────────
 //
 // One entry per live agent session. Replacing the old single
@@ -184,11 +103,6 @@ impl AgentRuntime {
             emitter,
             persister,
         }
-    }
-
-    #[cfg(feature = "tauri")]
-    pub fn new_tauri(app: tauri::AppHandle) -> Self {
-        Self::new(Arc::new(TauriEmitter(app)), Arc::new(TauriFilePersister))
     }
 
     /// Create a new agent session (the only way to invoke LLM).

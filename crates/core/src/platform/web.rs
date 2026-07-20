@@ -4,6 +4,12 @@ use async_trait::async_trait;
 use axum::extract::ws::Message;
 use tokio::sync::mpsc;
 
+use crate::context::AppContext;
+use crate::llm::runtime::{EventEmitter, StatePersister};
+use crate::llm::types::{DesktopState, FrontendEvent};
+use crate::memory::sqlite::MemoryStore;
+use crate::trade::sqlite::TradeManager;
+
 pub struct WsEmitter {
     tx: mpsc::Sender<Message>,
 }
@@ -24,7 +30,7 @@ impl EventEmitter for WsEmitter {
             let _ = self.tx.send(Message::Text(text)).await;
         }
     }
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: serde_json::Value) {
+    async fn emit_transcript_changed(&self, session_id: &str, transcript: Vec<serde_json::Value>) {
         let payload = serde_json::json!({
             "type": "transcript_changed",
             "sessionId": session_id,
@@ -55,7 +61,7 @@ impl EventEmitter for SwappableEmitter {
     async fn emit_state_changed(&self, state: &DesktopState) {
         self.0.load().emit_state_changed(state).await;
     }
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: serde_json::Value) {
+    async fn emit_transcript_changed(&self, session_id: &str, transcript: Vec<serde_json::Value>) {
         self.0
             .load()
             .emit_transcript_changed(session_id, transcript)
@@ -86,6 +92,43 @@ impl StatePersister for DbPersister {
         )
         .execute(&self.pool)
         .await;
+    }
+}
+
+pub struct WebPushNotifier {
+    user_id: String,
+}
+
+impl WebPushNotifier {
+    pub fn new(user_id: &str) -> Self {
+        Self {
+            user_id: user_id.to_string(),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::social::NotificationSender for WebPushNotifier {
+    async fn send_text(&self, text: &str) -> anyhow::Result<()> {
+        // Web push notification — placeholder for future implementation
+        tracing::info!("[web-push] send to {}: {}", self.user_id, text);
+        Ok(())
+    }
+
+    async fn notify_collect(&self, text: &str) -> anyhow::Result<()> {
+        self.send_text(text).await
+    }
+
+    async fn notify_decision(&self, text: &str) -> anyhow::Result<()> {
+        self.send_text(text).await
+    }
+
+    async fn notify_trade(&self, text: &str) -> anyhow::Result<()> {
+        self.send_text(text).await
+    }
+
+    async fn notify_news(&self, text: &str) -> anyhow::Result<()> {
+        self.send_text(text).await
     }
 }
 

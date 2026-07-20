@@ -32,7 +32,9 @@ export function ReasoningRoot({
     <Collapsible.Root
       open={isOpen}
       onOpenChange={handleOpenChange}
-      className={`border-hairline mb-3 w-full rounded-lg border ${className}`}
+      className={`border-hairline mb-3 w-full overflow-hidden rounded-lg border transition-all duration-200 ${
+        isOpen ? "border-ai/20" : ""
+      } ${className}`}
     >
       {children}
     </Collapsible.Root>
@@ -56,15 +58,25 @@ export function ReasoningTrigger({ active = false }: { active?: boolean }) {
       >
         <path d="M12 2a7 7 0 0 1 7 7c0 1.5-.5 2.9-1.3 4 .8.6 1.3 1.5 1.3 2.5a3 3 0 0 1-3 3c-.6 0-1.2-.2-1.7-.5A7 7 0 0 1 12 22a7 7 0 0 1-7-7c0-1.5.5-2.9 1.3-4-.8-.6-1.3-1.5-1.3-2.5a3 3 0 0 1 3-3c.6 0 1.2.2 1.7.5A7 7 0 0 1 12 2z" />
       </svg>
-      <span className="font-mono">思考过程</span>
+      <span className="font-mono text-[11px]">思考过程</span>
       {active && (
-        <span
-          className="bg-ai inline-block size-1.5 rounded-full"
-          style={{ animation: "reasoning-shimmer 1.2s ease-in-out infinite" }}
-        />
+        <span className="relative flex items-center gap-1">
+          <span
+            className="bg-ai inline-block size-1.5 rounded-full"
+            style={{ animation: "reasoning-shimmer 1.2s ease-in-out infinite" }}
+          />
+          <span
+            className="bg-ai/50 inline-block size-1 rounded-full"
+            style={{ animation: "reasoning-shimmer 1.2s ease-in-out 0.4s infinite" }}
+          />
+          <span
+            className="bg-ai/30 inline-block size-0.5 rounded-full"
+            style={{ animation: "reasoning-shimmer 1.2s ease-in-out 0.8s infinite" }}
+          />
+        </span>
       )}
       <svg
-        className="ml-auto size-3 shrink-0 transition-transform group-data-[state=open]:rotate-180"
+        className="ml-auto size-3 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -88,7 +100,10 @@ export interface ReasoningContentProps {
 
 export function ReasoningContent({ className = "", children, ...props }: ReasoningContentProps) {
   return (
-    <Collapsible.Content className={`reasoning-content ${className}`} {...props}>
+    <Collapsible.Content
+      className={`reasoning-content overflow-hidden transition-all duration-200 ${className}`}
+      {...props}
+    >
       {children}
     </Collapsible.Content>
   )
@@ -104,7 +119,7 @@ export interface ReasoningTextProps {
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap">
+      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap text-[11px]">
         {children}
       </div>
       <div

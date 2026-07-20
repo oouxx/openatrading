@@ -172,8 +172,15 @@ pub enum ChatFrame {
     },
     /// A tool call argument delta (raw args JSON string).
     ToolDelta { args: String },
-    /// A tool execution finished.
+    /// A tool execution started.
     ToolExecStart,
+    /// A tool execution intermediate update with partial result.
+    ToolExecutionUpdate {
+        id: String,
+        name: String,
+        args: String,
+        partial_result: String,
+    },
     /// A tool execution finished with its (already-extracted) result text.
     ToolExecEnd {
         id: String,
@@ -181,6 +188,10 @@ pub enum ChatFrame {
         result: String,
         is_error: bool,
     },
+    /// A conversation turn started.
+    TurnStart,
+    /// A conversation turn ended with tool results.
+    TurnEnd { tool_results: Vec<String> },
     /// An error surfaced during streaming.
     Error(String),
     /// The whole agent turn finished — receivers should close the stream.
@@ -218,6 +229,10 @@ pub fn serialize_chat_event(event: AgentEvent) -> Vec<ChatFrame> {
             }
             frames
         },
+        AgentEvent::MessageStart { .. } => {
+            // 消息开始信号，前端可据此清空上一轮累积的流式缓冲区
+            Vec::new()
+        },
         AgentEvent::MessageEnd { message } => {
             if let openatrading_core::llm::AgentMessage::Assistant {
                 error_message: Some(err),
@@ -230,8 +245,55 @@ pub fn serialize_chat_event(event: AgentEvent) -> Vec<ChatFrame> {
             }
             Vec::new()
         },
+        AgentEvent::AgentStart { .. } => {
+            // 对话开始信号，前端可据此初始化对话状态
+            Vec::new()
+        },
         AgentEvent::AgentEnd { .. } => vec![ChatFrame::Done],
+        AgentEvent::TurnStart { .. } => vec![ChatFrame::TurnStart],
+        AgentEvent::TurnEnd { tool_results, .. } => {
+            let results: Vec<String> = tool_results
+                .iter()
+                .map(|m| {
+                    // Extract text content from each result message
+                    if let openatrading_core::llm::AgentMessage::ToolResult { content, .. } = m {
+                        content
+                            .iter()
+                            .filter_map(|b| {
+                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                    text,
+                                    ..
+                                } = b
+                                {
+                                    Some(text.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    } else {
+                        String::new()
+                    }
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+            vec![ChatFrame::TurnEnd {
+                tool_results: results,
+            }]
+        },
         AgentEvent::ToolExecutionStart { .. } => vec![ChatFrame::ToolExecStart],
+        AgentEvent::ToolExecutionUpdate {
+            tool_call_id,
+            tool_name,
+            args,
+            partial_result,
+        } => vec![ChatFrame::ToolExecutionUpdate {
+            id: tool_call_id,
+            name: tool_name,
+            args: args.to_string(),
+            partial_result: partial_result.to_string(),
+        }],
         AgentEvent::ToolExecutionEnd {
             tool_call_id,
             tool_name,
@@ -243,6 +305,5 @@ pub fn serialize_chat_event(event: AgentEvent) -> Vec<ChatFrame> {
             result: extract_tool_result_text(&result),
             is_error,
         }],
-        _ => Vec::new(),
     }
 }

@@ -5,6 +5,7 @@ pub mod cron;
 pub mod llm;
 pub mod log;
 pub mod memory;
+pub mod platform;
 pub mod prompts;
 pub mod roles;
 pub mod skills;

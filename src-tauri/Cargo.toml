@@ -12,7 +12,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-openatrading-core = { path = "../crates/core" }
+openatrading-core = { path = "../crates/core", features = ["tauri"] }
 openatrading-web = { path = "../crates/web" }
 openatrading-cli = { path = "../crates/cli" }
 tauri = { version = "2", features = [] }
