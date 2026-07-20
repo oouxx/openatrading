@@ -440,9 +440,9 @@ export default function AiCopilot({
 
   return (
     <div className="flex size-full flex-col">
-      <div className="border-hairline bg-bg-surface flex flex-shrink-0 items-center gap-3 border-b px-4 py-1.5">
-        <SidebarTrigger className="flex-shrink-0" />
-        <div className="text-ink-muted flex flex-shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
+      <div className="bg-bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-4 py-1.5">
+        <SidebarTrigger className="shrink-0" />
+        <div className="text-ink-muted flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
           <span className="font-medium text-white">OpenATrading</span>
         </div>
         <div className="flex flex-1 justify-center">
@@ -450,7 +450,7 @@ export default function AiCopilot({
             <Search className="text-ink-muted pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="border-hairline bg-bg placeholder:text-ink-muted focus:border-ai h-7 w-full rounded-lg border pr-12 pl-7 text-xs text-white transition-colors outline-none"
+              className="bg-bg border-hairline focus:border-ai placeholder:text-ink-muted h-7 w-full rounded-lg border pr-12 pl-7 text-xs text-white transition-colors outline-none"
               placeholder="搜索股票..."
               value={searchQuery}
               onChange={(e) => {
@@ -465,11 +465,11 @@ export default function AiCopilot({
                 }
               }}
             />
-            <span className="rounded-badge bg-bg text-ink-muted pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 px-1 py-0.5 text-[9px] leading-none">
+            <span className="bg-bg rounded-badge text-ink-muted pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 px-1 py-0.5 text-[9px] leading-none">
               ⌘P
             </span>
             {showDropdown && searchQuery.trim() && (
-              <div className="rounded-card border-hairline bg-bg-surface absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto border shadow-lg">
+              <div className="bg-bg-surface border-hairline rounded-card absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto border shadow-lg">
                 {searchLoading && <div className="text-ink-muted px-3 py-2 text-xs">搜索中...</div>}
                 {!searchLoading && searchResults.length === 0 && (
                   <div className="text-ink-muted px-3 py-2 text-xs">无匹配结果</div>
@@ -493,9 +493,9 @@ export default function AiCopilot({
             )}
           </div>
         </div>
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <button
-            className="rounded-button text-ink-muted hover:bg-bg-hover flex size-6 items-center justify-center text-sm transition-colors hover:text-white"
+            className="hover:bg-bg-hover rounded-button text-ink-muted flex size-6 items-center justify-center text-sm transition-colors hover:text-white"
             title="更多"
           >
             ⋯
@@ -522,7 +522,7 @@ export default function AiCopilot({
               <div className="flex flex-1 items-center justify-center">
                 <div className="max-w-[500px] text-center">
                   <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
-                  <p className="text-ink-muted mb-6 text-sm leading-relaxed">
+                  <p className="text-ink-muted mb-6 text-sm/relaxed">
                     覆盖上证、深证、北交所全市场数据。支持大盘研判、板块轮动、个股分析、资金面跟踪及策略问答。
                   </p>
                 </div>
@@ -536,7 +536,7 @@ export default function AiCopilot({
                     className={`flex w-full gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <span
-                      className={`flex size-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
                         msg.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
                       }`}
                     >
@@ -619,7 +619,7 @@ export default function AiCopilot({
             </CommandDialog>
           )}
 
-          <div className="border-hairline bg-bg-surface flex-shrink-0 border-t px-4 py-2">
+          <div className="bg-bg-surface border-hairline shrink-0 border-t px-4 py-2">
             <div className="relative mx-auto max-w-[820px]">
               <Textarea
                 ref={textareaRef}

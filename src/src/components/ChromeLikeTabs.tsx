@@ -16,7 +16,7 @@ export default function ChromeTabs({ tabs, activeTab, onSelect, onClose }: Chrom
   if (tabs.length === 0) return null
 
   return (
-    <div className="border-hairline bg-bg-surface flex h-9 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b">
+    <div className="bg-bg-surface border-hairline flex h-9 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab
         return (

@@ -22,18 +22,18 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       case "error":
         return <XCircle className="size-3.5 text-red-500" />
       default:
-        return <Loader2 className="size-3.5 text-muted-foreground" />
+        return <Loader2 className="text-muted-foreground size-3.5" />
     }
   }
 
   const argsStr = args ? (typeof args === "string" ? args : JSON.stringify(args, null, 2)) : ""
 
   return (
-    <div className="border-hairline bg-bg-surface my-2 overflow-hidden rounded-lg border text-xs">
+    <div className="bg-bg-surface border-hairline my-2 overflow-hidden rounded-lg border text-xs">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-        <Terminal className="size-3.5 text-muted-foreground" />
-        <span className="font-medium text-foreground">{name}</span>
+      <div className="border-border/50 flex items-center gap-2 border-b px-3 py-2">
+        <Terminal className="text-muted-foreground size-3.5" />
+        <span className="text-foreground font-medium">{name}</span>
         <div className="ml-auto flex items-center gap-1.5">
           {statusIcon()}
           <span className="text-muted-foreground text-[10px] capitalize">
@@ -44,7 +44,7 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
 
       {/* Arguments (collapsible) */}
       {argsStr && (
-        <div className="border-b border-border/50">
+        <div className="border-border/50 border-b">
           <button
             className="hover:bg-bg-hover flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors"
             onClick={() => setShowArgs(!showArgs)}
@@ -53,7 +53,7 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
             <span className="text-muted-foreground font-mono text-[10px]">Arguments</span>
           </button>
           {showArgs && (
-            <pre className="bg-bg-hover overflow-x-auto px-3 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+            <pre className="bg-bg-hover text-muted-foreground overflow-x-auto px-3 py-2 font-mono text-[10px] leading-relaxed">
               {argsStr}
             </pre>
           )}

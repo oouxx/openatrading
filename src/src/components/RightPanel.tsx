@@ -85,13 +85,13 @@ export default function RightPanel() {
   }
 
   return (
-    <div className="relative flex h-full flex-shrink-0">
+    <div className="relative flex h-full shrink-0">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
-        className="border-hairline bg-bg-surface flex flex-col overflow-hidden border-l transition-[width] duration-150"
+        className="bg-bg-surface border-hairline flex flex-col overflow-hidden border-l transition-[width] duration-150"
         style={{ width: collapsed ? 48 : width }}
       >
-        <div className="border-hairline flex flex-shrink-0 items-center gap-1 border-b p-2">
+        <div className="border-hairline flex shrink-0 items-center gap-1 border-b p-2">
           <Button
             variant="ghost"
             size="icon"
@@ -122,7 +122,7 @@ export default function RightPanel() {
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                className="rounded-card hover:bg-bg-hover data-[active=true]:text-ai flex size-10 items-center justify-center text-[10px] transition-colors"
+                className="data-[active=true]:text-ai hover:bg-bg-hover rounded-card flex size-10 items-center justify-center text-[10px] transition-colors"
                 data-active={activeView === tab.id}
                 title={tab.label}
                 onClick={() => {
@@ -136,7 +136,7 @@ export default function RightPanel() {
           </div>
         ) : (
           <>
-            <div className="border-hairline flex flex-shrink-0 gap-0 overflow-x-auto border-b px-3">
+            <div className="border-hairline flex shrink-0 gap-0 overflow-x-auto border-b px-3">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
@@ -180,7 +180,7 @@ export default function RightPanel() {
             }}
           >
             <motion.div
-              className="border-hairline bg-bg-surface relative flex flex-col rounded-lg border shadow-2xl"
+              className="bg-bg-surface border-hairline relative flex flex-col rounded-lg border shadow-2xl"
               style={{
                 width: popoutSize.w,
                 height: popoutSize.h,

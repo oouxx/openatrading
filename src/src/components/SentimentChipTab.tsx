@@ -111,7 +111,7 @@ export default function SentimentChipTab() {
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <motion.div
-          className="p-card-inner rounded-card border-hairline-dark bg-surface-dark border"
+          className="bg-surface-dark border-hairline-dark p-card-inner rounded-card border"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
@@ -133,7 +133,7 @@ export default function SentimentChipTab() {
               </div>
               <div className="bg-bg h-2 overflow-hidden rounded-full">
                 <div
-                  className="from-down via-ai to-up h-full rounded-full bg-gradient-to-r"
+                  className="from-down to-up via-ai h-full rounded-full bg-linear-to-r"
                   style={{ width: currentSentimentPct + "%" }}
                 />
               </div>
@@ -149,7 +149,7 @@ export default function SentimentChipTab() {
 
         {/* 市场筹码结构分析 */}
         <motion.div
-          className="p-card-inner rounded-card border-hairline-dark bg-surface-dark border"
+          className="bg-surface-dark border-hairline-dark p-card-inner rounded-card border"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
@@ -195,12 +195,12 @@ export default function SentimentChipTab() {
 
       {/* 情绪历史表格 */}
       <motion.div
-        className="rounded-card border-hairline-dark bg-surface-dark overflow-hidden border"
+        className="bg-surface-dark border-hairline-dark rounded-card overflow-hidden border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.15 }}
       >
-        <div className="p-card-inner border-hairline-dark border-b">
+        <div className="border-hairline-dark p-card-inner border-b">
           <h3 className="text-caption-strong text-ink-muted tracking-wider uppercase">
             近{history.length}日情绪数据
           </h3>

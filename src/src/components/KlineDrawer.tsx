@@ -3,11 +3,7 @@ import { subscribeKline, subscribeRealtime } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 import KlineChart, { type KlineCandle, type CrosshairInfo } from "./KlineChart"
-import {
-  useWatchlist,
-  useAddWatchlist,
-  useDeleteWatchlist,
-} from "@/hooks/query/useWatchlist"
+import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
 import { Star } from "lucide-react"
 
 interface KlineDrawerProps {
@@ -70,9 +66,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   }, [setChartCrosshair, klineData])
 
   useEffect(() => {
-    return subscribeRealtime(xgSymbol, setQuote, (err) =>
-      console.warn("[realtime-stream]", err)
-    )
+    return subscribeRealtime(xgSymbol, setQuote, (err) => console.warn("[realtime-stream]", err))
   }, [xgSymbol])
 
   // Subscribe to kline SSE stream
@@ -141,7 +135,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     if (klineData.length === 0) return null
     const c = klineData[klineData.length - 1]
     const pre = quote?.preclose_px
-    const chg = pre ? ((c.close - pre) / pre) * 100 : c.change_rate ?? 0
+    const chg = pre ? ((c.close - pre) / pre) * 100 : (c.change_rate ?? 0)
     const d = new Date(c.time * 1000)
     const pad = (n: number) => String(n).padStart(2, "0")
     const ts =
@@ -168,7 +162,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   return (
     <div className="bg-bg h-full overflow-y-auto">
       {/* Header */}
-      <div className="border-hairline bg-bg-surface flex flex-shrink-0 items-center gap-3 border-b px-6 py-4">
+      <div className="bg-bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
         <button
           onClick={onClose}
           className="text-ink-muted p-1 text-lg leading-none hover:text-white"
@@ -189,7 +183,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           className="ml-1 flex size-7 items-center justify-center rounded-full text-xs transition-colors hover:bg-white/10"
           title={inWatchlist ? "取消自选" : "添加自选"}
         >
-          <Star className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-ink-muted"}`} />
+          <Star
+            className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-ink-muted"}`}
+          />
         </button>
         {quote && (
           <div className="ml-auto flex items-center gap-3">
@@ -205,7 +201,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       </div>
 
       {/* Period selector */}
-      <div className="border-hairline bg-bg-surface flex gap-1.5 border-b px-6 py-2.5">
+      <div className="bg-bg-surface border-hairline flex gap-1.5 border-b px-6 py-2.5">
         {periods.map((p) => (
           <button
             key={p.value}
@@ -223,17 +219,25 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Crosshair info bar */}
       {currCrosshair && (
-        <div className="flex items-center justify-between border-hairline border-b bg-bg-surface px-3 py-1 font-mono text-xs">
-          <span className="text-white shrink-0">{currCrosshair.time}</span>
-          <div className="flex items-center gap-1.5 text-white/40 shrink-0">
-            <span>开 <span className="text-white">{currCrosshair.open}</span></span>
-            <span>高 <span className="text-white">{currCrosshair.high}</span></span>
-            <span>低 <span className="text-white">{currCrosshair.low}</span></span>
-            <span>价 <span className="text-white">{currCrosshair.close}</span></span>
-            <span>量 <span className="text-white">{currCrosshair.volume}</span></span>
-            <span
-              className={currCrosshair.changeNum >= 0 ? "text-up" : "text-down"}
-            >
+        <div className="bg-bg-surface border-hairline flex items-center justify-between border-b px-3 py-1 font-mono text-xs">
+          <span className="shrink-0 text-white">{currCrosshair.time}</span>
+          <div className="flex shrink-0 items-center gap-1.5 text-white/40">
+            <span>
+              开 <span className="text-white">{currCrosshair.open}</span>
+            </span>
+            <span>
+              高 <span className="text-white">{currCrosshair.high}</span>
+            </span>
+            <span>
+              低 <span className="text-white">{currCrosshair.low}</span>
+            </span>
+            <span>
+              价 <span className="text-white">{currCrosshair.close}</span>
+            </span>
+            <span>
+              量 <span className="text-white">{currCrosshair.volume}</span>
+            </span>
+            <span className={currCrosshair.changeNum >= 0 ? "text-up" : "text-down"}>
               {currCrosshair.change}
             </span>
           </div>
@@ -257,7 +261,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             {metrics.map((m) => (
               <div
                 key={m.label}
-                className="rounded-card border-hairline bg-bg-surface border p-2.5 text-center"
+                className="bg-bg-surface border-hairline rounded-card border p-2.5 text-center"
               >
                 <p className="text-ink-muted mb-1 text-[10px] tracking-wide uppercase">{m.label}</p>
                 <p className="font-mono text-xs text-white">{m.value}</p>
@@ -275,7 +279,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             {plateList.map((p) => (
               <div
                 key={p.plate_id}
-                className="rounded-card border-hairline bg-bg-surface cursor-pointer border p-2.5 transition-colors hover:border-white/20"
+                className="bg-bg-surface border-hairline rounded-card cursor-pointer border p-2.5 transition-colors hover:border-white/20"
                 onClick={() => p.reason && setDialogPlate(p)}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -302,7 +306,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {expound && (
         <div className="border-hairline mt-2 border-t px-6 py-2.5">
           <p className="text-ink-muted mb-2 text-xs">AI 异动解读</p>
-          <div className="rounded-card border-hairline bg-bg-surface border p-3">
+          <div className="bg-bg-surface border-hairline rounded-card border p-3">
             <p className="text-caption text-ink-muted leading-relaxed whitespace-pre-line">
               {expound}
             </p>
@@ -313,9 +317,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {/* Plate dialog */}
       {dialogPlate && (
         <>
-          <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setDialogPlate(null)} />
-          <div className="pointer-events-none fixed inset-0 z-[61] flex items-center justify-center">
-            <div className="rounded-card border-hairline bg-bg-surface pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-2xl">
+          <div className="fixed inset-0 z-60 bg-black/50" onClick={() => setDialogPlate(null)} />
+          <div className="pointer-events-none fixed inset-0 z-61 flex items-center justify-center">
+            <div className="bg-bg-surface border-hairline rounded-card pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-2xl">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white">{dialogPlate.plate_name}</span>

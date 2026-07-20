@@ -83,7 +83,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="rounded-card border-hairline bg-bg-surface fixed z-[60] border p-2"
+          className="bg-bg-surface border-hairline rounded-card fixed z-60 border p-2"
           style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
@@ -107,11 +107,11 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {enlarged && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center"
+          className="fixed inset-0 z-70 flex items-center justify-center"
           onClick={() => setEnlarged(false)}
         >
           <div
-            className="rounded-card border-hairline bg-bg-surface border p-4"
+            className="bg-bg-surface border-hairline rounded-card border p-4"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               const step = 0.5

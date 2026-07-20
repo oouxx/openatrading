@@ -45,7 +45,7 @@ export function ReasoningRoot({
 
 export function ReasoningTrigger({ active = false }: { active?: boolean }) {
   return (
-    <Collapsible.Trigger className="group text-caption text-ink-muted hover:bg-bg-hover flex w-full cursor-pointer items-center gap-2 px-3 py-2 transition-colors">
+    <Collapsible.Trigger className="group hover:bg-bg-hover text-caption text-ink-muted flex w-full cursor-pointer items-center gap-2 px-3 py-2 transition-colors">
       {/* Brain icon */}
       <svg
         className="size-4 shrink-0"
@@ -119,7 +119,7 @@ export interface ReasoningTextProps {
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap text-[11px]">
+      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 text-[11px] leading-relaxed whitespace-pre-wrap">
         {children}
       </div>
       <div

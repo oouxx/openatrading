@@ -11,7 +11,7 @@ export default function ThinkingBlock({ thinking }: ThinkingBlockProps) {
   return (
     <div className="my-2">
       <button
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs transition-colors"
+        className="hover:text-foreground text-muted-foreground flex items-center gap-1.5 text-xs transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
@@ -26,7 +26,7 @@ export default function ThinkingBlock({ thinking }: ThinkingBlockProps) {
         )}
       </button>
       {expanded && thinking && (
-        <div className="text-muted-foreground mt-1 border-l-2 border-amber-500/30 pl-4 text-xs italic leading-relaxed">
+        <div className="text-muted-foreground mt-1 border-l-2 border-amber-500/30 pl-4 text-xs/relaxed italic">
           {thinking}
         </div>
       )}
