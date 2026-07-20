@@ -13,6 +13,7 @@
 ### Task 1: Add `role_name` column to trade_logs + new TradeManager methods
 
 **Files:**
+
 - Modify: `crates/core/src/trade/mod.rs`
 - Modify: `crates/core/src/trade/sqlite.rs`
 
@@ -127,6 +128,7 @@ git commit -m "feat(trade): add role_name to trade_logs, add delete/get_all meth
 ### Task 2: Role filesystem persistence + management functions
 
 **Files:**
+
 - Modify: `crates/core/src/roles/mod.rs`
 
 - [ ] **Step 1: Add role management functions**
@@ -198,6 +200,7 @@ git commit -m "feat(roles): add filesystem persistence for role strategies"
 ### Task 3: P&L history computation
 
 **Files:**
+
 - Create: `crates/core/src/roles/pnl.rs`
 - Modify: `crates/core/src/roles/mod.rs`
 
@@ -292,6 +295,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
 - [ ] **Step 2: Register module**
 
 In `crates/core/src/roles/mod.rs`, add:
+
 ```rust
 pub mod pnl;
 ```
@@ -320,11 +324,13 @@ git commit -m "feat(roles): add P&L history computation from trade logs"
 ### Task 4: API handlers for role CRUD + reset + P&L history
 
 **Files:**
+
 - Modify: `crates/core/src/web/handlers.rs` (append new handlers)
 
 - [ ] **Step 1: Add handler types and imports at top of handlers.rs**
 
 Add to existing imports:
+
 ```rust
 use crate::roles;
 use crate::roles::pnl::compute_pnl_history;
@@ -333,6 +339,7 @@ use std::path::PathBuf;
 ```
 
 Add request/response types before the handler functions:
+
 ```rust
 #[derive(Deserialize)]
 pub struct CreateRoleRequest {
@@ -466,6 +473,7 @@ git commit -m "feat(web): add role CRUD, reset, and P&L history API handlers"
 ### Task 5: Update AppState, routes, and gateway
 
 **Files:**
+
 - Modify: `crates/core/src/gateway/mod.rs` (GatewayConfig, start)
 - Modify: `crates/core/src/web/mod.rs` (AppState, routes)
 - Modify: `crates/cli/src/cli/gateway_cmd.rs` (pass strategies_dir)
@@ -523,6 +531,7 @@ In `build_router`, add new routes after the existing role routes:
 ```
 
 Change the axum routing imports:
+
 ```rust
 use axum::{
     routing::{get, post, put, delete},
@@ -597,6 +606,7 @@ git commit -m "feat(web): add role CRUD routes, strategies_dir to AppState"
 ### Task 6: Frontend — data store API functions + types
 
 **Files:**
+
 - Modify: `src/src/stores/data.ts`
 
 - [ ] **Step 1: Add types and API functions**
@@ -607,67 +617,75 @@ Append to `src/src/stores/data.ts` after the existing role functions:
 // ── Role P&L History ───────────────────────────────────
 
 export interface PnlPoint {
-  date: string
-  equity: number
-  cash: number
-  market_value: number
-  return_pct: number
+  date: string;
+  equity: number;
+  cash: number;
+  market_value: number;
+  return_pct: number;
 }
 
 export interface PnlHistoryResponse {
-  points: PnlPoint[]
-  initial_capital: number
+  points: PnlPoint[];
+  initial_capital: number;
 }
 
 // Per-role P&L history cache
-export const rolePnlHistory = reactive<Record<string, { data: PnlPoint[], loading: boolean, error: string }>>({})
+export const rolePnlHistory = reactive<
+  Record<string, { data: PnlPoint[]; loading: boolean; error: string }>
+>({});
 
 export async function fetchRolePnlHistory(name: string, days = 30) {
   if (!rolePnlHistory[name]) {
-    rolePnlHistory[name] = reactive({ data: [], loading: false, error: '' })
+    rolePnlHistory[name] = reactive({ data: [], loading: false, error: "" });
   }
-  const entry = rolePnlHistory[name]
-  entry.loading = true
-  entry.error = ''
+  const entry = rolePnlHistory[name];
+  entry.loading = true;
+  entry.error = "";
   try {
-    const res = await fetchJson<PnlHistoryResponse>(`/api/roles/${name}/pnl-history?days=${days}`)
-    entry.data = res.points
+    const res = await fetchJson<PnlHistoryResponse>(
+      `/api/roles/${name}/pnl-history?days=${days}`,
+    );
+    entry.data = res.points;
   } catch (e: any) {
-    entry.error = e.message || String(e)
+    entry.error = e.message || String(e);
   } finally {
-    entry.loading = false
+    entry.loading = false;
   }
 }
 
 // ── Role CRUD ──────────────────────────────────────────
 
-export async function createRole(name: string, displayName: string, strategy: string) {
-  await fetchJson('/api/roles', {
-    method: 'POST',
+export async function createRole(
+  name: string,
+  displayName: string,
+  strategy: string,
+) {
+  await fetchJson("/api/roles", {
+    method: "POST",
     body: JSON.stringify({ name, display_name: displayName, strategy }),
-  })
+  });
 }
 
 export async function updateRoleStrategy(name: string, strategy: string) {
   await fetchJson(`/api/roles/${name}/strategy`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({ strategy }),
-  })
+  });
 }
 
 export async function deleteRole(name: string) {
-  await fetchJson(`/api/roles/${name}`, { method: 'DELETE' })
+  await fetchJson(`/api/roles/${name}`, { method: "DELETE" });
 }
 
 export async function resetRole(name: string) {
-  await fetchJson(`/api/roles/${name}/reset`, { method: 'POST' })
+  await fetchJson(`/api/roles/${name}/reset`, { method: "POST" });
 }
 
 // Refresh single role's positions
 export async function refreshRole(name: string) {
-  await fetchRolePositions(name)
-  await fetchRoleLogs(name)
-  await fetchRolePnlHistory(name)
+  await fetchRolePositions(name);
+  await fetchRoleLogs(name);
+  await fetchRolePnlHistory(name);
 }
 ```
 
@@ -693,81 +711,88 @@ git commit -m "feat(frontend): add role CRUD and P&L history API functions"
 ### Task 7: Frontend — Sparkline component
 
 **Files:**
+
 - Create: `src/src/components/Sparkline.vue`
 
 - [ ] **Step 1: Create Sparkline.vue**
 
 ```vue
 <template>
-  <canvas ref="canvasRef" :width="width" :height="height" class="inline-block"></canvas>
+  <canvas
+    ref="canvasRef"
+    :width="width"
+    :height="height"
+    class="inline-block"
+  ></canvas>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import type { PnlPoint } from '@/stores/data'
+import { ref, onMounted, watch } from "vue";
+import type { PnlPoint } from "@/stores/data";
 
 const props = defineProps<{
-  points: PnlPoint[]
-  width?: number
-  height?: number
-}>()
+  points: PnlPoint[];
+  width?: number;
+  height?: number;
+}>();
 
-const canvasRef = ref<HTMLCanvasElement>()
-const w = props.width ?? 200
-const h = props.height ?? 32
+const canvasRef = ref<HTMLCanvasElement>();
+const w = props.width ?? 200;
+const h = props.height ?? 32;
 
 function draw() {
-  const canvas = canvasRef.value
-  if (!canvas || !props.points.length) return
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
+  const canvas = canvasRef.value;
+  if (!canvas || !props.points.length) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
 
-  canvas.width = w * devicePixelRatio
-  canvas.height = h * devicePixelRatio
-  canvas.style.width = w + 'px'
-  canvas.style.height = h + 'px'
-  ctx.scale(devicePixelRatio, devicePixelRatio)
+  canvas.width = w * devicePixelRatio;
+  canvas.height = h * devicePixelRatio;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.scale(devicePixelRatio, devicePixelRatio);
 
-  ctx.clearRect(0, 0, w, h)
+  ctx.clearRect(0, 0, w, h);
 
-  const values = props.points.map(p => p.return_pct)
-  const min = Math.min(...values, 0)
-  const max = Math.max(...values, 0)
-  const range = max - min || 1
+  const values = props.points.map((p) => p.return_pct);
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
+  const range = max - min || 1;
 
-  const padX = 2
-  const padY = 2
-  const plotW = w - padX * 2
-  const plotH = h - padY * 2
+  const padX = 2;
+  const padY = 2;
+  const plotW = w - padX * 2;
+  const plotH = h - padY * 2;
 
-  const getX = (i: number) => padX + (i / Math.max(values.length - 1, 1)) * plotW
-  const getY = (v: number) => padY + plotH - ((v - min) / range) * plotH
+  const getX = (i: number) =>
+    padX + (i / Math.max(values.length - 1, 1)) * plotW;
+  const getY = (v: number) => padY + plotH - ((v - min) / range) * plotH;
 
   // Draw line
-  ctx.beginPath()
-  ctx.strokeStyle = values[values.length - 1] >= 0 ? '#FF5C5C' : '#1D9E75'
-  ctx.lineWidth = 1.5
-  ctx.lineJoin = 'round'
+  ctx.beginPath();
+  ctx.strokeStyle = values[values.length - 1] >= 0 ? "#FF5C5C" : "#1D9E75";
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
 
-  const firstX = getX(0)
-  const firstY = getY(values[0])
-  ctx.moveTo(firstX, firstY)
+  const firstX = getX(0);
+  const firstY = getY(values[0]);
+  ctx.moveTo(firstX, firstY);
 
   for (let i = 1; i < values.length; i++) {
-    const x = getX(i)
-    const y = getY(values[i])
+    const x = getX(i);
+    const y = getY(values[i]);
     // Simple quadratic bezier for smoothness
-    const prevX = getX(i - 1)
-    const prevY = getY(values[i - 1])
-    const cx = (prevX + x) / 2
-    ctx.quadraticCurveTo(prevX, prevY, cx, (prevY + y) / 2)
-    ctx.lineTo(x, y)
+    const prevX = getX(i - 1);
+    const prevY = getY(values[i - 1]);
+    const cx = (prevX + x) / 2;
+    ctx.quadraticCurveTo(prevX, prevY, cx, (prevY + y) / 2);
+    ctx.lineTo(x, y);
   }
-  ctx.stroke()
+  ctx.stroke();
 }
 
-onMounted(draw)
-watch(() => props.points, draw, { deep: true })
+onMounted(draw);
+watch(() => props.points, draw, { deep: true });
 </script>
 ```
 
@@ -788,6 +813,7 @@ git commit -m "feat(frontend): add Sparkline canvas component"
 ### Task 8: Frontend — RoleView.vue rewrite
 
 **Files:**
+
 - Modify: `src/src/RoleView.vue`
 
 - [ ] **Step 1: Rewrite RoleView.vue with split-pane layout**
@@ -797,7 +823,9 @@ git commit -m "feat(frontend): add Sparkline canvas component"
   <div class="pt-11 min-h-screen bg-bg">
     <div class="flex h-[calc(100vh-44px)]">
       <!-- Left Panel: Role List (320px) -->
-      <div class="w-[320px] flex-shrink-0 border-r border-hairline overflow-y-auto px-4 py-6 flex flex-col gap-3">
+      <div
+        class="w-[320px] shrink-0 border-r border-hairline overflow-y-auto px-4 py-6 flex flex-col gap-3"
+      >
         <h2 class="text-lg font-bold text-white px-1 mb-1">角色策略</h2>
 
         <div v-if="roles.loading" class="flex items-center gap-2 px-1 py-4">
@@ -805,7 +833,9 @@ git commit -m "feat(frontend): add Sparkline canvas component"
           <span class="text-caption text-ink-muted">加载中...</span>
         </div>
 
-        <div v-else-if="roles.error" class="text-up text-caption px-1 py-4">{{ roles.error }}</div>
+        <div v-else-if="roles.error" class="text-up text-caption px-1 py-4">
+          {{ roles.error }}
+        </div>
 
         <template v-else>
           <div
@@ -813,22 +843,33 @@ git commit -m "feat(frontend): add Sparkline canvas component"
             :key="role.name"
             @click="selectRole(role.name)"
             class="rounded-card p-3 cursor-pointer transition-colors border"
-            :class="selectedRole === role.name
-              ? 'bg-ai/10 border-ai/30'
-              : 'bg-bg-surface border-hairline hover:bg-white/[0.03]'"
+            :class="
+              selectedRole === role.name
+                ? 'bg-ai/10 border-ai/30'
+                : 'bg-bg-surface border-hairline hover:bg-white/[0.03]'
+            "
           >
             <div class="flex items-center justify-between mb-1">
               <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-ai flex-shrink-0"></span>
-                <span class="text-white font-semibold text-sm truncate">{{ role.display_name }}</span>
+                <span class="w-2 h-2 rounded-full bg-ai shrink-0"></span>
+                <span class="text-white font-semibold text-sm truncate">{{
+                  role.display_name
+                }}</span>
               </div>
             </div>
             <div class="flex items-center justify-between text-caption">
-              <span v-if="rolePnls[role.name] !== undefined" :class="rolePnls[role.name] >= 0 ? 'text-up' : 'text-down'" class="font-mono">
-                {{ rolePnls[role.name] >= 0 ? '+' : '' }}{{ rolePnls[role.name].toFixed(1) }}%
+              <span
+                v-if="rolePnls[role.name] !== undefined"
+                :class="rolePnls[role.name] >= 0 ? 'text-up' : 'text-down'"
+                class="font-mono"
+              >
+                {{ rolePnls[role.name] >= 0 ? "+" : ""
+                }}{{ rolePnls[role.name].toFixed(1) }}%
               </span>
               <span v-else class="text-ink-muted">空仓</span>
-              <span class="text-ink-muted">{{ rolePositionCounts[role.name] || 0 }}支</span>
+              <span class="text-ink-muted"
+                >{{ rolePositionCounts[role.name] || 0 }}支</span
+              >
             </div>
             <!-- Sparkline -->
             <div class="mt-2 flex justify-center">
@@ -851,13 +892,39 @@ git commit -m "feat(frontend): add Sparkline canvas component"
           </button>
 
           <!-- Inline Create Form -->
-          <div v-if="showCreateForm" class="bg-bg-surface border border-hairline rounded-card p-4 space-y-3">
-            <input v-model="createForm.name" placeholder="角色名 (英文)" class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm font-mono" />
-            <input v-model="createForm.displayName" placeholder="显示名 (中文)" class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm" />
-            <textarea v-model="createForm.strategy" placeholder="初始策略 (Markdown)" rows="4" class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm font-mono resize-none"></textarea>
+          <div
+            v-if="showCreateForm"
+            class="bg-bg-surface border border-hairline rounded-card p-4 space-y-3"
+          >
+            <input
+              v-model="createForm.name"
+              placeholder="角色名 (英文)"
+              class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm font-mono"
+            />
+            <input
+              v-model="createForm.displayName"
+              placeholder="显示名 (中文)"
+              class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm"
+            />
+            <textarea
+              v-model="createForm.strategy"
+              placeholder="初始策略 (Markdown)"
+              rows="4"
+              class="w-full bg-bg border border-hairline rounded px-3 py-2 text-white text-sm font-mono resize-none"
+            ></textarea>
             <div class="flex gap-2">
-              <button @click="doCreateRole" class="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors">创建</button>
-              <button @click="showCreateForm = false" class="px-4 py-1.5 text-ink-muted text-sm hover:text-white transition-colors">取消</button>
+              <button
+                @click="doCreateRole"
+                class="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors"
+              >
+                创建
+              </button>
+              <button
+                @click="showCreateForm = false"
+                class="px-4 py-1.5 text-ink-muted text-sm hover:text-white transition-colors"
+              >
+                取消
+              </button>
             </div>
           </div>
         </template>
@@ -866,7 +933,10 @@ git commit -m "feat(frontend): add Sparkline canvas component"
       <!-- Right Panel: Role Detail -->
       <div class="flex-1 overflow-y-auto px-8 py-6">
         <!-- Empty state -->
-        <div v-if="!selectedRole" class="flex items-center justify-center h-full text-ink-muted text-sm">
+        <div
+          v-if="!selectedRole"
+          class="flex items-center justify-center h-full text-ink-muted text-sm"
+        >
           请选择一个角色
         </div>
 
@@ -874,11 +944,24 @@ git commit -m "feat(frontend): add Sparkline canvas component"
           <!-- Action Bar -->
           <div class="flex items-center justify-between mb-6">
             <div>
-              <h2 class="text-xl font-bold text-white">{{ currentRole?.display_name }}</h2>
-              <div class="flex items-center gap-4 mt-1 text-caption text-ink-muted">
-                <span>累计 <span :class="rolePnls[selectedRole] >= 0 ? 'text-up' : 'text-down'" class="font-mono">
-                  {{ rolePnls[selectedRole] >= 0 ? '+' : '' }}{{ (rolePnls[selectedRole] || 0).toFixed(1) }}%
-                </span></span>
+              <h2 class="text-xl font-bold text-white">
+                {{ currentRole?.display_name }}
+              </h2>
+              <div
+                class="flex items-center gap-4 mt-1 text-caption text-ink-muted"
+              >
+                <span
+                  >累计
+                  <span
+                    :class="
+                      rolePnls[selectedRole] >= 0 ? 'text-up' : 'text-down'
+                    "
+                    class="font-mono"
+                  >
+                    {{ rolePnls[selectedRole] >= 0 ? "+" : ""
+                    }}{{ (rolePnls[selectedRole] || 0).toFixed(1) }}%
+                  </span></span
+                >
                 <span>持仓 {{ rolePositionCounts[selectedRole] || 0 }} 支</span>
                 <span>初始资金 ¥1,000,000</span>
               </div>
@@ -888,7 +971,7 @@ git commit -m "feat(frontend): add Sparkline canvas component"
                 @click="editingStrategy = !editingStrategy"
                 class="px-3 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-white hover:border-white/20 transition-colors"
               >
-                {{ editingStrategy ? '取消编辑' : '编辑策略' }}
+                {{ editingStrategy ? "取消编辑" : "编辑策略" }}
               </button>
               <button
                 @click="doResetRole"
@@ -906,30 +989,60 @@ git commit -m "feat(frontend): add Sparkline canvas component"
           </div>
 
           <!-- Profit Curve -->
-          <div class="bg-bg-surface border border-hairline rounded-card p-5 mb-6">
+          <div
+            class="bg-bg-surface border border-hairline rounded-card p-5 mb-6"
+          >
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-white font-semibold text-sm">盈利曲线</h3>
               <div class="flex gap-1">
-                <button v-for="d in [7, 30, 0]" :key="d" @click="pnlDays = d"
+                <button
+                  v-for="d in [7, 30, 0]"
+                  :key="d"
+                  @click="pnlDays = d"
                   class="px-2 py-0.5 rounded text-xs transition-colors"
-                  :class="pnlDays === d ? 'bg-ai/20 text-ai' : 'text-ink-muted hover:text-white'"
+                  :class="
+                    pnlDays === d
+                      ? 'bg-ai/20 text-ai'
+                      : 'text-ink-muted hover:text-white'
+                  "
                 >
-                  {{ d === 0 ? '全部' : d + '日' }}
+                  {{ d === 0 ? "全部" : d + "日" }}
                 </button>
               </div>
             </div>
-            <div v-if="rolePnlHistories[selectedRole]?.loading" class="text-center py-10 text-ink-muted text-sm">加载中...</div>
-            <div v-else-if="!rolePnlHistories[selectedRole]?.data?.length" class="text-center py-10 text-ink-muted text-sm">暂无交易数据</div>
+            <div
+              v-if="rolePnlHistories[selectedRole]?.loading"
+              class="text-center py-10 text-ink-muted text-sm"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="!rolePnlHistories[selectedRole]?.data?.length"
+              class="text-center py-10 text-ink-muted text-sm"
+            >
+              暂无交易数据
+            </div>
             <div v-else ref="chartContainerRef" class="w-full h-[300px]"></div>
           </div>
 
           <!-- Positions Table -->
-          <div class="bg-bg-surface border border-hairline rounded-card p-5 mb-6">
+          <div
+            class="bg-bg-surface border border-hairline rounded-card p-5 mb-6"
+          >
             <h3 class="text-white font-semibold text-sm mb-3">持仓明细</h3>
-            <div v-if="!rolePositions[selectedRole]?.loading && !rolePositions[selectedRole]?.data?.length" class="text-caption text-ink-muted py-4 text-center">
+            <div
+              v-if="
+                !rolePositions[selectedRole]?.loading &&
+                !rolePositions[selectedRole]?.data?.length
+              "
+              class="text-caption text-ink-muted py-4 text-center"
+            >
               暂无持仓
             </div>
-            <table v-else-if="rolePositions[selectedRole]?.data?.length" class="w-full text-caption">
+            <table
+              v-else-if="rolePositions[selectedRole]?.data?.length"
+              class="w-full text-caption"
+            >
               <thead>
                 <tr class="text-ink-muted text-left">
                   <th class="pb-2 font-normal">代码</th>
@@ -942,18 +1055,32 @@ git commit -m "feat(frontend): add Sparkline canvas component"
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="pos in rolePositions[selectedRole].data" :key="pos.id" class="border-t border-hairline">
+                <tr
+                  v-for="pos in rolePositions[selectedRole].data"
+                  :key="pos.id"
+                  class="border-t border-hairline"
+                >
                   <td class="py-2 font-mono text-white/70">{{ pos.symbol }}</td>
                   <td class="py-2 text-white/70">{{ pos.stock_name }}</td>
-                  <td class="py-2 text-right font-mono" :class="pnl(pos) >= 0 ? 'text-up' : 'text-down'">
-                    {{ pnl(pos) >= 0 ? '+' : '' }}{{ pnl(pos).toFixed(1) }}%
+                  <td
+                    class="py-2 text-right font-mono"
+                    :class="pnl(pos) >= 0 ? 'text-up' : 'text-down'"
+                  >
+                    {{ pnl(pos) >= 0 ? "+" : "" }}{{ pnl(pos).toFixed(1) }}%
                   </td>
                   <td class="py-2 text-right font-mono text-white/50">
-                    {{ pos.cost_price.toFixed(2) }} / {{ (pos.current_price || 0).toFixed(2) }}
+                    {{ pos.cost_price.toFixed(2) }} /
+                    {{ (pos.current_price || 0).toFixed(2) }}
                   </td>
-                  <td class="py-2 text-right font-mono text-white/70">{{ pos.shares }}</td>
-                  <td class="py-2 text-right font-mono text-white/50">{{ daysSince(pos.entry_date) }}天</td>
-                  <td class="py-2 text-white/50 max-w-[200px] truncate">{{ pos.entry_reason }}</td>
+                  <td class="py-2 text-right font-mono text-white/70">
+                    {{ pos.shares }}
+                  </td>
+                  <td class="py-2 text-right font-mono text-white/50">
+                    {{ daysSince(pos.entry_date) }}天
+                  </td>
+                  <td class="py-2 text-white/50 max-w-[200px] truncate">
+                    {{ pos.entry_reason }}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -965,14 +1092,28 @@ git commit -m "feat(frontend): add Sparkline canvas component"
 
             <!-- View Mode -->
             <div v-if="!editingStrategy">
-              <button @click="toggleStrategy" class="text-caption text-ai hover:text-ai/80 transition-colors font-mono">
-                {{ strategyExpanded ? '收起 ▲' : '展开 ▼' }}
+              <button
+                @click="toggleStrategy"
+                class="text-caption text-ai hover:text-ai/80 transition-colors font-mono"
+              >
+                {{ strategyExpanded ? "收起 ▲" : "展开 ▼" }}
               </button>
-              <div v-if="strategyExpanded" class="mt-2 bg-bg rounded-card p-4 max-h-[400px] overflow-y-auto text-caption text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none">
+              <div
+                v-if="strategyExpanded"
+                class="mt-2 bg-bg rounded-card p-4 max-h-[400px] overflow-y-auto text-caption text-white/70 leading-relaxed prose prose-invert prose-sm max-w-none"
+              >
                 <div v-html="renderMarkdown(currentRole?.strategy || '')"></div>
               </div>
-              <p v-else class="mt-1 text-caption text-ink-muted truncate max-w-2xl">
-                {{ (currentRole?.strategy || '').split('\n').slice(0, 3).join(' ') }}...
+              <p
+                v-else
+                class="mt-1 text-caption text-ink-muted truncate max-w-2xl"
+              >
+                {{
+                  (currentRole?.strategy || "")
+                    .split("\n")
+                    .slice(0, 3)
+                    .join(" ")
+                }}...
               </p>
             </div>
 
@@ -984,8 +1125,18 @@ git commit -m "feat(frontend): add Sparkline canvas component"
                 class="w-full bg-bg border border-hairline rounded-card p-4 text-caption text-white/70 font-mono resize-none focus:border-ai/30 focus:outline-none"
               ></textarea>
               <div class="flex gap-2 mt-3">
-                <button @click="doSaveStrategy" class="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors">保存</button>
-                <button @click="editingStrategy = false" class="px-4 py-1.5 text-ink-muted text-sm hover:text-white transition-colors">取消</button>
+                <button
+                  @click="doSaveStrategy"
+                  class="px-4 py-1.5 bg-ai/20 text-ai rounded text-sm hover:bg-ai/30 transition-colors"
+                >
+                  保存
+                </button>
+                <button
+                  @click="editingStrategy = false"
+                  class="px-4 py-1.5 text-ink-muted text-sm hover:text-white transition-colors"
+                >
+                  取消
+                </button>
               </div>
             </div>
           </div>
@@ -994,12 +1145,28 @@ git commit -m "feat(frontend): add Sparkline canvas component"
     </div>
 
     <!-- Confirm Dialog -->
-    <div v-if="confirmAction" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="confirmAction = null">
-      <div class="bg-bg-surface border border-hairline rounded-card p-6 max-w-sm w-full">
+    <div
+      v-if="confirmAction"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      @click.self="confirmAction = null"
+    >
+      <div
+        class="bg-bg-surface border border-hairline rounded-card p-6 max-w-sm w-full"
+      >
         <p class="text-white text-sm mb-4">{{ confirmMessage }}</p>
         <div class="flex gap-2 justify-end">
-          <button @click="confirmAction = null" class="px-4 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-white transition-colors">取消</button>
-          <button @click="executeConfirm" class="px-4 py-1.5 bg-up/20 text-up rounded text-sm hover:bg-up/30 transition-colors">确认</button>
+          <button
+            @click="confirmAction = null"
+            class="px-4 py-1.5 border border-hairline rounded text-sm text-ink-muted hover:text-white transition-colors"
+          >
+            取消
+          </button>
+          <button
+            @click="executeConfirm"
+            class="px-4 py-1.5 bg-up/20 text-up rounded text-sm hover:bg-up/30 transition-colors"
+          >
+            确认
+          </button>
         </div>
       </div>
     </div>
@@ -1007,279 +1174,327 @@ git commit -m "feat(frontend): add Sparkline canvas component"
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from "vue";
 import {
-  roles, fetchRoles,
-  rolePositions, fetchRolePositions,
-  roleLogs, fetchRoleLogs,
-  rolePnlHistory, fetchRolePnlHistory,
-  createRole, updateRoleStrategy, deleteRole, resetRole,
-  type RolePosition, type PnlPoint
-} from '@/stores/data'
-import Sparkline from '@/components/Sparkline.vue'
-import { createChart, ColorType, type IChartApi } from 'lightweight-charts'
+  roles,
+  fetchRoles,
+  rolePositions,
+  fetchRolePositions,
+  roleLogs,
+  fetchRoleLogs,
+  rolePnlHistory,
+  fetchRolePnlHistory,
+  createRole,
+  updateRoleStrategy,
+  deleteRole,
+  resetRole,
+  type RolePosition,
+  type PnlPoint,
+} from "@/stores/data";
+import Sparkline from "@/components/Sparkline.vue";
+import { createChart, ColorType, type IChartApi } from "lightweight-charts";
 
 // ── State ──────────────────────────────────────────────
 
-const selectedRole = ref<string | null>(null)
-const strategyExpanded = ref(false)
-const editingStrategy = ref(false)
-const strategyDraft = ref('')
-const showCreateForm = ref(false)
-const pnlDays = ref(30)
+const selectedRole = ref<string | null>(null);
+const strategyExpanded = ref(false);
+const editingStrategy = ref(false);
+const strategyDraft = ref("");
+const showCreateForm = ref(false);
+const pnlDays = ref(30);
 
-const createForm = ref({ name: '', displayName: '', strategy: '# 新角色\n\n## 策略\n\n' })
+const createForm = ref({
+  name: "",
+  displayName: "",
+  strategy: "# 新角色\n\n## 策略\n\n",
+});
 
-const confirmAction = ref<'reset' | 'delete' | null>(null)
+const confirmAction = ref<"reset" | "delete" | null>(null);
 const confirmMessage = computed(() =>
-  confirmAction.value === 'reset'
+  confirmAction.value === "reset"
     ? `确认重置 ${currentRole.value?.display_name} 账户？将清空所有持仓和交易记录，恢复初始资金 ¥1,000,000。此操作不可撤销。`
-    : `确认删除 ${currentRole.value?.display_name}？将删除该角色及所有相关持仓和交易记录。此操作不可撤销。`
-)
+    : `确认删除 ${currentRole.value?.display_name}？将删除该角色及所有相关持仓和交易记录。此操作不可撤销。`,
+);
 
-const chartContainerRef = ref<HTMLDivElement>()
-let chart: IChartApi | null = null
+const chartContainerRef = ref<HTMLDivElement>();
+let chart: IChartApi | null = null;
 
 // ── Computed ────────────────────────────────────────────
 
-const currentRole = computed(() => roles.data.find(r => r.name === selectedRole.value))
+const currentRole = computed(() =>
+  roles.data.find((r) => r.name === selectedRole.value),
+);
 
 const rolePnls = computed(() => {
-  const result: Record<string, number> = {}
+  const result: Record<string, number> = {};
   for (const role of roles.data) {
-    const positions = rolePositions[role.name]?.data || []
-    if (!positions.length) continue
-    let totalCost = 0, totalValue = 0
+    const positions = rolePositions[role.name]?.data || [];
+    if (!positions.length) continue;
+    let totalCost = 0,
+      totalValue = 0;
     for (const p of positions) {
-      totalCost += p.cost_price * p.shares
-      totalValue += (p.current_price || 0) * p.shares
+      totalCost += p.cost_price * p.shares;
+      totalValue += (p.current_price || 0) * p.shares;
     }
-    result[role.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0
+    result[role.name] =
+      totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0;
   }
-  return result
-})
+  return result;
+});
 
 const rolePositionCounts = computed(() => {
-  const result: Record<string, number> = {}
+  const result: Record<string, number> = {};
   for (const role of roles.data) {
-    result[role.name] = (rolePositions[role.name]?.data || []).length
+    result[role.name] = (rolePositions[role.name]?.data || []).length;
   }
-  return result
-})
+  return result;
+});
 
 const rolePnlHistories = computed(() => {
-  const result: Record<string, PnlPoint[]> = {}
+  const result: Record<string, PnlPoint[]> = {};
   for (const role of roles.data) {
-    result[role.name] = rolePnlHistory[role.name]?.data || []
+    result[role.name] = rolePnlHistory[role.name]?.data || [];
   }
-  return result
-})
+  return result;
+});
 
 // ── Methods ─────────────────────────────────────────────
 
 function pnl(pos: RolePosition): number {
-  if (!pos.current_price || !pos.cost_price) return 0
-  return ((pos.current_price - pos.cost_price) / pos.cost_price) * 100
+  if (!pos.current_price || !pos.cost_price) return 0;
+  return ((pos.current_price - pos.cost_price) / pos.cost_price) * 100;
 }
 
 function daysSince(dateStr: string): number {
-  if (!dateStr) return 0
-  const d = new Date(dateStr)
-  const now = new Date()
-  return Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return Math.floor((now.getTime() - d.getTime()) / 86400000);
 }
 
 function renderMarkdown(md: string): string {
   return md
-    .replace(/^### (.+)$/gm, '<h4 class="text-white font-semibold mt-4 mb-1">$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3 class="text-ai font-semibold mt-4 mb-2">$1</h3>')
-    .replace(/^# (.+)$/gm, '<h3 class="text-ai font-bold mt-3 mb-2 text-sm">$1</h3>')
+    .replace(
+      /^### (.+)$/gm,
+      '<h4 class="text-white font-semibold mt-4 mb-1">$1</h4>',
+    )
+    .replace(
+      /^## (.+)$/gm,
+      '<h3 class="text-ai font-semibold mt-4 mb-2">$1</h3>',
+    )
+    .replace(
+      /^# (.+)$/gm,
+      '<h3 class="text-ai font-bold mt-3 mb-2 text-sm">$1</h3>',
+    )
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white/90">$1</strong>')
     .replace(/^\- (.+)$/gm, '<li class="ml-4 text-white/60">$1</li>')
-    .replace(/\n\n/g, '<br/><br/>')
-    .replace(/\n/g, '<br/>')
+    .replace(/\n\n/g, "<br/><br/>")
+    .replace(/\n/g, "<br/>");
 }
 
 function toggleStrategy() {
-  strategyExpanded.value = !strategyExpanded.value
+  strategyExpanded.value = !strategyExpanded.value;
 }
 
 async function selectRole(name: string) {
-  selectedRole.value = name
-  strategyExpanded.value = false
-  editingStrategy.value = false
-  await refreshRole(name)
-  await nextTick()
-  renderChart()
+  selectedRole.value = name;
+  strategyExpanded.value = false;
+  editingStrategy.value = false;
+  await refreshRole(name);
+  await nextTick();
+  renderChart();
 }
 
 async function refreshRole(name: string) {
-  await fetchRolePnlHistory(name, pnlDays.value === 0 ? 365 : pnlDays.value)
+  await fetchRolePnlHistory(name, pnlDays.value === 0 ? 365 : pnlDays.value);
   if (!rolePositions[name]?.data?.length) {
-    fetchRolePositions(name)
-    fetchRoleLogs(name)
+    fetchRolePositions(name);
+    fetchRoleLogs(name);
   }
 }
 
 // ── CRUD ────────────────────────────────────────────────
 
 async function doCreateRole() {
-  if (!createForm.value.name.trim()) return
+  if (!createForm.value.name.trim()) return;
   try {
-    await createRole(createForm.value.name.trim(), createForm.value.displayName.trim() || createForm.value.name.trim(), createForm.value.strategy)
-    showCreateForm.value = false
-    createForm.value = { name: '', displayName: '', strategy: '# 新角色\n\n## 策略\n\n' }
-    await fetchRoles()
+    await createRole(
+      createForm.value.name.trim(),
+      createForm.value.displayName.trim() || createForm.value.name.trim(),
+      createForm.value.strategy,
+    );
+    showCreateForm.value = false;
+    createForm.value = {
+      name: "",
+      displayName: "",
+      strategy: "# 新角色\n\n## 策略\n\n",
+    };
+    await fetchRoles();
   } catch (e: any) {
-    alert('创建失败: ' + (e.message || e))
+    alert("创建失败: " + (e.message || e));
   }
 }
 
 async function doSaveStrategy() {
-  if (!selectedRole.value) return
+  if (!selectedRole.value) return;
   try {
-    await updateRoleStrategy(selectedRole.value, strategyDraft.value)
-    editingStrategy.value = false
-    await fetchRoles()
+    await updateRoleStrategy(selectedRole.value, strategyDraft.value);
+    editingStrategy.value = false;
+    await fetchRoles();
   } catch (e: any) {
-    alert('保存失败: ' + (e.message || e))
+    alert("保存失败: " + (e.message || e));
   }
 }
 
 function doResetRole() {
-  confirmAction.value = 'reset'
+  confirmAction.value = "reset";
 }
 
 function doDeleteRole() {
-  confirmAction.value = 'delete'
+  confirmAction.value = "delete";
 }
 
 async function executeConfirm() {
-  if (!selectedRole.value) return
+  if (!selectedRole.value) return;
   try {
-    if (confirmAction.value === 'reset') {
-      await resetRole(selectedRole.value)
-      await refreshRole(selectedRole.value)
-      await renderChart()
-    } else if (confirmAction.value === 'delete') {
-      await deleteRole(selectedRole.value)
-      const deleted = selectedRole.value
-      selectedRole.value = null
-      await fetchRoles()
+    if (confirmAction.value === "reset") {
+      await resetRole(selectedRole.value);
+      await refreshRole(selectedRole.value);
+      await renderChart();
+    } else if (confirmAction.value === "delete") {
+      await deleteRole(selectedRole.value);
+      const deleted = selectedRole.value;
+      selectedRole.value = null;
+      await fetchRoles();
     }
   } catch (e: any) {
-    alert('操作失败: ' + (e.message || e))
+    alert("操作失败: " + (e.message || e));
   } finally {
-    confirmAction.value = null
+    confirmAction.value = null;
   }
 }
 
 // Watch edit mode to populate draft
 watch(editingStrategy, (editing) => {
   if (editing && currentRole.value) {
-    strategyDraft.value = currentRole.value.strategy
+    strategyDraft.value = currentRole.value.strategy;
   }
-})
+});
 
 // Watch P&L days
 watch(pnlDays, async (days) => {
   if (selectedRole.value) {
-    await fetchRolePnlHistory(selectedRole.value, days === 0 ? 365 : days)
-    await nextTick()
-    renderChart()
+    await fetchRolePnlHistory(selectedRole.value, days === 0 ? 365 : days);
+    await nextTick();
+    renderChart();
   }
-})
+});
 
 // ── Chart ───────────────────────────────────────────────
 
 function renderChart() {
   if (chart) {
-    chart.remove()
-    chart = null
+    chart.remove();
+    chart = null;
   }
 
-  const container = chartContainerRef.value
-  if (!container || !selectedRole.value) return
+  const container = chartContainerRef.value;
+  if (!container || !selectedRole.value) return;
 
-  const points = rolePnlHistory[selectedRole.value]?.data || []
-  if (!points.length) return
+  const points = rolePnlHistory[selectedRole.value]?.data || [];
+  if (!points.length) return;
 
   chart = createChart(container, {
     width: container.clientWidth,
     height: 300,
     layout: {
-      background: { type: ColorType.Solid, color: 'transparent' },
-      textColor: '#888780',
+      background: { type: ColorType.Solid, color: "transparent" },
+      textColor: "#888780",
     },
     grid: {
-      vertLines: { color: 'rgba(255,255,255,0.04)' },
-      horzLines: { color: 'rgba(255,255,255,0.04)' },
+      vertLines: { color: "rgba(255,255,255,0.04)" },
+      horzLines: { color: "rgba(255,255,255,0.04)" },
     },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
-    timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: false },
-  })
+    rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
+    timeScale: { borderColor: "rgba(255,255,255,0.08)", timeVisible: false },
+  });
 
   // Cumulative return % (area series)
-  const returnData = points.map(p => ({
+  const returnData = points.map((p) => ({
     time: p.date,
     value: p.return_pct,
-  }))
+  }));
 
   const returnSeries = chart.addAreaSeries({
-    lineColor: points.length && points[points.length - 1].return_pct >= 0 ? '#FF5C5C' : '#1D9E75',
-    topColor: points.length && points[points.length - 1].return_pct >= 0 ? 'rgba(255,92,92,0.15)' : 'rgba(29,158,117,0.15)',
-    bottomColor: 'rgba(0,0,0,0)',
+    lineColor:
+      points.length && points[points.length - 1].return_pct >= 0
+        ? "#FF5C5C"
+        : "#1D9E75",
+    topColor:
+      points.length && points[points.length - 1].return_pct >= 0
+        ? "rgba(255,92,92,0.15)"
+        : "rgba(29,158,117,0.15)",
+    bottomColor: "rgba(0,0,0,0)",
     lineWidth: 2,
-    priceFormat: { type: 'custom', formatter: (v: number) => v.toFixed(1) + '%' },
-  })
-  returnSeries.setData(returnData)
+    priceFormat: {
+      type: "custom",
+      formatter: (v: number) => v.toFixed(1) + "%",
+    },
+  });
+  returnSeries.setData(returnData);
 
   // Market value (line series, right axis)
-  const mvData = points.map(p => ({
+  const mvData = points.map((p) => ({
     time: p.date,
     value: p.market_value,
-  }))
+  }));
 
   const mvSeries = chart.addLineSeries({
-    color: '#7F77DD',
+    color: "#7F77DD",
     lineWidth: 1,
-    priceScaleId: 'right',
-    priceFormat: { type: 'custom', formatter: (v: number) => (v / 10000).toFixed(1) + '万' },
-  })
-  mvSeries.setData(mvData)
+    priceScaleId: "right",
+    priceFormat: {
+      type: "custom",
+      formatter: (v: number) => (v / 10000).toFixed(1) + "万",
+    },
+  });
+  mvSeries.setData(mvData);
 
   // Cash (line series, right axis)
-  const cashData = points.map(p => ({
+  const cashData = points.map((p) => ({
     time: p.date,
     value: p.cash,
-  }))
+  }));
 
   const cashSeries = chart.addLineSeries({
-    color: '#888780',
+    color: "#888780",
     lineWidth: 1,
     lineStyle: 2, // dashed
-    priceScaleId: 'right',
-    priceFormat: { type: 'custom', formatter: (v: number) => (v / 10000).toFixed(1) + '万' },
-  })
-  cashSeries.setData(cashData)
+    priceScaleId: "right",
+    priceFormat: {
+      type: "custom",
+      formatter: (v: number) => (v / 10000).toFixed(1) + "万",
+    },
+  });
+  cashSeries.setData(cashData);
 
-  chart.timeScale().fitContent()
+  chart.timeScale().fitContent();
 }
 
 // ── Init ────────────────────────────────────────────────
 
 onMounted(async () => {
-  await fetchRoles()
+  await fetchRoles();
   // Load positions/pnl for all roles (for sparklines)
   for (const role of roles.data) {
-    fetchRolePositions(role.name)
-    fetchRolePnlHistory(role.name, 30)
+    fetchRolePositions(role.name);
+    fetchRolePnlHistory(role.name, 30);
   }
   // Auto-select first role
   if (roles.data.length && !selectedRole.value) {
-    selectRole(roles.data[0].name)
+    selectRole(roles.data[0].name);
   }
-})
+});
 </script>
 ```
 

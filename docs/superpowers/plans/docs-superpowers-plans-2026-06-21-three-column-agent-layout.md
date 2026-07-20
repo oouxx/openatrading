@@ -347,7 +347,7 @@ export default function ConversationSidebar() {
   // Collapsed state: icon-only bar
   if (collapsed) {
     return (
-      <div className="flex flex-col items-center py-3 gap-4 w-12 border-r border-hairline bg-bg-surface flex-shrink-0">
+      <div className="flex flex-col items-center py-3 gap-4 w-12 border-r border-hairline bg-bg-surface shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -379,7 +379,7 @@ export default function ConversationSidebar() {
 
   return (
     <div
-      className="flex flex-col border-r border-hairline bg-bg-surface flex-shrink-0 overflow-hidden"
+      className="flex flex-col border-r border-hairline bg-bg-surface shrink-0 overflow-hidden"
       style={{ width: displayWidth || 240, minWidth: 0 }}
     >
       {/* New conversation + collapse toggle */}
@@ -412,7 +412,7 @@ export default function ConversationSidebar() {
           variant="ghost"
           size="icon"
           onClick={toggleCollapse}
-          className="w-8 h-8 flex-shrink-0"
+          className="w-8 h-8 shrink-0"
         >
           <span className="block w-1 h-1 rounded-full bg-ink-muted shadow-[0_4px_0_0_var(--color-muted),0_8px_0_0_var(--color-muted)]" />
         </Button>
@@ -637,7 +637,7 @@ export default function ResizableHandle({ onResize }: Props) {
 
   return (
     <div
-      className="w-1 cursor-col-resize hover:bg-ai/30 active:bg-ai/50 transition-colors flex-shrink-0 relative"
+      className="w-1 cursor-col-resize hover:bg-ai/30 active:bg-ai/50 transition-colors shrink-0 relative"
       onMouseDown={onMouseDown}
     >
       <div className="absolute inset-y-0 -left-1 -right-1" />
@@ -715,10 +715,10 @@ export default function RightPanel() {
     <>
       <ResizableHandle onResize={onResize} />
       <div
-        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden flex-shrink-0"
+        className="flex flex-col bg-bg-surface border-l border-hairline overflow-hidden shrink-0"
         style={{ width: displayWidth || 420 }}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline shrink-0">
           <span className="text-sm font-medium text-white">
             {VIEW_TITLES[activeView]}
           </span>
