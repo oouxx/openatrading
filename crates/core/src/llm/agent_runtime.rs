@@ -7,11 +7,13 @@ use anyhow::Result;
 /// Returns `(file_stem, session_id)` where `file_stem` is the JSONL file stem
 /// used as the session identifier by callers that persist conversations.
 ///
+/// If `title` is provided, it will be used as the session name in the JSONL header.
+///
 /// Note: for new streaming flows, prefer [`crate::llm::AgentRuntime::create_session`]
 /// which returns a [`crate::llm::SessionHandle`] and supports `subscribe`/`send`.
 /// This function is retained for the legacy "create empty session" HTTP/IPC
 /// endpoints that only need a session id up front.
-pub fn create_session() -> Result<(String, String)> {
+pub fn create_session(title: Option<&str>) -> Result<(String, String)> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -19,7 +21,7 @@ pub fn create_session() -> Result<(String, String)> {
     let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
     use pi_coding_agent::core::session_manager::SessionManager;
-    let sm = SessionManager::new(&cwd, &session_dir, None, true, None);
+    let sm = SessionManager::new(&cwd, &session_dir, title, true, None);
     let sid = sm.get_session_id().to_string();
     let file_stem = sm
         .get_session_file()

@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react"
 import {
   ReasoningRoot,
   ReasoningTrigger,
@@ -11,10 +12,22 @@ interface ThinkingBlockProps {
 }
 
 export default function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
+  const [userOpen, setUserOpen] = useState(true)
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setUserOpen(open)
+    },
+    []
+  )
+
   if (!content) return null
 
+  // When streaming, force open; otherwise respect user's toggle
+  const open = isStreaming ? true : userOpen
+
   return (
-    <ReasoningRoot defaultOpen={isStreaming}>
+    <ReasoningRoot open={open} onOpenChange={handleOpenChange}>
       <ReasoningTrigger active={isStreaming} />
       <ReasoningContent>
         <ReasoningText>

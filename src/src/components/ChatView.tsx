@@ -209,17 +209,6 @@ export default function AiCopilot({
       setShowSlash(false)
       setInput("")
 
-      // When continuing a session, pi-coding-agent loads history from JSONL.
-      // Only send history for new sessions (no session_id).
-      const earlyMsgs = threadMessagesRef.current.get(threadId ?? "__new__") ?? []
-      const history =
-        threadId === null
-          ? earlyMsgs.map((m) => ({
-              role: m.role === "assistant" ? "assistant" : "user",
-              content: m.reasoning ? `${m.reasoning}\n\n${m.content}` : m.content,
-            }))
-          : []
-
       const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
       const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
 
@@ -242,7 +231,6 @@ export default function AiCopilot({
             message: text,
             session_id: threadId ?? undefined,
             role: "",
-            history,
             command_name: cmd?.name,
             command_type: cmd?.type,
             skill_name: cmd?.type === "skill" ? cmd.name : undefined,

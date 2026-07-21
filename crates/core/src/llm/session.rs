@@ -56,7 +56,7 @@ impl<'a> AgentSession<'a> {
 
             let mut handle = self
                 .runtime
-                .create_session(self.system_prompt, Vec::new(), false, None)
+                .create_session(self.system_prompt, Vec::new(), false, None, None)
                 .await?;
             let result = handle.run_with_timeout(&msg, 300).await?;
             last_text = result.final_text.clone();
@@ -115,7 +115,7 @@ impl<'a> AgentSession<'a> {
     pub async fn process_chat(&self, user_message: &str) -> Result<String> {
         let mut handle = self
             .runtime
-            .create_session(self.system_prompt, Vec::new(), false, None)
+            .create_session(self.system_prompt, Vec::new(), false, None, None)
             .await?;
         let result = handle.run_with_timeout(user_message, 300).await?;
         Ok(result.final_text)

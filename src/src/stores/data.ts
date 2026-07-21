@@ -54,7 +54,6 @@ export async function apiChatStream(
     message: string
     session_id?: string
     role: string
-    history: Array<{ role: string; content: string }>
     command_name?: string
     command_type?: string
     skill_name?: string
