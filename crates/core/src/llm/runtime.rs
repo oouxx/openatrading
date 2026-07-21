@@ -121,17 +121,21 @@ impl AgentRuntime {
 
         let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
-        let (sid, session_file) = match session_id {
-            Some(id) if !id.is_empty() => {
-                let file = format!("{session_dir}/{id}.jsonl");
-                (id.to_string(), Some(file))
-            },
-            _ => {
-                let id = pi_coding_agent::core::session_manager::derive_short_session_id();
-                (id, None)
-            },
+        // Use SessionManager directly to create session with our custom ID
+        let sid = match session_id {
+            Some(id) if !id.is_empty() => id.to_string(),
+            _ => pi_coding_agent::core::session_manager::derive_short_session_id(),
         };
-
+        let session_mgr = pi_coding_agent::core::session_manager::SessionManager::new(
+            &cwd,
+            &session_dir,
+            None,
+            persist,
+            Some(pi_coding_agent::core::session_manager::NewSessionOptions {
+                id: Some(sid.clone()),
+                parent_session: None,
+            }),
+        );
         let ext_registry = openatrading_extension::create_registry();
 
         let custom_tools_opt = if custom_tools.is_empty() {
@@ -140,7 +144,7 @@ impl AgentRuntime {
             Some(custom_tools)
         };
 
-        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+        let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd,
             agent_dir: None,
             model: None,
@@ -151,7 +155,7 @@ impl AgentRuntime {
             exclude_tools: None,
             custom_prompt: Some(system_prompt.to_string()),
             append_system_prompt: None,
-            session_name: Some(session_name.map(|s| s.to_string()).unwrap_or_else(|| sid.clone())),
+            session_name: None,
             stream_fn: None,
             convert_to_llm: None,
             custom_tools: custom_tools_opt,
@@ -161,17 +165,26 @@ impl AgentRuntime {
             cli_provider: None,
             cli_model: None,
             persist_session: persist,
-            session_file,
+            session_file: None,
+            session_manager: Some(session_mgr),
+            auth_storage: None,
+            model_registry: None,
+            resource_loader: None,
+            settings_manager: None,
             fork_from: None,
             session_dir: Some(session_dir),
         })
         .await
         .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
 
-        let actual_id = session
-            .get_session_file()
-            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-            .unwrap_or(sid);
+        // Set session name if provided (append to JSONL via AgentSession)
+        if let Some(name) = session_name {
+            if !name.is_empty() {
+                session.set_session_name(name);
+            }
+        }
+
+        let actual_id = sid;
 
         Ok(SessionHandle {
             session,
