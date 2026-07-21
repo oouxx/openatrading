@@ -288,7 +288,7 @@ pub async fn ai_chat(
         // 在流内部创建 session，handle 随流生命周期存活
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
         let mut handle = match runtime
-            .create_session(&system_prompt, Vec::new(), true, sid.as_deref(), Some(&user_message))
+            .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), Some(&user_message))
             .await
         {
             Ok(h) => h,
@@ -400,8 +400,8 @@ pub struct SessionItem {
 
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
 pub async fn create_session() -> Json<serde_json::Value> {
-    let (id, title) =
-        openatrading_core::llm::create_session(None).unwrap_or_else(|_| (String::new(), String::new()));
+    let (id, title) = openatrading_core::llm::create_session(None)
+        .unwrap_or_else(|_| (String::new(), String::new()));
     Json(serde_json::json!({
         "id": id,
         "title": title,

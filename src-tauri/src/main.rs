@@ -1042,7 +1042,10 @@ async fn api_chat_stream(
     // ── 构建对话消息（仅当前用户消息，历史由 pi-coding-agent JSONL 管理）──
     let mut pi_messages: Vec<openatrading_core::llm::AgentMessage> = Vec::new();
     // Current user message
-    let user_message = body.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
+    let user_message = body
+        .get("message")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string());
     if let Some(ref message) = user_message {
         eprintln!("[chat_stream] user message: {message}");
         pi_messages.push(openatrading_core::llm::AgentMessage::User {
@@ -1071,9 +1074,9 @@ async fn api_chat_stream(
     tokio::spawn(async move {
         let mut handle = match runtime
             .create_session(
-                &system_prompt_clone,
-                Vec::new(),
-                true,
+                Some(&system_prompt_clone),
+                None,
+                Some(true),
                 session_id.as_deref(),
                 user_message_clone.as_deref(),
             )

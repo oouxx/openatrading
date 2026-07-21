@@ -1,6 +1,5 @@
 // Re-exports from openatrading-agent (the canonical agent crate).
 // Core's business-specific agent code lives in the sibling modules below.
-pub mod agent_runtime;
 pub mod runtime;
 pub mod session;
 pub mod tools;
@@ -33,10 +32,7 @@ pub use openatrading_agent::types::{
 };
 
 // Unified runtime — the single entry point for all LLM operations
-pub use self::runtime::{AgentRuntime, SessionHandle, SessionResult};
-
-// Legacy session creation (for backward compat during migration)
-pub use self::agent_runtime::create_session;
+pub use self::runtime::{AgentFacade, AgentRuntime, SessionResult};
 
 // Business-specific tool registry (stays in core, references market tools)
 pub use self::tools::ToolRegistry;

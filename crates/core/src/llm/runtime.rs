@@ -113,7 +113,7 @@ impl AgentRuntime {
         persist: Option<bool>,
         session_id: Option<&str>,
         session_name: Option<&str>,
-    ) -> Result<SessionHandle> {
+    ) -> Result<AgentFacade> {
         let cwd = std::env::current_dir()
             .unwrap_or_default()
             .to_string_lossy()
@@ -130,7 +130,7 @@ impl AgentRuntime {
             &cwd,
             &session_dir,
             None,
-            persist,
+            persist.unwrap_or(true),
             Some(pi_coding_agent::core::session_manager::NewSessionOptions {
                 id: Some(sid.clone()),
                 parent_session: None,
@@ -138,44 +138,20 @@ impl AgentRuntime {
         );
         let ext_registry = openatrading_extension::create_registry();
 
-        let custom_tools_opt = if custom_tools.is_empty() {
-            None
-        } else {
-            Some(custom_tools)
-        };
-
         let settings_mgr = SettingsManager::create(&cwd, None);
 
-        let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+        let (mut agent_session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd,
-            agent_dir: None,
-            model: None,
-            thinking_level: None,
-            scoped_models: None,
-            no_tools: None,
-            tools: None,
-            exclude_tools: None,
-            custom_prompt: system_prompt,
-            append_system_prompt: None,
-            session_name: None,
-            stream_fn: None,
-            convert_to_llm: None,
-            custom_tools: custom_tools_opt,
+            custom_prompt: system_prompt.map(str::to_owned),
+            custom_tools: custom_tools,
             extension_paths: Vec::new(),
             enable_extensions: true,
             extension_registry: Some(ext_registry),
-            cli_provider: None,
-            cli_model: None,
             persist_session: persist.unwrap_or(true),
-            session_file: None,
             session_manager: Some(session_mgr),
-            auth_storage: None,
-            model_registry: None,
-            resource_loader: None,
             settings_manager: Some(settings_mgr),
-            session_start_event: None,
-            fork_from: None,
             session_dir: Some(session_dir),
+            ..Default::default()
         })
         .await
         .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
@@ -183,15 +159,12 @@ impl AgentRuntime {
         // Set session name if provided (append to JSONL via AgentSession)
         if let Some(name) = session_name {
             if !name.is_empty() {
-                session.set_session_name(name);
+                agent_session.set_session_name(name);
             }
         }
 
-        let actual_id = sid;
-
-        Ok(SessionHandle {
-            session,
-            session_id: actual_id,
+        Ok(AgentFacade {
+            session: agent_session,
         })
     }
 
@@ -736,15 +709,11 @@ impl AgentRuntime {
     }
 }
 
-// ── SessionHandle ────────────────────────────────────────────────────────
-// Unchanged — already platform-agnostic.
-
-pub struct SessionHandle {
-    session: AgentSession,
-    session_id: String,
+pub struct AgentFacade {
+    pub session: AgentSession,
 }
 
-impl SessionHandle {
+impl AgentFacade {
     pub async fn subscribe(&mut self, tx: mpsc::Sender<AgentEvent>) {
         let event_tx = tx.clone();
         let listener = Arc::new(
@@ -775,8 +744,8 @@ impl SessionHandle {
         self.session.abort().await;
     }
 
-    pub fn session_id(&self) -> &str {
-        &self.session_id
+    pub fn session_id(&self) -> String {
+        self.session.get_session_id()
     }
 
     pub async fn run_with_timeout(
