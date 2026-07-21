@@ -108,9 +108,9 @@ impl AgentRuntime {
     /// Create a new agent session (the only way to invoke LLM).
     pub async fn create_session(
         &self,
-        system_prompt: &str,
-        custom_tools: Vec<ToolDefinition>,
-        persist: bool,
+        system_prompt: Option<&str>,
+        custom_tools: Option<Vec<ToolDefinition>>,
+        persist: Option<bool>,
         session_id: Option<&str>,
         session_name: Option<&str>,
     ) -> Result<SessionHandle> {
@@ -155,7 +155,7 @@ impl AgentRuntime {
             no_tools: None,
             tools: None,
             exclude_tools: None,
-            custom_prompt: Some(system_prompt.to_string()),
+            custom_prompt: system_prompt,
             append_system_prompt: None,
             session_name: None,
             stream_fn: None,
@@ -166,7 +166,7 @@ impl AgentRuntime {
             extension_registry: Some(ext_registry),
             cli_provider: None,
             cli_model: None,
-            persist_session: persist,
+            persist_session: persist.unwrap_or(true),
             session_file: None,
             session_manager: Some(session_mgr),
             auth_storage: None,
