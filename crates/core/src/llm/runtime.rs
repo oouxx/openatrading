@@ -171,6 +171,7 @@ impl AgentRuntime {
             model_registry: None,
             resource_loader: None,
             settings_manager: None,
+            session_start_event: None,
             fork_from: None,
             session_dir: Some(session_dir),
         })

@@ -341,6 +341,12 @@ async fn run_llm(
         session_file: None,
         fork_from: None,
         session_dir: None,
+        auth_storage: None,
+        model_registry: None,
+        resource_loader: None,
+        session_manager: None,
+        settings_manager: None,
+        session_start_event: None,
     })
     .await
     .expect("create_agent_session failed");
