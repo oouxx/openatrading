@@ -299,7 +299,7 @@ pub async fn ai_chat(
                 return;
             },
         };
-        let id = handle.session_id().to_string();
+        let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
         handle.send(&user_message).await;
 
@@ -399,12 +399,26 @@ pub struct SessionItem {
 }
 
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
-pub async fn create_session() -> Json<serde_json::Value> {
-    let (id, title) = openatrading_core::llm::create_session(None)
-        .unwrap_or_else(|_| (String::new(), String::new()));
+pub async fn create_session(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let agent_facade = match state
+        .ctx
+        .runtime
+        .create_session(None, None, Some(true), None, None)
+        .await
+    {
+        Ok(session) => session,
+        Err(e) => {
+            return Json(serde_json::json!({
+                "success": false,
+                "error": e.to_string(),
+            }));
+        },
+    };
+
     Json(serde_json::json!({
-        "id": id,
-        "title": title,
+        "success": true,
+        "id": agent_facade.get_session_id(),
+        "title": agent_facade.get_session_name(),
         "created_at": "",
         "updated_at": "",
         "message_count": 0,

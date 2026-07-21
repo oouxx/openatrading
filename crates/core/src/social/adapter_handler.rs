@@ -154,10 +154,21 @@ async fn handle_ask(
         .await;
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    match crate::llm::session::AgentSession::new(&ctx.runtime, &system)
-        .process_chat(question)
+    let agent_facade = match ctx
+        .runtime
+        .create_session(Some(&system), None, Some(false), None, None)
         .await
     {
+        Ok(session) => session,
+        Err(e) => {
+            let _ = adapter
+                .reply(event, &format!("❌ 创建 Agent Session 失败: {e}"))
+                .await;
+            return;
+        },
+    };
+
+    match agent_facade.process_chat(question).await {
         Ok(response) => {
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))
