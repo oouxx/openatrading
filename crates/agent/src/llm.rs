@@ -56,6 +56,7 @@ impl LlmClient {
             resource_loader: None,
             session_manager: None,
             settings_manager: None,
+            session_start_event: None,
         })
         .await
         .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;
