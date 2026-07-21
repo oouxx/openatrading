@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, watch};
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::{AgentEvent, AgentMessage};
 use pi_coding_agent::core::agent_session::AgentSession;
-use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions};
+use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSessionOptions};
 use pi_extension_api::ToolDefinition;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
@@ -144,6 +144,8 @@ impl AgentRuntime {
             Some(custom_tools)
         };
 
+        let settings_mgr = SettingsManager::create(&cwd, None);
+
         let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd,
             agent_dir: None,
@@ -170,7 +172,7 @@ impl AgentRuntime {
             auth_storage: None,
             model_registry: None,
             resource_loader: None,
-            settings_manager: None,
+            settings_manager: Some(settings_mgr),
             session_start_event: None,
             fork_from: None,
             session_dir: Some(session_dir),
