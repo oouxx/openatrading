@@ -1112,7 +1112,7 @@ async fn api_chat_stream(
     }
 
     let mut text_count = 0u32;
-    loop {
+    'outer: loop {
         match rx.recv().await {
             Some(event) => {
                 for frame in openatrading_web::chat_session::serialize_chat_event(event) {
@@ -1215,7 +1215,7 @@ async fn api_chat_stream(
                         },
                         openatrading_web::chat_session::ChatFrame::Done => {
                             eprintln!("[chat_stream] AgentEnd, done");
-                            break;
+                            break 'outer;
                         },
                     }
                 }

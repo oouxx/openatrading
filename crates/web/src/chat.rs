@@ -307,7 +307,7 @@ pub async fn ai_chat(
         let data = serde_json::to_string(&serde_json::json!({"session_id": id})).unwrap_or_default();
         yield Ok(Event::default().event("session").data(data));
 
-        loop {
+        'outer: loop {
             match rx.recv().await {
                 Some(event) => {
                     for frame in crate::chat_session::serialize_chat_event(event) {
@@ -368,7 +368,7 @@ pub async fn ai_chat(
                                 })).unwrap_or_default();
                                 yield Ok(Event::default().event("turn-end").data(data));
                             },
-                            ChatFrame::Done => break,
+                            ChatFrame::Done => break 'outer,
                         }
                     }
                 },
