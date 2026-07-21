@@ -51,6 +51,11 @@ impl LlmClient {
             cli_model: None,
             fork_from: None,
             session_dir: None,
+            auth_storage: None,
+            model_registry: None,
+            resource_loader: None,
+            session_manager: None,
+            settings_manager: None,
         })
         .await
         .map_err(|e| anyhow::anyhow!("create_agent_session failed: {e}"))?;

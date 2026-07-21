@@ -20,8 +20,23 @@ pub fn create_session(title: Option<&str>) -> Result<(String, String)> {
         .to_string();
     let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
-    use pi_coding_agent::core::session_manager::SessionManager;
-    let sm = SessionManager::new(&cwd, &session_dir, title, true, None);
+    use pi_coding_agent::core::session_manager::{NewSessionOptions, SessionManager};
+    let id = pi_coding_agent::core::session_manager::derive_short_session_id();
+    let mut sm = SessionManager::new(
+        &cwd,
+        &session_dir,
+        None,
+        true,
+        Some(NewSessionOptions {
+            id: Some(id.clone()),
+            parent_session: None,
+        }),
+    );
+    if let Some(t) = title {
+        if !t.is_empty() {
+            sm.append_session_info(t);
+        }
+    }
     let sid = sm.get_session_id().to_string();
     let file_stem = sm
         .get_session_file()
