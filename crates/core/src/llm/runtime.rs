@@ -112,6 +112,7 @@ impl AgentRuntime {
         custom_tools: Vec<ToolDefinition>,
         persist: bool,
         session_id: Option<&str>,
+        session_name: Option<&str>,
     ) -> Result<SessionHandle> {
         let cwd = std::env::current_dir()
             .unwrap_or_default()
@@ -150,7 +151,7 @@ impl AgentRuntime {
             exclude_tools: None,
             custom_prompt: Some(system_prompt.to_string()),
             append_system_prompt: None,
-            session_name: Some(sid.clone()),
+            session_name: Some(session_name.map(|s| s.to_string()).unwrap_or_else(|| sid.clone())),
             stream_fn: None,
             convert_to_llm: None,
             custom_tools: custom_tools_opt,

@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
-import { fetchJson } from "@/stores/data"
 import AiCopilot from "@/components/ChatView"
 import ConversationSidebar from "./ConversationSidebar"
 import { useThreads } from "@/hooks/useChatThreads"
@@ -23,16 +22,10 @@ export default function AppShell() {
   const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
   const { sessions, deleteSession, reload } = useThreads()
 
-  const handleNewThread = async () => {
-    try {
-      const session = await fetchJson<{ id: string }>("/api/ai/sessions", { method: "POST" })
-      setActiveThreadId(session.id)
-    } catch {
-      setActiveThreadId(null)
-    }
+  const handleNewThread = () => {
+    setActiveThreadId(null)
     useStockTabStore.getState().setActiveStockTab(null)
     setMode("chat")
-    reload()
   }
 
   const handleDeleteThread = useCallback(

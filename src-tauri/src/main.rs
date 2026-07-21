@@ -731,7 +731,7 @@ async fn dispatch_post(
 ) -> Result<serde_json::Value, String> {
     match path {
         "/api/ai/sessions" => {
-            let (id, title) = openatrading_core::llm::create_session()
+            let (id, title) = openatrading_core::llm::create_session(None)
                 .unwrap_or_else(|_| (String::new(), String::new()));
             Ok(
                 serde_json::json!({"id": id, "title": title, "created_at": "", "updated_at": "", "message_count": 0}),
@@ -1036,52 +1036,18 @@ async fn api_chat_stream(
     let system_prompt = config.system_prompt;
     drop(roles_guard);
 
-    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
     use openatrading_core::llm::AgentEvent;
 
-    // ── 构建完整对话历史（数据上下文 + 历史 + 当前消息）──
+    // ── 构建对话消息（仅当前用户消息，历史由 pi-coding-agent JSONL 管理）──
     let mut pi_messages: Vec<openatrading_core::llm::AgentMessage> = Vec::new();
-    // History from the request body (frontend-maintained conversation)
-    if let Some(history) = body.get("history").and_then(|h| h.as_array()) {
-        eprintln!("[chat_stream] history len={}", history.len());
-        for msg in history {
-            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
-            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            match role {
-                "user" => {
-                    pi_messages.push(openatrading_core::llm::AgentMessage::User {
-                        content: vec![ContentBlock::Text {
-                            text: content.to_string(),
-                            text_signature: None,
-                        }],
-                        timestamp: 0,
-                    });
-                },
-                "assistant" => {
-                    pi_messages.push(openatrading_core::llm::AgentMessage::Assistant {
-                        content: vec![ContentBlock::Text {
-                            text: content.to_string(),
-                            text_signature: None,
-                        }],
-                        api: String::new(),
-                        provider: String::new(),
-                        model: String::new(),
-                        usage: Default::default(),
-                        stop_reason: Some(StopReason::Stop),
-                        error_message: None,
-                        timestamp: 0,
-                    });
-                },
-                _ => {},
-            }
-        }
-    }
     // Current user message
-    if let Some(message) = body.get("message").and_then(|m| m.as_str()) {
+    let user_message = body.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
+    if let Some(ref message) = user_message {
         eprintln!("[chat_stream] user message: {message}");
         pi_messages.push(openatrading_core::llm::AgentMessage::User {
             content: vec![ContentBlock::Text {
-                text: message.to_string(),
+                text: message.clone(),
                 text_signature: None,
             }],
             timestamp: 0,
@@ -1101,6 +1067,7 @@ async fn api_chat_stream(
     let runtime = state.ctx.runtime.clone();
     let system_prompt_clone = system_prompt.clone();
     let pi_messages_clone = pi_messages.clone();
+    let user_message_clone = user_message.clone();
     tokio::spawn(async move {
         let mut handle = match runtime
             .create_session(
@@ -1108,6 +1075,7 @@ async fn api_chat_stream(
                 Vec::new(),
                 true,
                 session_id.as_deref(),
+                user_message_clone.as_deref(),
             )
             .await
         {
