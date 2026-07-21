@@ -28,7 +28,6 @@ use pi_coding_agent::core::agent_session_services::{
 use serde_json::json;
 
 use super::cwd::{decide_cwd_action, resolve_session_cwd, CwdAction};
-use super::session;
 use super::transcript::{build_display_transcript, serialize_event};
 use super::types::{DesktopState, FrontendEvent, GlobalModelSettings, SessionRecord};
 
@@ -386,39 +385,6 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Mark a session as selected in DesktopState. Unlike before, this does
-    /// NOT abort or discard any runtime — every session's runtime lives
-    /// independently in the map and keeps running regardless of what's
-    /// "selected" in the UI. If the session has no runtime yet, one is created.
-    pub async fn select_session(
-        self: &Arc<Self>,
-        session_id: &str,
-    ) -> Result<DesktopState, String> {
-        let state = self
-            .mutate(|s| session::select_session_by_id(s, session_id))
-            .await;
-
-        let already_active = self.sessions.lock().await.contains_key(session_id);
-        if already_active {
-            return Ok(state);
-        }
-
-        let (cwd, session_file) = {
-            let state_lock = self.state.lock().await;
-            match state_lock.sessions.iter().find(|s| s.id == session_id) {
-                Some(s) => (
-                    resolve_session_cwd(s.cwd.as_deref()),
-                    s.session_file.clone().filter(|f| !f.is_empty()),
-                ),
-                None => return Ok(state),
-            }
-        };
-
-        self.init_runtime(session_id, &cwd, session_file.as_deref())
-            .await?;
-        Ok(self.state.lock().await.clone())
-    }
-
     pub async fn send_message(
         self: &Arc<Self>,
         session_id: &str,
@@ -522,157 +488,6 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Set the working directory for a session. If the session is already
-    /// initialized (has a session file with history), fork a new session with
-    /// the new cwd. The original session's runtime (if active) is untouched.
-    pub async fn set_session_cwd(
-        self: &Arc<Self>,
-        session_id: &str,
-        path: &str,
-    ) -> Result<DesktopState, String> {
-        let p = std::path::PathBuf::from(path);
-        if !p.is_dir() {
-            return Err(format!(
-                "Working directory does not exist or is not a directory: {}",
-                path
-            ));
-        }
-        let new_cwd = p.to_string_lossy().to_string();
-
-        let (current_file, current_cwd, title) = {
-            let state = self.state.lock().await;
-            let sess = state
-                .sessions
-                .iter()
-                .find(|s| s.id == session_id)
-                .ok_or_else(|| "Session not found".to_string())?;
-            (
-                sess.session_file.clone().filter(|f| !f.is_empty()),
-                sess.cwd.clone(),
-                sess.title.clone(),
-            )
-        };
-
-        let action = decide_cwd_action(current_file.as_deref(), &new_cwd, current_cwd.as_deref());
-        eprintln!(
-            "[CWD] set_session_cwd sid={} new_cwd={:?} current_cwd={:?} session_file={:?} action={:?}",
-            session_id, new_cwd, current_cwd, current_file, action
-        );
-
-        match action {
-            CwdAction::NoOp => Ok(self.state.lock().await.clone()),
-            CwdAction::SetInPlace => {
-                let sid = session_id.to_string();
-                let cwd = new_cwd.clone();
-                Ok(self
-                    .mutate(|s| {
-                        if let Some(sess) = s.sessions.iter_mut().find(|s| s.id == sid) {
-                            sess.cwd = Some(cwd.clone());
-                        }
-                    })
-                    .await)
-            },
-            CwdAction::Fork => {
-                let new_id = format!("sess-{}", chrono::Utc::now().timestamp_millis());
-                let cwd_for_record = new_cwd.clone();
-                let title2 = title.clone();
-
-                self.mutate(|s| {
-                    s.sessions.push(SessionRecord {
-                        id: new_id.clone(),
-                        title: if title2.is_empty() {
-                            "New thread".to_string()
-                        } else {
-                            title2.clone()
-                        },
-                        updated_at: now_iso(),
-                        preview: String::new(),
-                        status: "idle".to_string(),
-                        has_unseen_update: false,
-                        session_file: None,
-                        archived_at: None,
-                        config: None,
-                        thinking_level: None,
-                        cwd: Some(cwd_for_record.clone()),
-                    });
-                    s.selected_session_id = new_id.clone();
-                })
-                .await;
-
-                let old_file = current_file.clone().unwrap_or_default();
-                let result: Result<(), String> = if old_file.is_empty() {
-                    self.init_runtime(&new_id, &new_cwd, None).await
-                } else {
-                    let agent_dir = pi_coding_agent::config::get_agent_dir()
-                        .to_string_lossy()
-                        .to_string();
-                    let session_dir =
-                        pi_coding_agent::core::session_manager::SessionManager::default_session_dir(
-                            &new_cwd, &agent_dir,
-                        );
-                    let session_manager =
-                        pi_coding_agent::core::session_manager::SessionManager::fork_from(
-                            &old_file,
-                            &new_cwd,
-                            Some(&session_dir),
-                            None,
-                        )
-                        .map_err(|e| format!("Failed to fork session: {e}"))?;
-
-                    let factory = self.build_runtime_factory();
-                    let runtime = create_agent_session_runtime(
-                        factory,
-                        CreateAgentSessionRuntimeParams {
-                            cwd: new_cwd.clone(),
-                            agent_dir,
-                            session_manager,
-                        },
-                    )
-                    .await;
-
-                    let mut sessions = self.sessions.lock().await;
-                    let entry = sessions
-                        .entry(new_id.clone())
-                        .or_insert_with(ActiveSession::new);
-                    entry.runtime = Some(runtime);
-                    Ok(())
-                };
-
-                match result {
-                    Ok(()) => {
-                        let state = self.state.lock().await;
-                        let file_set = state
-                            .sessions
-                            .iter()
-                            .any(|s| s.id == new_id && s.session_file.is_some());
-                        if !file_set {
-                            drop(state);
-                            let old_sid = session_id.to_string();
-                            self.sessions.lock().await.remove(&new_id);
-                            self.mutate(|s| {
-                                s.sessions.retain(|s| s.id != new_id);
-                                s.selected_session_id = old_sid.clone();
-                            })
-                            .await;
-                            return Err("Failed to persist session file for forked session".into());
-                        }
-                        Ok(state.clone())
-                    },
-                    Err(e) => {
-                        let old_sid = session_id.to_string();
-                        self.sessions.lock().await.remove(&new_id);
-                        self.mutate(|s| {
-                            s.sessions.retain(|s| s.id != new_id);
-                            s.selected_session_id = old_sid.clone();
-                        })
-                        .await;
-                        Err(e)
-                    },
-                }
-            },
-        }
-    }
-
     pub async fn abort(&self, session_id: &str) {
         let sessions = self.sessions.lock().await;
         if let Some(entry) = sessions.get(session_id) {
@@ -744,8 +559,13 @@ impl AgentFacade {
         self.session.abort().await;
     }
 
-    pub fn session_id(&self) -> String {
+    pub fn get_session_id(&self) -> String {
         self.session.get_session_id()
+    }
+    pub fn get_session_name(&self) -> String {
+        self.session
+            .get_session_name()
+            .unwrap_or("default".to_string())
     }
 
     pub async fn run_with_timeout(
@@ -773,6 +593,22 @@ impl AgentFacade {
 
         let messages = self.get_messages().await;
         Ok(extract_session_result(&messages))
+    }
+    /// Run the agent and extract structured `DecisionOutput`.
+    ///
+    /// Prefers the decision-tool path (single LLM turn).  Falls back to
+    /// `extract_decision_output` (one extra LLM call).  If no trades are
+    /// produced, re-prompts the agent (max 3 attempts) to force a decision.
+    pub async fn process_decision(
+        &self,
+        user_message: &str,
+    ) -> Result<crate::roles::prompt::DecisionOutput> {
+        todo!("需要重新设计llm结构化输出提取以及重试机制");
+    }
+
+    /// Run the agent and return the final text reply.
+    pub async fn process_chat(&self, user_message: &str) -> Result<String> {
+        todo!("需要重新设计llm结构化输出提取以及重试机制");
     }
 }
 

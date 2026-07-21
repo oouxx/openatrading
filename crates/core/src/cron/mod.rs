@@ -322,17 +322,18 @@ async fn run_decision_for_role(
 ) -> Result<()> {
     crate::log::info!("[cron] decision for '{}' starting", role.name,);
 
-    let mut market_user_message =
+    let mut user_message =
         crate::prompts::build_decision_user_message(market_context, &role.display_name);
     if crate::is_aggressive_mode() {
-        market_user_message.push_str(crate::prompts::AGGRESSIVE_MODE_USER_PROMPT);
+        user_message.push_str(crate::prompts::AGGRESSIVE_MODE_USER_PROMPT);
     }
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    let decision = match crate::llm::session::AgentSession::new(&ctx.runtime, &system)
-        .process_decision(&market_user_message)
-        .await
-    {
+    let agent_facade = ctx
+        .runtime
+        .create_session(Some(system.as_str()), None, Some(false), None, None)
+        .await?;
+    let decision = match agent_facade.process_decision(user_message.as_str()).await {
         Ok(d) => d,
         Err(e) => {
             let err_msg = format!("❌ LLM 调用失败: {e}");

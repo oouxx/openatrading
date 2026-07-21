@@ -731,11 +731,7 @@ async fn dispatch_post(
 ) -> Result<serde_json::Value, String> {
     match path {
         "/api/ai/sessions" => {
-            let (id, title) = openatrading_core::llm::create_session(None)
-                .unwrap_or_else(|_| (String::new(), String::new()));
-            Ok(
-                serde_json::json!({"id": id, "title": title, "created_at": "", "updated_at": "", "message_count": 0}),
-            )
+            todo!("需要整理思路后实现");
         },
         "/api/roles" => {
             let name = body
@@ -1088,7 +1084,7 @@ async fn api_chat_stream(
                 return;
             },
         };
-        let id = handle.session_id().to_string();
+        let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
         handle.send_messages(pi_messages_clone).await;
         let _ = sid_tx.send(Ok(id));
