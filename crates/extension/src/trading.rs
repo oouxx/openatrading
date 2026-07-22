@@ -3,7 +3,7 @@
 //! This extension registers a set of A-share market-data tools (limit-up
 //! boards, realtime quotes, K-line, dragon-tiger list, news telegraph, …)
 //! and dispatches their execution to the `openatrading-api` clients via the
-//! `ExtensionAPI::handle_tool_call` bridge.
+//! `HookHandler::handle_tool_call` bridge.
 //!
 //! The agent runtime collects the registered [`ToolDefinition`]s through
 //! `ExtensionRegistry::collect_tools` and routes tool calls whose name
@@ -12,7 +12,7 @@
 
 use async_trait::async_trait;
 use pi_extension_api::{
-    ExtensionAPI, ExtensionContext, ExtensionEvent, ToolCallOutput, ToolDefinition, ToolRegistry,
+    ExtensionContext, HookHandler, ToolCallOutput, ToolDefinition, ToolRegistry,
 };
 use serde_json::{json, Value};
 
@@ -318,23 +318,15 @@ impl Default for MarketDataExtension {
 }
 
 #[async_trait]
-impl ExtensionAPI for MarketDataExtension {
-    fn name(&self) -> &'static str {
+impl HookHandler for MarketDataExtension {
+    fn name(&self) -> &str {
         "openatrading-market"
     }
 
     fn register_tools(&self, registry: &mut ToolRegistry) {
         for def in Self::tool_definitions() {
-            registry.register(def);
+            registry.register(&def.name.clone(), def);
         }
-    }
-
-    async fn on_event(
-        &self,
-        _event: &ExtensionEvent,
-        _ctx: &ExtensionContext,
-    ) -> Option<pi_extension_api::EventResult> {
-        None
     }
 
     async fn handle_tool_call(

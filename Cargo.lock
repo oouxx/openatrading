@@ -3396,8 +3396,8 @@ dependencies = [
 
 [[package]]
 name = "pi-agent-core"
-version = "1.79.19"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.21#c15220be6bd929b58c87b3b00f0b6eb81d546211"
+version = "1.79.21"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.24#99426d08c41d7a5367b0c4be162ea6291fb69e32"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3419,8 +3419,8 @@ dependencies = [
 
 [[package]]
 name = "pi-ai"
-version = "1.79.19"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.21#c15220be6bd929b58c87b3b00f0b6eb81d546211"
+version = "1.79.21"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.24#99426d08c41d7a5367b0c4be162ea6291fb69e32"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3436,8 +3436,8 @@ dependencies = [
 
 [[package]]
 name = "pi-coding-agent"
-version = "1.79.19"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.21#c15220be6bd929b58c87b3b00f0b6eb81d546211"
+version = "1.79.21"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.24#99426d08c41d7a5367b0c4be162ea6291fb69e32"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3463,10 +3463,11 @@ dependencies = [
 
 [[package]]
 name = "pi-extension-api"
-version = "1.79.19"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.21#c15220be6bd929b58c87b3b00f0b6eb81d546211"
+version = "1.79.21"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.24#99426d08c41d7a5367b0c4be162ea6291fb69e32"
 dependencies = [
  "async-trait",
+ "futures",
  "serde",
  "serde_json",
  "tokio",
@@ -3474,8 +3475,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extensions"
-version = "1.79.19"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.21#c15220be6bd929b58c87b3b00f0b6eb81d546211"
+version = "1.79.21"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.24#99426d08c41d7a5367b0c4be162ea6291fb69e32"
 dependencies = [
  "async-trait",
  "pi-extension-api",

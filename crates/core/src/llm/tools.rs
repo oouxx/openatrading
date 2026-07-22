@@ -127,10 +127,10 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 /// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent result).
 pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
-        .collect_tools_from_ref()
+        .tools()
         .into_iter()
         .filter_map(|rt| {
-            let execute = rt.definition.execute?;
+            let execute = rt.definition.execute.clone()?;
             let name = rt.definition.name.clone();
             let name_for_err = name.clone();
             let description = rt.definition.description.clone();
