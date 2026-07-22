@@ -62,79 +62,38 @@ impl MarketDataExtension {
     /// Returns `Some(output)` when `tool_name` is handled by this extension,
     /// `None` otherwise (so other extensions / built-ins can handle it).
     async fn dispatch(&self, tool_name: &str, params: Value) -> Option<ToolCallOutput> {
-        let result: Result<String, String> = match tool_name {
+        let result: Result<serde_json::Value, String> = match tool_name {
             "get_limit_up" => {
-                call(|| async { XuanguBaoClient::new().fetch_limit_up().await.map(to_json) }).await
+                call(|| async { XuanguBaoClient::new().fetch_limit_up().await }).await
             },
             "get_limit_down" => {
-                call(|| async { XuanguBaoClient::new().fetch_limit_down().await.map(to_json) })
-                    .await
+                call(|| async { XuanguBaoClient::new().fetch_limit_down().await }).await
             },
             "get_super_stock" => {
-                call(|| async {
-                    XuanguBaoClient::new()
-                        .fetch_super_stock()
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { XuanguBaoClient::new().fetch_super_stock().await }).await
             },
             "get_market_overview" => {
-                call(|| async {
-                    XuanguBaoClient::new()
-                        .fetch_market_overview()
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { XuanguBaoClient::new().fetch_market_overview().await }).await
             },
             "get_yesterday_limit_up" => {
-                call(|| async {
-                    XuanguBaoClient::new()
-                        .fetch_yesterday_limit_up()
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { XuanguBaoClient::new().fetch_yesterday_limit_up().await }).await
             },
             "get_dapan_abnormal" => {
-                call(|| async {
-                    XuanguBaoClient::new()
-                        .fetch_dapan_abnormal()
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { XuanguBaoClient::new().fetch_dapan_abnormal().await }).await
             },
             "get_realtime_quote" => {
                 let symbol = str_arg(&params, "symbol");
-                call(|| async move {
-                    XuanguBaoClient::new()
-                        .fetch_realtime(&symbol)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { XuanguBaoClient::new().fetch_realtime(&symbol).await }).await
             },
             "get_plates_by_stock" => {
                 let symbol = str_arg(&params, "symbol");
-                call(|| async move {
-                    XuanguBaoClient::new()
-                        .plates_by_any_stock(&symbol)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { XuanguBaoClient::new().plates_by_any_stock(&symbol).await })
+                    .await
             },
             "get_market_trend" => {
                 let symbol = str_arg(&params, "symbol");
-                call(|| async move {
-                    XuanguBaoClient::new()
-                        .fetch_market_trend(&symbol)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { XuanguBaoClient::new().fetch_market_trend(&symbol).await })
+                    .await
             },
             "get_plate_abnormal" => {
                 let count = str_arg(&params, "count");
@@ -142,7 +101,6 @@ impl MarketDataExtension {
                     XuanguBaoClient::new()
                         .fetch_plate_abnormal_str(&count)
                         .await
-                        .map(to_json)
                 })
                 .await
             },
@@ -163,7 +121,6 @@ impl MarketDataExtension {
                     XuanguBaoClient::new()
                         .fetch_kline(&symbol, period, count)
                         .await
-                        .map(to_json)
                 })
                 .await
             },
@@ -174,22 +131,10 @@ impl MarketDataExtension {
                 } else {
                     category.as_str()
                 };
-                call(|| async move {
-                    ClsClient::new()
-                        .fetch_telegraph(cat, None, 20)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { ClsClient::new().fetch_telegraph(cat, None, 20).await }).await
             },
             "get_telegraph_allday" => {
-                call(|| async {
-                    ClsClient::new()
-                        .fetch_telegraph("", None, 100)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { ClsClient::new().fetch_telegraph("", None, 100).await }).await
             },
             "get_community" => {
                 let category_id = str_arg(&params, "category_id");
@@ -209,22 +154,10 @@ impl MarketDataExtension {
                     page,
                     page_size,
                 };
-                call(|| async move {
-                    JiuYanSession::new()
-                        .fetch_community(query)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { JiuYanSession::new().fetch_community(query).await }).await
             },
             "get_all_day_events" => {
-                call(|| async {
-                    XuanguBaoClient::new()
-                        .fetch_all_day_events(0.03)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async { XuanguBaoClient::new().fetch_all_day_events(0.03).await }).await
             },
             "get_auction_quotes" => {
                 let codes_str = str_arg(&params, "codes");
@@ -238,8 +171,7 @@ impl MarketDataExtension {
                 } else {
                     match SinaQuoteClient::new() {
                         Ok(client) => {
-                            call(|| async move { client.fetch_quotes(&codes).await.map(to_json) })
-                                .await
+                            call(|| async move { client.fetch_quotes(&codes).await }).await
                         },
                         Err(e) => Err(e.to_string()),
                     }
@@ -248,24 +180,14 @@ impl MarketDataExtension {
             "get_lhb_detail" => {
                 let start_date = str_arg(&params, "start_date");
                 let end_date = str_arg(&params, "end_date");
-                call(|| async move {
-                    LhbClient::new()
-                        .lhb_detail(&start_date, &end_date)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { LhbClient::new().lhb_detail(&start_date, &end_date).await })
+                    .await
             },
             "get_lhb_combined" => {
                 let start_date = str_arg(&params, "start_date");
                 let end_date = str_arg(&params, "end_date");
-                call(|| async move {
-                    LhbClient::new()
-                        .lhb_combined(&start_date, &end_date)
-                        .await
-                        .map(to_json)
-                })
-                .await
+                call(|| async move { LhbClient::new().lhb_combined(&start_date, &end_date).await })
+                    .await
             },
             "get_lhb_active_yyb" => {
                 let start_date = str_arg(&params, "start_date");
@@ -274,7 +196,6 @@ impl MarketDataExtension {
                     LhbClient::new()
                         .lhb_active_yyb(&start_date, &end_date)
                         .await
-                        .map(to_json)
                 })
                 .await
             },
@@ -292,8 +213,10 @@ impl MarketDataExtension {
         };
 
         Some(match result {
-            Ok(text) => ToolCallOutput {
-                content: vec![json!({ "type": "text", "text": text })],
+            Ok(value) => ToolCallOutput {
+                content: vec![
+                    json!({ "type": "text", "text": serde_json::to_string_pretty(&value).unwrap_or_default() }),
+                ],
                 details: None,
                 is_error: false,
                 terminate: None,
@@ -628,19 +551,16 @@ fn lhb_active_yyb_tool() -> ToolDefinition {
 
 /// Run an async API call, converting success into a JSON string and errors
 /// into a display string (so the tool result carries the error text).
-async fn call<F, Fut, T, E>(f: F) -> Result<String, String>
+async fn call<F, Fut, T, E>(f: F) -> Result<serde_json::Value, String>
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
     T: serde::Serialize,
     E: std::fmt::Display,
 {
-    f().await.map(to_json).map_err(|e| e.to_string())
-}
-
-/// Serialize an API result to a compact JSON string for the tool output.
-fn to_json<T: serde::Serialize>(value: T) -> String {
-    serde_json::to_string(&value).unwrap_or_else(|_| "[]".to_string())
+    f().await
+        .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
+        .map_err(|e| e.to_string())
 }
 
 fn str_arg(params: &Value, name: &str) -> String {
