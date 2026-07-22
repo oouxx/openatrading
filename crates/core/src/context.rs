@@ -3,7 +3,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::runtime::{EventEmitter, StatePersister};
 use crate::llm::{build_tools, AgentRuntime, DynTool, McpServerConfig, ToolConfig, ToolRegistry};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
@@ -12,9 +11,7 @@ use crate::trade::sqlite::TradeManager;
 #[derive(Clone)]
 pub struct AppContext {
     /// Unified runtime for all LLM operations (streaming agent sessions).
-    /// Arc'd because AgentRuntimeCore is shared across concurrent sessions
-    /// (see send_message's take-out-and-put-back pattern) and because
-    /// AppContext itself is Clone.
+    /// Arc'd because AgentRuntime is shared across concurrent sessions
     pub runtime: Arc<AgentRuntime>,
     pub api: ApiClient,
     pub tool_registry: Arc<ArcSwap<ToolRegistry>>,
@@ -31,10 +28,8 @@ impl AppContext {
         memory: Arc<MemoryStore>,
         trade: Arc<TradeManager>,
         social: Arc<dyn NotificationSender>,
-        emitter: Arc<dyn EventEmitter>,
-        persister: Arc<dyn StatePersister>,
     ) -> Self {
-        let runtime = Arc::new(AgentRuntime::new(emitter, persister));
+        let runtime = Arc::new(AgentRuntime::new());
         let api = ApiClient::new();
         let tool_cfg = ToolConfig {
             mcp_servers: mcp_servers.to_vec(),

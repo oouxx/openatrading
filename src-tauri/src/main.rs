@@ -1438,8 +1438,6 @@ fn main() {
             gateway.memory.clone(),
             gateway.trade.clone(),
             Arc::new(openatrading_core::social::NoopChannel),
-            Arc::new(openatrading_core::platform::cli::StdoutEmitter::new(false)),
-            Arc::new(openatrading_core::platform::cli::NoopPersister),
         ),
     );
 
