@@ -4,10 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_trait::async_trait;
 use futures::Future;
-use openatrading_extension::create_registry;
-use tokio::sync::{mpsc, watch};
+
+use tokio::sync::mpsc;
 
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::{AgentEvent, AgentMessage};
@@ -16,39 +15,6 @@ use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSess
 use pi_extension_api::ToolDefinition;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
-
-use pi_coding_agent::core::agent_session_runtime::{
-    create_agent_session_runtime, AgentSessionRuntime, CreateAgentSessionRuntimeFactory,
-    CreateAgentSessionRuntimeParams, CreateAgentSessionRuntimeResult,
-};
-use pi_coding_agent::core::agent_session_services::{
-    create_agent_session_from_services, create_agent_session_services,
-    CreateAgentSessionFromServicesOptions, CreateAgentSessionServicesOptions,
-};
-use serde_json::json;
-
-use super::cwd::{decide_cwd_action, resolve_session_cwd, CwdAction};
-use super::transcript::{build_display_transcript, serialize_event};
-use super::types::{DesktopState, FrontendEvent, GlobalModelSettings, SessionRecord};
-
-// ── Platform abstraction ────────────────────────────────────────────────
-//
-// Everything that talks to a specific runtime environment (Tauri window /
-// HTTP+SSE connection / whatever) goes through these two traits. Desktop and
-// web each provide their own implementation; AgentRuntimeCore never touches
-// tauri::AppHandle or any transport type directly.
-
-#[async_trait]
-pub trait EventEmitter: Send + Sync {
-    async fn emit_agent_event(&self, event: FrontendEvent);
-    async fn emit_state_changed(&self, state: &DesktopState);
-    async fn emit_transcript_changed(&self, session_id: &str, transcript: Vec<serde_json::Value>);
-}
-
-#[async_trait]
-pub trait StatePersister: Send + Sync {
-    async fn persist(&self, state: &DesktopState);
-}
 
 // ── ActiveSession ────────────────────────────────────────────────────────
 //
@@ -59,7 +25,7 @@ pub trait StatePersister: Send + Sync {
 // runtime just stays parked in the map and keeps streaming if it was.
 
 struct ActiveSession {
-    runtime: Option<AgentSessionRuntime>,
+    runtime: Option<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>,
     is_streaming: Arc<AtomicBool>,
     abort_flag: Arc<AtomicBool>,
 }
@@ -74,33 +40,23 @@ impl ActiveSession {
     }
 }
 
-// ── AgentRuntimeCore ─────────────────────────────────────────────────────
+// ── AgentRuntime ─────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AgentRuntime {
-    pub state: Arc<Mutex<DesktopState>>,
     sessions: Arc<Mutex<HashMap<String, ActiveSession>>>,
-    emitter: Arc<dyn EventEmitter>,
-    persister: Arc<dyn StatePersister>,
+}
+
+impl Default for AgentRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AgentRuntime {
-    pub fn new(emitter: Arc<dyn EventEmitter>, persister: Arc<dyn StatePersister>) -> Self {
+    pub fn new() -> Self {
         Self {
-            state: Arc::new(Mutex::new(DesktopState {
-                revision: 1,
-                sessions: vec![],
-                selected_session_id: String::new(),
-                global_model_settings: GlobalModelSettings {
-                    enabled_model_patterns: vec![],
-                    default_provider: None,
-                    default_model_id: None,
-                    default_thinking_level: None,
-                },
-            })),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            emitter,
-            persister,
         }
     }
 
@@ -142,7 +98,7 @@ impl AgentRuntime {
         let (mut agent_session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd,
             custom_prompt: system_prompt.map(str::to_owned),
-            custom_tools: custom_tools,
+            custom_tools,
             extension_paths: Vec::new(),
             enable_extensions: true,
             extension_registry: Some(ext_registry),
@@ -165,20 +121,6 @@ impl AgentRuntime {
         Ok(AgentFacade {
             session: agent_session,
         })
-    }
-
-    pub async fn mutate<F>(self: &Arc<Self>, f: F) -> DesktopState
-    where
-        F: FnOnce(&mut DesktopState),
-    {
-        let mut state = self.state.lock().await;
-        f(&mut state);
-        state.revision += 1;
-        let result = state.clone();
-        drop(state);
-        self.emitter.emit_state_changed(&result).await;
-        self.persister.persist(&result).await;
-        result
     }
 
     pub async fn abort(&self, session_id: &str) {
@@ -225,7 +167,7 @@ impl AgentFacade {
     pub async fn subscribe(&mut self, tx: mpsc::Sender<AgentEvent>) {
         let event_tx = tx.clone();
         let listener = Arc::new(
-            move |event: AgentEvent, _signal: Option<watch::Receiver<bool>>| {
+            move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
                 let tx = event_tx.clone();
                 Box::pin(async move {
                     let _ = tx.send(event).await;
@@ -294,13 +236,13 @@ impl AgentFacade {
     /// produced, re-prompts the agent (max 3 attempts) to force a decision.
     pub async fn process_decision(
         &self,
-        user_message: &str,
+        _user_message: &str,
     ) -> Result<crate::roles::prompt::DecisionOutput> {
         todo!("需要重新设计llm结构化输出提取以及重试机制");
     }
 
     /// Run the agent and return the final text reply.
-    pub async fn process_chat(&self, user_message: &str) -> Result<String> {
+    pub async fn process_chat(&self, _user_message: &str) -> Result<String> {
         todo!("需要重新设计llm结构化输出提取以及重试机制");
     }
 }
@@ -332,15 +274,5 @@ fn extract_session_result(messages: &[AgentMessage]) -> SessionResult {
     SessionResult {
         final_text,
         tool_outputs,
-    }
-}
-
-pub fn now_iso() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
-pub fn set_sess_status(s: &mut DesktopState, sid: &str, status: &str) {
-    if let Some(sess) = s.sessions.iter_mut().find(|s| s.id == sid) {
-        sess.status = status.to_string();
     }
 }

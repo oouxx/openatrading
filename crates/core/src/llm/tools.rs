@@ -128,7 +128,7 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
-        .into_iter()
+        .iter()
         .filter_map(|rt| {
             let execute = rt.definition.execute.clone()?;
             let name = rt.definition.name.clone();

@@ -3,19 +3,15 @@
 // ============================================================================
 
 use openatrading_core::llm::AgentRuntime;
-use openatrading_core::platform::cli::{NoopPersister, StdoutEmitter};
-use pi_coding_agent::core::model_registry::ModelRegistry;
 use pi_coding_agent::pi_agent_core::agent::PromptInput;
-use pi_coding_agent::pi_agent_core::pi_ai;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;
 use pi_coding_agent::pi_ai_types::ContentBlock;
-use std::sync::Arc;
 
 #[tokio::test]
 async fn test_create_agent_session_with_extension() {
     // let ext_registry = create_registry();
 
-    let runtime = AgentRuntime::new(Arc::new(StdoutEmitter::new(false)), Arc::new(NoopPersister));
+    let runtime = AgentRuntime::new();
     let agent_facade = runtime
         .create_session(None, None, Some(true), None, None)
         .await
@@ -54,7 +50,7 @@ async fn test_trading_tools_exec() {
     let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
     std::env::set_current_dir(workspace_root).ok();
 
-    let runtime = AgentRuntime::new(Arc::new(StdoutEmitter::new(false)), Arc::new(NoopPersister));
+    let runtime = AgentRuntime::new();
     let agent_facade = runtime
         .create_session(None, None, Some(true), None, None)
         .await
@@ -155,7 +151,7 @@ async fn test_trading_tools_exec() {
 /// built-in `bash` tool. Requires `OPENROUTER_API_KEY` and network access.
 #[tokio::test]
 async fn test_bash_tool_exec() {
-    let runtime = AgentRuntime::new(Arc::new(StdoutEmitter::new(false)), Arc::new(NoopPersister));
+    let runtime = AgentRuntime::new();
     let agent_facade = runtime
         .create_session(None, None, Some(true), None, None)
         .await

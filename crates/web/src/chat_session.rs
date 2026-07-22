@@ -245,12 +245,12 @@ pub fn serialize_chat_event(event: AgentEvent) -> Vec<ChatFrame> {
             }
             Vec::new()
         },
-        AgentEvent::AgentStart { .. } => {
+        AgentEvent::AgentStart => {
             // 对话开始信号，前端可据此初始化对话状态
             Vec::new()
         },
         AgentEvent::AgentEnd { .. } => vec![ChatFrame::Done],
-        AgentEvent::TurnStart { .. } => vec![ChatFrame::TurnStart],
+        AgentEvent::TurnStart => vec![ChatFrame::TurnStart],
         AgentEvent::TurnEnd { tool_results, .. } => {
             let results: Vec<String> = tool_results
                 .iter()

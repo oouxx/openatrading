@@ -224,7 +224,6 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
 pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> Result<()> {
     use openatrading_core::context::AppContext;
     use openatrading_core::cron::{self, CronConfig};
-    use openatrading_core::platform::cli::{NoopPersister, StdoutEmitter};
 
     let app_config = AppConfig::load()?;
     let home = openatrading_core::atrading_home();
@@ -288,8 +287,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                 memory.clone(),
                 trade.clone(),
                 social.clone(),
-                Arc::new(StdoutEmitter::new(false)),
-                Arc::new(NoopPersister),
             )
             .await,
         );
@@ -313,8 +310,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             memory.clone(),
             trade.clone(),
             social.clone(),
-            Arc::new(StdoutEmitter::new(false)),
-            Arc::new(NoopPersister),
         )
         .await;
         let gh = tokio::spawn(async move {
@@ -400,8 +395,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                 memory.clone(),
                 trade.clone(),
                 social.clone(),
-                Arc::new(StdoutEmitter::new(false)),
-                Arc::new(NoopPersister),
             )
             .await,
         );
