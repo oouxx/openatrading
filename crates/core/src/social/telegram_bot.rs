@@ -487,11 +487,13 @@ impl TelegramBot {
 
         let system = crate::skills::SkillRegistry::build_role_prompt(role);
 
-        let accumulated = self
+        let facade = self
             .ctx
             .runtime
             .create_session(Some(&system), None, Some(false), None, None)
-            .await?
+            .await?;
+        let accumulated = facade
+            .clone()
             .process_chat(&user_msg)
             .await
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));

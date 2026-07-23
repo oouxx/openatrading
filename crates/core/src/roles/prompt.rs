@@ -2,7 +2,7 @@ use crate::trade::TradeAction;
 use crate::types::StockCode;
 use schemars::JsonSchema;
 
-#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct TradeInstruction {
     pub action: TradeAction,
     pub symbol: StockCode,
@@ -13,7 +13,7 @@ pub struct TradeInstruction {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct DecisionOutput {
     pub analysis: String,
     #[serde(default)]

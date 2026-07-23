@@ -5,15 +5,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::Future;
 
-use pi_coding_agent::core::session_manager::NewSessionOptions;
 use tokio::sync::mpsc;
 
-use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::types::{AgentEvent, AgentMessage};
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSessionOptions};
 use pi_extension_api::ToolDefinition;
 use tokio::sync::Mutex;
+
 
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
@@ -95,6 +94,8 @@ impl AgentRuntime {
 
         Ok(facade)
     }
+
+
 }
 pub struct AgentFacade {
     pub session: AgentSession,
@@ -135,21 +136,52 @@ impl AgentFacade {
             .unwrap_or("default".to_string())
     }
 
-    /// Run the agent and extract structured `DecisionOutput`.
+    /// Run the agent and return the final text reply.
     ///
-    /// Prefers the decision-tool path (single LLM turn).  Falls back to
-    /// `extract_decision_output` (one extra LLM call).  If no trades are
-    /// produced, re-prompts the agent (max 3 attempts) to force a decision.
-    pub async fn process_decision(
-        &self,
-        _user_message: &str,
-    ) -> Result<crate::roles::prompt::DecisionOutput> {
-        todo!("需要重新设计llm结构化输出提取以及重试机制");
+    /// `prompt()` on `AgentSession` holds `std::sync::MutexGuard` across `.await`
+    /// points, making the future `!Send`. We isolate it via `spawn_blocking` so
+    /// callers can use this in `tokio::spawn` contexts.
+    pub async fn process_chat(self: Arc<Self>, user_message: &str) -> Result<String> {
+        let this = self.clone();
+        let msg = user_message.to_string();
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                this.session.prompt(&msg, None).await;
+                this.session
+                    .get_last_assistant_text()
+                    .await
+                    .ok_or_else(|| anyhow::anyhow!("No assistant response"))
+            })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Blocking task failed: {e}"))?
     }
 
-    /// Run the agent and return the final text reply.
-    pub async fn process_chat(&self, _user_message: &str) -> Result<String> {
-        todo!("需要重新设计llm结构化输出提取以及重试机制");
+    /// Run a decision cycle.
+    ///
+    /// The caller is responsible for injecting the `make_decision` tool (or
+    /// other trading tools) into the session at creation time via
+    /// `create_session(…, custom_tools, …)`. This method simply runs the
+    /// prompt and returns the last assistant text.
+    ///
+    /// `prompt()` on `AgentSession` is `!Send` (holds `std::sync::MutexGuard`
+    /// across `.await`), so we isolate it via `spawn_blocking`.
+    pub async fn process_decision(self: Arc<Self>, user_message: &str) -> Result<String> {
+        let this = self.clone();
+        let msg = user_message.to_string();
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                this.session.prompt(&msg, None).await;
+                this.session
+                    .get_last_assistant_text()
+                    .await
+                    .ok_or_else(|| anyhow::anyhow!("No assistant response"))
+            })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Decision task failed: {e}"))?
     }
 }
 

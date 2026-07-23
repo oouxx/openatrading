@@ -1,8 +1,10 @@
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use chrono_tz::Asia::Shanghai;
+use pi_extension_api::{ToolCallOutput, ToolDefinition, ToolExecuteFn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
@@ -10,6 +12,7 @@ use crate::context::AppContext;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
 use crate::trade::{execute_buy, execute_sell};
+use crate::roles::prompt::DecisionOutput;
 use crate::RoleEntry;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -329,21 +332,120 @@ async fn run_decision_for_role(
     }
 
     let system = crate::skills::SkillRegistry::build_role_prompt(role);
-    let agent_facade = ctx
-        .runtime
-        .create_session(Some(system.as_str()), None, Some(false), None, None)
-        .await?;
-    let decision = match agent_facade.process_decision(user_message.as_str()).await {
-        Ok(d) => d,
-        Err(e) => {
-            let err_msg = format!("❌ LLM 调用失败: {e}");
-            let _ = ctx
-                .social
-                .notify_decision(&format!("【{} 决策】\n{}", role.display_name, err_msg))
-                .await;
-            return Err(e);
-        },
-    };
+
+    // ── Build make_decision tool ──
+    // The LLM calls this tool with structured DecisionOutput params.
+    // The execute function captures the structured data into shared state
+    // so the caller can retrieve it after prompt() completes.
+    let decision_state: Arc<Mutex<Option<DecisionOutput>>> = Arc::new(Mutex::new(None));
+    {
+        let state = decision_state.clone();
+        let execute: ToolExecuteFn = Arc::new(move |_id, args, _signal| {
+            let state = state.clone();
+            Box::pin(async move {
+                let decision: DecisionOutput =
+                    serde_json::from_value(args).map_err(|e| format!("解析决策参数失败: {e}"))?;
+                let mut guard = state.lock().await;
+                *guard = Some(decision);
+                Ok(ToolCallOutput {
+                    content: vec![serde_json::json!({
+                        "type": "text",
+                        "text": "决策已记录，正在执行交易指令..."
+                    })],
+                    details: None,
+                    is_error: false,
+                    terminate: None,
+                })
+            })
+        });
+
+        let make_decision_tool = ToolDefinition {
+            name: "make_decision".to_string(),
+            label: None,
+            description: "提交交易决策。包含市场分析、交易指令列表（买入/卖出/持有）。                每次决策必须调用此工具提交最终决策结果。                参数：analysis（市场分析文本）、trades（交易指令数组）。                每个交易指令包含：action（Buy/Sell/Hold）、symbol（股票代码）、                name（股票名称）、shares（股数）、reason（理由）。".to_string(),
+            prompt_snippet: None,
+            prompt_guidelines: None,
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "analysis": {
+                        "type": "string",
+                        "description": "市场分析与决策理由"
+                    },
+                    "trades": {
+                        "type": "array",
+                        "description": "交易指令列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "action": {
+                                    "type": "string",
+                                    "enum": ["Buy", "Sell", "Hold"],
+                                    "description": "交易动作"
+                                },
+                                "symbol": {
+                                    "type": "string",
+                                    "description": "股票代码"
+                                },
+                                "name": {
+                                    "type": "string",
+                                    "description": "股票名称"
+                                },
+                                "shares": {
+                                    "type": "integer",
+                                    "description": "股数"
+                                },
+                                "reason": {
+                                    "type": "string",
+                                    "description": "交易理由"
+                                }
+                            },
+                            "required": ["action", "symbol", "name", "shares", "reason"]
+                        }
+                    }
+                },
+                "required": ["analysis", "trades"]
+            })),
+            render_shell: None,
+            execution_mode: None,
+            execute: Some(execute),
+        };
+
+        let agent_facade = ctx
+            .runtime
+            .create_session(
+                Some(system.as_str()),
+                Some(vec![make_decision_tool]),
+                Some(false),
+                None,
+                None,
+            )
+            .await?;
+
+        let _text = match agent_facade
+            .clone()
+            .process_decision(user_message.as_str())
+            .await
+        {
+            Ok(t) => t,
+            Err(e) => {
+                let err_msg = format!("❌ LLM 调用失败: {e}");
+                let _ = ctx
+                    .social
+                    .notify_decision(&format!("【{} 决策】
+{}", role.display_name, err_msg))
+                    .await;
+                return Err(e);
+            },
+        };
+    }
+
+    // Retrieve structured decision from shared state
+    let decision = decision_state
+        .lock()
+        .await
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("LLM 未调用 make_decision tool，无法获取结构化决策"))?;
 
     let analysis = decision.analysis;
     let trade_instructions = decision.trades;
