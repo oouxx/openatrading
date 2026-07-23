@@ -14,7 +14,6 @@ use openatrading_core::skills::SkillEntry;
 use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
 
-use crate::chat_session::ChatFrame;
 use crate::handlers::OverviewResponse;
 use crate::AppState;
 
@@ -310,66 +309,175 @@ pub async fn ai_chat(
         'outer: loop {
             match rx.recv().await {
                 Some(event) => {
-                    for frame in crate::chat_session::serialize_chat_event(event) {
-                        match frame {
-                            ChatFrame::Text(t) => {
-                                openatrading_core::log::trace!("ai/chat: Text {} chars", t.len());
-                                yield Ok(Event::default().data(t.replace('\n', "\\n")));
-                            },
-                            ChatFrame::Thinking(t) => {
-                                yield Ok(Event::default().event("thinking").data(t.replace('\n', "\\n")));
-                            },
-                            ChatFrame::ToolCall { id, name, args } => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "id": id,
-                                    "name": name,
-                                    "args": args,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-call").data(data));
-                            },
-                            ChatFrame::ToolDelta { args } => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "args": args,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-delta").data(data));
-                            },
-                            ChatFrame::Error(e) => {
-                                openatrading_core::log::warn!("ai/chat: assistant error: {e}");
-                                yield Ok(Event::default().data(format!("[ERROR] {e}")));
-                            },
-                            ChatFrame::ToolExecStart => {
-                                yield Ok(Event::default().event("tool-exec-start"));
-                            },
-                            ChatFrame::ToolExecutionUpdate { id, name, args, partial_result } => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "id": id,
-                                    "name": name,
-                                    "args": args,
-                                    "partial_result": partial_result,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-exec-update").data(data));
-                            },
-                            ChatFrame::ToolExecEnd { id, name, result, is_error } => {
-                                let status = if is_error { "error" } else { "success" };
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "id": id,
-                                    "name": name,
-                                    "result": result,
-                                    "status": status,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-exec-end").data(data));
-                            },
-                            ChatFrame::TurnStart => {
-                                yield Ok(Event::default().event("turn-start"));
-                            },
-                            ChatFrame::TurnEnd { tool_results } => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "tool_results": tool_results,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("turn-end").data(data));
-                            },
-                            ChatFrame::Done => break 'outer,
-                        }
+                    match event {
+                        AgentEvent::MessageUpdate {
+                            assistant_message_event,
+                            ..
+                        } => {
+                            use openatrading_core::llm::pi_ai_types::AssistantMessageEvent;
+                            match assistant_message_event {
+                                AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
+                                    openatrading_core::log::trace!(
+                                        "ai/chat: Text {} chars",
+                                        delta.len()
+                                    );
+                                    yield Ok(Event::default()
+                                        .data(delta.replace('\n', "\\n")));
+                                },
+                                AssistantMessageEvent::TextEnd { content, .. } if !content.is_empty() => {
+                                    openatrading_core::log::trace!(
+                                        "ai/chat: TextEnd {} chars",
+                                        content.len()
+                                    );
+                                    yield Ok(Event::default()
+                                        .data(content.replace('\n', "\\n")));
+                                },
+                                AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
+                                    yield Ok(Event::default()
+                                        .event("thinking")
+                                        .data(delta.replace('\n', "\\n")));
+                                },
+                                AssistantMessageEvent::ThinkingEnd { content, .. } if !content.is_empty() => {
+                                    yield Ok(Event::default()
+                                        .event("thinking")
+                                        .data(content.replace('\n', "\\n")));
+                                },
+                                AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
+                                    let data = serde_json::to_string(
+                                        &serde_json::json!({ "args": delta }),
+                                    )
+                                    .unwrap_or_default();
+                                    yield Ok(Event::default()
+                                        .event("tool-delta")
+                                        .data(data));
+                                },
+                                AssistantMessageEvent::ToolCallEnd { tool_call, .. } if !tool_call.name.is_empty() => {
+                                    let data = serde_json::to_string(
+                                        &serde_json::json!({
+                                            "id": tool_call.id,
+                                            "name": tool_call.name,
+                                            "args": tool_call.arguments.to_string(),
+                                        }),
+                                    )
+                                    .unwrap_or_default();
+                                    yield Ok(Event::default()
+                                        .event("tool-call")
+                                        .data(data));
+                                },
+                                AssistantMessageEvent::Done { message, .. } => {
+                                    for block in &message.content {
+                                        if let openatrading_core::llm::pi_ai_types::ContentBlock::Text { text, .. } = block {
+                                            if !text.is_empty() {
+                                                yield Ok(Event::default()
+                                                    .data(text.replace('\n', "\\n")));
+                                            }
+                                        }
+                                    }
+                                },
+                                AssistantMessageEvent::Error { error, .. } => {
+                                    let msg = error.error_message.as_deref().unwrap_or("unknown error");
+                                    openatrading_core::log::warn!(
+                                        "ai/chat: assistant error: {msg}"
+                                    );
+                                    yield Ok(Event::default()
+                                        .data(format!("[ERROR] {msg}")));
+                                },
+                                _ => {},
+                            }
+                        },
+                        AgentEvent::MessageEnd { message } => {
+                            if let openatrading_core::llm::AgentMessage::Assistant {
+                                error_message: Some(err),
+                                ..
+                            } = &message
+                            {
+                                if !err.is_empty() {
+                                    yield Ok(Event::default()
+                                        .data(format!("[ERROR] {err}")));
+                                }
+                            }
+                        },
+                        AgentEvent::AgentEnd { .. } => break 'outer,
+                        AgentEvent::TurnStart => {
+                            yield Ok(Event::default().event("turn-start"));
+                        },
+                        AgentEvent::TurnEnd { tool_results, .. } => {
+                            let results: Vec<String> = tool_results
+                                .iter()
+                                .map(|m| {
+                                    if let openatrading_core::llm::AgentMessage::ToolResult {
+                                        content,
+                                        ..
+                                    } = m
+                                    {
+                                        content
+                                            .iter()
+                                            .filter_map(|b| {
+                                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                                    text,
+                                                    ..
+                                                } = b
+                                                {
+                                                    Some(text.clone())
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    } else {
+                                        String::new()
+                                    }
+                                })
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "tool_results": results,
+                            }))
+                            .unwrap_or_default();
+                            yield Ok(Event::default().event("turn-end").data(data));
+                        },
+                        AgentEvent::ToolExecutionStart { .. } => {
+                            yield Ok(Event::default().event("tool-exec-start"));
+                        },
+                        AgentEvent::ToolExecutionUpdate {
+                            tool_call_id,
+                            tool_name,
+                            args,
+                            partial_result,
+                        } => {
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "id": tool_call_id,
+                                "name": tool_name,
+                                "args": args.to_string(),
+                                "partial_result": partial_result.to_string(),
+                            }))
+                            .unwrap_or_default();
+                            yield Ok(Event::default()
+                                .event("tool-exec-update")
+                                .data(data));
+                        },
+                        AgentEvent::ToolExecutionEnd {
+                            tool_call_id,
+                            tool_name,
+                            result,
+                            is_error,
+                        } => {
+                            let status = if is_error { "error" } else { "success" };
+                            let data = serde_json::to_string(&serde_json::json!({
+                                "id": tool_call_id,
+                                "name": tool_name,
+                                "result": crate::chat_session::extract_tool_result_text(
+                                    &result,
+                                ),
+                                "status": status,
+                            }))
+                            .unwrap_or_default();
+                            yield Ok(Event::default()
+                                .event("tool-exec-end")
+                                .data(data));
+                        },
+                        _ => {},
                     }
                 },
                 None => {

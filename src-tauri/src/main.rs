@@ -1065,7 +1065,6 @@ async fn api_chat_stream(
     let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
     let runtime = state.ctx.runtime.clone();
     let system_prompt_clone = system_prompt.clone();
-    let pi_messages_clone = pi_messages.clone();
     let user_message_clone = user_message.clone();
     tokio::spawn(async move {
         let handle = match runtime
@@ -1086,7 +1085,9 @@ async fn api_chat_stream(
         };
         let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
-        handle.send(&user_message).await;
+        handle
+            .send(user_message_clone.as_deref().unwrap_or(""))
+            .await;
         let _ = sid_tx.send(Ok(id));
     });
 
@@ -1113,111 +1114,201 @@ async fn api_chat_stream(
     let mut text_count = 0u32;
     'outer: loop {
         match rx.recv().await {
-            Some(event) => {
-                for frame in openatrading_web::chat_session::serialize_chat_event(event) {
-                    match frame {
-                        openatrading_web::chat_session::ChatFrame::Text(t) => {
+            Some(event) => match event {
+                AgentEvent::MessageUpdate {
+                    assistant_message_event,
+                    ..
+                } => {
+                    use openatrading_core::llm::pi_ai_types::AssistantMessageEvent;
+                    match assistant_message_event {
+                        AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
                             text_count += 1;
                             if text_count <= 3 || text_count.is_multiple_of(20) {
                                 eprintln!(
                                     "[chat_stream] text #{text_count}: {:?}",
-                                    &t[..t.len().min(80)]
+                                    &delta[..delta.len().min(80)]
                                 );
                             }
                             channel
-                                .send(format!("\x00TEXT\x00{}", t.replace('\n', "\\n")))
+                                .send(format!("\x00TEXT\x00{}", delta.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::Thinking(t) => {
+                        AssistantMessageEvent::TextEnd { content, .. } if !content.is_empty() => {
+                            text_count += 1;
+                            if text_count <= 3 || text_count.is_multiple_of(20) {
+                                eprintln!(
+                                    "[chat_stream] text #{text_count}: {:?}",
+                                    &content[..content.len().min(80)]
+                                );
+                            }
                             channel
-                                .send(format!("\x00THINKING\x00{}", t.replace('\n', "\\n")))
+                                .send(format!("\x00TEXT\x00{}", content.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::ToolCall { id, name, args } => {
-                            let data = serde_json::to_string(&serde_json::json!({
-                                "id": id,
-                                "name": name,
-                                "args": args,
-                            }))
-                            .unwrap_or_default();
+                        AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
                             channel
-                                .send(format!("\x00TOOL_CALL\x00{data}"))
+                                .send(format!("\x00THINKING\x00{}", delta.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::ToolDelta { args } => {
+                        AssistantMessageEvent::ThinkingEnd { content, .. }
+                            if !content.is_empty() =>
+                        {
+                            channel
+                                .send(format!("\x00THINKING\x00{}", content.replace('\n', "\\n")))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        },
+                        AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
                             let data = serde_json::to_string(&serde_json::json!({
-                                "args": args,
+                                "args": delta,
                             }))
                             .unwrap_or_default();
                             channel
                                 .send(format!("\x00TOOL_DELTA\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::Error(e) => {
-                            channel
-                                .send(format!("[ERROR] {e}"))
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        openatrading_web::chat_session::ChatFrame::ToolExecStart => {
-                            channel
-                                .send("\x00TOOL_EXEC_START\x00".to_string())
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        openatrading_web::chat_session::ChatFrame::ToolExecutionUpdate {
-                            id,
-                            name,
-                            args,
-                            partial_result,
-                        } => {
+                        AssistantMessageEvent::ToolCallEnd { tool_call, .. }
+                            if !tool_call.name.is_empty() =>
+                        {
                             let data = serde_json::to_string(&serde_json::json!({
-                                "id": id,
-                                "name": name,
-                                "args": args,
-                                "partial_result": partial_result,
+                                "id": tool_call.id,
+                                "name": tool_call.name,
+                                "args": tool_call.arguments.to_string(),
                             }))
                             .unwrap_or_default();
                             channel
-                                .send(format!("\x00TOOL_EXEC_UPDATE\x00{data}"))
+                                .send(format!("\x00TOOL_CALL\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::ToolExecEnd {
-                            id,
-                            name,
-                            result,
-                            is_error,
-                        } => {
-                            let status = if is_error { "error" } else { "success" };
-                            let data = serde_json::to_string(&serde_json::json!({
-                                "id": id,
-                                "name": name,
-                                "result": result,
-                                "status": status,
-                            }))
-                            .unwrap_or_default();
+                        AssistantMessageEvent::Done { message, .. } => {
+                            for block in &message.content {
+                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                    text,
+                                    ..
+                                } = block
+                                {
+                                    if !text.is_empty() {
+                                        channel
+                                            .send(format!(
+                                                "\x00TEXT\x00{}",
+                                                text.replace('\n', "\\n")
+                                            ))
+                                            .map_err(|e| format!("channel error: {e}"))?;
+                                    }
+                                }
+                            }
+                        },
+                        AssistantMessageEvent::Error { error, .. } => {
+                            let msg = error.error_message.as_deref().unwrap_or("unknown error");
                             channel
-                                .send(format!("\x00TOOL_RESULT\x00{data}"))
+                                .send(format!("[ERROR] {msg}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
                         },
-                        openatrading_web::chat_session::ChatFrame::TurnStart => {
-                            channel
-                                .send("\x00TURN_START\x00".to_string())
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        openatrading_web::chat_session::ChatFrame::TurnEnd { tool_results } => {
-                            let data = serde_json::to_string(&serde_json::json!({
-                                "tool_results": tool_results,
-                            }))
-                            .unwrap_or_default();
-                            channel
-                                .send(format!("\x00TURN_END\x00{data}"))
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        openatrading_web::chat_session::ChatFrame::Done => {
-                            eprintln!("[chat_stream] AgentEnd, done");
-                            break 'outer;
-                        },
+                        _ => {},
                     }
-                }
+                },
+                AgentEvent::MessageEnd { message } => {
+                    if let openatrading_core::llm::AgentMessage::Assistant {
+                        error_message: Some(err),
+                        ..
+                    } = &message
+                    {
+                        if !err.is_empty() {
+                            channel
+                                .send(format!("[ERROR] {err}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        }
+                    }
+                },
+                AgentEvent::AgentEnd { .. } => {
+                    eprintln!("[chat_stream] AgentEnd, done");
+                    break 'outer;
+                },
+                AgentEvent::TurnStart => {
+                    channel
+                        .send("\x00TURN_START\x00".to_string())
+                        .map_err(|e| format!("channel error: {e}"))?;
+                },
+                AgentEvent::TurnEnd { tool_results, .. } => {
+                    let results: Vec<String> = tool_results
+                            .iter()
+                            .map(|m| {
+                                if let openatrading_core::llm::AgentMessage::ToolResult {
+                                    content,
+                                    ..
+                                } = m
+                                {
+                                    content
+                                        .iter()
+                                        .filter_map(|b| {
+                                            if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                                text,
+                                                ..
+                                            } = b
+                                            {
+                                                Some(text.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                    let data = serde_json::to_string(&serde_json::json!({
+                        "tool_results": results,
+                    }))
+                    .unwrap_or_default();
+                    channel
+                        .send(format!("\x00TURN_END\x00{data}"))
+                        .map_err(|e| format!("channel error: {e}"))?;
+                },
+                AgentEvent::ToolExecutionStart { .. } => {
+                    channel
+                        .send("\x00TOOL_EXEC_START\x00".to_string())
+                        .map_err(|e| format!("channel error: {e}"))?;
+                },
+                AgentEvent::ToolExecutionUpdate {
+                    tool_call_id,
+                    tool_name,
+                    args,
+                    partial_result,
+                } => {
+                    let data = serde_json::to_string(&serde_json::json!({
+                        "id": tool_call_id,
+                        "name": tool_name,
+                        "args": args.to_string(),
+                        "partial_result": partial_result.to_string(),
+                    }))
+                    .unwrap_or_default();
+                    channel
+                        .send(format!("\x00TOOL_EXEC_UPDATE\x00{data}"))
+                        .map_err(|e| format!("channel error: {e}"))?;
+                },
+                AgentEvent::ToolExecutionEnd {
+                    tool_call_id,
+                    tool_name,
+                    result,
+                    is_error,
+                } => {
+                    let status = if is_error { "error" } else { "success" };
+                    let data = serde_json::to_string(&serde_json::json!({
+                        "id": tool_call_id,
+                        "name": tool_name,
+                        "result": openatrading_web::chat_session::extract_tool_result_text(
+                            &result,
+                        ),
+                        "status": status,
+                    }))
+                    .unwrap_or_default();
+                    channel
+                        .send(format!("\x00TOOL_RESULT\x00{data}"))
+                        .map_err(|e| format!("channel error: {e}"))?;
+                },
+                _ => {},
             },
             None => {
                 eprintln!("[chat_stream] channel closed unexpectedly");

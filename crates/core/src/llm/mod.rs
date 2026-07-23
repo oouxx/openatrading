@@ -11,9 +11,8 @@ pub use transcript::*;
 pub use types::*;
 
 pub use openatrading_agent::llm::{
-    assistant_event_to_stream_events, LlmClient, StreamEvent, StreamFn, StreamFnOptions,
-    StreamResult, ToolCall, ToolCallFunction, ToolCallItem, ToolCallMessage, ToolChatChoice,
-    ToolChatResponse, ToolStreamResult,
+    StreamFn, StreamFnOptions, StreamResult,
+    ToolCallFunction, ToolCallItem, ToolCallMessage, ToolChatChoice, ToolChatResponse,
 };
 
 pub use openatrading_agent::mcp_server::{serve_http, serve_stdio, MarketToolsServer};
