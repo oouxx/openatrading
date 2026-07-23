@@ -3,10 +3,14 @@ import { fetchJson } from "@/stores/data"
 
 export interface ChatSession {
   id: string
-  title: string
-  created_at: string
-  updated_at: string
+  name: string
+  created: string
+  modified: string
   message_count: number
+  path: string
+  cwd: string
+  first_message: string | null
+  parent_session_path: string | null
 }
 
 export function useThreads() {
