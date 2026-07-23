@@ -11,6 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 openatrading-core = { path = "../core" }
 openatrading-channels = { path = "../channels" }
+pi-coding-agent = { workspace = true }
 arc-swap = "1"
 tokio = { workspace = true }
 serde = { workspace = true }

@@ -21,7 +21,7 @@
 use std::sync::Arc;
 
 use openatrading_core::commands::CommandType;
-use openatrading_core::llm::{DynTool};
+use openatrading_core::llm::DynTool;
 use openatrading_core::skills::SkillRegistry;
 
 use crate::RoleEntry;

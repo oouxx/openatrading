@@ -9,10 +9,10 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 
 use crate::api::Client as ApiClient;
 use crate::context::AppContext;
+use crate::roles::prompt::DecisionOutput;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
 use crate::trade::{execute_buy, execute_sell};
-use crate::roles::prompt::DecisionOutput;
 use crate::RoleEntry;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -432,8 +432,11 @@ async fn run_decision_for_role(
                 let err_msg = format!("❌ LLM 调用失败: {e}");
                 let _ = ctx
                     .social
-                    .notify_decision(&format!("【{} 决策】
-{}", role.display_name, err_msg))
+                    .notify_decision(&format!(
+                        "【{} 决策】
+{}",
+                        role.display_name, err_msg
+                    ))
                     .await;
                 return Err(e);
             },
