@@ -13,7 +13,6 @@ use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSess
 use pi_extension_api::ToolDefinition;
 use tokio::sync::Mutex;
 
-
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -94,8 +93,6 @@ impl AgentRuntime {
 
         Ok(facade)
     }
-
-
 }
 pub struct AgentFacade {
     pub session: AgentSession,

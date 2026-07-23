@@ -30,7 +30,7 @@ impl Check for LlmCheck {
         Some("提示检查配置".into())
     }
 
-    async fn check(&self, ctx: &CheckContext) -> CheckResult {
+    async fn check(&self, _ctx: &CheckContext) -> CheckResult {
         todo!("实现一个简易的llm请求")
     }
 

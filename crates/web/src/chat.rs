@@ -496,16 +496,6 @@ pub async fn ai_chat(
 
 // ── Session listing (pi-coding-agent JSONL sessions) ────────────────────
 
-/// A saved chat session backed by a pi-coding-agent JSONL file.
-#[derive(Serialize)]
-pub struct SessionItem {
-    pub id: String,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub message_count: usize,
-}
-
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
 pub async fn create_session(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let agent_facade = match state
@@ -523,87 +513,45 @@ pub async fn create_session(State(state): State<Arc<AppState>>) -> Json<serde_js
         },
     };
 
+    // Use session manager to get session metadata
+    let mgr = agent_facade.session.get_session_manager();
+    let session_file = mgr.get_session_file().map(|p| p.to_path_buf());
+    let session_name = mgr.get_session_name();
+    drop(mgr);
+
     Json(serde_json::json!({
         "success": true,
         "id": agent_facade.get_session_id(),
-        "title": agent_facade.get_session_name(),
-        "created_at": "",
-        "updated_at": "",
+        "name": session_name,
+        "path": session_file.map(|p| p.to_string_lossy().to_string()),
         "message_count": 0,
     }))
 }
 
 /// GET /api/ai/sessions — list all saved sessions
-pub async fn list_sessions(State(_state): State<Arc<AppState>>) -> Json<Vec<SessionItem>> {
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let session_dir = std::path::Path::new(&cwd).join(".pi-rs/agent/sessions");
+pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
+    let infos = pi_coding_agent::core::session_manager::SessionManager::list_all(Some(
+        &state.ctx.session_dir,
+    ))
+    .await;
 
-    let mut sessions: Vec<SessionItem> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&session_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                continue;
-            }
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_string();
-            // Read first line (session header) for metadata
-            let (title, created_at) = if let Ok(content) = std::fs::read_to_string(&path) {
-                let first_line = content.lines().next().unwrap_or("");
-                if let Ok(header) = serde_json::from_str::<serde_json::Value>(first_line) {
-                    let name = header
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(&stem)
-                        .to_string();
-                    let ts = header
-                        .get("timestamp")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    (name, ts)
-                } else {
-                    (stem.clone(), String::new())
-                }
-            } else {
-                (stem.clone(), String::new())
-            };
-            // Count message entries
-            let msg_count = if let Ok(content) = std::fs::read_to_string(&path) {
-                content
-                    .lines()
-                    .filter(|l| l.contains(r#""type":"message""#))
-                    .count()
-            } else {
-                0
-            };
-            // Use file modified time as updated_at
-            let updated_at = std::fs::metadata(&path)
-                .and_then(|m| {
-                    m.modified().map(|t| {
-                        use std::time::SystemTime;
-                        let dur = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
-                        format!("{}", dur.as_secs())
-                    })
-                })
-                .unwrap_or_default();
-            sessions.push(SessionItem {
-                id: stem,
-                title,
-                created_at,
-                updated_at,
-                message_count: msg_count,
-            });
-        }
-    }
-    // Most recent first
-    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let sessions: Vec<serde_json::Value> = infos
+        .into_iter()
+        .map(|info| {
+            serde_json::json!({
+                "id": info.id,
+                "name": info.name,
+                "created": info.created.to_rfc3339(),
+                "modified": info.modified.to_rfc3339(),
+                "message_count": info.message_count,
+                "path": info.path.to_string_lossy(),
+                "cwd": info.cwd,
+                "first_message": info.first_message,
+                "parent_session_path": info.parent_session_path,
+            })
+        })
+        .collect();
+
     Json(sessions)
 }
 
@@ -675,14 +623,11 @@ pub async fn get_session_messages(
 }
 
 /// DELETE /api/ai/sessions/:id — delete a saved session
-pub async fn delete_session(axum::extract::Path(id): axum::extract::Path<String>) -> StatusCode {
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let path = std::path::Path::new(&cwd)
-        .join(".pi-rs/agent/sessions")
-        .join(format!("{id}.jsonl"));
+pub async fn delete_session(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> StatusCode {
+    let path = std::path::Path::new(&state.ctx.session_dir).join(format!("{id}.jsonl"));
     if path.exists() {
         match std::fs::remove_file(&path) {
             Ok(()) => StatusCode::NO_CONTENT,

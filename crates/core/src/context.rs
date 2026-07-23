@@ -18,6 +18,8 @@ pub struct AppContext {
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
     pub social: Arc<dyn NotificationSender>,
+    /// Directory where session JSONL files are stored.
+    pub session_dir: String,
 }
 
 impl AppContext {
@@ -38,6 +40,11 @@ impl AppContext {
         let ext_registry = openatrading_extension::create_registry();
         registry.set_extension_tools(&ext_registry);
         let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
         Self {
             runtime,
             api,
@@ -45,6 +52,7 @@ impl AppContext {
             memory,
             trade,
             social,
+            session_dir,
         }
     }
 
