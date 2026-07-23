@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use futures::Future;
@@ -73,7 +72,7 @@ impl AgentRuntime {
             persist_session: persist.unwrap_or(true),
             session_manager: Some(session_mgr),
             settings_manager: Some(settings_mgr),
-            session_dir: Some(session_dir),
+            session_dir: Some(session_dir.to_string()),
             ..Default::default()
         })
         .await
@@ -136,32 +135,6 @@ impl AgentFacade {
             .unwrap_or("default".to_string())
     }
 
-    pub async fn run_with_timeout(
-        &mut self,
-        message: &str,
-        timeout_secs: u64,
-    ) -> Result<SessionResult> {
-        let (tx, mut rx) = mpsc::channel::<AgentEvent>(256);
-        self.subscribe(tx).await;
-        self.send(message).await;
-
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
-        loop {
-            match tokio::time::timeout_at(deadline, rx.recv()).await {
-                Ok(Some(AgentEvent::MessageEnd { .. })) => break,
-                Ok(Some(_)) => continue,
-                Ok(None) => break,
-                Err(_) => {
-                    tracing::warn!("run_with_timeout timed out after {timeout_secs}s");
-                    self.abort().await;
-                    return Err(anyhow::anyhow!("agent timed out after {timeout_secs}s"));
-                },
-            }
-        }
-
-        let messages = self.get_messages().await;
-        Ok(extract_session_result(&messages))
-    }
     /// Run the agent and extract structured `DecisionOutput`.
     ///
     /// Prefers the decision-tool path (single LLM turn).  Falls back to
@@ -184,28 +157,4 @@ impl AgentFacade {
 pub struct SessionResult {
     pub final_text: String,
     pub tool_outputs: Vec<serde_json::Value>,
-}
-
-fn extract_session_result(messages: &[AgentMessage]) -> SessionResult {
-    let mut final_text = String::new();
-    let mut tool_outputs = Vec::new();
-
-    for msg in messages {
-        if let AgentMessage::Assistant { content, .. } = msg {
-            for block in content {
-                match block {
-                    ContentBlock::Text { text, .. } => final_text.push_str(text),
-                    ContentBlock::ToolCall { arguments, .. } => {
-                        tool_outputs.push(arguments.clone())
-                    },
-                    _ => {},
-                }
-            }
-        }
-    }
-
-    SessionResult {
-        final_text,
-        tool_outputs,
-    }
 }

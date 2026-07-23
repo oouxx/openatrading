@@ -9,8 +9,11 @@
 //! 1. Command resolution — `role` / `command_type` / `command_name` /
 //!    `skill_name` → `(system_prompt, tools)`. The Tauri copy had drifted and
 //!    skipped the `allowed_tools` filter that the web copy applies.
-//! 2. Event serialization — `AgentEvent` → a protocol-neutral `ChatFrame`
-//!    that each transport renders into its own wire format.
+//! 2. Event serialization — `AgentEvent` → a protocol-neutral frame that
+//!    each transport renders into its own wire format. The frame type is
+//!    `pi_agent_core::types::AgentEvent` itself — no custom `ChatFrame`
+//!    wrapper. Consumers decompose `MessageUpdate` via
+//!    the `AssistantMessageEvent` variants directly.
 //!
 //! This mirrors the `serialize_event` / `mutate` centralization pattern from
 //! the desktop `Store`: one source of truth, transports stay thin.
@@ -18,7 +21,7 @@
 use std::sync::Arc;
 
 use openatrading_core::commands::CommandType;
-use openatrading_core::llm::{assistant_event_to_stream_events, AgentEvent, DynTool, StreamEvent};
+use openatrading_core::llm::{DynTool};
 use openatrading_core::skills::SkillRegistry;
 
 use crate::RoleEntry;
@@ -150,160 +153,4 @@ pub fn extract_tool_result_text(result: &serde_json::Value) -> String {
         return result.to_string();
     }
     texts.join("\n")
-}
-
-/// A protocol-neutral rendering of an `AgentEvent`, ready to be turned into a
-/// transport-specific frame (SSE event / Tauri channel message).
-///
-/// Centralizing this is the `serialize_event` analog from the desktop
-/// `Store`: both backends consume the same `ChatFrame` stream instead of
-/// each re-implementing the `AgentEvent` → wire mapping.
-#[derive(Debug, Clone)]
-pub enum ChatFrame {
-    /// Plain text delta from the assistant.
-    Text(String),
-    /// Reasoning / thinking delta from the assistant.
-    Thinking(String),
-    /// A tool call started (id, name, raw args JSON string).
-    ToolCall {
-        id: String,
-        name: String,
-        args: String,
-    },
-    /// A tool call argument delta (raw args JSON string).
-    ToolDelta { args: String },
-    /// A tool execution started.
-    ToolExecStart,
-    /// A tool execution intermediate update with partial result.
-    ToolExecutionUpdate {
-        id: String,
-        name: String,
-        args: String,
-        partial_result: String,
-    },
-    /// A tool execution finished with its (already-extracted) result text.
-    ToolExecEnd {
-        id: String,
-        name: String,
-        result: String,
-        is_error: bool,
-    },
-    /// A conversation turn started.
-    TurnStart,
-    /// A conversation turn ended with tool results.
-    TurnEnd { tool_results: Vec<String> },
-    /// An error surfaced during streaming.
-    Error(String),
-    /// The whole agent turn finished — receivers should close the stream.
-    Done,
-}
-
-/// Translate a single `AgentEvent` into zero or more [`ChatFrame`]s.
-///
-/// `MessageUpdate` may expand to several frames (e.g. a text delta followed
-/// by a tool-call start), so the result is a `Vec`. `AgentEnd` maps to a
-/// single [`ChatFrame::Done`]; `MessageEnd` only emits a frame when it carries
-/// an error message. Events the chat protocol doesn't surface return an empty
-/// `Vec`.
-pub fn serialize_chat_event(event: AgentEvent) -> Vec<ChatFrame> {
-    match event {
-        AgentEvent::MessageUpdate {
-            assistant_message_event,
-            ..
-        } => {
-            let mut frames = Vec::new();
-            for se in assistant_event_to_stream_events(&assistant_message_event) {
-                match se {
-                    StreamEvent::Text(t) => frames.push(ChatFrame::Text(t)),
-                    StreamEvent::ReasoningText(t) => frames.push(ChatFrame::Thinking(t)),
-                    StreamEvent::ToolCallStart(tc) => frames.push(ChatFrame::ToolCall {
-                        id: tc.id,
-                        name: tc.function_name,
-                        args: tc.arguments,
-                    }),
-                    StreamEvent::ToolCallDelta(tc) => {
-                        frames.push(ChatFrame::ToolDelta { args: tc.arguments })
-                    },
-                    StreamEvent::Error(e) => frames.push(ChatFrame::Error(e)),
-                }
-            }
-            frames
-        },
-        AgentEvent::MessageStart { .. } => {
-            // 消息开始信号，前端可据此清空上一轮累积的流式缓冲区
-            Vec::new()
-        },
-        AgentEvent::MessageEnd { message } => {
-            if let openatrading_core::llm::AgentMessage::Assistant {
-                error_message: Some(err),
-                ..
-            } = &message
-            {
-                if !err.is_empty() {
-                    return vec![ChatFrame::Error(format!("[ERROR] {err}"))];
-                }
-            }
-            Vec::new()
-        },
-        AgentEvent::AgentStart => {
-            // 对话开始信号，前端可据此初始化对话状态
-            Vec::new()
-        },
-        AgentEvent::AgentEnd { .. } => vec![ChatFrame::Done],
-        AgentEvent::TurnStart => vec![ChatFrame::TurnStart],
-        AgentEvent::TurnEnd { tool_results, .. } => {
-            let results: Vec<String> = tool_results
-                .iter()
-                .map(|m| {
-                    // Extract text content from each result message
-                    if let openatrading_core::llm::AgentMessage::ToolResult { content, .. } = m {
-                        content
-                            .iter()
-                            .filter_map(|b| {
-                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
-                                    text,
-                                    ..
-                                } = b
-                                {
-                                    Some(text.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    } else {
-                        String::new()
-                    }
-                })
-                .filter(|s| !s.is_empty())
-                .collect();
-            vec![ChatFrame::TurnEnd {
-                tool_results: results,
-            }]
-        },
-        AgentEvent::ToolExecutionStart { .. } => vec![ChatFrame::ToolExecStart],
-        AgentEvent::ToolExecutionUpdate {
-            tool_call_id,
-            tool_name,
-            args,
-            partial_result,
-        } => vec![ChatFrame::ToolExecutionUpdate {
-            id: tool_call_id,
-            name: tool_name,
-            args: args.to_string(),
-            partial_result: partial_result.to_string(),
-        }],
-        AgentEvent::ToolExecutionEnd {
-            tool_call_id,
-            tool_name,
-            result,
-            is_error,
-        } => vec![ChatFrame::ToolExecEnd {
-            id: tool_call_id,
-            name: tool_name,
-            result: extract_tool_result_text(&result),
-            is_error,
-        }],
-    }
 }
