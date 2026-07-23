@@ -287,8 +287,8 @@ pub async fn ai_chat(
     let sse_stream = async_stream::stream! {
         // 在流内部创建 session，handle 随流生命周期存活
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
-        let mut handle = match runtime
-            .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), Some(&user_message))
+        let agent_facade = match runtime
+            .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), None)
             .await
         {
             Ok(h) => h,
@@ -299,9 +299,9 @@ pub async fn ai_chat(
                 return;
             },
         };
-        let id = handle.get_session_id().to_string();
-        handle.subscribe(tx).await;
-        handle.send(&user_message).await;
+        let id = agent_facade.get_session_id().to_string();
+        agent_facade.subscribe(tx).await;
+        agent_facade.send(&user_message).await;
 
         // Emit session_id first so the frontend can store it
         let data = serde_json::to_string(&serde_json::json!({"session_id": id})).unwrap_or_default();
