@@ -35,7 +35,7 @@ export default function ConversationSidebar({
   const filteredThreads = useMemo(() => {
     if (!search.trim()) return threads
     const q = search.trim().toLowerCase()
-    return threads.filter((t) => t.title.toLowerCase().includes(q))
+    return threads.filter((t) => t.name.toLowerCase().includes(q))
   }, [threads, search])
 
   return (
@@ -116,12 +116,12 @@ export default function ConversationSidebar({
                       setMode("chat")
                       onSelectThread(t.id)
                     }}
-                    tooltip={t.title}
+                    tooltip={t.name || t.first_message || t.id}
                   >
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
                     />
-                    <span className="flex-1 truncate">{t.title}</span>
+                    <span className="flex-1 truncate">{t.name || t.first_message || t.id}</span>
                   </SidebarMenuButton>
                   <button
                     className="hover:text-down text-ink-muted absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
