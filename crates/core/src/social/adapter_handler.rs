@@ -168,7 +168,7 @@ async fn handle_ask(
         },
     };
 
-    match agent_facade.process_chat(question).await {
+    match agent_facade.clone().process_chat(question).await {
         Ok(response) => {
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))
