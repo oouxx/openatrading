@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::Result;
 use futures::Future;
 
+use pi_coding_agent::core::session_manager::NewSessionOptions;
 use tokio::sync::mpsc;
 
 use openatrading_agent::pi_ai_types::ContentBlock;
@@ -13,38 +14,13 @@ use openatrading_agent::types::{AgentEvent, AgentMessage};
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSessionOptions};
 use pi_extension_api::ToolDefinition;
-use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
-
-// ── ActiveSession ────────────────────────────────────────────────────────
-//
-// One entry per live agent session. Replacing the old single
-// `Arc<Mutex<Option<AgentSessionRuntime>>>` + generation counter with a map
-// keyed by session_id means switching the "selected" session in the UI no
-// longer needs to abort/discard/rebuild anything — the previous session's
-// runtime just stays parked in the map and keeps streaming if it was.
-
-struct ActiveSession {
-    runtime: Option<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>,
-    is_streaming: Arc<AtomicBool>,
-    abort_flag: Arc<AtomicBool>,
-}
-
-impl ActiveSession {
-    fn new() -> Self {
-        Self {
-            runtime: None,
-            is_streaming: Arc::new(AtomicBool::new(false)),
-            abort_flag: Arc::new(AtomicBool::new(false)),
-        }
-    }
-}
 
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AgentRuntime {
-    sessions: Arc<Mutex<HashMap<String, ActiveSession>>>,
+    sessions: Arc<Mutex<HashMap<String, Arc<AgentFacade>>>>,
 }
 
 impl Default for AgentRuntime {
@@ -66,9 +42,9 @@ impl AgentRuntime {
         system_prompt: Option<&str>,
         custom_tools: Option<Vec<ToolDefinition>>,
         persist: Option<bool>,
-        session_id: Option<&str>,
+        _: Option<&str>,
         session_name: Option<&str>,
-    ) -> Result<AgentFacade> {
+    ) -> Result<Arc<AgentFacade>> {
         let cwd = std::env::current_dir()
             .unwrap_or_default()
             .to_string_lossy()
@@ -76,20 +52,12 @@ impl AgentRuntime {
 
         let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
 
-        // Use SessionManager directly to create session with our custom ID
-        let sid = match session_id {
-            Some(id) if !id.is_empty() => id.to_string(),
-            _ => pi_coding_agent::core::session_manager::derive_short_session_id(),
-        };
         let session_mgr = pi_coding_agent::core::session_manager::SessionManager::new(
             &cwd,
             &session_dir,
             None,
             persist.unwrap_or(true),
-            Some(pi_coding_agent::core::session_manager::NewSessionOptions {
-                id: Some(sid.clone()),
-                parent_session: None,
-            }),
+            None,
         );
         let ext_registry = openatrading_extension::create_registry();
 
@@ -117,54 +85,24 @@ impl AgentRuntime {
                 agent_session.set_session_name(name);
             }
         }
-
-        Ok(AgentFacade {
+        let facade = Arc::new(AgentFacade {
             session: agent_session,
-        })
-    }
+        });
 
-    pub async fn abort(&self, session_id: &str) {
-        let sessions = self.sessions.lock().await;
-        if let Some(entry) = sessions.get(session_id) {
-            entry.abort_flag.store(true, Ordering::SeqCst);
-            if let Some(r) = entry.runtime.as_ref() {
-                r.session().abort().await;
-            }
-            entry.is_streaming.store(false, Ordering::SeqCst);
-        }
-    }
-
-    pub async fn is_streaming(&self, session_id: &str) -> bool {
         self.sessions
             .lock()
             .await
-            .get(session_id)
-            .map(|e| e.is_streaming.load(Ordering::SeqCst))
-            .unwrap_or(false)
-    }
+            .insert(facade.get_session_id().to_string(), facade.clone());
 
-    pub async fn get_messages(&self, session_id: &str) -> Vec<AgentMessage> {
-        let sessions = self.sessions.lock().await;
-        match sessions.get(session_id).and_then(|e| e.runtime.as_ref()) {
-            Some(r) => r.session().get_messages().await,
-            None => vec![],
-        }
-    }
-
-    /// Drop a session's runtime entirely (e.g. on delete/close). Desktop
-    /// rarely needs this; web should call it on disconnect / session close
-    /// to free memory instead of letting sessions accumulate forever.
-    pub async fn evict(&self, session_id: &str) {
-        self.sessions.lock().await.remove(session_id);
+        Ok(facade)
     }
 }
-
 pub struct AgentFacade {
     pub session: AgentSession,
 }
 
 impl AgentFacade {
-    pub async fn subscribe(&mut self, tx: mpsc::Sender<AgentEvent>) {
+    pub async fn subscribe(&self, tx: mpsc::Sender<AgentEvent>) {
         let event_tx = tx.clone();
         let listener = Arc::new(
             move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
@@ -177,13 +115,8 @@ impl AgentFacade {
         self.session.subscribe(listener).await;
     }
 
-    pub async fn send(&mut self, message: &str) {
+    pub async fn send(&self, message: &str) {
         self.session.add_user_text(message).await;
-    }
-
-    pub async fn send_messages(&mut self, messages: Vec<AgentMessage>) {
-        let agent = self.session.get_agent();
-        let _ = agent.process(messages).await;
     }
 
     pub async fn get_messages(&self) -> Vec<AgentMessage> {

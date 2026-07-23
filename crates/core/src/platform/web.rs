@@ -2,7 +2,6 @@
 // Web platform — no emitter or persister needed.
 // Events are sent directly via the SSE/WebSocket connection in the handler.
 
-
 use crate::social::NotificationSender;
 
 pub struct WebPushNotifier {

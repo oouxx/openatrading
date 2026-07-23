@@ -1068,7 +1068,7 @@ async fn api_chat_stream(
     let pi_messages_clone = pi_messages.clone();
     let user_message_clone = user_message.clone();
     tokio::spawn(async move {
-        let mut handle = match runtime
+        let handle = match runtime
             .create_session(
                 Some(&system_prompt_clone),
                 None,
@@ -1086,7 +1086,7 @@ async fn api_chat_stream(
         };
         let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
-        handle.send_messages(pi_messages_clone).await;
+        handle.send(&user_message).await;
         let _ = sid_tx.send(Ok(id));
     });
 
