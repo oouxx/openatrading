@@ -40,11 +40,9 @@ impl AppContext {
         let ext_registry = openatrading_extension::create_registry();
         registry.set_extension_tools(&ext_registry);
         let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
-        let cwd = std::env::current_dir()
-            .unwrap_or_default()
+        let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
             .to_string();
-        let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
         Self {
             runtime,
             api,

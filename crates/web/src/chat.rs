@@ -566,12 +566,7 @@ pub struct SessionMessage {
 pub async fn get_session_messages(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let path = std::path::Path::new(&cwd)
-        .join(".pi-rs/agent/sessions")
+    let path = pi_coding_agent::config::get_sessions_dir()
         .join(format!("{id}.jsonl"));
 
     let content = match std::fs::read_to_string(&path) {

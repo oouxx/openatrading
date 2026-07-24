@@ -15,6 +15,6 @@ use pi_extension_api::ExtensionRegistry;
 pub fn create_registry() -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
     registry.register(Box::new(trading::MarketDataExtension));
-    registry.register(Box::new(pi_extensions::goal::GoalExtension::new()));
+    // registry.register(Box::new(pi_extensions::goal::GoalExtension::new()));
     registry
 }
