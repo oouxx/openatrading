@@ -22,6 +22,7 @@ pub struct DiscordChannel {
 }
 
 impl DiscordChannel {
+    #[must_use] 
     pub fn new(bot_token: String, channel_id: String) -> Self {
         Self {
             bot_token,
@@ -55,7 +56,7 @@ impl DiscordChannel {
         let status = resp.status();
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("discord bot returned {}: {}", status, body);
+            anyhow::bail!("discord bot returned {status}: {body}");
         }
         Ok(())
     }
@@ -112,7 +113,7 @@ struct HelloData {
     heartbeat_interval: u64,
 }
 
-/// MESSAGE_CREATE 事件数据
+/// `MESSAGE_CREATE` 事件数据
 #[derive(Deserialize)]
 struct MessageCreateData {
     id: String,
@@ -131,6 +132,7 @@ struct MessageAuthor {
 }
 
 impl DiscordAdapter {
+    #[must_use] 
     pub fn new(bot_token: String) -> Self {
         Self {
             bot_token,
@@ -176,22 +178,16 @@ impl MessageAdapter for DiscordAdapter {
             let write = Arc::new(Mutex::new(write));
 
             // 2. 等待 Hello
-            let hello = match read.next().await {
-                Some(Ok(msg)) => msg,
-                _ => {
-                    tracing::error!("[discord-adapter] no hello, retry in 5s");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                },
+            let hello = if let Some(Ok(msg)) = read.next().await { msg } else {
+                tracing::error!("[discord-adapter] no hello, retry in 5s");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
             };
 
-            let data: serde_json::Value = match hello {
-                Message::Text(t) => serde_json::from_str(&t).unwrap_or_default(),
-                _ => {
-                    tracing::error!("[discord-adapter] unexpected hello message type");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                },
+            let data: serde_json::Value = if let Message::Text(t) = hello { serde_json::from_str(&t).unwrap_or_default() } else {
+                tracing::error!("[discord-adapter] unexpected hello message type");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
             };
 
             let hello_payload: GatewayPayload = serde_json::from_value(data)

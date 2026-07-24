@@ -16,6 +16,7 @@ watch-web:
 	cargo watch -x "run -p openatrading-cli -- gateway run"
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+	@echo $(PI_RS_HOME)
 	cargo run -p openatrading-cli -- gateway run
 run-frontend:
 	cd src && bun run dev

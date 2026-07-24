@@ -187,7 +187,7 @@ fn format_check_line(check: &dyn Check, result: &CheckResult) -> String {
     )
 }
 
-/// 打印报告头部（标题、版本、平台、AI_HOME）。
+/// `打印报告头部（标题、版本、平台、AI_HOME`）。
 ///
 /// 在文本模式下于检查开始前先打印，使用户能立即看到运行环境；检查结果随后
 /// 流式追加。
@@ -285,7 +285,7 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
         return;
     }
 
-    for (original_index, check, _result) in fixable.iter() {
+    for (original_index, check, _result) in &fixable {
         let fix_label = check.fix_label();
         let label = fix_label.as_deref().unwrap_or("执行修复");
 

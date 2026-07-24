@@ -1,10 +1,12 @@
 use chrono::{Datelike, FixedOffset, Utc};
 use md5;
 /// Get current datetime in Beijing timezone (UTC+8).
+#[must_use] 
 pub fn beijing_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
 }
 
+#[must_use] 
 pub fn now_ts() -> i64 {
     // 1. 北京时区（UTC+8）
     let beijing = FixedOffset::east_opt(8 * 3600).unwrap();
@@ -18,13 +20,15 @@ pub fn now_ts() -> i64 {
     now_bj.timestamp_millis()
 }
 
+#[must_use] 
 pub fn gen_jiuyan_token(timestamp_ms: i64) -> String {
     let secret = "REDACTED-JIUYAN-SECRET";
-    let input = format!("{}:{}", secret, timestamp_ms);
+    let input = format!("{secret}:{timestamp_ms}");
     // 3. MD5 计算
     let token = format!("{:x}", md5::compute(input));
     token
 }
+#[must_use] 
 pub fn html_to_markdown(html: &str) -> String {
     // Some Chinese sites use data-original for lazy-loaded images
     let html = regex::Regex::new(r#"data-original="([^"]*)""#)
@@ -34,12 +38,13 @@ pub fn html_to_markdown(html: &str) -> String {
         });
     html2text::from_read(html.as_bytes(), usize::MAX)
         .lines()
-        .map(|l| l.trim())
+        .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
+#[must_use] 
 pub fn last_n_trading_days(n: usize) -> Vec<String> {
     let mut dates = Vec::with_capacity(n);
     let mut current = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
@@ -79,7 +84,7 @@ pub fn to_yahoo_symbol(input: &str) -> Result<String> {
         match suffix_upper.as_str() {
             "SS" | "SZ" | "HK" | "TW" => {
                 let normalized_code = normalize_code(code)?;
-                return Ok(format!("{}.{}", normalized_code, suffix_upper));
+                return Ok(format!("{normalized_code}.{suffix_upper}"));
             },
             _ => {},
         }
@@ -118,14 +123,14 @@ fn parse_prefixed(input: &str) -> (Option<&str>, &str) {
 }
 
 fn normalize_code(raw: &str) -> Result<String> {
-    let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
+    let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
     if digits.is_empty() {
-        bail!("输入不含任何数字: {:?}", raw);
+        bail!("输入不含任何数字: {raw:?}");
     }
     if digits.len() > 6 {
-        bail!("代码位数超过6位: {}", digits);
+        bail!("代码位数超过6位: {digits}");
     }
-    Ok(format!("{:0>6}", digits))
+    Ok(format!("{digits:0>6}"))
 }
 
 /// 根据 A 股/场内基金代码推断所属交易所

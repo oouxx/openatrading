@@ -90,7 +90,7 @@ pub struct CronTomlConfig {
     pub news_schedule: String,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -172,7 +172,7 @@ impl AppConfig {
         let home = openatrading_core::atrading_home();
         openatrading_core::log::info!(?home, "Loading config from home");
 
-        let mut merged = AppConfig {
+        let mut merged = Self {
             default_role: None,
             roles: Vec::new(),
             mcp_servers: Vec::new(),
@@ -200,7 +200,7 @@ impl AppConfig {
         Ok(merged)
     }
 
-    fn load_from(config_path: &Path) -> Option<AppConfig> {
+    fn load_from(config_path: &Path) -> Option<Self> {
         let content = match std::fs::read_to_string(config_path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
@@ -217,7 +217,7 @@ impl AppConfig {
                 return None;
             },
         };
-        Some(AppConfig {
+        Some(Self {
             default_role: raw.default_role,
             roles: raw.roles,
             mcp_servers: raw.mcp_servers,
@@ -235,7 +235,7 @@ impl AppConfig {
         })
     }
 
-    fn merge(&mut self, other: AppConfig) {
+    fn merge(&mut self, other: Self) {
         if other.default_role.is_some() {
             self.default_role = other.default_role;
         }
@@ -306,7 +306,7 @@ impl AppConfig {
         fn default_url() -> String {
             "http://localhost:8081/mcp".to_string()
         }
-        fn default_enabled() -> bool {
+        const fn default_enabled() -> bool {
             true
         }
 
@@ -349,33 +349,39 @@ impl AppConfig {
         }
     }
 
+    #[must_use] 
     pub fn config_path() -> PathBuf {
         openatrading_core::atrading_home().join("config.toml")
     }
 
     /// Read LLM provider from config.
+    #[must_use] 
     pub fn llm_provider(&self) -> Option<&str> {
         self.llm.provider.as_deref()
     }
 
     /// Read LLM model from config.
+    #[must_use] 
     pub fn llm_model(&self) -> Option<&str> {
         self.llm.model.as_deref()
     }
 
     /// Read LLM provider from config.
+    #[must_use] 
     pub fn social_notify_channel(&self) -> Option<&str> {
         self.social.as_ref()?.notify_channel.as_deref()
     }
+    #[must_use] 
     pub fn social_telegram(&self) -> Option<&TelegramConfig> {
         self.social.as_ref()?.telegram.as_ref()
     }
+    #[must_use] 
     pub fn social_discord(&self) -> Option<&DiscordConfig> {
         self.social.as_ref()?.discord.as_ref()
     }
     /// Write one key under `section` to config.toml.
     /// `section` is a dotted path, e.g. "llm" or "social.telegram".
-    /// Uses toml_edit for round-trip preserving comments and section style.
+    /// Uses `toml_edit` for round-trip preserving comments and section style.
     pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
         let path = Self::config_path();
         let content = std::fs::read_to_string(&path).unwrap_or_default();

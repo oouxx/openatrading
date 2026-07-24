@@ -27,7 +27,7 @@ pub struct CronConfig {
     pub news_schedule: String,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 fn default_collection_schedule() -> String {
@@ -622,7 +622,7 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
                     .unwrap_or_default()
             })
             .unwrap_or_default();
-        let msg = format!("{} {} {}", level_tag, time_str, text);
+        let msg = format!("{level_tag} {time_str} {text}");
         if let Err(e) = social.notify_news(&msg).await {
             crate::log::warn!("[cron] news_push: send failed: {e}");
         }

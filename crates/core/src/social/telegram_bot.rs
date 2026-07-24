@@ -161,9 +161,7 @@ impl TelegramBot {
             if !body.ok {
                 let desc = body.description.as_deref().unwrap_or("unknown");
                 let code = body
-                    .error_code
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "-".into());
+                    .error_code.map_or_else(|| "-".into(), |c| c.to_string());
                 crate::log::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
                 if body.error_code == Some(409) {
                     crate::log::warn!(
@@ -205,19 +203,15 @@ impl TelegramBot {
                 let role_name = s.role_name.clone();
                 drop(session);
 
-                let role = match self.roles.iter().find(|r| r.name == role_name) {
-                    Some(r) => r,
-                    None => {
-                        let mut session = self.session.lock().await;
-                        *session = None;
-                        drop(session);
-                        self.send_message(&format!(
-                            "❌ 当前会话角色 *{}* 已不可用，请使用 /ask role\\_name question 开始新对话",
-                            role_name
-                        ))
-                        .await?;
-                        return Ok(());
-                    },
+                let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                    let mut session = self.session.lock().await;
+                    *session = None;
+                    drop(session);
+                    self.send_message(&format!(
+                        "❌ 当前会话角色 *{role_name}* 已不可用，请使用 /ask role\\_name question 开始新对话"
+                    ))
+                    .await?;
+                    return Ok(());
                 };
 
                 let msg_id = self
@@ -245,7 +239,7 @@ impl TelegramBot {
                     let old_role = session.as_ref().unwrap().role_name.clone();
                     *session = None;
                     drop(session);
-                    self.send_message(&format!("🗑 已清空与 *{}* 的对话历史，开始新会话", old_role))
+                    self.send_message(&format!("🗑 已清空与 *{old_role}* 的对话历史，开始新会话"))
                         .await?;
                 } else {
                     drop(session);
@@ -287,18 +281,15 @@ impl TelegramBot {
                     let role_name = parts[0];
                     let question = parts[1];
 
-                    let role = match self.roles.iter().find(|r| r.name == role_name) {
-                        Some(r) => r,
-                        None => {
-                            let available: Vec<String> =
-                                self.roles.iter().map(|r| r.name.clone()).collect();
-                            self.send_message(&format!(
-                                "❌ 未知角色: {role_name}\n可用角色: {}",
-                                available.join(", ")
-                            ))
-                            .await?;
-                            return Ok(());
-                        },
+                    let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                        let available: Vec<String> =
+                            self.roles.iter().map(|r| r.name.clone()).collect();
+                        self.send_message(&format!(
+                            "❌ 未知角色: {role_name}\n可用角色: {}",
+                            available.join(", ")
+                        ))
+                        .await?;
+                        return Ok(());
                     };
 
                     let mut session = self.session.lock().await;
@@ -326,16 +317,12 @@ impl TelegramBot {
                         let role_name = s.role_name.clone();
                         drop(session);
 
-                        let role = match self.roles.iter().find(|r| r.name == role_name) {
-                            Some(r) => r,
-                            None => {
-                                self.send_message(&format!(
-                                    "❌ 当前会话角色 *{}* 已不可用，请使用 /new 开始新对话",
-                                    role_name
-                                ))
-                                .await?;
-                                return Ok(());
-                            },
+                        let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                            self.send_message(&format!(
+                                "❌ 当前会话角色 *{role_name}* 已不可用，请使用 /new 开始新对话"
+                            ))
+                            .await?;
+                            return Ok(());
                         };
 
                         let msg_id = self
@@ -479,11 +466,11 @@ impl TelegramBot {
                 for msg in &s.history {
                     let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
                     let c = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                    user_msg.push_str(&format!("\n{}: {}", role, c));
+                    user_msg.push_str(&format!("\n{role}: {c}"));
                 }
             }
         }
-        user_msg.push_str(&format!("\n\nuser: {}", question));
+        user_msg.push_str(&format!("\n\nuser: {question}"));
 
         let system = crate::skills::SkillRegistry::build_role_prompt(role);
 
@@ -499,7 +486,7 @@ impl TelegramBot {
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));
 
         let prefix = format!("*{} 回复:*\n\n", role.display_name);
-        let display = format!("{}{}", prefix, accumulated);
+        let display = format!("{prefix}{accumulated}");
         self.edit_message(msg_id, &display).await?;
 
         {
@@ -546,7 +533,7 @@ impl TelegramBot {
             result: None,
         });
 
-        let msg_id = body.result.map(|r| r.message_id).unwrap_or(-1);
+        let msg_id = body.result.map_or(-1, |r| r.message_id);
         Ok(msg_id)
     }
 

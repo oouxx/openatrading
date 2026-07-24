@@ -15,6 +15,7 @@ pub struct TelegramChannel {
 }
 
 impl TelegramChannel {
+    #[must_use] 
     pub fn new(bot_token: String, chat_id: String) -> Self {
         Self {
             bot_token,
@@ -43,7 +44,7 @@ impl NotificationSender for TelegramChannel {
         let status = resp.status();
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("telegram sendMessage returned {}: {}", status, body);
+            anyhow::bail!("telegram sendMessage returned {status}: {body}");
         }
         Ok(())
     }
@@ -92,6 +93,7 @@ struct TgUser {
 }
 
 impl TelegramAdapter {
+    #[must_use] 
     pub fn new(bot_token: String, allowed_chat_id: String) -> Self {
         Self {
             bot_token,
@@ -101,7 +103,7 @@ impl TelegramAdapter {
         }
     }
 
-    /// 发送文本到指定 chat_id。
+    /// 发送文本到指定 `chat_id`。
     async fn send_text_to(&self, chat_id: &str, text: &str) -> Result<i64, AdapterError> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let stripped = text.replace(['*', '_'], "");
@@ -136,7 +138,7 @@ impl TelegramAdapter {
             .await
             .map_err(|e| AdapterError::SendFailed(format!("parse response: {e}")))?;
 
-        Ok(body.result.map(|r| r.message_id).unwrap_or(0))
+        Ok(body.result.map_or(0, |r| r.message_id))
     }
 }
 
@@ -155,7 +157,7 @@ impl MessageAdapter for TelegramAdapter {
         tracing::info!("[telegram-adapter] polling started");
 
         // 注册命令列表
-        let cmd_url = format!("https://api.telegram.org/bot{}/setMyCommands", bot_token);
+        let cmd_url = format!("https://api.telegram.org/bot{bot_token}/setMyCommands");
         let _ = self
             .client
             .post(&cmd_url)
@@ -179,8 +181,7 @@ impl MessageAdapter for TelegramAdapter {
             }
 
             let url = format!(
-                "https://api.telegram.org/bot{}/getUpdates?offset={}&timeout=30",
-                bot_token, offset
+                "https://api.telegram.org/bot{bot_token}/getUpdates?offset={offset}&timeout=30"
             );
 
             let resp = match client.get(&url).send().await {

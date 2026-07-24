@@ -23,6 +23,7 @@ pub struct PnlPoint {
 /// historical price snapshots are not stored.  The final point (appended when
 /// `current_positions_value > 0`) uses the live `current_price` from the
 /// positions table, so it reflects real mark-to-market.
+#[must_use] 
 pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64) -> Vec<PnlPoint> {
     let initial_capital: f64 = INITIAL_CAPITAL;
     if logs.is_empty() {

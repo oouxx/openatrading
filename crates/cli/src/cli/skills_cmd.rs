@@ -33,7 +33,7 @@ pub fn resolve_skill_source(name: &str, source: &str) -> Result<SkillEntry> {
     let path = std::path::Path::new(source);
     if path.exists() && path.is_file() {
         let raw = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("读取文件失败 {}: {e}", source))?;
+            .map_err(|e| anyhow::anyhow!("读取文件失败 {source}: {e}"))?;
         return SkillRegistry::parse_skill_from_md(&raw)
             .map(|mut s| {
                 s.name = name.to_string();

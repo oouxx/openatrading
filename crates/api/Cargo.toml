@@ -27,3 +27,7 @@ html2text = "0.12"
 encoding_rs = "0.8"
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
+
+
+[lints]
+workspace = true

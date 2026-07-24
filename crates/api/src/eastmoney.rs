@@ -119,7 +119,7 @@ pub enum StatsCycle {
 }
 
 impl StatsCycle {
-    fn as_code(&self) -> &'static str {
+    const fn as_code(&self) -> &'static str {
         match self {
             Self::OneMonth => "01",
             Self::ThreeMonths => "02",
@@ -159,6 +159,7 @@ pub struct StockSearchItem {
 }
 
 impl LhbClient {
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             client: Client::builder()
@@ -179,11 +180,11 @@ impl LhbClient {
     }
 
     fn f64_field(v: &serde_json::Value, key: &str) -> Option<f64> {
-        v.get(key).and_then(|x| x.as_f64())
+        v.get(key).and_then(serde_json::Value::as_f64)
     }
 
     fn str_field(v: &serde_json::Value, key: &str) -> Option<String> {
-        v.get(key).and_then(|x| x.as_str()).map(|s| s.to_string())
+        v.get(key).and_then(|x| x.as_str()).map(std::string::ToString::to_string)
     }
 
     async fn fetch_all_pages(
@@ -410,8 +411,8 @@ impl LhbClient {
                 dept_name: Self::str_field(v, "OPERATEDEPT_NAME").unwrap_or_default(),
                 dept_code: Self::str_field(v, "OPERATEDEPT_CODE").unwrap_or_default(),
                 onlist_date: Self::str_field(v, "ONLIST_DATE").unwrap_or_default(),
-                buy_stock_count: v.get("BUY_STOCK_COUNT").and_then(|x| x.as_i64()),
-                sell_stock_count: v.get("SELL_STOCK_COUNT").and_then(|x| x.as_i64()),
+                buy_stock_count: v.get("BUY_STOCK_COUNT").and_then(serde_json::Value::as_i64),
+                sell_stock_count: v.get("SELL_STOCK_COUNT").and_then(serde_json::Value::as_i64),
                 buy_total_amt: Self::f64_field(v, "BUY_AMT"),
                 sell_total_amt: Self::f64_field(v, "SELL_AMT"),
                 net_amt: Self::f64_field(v, "TOTAL_NETAMT"),
@@ -804,7 +805,7 @@ mod tests {
             d2_chg: detail.d2_chg,
             d5_chg: detail.d5_chg,
             d10_chg: detail.d10_chg,
-            buy_seats: seats.clone(),
+            buy_seats: seats,
             sell_seats: vec![],
         };
         assert_eq!(combined.code, "600519");

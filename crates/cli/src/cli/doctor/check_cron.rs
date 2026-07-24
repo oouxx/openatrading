@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use std::str::FromStr;
 
-use super::*;
+use super::{Result, Check, FixRisk, CheckContext, CheckResult, CheckStatus, FixResult, FixStatus};
 
 pub struct CronCheck;
 
 /// Validate a cron expression as 6-field format.
-/// The `cron` crate's Schedule::from_str parses both 6-field and 7-field;
+/// The `cron` crate's `Schedule::from_str` parses both 6-field and 7-field;
 /// we explicitly reject 7-field by counting tokens.
 fn validate_cron(expr: &str) -> Result<(), String> {
     let field_count = expr.split_whitespace().count();
@@ -49,9 +49,9 @@ impl Check for CronCheck {
 
                     for (name, expr) in &schedules {
                         match validate_cron(expr) {
-                            Ok(()) => details.push(format!("{}: {} ✓", name, expr)),
+                            Ok(()) => details.push(format!("{name}: {expr} ✓")),
                             Err(e) => {
-                                details.push(format!("{}: {} ✗ ({})", name, expr, e));
+                                details.push(format!("{name}: {expr} ✗ ({e})"));
                                 errors += 1;
                             },
                         }
@@ -66,7 +66,7 @@ impl Check for CronCheck {
                         }
                     } else {
                         CheckResult {
-                            status: CheckStatus::Error(format!("{} 个表达式无效", errors)),
+                            status: CheckStatus::Error(format!("{errors} 个表达式无效")),
                             summary: "定时任务调度表达式校验失败".into(),
                             details,
                             duration_ms: 0,

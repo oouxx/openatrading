@@ -27,9 +27,19 @@ chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 dotenvy = "0.15"
 async-trait = "0.1"
-pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.28" }
-pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.28" }
-pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.28" }
+pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.30" }
+pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.30" }
+pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.30" }
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "warn"       # 生产代码禁止裸 unwrap
+expect_used = "warn"
+todo = "warn"
+dbg_macro = "warn"
+
 [profile.dev]
 incremental = true
 opt-level = 0
@@ -42,5 +52,5 @@ panic = "abort"
 
 [profile.release-fast]
 inherits = "release"
-codegen-units = 8    # Parallel codegen for faster builds on powerful machines (16GB+ RAM recommended)
-                     # Use: cargo build --profile release-fast
+codegen-units = 8   
+                    

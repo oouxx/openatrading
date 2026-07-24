@@ -61,6 +61,7 @@ pub struct TelegramInfo {
 // }
 
 impl ClsClient {
+    #[must_use] 
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -86,13 +87,15 @@ impl ClsClient {
         last_time: Option<i64>,
         count: u32,
     ) -> Result<Vec<TelegramInfo>> {
-        let api_url = if !category.is_empty() {
-            format!("{}/v1/roll/get_roll_list", ROOT_URL)
+        let api_url = if category.is_empty() {
+            format!("{ROOT_URL}/api/cache")
         } else {
-            format!("{}/api/cache", ROOT_URL)
+            format!("{ROOT_URL}/v1/roll/get_roll_list")
         };
         let mut params = BTreeMap::new();
-        if !category.is_empty() {
+        if category.is_empty() {
+            params.insert("name".to_string(), "telegraph".to_string());
+        } else {
             params.insert("category".to_string(), category.to_string());
             params.insert("hasFirstVipArticle".to_string(), "1".to_string());
             params.insert("rn".to_string(), count.to_string());
@@ -100,11 +103,9 @@ impl ClsClient {
             if let Some(lt) = last_time {
                 params.insert("last_time".to_string(), lt.to_string());
             }
-        } else {
-            params.insert("name".to_string(), "telegraph".to_string());
         }
         let querystr = get_search_params(params);
-        let url = format!("{}?{}", api_url, querystr);
+        let url = format!("{api_url}?{querystr}");
         tracing::debug!(%url, "cls::telegraph GET");
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
@@ -189,13 +190,13 @@ fn get_search_params(more_params: BTreeMap<String, String>) -> String {
     sha1.update(query_string.as_bytes());
     let sha1_result = sha1.finalize();
 
-    let sha1_hex = format!("{:x}", sha1_result);
+    let sha1_hex = format!("{sha1_result:x}");
 
     // MD5(SHA1(...))
     let sign = format!("{:x}", md5::compute(sha1_hex));
 
     // 拼接 sign
-    let final_query = format!("{}&sign={}", query_string, sign);
+    let final_query = format!("{query_string}&sign={sign}");
 
     final_query
 }

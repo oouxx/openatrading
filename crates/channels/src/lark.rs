@@ -22,6 +22,7 @@ pub struct LarkChannel {
 }
 
 impl LarkChannel {
+    #[must_use] 
     pub fn new(app_id: String, app_secret: String, receive_id: String) -> Self {
         Self {
             app_id,
@@ -42,7 +43,7 @@ impl LarkChannel {
             }
         }
 
-        let url = format!("{}/auth/v3/tenant_access_token/internal", LARK_API_BASE);
+        let url = format!("{LARK_API_BASE}/auth/v3/tenant_access_token/internal");
         let resp = self
             .client
             .post(&url)
@@ -57,14 +58,14 @@ impl LarkChannel {
         let status = resp.status();
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("lark auth returned {}: {}", status, body);
+            anyhow::bail!("lark auth returned {status}: {body}");
         }
 
         let body: serde_json::Value = resp.json().await.unwrap_or_default();
         let code = body["code"].as_i64().unwrap_or(-1);
         if code != 0 {
             let msg = body["msg"].as_str().unwrap_or("unknown");
-            anyhow::bail!("lark auth error code {}: {}", code, msg);
+            anyhow::bail!("lark auth error code {code}: {msg}");
         }
 
         let token = body["tenant_access_token"]
@@ -93,12 +94,12 @@ impl LarkChannel {
     async fn send_chunk(&self, text: &str) -> Result<()> {
         let token = self.get_tenant_access_token().await?;
 
-        let url = format!("{}/im/v1/messages?receive_id_type=chat_id", LARK_API_BASE);
+        let url = format!("{LARK_API_BASE}/im/v1/messages?receive_id_type=chat_id");
         let content = serde_json::json!({ "text": text }).to_string();
         let resp = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", token))
+            .header("Authorization", format!("Bearer {token}"))
             .json(&serde_json::json!({
                 "receive_id": self.receive_id,
                 "msg_type": "text",
@@ -114,7 +115,7 @@ impl LarkChannel {
             if status.as_u16() == 401 {
                 self.invalidate_token().await;
             }
-            anyhow::bail!("lark bot returned {}: {}", status, body);
+            anyhow::bail!("lark bot returned {status}: {body}");
         }
 
         let body: serde_json::Value = resp.json().await.unwrap_or_default();
@@ -124,7 +125,7 @@ impl LarkChannel {
             if code == 99991663 {
                 self.invalidate_token().await;
             }
-            anyhow::bail!("lark bot api error code {}: {}", code, msg);
+            anyhow::bail!("lark bot api error code {code}: {msg}");
         }
         Ok(())
     }

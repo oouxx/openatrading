@@ -31,3 +31,6 @@ thiserror = "2"
 [dev-dependencies]
 http-body-util = "0.1"
 tower = "0.5"
+
+[lints]
+workspace = true

@@ -23,7 +23,7 @@ impl MemoryStore {
             CREATE INDEX IF NOT EXISTS idx_snapshots_date ON market_snapshots(captured_at);
             CREATE INDEX IF NOT EXISTS idx_snapshots_source ON market_snapshots(data_source);",
         )?;
-        Ok(MemoryStore {
+        Ok(Self {
             conn: Mutex::new(conn),
         })
     }
@@ -32,7 +32,7 @@ impl MemoryStore {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO market_snapshots (data_source, raw_json) VALUES (?1, ?2)",
             rusqlite::params![source, json],
@@ -47,7 +47,7 @@ impl MemoryStore {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
              WHERE captured_at >= datetime('now', 'localtime', ?1) ORDER BY captured_at DESC",
@@ -68,7 +68,7 @@ impl MemoryStore {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, captured_at, data_source, raw_json FROM market_snapshots \
              WHERE data_source = ?1 AND captured_at >= datetime('now', 'localtime', ?2) \
@@ -90,7 +90,7 @@ impl MemoryStore {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM market_snapshots WHERE captured_at < datetime('now', 'localtime', '-10 days')",
             [],

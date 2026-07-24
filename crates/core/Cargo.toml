@@ -44,3 +44,7 @@ web = []
 [dev-dependencies]
 toml = "0.8"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync"] }
+
+
+[lints]
+workspace = true

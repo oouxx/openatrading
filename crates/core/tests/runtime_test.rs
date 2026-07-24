@@ -7,44 +7,41 @@ use pi_coding_agent::pi_agent_core::agent::PromptInput;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;
 use pi_coding_agent::pi_ai_types::ContentBlock;
 
+/// Set up the test environment: set `PI_RS_HOME` to the project's .atrading directory
+/// and change cwd to the workspace root.
+fn setup_test_env() {
+    // Set PI_RS_HOME to point to .atrading directory
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let atrading_dir = workspace_root.join(".atrading");
+    std::env::set_var("PI_RS_HOME", atrading_dir.to_string_lossy().as_ref());
+    std::env::set_current_dir(workspace_root).ok();
+}
+
 #[tokio::test]
 async fn test_create_agent_session_with_extension() {
-    // let ext_registry = create_registry();
+    setup_test_env();
 
     let runtime = AgentRuntime::new();
     let agent_facade = runtime
         .create_session(None, None, Some(true), None, None)
         .await
         .expect("创建agent session 失败");
-    // Find and invoke the `create_goal` extension tool through the active tool list.
+    // Verify that the session has trading extension tools available.
     let agent_state = agent_facade.session.get_agent().state().await;
-    let create_goal = agent_state
-        .tools
-        .iter()
-        .find(|t| t.name == "create_goal")
-        .expect("create_goal tool should be active");
-    let params =
-        serde_json::json!({ "objective": "Write a test that exercises the goal extension" });
-    let result = (create_goal.execute)("call-create-goal-1".to_string(), params, None, None)
-        .await
-        .expect("create_goal execute failed");
-    let goal_text = result
-        .content
-        .iter()
-        .filter_map(|c| {
-            if let ContentBlock::Text { text, .. } = c {
-                Some(text.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    println!("[dbg] create_goal result: {}", goal_text);
+    let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
+    println!("[dbg] Available tools: {tool_names:?}");
+
+    // Verify that at least one trading tool is registered by the extension
+    assert!(
+        tool_names.contains(&"get_limit_up"),
+        "Expected trading extension tools to be available, got: {tool_names:?}"
+    );
 }
 
 #[tokio::test]
 async fn test_trading_tools_exec() {
+    setup_test_env();
     // Set cwd to workspace root so settings.json is found
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
@@ -91,7 +88,7 @@ async fn test_trading_tools_exec() {
                             } else {
                                 text.clone()
                             };
-                            println!("[dbg]     [{j}] Text: {}", display);
+                            println!("[dbg]     [{j}] Text: {display}");
                         },
                         ContentBlock::ToolCall {
                             id,
@@ -110,7 +107,7 @@ async fn test_trading_tools_exec() {
                             } else {
                                 thinking.clone()
                             };
-                            println!("[dbg]     [{j}] Thinking: {}", display);
+                            println!("[dbg]     [{j}] Thinking: {display}");
                         },
                         _ => {
                             println!("[dbg]     [{j}] Other: {block:?}");
@@ -151,6 +148,7 @@ async fn test_trading_tools_exec() {
 /// built-in `bash` tool. Requires `OPENROUTER_API_KEY` and network access.
 #[tokio::test]
 async fn test_bash_tool_exec() {
+    setup_test_env();
     let runtime = AgentRuntime::new();
     let agent_facade = runtime
         .create_session(None, None, Some(true), None, None)
@@ -358,20 +356,20 @@ async fn debug_settings_path() {
         .unwrap()
         .to_string_lossy()
         .to_string();
-    println!("[dbg] cwd: {:?}", cwd);
+    println!("[dbg] cwd: {cwd:?}");
     println!("[dbg] agent_dir: {:?}", config::get_agent_dir());
 
     // Check the project settings path
     let project_path = std::path::PathBuf::from(&cwd)
         .join(config::CONFIG_DIR_NAME)
         .join("settings.json");
-    println!("[dbg] project settings path: {:?}", project_path);
+    println!("[dbg] project settings path: {project_path:?}");
     println!("[dbg] exists: {}", project_path.exists());
 
     // Read the file directly
     if project_path.exists() {
         let content = std::fs::read_to_string(&project_path).unwrap();
-        println!("[dbg] file content: {}", content);
+        println!("[dbg] file content: {content}");
 
         // Try to deserialize
         let settings: Result<pi_coding_agent::core::settings_manager::Settings, _> =
@@ -381,7 +379,7 @@ async fn debug_settings_path() {
                 "[dbg] deserialized: provider={:?}, model={:?}",
                 s.default_provider, s.default_model
             ),
-            Err(e) => println!("[dbg] deserialize error: {}", e),
+            Err(e) => println!("[dbg] deserialize error: {e}"),
         }
     }
 

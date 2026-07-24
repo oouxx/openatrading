@@ -3,7 +3,7 @@ use std::process::Command;
 
 const DL_SERVER: &str = "https://trading.example.com";
 
-fn asset_name() -> Option<&'static str> {
+const fn asset_name() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         return Some("openatrading-x86_64-unknown-linux-gnu");

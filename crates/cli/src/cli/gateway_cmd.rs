@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::ffi::OsString;
 use std::sync::Arc;
 
-use service_manager::*;
+use service_manager::{ServiceManager, ServiceLabel, ServiceInstallCtx, RestartPolicy, ServiceStopCtx, ServiceUninstallCtx, ServiceStartCtx, ServiceStatusCtx, ServiceStatus};
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use openatrading_core::channels::adapter::{launch_adapters, MessageAdapter};
@@ -33,7 +33,7 @@ pub fn cmd_gateway_install() -> Result<()> {
     let m = manager()?;
 
     m.install(ServiceInstallCtx {
-        label: label.clone(),
+        label,
         program,
         args: vec![OsString::from("gateway"), OsString::from("run")],
         contents: None,
@@ -197,7 +197,7 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
                     roles.push(RoleEntry {
                         name: entry.name.clone(),
                         display_name,
-                        strategy: body.to_string(),
+                        strategy: body.clone(),
                         readonly: entry.readonly,
                     });
                 }

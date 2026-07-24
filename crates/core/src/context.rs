@@ -11,7 +11,7 @@ use crate::trade::sqlite::TradeManager;
 #[derive(Clone)]
 pub struct AppContext {
     /// Unified runtime for all LLM operations (streaming agent sessions).
-    /// Arc'd because AgentRuntime is shared across concurrent sessions
+    /// Arc'd because `AgentRuntime` is shared across concurrent sessions
     pub runtime: Arc<AgentRuntime>,
     pub api: ApiClient,
     pub tool_registry: Arc<ArcSwap<ToolRegistry>>,

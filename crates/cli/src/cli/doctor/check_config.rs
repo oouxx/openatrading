@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
 
 pub struct ConfigCheck;
 
@@ -29,7 +29,7 @@ impl Check for ConfigCheck {
                 let mcp_count = cfg.mcp_servers.len();
                 CheckResult {
                     status: CheckStatus::Ok,
-                    summary: format!("{} 个角色, {} 个 MCP 服务", roles_count, mcp_count),
+                    summary: format!("{roles_count} 个角色, {mcp_count} 个 MCP 服务"),
                     details: vec![],
                     duration_ms: 0,
                 }

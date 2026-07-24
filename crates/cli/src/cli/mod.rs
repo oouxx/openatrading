@@ -90,18 +90,18 @@ pub async fn run() -> Result<()> {
     }
 
     // Handle `chat` subcommand — temporarily disabled (TUI under refactor)
-    if let Some(Commands::Chat) = cli.command {
+    if matches!(cli.command, Some(Commands::Chat)) {
         tracing::info!("chat subcommand is disabled during refactoring");
         return Ok(());
     }
 
     // Handle `init` subcommand
-    if let Some(Commands::Init) = cli.command {
+    if matches!(cli.command, Some(Commands::Init)) {
         return cmd_init();
     }
 
     // Handle `uninstall` subcommand
-    if let Some(Commands::Uninstall) = cli.command {
+    if matches!(cli.command, Some(Commands::Uninstall)) {
         return cmd_uninstall();
     }
 

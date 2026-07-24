@@ -1,4 +1,4 @@
-//! Data types for DesktopState, sessions, and frontend events.
+//! Data types for `DesktopState`, sessions, and frontend events.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
