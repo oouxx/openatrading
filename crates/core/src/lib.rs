@@ -22,6 +22,7 @@ use std::path::PathBuf;
 ///
 /// When enabled: daily full-position requirement, every decision must produce
 /// buy/sell/hold instructions (no "wait and see").
+#[must_use] 
 pub fn is_aggressive_mode() -> bool {
     std::env::var("OPENATRADING_AGGRESSIVE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -33,6 +34,7 @@ pub fn is_aggressive_mode() -> bool {
 /// Priority:
 /// 1. `$OPENATRADING_HOME` — replaces the home base entirely
 /// 2. `$HOME` / `$USERPROFILE` — standard user home directory
+#[must_use] 
 pub fn atrading_home() -> PathBuf {
     if let Ok(base) = std::env::var("OPENATRADING_HOME") {
         PathBuf::from(base).join(".atrading")
@@ -59,6 +61,7 @@ use crate::skills::Skill;
 
 impl RoleEntry {
     /// Convert this role into a pi-rs `Skill` for use with skill formatters.
+    #[must_use] 
     pub fn to_skill(&self) -> Skill {
         Skill {
             name: self.name.clone(),

@@ -43,7 +43,7 @@ pub struct StdoutChannel;
 #[async_trait]
 impl NotificationSender for StdoutChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
-        println!("{}", text);
+        println!("{text}");
         println!("{}", "─".repeat(40));
         Ok(())
     }

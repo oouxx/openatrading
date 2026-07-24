@@ -105,7 +105,7 @@ fn parse_sina_response(text: &str, codes: &[&str]) -> Result<Vec<AuctionQuote>> 
         };
 
         quotes.push(AuctionQuote {
-            code: code.to_string(),
+            code: (*code).to_string(),
             name: fields[0].to_string(),
             prev_close,
             current_price,

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
-use super::*;
+use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
 use openatrading_core::llm::{McpClient, McpTransportConfig};
 
 /// Network timeout for a single MCP server connect handshake.
@@ -66,7 +66,7 @@ impl Check for McpCheck {
             };
 
             if !server.enabled {
-                details.push(format!("{} ⤚ 跳过（已禁用）", label));
+                details.push(format!("{label} ⤚ 跳过（已禁用）"));
                 continue;
             }
 
@@ -116,8 +116,7 @@ impl Check for McpCheck {
                                 Err(e) => format!(", call failed: {e}"),
                             };
                             details.push(format!(
-                                "{} {}  ✓ ({} tools, {} tool call{})",
-                                label, transport_desc, tool_count, call_icon, call_note
+                                "{label} {transport_desc}  ✓ ({tool_count} tools, {call_icon} tool call{call_note})"
                             ));
                             if call_outcome.is_err() {
                                 failures += 1;
@@ -125,19 +124,18 @@ impl Check for McpCheck {
                         },
                         Err(e) => {
                             details.push(format!(
-                                "{} {}  ✗ (verify failed: {})",
-                                label, transport_desc, e
+                                "{label} {transport_desc}  ✗ (verify failed: {e})"
                             ));
                             failures += 1;
                         },
                     }
                 },
                 Ok(Err(e)) => {
-                    details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
+                    details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
                 },
                 Err(e) => {
-                    details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
+                    details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
                 },
             }

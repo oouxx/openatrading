@@ -50,7 +50,7 @@ pub async fn execute_buy(
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let (_, commission) = broker.buy_cost(exec_price, shares);
-    let total_deduct = exec_price * shares as f64 + commission;
+    let total_deduct = exec_price.mul_add(shares as f64, commission);
 
     let today = crate::utils::time::beijing_now()
         .format("%Y-%m-%d")

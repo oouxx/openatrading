@@ -270,7 +270,8 @@ pub enum ApiField {
 }
 
 impl ApiField {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::RiseCount => "rise_count",
             Self::FallCount => "fall_count",
@@ -310,10 +311,11 @@ impl ApiField {
     }
 
     /// 将多个字段拼接为逗号分隔的字符串（即 `fields=...` 参数值）。
+    #[must_use] 
     pub fn join(fields: &[Self]) -> String {
         fields
             .iter()
-            .map(|f| f.as_str())
+            .map(Self::as_str)
             .collect::<Vec<_>>()
             .join(",")
     }
@@ -338,10 +340,12 @@ impl Default for XuanguBaoClient {
 }
 
 impl XuanguBaoClient {
+    #[must_use] 
     pub fn new() -> Self {
         Self::with_base_url(BASE_URL.to_string())
     }
 
+    #[must_use] 
     pub fn with_base_url(base_url: String) -> Self {
         let client = Self::build_client();
         Self { client, base_url }
@@ -457,6 +461,7 @@ impl XuanguBaoClient {
 
     /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
+    #[must_use] 
     pub fn last_n_trading_days(n: usize) -> Vec<String> {
         let mut dates = Vec::with_capacity(n);
         let mut current = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
@@ -607,7 +612,7 @@ impl XuanguBaoClient {
                     .iter()
                     .position(|f| f == name)
                     .and_then(|i| arr.get(i))
-                    .and_then(|v| v.as_f64())
+                    .and_then(serde_json::Value::as_f64)
                     .unwrap_or(0.0)
             };
             let get_str = |name: &str| -> String {
@@ -646,7 +651,7 @@ impl XuanguBaoClient {
         Ok(resp.data)
     }
 
-    /// fetch_plate_abnormal with String count — for LLM tool use
+    /// `fetch_plate_abnormal` with String count — for LLM tool use
     pub async fn fetch_plate_abnormal_str(&self, count: &str) -> Result<serde_json::Value> {
         let n: i32 = count.parse().unwrap_or(30);
         let data = self.fetch_plate_abnormal(n).await?;
@@ -654,7 +659,7 @@ impl XuanguBaoClient {
     }
 
     /// Cursor-paginate to fetch ALL events for the latest trading day (09:30–15:00).
-    /// Returns events sorted by event_timestamp ascending.
+    /// Returns events sorted by `event_timestamp` ascending.
     pub async fn fetch_events_page(
         &self,
         timestamp: i64,
@@ -697,7 +702,7 @@ impl XuanguBaoClient {
             }
             // The API returns events before `cursor`, newest first
             // The last event in the page is the earliest
-            let earliest_in_page = page.last().map(|e| e.event_timestamp).unwrap_or(cursor);
+            let earliest_in_page = page.last().map_or(cursor, |e| e.event_timestamp);
             let keep: Vec<_> = page
                 .into_iter()
                 .filter(|e| e.event_timestamp >= day_open_ts)
@@ -716,8 +721,7 @@ impl XuanguBaoClient {
             e.plate_abnormal_event_data
                 .as_ref()
                 .and_then(|d| d.pcp)
-                .map(|pcp| pcp.abs() > min_pcp)
-                .unwrap_or(false)
+                .is_some_and(|pcp| pcp.abs() > min_pcp)
         });
 
         tracing::debug!(
@@ -729,18 +733,19 @@ impl XuanguBaoClient {
 
     /// Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     /// If today's market hasn't closed yet, returns the previous trading day's close.
+    #[must_use] 
     pub fn latest_trading_day_close_ts() -> i64 {
         let days = Self::last_n_trading_days(2);
         let now_beijing = chrono::Utc::now().with_timezone(&beijing_tz());
         let today_str = now_beijing.format("%Y-%m-%d").to_string();
 
         // If today is a trading day and it's before 15:00, use yesterday's close
-        let date_str = if days.first().map(|s| s.as_str()) == Some(&today_str)
+        let date_str = if days.first().map(std::string::String::as_str) == Some(&today_str)
             && now_beijing.time() < chrono::NaiveTime::from_hms_opt(15, 0, 0).unwrap()
         {
-            days.get(1).map(|s| s.as_str()).unwrap_or("2026-01-01")
+            days.get(1).map_or("2026-01-01", std::string::String::as_str)
         } else {
-            days.first().map(|s| s.as_str()).unwrap_or("2026-01-01")
+            days.first().map_or("2026-01-01", std::string::String::as_str)
         };
 
         let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
@@ -839,7 +844,7 @@ impl XuanguBaoClient {
             .collect();
 
         Ok(KlineData {
-            symbol: symbol.to_string(),
+            symbol: symbol.clone(),
             period: period.as_str().to_string(),
             candles,
         })
@@ -858,7 +863,7 @@ impl XuanguBaoClient {
             .map(|s| to_yahoo_symbol(s))
             .collect::<Result<Vec<_>>>()?;
 
-        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
+        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(std::string::String::as_str).collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
             &ApiField::join(&[
@@ -990,7 +995,7 @@ impl XuanguBaoClient {
         let get_f64 = |name: &str| -> Option<f64> {
             field_pos(name)
                 .and_then(|i| arr.get(i))
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
         };
         let get_str = |name: &str| -> Option<&str> {
             field_pos(name)
@@ -1000,11 +1005,11 @@ impl XuanguBaoClient {
         let get_i64 = |name: &str| -> Option<i64> {
             field_pos(name)
                 .and_then(|i| arr.get(i))
-                .and_then(|v| v.as_i64())
+                .and_then(serde_json::Value::as_i64)
         };
 
         Ok(RealtimeQuote {
-            symbol: symbol.to_string(),
+            symbol: symbol.clone(),
             name: get_str("prod_name").unwrap_or("").to_string(),
             trade_status: get_str("trade_status")
                 .context("missing trade_status in realtime response")?
@@ -1045,7 +1050,7 @@ impl XuanguBaoClient {
             .map(|s| to_yahoo_symbol(s))
             .collect::<Result<Vec<_>>>()?;
 
-        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(|s| s.as_str()).collect();
+        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(std::string::String::as_str).collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
             &ApiField::join(&[
@@ -1095,7 +1100,7 @@ impl XuanguBaoClient {
         let get_f64 = |arr: &[serde_json::Value], name: &str| -> Option<f64> {
             field_pos(name)
                 .and_then(|i| arr.get(i))
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
         };
         let get_str_for_arr = |arr: &[serde_json::Value], name: &str| -> Option<String> {
             let idx = fields.iter().position(|f| f == name)?;
@@ -1104,7 +1109,7 @@ impl XuanguBaoClient {
         let get_i64 = |arr: &[serde_json::Value], name: &str| -> Option<i64> {
             field_pos(name)
                 .and_then(|i| arr.get(i))
-                .and_then(|v| v.as_i64())
+                .and_then(serde_json::Value::as_i64)
         };
 
         let snapshots = &resp["data"]["snapshot"];
@@ -1195,21 +1200,23 @@ pub enum KlinePeriod {
 }
 
 impl KlinePeriod {
-    pub fn as_seconds(&self) -> u32 {
+    #[must_use] 
+    pub const fn as_seconds(&self) -> u32 {
         match self {
-            KlinePeriod::Minute => 60,
-            KlinePeriod::Day => 86400,
-            KlinePeriod::Week => 604800,
-            KlinePeriod::Month => 2592000,
+            Self::Minute => 60,
+            Self::Day => 86400,
+            Self::Week => 604800,
+            Self::Month => 2592000,
         }
     }
 
-    pub fn as_str(&self) -> &str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &str {
         match self {
-            KlinePeriod::Minute => "minute",
-            KlinePeriod::Day => "day",
-            KlinePeriod::Week => "week",
-            KlinePeriod::Month => "month",
+            Self::Minute => "minute",
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
         }
     }
 }
@@ -1245,49 +1252,49 @@ pub struct KlineData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RealtimeQuote {
     pub symbol: String,
-    /// 0: prod_name
+    /// 0: `prod_name`
     pub name: String,
-    /// 3: last_px
+    /// 3: `last_px`
     pub last_px: f64,
-    /// 4: px_change
+    /// 4: `px_change`
     pub px_change: f64,
-    /// 5: px_change_rate
+    /// 5: `px_change_rate`
     pub px_change_rate: f64,
-    /// 7: open_px
+    /// 7: `open_px`
     pub open_px: f64,
-    /// 8: high_px
+    /// 8: `high_px`
     pub high_px: f64,
-    /// 9: low_px
+    /// 9: `low_px`
     pub low_px: f64,
-    /// 6: preclose_px
+    /// 6: `preclose_px`
     pub preclose_px: f64,
     /// 10: amplitude
     pub amplitude: f64,
-    /// 11: turnover_ratio
+    /// 11: `turnover_ratio`
     pub turnover_ratio: f64,
-    /// 17: turnover_volume
+    /// 17: `turnover_volume`
     pub turnover_volume: f64,
-    /// 18: turnover_value
+    /// 18: `turnover_value`
     pub turnover_value: f64,
-    /// 15: market_value
+    /// 15: `market_value`
     pub market_value: f64,
-    /// 16: circulation_value
+    /// 16: `circulation_value`
     pub circulation_value: f64,
-    /// 12: pe_rate
+    /// 12: `pe_rate`
     pub pe_rate: f64,
-    /// 13: dyn_pe
+    /// 13: `dyn_pe`
     pub dyn_pe: f64,
-    /// 14: dyn_pb_rate
+    /// 14: `dyn_pb_rate`
     pub dyn_pb_rate: f64,
-    /// 19: volume_ratio
+    /// 19: `volume_ratio`
     pub volume_ratio: f64,
-    /// 20: circulation_shares
+    /// 20: `circulation_shares`
     pub circulation_shares: f64,
-    /// 21: total_shares
+    /// 21: `total_shares`
     pub total_shares: f64,
-    /// 1: trade_status
+    /// 1: `trade_status`
     pub trade_status: String,
-    /// 2: update_time
+    /// 2: `update_time`
     pub update_time: i64,
 }
 
@@ -1312,7 +1319,7 @@ pub struct PlateAndReason {
 
 // ─── 行情回放 ────────────────────────────────────────────
 
-/// Lightweight event for the replay frontend — strips unused PlateAbnormalEvent fields.
+/// Lightweight event for the replay frontend — strips unused `PlateAbnormalEvent` fields.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReplayEvent {
     pub id: i64,
@@ -1334,7 +1341,7 @@ impl From<&PlateOrStockAbnormalEvent> for ReplayEvent {
             .as_ref()
             .map(|p| (p.plate_name.clone(), p.pcp, p.related_stocks.clone()))
             .unwrap_or_default();
-        ReplayEvent {
+        Self {
             id: ev.id,
             event_type: ev.event_type,
             event_timestamp: ev.event_timestamp,
@@ -1383,6 +1390,7 @@ struct PlateAccumulator {
 
 /// Slice events into 5‑minute buckets across 09:30–15:00, computing
 /// cumulative emotion scores and top plates per bucket.
+#[must_use] 
 pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeSnapshot> {
     if events.is_empty() {
         return vec![];
@@ -1443,7 +1451,7 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
         bear_acc += bucket_bear;
 
         let emotion = if bull_acc + bear_acc > 0 {
-            bull_acc as f64 / (bull_acc + bear_acc) as f64 * 100.0
+            f64::from(bull_acc) / f64::from(bull_acc + bear_acc) * 100.0
         } else {
             50.0
         };
@@ -1485,6 +1493,7 @@ fn unix_to_hhmm(ts: i64) -> String {
 }
 
 /// Assemble the text prompt for AI analysis from snapshot data.
+#[must_use] 
 pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
     let mut table = String::from("时间       情绪温度  多/空  主线板块\n");
 
@@ -1501,9 +1510,9 @@ pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
     }
 
     format!(
-        r#"你是一位经验丰富的A股短线交易复盘专家。请根据以下{date}行情回放数据，对全天行情进行结构化分析。
+        r"你是一位经验丰富的A股短线交易复盘专家。请根据以下{date}行情回放数据，对全天行情进行结构化分析。
 
-{content}
+{table}
 
 请从以下维度输出分析报告（Markdown格式）：
 1. **全天情绪节奏**：情绪高点/低点出现时间，整体多空趋势
@@ -1512,9 +1521,7 @@ pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
 4. **板块轮动特征**：资金从哪个板块流向哪个板块
 5. **复盘结论**：当日适合什么策略，哪类股票机会更大，有什么风险需要注意
 
-要求：分析具体、有数据支撑，避免泛泛而谈。"#,
-        date = date,
-        content = table,
+要求：分析具体、有数据支撑，避免泛泛而谈。",
     )
 }
 
@@ -1624,7 +1631,7 @@ impl XuanguBaoClient {
         let next_tail = resp["TailMark"]
             .as_str()
             .and_then(|s| s.parse::<i64>().ok());
-        let next_msg = resp["TailMsgId"].as_str().map(|s| s.to_string());
+        let next_msg = resp["TailMsgId"].as_str().map(std::string::ToString::to_string);
         tracing::debug!(
             ?tailmark,
             count = result.len(),

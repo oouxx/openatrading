@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::{time::Duration, todo};
 
-use super::*;
+use super::{Check, FixRisk, CheckContext, CheckResult, Result, FixResult, FixStatus};
 
 /// Network timeout for a single LLM probe request.
 ///

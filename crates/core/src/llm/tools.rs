@@ -43,7 +43,7 @@ pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> 
         Arc::new(move |_id, args, _signal, _progress| {
             let memory = memory.clone();
             Box::pin(async move {
-                let days: u32 = args.get("days").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                let days: u32 = args.get("days").and_then(serde_json::Value::as_u64).unwrap_or(5) as u32;
                 let ctx = memory
                     .get_historical_context(days)
                     .unwrap_or_else(|_| "暂无历史数据".to_string());
@@ -91,7 +91,7 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
     let execute: ToolExecuteFn = Arc::new(move |_id, args, _signal| {
         let memory = memory.clone();
         Box::pin(async move {
-            let days: u32 = args.get("days").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+            let days: u32 = args.get("days").and_then(serde_json::Value::as_u64).unwrap_or(5) as u32;
             let ctx = memory
                 .get_historical_context(days)
                 .unwrap_or_else(|_| "暂无历史数据".to_string());
@@ -125,6 +125,7 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 ///
 /// Each extension tool's `execute` callback is wrapped to translate between
 /// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent result).
+#[must_use] 
 pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
@@ -190,7 +191,8 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {
             _mcp_handle: None,
             mcp: Vec::new(),
@@ -213,16 +215,19 @@ impl ToolRegistry {
         self._mcp_handle = handle;
     }
 
+    #[must_use] 
     pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
         &self.mcp
     }
 
     /// Extension-provided tools (market data, decision, etc.).
+    #[must_use] 
     pub fn extension_tools(&self) -> &[Arc<DynTool>] {
         &self.extension
     }
 
     /// All tools (MCP + extension).
+    #[must_use] 
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.mcp
             .iter()

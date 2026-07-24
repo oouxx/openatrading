@@ -62,7 +62,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     }
 
     out.push_str("---\n\n*文档由 `openatrading tools doc` 自动生成*\n");
-    print!("{}", out);
+    print!("{out}");
     Ok(())
 }
 
@@ -96,7 +96,7 @@ fn format_params(schema: &serde_json::Value) -> String {
                 .get("type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("string");
-            format!("`{}` ({}, {}, {})", name, ptype, req, desc)
+            format!("`{name}` ({ptype}, {req}, {desc})")
         })
         .collect::<Vec<_>>()
         .join("<br>")

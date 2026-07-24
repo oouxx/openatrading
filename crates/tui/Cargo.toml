@@ -20,3 +20,7 @@ futures = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
 dotenvy = { workspace = true }
+
+
+[lints]
+workspace = true

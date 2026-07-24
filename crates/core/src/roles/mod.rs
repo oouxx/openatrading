@@ -15,11 +15,13 @@ pub mod pnl;
 pub mod prompt;
 
 /// Path to the skills directory (`{atrading_home}/skills/`).
+#[must_use] 
 pub fn default_skills_dir() -> PathBuf {
     crate::atrading_home().join("skills")
 }
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.
+#[must_use] 
 pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     match crate::utils::parse_yaml_frontmatter(content) {
         Some((matter, body)) => {
@@ -30,7 +32,8 @@ pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     }
 }
 
-/// Load all SKILL.md entries from `~/.atrading/skills/` as RoleEntry.
+/// Load all SKILL.md entries from `~/.atrading/skills/` as `RoleEntry`.
+#[must_use] 
 pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
     let dir = default_skills_dir();
     let mut roles = Vec::new();
@@ -67,7 +70,7 @@ pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
         roles.push(crate::RoleEntry {
             name,
             display_name,
-            strategy: body.to_string(),
+            strategy: body.clone(),
             readonly: false,
         });
     }
@@ -89,7 +92,7 @@ pub fn save_role_strategy(name: &str, strategy: &str) -> Result<()> {
     fs::create_dir_all(&dir).with_context(|| format!("创建目录失败: {}", dir.display()))?;
     let content = format!("---\nname: {name}\ndescription: {name}\n---\n\n{strategy}");
     fs::write(dir.join("SKILL.md"), &content)
-        .with_context(|| format!("写入策略失败: {}/SKILL.md", name))?;
+        .with_context(|| format!("写入策略失败: {name}/SKILL.md"))?;
     Ok(())
 }
 

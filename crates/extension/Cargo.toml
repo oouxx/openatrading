@@ -12,3 +12,7 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 tracing = "0.1"
 openatrading-api = { path = "../api" }
+
+
+[lints]
+workspace = true

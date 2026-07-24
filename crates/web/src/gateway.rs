@@ -32,7 +32,7 @@ impl Gateway {
         }
         let memory = Arc::new(MemoryStore::open(db_path)?);
         let trade = Arc::new(TradeManager::open(db_path)?);
-        Ok(Gateway { memory, trade })
+        Ok(Self { memory, trade })
     }
 
     pub async fn start(self, config: GatewayConfig, ctx: AppContext) -> Result<()> {

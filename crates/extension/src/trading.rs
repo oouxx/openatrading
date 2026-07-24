@@ -27,7 +27,8 @@ use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
 pub struct MarketDataExtension;
 
 impl MarketDataExtension {
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self
     }
 
@@ -114,7 +115,7 @@ impl MarketDataExtension {
                 };
                 let count = params
                     .get("count")
-                    .and_then(|v| v.as_u64())
+                    .and_then(serde_json::Value::as_u64)
                     .unwrap_or(100)
                     .min(500) as u32;
                 call(|| async move {
@@ -140,12 +141,12 @@ impl MarketDataExtension {
                 let category_id = str_arg(&params, "category_id");
                 let article_type = params
                     .get("article_type")
-                    .and_then(|v| v.as_i64())
+                    .and_then(serde_json::Value::as_i64)
                     .unwrap_or(0) as i32;
-                let page = params.get("page").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+                let page = params.get("page").and_then(serde_json::Value::as_i64).unwrap_or(1) as i32;
                 let page_size = params
                     .get("page_size")
-                    .and_then(|v| v.as_i64())
+                    .and_then(serde_json::Value::as_i64)
                     .unwrap_or(20)
                     .min(50) as i32;
                 let query = CommunityQuery {
@@ -163,7 +164,7 @@ impl MarketDataExtension {
                 let codes_str = str_arg(&params, "codes");
                 let codes: Vec<&str> = codes_str
                     .split(',')
-                    .map(|s| s.trim())
+                    .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .collect();
                 if codes.is_empty() {
@@ -242,7 +243,7 @@ impl Default for MarketDataExtension {
 
 #[async_trait]
 impl HookHandler for MarketDataExtension {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "openatrading-market"
     }
 

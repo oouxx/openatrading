@@ -28,12 +28,9 @@ pub async fn run_adapter_handler(
             Platform::Whatsapp => "whatsapp",
         };
 
-        let adapter = match adapter_map.get(platform_name) {
-            Some(a) => a,
-            None => {
-                crate::log::warn!("[adapter-handler] no adapter for {platform_name}");
-                continue;
-            },
+        let adapter = if let Some(a) = adapter_map.get(platform_name) { a } else {
+            crate::log::warn!("[adapter-handler] no adapter for {platform_name}");
+            continue;
         };
 
         let text = event.text.trim().to_string();
@@ -70,7 +67,7 @@ pub async fn run_adapter_handler(
                             "可用角色:\n{}",
                             names
                                 .iter()
-                                .map(|n| format!("- {}", n))
+                                .map(|n| format!("- {n}"))
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         );
@@ -123,30 +120,24 @@ async fn handle_ask(
     roles: &[RoleEntry],
     ctx: &AppContext,
 ) {
-    let (role_name, question) = match args.split_once(' ') {
-        Some((r, q)) => (r, q),
-        None => {
-            adapter
-                .reply(event, "用法: /ask role_name 你的问题")
-                .await
-                .ok();
-            return;
-        },
+    let (role_name, question) = if let Some((r, q)) = args.split_once(' ') { (r, q) } else {
+        adapter
+            .reply(event, "用法: /ask role_name 你的问题")
+            .await
+            .ok();
+        return;
     };
 
-    let role = match roles.iter().find(|r| r.name == role_name) {
-        Some(r) => r,
-        None => {
-            let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
-            adapter
-                .reply(
-                    event,
-                    &format!("未找到角色 '{role_name}'，可用角色: {}", names.join(", ")),
-                )
-                .await
-                .ok();
-            return;
-        },
+    let role = if let Some(r) = roles.iter().find(|r| r.name == role_name) { r } else {
+        let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
+        adapter
+            .reply(
+                event,
+                &format!("未找到角色 '{role_name}'，可用角色: {}", names.join(", ")),
+            )
+            .await
+            .ok();
+        return;
     };
 
     let _ = adapter

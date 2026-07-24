@@ -74,6 +74,7 @@ pub struct TgbClient {
 }
 
 impl TgbClient {
+    #[must_use] 
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -85,6 +86,7 @@ impl TgbClient {
         }
     }
 
+    #[must_use] 
     pub fn with_cookie(cookie: String) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -105,7 +107,7 @@ impl Default for TgbClient {
 
 impl TgbClient {
     pub async fn fetch_user_posts(&self, user_id: &str) -> Result<(Vec<TgbPost>, String)> {
-        let url = format!("{}/blog/{}", BASE_URL, user_id);
+        let url = format!("{BASE_URL}/blog/{user_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -160,13 +162,13 @@ impl TgbClient {
 
                 Some(TgbPost {
                     id: id.to_string(),
-                    title: title.to_string(),
+                    title,
                     content: String::new(),
                     create_time: time,
                     view_count: views,
                     reply_count: replies,
                     like_count: 0,
-                    link: format!("{}/a/{}", BASE_URL, id),
+                    link: format!("{BASE_URL}/a/{id}"),
                 })
             })
             .collect();
@@ -175,7 +177,7 @@ impl TgbClient {
     }
 
     pub async fn fetch_post_content(&self, post_id: &str) -> Result<(String, String)> {
-        let url = format!("{}/a/{}", BASE_URL, post_id);
+        let url = format!("{BASE_URL}/a/{post_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -199,7 +201,7 @@ impl TgbClient {
     }
 
     async fn fetch_mobile_post_content(&self, post_id: &str) -> Result<(String, String)> {
-        let url = format!("{}/a/{}", MOBILE_URL, post_id);
+        let url = format!("{MOBILE_URL}/a/{post_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -312,8 +314,7 @@ impl TgbClient {
             } else {
                 fallback_time
                     .replace("发布于", "")
-                    .replace(" ", "")
-                    .replace("\n", "")
+                    .replace([' ', '\n'], "")
                     .trim()
                     .to_string()
             }
@@ -330,8 +331,7 @@ impl TgbClient {
             page: i32,
         ) -> Result<Vec<TgbRecommendItem>> {
             let url = format!(
-                "https://www.tgb.cn/newIndex/getNowRecommend?pageNo={}",
-                page
+                "https://www.tgb.cn/newIndex/getNowRecommend?pageNo={page}"
             );
             let mut request = client.get(&url);
             if let Some(ref c) = cookie {
@@ -468,13 +468,13 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
     fs::write(user_dir.join("index.md"), &index)?;
 
     let user_md = format!(
-        r#"# 用户信息
+        r"# 用户信息
 
 - UserID: {}
 - 用户名: {}
 - 帖子数: {}
 
->"#,
+>",
         user_id,
         username,
         posts.len(),

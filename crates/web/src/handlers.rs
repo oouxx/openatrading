@@ -84,7 +84,7 @@ pub async fn get_overview(
                 StatusCode::SERVICE_UNAVAILABLE
             })?;
 
-            let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+            let ratio = f64::from(overview.rise_count) / f64::from(overview.fall_count.max(1));
             let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
                 "高"
             } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
@@ -140,7 +140,7 @@ pub async fn get_sentiment_history(
             for date in &trading_days {
                 match client.fetch_market_overview_for_date(date).await {
                     Ok(Some(d)) => {
-                        let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
+                        let rise_ratio = f64::from(d.rise_count) / f64::from(d.fall_count.max(1));
                         days.push(SentimentHistoryDay {
                             date: d.date,
                             sentiment: (d.market_temperature * 10.0).round() / 10.0,
@@ -211,7 +211,7 @@ pub struct PlateAbnormalQuery {
     #[serde(default = "default_plate_count")]
     count: i32,
 }
-fn default_plate_count() -> i32 {
+const fn default_plate_count() -> i32 {
     30
 }
 
@@ -254,7 +254,7 @@ pub async fn get_field_items(
             .format("%Y-%m-%d")
             .to_string()
     });
-    let cache_key = format!("field_items_{}", date);
+    let cache_key = format!("field_items_{date}");
     cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
@@ -276,7 +276,7 @@ pub async fn get_timeline(
     let month = openatrading_core::utils::time::beijing_now()
         .format("%Y-%m")
         .to_string();
-    let cache_key = format!("timeline_{}", month);
+    let cache_key = format!("timeline_{month}");
     cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
         let client = ApiClient::new();
         let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
@@ -350,8 +350,8 @@ pub async fn get_kline_stream(
             };
 
             tokio::select! {
-                _ = tx.closed() => break,
-                _ = tokio::time::sleep(delay) => {},
+                () = tx.closed() => break,
+                () = tokio::time::sleep(delay) => {},
             }
 
             if is_trading {
@@ -397,7 +397,7 @@ pub struct KlineQuery {
 fn default_kline_period() -> String {
     "day".into()
 }
-fn default_kline_count() -> u32 {
+const fn default_kline_count() -> u32 {
     256
 }
 
@@ -432,7 +432,7 @@ pub async fn get_realtime(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("realtime_{}", symbol);
+    let cache_key = format!("realtime_{symbol}");
     cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
@@ -496,8 +496,8 @@ pub async fn get_realtime_stream(
             };
 
             tokio::select! {
-                _ = tx.closed() => break,
-                _ = tokio::time::sleep(delay) => {},
+                () = tx.closed() => break,
+                () = tokio::time::sleep(delay) => {},
             }
 
             if is_trading {
@@ -641,7 +641,7 @@ pub async fn get_telegraph(
     State(state): State<Arc<AppState>>,
     Path(category): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("telegraph_{}", category);
+    let cache_key = format!("telegraph_{category}");
     cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
@@ -691,7 +691,7 @@ pub async fn get_market_trend(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("market_trend_{}", symbol);
+    let cache_key = format!("market_trend_{symbol}");
     cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
@@ -716,7 +716,7 @@ pub async fn get_plates_by_any_stock(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("plates_{}", symbol);
+    let cache_key = format!("plates_{symbol}");
     cache::get_or_fetch_json(
         &state.cache,
         &cache_key,
@@ -1116,10 +1116,10 @@ pub struct DragonTigerDetailQuery {
     pub page_size: usize,
 }
 
-fn default_page() -> usize {
+const fn default_page() -> usize {
     1
 }
-fn default_page_size() -> usize {
+const fn default_page_size() -> usize {
     20
 }
 
@@ -1252,8 +1252,7 @@ pub async fn search_stocks(
 ) -> impl IntoResponse {
     let q = params
         .get("q")
-        .map(|s| s.as_str())
-        .unwrap_or("")
+        .map_or("", std::string::String::as_str)
         .trim()
         .to_string();
     if q.is_empty() {

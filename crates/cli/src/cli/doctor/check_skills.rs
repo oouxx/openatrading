@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
 
 pub struct SkillsCheck;
 

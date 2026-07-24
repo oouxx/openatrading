@@ -18,7 +18,7 @@ pub struct Credentials {
 
 // ─── action/field 响应结构 ────────────────────────────────────
 
-/// 异动详情（action_info 字段）
+/// `异动详情（action_info` 字段）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionInfo {
     /// 异动时间，如 "09:35:38"，可能为 null
@@ -222,7 +222,7 @@ impl Default for JiuYanSession {
 
 impl JiuYanSession {
     pub async fn fetch_article_detail(&self, article_id: &str) -> Result<Option<String>> {
-        let url = format!("https://www.jiuyangongshe.com/a/{}", article_id);
+        let url = format!("https://www.jiuyangongshe.com/a/{article_id}");
 
         let html = self
             .client
@@ -309,6 +309,7 @@ impl JiuYanSession {
 
         Ok(None)
     }
+    #[must_use] 
     pub fn new() -> Self {
         let builder = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36");
@@ -429,20 +430,17 @@ impl JiuYanSession {
             }
         }
 
-        let session_token = match resp["data"]["sessionToken"].as_str() {
-            Some(s) => s.to_string(),
-            None => {
-                self.inner
-                    .write()
-                    .await
-                    .refreshing
-                    .store(false, Ordering::SeqCst);
-                anyhow::bail!("登录成功但未返回 sessionToken");
-            },
+        let session_token = if let Some(s) = resp["data"]["sessionToken"].as_str() { s.to_string() } else {
+            self.inner
+                .write()
+                .await
+                .refreshing
+                .store(false, Ordering::SeqCst);
+            anyhow::bail!("登录成功但未返回 sessionToken");
         };
 
         // 将 sessionToken 写入 Cookie 格式
-        let cookie = format!("SESSION={}", session_token);
+        let cookie = format!("SESSION={session_token}");
 
         let creds = Credentials {
             token: session_token.clone(),
@@ -490,7 +488,7 @@ impl JiuYanSession {
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
-        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
+        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {json_str}"))
     }
 
     /// 发起 POST 请求，MD5 签名 + Session Cookie 认证
@@ -516,7 +514,7 @@ impl JiuYanSession {
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
-        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
+        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {json_str}"))
     }
 
     /// 获取韭研公社异动数据（action/field 接口）
@@ -550,7 +548,7 @@ impl JiuYanSession {
         Ok(data)
     }
 
-    /// fetch_field with String pc — for LLM tool use
+    /// `fetch_field` with String pc — for LLM tool use
     pub async fn fetch_field_str(&self, date: &str, pc: &str) -> Result<FieldData> {
         let n: u32 = pc.parse().unwrap_or(1);
         self.fetch_field(date, n).await

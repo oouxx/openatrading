@@ -61,6 +61,7 @@ pub struct ChatConfigInput<'a> {
 /// `command_type`/`command_name` take precedence; if absent, a present
 /// `skill_name` routes to the `Skill` command. The `Skill` branch applies the
 /// skill's `allowed_tools` filter (the Tauri copy previously skipped this).
+#[must_use] 
 pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
     let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
@@ -78,8 +79,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .roles
                 .iter()
                 .find(|r| r.name == input.role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
+                .map_or(default_strategy, |r| r.strategy.as_str());
             let sp = crate::chat::build_system_prompt(strategy_text);
             let filtered: Vec<Arc<DynTool>> = all_tools
                 .iter()
@@ -95,8 +95,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .iter()
                 .find(|s| s.name == effective_command_name);
             let prompt = skill
-                .map(|s| s.content.as_str())
-                .unwrap_or(default_strategy);
+                .map_or(default_strategy, |s| s.content.as_str());
             let allowed = skill
                 .and_then(|s| s.allowed_tools.as_ref())
                 .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
@@ -116,8 +115,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .roles
                 .iter()
                 .find(|r| r.name == input.role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
+                .map_or(default_strategy, |r| r.strategy.as_str());
             (crate::chat::build_system_prompt(strategy_text), all_tools)
         },
     };
@@ -138,6 +136,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
 ///
 /// Single source of truth — previously duplicated in `chat.rs` and
 /// `src-tauri/src/main.rs`.
+#[must_use] 
 pub fn extract_tool_result_text(result: &serde_json::Value) -> String {
     let content = match result.get("content") {
         Some(serde_json::Value::Array(items)) => items,

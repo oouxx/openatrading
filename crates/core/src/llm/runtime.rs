@@ -27,6 +27,7 @@ impl Default for AgentRuntime {
 }
 
 impl AgentRuntime {
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -72,7 +73,7 @@ impl AgentRuntime {
             persist_session: persist.unwrap_or(true),
             session_manager: Some(session_mgr),
             settings_manager: Some(settings_mgr),
-            session_dir: Some(session_dir.to_string()),
+            session_dir: Some(session_dir.clone()),
             ..Default::default()
         })
         .await
@@ -91,7 +92,7 @@ impl AgentRuntime {
         self.sessions
             .lock()
             .await
-            .insert(facade.get_session_id().to_string(), facade.clone());
+            .insert(facade.get_session_id(), facade.clone());
 
         Ok(facade)
     }
