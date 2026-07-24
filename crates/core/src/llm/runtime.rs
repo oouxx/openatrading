@@ -47,7 +47,9 @@ impl AgentRuntime {
             .to_string_lossy()
             .to_string();
 
-        let session_dir = format!("{cwd}/.pi-rs/agent/sessions");
+        let session_dir = pi_coding_agent::config::get_sessions_dir()
+            .to_string_lossy()
+            .to_string();
 
         let session_mgr = pi_coding_agent::core::session_manager::SessionManager::new(
             &cwd,

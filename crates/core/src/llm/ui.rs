@@ -4,13 +4,12 @@ use super::types::{DesktopState, GlobalModelSettings};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-fn agent_dir() -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    Some(PathBuf::from(&home).join(".pi-rs").join("agent"))
+fn agent_dir() -> PathBuf {
+    pi_coding_agent::config::get_agent_dir()
 }
 
 fn get_state_path() -> Option<PathBuf> {
-    let dir = agent_dir()?;
+    let dir = agent_dir();
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("ui-state.json"))
 }

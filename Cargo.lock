@@ -3137,6 +3137,7 @@ dependencies = [
  "openatrading-cli",
  "openatrading-core",
  "openatrading-web",
+ "pi-coding-agent",
  "serde",
  "serde_json",
  "tauri",
@@ -3397,8 +3398,8 @@ dependencies = [
 
 [[package]]
 name = "pi-agent-core"
-version = "1.79.25"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.26#1f87ed64506f37bafe3f20d1adb50d5a5113a211"
+version = "1.79.27"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.27#57631819b5adfd4bcb330d6485c71aaf7a7bb20b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3420,8 +3421,8 @@ dependencies = [
 
 [[package]]
 name = "pi-ai"
-version = "1.79.25"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.26#1f87ed64506f37bafe3f20d1adb50d5a5113a211"
+version = "1.79.27"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.27#57631819b5adfd4bcb330d6485c71aaf7a7bb20b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3437,8 +3438,8 @@ dependencies = [
 
 [[package]]
 name = "pi-coding-agent"
-version = "1.79.25"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.26#1f87ed64506f37bafe3f20d1adb50d5a5113a211"
+version = "1.79.27"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.27#57631819b5adfd4bcb330d6485c71aaf7a7bb20b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3464,8 +3465,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extension-api"
-version = "1.79.25"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.26#1f87ed64506f37bafe3f20d1adb50d5a5113a211"
+version = "1.79.27"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.27#57631819b5adfd4bcb330d6485c71aaf7a7bb20b"
 dependencies = [
  "async-trait",
  "futures",
@@ -3476,8 +3477,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extensions"
-version = "1.79.25"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.26#1f87ed64506f37bafe3f20d1adb50d5a5113a211"
+version = "1.79.27"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.27#57631819b5adfd4bcb330d6485c71aaf7a7bb20b"
 dependencies = [
  "async-trait",
  "pi-extension-api",

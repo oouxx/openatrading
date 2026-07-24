@@ -237,11 +237,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             Ok(serde_json::json!(commands))
         },
         "/api/ai/sessions" => {
-            let cwd = std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let dir = std::path::Path::new(&cwd).join(".pi-rs/agent/sessions");
+            let dir = pi_coding_agent::config::get_sessions_dir();
             let mut sessions: Vec<serde_json::Value> = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
@@ -595,12 +591,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             }
             if let Some(rest) = path.strip_prefix("/api/ai/sessions/") {
                 if let Some(msg_id) = rest.strip_suffix("/messages") {
-                    let cwd = std::env::current_dir()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
-                    let fpath = std::path::Path::new(&cwd)
-                        .join(".pi-rs/agent/sessions")
+                    let fpath = pi_coding_agent::config::get_sessions_dir()
                         .join(format!("{msg_id}.jsonl"));
                     if !fpath.exists() {
                         return Err("session not found".to_string());
@@ -836,13 +827,7 @@ async fn dispatch_post(
                     _ => Err(format!("unknown roles action: {action}")),
                 }
             } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
-                // DELETE /api/ai/sessions/:id
-                let cwd = std::env::current_dir()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                let fpath = std::path::Path::new(&cwd)
-                    .join(".pi-rs/agent/sessions")
+                let fpath = pi_coding_agent::config::get_sessions_dir()
                     .join(format!("{sid}.jsonl"));
                 if fpath.exists() {
                     std::fs::remove_file(&fpath).map_err(|e| format!("{e}"))?;
