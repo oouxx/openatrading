@@ -565,13 +565,26 @@ async fn handle_session(
 
     // If there is a pending message from create_session, send it now that
     // event subscribers are in place (prevents losing early events).
+    //
+    // The send MUST run in a background task. `AgentFacade::send` awaits
+    // `add_user_text` → `agent.process()` → the full agent turn, which only
+    // completes once the assistant finishes. If we awaited it inline here, the
+    // event-forwarding loop below would not run until the turn ended, so:
+    //   - text deltas (delta_tx, try_send, cap 64) would overflow and be
+    //     silently dropped, and
+    //   - durable events (durable_tx, send().await, cap 256) would eventually
+    //     deadlock the listener since nothing drains the channel.
+    // Spawning lets the loop drain both channels concurrently with the agent.
     if let Some(msg) = pending_message {
         state
             .running_sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(session_id.clone());
-        agent_facade.send(&msg).await;
+        let facade = agent_facade.clone();
+        tokio::spawn(async move {
+            facade.send(&msg).await;
+        });
     }
 
     log::info!("ws: session {session_id} connected (last_seq={last_seq:?})");
@@ -616,7 +629,14 @@ async fn handle_session(
                                 }
                                 // Mark session as running (§7.4)
                                 state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone());
-                                agent_facade.send(&text).await;
+                                // Spawn the turn so this select! loop keeps
+                                // forwarding events concurrently (see the
+                                // pending_message comment above for why we
+                                // cannot await send() inline).
+                                let facade = agent_facade.clone();
+                                tokio::spawn(async move {
+                                    facade.send(&text).await;
+                                });
                             }
                             Ok(ClientCommand::Interrupt) => {
                                 agent_facade.session.abort().await;
