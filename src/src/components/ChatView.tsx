@@ -19,32 +19,21 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { agentStream, fetchJson } from "@/stores/data"
+import { fetchJson } from "@/stores/data"
 import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
-
-interface DisplayMessage {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  reasoning?: string
-  toolCalls?: {
-    name: string
-    id: string
-    args?: string
-    result?: string
-    partialResult?: string
-    status?: "streaming" | "running" | "success" | "error"
-  }[]
-  toolResults?: {
-    name: string
-    result: string
-    isError?: boolean
-  }[]
-  isError?: boolean
-}
+import {
+  createTransport,
+  type AgentTransport,
+} from "@/agents/transport"
+import { applyEvent, historyToTurns } from "@/agents/reducer"
+import type {
+  HistoryMessage,
+  TranscriptBlock,
+  TranscriptTurn,
+} from "@/agents/types"
 
 interface SlashCommand {
   name: string
@@ -58,8 +47,8 @@ interface AiCopilotProps {
   onReload?: () => void
 }
 
-let msgSeq = 0
-const newMsgId = () => `msg-${++msgSeq}`
+let turnSeq = 0
+const newTurnId = () => `turn-${++turnSeq}`
 
 export default function AiCopilot({
   activeThreadId,
@@ -70,29 +59,21 @@ export default function AiCopilot({
   const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
-  const [threadMessages, setThreadMessages] = useState<Map<string, DisplayMessage[]>>(new Map())
-  const [compactionStatus, setCompactionStatus] = useState<"idle" | "compacting" | "done" | "error">("idle")
-  const [compactionReason, setCompactionReason] = useState<string>("")
-  const [compactionError, setCompactionError] = useState<string | null>(null)
-  const [retryStatus, setRetryStatus] = useState<"idle" | "will-retry" | "retrying" | "done" | "error">("idle")
-  const [retryAttempt, setRetryAttempt] = useState<number>(0)
-  const [retryMaxAttempts, setRetryMaxAttempts] = useState<number>(0)
-  const [retryDelayMs, setRetryDelayMs] = useState<number>(0)
-  const [retryError, setRetryError] = useState<string | null>(null)
+  // Per-thread transcript turns — the single source of truth for rendering.
+  const [threadTurns, setThreadTurns] = useState<Map<string, TranscriptTurn[]>>(new Map())
   const streamThreadRef = useRef<string | null>(null)
+  const transportRef = useRef<AgentTransport | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
   const openTab = useStockTabStore((s) => s.openTab)
   const closeTab = useStockTabStore((s) => s.closeTab)
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
 
-  // Per-thread message store — persists across thread switches
-  const threadMessagesRef = useRef<Map<string, DisplayMessage[]>>(threadMessages)
-
-  // Keep ref in sync with state (avoids accessing ref during render)
+  // Keep a ref mirror so async transport callbacks read the latest turns.
+  const threadTurnsRef = useRef<Map<string, TranscriptTurn[]>>(threadTurns)
   useEffect(() => {
-    threadMessagesRef.current = threadMessages
-  }, [threadMessages])
+    threadTurnsRef.current = threadTurns
+  }, [threadTurns])
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("")
@@ -103,7 +84,7 @@ export default function AiCopilot({
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const msgContainerRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const prevInputRef = useRef("")
 
   const scrollDown = useCallback(() => {
@@ -120,26 +101,28 @@ export default function AiCopilot({
       .catch(() => {})
   }, [])
 
-  // Messages from previous turns are stored in pi-coding-agent's JSONL session file.
-  // Load messages from session JSONL when switching to an existing session
+  // Tear down the live transport when the active thread changes or on unmount.
+  useEffect(() => {
+    return () => {
+      transportRef.current?.dispose()
+      transportRef.current = null
+    }
+  }, [])
+
+  // Load persisted history when switching to an existing session (§7.3:
+  // history is loaded via REST, the live transport only carries events after
+  // connect).
   useEffect(() => {
     if (activeThreadId === null) return
-    if (threadMessagesRef.current.has(activeThreadId)) {
+    if (threadTurnsRef.current.has(activeThreadId)) {
       scrollDown()
       return
     }
-    fetchJson<{ role: string; content: string }[]>(`/api/ai/sessions/${activeThreadId}/messages`)
+    fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
       .then((msgs) => {
         if (!msgs || msgs.length === 0) return
-        threadMessagesRef.current.set(
-          activeThreadId,
-          msgs.map((m) => ({
-            id: newMsgId(),
-            role: m.role === "user" ? "user" : "assistant",
-            content: m.content,
-          }))
-        )
-        setThreadMessages(new Map(threadMessagesRef.current))
+        threadTurnsRef.current.set(activeThreadId, historyToTurns(msgs))
+        setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
       })
       .catch(() => {})
@@ -191,8 +174,8 @@ export default function AiCopilot({
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  const currentMessages = activeThreadId !== null ? (threadMessages.get(activeThreadId) ?? []) : []
-  const isEmpty = currentMessages.length === 0
+  const currentTurns = activeThreadId !== null ? (threadTurns.get(activeThreadId) ?? []) : []
+  const isEmpty = currentTurns.length === 0
   const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab)
 
   let bodyContent: ReactNode | null = null
@@ -222,7 +205,8 @@ export default function AiCopilot({
       setShowSlash(false)
       setInput("")
 
-      // For new threads, create a session first via the sessions API
+      // For new threads, create a session first via the sessions API; the
+      // session name is the user's first message (§12 title auto-generation).
       let sessionId = activeThreadId
       if (!sessionId) {
         try {
@@ -233,218 +217,95 @@ export default function AiCopilot({
           sessionId = result.id
           onActiveThreadChange(sessionId)
         } catch (e) {
-          setStreaming(false)
           const key = `_new_${Date.now()}`
-          const msgs = threadMessagesRef.current.get(key) ?? []
-          msgs.push({ id: newMsgId(), role: "assistant", content: `[错误] 创建会话失败: ${e}` })
-          threadMessagesRef.current.set(key, msgs)
-          setThreadMessages(new Map(threadMessagesRef.current))
+          threadTurnsRef.current.set(key, [
+            {
+              id: newTurnId(),
+              role: "assistant",
+              status: "complete",
+              isError: true,
+              blocks: [
+                {
+                  type: "text",
+                  id: `blk-err-${Date.now()}`,
+                  content: `[错误] 创建会话失败: ${e}`,
+                  streaming: false,
+                },
+              ],
+            },
+          ])
+          setThreadTurns(new Map(threadTurnsRef.current))
           return
         }
       }
 
-      const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
-      const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
-
-      const existing = threadMessagesRef.current.get(sessionId) ?? []
-      threadMessagesRef.current.set(sessionId, [...existing, userMsg, aiMsg])
-      setThreadMessages(new Map(threadMessagesRef.current))
+      const sid = sessionId
+      // Append the user turn; the agent's first assistant turn is created by
+      // the reducer when turn_start arrives.
+      const userTurn: TranscriptTurn = {
+        id: newTurnId(),
+        role: "user",
+        status: "complete",
+        blocks: [{ type: "text", id: `blk-u-${Date.now()}`, content: text, streaming: false }],
+      }
+      const existing = threadTurnsRef.current.get(sid) ?? []
+      threadTurnsRef.current.set(sid, [...existing, userTurn])
+      setThreadTurns(new Map(threadTurnsRef.current))
       scrollDown()
 
       setStreaming(true)
-      streamThreadRef.current = sessionId
+      streamThreadRef.current = sid
+
+      // Build the live transport for this session (§4). Dispose any previous
+      // transport — only one live session is streamed at a time.
+      transportRef.current?.dispose()
+      const transport = createTransport(sid)
+      transportRef.current = transport
+
+      transport.onEvent((event) => {
+        const prev = threadTurnsRef.current.get(sid) ?? []
+        const { turns, terminal } = applyEvent(prev, event)
+        threadTurnsRef.current.set(sid, turns)
+        setThreadTurns(new Map(threadTurnsRef.current))
+        if (terminal) {
+          setStreaming(false)
+          streamThreadRef.current = null
+          transportRef.current?.dispose()
+          transportRef.current = null
+          onReload?.()
+        }
+      })
 
       try {
-        await agentStream(
-          {
-            message: text,
-            session_id: sessionId,
-          },
-          {
-            onText: (data) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, content: last.content + data }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-                if (activeThreadId === sessionId) scrollDown()
-              }
-            },
-            onReasoning: (data) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-              }
-            },
-            onToolCall: (tool) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                const calls = last.toolCalls ?? []
-                msgs[msgs.length - 1] = {
-                  ...last,
-                  toolCalls: [
-                    ...calls,
-                    { name: tool.name, id: tool.id, args: tool.args, status: "streaming" },
-                  ],
-                }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-              }
-            },
-            onToolDelta: (delta) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                const calls = last.toolCalls ?? []
-                const idx = calls.findIndex((tc) => tc.id === delta.id)
-                if (idx !== -1) {
-                  calls[idx] = {
-                    ...calls[idx],
-                    args: (calls[idx].args ?? "") + delta.args,
-                    status: "streaming",
-                  }
-                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(sessionId, msgs)
-                  setThreadMessages(new Map(threadMessagesRef.current))
-                }
-              }
-            },
-            onToolResult: (result) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                const calls = last.toolCalls ?? []
-                const idx = calls.findIndex((tc) => tc.id === result.id)
-                if (idx !== -1) {
-                  calls[idx] = { ...calls[idx], result: result.result, status: "success" }
-                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(sessionId, msgs)
-                  setThreadMessages(new Map(threadMessagesRef.current))
-                }
-              }
-            },
-            onToolExecUpdate: (update) => {
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                const calls = last.toolCalls ?? []
-                const idx = calls.findIndex((tc) => tc.id === update.id)
-                if (idx !== -1) {
-                  calls[idx] = {
-                    ...calls[idx],
-                    partialResult: update.partial_result,
-                    status: "running",
-                  }
-                  msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(sessionId, msgs)
-                  setThreadMessages(new Map(threadMessagesRef.current))
-                }
-              }
-            },
-            onTurnStart: () => {
-              // Always start a new assistant message for the next turn
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const newMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
-              msgs.push(newMsg)
-              threadMessagesRef.current.set(sessionId, msgs)
-              setThreadMessages(new Map(threadMessagesRef.current))
-              scrollDown()
-            },
-            onTurnEnd: (data) => {
-              // Store tool results as structured data on the current message
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant" && data.tool_results.length > 0) {
-                const results = data.tool_results.map((r) => ({
-                  name: "工具结果",
-                  result: r,
-                  isError: false,
-                }))
-                msgs[msgs.length - 1] = {
-                  ...last,
-                  toolResults: [...(last.toolResults ?? []), ...results],
-                }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-                scrollDown()
-              }
-            },
-            onRetry: () => {
-              // Finalize current message as error and prepare for retry
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, isError: true }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-              }
-              setRetryStatus("will-retry")
-            },
-            onCompactionStart: (reason) => {
-              setCompactionStatus("compacting")
-              setCompactionReason(reason)
-              setCompactionError(null)
-            },
-            onCompactionEnd: (data) => {
-              setCompactionStatus(data.error ? "error" : "done")
-              setCompactionError(data.error)
-              if (data.willRetry) {
-                setRetryStatus("will-retry")
-              }
-            },
-            onRetryStart: (data) => {
-              setRetryStatus("retrying")
-              setRetryAttempt(data.attempt)
-              setRetryMaxAttempts(data.maxAttempts)
-              setRetryDelayMs(data.delayMs)
-              setRetryError(data.error)
-            },
-            onRetryEnd: (data) => {
-              setRetryStatus(data.success ? "done" : "error")
-              setRetryError(data.finalError)
-            },
-            onSettled: () => {
-              setCompactionStatus("idle")
-              setRetryStatus("idle")
-            },
-            onDone: () => {
-              setStreaming(false)
-              setCompactionStatus("idle")
-              setRetryStatus("idle")
-              onReload?.()
-            },
-            onError: (err) => {
-              setStreaming(false)
-              const msgs = threadMessagesRef.current.get(sessionId) ?? []
-              const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` }
-                threadMessagesRef.current.set(sessionId, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-              }
-            },
-          }
-        )
+        await transport.ready()
+        await transport.sendPrompt(text)
       } catch (e: unknown) {
         setStreaming(false)
-        const msgs = threadMessagesRef.current.get(sessionId) ?? []
-        const last = msgs[msgs.length - 1]
-        if (last && last.role === "assistant") {
-          msgs[msgs.length - 1] = {
-            ...last,
-            content: `[错误] ${(e as Error).message || "网络请求失败"}`,
-          }
-          threadMessagesRef.current.set(sessionId, msgs)
-          setThreadMessages(new Map(threadMessagesRef.current))
-        }
+        streamThreadRef.current = null
+        transportRef.current?.dispose()
+        transportRef.current = null
+        const prev = threadTurnsRef.current.get(sid) ?? []
+        threadTurnsRef.current.set(sid, [
+          ...prev,
+          {
+            id: newTurnId(),
+            role: "assistant",
+            status: "complete",
+            isError: true,
+            blocks: [
+              {
+                type: "text",
+                id: `blk-err-${Date.now()}`,
+                content: `[错误] ${(e as Error).message || "网络请求失败"}`,
+                streaming: false,
+              },
+            ],
+          },
+        ])
+        setThreadTurns(new Map(threadTurnsRef.current))
       }
     },
-    [activeThreadId, input, streaming, threadMessages, onActiveThreadChange, onReload, scrollDown]
+    [activeThreadId, input, streaming, onActiveThreadChange, onReload, scrollDown]
   )
 
   const onInputKeyDown = useCallback(
@@ -560,74 +421,35 @@ export default function AiCopilot({
                 </div>
               </div>
             ) : (
-              currentMessages.map((msg, idx) => {
-                const isLastAi = msg.role === "assistant" && idx === currentMessages.length - 1
+              currentTurns.map((turn, idx) => {
+                const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
                 return (
                   <div
-                    key={msg.id}
-                    className={`flex w-full gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                    key={turn.id}
+                    className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <span
                       className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        msg.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
+                        turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
                       }`}
                     >
-                      {msg.role === "user" ? "U" : "AI"}
+                      {turn.role === "user" ? "U" : "AI"}
                     </span>
                     <div
                       className={`min-w-0 flex-1 text-sm leading-relaxed ${
-                        msg.role === "user" ? "flex items-center justify-end" : "text-white/90"
+                        turn.role === "user" ? "flex items-center justify-end" : "text-white/90"
                       }`}
                     >
-                      {msg.role === "assistant" ? (
-                        <>
-                          {msg.isError && (
-                            <div className="border-red-500/30 bg-red-500/5 mb-2 flex items-center gap-2 rounded-lg border px-3 py-2">
-                              <div className="flex size-5 items-center justify-center rounded-full bg-red-500/20">
-                                <span className="text-[10px] font-bold text-red-500">!</span>
-                              </div>
-                              <span className="text-ink-muted text-[11px]">
-                                此消息因错误已自动重试
-                              </span>
-                            </div>
-                          )}
-                          <ThinkingBlock
-                            content={msg.reasoning ?? ""}
-                            isStreaming={streaming && isLastAi}
-                          />
-                          <ToolCallBlock
-                            toolCalls={(msg.toolCalls ?? []).map((tc) => ({
-                              id: tc.id,
-                              name: tc.name,
-                              args: tc.args,
-                              result: tc.result,
-                              partialResult: tc.partialResult,
-                              status: tc.status,
-                            }))}
-                            isStreaming={streaming && isLastAi}
-                          />
-                          <ToolResultBlock results={msg.toolResults ?? []} />
-                          <TextBlock content={msg.content} isStreaming={streaming && isLastAi} />
-                          {isLastAi && (
-                            <>
-                              <CompactionIndicator
-                                status={compactionStatus}
-                                reason={compactionReason}
-                                error={compactionError}
-                              />
-                              <RetryIndicator
-                                status={retryStatus}
-                                attempt={retryAttempt}
-                                maxAttempts={retryMaxAttempts}
-                                delayMs={retryDelayMs}
-                                error={retryError}
-                              />
-                            </>
-                          )}
-                        </>
+                      {turn.role === "assistant" ? (
+                        <TurnView
+                          turn={turn}
+                          isStreaming={streaming && isLastAi}
+                        />
                       ) : (
                         <div className="bg-ink-dim inline-block max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-white">
-                          {msg.content}
+                          {turn.blocks.map((b) =>
+                            b.type === "text" ? b.content : null
+                          )}
                         </div>
                       )}
                     </div>
@@ -714,4 +536,141 @@ export default function AiCopilot({
       )}
     </div>
   )
+}
+
+// ── Turn rendering (docs/agentTransport.md §6) ────────────────────────────
+//
+// Blocks are rendered in arrival order. Consecutive tool_call blocks are
+// grouped into a single ToolCallBlock (matches the previous visual layout).
+// compaction/retry system_notice blocks feed the indicator components;
+// turn/notice notices render as result cards.
+
+interface TurnViewProps {
+  turn: TranscriptTurn
+  isStreaming: boolean
+}
+
+function TurnView({ turn, isStreaming }: TurnViewProps) {
+  // Derive compaction / retry indicator state from the turn's system_notice
+  // blocks (the reducer records lifecycle there).
+  const compaction = lastNotice(turn, "compaction")
+  const retry = lastNotice(turn, "retry")
+
+  const compactionStatus =
+    compaction?.status === "active"
+      ? "compacting"
+      : (compaction?.status ?? "idle")
+  const retryStatus =
+    retry?.status === "active"
+      ? "retrying"
+      : (retry?.status ?? "idle")
+
+  // Group consecutive tool_call blocks for ToolCallBlock rendering.
+  const segments: Array<
+    | { kind: "thinking"; block: Extract<TranscriptBlock, { type: "thinking" }> }
+    | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }> }
+    | { kind: "tools"; blocks: Array<Extract<TranscriptBlock, { type: "tool_call" }>> }
+    | { kind: "results"; blocks: Array<Extract<TranscriptBlock, { type: "system_notice" }>> }
+  > = []
+  for (const block of turn.blocks) {
+    const last = segments[segments.length - 1]
+    if (block.type === "tool_call") {
+      if (last?.kind === "tools") last.blocks.push(block)
+      else segments.push({ kind: "tools", blocks: [block] })
+    } else if (
+      block.type === "system_notice" &&
+      (block.kind === "turn" || block.kind === "notice")
+    ) {
+      if (last?.kind === "results") last.blocks.push(block)
+      else segments.push({ kind: "results", blocks: [block] })
+    } else if (block.type === "thinking") {
+      segments.push({ kind: "thinking", block })
+    } else if (block.type === "text") {
+      segments.push({ kind: "text", block })
+    }
+    // compaction/retry system_notices are rendered via indicators below.
+  }
+
+  return (
+    <>
+      {turn.isError && (
+        <div className="border-red-500/30 bg-red-500/5 mb-2 flex items-center gap-2 rounded-lg border px-3 py-2">
+          <div className="flex size-5 items-center justify-center rounded-full bg-red-500/20">
+            <span className="text-[10px] font-bold text-red-500">!</span>
+          </div>
+          <span className="text-ink-muted text-[11px]">此消息因错误已自动重试</span>
+        </div>
+      )}
+      {segments.map((seg, i) => {
+        if (seg.kind === "thinking") {
+          return (
+            <ThinkingBlock
+              key={`t-${i}`}
+              content={seg.block.content}
+              isStreaming={isStreaming && seg.block.streaming}
+            />
+          )
+        }
+        if (seg.kind === "text") {
+          return (
+            <TextBlock
+              key={`t-${i}`}
+              content={seg.block.content}
+              isStreaming={isStreaming && seg.block.streaming}
+            />
+          )
+        }
+        if (seg.kind === "tools") {
+          return (
+            <ToolCallBlock
+              key={`t-${i}`}
+              toolCalls={seg.blocks.map((tc) => ({
+                id: tc.id,
+                name: tc.name,
+                args: tc.input,
+                result: tc.result,
+                partialResult: tc.partialResult,
+                status: tc.status === "done" ? "success" : tc.status,
+              }))}
+              isStreaming={isStreaming}
+            />
+          )
+        }
+        // results
+        return (
+          <ToolResultBlock
+            key={`t-${i}`}
+            results={seg.blocks.map((b) => ({
+              name: b.kind === "notice" ? "提示" : "工具结果",
+              result: b.detail,
+              isError: b.isError,
+            }))}
+          />
+        )
+      })}
+      <CompactionIndicator
+        status={compactionStatus}
+        reason={compaction?.detail ?? ""}
+        error={compaction?.isError ? compaction.detail : null}
+      />
+      <RetryIndicator
+        status={retryStatus}
+        attempt={retry?.attempt}
+        maxAttempts={retry?.maxAttempts}
+        delayMs={retry?.delayMs}
+        error={retry?.isError ? retry.detail : null}
+      />
+    </>
+  )
+}
+
+function lastNotice(
+  turn: TranscriptTurn,
+  kind: "compaction" | "retry",
+): Extract<TranscriptBlock, { type: "system_notice" }> | undefined {
+  for (let i = turn.blocks.length - 1; i >= 0; i--) {
+    const b = turn.blocks[i]
+    if (b.type === "system_notice" && b.kind === kind) return b
+  }
+  return undefined
 }
