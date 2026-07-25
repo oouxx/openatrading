@@ -80,7 +80,7 @@ pub enum TranscriptEvent {
 pub enum SessionEventPayload {
     TurnStart,
     TurnEnd {
-        tool_results: Vec<String>,
+        tool_results: Vec<ToolResultPayload>,
     },
     AgentSettled,
     AgentEnd {
@@ -118,10 +118,46 @@ pub enum SessionEventPayload {
         text: String,
         is_error: bool,
     },
+    /// Permission request for human-in-the-loop approval (§11).
+    PermissionRequest {
+        id: String,
+        tool_name: String,
+        tool_input: serde_json::Value,
+    },
     /// Resync signal for reconnection (§9.1).
     ResyncRequired,
     /// Catch-all for variants not explicitly mapped.
     Other,
+}
+
+/// Preview payload for tool results, with truncation for long content (§15).
+#[derive(Debug, Serialize)]
+pub struct ToolResultPayload {
+    pub preview: String,
+    pub truncated: bool,
+    pub full_length: usize,
+}
+
+/// Truncation limit for tool result content in event stream (§15).
+const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
+
+/// Convert a tool result text into a preview payload, truncating if too long.
+fn to_tool_result_payload(content: &str) -> ToolResultPayload {
+    let len = content.chars().count();
+    if len <= TOOL_RESULT_PREVIEW_LIMIT {
+        ToolResultPayload {
+            preview: content.to_string(),
+            truncated: false,
+            full_length: content.len(),
+        }
+    } else {
+        let preview: String = content.chars().take(TOOL_RESULT_PREVIEW_LIMIT).collect();
+        ToolResultPayload {
+            preview,
+            truncated: true,
+            full_length: content.len(),
+        }
+    }
 }
 
 /// Convert an [`AgentSessionEvent`] into the serializable payload.
@@ -186,7 +222,7 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
 }
 
 /// Extract human-readable text from a slice of tool-result messages.
-fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<String> {
+fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<ToolResultPayload> {
     messages
         .iter()
         .filter_map(|m| match m {
@@ -202,7 +238,7 @@ fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<String> {
                 if text.is_empty() {
                     None
                 } else {
-                    Some(text)
+                    Some(to_tool_result_payload(&text))
                 }
             }
             _ => None,
@@ -275,6 +311,7 @@ enum ClientCommand {
     Prompt { text: String },
     Interrupt,
     Ping,
+    PermissionResponse { id: String, approved: bool },
 }
 
 // ── Event channel setup ────────────────────────────────────────────────────
@@ -510,6 +547,11 @@ async fn handle_session(
                             }
                             Ok(ClientCommand::Ping) => {
                                 // Application-level ping acknowledged; no response needed.
+                            }
+                            Ok(ClientCommand::PermissionResponse { id, approved }) => {
+                                // TODO: Wire up to pi-coding-agent's permission system when available.
+                                // See docs/agentTransport.md §11 for the planned implementation.
+                                log::warn!("permission response received but not yet wired: id={id}, approved={approved}");
                             }
                             Err(_) => {
                                 // Ignore unparseable messages; don't break the connection.

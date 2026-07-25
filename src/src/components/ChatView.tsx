@@ -548,9 +548,11 @@ export default function AiCopilot({
 interface TurnViewProps {
   turn: TranscriptTurn
   isStreaming: boolean
+  sessionId?: string
+  transport?: AgentTransport | null
 }
 
-function TurnView({ turn, isStreaming }: TurnViewProps) {
+function TurnView({ turn, isStreaming, sessionId, transport }: TurnViewProps) {
   // Derive compaction / retry indicator state from the turn's system_notice
   // blocks (the reducer records lifecycle there).
   const compaction = lastNotice(turn, "compaction")
@@ -571,6 +573,7 @@ function TurnView({ turn, isStreaming }: TurnViewProps) {
     | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }> }
     | { kind: "tools"; blocks: Array<Extract<TranscriptBlock, { type: "tool_call" }>> }
     | { kind: "results"; blocks: Array<Extract<TranscriptBlock, { type: "system_notice" }>> }
+    | { kind: "permission"; block: Extract<TranscriptBlock, { type: "permission_request" }> }
   > = []
   for (const block of turn.blocks) {
     const last = segments[segments.length - 1]
@@ -587,6 +590,8 @@ function TurnView({ turn, isStreaming }: TurnViewProps) {
       segments.push({ kind: "thinking", block })
     } else if (block.type === "text") {
       segments.push({ kind: "text", block })
+    } else if (block.type === "permission_request") {
+      segments.push({ kind: "permission", block })
     }
     // compaction/retry system_notices are rendered via indicators below.
   }
@@ -631,8 +636,19 @@ function TurnView({ turn, isStreaming }: TurnViewProps) {
                 result: tc.result,
                 partialResult: tc.partialResult,
                 status: tc.status === "done" ? "success" : tc.status,
+                output: tc.output,
               }))}
               isStreaming={isStreaming}
+              sessionId={sessionId}
+            />
+          )
+        }
+        if (seg.kind === "permission") {
+          return (
+            <PermissionRequestCard
+              key={`t-${i}`}
+              block={seg.block}
+              transport={transport}
             />
           )
         }
@@ -661,6 +677,59 @@ function TurnView({ turn, isStreaming }: TurnViewProps) {
         error={retry?.isError ? retry.detail : null}
       />
     </>
+  )
+}
+
+// ── Permission request card (§11.2) ──────────────────────────────────────
+
+interface PermissionRequestCardProps {
+  block: Extract<TranscriptBlock, { type: "permission_request" }>
+  transport?: AgentTransport | null
+}
+
+function PermissionRequestCard({ block, transport }: PermissionRequestCardProps) {
+  const [resolved, setResolved] = useState(block.resolved)
+
+  const handleApprove = async () => {
+    if (!transport || resolved) return
+    await transport.respondToPermission(block.id, true)
+    setResolved(true)
+  }
+
+  const handleReject = async () => {
+    if (!transport || resolved) return
+    await transport.respondToPermission(block.id, false)
+    setResolved(true)
+  }
+
+  if (resolved) return null
+
+  return (
+    <div className="border-amber-500/30 bg-amber-500/5 my-2 overflow-hidden rounded-lg border">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="text-amber-500 text-[11px] font-medium">需要确认</span>
+      </div>
+      <div className="border-hairline border-t px-3 py-2">
+        <div className="text-ink-muted font-mono text-[10px]">{block.toolName}</div>
+        <pre className="text-ink-muted mt-1 overflow-x-auto font-mono text-[10px] whitespace-pre-wrap">
+          {JSON.stringify(block.toolInput, null, 2)}
+        </pre>
+      </div>
+      <div className="border-hairline flex items-center justify-end gap-2 border-t px-3 py-2">
+        <button
+          className="rounded-md bg-red-500/10 px-3 py-1 text-[11px] text-red-500 transition-colors hover:bg-red-500/20"
+          onClick={handleReject}
+        >
+          拒绝
+        </button>
+        <button
+          className="rounded-md bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-500 transition-colors hover:bg-emerald-500/20"
+          onClick={handleApprove}
+        >
+          允许
+        </button>
+      </div>
+    </div>
   )
 }
 

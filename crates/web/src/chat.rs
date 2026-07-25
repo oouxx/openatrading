@@ -467,3 +467,125 @@ pub async fn delete_session(
         StatusCode::NOT_FOUND
     }
 }
+
+#[derive(Deserialize)]
+pub struct RenameSessionRequest {
+    pub name: String,
+}
+
+/// PATCH /api/ai/sessions/:id — rename a session
+///
+/// Updates the session name in the JSONL file header. Returns 204 on success,
+/// 404 if the session file does not exist, 500 on I/O error.
+pub async fn rename_session(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<RenameSessionRequest>,
+) -> StatusCode {
+    let path = pi_coding_agent::config::get_sessions_dir().join(format!("{id}.jsonl"));
+    if !path.exists() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: read error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    // Parse the header line (first line) and update the name field.
+    let header: serde_json::Value = match serde_json::from_str(lines[0]) {
+        Ok(v) => v,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: parse header error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let mut header = match header.as_object() {
+        Some(obj) => obj.clone(),
+        None => {
+            openatrading_core::log::error!("rename_session: header is not an object");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    header.insert("name".to_string(), serde_json::Value::String(req.name));
+
+    let new_header = match serde_json::to_string(&header) {
+        Ok(s) => s,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: serialize error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    lines[0] = &new_header;
+
+    match std::fs::write(&path, lines.join("\n")) {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: write error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
+/// GET /api/ai/sessions/:id/tool-results/:tool_call_id — fetch full tool result content (§15)
+///
+/// Returns the full tool result text for a given tool call. This is used by the
+/// frontend to expand truncated tool results that were sent as previews in the
+/// event stream.
+///
+/// # Errors
+/// Returns 404 if the session file or tool result is not found.
+pub async fn get_tool_result(
+    axum::extract::Path((session_id, tool_call_id)): axum::extract::Path<(String, String)>,
+) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    let path = pi_coding_agent::config::get_sessions_dir().join(format!("{session_id}.jsonl"));
+
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
+
+    // Scan the JSONL file for the matching tool result message
+    for line in content.lines().skip(1) {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            if let Some(msg) = entry.get("message") {
+                if msg.get("role").and_then(|v| v.as_str()) != Some("toolResult") {
+                    continue;
+                }
+                if msg.get("tool_call_id").and_then(|v| v.as_str()) != Some(&tool_call_id) {
+                    continue;
+                }
+                // Found the matching tool result — extract the text content
+                let text: String = msg
+                    .get("content")
+                    .and_then(|v| v.as_array())
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+                return Ok(axum::Json(serde_json::json!({
+                    "tool_call_id": tool_call_id,
+                    "content": text,
+                })));
+            }
+        }
+    }
+
+    Err(axum::http::StatusCode::NOT_FOUND)
+}

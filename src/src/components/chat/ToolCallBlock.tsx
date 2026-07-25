@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw } from "lucide-react"
+import { getApiBaseUrl } from "@/stores/data"
 
 interface ToolCall {
   id: string
@@ -8,16 +9,19 @@ interface ToolCall {
   result?: string
   partialResult?: string
   status?: "streaming" | "running" | "success" | "error"
+  /** Preview info for truncated tool results (§15). */
+  output?: { preview: string; truncated: boolean; fullLength: number }
 }
 
 interface ToolCallBlockProps {
   toolCalls: ToolCall[]
   isStreaming?: boolean
+  sessionId?: string
 }
 
 const COLLAPSE_THRESHOLD = 500
 
-export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockProps) {
+export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   if (!toolCalls || toolCalls.length === 0) return null
@@ -92,11 +96,77 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                       />
                     </Section>
                   )}
+                  {/* Tool result with truncation support (§15.2) */}
+                  {tc.result && (
+                    <Section title="结果">
+                      <ResultBlock
+                        content={tc.result}
+                        toolCallId={tc.id}
+                        sessionId={sessionId}
+                        output={tc.output}
+                      />
+                    </Section>
+                  )}
                 </div>
               )}
             </div>
           )
         })}
+    </div>
+  )
+}
+
+/** Renders tool result content with truncation and expand-from-server support (§15.2). */
+function ResultBlock({
+  content,
+  toolCallId,
+  sessionId,
+  output,
+}: {
+  content: string
+  toolCallId: string
+  sessionId?: string
+  output?: { preview: string; truncated: boolean; fullLength: number }
+}) {
+  const [fullContent, setFullContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const isTruncated = output?.truncated ?? false
+  const displayText = fullContent ?? (isTruncated ? (output?.preview ?? content) : content)
+
+  const expand = async () => {
+    if (!sessionId) return
+    setLoading(true)
+    try {
+      const base = getApiBaseUrl()
+      const res = await fetch(`${base}/api/ai/sessions/${sessionId}/tool-results/${toolCallId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFullContent(data.content ?? content)
+      }
+    } catch {
+      // Fall back to the content we already have
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+        {displayText}
+      </pre>
+      {isTruncated && !fullContent && (
+        <button
+          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+          onClick={expand}
+          disabled={loading}
+        >
+          {loading
+            ? "加载中..."
+            : `展开全部（${output?.fullLength ?? content.length} 字符）`}
+        </button>
+      )}
     </div>
   )
 }

@@ -341,7 +341,14 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
       const results = e.tool_results ?? []
       let next = turns
       if (results.length > 0) {
-        next = appendSystemNotice(next, "turn", results.join("\n---\n"))
+        const text = results
+          .map((r) => {
+            if (typeof r === "string") return r
+            const p = r as { preview?: string; truncated?: boolean; fullLength?: number }
+            return p.preview ?? ""
+          })
+          .join("\n---\n")
+        next = appendSystemNotice(next, "turn", text)
       }
       return { turns: next, terminal: false }
     }
@@ -391,6 +398,29 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
         }),
         terminal: false,
       }
+    case "permission_request": {
+      // Permission request block — add to the current turn's blocks
+      const last = turns[turns.length - 1]
+      if (!last || last.status === "complete") {
+        return { turns, terminal: false }
+      }
+      return {
+        turns: replaceLast(turns, {
+          ...last,
+          blocks: [
+            ...last.blocks,
+            {
+              type: "permission_request",
+              id: e.id ?? "",
+              toolName: e.tool_name ?? "",
+              toolInput: e.tool_input ?? null,
+              resolved: false,
+            },
+          ],
+        }),
+        terminal: false,
+      }
+    }
     case "notice": {
       // Slash command result / error. Terminal — no AgentEnd follows.
       let next = turns

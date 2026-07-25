@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use axum::{
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use openatrading_core::log::Level;
@@ -118,6 +118,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(chat::get_session_messages),
         )
         .route("/api/ai/sessions/:id", delete(chat::delete_session))
+        .route("/api/ai/sessions/:id", patch(chat::rename_session))
+        .route(
+            "/api/ai/sessions/:id/tool-results/:tool_call_id",
+            get(chat::get_tool_result),
+        )
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))
         .route("/api/mcp/servers/:name", delete(mcp::delete_handler))
