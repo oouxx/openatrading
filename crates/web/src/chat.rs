@@ -304,7 +304,11 @@ pub async fn ai_chat(
         let listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
             let tx = tx.clone();
             // AgentSessionEvent listener is sync, send to channel
-            let _ = tx.blocking_send(event);
+            // Use try_send instead of blocking_send to avoid panicking
+            // when called from within a Tokio runtime context.
+            if tx.try_send(event).is_err() {
+                openatrading_core::log::warn!("ai/chat: event channel full, dropping event");
+            }
         });
         let _handle = agent_facade.session.subscribe_session_events(listener);
 
