@@ -286,8 +286,12 @@ pub async fn ai_chat(
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         // 在流内部创建 session，handle 随流生命周期存活
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentSessionEvent>();
-        let agent_facade = match Box::pin(runtime
+        // Two subscription paths:
+        //   1. AgentEventSink (async) → SSE stream (text delta, tool call events)
+        //   2. AgentSessionEventListener (sync) → UI state updates (compaction, retry, queue)
+        let (agent_tx, mut agent_rx) = tokio::sync::mpsc::unbounded_channel::<pi_coding_agent::pi_agent_core::types::AgentEvent>();
+        let (session_tx, mut session_rx) = tokio::sync::mpsc::unbounded_channel::<AgentSessionEvent>();
+        let mut agent_facade = match Box::pin(runtime
             .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), None))
             .await
         {
@@ -300,14 +304,29 @@ pub async fn ai_chat(
             },
         };
 
-        // Subscribe to session-level events (includes compaction, retry, etc.)
-        let listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
-            let tx = tx.clone();
-            // AgentSessionEvent listener is sync, send to channel
-            // Unbounded channel: send never blocks, safe from sync context.
-            let _ = tx.send(event);
+        // Subscribe to raw agent events (async) → SSE stream for text/tool/thinking
+        let agent_tx_clone = agent_tx.clone();
+        let async_listener: Arc<
+            dyn Fn(
+                    pi_coding_agent::pi_agent_core::types::AgentEvent,
+                    Option<tokio::sync::watch::Receiver<bool>>,
+                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+                + Send
+                + Sync,
+        > = Arc::new(move |event, _signal| {
+            let tx = agent_tx_clone.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            })
         });
-        let _handle = agent_facade.session.subscribe_session_events(listener);
+        let _agent_handle = agent_facade.session.subscribe(async_listener).await;
+
+        // Subscribe to session-level events (sync) → UI state updates (compaction, retry, queue)
+        let session_tx_clone = session_tx.clone();
+        let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
+            let _ = session_tx_clone.send(event);
+        });
+        let _session_handle = agent_facade.session.subscribe_session_events(sync_listener);
 
         // ── Slash command execution ──
         // If the message is a slash command, execute it directly on the session
@@ -315,7 +334,11 @@ pub async fn ai_chat(
         if let Some((cmd_name, cmd_args)) =
             pi_coding_agent::core::slash_commands::parse_slash_command(&user_message)
         {
-            let result = handle_slash_command(cmd_name, cmd_args, &agent_facade).await;
+            // Use Arc::get_mut since agent_facade has only one strong reference
+            // at this point (before any clones).
+            let agent = Arc::get_mut(&mut agent_facade)
+                .expect("agent_facade must have only one reference at slash command time");
+            let result = handle_slash_command(cmd_name, cmd_args, agent).await;
             match result {
                 Ok(text) => {
                     if !text.is_empty() {
@@ -335,83 +358,127 @@ pub async fn ai_chat(
         agent_facade.send(&user_message).await;
 
         'outer: loop {
-            if let Some(event) = rx.recv().await {
-                match event {
-                    AgentSessionEvent::MessageUpdate {
-                        assistant_message_event,
-                        ..
-                    } => {
+            tokio::select! {
+                Some(event) = agent_rx.recv() => {
+                    if let pi_coding_agent::pi_agent_core::types::AgentEvent::MessageUpdate { assistant_message_event, .. } = event {
                         use openatrading_core::llm::pi_ai_types::AssistantMessageEvent;
                         match assistant_message_event {
-                            AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
-                                openatrading_core::log::trace!(
-                                    "ai/chat: Text {} chars",
-                                    delta.len()
-                                );
-                                yield Ok(Event::default()
-                                    .data(delta.replace('\n', "\\n")));
-                            },
-                            AssistantMessageEvent::TextEnd { content, .. } if !content.is_empty() => {
-                                openatrading_core::log::trace!(
-                                    "ai/chat: TextEnd {} chars",
-                                    content.len()
-                                );
-                                yield Ok(Event::default()
-                                    .data(content.replace('\n', "\\n")));
-                            },
-                            AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
-                                yield Ok(Event::default()
-                                    .event("thinking")
-                                    .data(delta.replace('\n', "\\n")));
-                            },
-                            AssistantMessageEvent::ThinkingEnd { content, .. } if !content.is_empty() => {
-                                yield Ok(Event::default()
-                                    .event("thinking")
-                                    .data(content.replace('\n', "\\n")));
-                            },
-                            AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
-                                let data = serde_json::to_string(
-                                    &serde_json::json!({ "args": delta }),
-                                )
-                                .unwrap_or_default();
-                                yield Ok(Event::default()
-                                    .event("tool-delta")
-                                    .data(data));
-                            },
-                            AssistantMessageEvent::ToolCallEnd { tool_call, .. } if !tool_call.name.is_empty() => {
-                                let data = serde_json::to_string(
-                                    &serde_json::json!({
-                                        "id": tool_call.id,
-                                        "name": tool_call.name,
-                                        "args": tool_call.arguments.to_string(),
-                                    }),
-                                )
-                                .unwrap_or_default();
-                                yield Ok(Event::default()
-                                    .event("tool-call")
-                                    .data(data));
-                            },
-                            AssistantMessageEvent::Done { message, .. } => {
-                                for block in &message.content {
-                                    if let openatrading_core::llm::pi_ai_types::ContentBlock::Text { text, .. } = block {
-                                        if !text.is_empty() {
-                                            yield Ok(Event::default()
-                                                .data(text.replace('\n', "\\n")));
-                                        }
+                        AssistantMessageEvent::TextDelta { delta, .. } if !delta.is_empty() => {
+                            openatrading_core::log::trace!(
+                                "ai/chat: Text {} chars",
+                                delta.len()
+                            );
+                            yield Ok(Event::default()
+                                .data(delta.replace('\n', "\\n")));
+                        },
+                        AssistantMessageEvent::TextEnd { content, .. } if !content.is_empty() => {
+                            openatrading_core::log::trace!(
+                                "ai/chat: TextEnd {} chars",
+                                content.len()
+                            );
+                            yield Ok(Event::default()
+                                .data(content.replace('\n', "\\n")));
+                        },
+                        AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
+                            yield Ok(Event::default()
+                                .event("thinking")
+                                .data(delta.replace('\n', "\\n")));
+                        },
+                        AssistantMessageEvent::ThinkingEnd { content, .. } if !content.is_empty() => {
+                            yield Ok(Event::default()
+                                .event("thinking")
+                                .data(content.replace('\n', "\\n")));
+                        },
+                        AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
+                            let data = serde_json::to_string(
+                                &serde_json::json!({ "args": delta }),
+                            )
+                            .unwrap_or_default();
+                            yield Ok(Event::default()
+                                .event("tool-delta")
+                                .data(data));
+                        },
+                        AssistantMessageEvent::ToolCallEnd { tool_call, .. } if !tool_call.name.is_empty() => {
+                            let data = serde_json::to_string(
+                                &serde_json::json!({
+                                    "id": tool_call.id,
+                                    "name": tool_call.name,
+                                    "args": tool_call.arguments.to_string(),
+                                }),
+                            )
+                            .unwrap_or_default();
+                            yield Ok(Event::default()
+                                .event("tool-call")
+                                .data(data));
+                        },
+                        AssistantMessageEvent::Done { message, .. } => {
+                            for block in &message.content {
+                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text { text, .. } = block {
+                                    if !text.is_empty() {
+                                        yield Ok(Event::default()
+                                            .data(text.replace('\n', "\\n")));
                                     }
                                 }
-                            },
-                            AssistantMessageEvent::Error { error, .. } => {
-                                let msg = error.error_message.as_deref().unwrap_or("unknown error");
-                                openatrading_core::log::warn!(
-                                    "ai/chat: assistant error: {msg}"
-                                );
-                                yield Ok(Event::default()
-                                    .data(format!("[ERROR] {msg}")));
-                            },
-                            _ => {},
+                            }
+                        },
+                        AssistantMessageEvent::Error { error, .. } => {
+                            let msg = error.error_message.as_deref().unwrap_or("unknown error");
+                            openatrading_core::log::warn!(
+                                "ai/chat: assistant error: {msg}"
+                            );
+                            yield Ok(Event::default()
+                                .data(format!("[ERROR] {msg}")));
+                        },
+                        _ => {},
                         }
-                    },
+                    }
+                },
+                Some(session_event) = session_rx.recv() => {
+                    match session_event {
+                        AgentSessionEvent::CompactionStart { reason } => {
+                            yield Ok(Event::default()
+                                .event("compaction-start")
+                                .data(reason.to_string()));
+                        },
+                        AgentSessionEvent::CompactionEnd { reason, aborted, will_retry, error_message, .. } => {
+                            let data = serde_json::to_string(
+                                &serde_json::json!({
+                                    "reason": reason.to_string(),
+                                    "aborted": aborted,
+                                    "willRetry": will_retry,
+                                    "error": error_message,
+                                }),
+                            )
+                            .unwrap_or_default();
+                            yield Ok(Event::default().event("compaction-end").data(data));
+                        },
+                        AgentSessionEvent::AutoRetryStart { attempt, max_attempts, delay_ms, error_message } => {
+                            let data = serde_json::to_string(
+                                &serde_json::json!({
+                                    "attempt": attempt,
+                                    "maxAttempts": max_attempts,
+                                    "delayMs": delay_ms,
+                                    "error": error_message,
+                                }),
+                            )
+                            .unwrap_or_default();
+                            yield Ok(Event::default().event("retry-start").data(data));
+                        },
+                        AgentSessionEvent::AutoRetryEnd { success, attempt, final_error } => {
+                            let data = serde_json::to_string(
+                                &serde_json::json!({
+                                    "success": success,
+                                    "attempt": attempt,
+                                    "finalError": final_error,
+                                }),
+                            )
+                            .unwrap_or_default();
+                            yield Ok(Event::default().event("retry-end").data(data));
+                        },
+                        AgentSessionEvent::AgentSettled => {
+                            yield Ok(Event::default().event("settled"));
+                            break 'outer;
+                        },
                     AgentSessionEvent::MessageEnd {
                         message: openatrading_core::llm::AgentMessage::Assistant {
                             error_message: Some(err),
@@ -471,54 +538,10 @@ pub async fn ai_chat(
                             yield Ok(Event::default().event("tool-results").data(data));
                         }
                     },
-                    AgentSessionEvent::CompactionStart { reason } => {
-                        yield Ok(Event::default()
-                            .event("compaction-start")
-                            .data(reason.to_string()));
-                    },
-                    AgentSessionEvent::CompactionEnd { reason, aborted, will_retry, error_message, .. } => {
-                        let data = serde_json::to_string(
-                            &serde_json::json!({
-                                "reason": reason.to_string(),
-                                "aborted": aborted,
-                                "willRetry": will_retry,
-                                "error": error_message,
-                            }),
-                        )
-                        .unwrap_or_default();
-                        yield Ok(Event::default().event("compaction-end").data(data));
-                    },
-                    AgentSessionEvent::AutoRetryStart { attempt, max_attempts, delay_ms, error_message } => {
-                        let data = serde_json::to_string(
-                            &serde_json::json!({
-                                "attempt": attempt,
-                                "maxAttempts": max_attempts,
-                                "delayMs": delay_ms,
-                                "error": error_message,
-                            }),
-                        )
-                        .unwrap_or_default();
-                        yield Ok(Event::default().event("retry-start").data(data));
-                    },
-                    AgentSessionEvent::AutoRetryEnd { success, attempt, final_error } => {
-                        let data = serde_json::to_string(
-                            &serde_json::json!({
-                                "success": success,
-                                "attempt": attempt,
-                                "finalError": final_error,
-                            }),
-                        )
-                        .unwrap_or_default();
-                        yield Ok(Event::default().event("retry-end").data(data));
-                    },
-                    AgentSessionEvent::AgentSettled => {
-                        yield Ok(Event::default().event("settled"));
-                        break 'outer;
-                    },
-                    _ => {},
-                }
-            } else {
-                break 'outer;
+                        _ => {},
+                    }
+                },
+                else => break 'outer,
             }
         }
     };
@@ -533,7 +556,7 @@ pub async fn ai_chat(
 async fn handle_slash_command(
     cmd_name: &str,
     cmd_args: &str,
-    agent_facade: &openatrading_core::llm::runtime::AgentFacade,
+    agent_facade: &mut openatrading_core::llm::runtime::AgentFacade,
 ) -> Result<String, String> {
     match cmd_name {
         "model" => {
@@ -546,13 +569,13 @@ async fn handle_slash_command(
             );
             match result.model {
                 Some(model) => {
-                    // Need to get a mutable reference to the session to call set_model
-                    // AgentSession::set_model takes &mut self, but we only have &AgentFacade
-                    // We need to work around this. Let's use the session's internal methods.
-                    let model_id = model.id.clone();
-                    let model_provider = model.provider.clone();
-                    let display = format!("{}/{}", model_provider, model_id);
-                    Ok(format!("Model set to {display}"))
+                    let display = format!("{}/{}", model.provider, model.id);
+                    agent_facade
+                        .session
+                        .set_model(model)
+                        .await
+                        .map(|_| format!("Model set to {display}"))
+                        .map_err(|e| format!("Failed to set model: {e}"))
                 }
                 None => {
                     let err = result.error.unwrap_or_else(|| "Unknown model".to_string());
@@ -564,8 +587,7 @@ async fn handle_slash_command(
             if cmd_args.is_empty() {
                 return Err("Usage: /name <session name>".to_string());
             }
-            // AgentSession::set_session_name takes &mut self
-            // For now, just acknowledge
+            agent_facade.session.set_session_name(cmd_args);
             Ok(format!("Session name set to \"{cmd_args}\""))
         }
         "compact" => match agent_facade.session.compact(None).await {
@@ -583,21 +605,16 @@ async fn handle_slash_command(
                 .unwrap_or_default();
             drop(mgr);
             Ok(format!(
-                "Session: {name} ({sid})
-Messages: {msg_count}
-File: {file}"
+                "Session: {name} ({sid})\nMessages: {msg_count}\nFile: {file}"
             ))
         }
         "help" | "?" => {
             let commands = pi_coding_agent::core::slash_commands::builtin_slash_commands();
-            let mut help = "Available slash commands:
-"
-            .to_string();
+            let mut help = "Available slash commands:\n".to_string();
             for cmd in &commands {
                 let hint = cmd.argument_hint.as_deref().unwrap_or("");
                 help.push_str(&format!(
-                    "  /{} {} — {}
-",
+                    "  /{} {} — {}\n",
                     cmd.name,
                     if hint.is_empty() { "" } else { hint },
                     cmd.description
@@ -608,7 +625,6 @@ File: {file}"
         _ => Err(format!("Unknown slash command: /{cmd_name}")),
     }
 }
-
 // ── Session listing (pi-coding-agent JSONL sessions) ────────────────────
 
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
