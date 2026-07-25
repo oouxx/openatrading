@@ -7,6 +7,7 @@ export interface ChatSession {
   created: string
   modified: string
   message_count: number
+  status: string
   path: string
   cwd: string
   first_message: string | null

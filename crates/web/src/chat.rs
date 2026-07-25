@@ -364,15 +364,29 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde
     ))
     .await;
 
+    let running = state
+        .running_sessions
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>();
+
     let sessions: Vec<serde_json::Value> = infos
         .into_iter()
         .map(|info| {
+            let status = if running.contains(&info.id) {
+                "running"
+            } else {
+                "idle"
+            };
             serde_json::json!({
                 "id": info.id,
                 "name": info.name,
                 "created": info.created.to_rfc3339(),
                 "modified": info.modified.to_rfc3339(),
                 "message_count": info.message_count,
+                "status": status,
                 "path": info.path.to_string_lossy(),
                 "cwd": info.cwd,
                 "first_message": info.first_message,
