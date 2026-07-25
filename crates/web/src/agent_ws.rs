@@ -511,6 +511,10 @@ async fn handle_session(
             }
             // Durable events (tool results, lifecycle, compaction, retry) — must deliver
             Some(event) = durable_rx.recv() => {
+                // Track running state (§7.4): agent_end/agent_settled → session is idle
+                if matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled)) {
+                    state.running_sessions.lock().unwrap().remove(&session_id);
+                }
                 let envelope = EventEnvelope {
                     schema_version: SCHEMA_VERSION,
                     seq: 0,
@@ -540,6 +544,8 @@ async fn handle_session(
                                     )).await;
                                     continue;
                                 }
+                                // Mark session as running (§7.4)
+                                state.running_sessions.lock().unwrap().insert(session_id.clone());
                                 agent_facade.send(&text).await;
                             }
                             Ok(ClientCommand::Interrupt) => {
@@ -567,6 +573,8 @@ async fn handle_session(
         }
     }
 
+    // Session disconnected — remove from running tracking (§7.4)
+    state.running_sessions.lock().unwrap().remove(&session_id);
     log::info!("ws: session {session_id} disconnected");
 }
 

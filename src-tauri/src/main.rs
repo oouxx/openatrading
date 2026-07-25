@@ -1065,6 +1065,12 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up the first time the session was registered.
     let facade = sessions.ensure_session(&session_id, &state, &app).await?;
+    // Mark session as running (§7.4)
+    sessions
+        .running_sessions
+        .lock()
+        .unwrap()
+        .insert(session_id.clone());
     facade.send(&text).await;
     Ok(())
 }
@@ -1078,6 +1084,19 @@ async fn interrupt_session(
     Ok(())
 }
 
+#[tauri::command]
+async fn respond_permission(
+    session_id: String,
+    id: String,
+    approved: bool,
+    sessions: tauri::State<'_, Arc<TauriSessionRegistry>>,
+) -> Result<(), String> {
+    sessions
+        .respond_permission(&session_id, &id, approved)
+        .await;
+    Ok(())
+}
+
 /// Per-session registry for the Tauri transport.
 ///
 /// Owns one long-lived `Arc<AgentFacade>` per session plus a background forward
@@ -1088,12 +1107,17 @@ struct TauriSessionRegistry {
     sessions: tokio::sync::Mutex<
         std::collections::HashMap<String, Arc<openatrading_core::llm::AgentFacade>>,
     >,
+    /// Tracks session IDs that currently have an active agent turn in progress (§7.4).
+    running_sessions: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl TauriSessionRegistry {
     fn new() -> Self {
         Self {
             sessions: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            running_sessions: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            )),
         }
     }
 
@@ -1119,6 +1143,7 @@ impl TauriSessionRegistry {
             openatrading_web::agent_ws::setup_event_channel_with_buffer(&facade).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
+        let running = self.running_sessions.clone(); // Arc<std::sync::Mutex<HashSet<String>>>
         tokio::spawn(async move {
             loop {
                 let event = tokio::select! {
@@ -1127,6 +1152,11 @@ impl TauriSessionRegistry {
                     else => break,
                 };
                 let Some(event) = event else { break };
+                // Track running state (§7.4): agent_end/agent_settled → session is idle
+                if matches!(&event, openatrading_web::agent_ws::TranscriptEvent::Session(payload) if matches!(payload, openatrading_web::agent_ws::SessionEventPayload::AgentEnd { .. } | openatrading_web::agent_ws::SessionEventPayload::AgentSettled))
+                {
+                    running.lock().unwrap().remove(&sid);
+                }
                 let envelope = openatrading_web::agent_ws::EventEnvelope {
                     schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
                     seq: 0,
@@ -1200,6 +1230,14 @@ impl TauriSessionRegistry {
         if let Some(facade) = map.get(session_id) {
             facade.session.abort().await;
         }
+    }
+
+    /// Handle a permission response from the frontend (§11).
+    /// Currently a no-op — pi-coding-agent does not yet expose the
+    /// permission system. Once it does, this method will forward the
+    /// response to the agent session.
+    async fn respond_permission(&self, session_id: &str, id: &str, approved: bool) {
+        eprintln!("permission response received but not yet wired: session={session_id}, id={id}, approved={approved}");
     }
 }
 
@@ -1419,6 +1457,7 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
+        running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     });
 
     let tauri_sessions = Arc::new(TauriSessionRegistry::new());
@@ -1432,6 +1471,7 @@ fn main() {
             api_patch,
             send_prompt,
             interrupt_session,
+            respond_permission,
             api_realtime_stream,
             api_kline_stream,
             api_search_stocks,

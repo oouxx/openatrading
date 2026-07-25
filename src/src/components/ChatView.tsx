@@ -45,6 +45,7 @@ interface AiCopilotProps {
   activeThreadId: string | null
   onActiveThreadChange: (id: string | null) => void
   onReload?: () => void
+  sessions?: ChatSession[]
 }
 
 let turnSeq = 0
@@ -54,6 +55,7 @@ export default function AiCopilot({
   activeThreadId,
   onActiveThreadChange,
   onReload,
+  sessions,
 }: AiCopilotProps) {
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
@@ -121,12 +123,29 @@ export default function AiCopilot({
     fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
       .then((msgs) => {
         if (!msgs || msgs.length === 0) return
-        threadTurnsRef.current.set(activeThreadId, historyToTurns(msgs))
+        const turns = historyToTurns(msgs)
+        // If the session is currently running, add a placeholder in_progress
+        // assistant turn so the UI shows "生成中..." until real events arrive (§7.4).
+        const session = sessions?.find((s) => s.id === activeThreadId)
+        if (session?.status === "running") {
+          turns.push({
+            id: newTurnId(),
+            role: "assistant",
+            status: "in_progress",
+            blocks: [{
+              type: "text",
+              id: `blk-placeholder-${Date.now()}`,
+              content: "",
+              streaming: true,
+            }],
+          })
+        }
+        threadTurnsRef.current.set(activeThreadId, turns)
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
       })
       .catch(() => {})
-  }, [activeThreadId, scrollDown])
+  }, [activeThreadId, scrollDown, sessions])
 
   // Stock search debounce
   useEffect(() => {
