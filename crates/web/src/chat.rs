@@ -346,6 +346,29 @@ pub async fn create_session(
     let mgr = agent_facade.session.get_session_manager();
     let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
     let session_name = mgr.get_session_name();
+
+    // Force-write the session file to disk so list_sessions can find it
+    // even before the first assistant message is added. Write header +
+    // all entries (session_info for name, etc.) so the file is complete.
+    if let Some(ref path) = session_file {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(hdr) = mgr.get_header() {
+            if let Ok(json) = serde_json::to_string(hdr) {
+                lines.push(json);
+            }
+        }
+        for entry in mgr.get_entries() {
+            if let Ok(json) = serde_json::to_string(entry) {
+                lines.push(json);
+            }
+        }
+        if !lines.is_empty() {
+            let _ = std::fs::write(path, lines.join("\n") + "\n");
+        }
+    }
     drop(mgr);
 
     Json(serde_json::json!({

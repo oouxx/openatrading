@@ -24,10 +24,8 @@ import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
-import {
-  createTransport,
-  type AgentTransport,
-} from "@/agents/transport"
+import { useAgentWebSocket } from "@/agents/useAgentWebSocket"
+import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { applyEvent, historyToTurns } from "@/agents/reducer"
 import type {
   HistoryMessage,
@@ -51,6 +49,8 @@ interface AiCopilotProps {
 let turnSeq = 0
 const newTurnId = () => `turn-${++turnSeq}`
 
+const isTauri = "__TAURI_INTERNALS__" in window
+
 export default function AiCopilot({
   activeThreadId,
   onActiveThreadChange,
@@ -65,6 +65,8 @@ export default function AiCopilot({
   const [threadTurns, setThreadTurns] = useState<Map<string, TranscriptTurn[]>>(new Map())
   const streamThreadRef = useRef<string | null>(null)
   const transportRef = useRef<AgentTransport | null>(null)
+  // Ref to always have the latest sendPrompt from useAgentWebSocket hook
+  const sendPromptRef = useRef<((text: string) => Promise<void>) | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
   const openTab = useStockTabStore((s) => s.openTab)
@@ -116,6 +118,62 @@ export default function AiCopilot({
       transportRef.current = null
     }
   }, [])
+
+  // Keep a ref to the latest sendPrompt so the running send() closure
+  // always uses the current hook instance (fixes race when creating a new session).
+  useEffect(() => {
+    sendPromptRef.current = wsAgent.sendPrompt
+  }, [wsAgent.sendPrompt])
+
+  // ── WebSocket transport (Web) via react-use-websocket hook ──────────────
+  const wsAgent = useAgentWebSocket(!isTauri ? activeThreadId : null, {
+    onTurnsUpdate: useCallback(
+      (turns: TranscriptTurn[]) => {
+        if (isTauri || !activeThreadId) return
+        threadTurnsRef.current.set(activeThreadId, turns)
+        setThreadTurns(new Map(threadTurnsRef.current))
+        scrollDown()
+      },
+      [activeThreadId, scrollDown],
+    ),
+    onTerminal: useCallback(() => {
+      if (isTauri) return
+      setStreaming(false)
+      streamThreadRef.current = null
+      onReload?.()
+    }, [onReload]),
+  })
+
+  // ── Tauri IPC transport (desktop) ──────────────────────────────────────
+  useEffect(() => {
+    if (!isTauri || !activeThreadId) return
+
+    // Dispose any previous transport
+    transportRef.current?.dispose()
+
+    const transport = new TauriTransport(activeThreadId)
+    transportRef.current = transport
+
+    transport.onEvent((event) => {
+      const prev = threadTurnsRef.current.get(activeThreadId) ?? []
+      const { turns, terminal } = applyEvent(prev, event)
+      threadTurnsRef.current.set(activeThreadId, turns)
+      setThreadTurns(new Map(threadTurnsRef.current))
+      scrollDown()
+      if (terminal) {
+        setStreaming(false)
+        streamThreadRef.current = null
+        transport.dispose()
+        transportRef.current = null
+        onReload?.()
+      }
+    })
+
+    return () => {
+      transport.dispose()
+      transportRef.current = null
+    }
+  }, [activeThreadId, onReload, scrollDown])
 
   // Load persisted history when switching to an existing session (§7.3:
   // history is loaded via REST, the live transport only carries events after
@@ -281,29 +339,25 @@ export default function AiCopilot({
       setStreaming(true)
       streamThreadRef.current = sid
 
-      // Build the live transport for this session (§4). Dispose any previous
-      // transport — only one live session is streamed at a time.
-      transportRef.current?.dispose()
-      const transport = createTransport(sid)
-      transportRef.current = transport
-
-      transport.onEvent((event) => {
-        const prev = threadTurnsRef.current.get(sid) ?? []
-        const { turns, terminal } = applyEvent(prev, event)
-        threadTurnsRef.current.set(sid, turns)
-        setThreadTurns(new Map(threadTurnsRef.current))
-        if (terminal) {
-          setStreaming(false)
-          streamThreadRef.current = null
-          transportRef.current?.dispose()
-          transportRef.current = null
-          onReload?.()
-        }
-      })
+      // If this is a newly created session, yield to React so the
+      // useAgentWebSocket hook re-renders with the new sessionId and
+      // establishes the WebSocket connection before we try to send.
+      if (!activeThreadId && !isTauri) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
 
       try {
-        await transport.ready()
-        await transport.sendPrompt(text)
+        if (isTauri) {
+          // Tauri: use TauriTransport
+          const transport = transportRef.current
+          if (!transport) throw new Error("transport not ready")
+          await transport.ready()
+          await transport.sendPrompt(text)
+        } else {
+          // Web: use react-use-websocket hook
+          if (!sendPromptRef.current) throw new Error("WebSocket not ready")
+          await sendPromptRef.current(text)
+        }
       } catch (e: unknown) {
         setStreaming(false)
         streamThreadRef.current = null
@@ -330,7 +384,7 @@ export default function AiCopilot({
         setThreadTurns(new Map(threadTurnsRef.current))
       }
     },
-    [activeThreadId, input, streaming, onActiveThreadChange, onReload, scrollDown]
+    [activeThreadId, input, streaming, onActiveThreadChange, onReload, scrollDown, ]
   )
 
   const onInputKeyDown = useCallback(
@@ -462,20 +516,23 @@ export default function AiCopilot({
                     </span>
                     <div
                       className={`min-w-0 flex-1 text-sm leading-relaxed ${
-                        turn.role === "user" ? "flex items-center justify-end" : "text-white/90"
+                        turn.role === "user" ? "flex items-center" : ""
                       }`}
                     >
-                      {turn.role === "assistant" ? (
-                        <TurnView
-                          turn={turn}
-                          isStreaming={streaming && isLastAi}
-                        />
+                      {turn.role === "user" ? (
+                        <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
                       ) : (
-                        <div className="bg-ink-dim inline-block max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-white">
-                          {turn.blocks.map((b) =>
-                            b.type === "text" ? b.content : null
-                          )}
-                        </div>
+                        <TurnRenderer
+                          sessionId={activeThreadId}
+                          turn={turn}
+                          isStreaming={isLastAi && streaming}
+                          transport={transportRef.current}
+                          respondToPermission={
+                            isTauri
+                              ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
+                              : wsAgent.respondToPermission
+                          }
+                        />
                       )}
                     </div>
                   </div>
@@ -484,77 +541,40 @@ export default function AiCopilot({
             )}
           </div>
 
-          {showSlash && (
-            <CommandDialog
-              open={showSlash}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setShowSlash(false)
-                  requestAnimationFrame(() => textareaRef.current?.focus())
-                }
-              }}
-            >
-              <Command>
-                <CommandInput placeholder="搜索命令..." />
-
-                <CommandList>
-                  <CommandEmpty>无匹配命令</CommandEmpty>
-                  {(["tool", "skill", "slash"] as const).map((groupType) => {
-                    const groupCmds = commands.filter((c) => c.command_type === groupType)
-                    if (groupCmds.length === 0) return null
-                    const headings: Record<string, string> = {
-                      tool: "Tools",
-                      skill: "Skills",
-                      slash: "Slash Commands",
-                    }
-                    return (
-                      <CommandGroup key={groupType} heading={headings[groupType]}>
-                        {groupCmds.map((cmd) => (
-                          <CommandItem
-                            key={cmd.name}
-                            onSelect={() => {
-                              setInput(`/${cmd.name} `)
-                              setShowSlash(false)
-                              requestAnimationFrame(() => textareaRef.current?.focus())
-                            }}
-                          >
-                            <ToolCaseIcon />
-                            <span className="flex-1 truncate font-medium">{cmd.name}</span>
-                            {cmd.description && (
-                              <span className="text-ink-muted ml-auto max-w-[180px] truncate text-[10px]">
-                                {cmd.description}
-                              </span>
-                            )}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )
-                  })}
-                </CommandList>
-              </Command>
-            </CommandDialog>
-          )}
-
-          <div className="bg-bg-surface border-hairline shrink-0 border-t px-4 py-2">
-            <div className="relative mx-auto max-w-[820px]">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={onInputChange}
-                onKeyDown={onInputKeyDown}
-                placeholder="输入问题，/ 触发命令..."
-                disabled={streaming}
-                className="max-h-[120px] min-h-[44px] resize-none pr-12 text-sm"
-                rows={1}
-              />
-              <Button
-                size="icon"
-                className="absolute right-1.5 bottom-1.5 size-8"
-                onClick={() => send()}
-                disabled={streaming || !input.trim()}
-              >
-                <Send className="size-4" />
-              </Button>
+          {/* ── Input area ─────────────────────────────────────────────── */}
+          <div className="border-hairline shrink-0 border-t px-4 py-3">
+            <div className="mx-auto flex max-w-3xl items-end gap-2">
+              <div className="relative flex-1">
+                <Textarea
+                  ref={textareaRef}
+                  className="bg-bg border-hairline focus:border-ai min-h-[44px] w-full resize-none rounded-xl border px-4 py-3 pr-12 text-sm text-white outline-none transition-colors placeholder:text-gray-500"
+                  placeholder="输入消息..."
+                  rows={1}
+                  value={input}
+                  onChange={onInputChange}
+                  onKeyDown={onInputKeyDown}
+                />
+                {showSlash && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1">
+                    <SlashCommandMenu
+                      commands={commands}
+                      onSelect={(cmd) => {
+                        setInput(`/${cmd.name} `)
+                        setShowSlash(false)
+                        textareaRef.current?.focus()
+                      }}
+                    />
+                  </div>
+                )}
+                <Button
+                  size="icon"
+                  className="absolute bottom-1.5 right-1.5 size-8 rounded-lg"
+                  onClick={() => send()}
+                  disabled={!input.trim() || (streaming && streamThreadRef.current === activeThreadId)}
+                >
+                  <Send className="size-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -563,63 +583,48 @@ export default function AiCopilot({
   )
 }
 
-// ── Turn rendering (docs/agentTransport.md §6) ────────────────────────────
-//
-// Blocks are rendered in arrival order. Consecutive tool_call blocks are
-// grouped into a single ToolCallBlock (matches the previous visual layout).
-// compaction/retry system_notice blocks feed the indicator components;
-// turn/notice notices render as result cards.
+// ── Slash command menu ─────────────────────────────────────────────────────
 
-interface TurnViewProps {
-  turn: TranscriptTurn
-  isStreaming: boolean
-  sessionId?: string
-  transport?: AgentTransport | null
+function SlashCommandMenu({
+  commands,
+  onSelect,
+}: {
+  commands: SlashCommand[]
+  onSelect: (cmd: SlashCommand) => void
+}) {
+  if (commands.length === 0) return null
+  return (
+    <div className="bg-bg-surface border-hairline rounded-card max-h-48 overflow-y-auto border shadow-lg">
+      {commands.map((cmd) => (
+        <button
+          key={cmd.name}
+          className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+          onClick={() => onSelect(cmd)}
+        >
+          <span className="font-mono text-ai">/{cmd.name}</span>
+          <span className="text-ink-muted">{cmd.description}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
-function TurnView({ turn, isStreaming, sessionId, transport }: TurnViewProps) {
-  // Derive compaction / retry indicator state from the turn's system_notice
-  // blocks (the reducer records lifecycle there).
+// ── Turn renderer ─────────────────────────────────────────────────────────
+
+interface TurnRendererProps {
+  sessionId: string | null
+  turn: TranscriptTurn
+  isStreaming: boolean
+  transport: AgentTransport | null
+  respondToPermission: (id: string, approved: boolean) => Promise<void>
+}
+
+function TurnRenderer({ sessionId, turn, isStreaming, transport, respondToPermission }: TurnRendererProps) {
+  const segments = groupBlocks(turn.blocks)
   const compaction = lastNotice(turn, "compaction")
   const retry = lastNotice(turn, "retry")
-
-  const compactionStatus =
-    compaction?.status === "active"
-      ? "compacting"
-      : (compaction?.status ?? "idle")
-  const retryStatus =
-    retry?.status === "active"
-      ? "retrying"
-      : (retry?.status ?? "idle")
-
-  // Group consecutive tool_call blocks for ToolCallBlock rendering.
-  const segments: Array<
-    | { kind: "thinking"; block: Extract<TranscriptBlock, { type: "thinking" }> }
-    | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }> }
-    | { kind: "tools"; blocks: Array<Extract<TranscriptBlock, { type: "tool_call" }>> }
-    | { kind: "results"; blocks: Array<Extract<TranscriptBlock, { type: "system_notice" }>> }
-    | { kind: "permission"; block: Extract<TranscriptBlock, { type: "permission_request" }> }
-  > = []
-  for (const block of turn.blocks) {
-    const last = segments[segments.length - 1]
-    if (block.type === "tool_call") {
-      if (last?.kind === "tools") last.blocks.push(block)
-      else segments.push({ kind: "tools", blocks: [block] })
-    } else if (
-      block.type === "system_notice" &&
-      (block.kind === "turn" || block.kind === "notice")
-    ) {
-      if (last?.kind === "results") last.blocks.push(block)
-      else segments.push({ kind: "results", blocks: [block] })
-    } else if (block.type === "thinking") {
-      segments.push({ kind: "thinking", block })
-    } else if (block.type === "text") {
-      segments.push({ kind: "text", block })
-    } else if (block.type === "permission_request") {
-      segments.push({ kind: "permission", block })
-    }
-    // compaction/retry system_notices are rendered via indicators below.
-  }
+  const compactionStatus = compaction?.status ?? null
+  const retryStatus = retry?.status ?? null
 
   return (
     <>
@@ -673,7 +678,7 @@ function TurnView({ turn, isStreaming, sessionId, transport }: TurnViewProps) {
             <PermissionRequestCard
               key={`t-${i}`}
               block={seg.block}
-              transport={transport}
+              respondToPermission={respondToPermission}
             />
           )
         }
@@ -709,21 +714,21 @@ function TurnView({ turn, isStreaming, sessionId, transport }: TurnViewProps) {
 
 interface PermissionRequestCardProps {
   block: Extract<TranscriptBlock, { type: "permission_request" }>
-  transport?: AgentTransport | null
+  respondToPermission: (id: string, approved: boolean) => Promise<void>
 }
 
-function PermissionRequestCard({ block, transport }: PermissionRequestCardProps) {
+function PermissionRequestCard({ block, respondToPermission }: PermissionRequestCardProps) {
   const [resolved, setResolved] = useState(block.resolved)
 
   const handleApprove = async () => {
-    if (!transport || resolved) return
-    await transport.respondToPermission(block.id, true)
+    if (resolved) return
+    await respondToPermission(block.id, true)
     setResolved(true)
   }
 
   const handleReject = async () => {
-    if (!transport || resolved) return
-    await transport.respondToPermission(block.id, false)
+    if (resolved) return
+    await respondToPermission(block.id, false)
     setResolved(true)
   }
 
@@ -756,6 +761,37 @@ function PermissionRequestCard({ block, transport }: PermissionRequestCardProps)
       </div>
     </div>
   )
+}
+
+// ── Block grouping helpers ─────────────────────────────────────────────────
+
+interface BlockGroup {
+  kind: "thinking" | "text" | "tools" | "results" | "permission"
+  block?: TranscriptBlock
+  blocks: TranscriptBlock[]
+}
+
+function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
+  const groups: BlockGroup[] = []
+  for (const block of blocks) {
+    if (block.type === "thinking") {
+      groups.push({ kind: "thinking", block, blocks: [block] })
+    } else if (block.type === "text") {
+      groups.push({ kind: "text", block, blocks: [block] })
+    } else if (block.type === "tool_call") {
+      const last = groups[groups.length - 1]
+      if (last && last.kind === "tools") {
+        last.blocks.push(block)
+      } else {
+        groups.push({ kind: "tools", blocks: [block] })
+      }
+    } else if (block.type === "system_notice") {
+      groups.push({ kind: "results", blocks: [block] })
+    } else if (block.type === "permission_request") {
+      groups.push({ kind: "permission", block, blocks: [block] })
+    }
+  }
+  return groups
 }
 
 function lastNotice(
