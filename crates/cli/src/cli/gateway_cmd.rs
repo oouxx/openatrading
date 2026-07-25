@@ -94,7 +94,7 @@ pub fn cmd_gateway_status() -> Result<()> {
                 "⏹  服务已停止{}",
                 msg.as_deref().map(|s| format!(": {s}")).unwrap_or_default()
             );
-        },
+        }
         ServiceStatus::NotInstalled => println!("❌ 服务未安装"),
     }
     Ok(())
@@ -165,7 +165,7 @@ pub fn create_notification_sender(
                 "unknown notify_channel: {other}, falling back to telegram"
             );
             sc.telegram.as_ref().and_then(create_telegram_sender)
-        },
+        }
     };
 
     match sender {

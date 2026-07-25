@@ -82,7 +82,7 @@ impl CircuitBreaker {
                     return true;
                 }
                 false
-            },
+            }
             _ => false,
         }
     }

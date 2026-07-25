@@ -87,7 +87,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .cloned()
                 .collect();
             (sp, filtered)
-        },
+        }
         Some(CommandType::Skill) => {
             let skills = SkillRegistry::from_disk();
             let skill = skills
@@ -108,7 +108,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 None => all_tools,
             };
             (crate::chat::build_system_prompt(prompt), filtered)
-        },
+        }
         None => {
             let strategy_text = input
                 .roles
@@ -116,7 +116,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .find(|r| r.name == input.role_name)
                 .map_or(default_strategy, |r| r.strategy.as_str());
             (crate::chat::build_system_prompt(strategy_text), all_tools)
-        },
+        }
     };
 
     ChatConfig {

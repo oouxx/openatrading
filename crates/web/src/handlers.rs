@@ -148,13 +148,13 @@ pub async fn get_sentiment_history(
                             bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
                             rise_ratio: (rise_ratio * 100.0).round() / 100.0,
                         });
-                    },
+                    }
                     Ok(None) => {
                         openatrading_core::log::error!("sentiment_history: no data for {date}");
-                    },
+                    }
                     Err(e) => {
                         openatrading_core::log::error!("sentiment_history error for {date}: {e}");
-                    },
+                    }
                 }
             }
 
@@ -330,12 +330,12 @@ pub async fn get_kline_stream(
                         symbols
                     );
                     return;
-                },
+                }
             },
             Err(e) => {
                 openatrading_core::log::warn!("[kline-stream] initial fetch {:?}: {e}", symbols);
                 serde_json::json!({ "error": e.to_string() }).to_string()
-            },
+            }
         };
         if tx.send(Ok(Event::default().data(json))).await.is_err() {
             return;
@@ -365,12 +365,12 @@ pub async fn get_kline_stream(
                                 symbols
                             );
                             continue;
-                        },
+                        }
                     },
                     Err(e) => {
                         openatrading_core::log::warn!("[kline-stream] {:?}: {e}", symbols);
                         serde_json::json!({ "error": e.to_string() }).to_string()
-                    },
+                    }
                 };
                 if tx.send(Ok(Event::default().data(json))).await.is_err() {
                     break;
@@ -481,7 +481,7 @@ pub async fn get_realtime_stream(
             Err(e) => {
                 openatrading_core::log::warn!("[realtime-stream] initial fetch {:?}: {e}", symbols);
                 serde_json::json!({ "error": e.to_string() }).to_string()
-            },
+            }
         };
         if tx.send(Ok(Event::default().data(json))).await.is_err() {
             return;
@@ -507,7 +507,7 @@ pub async fn get_realtime_stream(
                     Err(e) => {
                         openatrading_core::log::warn!("[realtime-stream] {:?}: {e}", symbols);
                         serde_json::json!({ "error": e.to_string() }).to_string()
-                    },
+                    }
                 };
                 if tx.send(Ok(Event::default().data(json))).await.is_err() {
                     break;
@@ -1184,10 +1184,10 @@ pub async fn get_dragon_tiger_detail(
                         existing.explanation = Some(format!("{prefix}{sep}{exp}"));
                     }
                 }
-            },
+            }
             None => {
                 merged.insert(key, item);
-            },
+            }
         }
     }
     let merged_all: Vec<LhbDetail> = merged.into_values().collect();
@@ -1272,7 +1272,7 @@ pub async fn search_stocks(
                 Json(serde_json::json!({"error": "search failed"})),
             )
                 .into_response()
-        },
+        }
     }
 }
 
@@ -1328,7 +1328,7 @@ pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResp
                 Json(serde_json::json!({"error": "missing code"})),
             )
                 .into_response()
-        },
+        }
     };
     let name = match body.get("name").and_then(|v| v.as_str()) {
         Some(n) => n.to_string(),
@@ -1338,7 +1338,7 @@ pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResp
                 Json(serde_json::json!({"error": "missing name"})),
             )
                 .into_response()
-        },
+        }
     };
 
     let mut items = load_watchlist();
@@ -1367,7 +1367,7 @@ pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResp
                 Json(serde_json::json!({"error": "save failed"})),
             )
                 .into_response()
-        },
+        }
     }
 }
 
@@ -1393,6 +1393,6 @@ pub async fn delete_watchlist(Path(code): Path<String>) -> impl IntoResponse {
                 Json(serde_json::json!({"error": "save failed"})),
             )
                 .into_response()
-        },
+        }
     }
 }

@@ -29,7 +29,7 @@ pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
         Some((matter, body)) => {
             let map: HashMap<String, String> = serde_yaml::from_str(&matter).unwrap_or_default();
             (map, body)
-        },
+        }
         None => (HashMap::new(), content.trim().to_string()),
     }
 }

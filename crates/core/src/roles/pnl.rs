@@ -47,7 +47,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                     log.position_id,
                     (log.symbol.to_string(), log.shares, log.price),
                 );
-            },
+            }
             TradeAction::Close => {
                 let proceeds = log.price * log.shares as f64;
                 cash += proceeds;
@@ -55,8 +55,8 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                 // Each Close refers to the same position_id as its Open,
                 // so we remove the correct cost basis.
                 holdings.remove(&log.position_id);
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         // Mark-to-market: use entry price as proxy for open positions.

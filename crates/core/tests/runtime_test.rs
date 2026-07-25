@@ -95,7 +95,7 @@ async fn test_trading_tools_exec() {
                                 text.clone()
                             };
                             println!("[dbg]     [{j}] Text: {display}");
-                        },
+                        }
                         ContentBlock::ToolCall {
                             id,
                             name,
@@ -105,7 +105,7 @@ async fn test_trading_tools_exec() {
                             println!(
                                 "[dbg]     [{j}] ToolCall: id={id} name={name} args={arguments}"
                             );
-                        },
+                        }
                         ContentBlock::Thinking { thinking, .. } => {
                             let display = if thinking.len() > 300 {
                                 let truncated: String = thinking.chars().take(300).collect();
@@ -114,13 +114,13 @@ async fn test_trading_tools_exec() {
                                 thinking.clone()
                             };
                             println!("[dbg]     [{j}] Thinking: {display}");
-                        },
+                        }
                         _ => {
                             println!("[dbg]     [{j}] Other: {block:?}");
-                        },
+                        }
                     }
                 }
-            },
+            }
             AgentMessage::ToolResult {
                 tool_call_id,
                 tool_name,
@@ -142,10 +142,10 @@ async fn test_trading_tools_exec() {
                     text
                 };
                 println!("[dbg]   [{i}] ToolResult: tool={tool_name} id={tool_call_id} is_error={is_error} text={display}");
-            },
+            }
             _ => {
                 println!("[dbg]   [{i}] Other: {msg:?}");
-            },
+            }
         }
     }
 }
@@ -190,7 +190,7 @@ async fn test_bash_tool_exec() {
                     match block {
                         ContentBlock::Text { text, .. } => {
                             println!("[dbg]     [{j}] Text: {text}");
-                        },
+                        }
                         ContentBlock::ToolCall {
                             id,
                             name,
@@ -200,16 +200,16 @@ async fn test_bash_tool_exec() {
                             println!(
                                 "[dbg]     [{j}] ToolCall: id={id} name={name} args={arguments}"
                             );
-                        },
+                        }
                         ContentBlock::Thinking { thinking, .. } => {
                             println!("[dbg]     [{j}] Thinking: {thinking}");
-                        },
+                        }
                         _ => {
                             println!("[dbg]     [{j}] Other: {block:?}");
-                        },
+                        }
                     }
                 }
-            },
+            }
             AgentMessage::ToolResult {
                 tool_call_id,
                 tool_name,
@@ -226,7 +226,7 @@ async fn test_bash_tool_exec() {
                     .collect::<Vec<_>>()
                     .join("");
                 println!("[dbg]   [{i}] ToolResult: tool={tool_name} id={tool_call_id} is_error={is_error} text={text}");
-            },
+            }
             AgentMessage::BashExecution {
                 command,
                 output,
@@ -236,10 +236,10 @@ async fn test_bash_tool_exec() {
                 println!(
                     "[dbg]   [{i}] BashExecution: cmd={command} exit={exit_code:?} output={output}"
                 );
-            },
+            }
             _ => {
                 println!("[dbg]   [{i}] Other: {msg:?}");
-            },
+            }
         }
     }
 

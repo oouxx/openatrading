@@ -23,11 +23,11 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("invalid bind {bind}: {e}"))?;
             openatrading_core::log::info!("[mcp] http server starting on http://{bind}/mcp");
             serve_http(tools, bind, rx).await
-        },
+        }
         McpTransport::Stdio => {
             openatrading_core::log::info!("[mcp] stdio server starting");
             serve_stdio(tools, rx).await
-        },
+        }
     };
 
     signal_task.abort();
@@ -88,10 +88,10 @@ pub async fn cmd_mcp_status(endpoint: &str) -> Result<()> {
             let count = tools.as_array().map_or(0, std::vec::Vec::len);
             println!("✅ MCP 服务器可达 ({endpoint})");
             println!("   已注册工具: {count}");
-        },
+        }
         Err(e) => {
             anyhow::bail!("❌ MCP 服务器不可达 ({endpoint}): {e}");
-        },
+        }
     }
     Ok(())
 }

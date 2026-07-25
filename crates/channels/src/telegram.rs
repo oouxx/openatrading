@@ -190,7 +190,7 @@ impl MessageAdapter for TelegramAdapter {
                     tracing::error!("[telegram-adapter] getUpdates error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let text = match resp.text().await {
@@ -199,7 +199,7 @@ impl MessageAdapter for TelegramAdapter {
                     tracing::error!("[telegram-adapter] read body error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let body: GetUpdatesResponse = match serde_json::from_str(&text) {
@@ -211,7 +211,7 @@ impl MessageAdapter for TelegramAdapter {
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             if !body.ok {

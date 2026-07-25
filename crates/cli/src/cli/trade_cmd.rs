@@ -50,7 +50,7 @@ pub fn cmd_trade_list(role: Option<&str>) -> Result<()> {
                 let pnl = match p.current_price {
                     Some(cp) if cp > 0.0 => {
                         format!("{:+.1}%", (cp - p.cost_price) / p.cost_price * 100.0)
-                    },
+                    }
                     _ => "N/A".to_string(),
                 };
                 println!(

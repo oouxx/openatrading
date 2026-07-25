@@ -39,7 +39,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
         let tg = match tg {
@@ -51,7 +51,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
         let Some(token) = tg.bot_token.as_ref().filter(|t| !t.is_empty()) else {
@@ -81,7 +81,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
         let send_url = format!("https://api.telegram.org/bot{token}/sendMessage");
         match client
@@ -114,7 +114,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
             Ok(resp) => {
                 let body = resp.text().await.unwrap_or_default();
                 CheckResult {
@@ -123,7 +123,7 @@ impl Check for TelegramCheck {
                     details: vec![body],
                     duration_ms: 0,
                 }
-            },
+            }
             Err(e) => {
                 let is_timeout = e.is_timeout();
                 CheckResult {
@@ -136,7 +136,7 @@ impl Check for TelegramCheck {
                     details: vec![format!("{e}")],
                     duration_ms: 0,
                 }
-            },
+            }
         }
     }
 

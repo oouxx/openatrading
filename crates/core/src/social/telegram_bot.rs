@@ -141,7 +141,7 @@ impl TelegramBot {
                     crate::log::error!("[telegram-bot] getUpdates error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let text = match resp.text().await {
@@ -150,7 +150,7 @@ impl TelegramBot {
                     crate::log::error!("[telegram-bot] read response body error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let body: GetUpdatesResponse = match serde_json::from_str(&text) {
@@ -162,7 +162,7 @@ impl TelegramBot {
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             if !body.ok {
@@ -256,7 +256,7 @@ impl TelegramBot {
                     self.send_message("当前没有进行中的对话，使用 /ask role_name question 开始")
                         .await?;
                 }
-            },
+            }
             "/ask" => {
                 if args.is_empty() {
                     let session = self.session.lock().await;
@@ -353,7 +353,7 @@ impl TelegramBot {
                         .await?;
                     }
                 }
-            },
+            }
             "/decision" => {
                 let filtered_roles: Vec<RoleEntry> = if args.is_empty() {
                     self.roles.clone()
@@ -426,13 +426,13 @@ impl TelegramBot {
                     Ok(()) => {
                         self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
                             .await?;
-                    },
+                    }
                     Err(e) => {
                         self.edit_message(msg_id, &format!("❌ 决策执行失败: {e}"))
                             .await?;
-                    },
+                    }
                 }
-            },
+            }
             "/start" | "/help" => {
                 let role_list: Vec<String> = self
                     .roles
@@ -451,8 +451,8 @@ impl TelegramBot {
                     role_list.join("\n")
                 ))
                 .await?;
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         Ok(())

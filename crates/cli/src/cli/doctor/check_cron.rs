@@ -59,7 +59,7 @@ impl Check for CronCheck {
                             Err(e) => {
                                 details.push(format!("{name}: {expr} ✗ ({e})"));
                                 errors += 1;
-                            },
+                            }
                         }
                     }
 
@@ -78,7 +78,7 @@ impl Check for CronCheck {
                             duration_ms: 0,
                         }
                     }
-                },
+                }
                 _ => CheckResult {
                     status: CheckStatus::Warn("cron 未启用".into()),
                     summary: "定时任务调度未启用".into(),

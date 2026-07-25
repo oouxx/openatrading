@@ -12,7 +12,7 @@ fn check_port(addr: &str) -> Result<(), String> {
             // Dropping the listener releases the bind immediately
             drop(l);
             Ok(())
-        },
+        }
         Err(e) => Err(format!("地址 {addr} 被占用: {e}")),
     }
 }
@@ -53,7 +53,7 @@ impl Check for PortCheck {
             Err(e) => {
                 details.push(format!("web: {web_bind}  ✗ ({e})"));
                 errors += 1;
-            },
+            }
         }
 
         // Check mcp_server bind port
@@ -67,7 +67,7 @@ impl Check for PortCheck {
             Err(e) => {
                 details.push(format!("mcp: {mcp_bind}  ✗ ({e})"));
                 errors += 1;
-            },
+            }
         }
 
         if errors == 0 {

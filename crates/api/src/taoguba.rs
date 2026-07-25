@@ -521,7 +521,7 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             Err(e) => {
                 tracing::warn!(error = %e, post_id = %post.id, "taoguba: 获取帖子内容失败");
                 (String::new(), String::new())
-            },
+            }
         };
 
         let date = if create_time.is_empty() {

@@ -24,3 +24,6 @@ chrono = { workspace = true }
 toml = "0.8"
 dotenvy = { workspace = true }
 futures-util = "0.3"
+
+[lints]
+workspace = true

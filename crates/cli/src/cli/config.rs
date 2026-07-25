@@ -207,7 +207,7 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {}: {e}", config_path.display());
                 return None;
-            },
+            }
         };
         let content = substitute_env(&content);
         let raw: RawConfig = match toml::from_str(&content) {
@@ -215,7 +215,7 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {} (解析错误): {e}", config_path.display());
                 return None;
-            },
+            }
         };
         Some(Self {
             default_role: raw.default_role,
@@ -318,7 +318,7 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {} (解析错误): {e}", path.display());
                 return;
-            },
+            }
         };
 
         for (name, entry) in parsed.mcp_servers {
