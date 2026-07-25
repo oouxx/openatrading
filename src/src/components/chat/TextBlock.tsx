@@ -152,6 +152,17 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
 
   if (!content) return null
 
+  // While streaming, render as plain text to avoid markdown re-parsing flicker (§6.1).
+  // Once streaming is complete, switch to full react-markdown rendering.
+  if (isStreaming) {
+    return (
+      <div className="prose-custom text-sm/relaxed">
+        <span className="whitespace-pre-wrap">{content}</span>
+        <StreamingCursor />
+      </div>
+    )
+  }
+
   return (
     <div className="prose-custom text-sm/relaxed">
       <ReactMarkdown
@@ -161,7 +172,6 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
       >
         {content}
       </ReactMarkdown>
-      {isStreaming && <StreamingCursor />}
     </div>
   )
 }
