@@ -492,24 +492,30 @@ async fn handle_session(
 ) {
     use openatrading_core::log;
 
-    // Resume (or create) the agent session.
-    let mut agent_facade = match state
-        .ctx
-        .runtime
-        .create_session(None, None, Some(true), Some(&session_id), None)
-        .await
-    {
-        Ok(h) => h,
-        Err(e) => {
-            log::error!("ws: failed to create/resume session {session_id}: {e}");
-            let _ = socket
-                .send(Message::Text(format!(
-                    r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                )))
-                .await;
-            return;
-        }
-    };
+    // Check for a pending facade from create_session first. This ensures we
+    // reuse the same AgentFacade that was created by the REST API, so events
+    // are not lost. If no pending facade exists, resume from the session file.
+    let (mut agent_facade, pending_message) =
+        match state.pending_facades.lock().await.remove(&session_id) {
+            Some(pending) => (pending.facade, pending.pending_message),
+            None => match state
+                .ctx
+                .runtime
+                .create_session(None, None, Some(true), Some(&session_id), None)
+                .await
+            {
+                Ok(h) => (h, None),
+                Err(e) => {
+                    log::error!("ws: failed to create/resume session {session_id}: {e}");
+                    let _ = socket
+                        .send(Message::Text(format!(
+                            r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                        )))
+                        .await;
+                    return;
+                }
+            },
+        };
 
     // Get the shared per-session event buffer (§9.1). It is shared across
     // connections to the same session so events produced while a client is
@@ -548,6 +554,17 @@ async fn handle_session(
     }
 
     let (mut delta_rx, mut durable_rx) = setup_event_channel(&agent_facade).await;
+
+    // If there is a pending message from create_session, send it now that
+    // event subscribers are in place (prevents losing early events).
+    if let Some(msg) = pending_message {
+        state
+            .running_sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone());
+        agent_facade.send(&msg).await;
+    }
 
     log::info!("ws: session {session_id} connected (last_seq={last_seq:?})");
 

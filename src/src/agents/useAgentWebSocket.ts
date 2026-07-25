@@ -75,6 +75,7 @@ export function useAgentWebSocket(
     if (!sessionId) return
 
     const url = `${wsBaseUrl()}/api/ai/sessions/${sessionId}/ws`
+    console.log('[useAgentWebSocket] connecting to', url)
 
     const connect = () => {
       if (!mountedRef.current) return
@@ -87,6 +88,7 @@ export function useAgentWebSocket(
 
       ws.onopen = () => {
         if (!mountedRef.current || ws !== wsRef.current) return
+        console.log('[useAgentWebSocket] connected', url)
         setReadyState(ReadyState.OPEN)
         setIsReady(true)
         reconnectCountRef.current = 0
@@ -96,6 +98,7 @@ export function useAgentWebSocket(
 
       ws.onclose = () => {
         if (!mountedRef.current || ws !== wsRef.current) return
+        console.log('[useAgentWebSocket] closed', url)
         setReadyState(ReadyState.CLOSED)
         setIsReady(false)
 
@@ -111,7 +114,7 @@ export function useAgentWebSocket(
       }
 
       ws.onerror = () => {
-        // onclose will fire after onerror, so reconnection is handled there
+        console.error('[useAgentWebSocket] error', url)
       }
 
       ws.onmessage = (event: MessageEvent) => {

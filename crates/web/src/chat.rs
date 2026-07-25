@@ -349,9 +349,9 @@ pub struct CreateSessionRequest {
 /// POST /api/ai/sessions — create a new session via pi-coding-agent.
 ///
 /// Accepts `{ "name": "<title>", "message": "<first message>" }`.
-/// The name is persisted as the session title. The session immediately starts
-/// processing the message (fire-and-forget); the frontend should connect via
-/// WebSocket to receive streaming events.
+/// The name is persisted as the session title. The message is stored and
+/// only sent to the agent after a WebSocket connection subscribes to events,
+/// ensuring no events are lost.
 pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionRequest>,
@@ -374,14 +374,23 @@ pub async fn create_session(
 
     let session_id = agent_facade.get_session_id();
 
-    // Start processing the message immediately (fire-and-forget).
-    // The frontend connects via WebSocket to receive streaming events.
+    // Store the facade and pending message so the WebSocket handler can
+    // subscribe to events BEFORE the agent starts processing. This prevents
+    // a race where early events are produced before any subscriber exists.
+    state.pending_facades.lock().await.insert(
+        session_id.clone(),
+        crate::PendingSession {
+            facade: agent_facade.clone(),
+            pending_message: Some(req.message.clone()),
+        },
+    );
+
+    // Mark session as running so list_sessions shows the correct status.
     state
         .running_sessions
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(session_id.clone());
-    agent_facade.send(&req.message).await;
 
     // Use session manager to get session metadata
     let mgr = agent_facade.session.get_session_manager();
