@@ -315,13 +315,19 @@ pub async fn handle_slash_command(
 pub struct CreateSessionRequest {
     #[serde(default)]
     name: Option<String>,
+    /// Optional first message to start processing immediately.
+    /// When provided, the session will begin processing the message
+    /// and the frontend can connect via WebSocket to receive streaming events.
+    #[serde(default)]
+    message: Option<String>,
 }
 
 /// POST /api/ai/sessions — create a new session via pi-coding-agent.
 ///
-/// Accepts an optional `{ "name": "<first message>" }` body. The name is
-/// persisted as the session title so the sidebar can display it without
-/// waiting for the first assistant turn.
+/// Accepts an optional `{ "name": "<title>", "message": "<first message>" }` body.
+/// The name is persisted as the session title. If `message` is provided, the session
+/// immediately starts processing it (fire-and-forget); the frontend should connect
+/// via WebSocket to receive streaming events.
 pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionRequest>,
@@ -341,6 +347,19 @@ pub async fn create_session(
             }));
         }
     };
+
+    let session_id = agent_facade.get_session_id();
+
+    // If a first message was provided, start processing immediately (fire-and-forget).
+    // The frontend connects via WebSocket to receive streaming events.
+    if let Some(msg) = req.message.as_deref().filter(|s| !s.is_empty()) {
+        state
+            .running_sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone());
+        agent_facade.send(msg).await;
+    }
 
     // Use session manager to get session metadata
     let mgr = agent_facade.session.get_session_manager();
@@ -373,7 +392,7 @@ pub async fn create_session(
 
     Json(serde_json::json!({
         "success": true,
-        "id": agent_facade.get_session_id(),
+        "id": session_id,
         "name": session_name,
         "path": session_file.map(|p| p.to_string_lossy().to_string()),
         "message_count": 0,

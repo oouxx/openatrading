@@ -295,7 +295,7 @@ export default function AiCopilot({
         try {
           const result = await fetchJson<{ id: string }>("/api/ai/sessions", {
             method: "POST",
-            body: JSON.stringify({ name: text }),
+            body: JSON.stringify({ name: text, message: text }),
           })
           sessionId = result.id
           onActiveThreadChange(sessionId)
@@ -339,11 +339,15 @@ export default function AiCopilot({
       setStreaming(true)
       streamThreadRef.current = sid
 
-      // If this is a newly created session, yield to React so the
-      // useAgentWebSocket hook re-renders with the new sessionId and
-      // establishes the WebSocket connection before we try to send.
+      // For new sessions, the backend already started processing the message
+      // (fire-and-forget in create_session). We just need to connect WebSocket
+      // to receive streaming events — no need to send a separate prompt.
       if (!activeThreadId && !isTauri) {
+        // Yield to React so useAgentWebSocket re-renders with the new sessionId
+        // and establishes the WebSocket connection.
         await new Promise((resolve) => setTimeout(resolve, 0))
+        setStreaming(true)
+        return
       }
 
       try {
