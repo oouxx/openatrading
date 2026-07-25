@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw } from "lucide-react"
+import { useState, useMemo } from "react"
+import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw, Terminal, FileEdit } from "lucide-react"
+import { diffLines, formatLines } from "diff"
 import { getApiBaseUrl } from "@/stores/data"
 
 interface ToolCall {
@@ -63,7 +64,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 className="hover:bg-bg-hover/70 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
                 onClick={() => toggleExpand(tc.id)}
               >
-                <Wrench className="text-ink-muted size-3.5 shrink-0" />
+                <ToolIcon name={tc.name} />
                 <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
                 {hasContent && (
@@ -85,7 +86,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 >
                   {hasArgs && (
                     <Section title="参数">
-                      <ContentBlock content={formatArgs(tc.args!)} />
+                      <ToolArgsContent name={tc.name} args={tc.args!} />
                     </Section>
                   )}
                   {hasPartial && (
@@ -99,7 +100,8 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                   {/* Tool result with truncation support (§15.2) */}
                   {tc.result && (
                     <Section title="结果">
-                      <ResultBlock
+                      <ToolResultContent
+                        name={tc.name}
                         content={tc.result}
                         toolCallId={tc.id}
                         sessionId={sessionId}
@@ -114,6 +116,118 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
         })}
     </div>
   )
+}
+
+// ── Tool card dispatch by name (§6.3) ──────────────────────────────
+
+function ToolIcon({ name }: { name: string }) {
+  switch (name) {
+    case "bash":
+    case "command":
+    case "terminal":
+      return <Terminal className="text-ink-muted size-3.5 shrink-0" />
+    case "edit":
+    case "write":
+    case "edit_file":
+    case "write_file":
+      return <FileEdit className="text-ink-muted size-3.5 shrink-0" />
+    default:
+      return <Wrench className="text-ink-muted size-3.5 shrink-0" />
+  }
+}
+
+function ToolArgsContent({ name, args }: { name: string; args: string }) {
+  switch (name) {
+    case "bash":
+    case "command":
+    case "terminal":
+      // Show bash commands in a terminal-like code block
+      return (
+        <pre className="bg-bg-hover overflow-x-auto rounded-md p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+          <code>$ {formatArgs(args)}</code>
+        </pre>
+      )
+    case "edit":
+    case "write":
+    case "edit_file":
+    case "write_file":
+      // Show edit args as structured content
+      return <ContentBlock content={formatArgs(args)} />
+    default:
+      return <ContentBlock content={formatArgs(args)} />
+  }
+}
+
+function ToolResultContent({
+  name,
+  content,
+  toolCallId,
+  sessionId,
+  output,
+}: {
+  name: string
+  content: string
+  toolCallId: string
+  sessionId?: string
+  output?: { preview: string; truncated: boolean; fullLength: number }
+}) {
+  switch (name) {
+    case "edit":
+    case "write":
+    case "edit_file":
+    case "write_file": {
+      // For edit tools, try to render a diff view
+      return <DiffView content={content} />
+    }
+    default:
+      return (
+        <ResultBlock
+          content={content}
+          toolCallId={toolCallId}
+          sessionId={sessionId}
+          output={output}
+        />
+      )
+  }
+}
+
+/** Simple diff view for edit tool results (§6.3). */
+function DiffView({ content }: { content: string }) {
+  const diffResult = useMemo(() => {
+    // Try to parse the content as a unified diff or structured edit result
+    // If it contains "---" and "+++" lines, render as diff
+    const lines = content.split("\n")
+    const hasDiffMarkers = lines.some((l) => l.startsWith("---") || l.startsWith("+++"))
+    if (hasDiffMarkers) {
+      try {
+        const changes = diffLines(content, "")
+        return { type: "diff" as const, changes }
+      } catch {
+        return { type: "raw" as const, content }
+      }
+    }
+    return { type: "raw" as const, content }
+  }, [content])
+
+  if (diffResult.type === "diff") {
+    return (
+      <pre className="overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+        {content.split("\n").map((line, i) => {
+          let className = ""
+          if (line.startsWith("+")) className = "text-emerald-500"
+          else if (line.startsWith("-")) className = "text-red-500"
+          else if (line.startsWith("@")) className = "text-ink-muted/50"
+          return (
+            <div key={i} className={className}>
+              {line}
+            </div>
+          )
+        })}
+      </pre>
+    )
+  }
+
+  return <ResultBlock content={content} toolCallId="" />
 }
 
 /** Renders tool result content with truncation and expand-from-server support (§15.2). */
