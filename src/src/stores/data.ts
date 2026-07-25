@@ -21,6 +21,17 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
       }
       return invoke("api_post", { path, body }) as Promise<T>
     }
+    if (init?.method === "PATCH") {
+      let body: Record<string, unknown> = {}
+      if (init.body) {
+        try {
+          body = JSON.parse(String(init.body))
+        } catch {
+          /* use empty */
+        }
+      }
+      return invoke("api_patch", { path, body }) as Promise<T>
+    }
     return invoke("api_fetch", { path }) as Promise<T>
   }
   const base = getApiBaseUrl()
