@@ -15,6 +15,8 @@ interface ToolCallBlockProps {
   isStreaming?: boolean
 }
 
+const COLLAPSE_THRESHOLD = 500
+
 export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -37,6 +39,9 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
           const isExpanded = expanded[tc.id] ?? isAutoExpanded(tc) ?? false
           const status = tc.status ?? (isStreaming ? "streaming" : "success")
           const hasPartial = tc.partialResult && tc.partialResult.length > 0
+          const hasArgs = tc.args && tc.args.length > 0
+          const hasContent = hasArgs || hasPartial
+
           return (
             <div
               key={tc.id || i}
@@ -57,7 +62,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                 <Wrench className="text-ink-muted size-3.5 shrink-0" />
                 <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
-                {(tc.args || hasPartial) && (
+                {hasContent && (
                   <span className="text-ink-muted/50 ml-auto">
                     {isExpanded ? (
                       <ChevronDown className="size-3" />
@@ -68,35 +73,74 @@ export default function ToolCallBlock({ toolCalls, isStreaming }: ToolCallBlockP
                 )}
               </button>
 
-              {(tc.args || hasPartial) && isExpanded && (
-                <div className="border-hairline space-y-2 border-t px-3 py-2">
-                  {tc.args && (
+              {hasContent && (
+                <div
+                  className={`border-hairline space-y-2 border-t px-3 py-2 ${
+                    isExpanded ? "" : "hidden"
+                  }`}
+                >
+                  {hasArgs && (
                     <Section title="参数">
-                      <pre className="text-ink-muted max-h-48 overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                        {formatArgs(tc.args)}
-                      </pre>
+                      <ContentBlock content={formatArgs(tc.args!)} />
                     </Section>
                   )}
                   {hasPartial && (
                     <Section title="中间结果">
-                      <pre className="text-ink-muted max-h-48 overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                        {tc.partialResult!.length > 800
-                          ? tc.partialResult!.slice(0, 800) + "\n…"
-                          : tc.partialResult}
-                        {status === "running" && (
-                          <span className="text-ai ml-0.5 inline-block h-2.5 w-1 animate-pulse align-middle">
-                            |
-                          </span>
-                        )}
-                      </pre>
+                      <ContentBlock
+                        content={tc.partialResult!}
+                        showCursor={status === "running"}
+                      />
                     </Section>
                   )}
-
                 </div>
               )}
             </div>
           )
         })}
+    </div>
+  )
+}
+
+/** Renders content, collapsing if too long */
+function ContentBlock({
+  content,
+  showCursor,
+}: {
+  content: string
+  showCursor?: boolean
+}) {
+  const [showFull, setShowFull] = useState(false)
+  const isLong = content.length > COLLAPSE_THRESHOLD
+
+  // Default: collapsed if long, expanded if short
+  const effectivelyExpanded = isLong ? showFull : true
+  const displayText = effectivelyExpanded ? content : content.slice(0, 300)
+
+  return (
+    <div>
+      <pre
+        className={`text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap ${
+          effectivelyExpanded ? "max-h-none" : "max-h-48"
+        }`}
+      >
+        {displayText}
+        {isLong && !showFull && (
+          <span className="text-ink-muted/50">…</span>
+        )}
+        {showCursor && (
+          <span className="text-ai ml-0.5 inline-block h-2.5 w-1 animate-pulse align-middle">
+            |
+          </span>
+        )}
+      </pre>
+      {isLong && (
+        <button
+          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+          onClick={() => setShowFull(!showFull)}
+        >
+          {showFull ? "收起" : `展开全部 (${content.length} 字符)`}
+        </button>
+      )}
     </div>
   )
 }

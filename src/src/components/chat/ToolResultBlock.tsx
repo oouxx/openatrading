@@ -11,6 +11,8 @@ interface ToolResultBlockProps {
   results: ToolResult[]
 }
 
+const COLLAPSE_THRESHOLD = 500
+
 export default function ToolResultBlock({ results }: ToolResultBlockProps) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
 
@@ -24,8 +26,7 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
     <div className="my-2 flex flex-col gap-1.5">
       {results.map((tr, i) => {
         const isExpanded = expanded[i] ?? false
-        const truncated = tr.result.length > 500
-        const displayText = isExpanded ? tr.result : tr.result.slice(0, 200)
+        const isLong = tr.result.length > COLLAPSE_THRESHOLD
 
         return (
           <div
@@ -51,7 +52,7 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
               <span className="text-ink-muted/50 text-[10px]">
                 {tr.result.length} 字符
               </span>
-              {truncated && (
+              {(isLong || isExpanded) && (
                 <span className="ml-auto">
                   {isExpanded ? (
                     <ChevronDown className="size-3 text-ink-muted/50" />
@@ -62,13 +63,10 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
               )}
             </button>
 
-            {tr.result && (
+            {tr.result && isExpanded && (
               <div className="border-hairline border-t px-3 py-2">
-                <pre className="text-ink-muted max-h-48 overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                  {displayText}
-                  {truncated && !isExpanded && (
-                    <span className="text-ink-muted/50">…</span>
-                  )}
+                <pre className="text-ink-muted max-h-none overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+                  {tr.result}
                 </pre>
               </div>
             )}
