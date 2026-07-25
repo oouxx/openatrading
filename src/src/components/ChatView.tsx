@@ -430,7 +430,7 @@ export default function AiCopilot({
               const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, content: last.content + \`\n\n[错误] \${err}\` }
+                msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` }
                 threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
@@ -444,7 +444,7 @@ export default function AiCopilot({
         if (last && last.role === "assistant") {
           msgs[msgs.length - 1] = {
             ...last,
-            content: \`[错误] \${(e as Error).message || "网络请求失败"}\`,
+            content: `[错误] ${(e as Error).message || "网络请求失败"}`,
           }
           threadMessagesRef.current.set(sessionId, msgs)
           setThreadMessages(new Map(threadMessagesRef.current))
@@ -452,8 +452,6 @@ export default function AiCopilot({
       }
     },
     [activeThreadId, input, streaming, threadMessages, onActiveThreadChange, onReload, scrollDown]
-  )
-    [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload]
   )
 
   const onInputKeyDown = useCallback(
@@ -676,7 +674,7 @@ export default function AiCopilot({
                             key={cmd.name}
                             onSelect={() => {
                               pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
-                              setInput(\`/\${cmd.name} \`)
+                              setInput(`/${cmd.name} `)
                               setShowSlash(false)
                               requestAnimationFrame(() => textareaRef.current?.focus())
                             }}
