@@ -100,7 +100,6 @@ mod op {
 #[derive(Deserialize)]
 struct GatewayPayload {
     op: u8,
-    #[allow(dead_code)]
     s: Option<i64>,
     t: Option<String>,
     d: serde_json::Value,
@@ -119,8 +118,6 @@ struct MessageCreateData {
     channel_id: String,
     author: MessageAuthor,
     content: String,
-    #[allow(dead_code)]
-    guild_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -157,7 +154,6 @@ impl MessageAdapter for DiscordAdapter {
         "discord"
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError> {
         let bot_token = self.bot_token.clone();
         let allowed_channel_id = self.allowed_channel_id.clone();

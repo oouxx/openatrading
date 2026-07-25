@@ -1,8 +1,3 @@
-#![allow(clippy::unwrap_used)]
-#![allow(clippy::cast_precision_loss)]
-#![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::cast_possible_wrap)]
-#![allow(clippy::significant_drop_tightening)]
 pub mod api;
 pub mod commands;
 pub mod context;

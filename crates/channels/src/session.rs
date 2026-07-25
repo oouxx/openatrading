@@ -56,7 +56,6 @@ impl SessionManager {
     }
 
     /// 创建或更新会话。
-    #[allow(clippy::significant_drop_tightening)]
     pub async fn upsert(
         &self,
         platform: Platform,
@@ -65,26 +64,26 @@ impl SessionManager {
         user_name: Option<String>,
     ) -> String {
         let key = Self::session_key(platform, &user_id);
-        let mut inner = self.inner.write().await;
+        {
+            let mut inner = self.inner.write().await;
+            let entry = inner
+                .sessions
+                .entry(key.clone())
+                .or_insert_with(|| Session {
+                    platform,
+                    user_id: user_id.clone(),
+                    channel_id: channel_id.clone(),
+                    user_name: user_name.clone(),
+                    is_active: true,
+                    created_at: Instant::now(),
+                    last_active_at: Instant::now(),
+                });
 
-        let entry = inner
-            .sessions
-            .entry(key.clone())
-            .or_insert_with(|| Session {
-                platform,
-                user_id: user_id.clone(),
-                channel_id: channel_id.clone(),
-                user_name: user_name.clone(),
-                is_active: true,
-                created_at: Instant::now(),
-                last_active_at: Instant::now(),
-            });
-
-        entry.channel_id = channel_id;
-        entry.user_name = user_name;
-        entry.is_active = true;
-        entry.last_active_at = Instant::now();
-
+            entry.channel_id = channel_id;
+            entry.user_name = user_name;
+            entry.is_active = true;
+            entry.last_active_at = Instant::now();
+        }
         key
     }
 

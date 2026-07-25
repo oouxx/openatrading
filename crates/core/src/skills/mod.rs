@@ -151,7 +151,6 @@ pub fn validate_skill_name(name: &str) -> Result<(), String> {
 
 /// Scan a single skills directory for subdirectories containing `SKILL.md`.
 /// Returns a list of `SkillEntry` values, skipping invalid ones with warnings.
-#[allow(clippy::needless_pass_by_value)]
 fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
     if !dir.is_dir() {
         return Vec::new();

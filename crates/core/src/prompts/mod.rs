@@ -62,22 +62,25 @@ pub const AGGRESSIVE_MODE_USER_PROMPT: &str = "\n\n⚠️ 当前为**激进模�
 
 // ── Web chat ───────────────────────────────────────
 
+/// Market data snapshot used to build the web chat user message.
+#[derive(Debug, Clone)]
+pub struct WebChatMarketData<'a> {
+    pub date: &'a str,
+    pub rise: u32,
+    pub fall: u32,
+    pub limit_up: u32,
+    pub limit_down: u32,
+    pub bomb_rate: f64,
+    pub risk_level: &'a str,
+    pub summary: &'a str,
+    pub field_items: &'a str,
+    pub super_stocks: &'a str,
+}
+
 /// Build the user message for the web chat endpoint (richer format with risk analysis).
-#[allow(clippy::too_many_arguments)]
 #[must_use]
-pub fn build_web_chat_user_message(
-    date: &str,
-    rise: u32,
-    fall: u32,
-    limit_up: u32,
-    limit_down: u32,
-    bomb_rate: f64,
-    risk_level: &str,
-    summary: &str,
-    field_items: &str,
-    super_stocks: &str,
-) -> String {
-    let ratio = f64::from(rise) / f64::from(fall.max(1));
+pub fn build_web_chat_user_message(data: &WebChatMarketData<'_>) -> String {
+    let ratio = f64::from(data.rise) / f64::from(data.fall.max(1));
     format!(
         r"## 当前市场数据
 - 日期：{date}
@@ -90,7 +93,18 @@ pub fn build_web_chat_user_message(
 - 风险等级：{risk_level}
 - 市场摘要：{summary}
 {field_items}{super_stocks}
-请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。"
+请在回答时结合以上实时市场数据，帮助用户理解当前市场状态。",
+        date = data.date,
+        rise = data.rise,
+        fall = data.fall,
+        limit_up = data.limit_up,
+        limit_down = data.limit_down,
+        bomb_rate = data.bomb_rate,
+        ratio = ratio,
+        risk_level = data.risk_level,
+        summary = data.summary,
+        field_items = data.field_items,
+        super_stocks = data.super_stocks,
     )
 }
 

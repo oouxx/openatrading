@@ -1,16 +1,9 @@
 use async_trait::async_trait;
-use std::time::Duration;
 
 use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 /// Network timeout for a single LLM probe request.
 ///
-/// LLM completions can legitimately take a while; 30s leaves headroom for a
-/// slow provider while still bounding a hung endpoint so `doctor` doesn't
-/// stall indefinitely.
-#[allow(dead_code)]
-const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
-
 pub struct LlmCheck;
 
 #[async_trait]

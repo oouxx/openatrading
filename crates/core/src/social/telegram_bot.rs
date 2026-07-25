@@ -1,10 +1,3 @@
-#![allow(clippy::large_futures)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::manual_let_else)]
-#![allow(clippy::option_if_let_else)]
-#![allow(clippy::format_push_string)]
-#![allow(clippy::items_after_statements)]
 use anyhow::Result;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -63,9 +56,7 @@ struct GetUpdatesResponse {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct SendMessageResponse {
-    ok: bool,
     result: Option<TgMessageObj>,
 }
 
@@ -540,10 +531,10 @@ impl TelegramBot {
             .send()
             .await?;
 
-        let body: SendMessageResponse = resp.json().await.unwrap_or(SendMessageResponse {
-            ok: false,
-            result: None,
-        });
+        let body: SendMessageResponse = resp
+            .json()
+            .await
+            .unwrap_or(SendMessageResponse { result: None });
 
         let msg_id = body.result.map_or(-1, |r| r.message_id);
         Ok(msg_id)
