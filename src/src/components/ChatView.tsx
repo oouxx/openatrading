@@ -19,7 +19,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import { apiChatStream, fetchJson } from "@/stores/data"
+import { agentStream, fetchJson } from "@/stores/data"
 import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
@@ -79,7 +79,6 @@ export default function AiCopilot({
   const [retryMaxAttempts, setRetryMaxAttempts] = useState<number>(0)
   const [retryDelayMs, setRetryDelayMs] = useState<number>(0)
   const [retryError, setRetryError] = useState<string | null>(null)
-  const pendingCmdRef = useRef<{ name: string; type: string } | null>(null)
   const streamThreadRef = useRef<string | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
@@ -220,8 +219,6 @@ export default function AiCopilot({
       if (!text) return
       if (streaming && streamThreadRef.current === activeThreadId) return
 
-      const cmd = pendingCmdRef.current
-      pendingCmdRef.current = null
       setShowSlash(false)
       setInput("")
 
@@ -258,14 +255,10 @@ export default function AiCopilot({
       streamThreadRef.current = sessionId
 
       try {
-        await apiChatStream(
+        await agentStream(
           {
             message: text,
             session_id: sessionId,
-            role: "",
-            command_name: cmd?.name,
-            command_type: cmd?.type,
-            skill_name: cmd?.type === "skill" ? cmd.name : undefined,
           },
           {
             onText: (data) => {
@@ -673,7 +666,6 @@ export default function AiCopilot({
                           <CommandItem
                             key={cmd.name}
                             onSelect={() => {
-                              pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
                               setInput(`/${cmd.name} `)
                               setShowSlash(false)
                               requestAnimationFrame(() => textareaRef.current?.focus())

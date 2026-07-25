@@ -1,6 +1,5 @@
 #![allow(clippy::large_futures)]
 #![allow(clippy::missing_errors_doc)]
-use ahash::AHashMap as HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -14,27 +13,23 @@ use openatrading_agent::types::{AgentEvent, AgentMessage};
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSessionOptions};
 use pi_extension_api::ToolDefinition;
-use tokio::sync::Mutex;
 
 // ── AgentRuntime ─────────────────────────────────────────────────────────
 
-#[derive(Clone)]
-pub struct AgentRuntime {
-    sessions: Arc<Mutex<HashMap<String, Arc<AgentFacade>>>>,
-}
-
-impl Default for AgentRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Factory for agent sessions.
+///
+/// Each [`AgentRuntime::create_session`] call produces a freshly-owned
+/// `Arc<AgentFacade>` — nothing is cached here. Long-lived ownership (e.g. the
+/// Tauri transport keeping one facade per session across prompts) is the
+/// caller's responsibility; this keeps `Arc::get_mut` usable for slash
+/// commands that need `&mut AgentSession`.
+#[derive(Clone, Default)]
+pub struct AgentRuntime;
 
 impl AgentRuntime {
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self
     }
 
     /// Create a new agent session (the only way to invoke LLM).
@@ -101,16 +96,9 @@ impl AgentRuntime {
                 agent_session.set_session_name(name);
             }
         }
-        let facade = Arc::new(AgentFacade {
+        Ok(Arc::new(AgentFacade {
             session: agent_session,
-        });
-
-        self.sessions
-            .lock()
-            .await
-            .insert(facade.get_session_id(), facade.clone());
-
-        Ok(facade)
+        }))
     }
 }
 pub struct AgentFacade {
