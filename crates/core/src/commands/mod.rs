@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum CommandType {
     Tool,
     Skill,
+    Slash,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

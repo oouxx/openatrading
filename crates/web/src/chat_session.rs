@@ -109,6 +109,13 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
             };
             (crate::chat::build_system_prompt(prompt), filtered)
         }
+        Some(CommandType::Slash) => {
+            // Slash commands are handled by the pi-coding-agent runtime directly.
+            // Use the default system prompt and pass all tools (the runtime will
+            // decide which to invoke based on the slash command handler).
+            let sp = crate::chat::build_system_prompt(default_strategy);
+            (sp, all_tools)
+        }
         None => {
             let strategy_text = input
                 .roles
