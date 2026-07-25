@@ -1,8 +1,16 @@
-// ── Agent transport abstraction (docs/agentTransport.md §4) ───────────────
+// ── Agent transport abstraction (docs/agentTransport.md §4, §9) ────────────
 //
 // Web and Tauri share the same `AgentTransport` interface; only the concrete
 // implementation differs. The frontend reducer/UI never branches on transport
 // kind — they only call `onEvent` / `sendPrompt` / `interrupt`.
+//
+// ## Reconnection (§9)
+//
+// `WebSocketTransport` implements automatic reconnection with exponential
+// backoff, heartbeat pings, and seq-based event replay. On disconnect it
+// waits, then reconnects with `?last_seq=...` to recover missed events. If
+// the server signals `resync_required`, the caller's `onResync` callback is
+// invoked to fall back to full history reload.
 
 import { getApiBaseUrl } from "@/stores/data"
 import type { ClientCommand, TranscriptEvent } from "./types"
@@ -34,48 +42,106 @@ function sendCmd(ws: WebSocket, cmd: ClientCommand): void {
   ws.send(JSON.stringify(cmd))
 }
 
-// ── WebSocket transport (Web) ─────────────────────────────────────────────
+// ── WebSocket transport with reconnection (Web, §9) ────────────────────────
 
 export class WebSocketTransport implements AgentTransport {
-  private ws: WebSocket
+  private ws: WebSocket | null = null
   private listeners = new Set<(event: TranscriptEvent) => void>()
+  private readyResolve: (() => void) | null = null
+  private readyReject: ((err: Error) => void) | null = null
   private readyPromise: Promise<void>
   private disposed = false
+  private lastSeq: number | undefined
+  private retryDelay = 1000
+  private readonly maxRetryDelay = 30_000
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(sessionId: string) {
-    const url = `${wsBaseUrl()}/api/ai/sessions/${sessionId}/ws`
+  constructor(
+    private sessionId: string,
+    private onResync?: () => void,
+  ) {
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve
+      this.readyReject = reject
+    })
+    this.connect()
+  }
+
+  private connect(): void {
+    if (this.disposed) return
+
+    const url = new URL(`${wsBaseUrl()}/api/ai/sessions/${this.sessionId}/ws`)
+    if (this.lastSeq !== undefined) {
+      url.searchParams.set("last_seq", String(this.lastSeq))
+    }
+
     this.ws = new WebSocket(url)
 
-    this.readyPromise = new Promise<void>((resolve, reject) => {
-      const onOpen = () => {
-        this.ws.removeEventListener("open", onOpen)
-        this.ws.removeEventListener("error", onErr)
-        resolve()
-      }
-      const onErr = () => {
-        this.ws.removeEventListener("open", onOpen)
-        this.ws.removeEventListener("error", onErr)
-        reject(new Error("websocket 连接失败"))
-      }
-      this.ws.addEventListener("open", onOpen)
-      this.ws.addEventListener("error", onErr)
-    })
+    this.ws.onopen = () => {
+      this.retryDelay = 1000 // Reset backoff on successful connection
+      this.readyResolve?.()
+      this.readyResolve = null
+      this.readyReject = null
+
+      // Start heartbeat ping every 15s
+      this.heartbeatTimer = setInterval(() => {
+        try {
+          this.ws?.send(JSON.stringify({ type: "ping" }))
+        } catch {
+          // Connection may be closed; timer will be cleared on close
+        }
+      }, 15_000)
+    }
 
     this.ws.onmessage = (ev) => {
-      let event: TranscriptEvent
+      let parsed: Record<string, unknown>
       try {
-        event = JSON.parse(typeof ev.data === "string" ? ev.data : "")
+        parsed = JSON.parse(typeof ev.data === "string" ? ev.data : "")
       } catch {
         return
       }
+
+      // Handle resync signal (§9.1)
+      if (parsed.type === "resync_required") {
+        this.onResync?.()
+        return
+      }
+
+      // Track seq for reconnection replay
+      if (typeof parsed.seq === "number") {
+        this.lastSeq = parsed.seq as number
+      }
+
+      const event = parsed as TranscriptEvent
       for (const cb of this.listeners) cb(event)
     }
+
     this.ws.onclose = () => {
-      // Surface a synthetic terminal event so the reducer can finalize.
+      this.clearHeartbeat()
       if (this.disposed) return
+
+      // Surface a synthetic terminal event so the reducer can finalize.
       for (const cb of this.listeners) {
-        cb({ kind: "session", type: "agent_end", will_retry: false })
+        cb({ kind: "session", type: "agent_end", will_retry: false } as TranscriptEvent)
       }
+
+      // Schedule reconnection with exponential backoff (§9.2)
+      this.retryTimer = setTimeout(() => {
+        this.connect()
+      }, this.retryDelay)
+      this.retryDelay = Math.min(this.retryDelay * 2, this.maxRetryDelay)
+    }
+
+    this.ws.onerror = () => {
+      // onclose will fire after onerror, so reconnection is handled there
+    }
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
     }
   }
 
@@ -85,12 +151,14 @@ export class WebSocketTransport implements AgentTransport {
   }
 
   async sendPrompt(text: string): Promise<void> {
-    await this.readyPromise
+    await this.ready()
+    if (!this.ws) throw new Error("transport not connected")
     sendCmd(this.ws, { type: "prompt", text })
   }
 
   async interrupt(): Promise<void> {
-    await this.readyPromise
+    await this.ready()
+    if (!this.ws) throw new Error("transport not connected")
     sendCmd(this.ws, { type: "interrupt" })
   }
 
@@ -101,11 +169,17 @@ export class WebSocketTransport implements AgentTransport {
   dispose(): void {
     this.disposed = true
     this.listeners.clear()
+    this.clearHeartbeat()
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
     try {
-      this.ws.close()
+      this.ws?.close()
     } catch {
       /* ignore */
     }
+    this.ws = null
   }
 }
 
@@ -116,6 +190,7 @@ export class TauriTransport implements AgentTransport {
   private unlisten: (() => void) | null = null
   private readyPromise: Promise<void>
   private invokeFn: typeof import("@tauri-apps/api/core").invoke | null = null
+  private lastSeq: number | undefined
 
   constructor(private sessionId: string) {
     this.readyPromise = this.init()
@@ -125,11 +200,19 @@ export class TauriTransport implements AgentTransport {
     const { invoke } = await import("@tauri-apps/api/core")
     const { listen } = await import("@tauri-apps/api/event")
     this.invokeFn = invoke
-    this.unlisten = await listen<{ session_id: string; event: TranscriptEvent }>(
+    this.unlisten = await listen<{ session_id: string; event: { schema_version: number; seq: number | null; kind: string; [k: string]: unknown } }>(
       "agent-event",
       (e) => {
         if (e.payload.session_id !== this.sessionId) return
-        for (const cb of this.listeners) cb(e.payload.event)
+        const envelope = e.payload.event
+        // Track seq for reconnection replay
+        if (typeof envelope.seq === "number") {
+          this.lastSeq = envelope.seq
+        }
+        // The event field is the EventEnvelope with flattened TranscriptEvent.
+        // Strip the envelope fields to get the inner event for the reducer.
+        const { schema_version, seq, ...innerEvent } = envelope
+        for (const cb of this.listeners) cb(innerEvent as TranscriptEvent)
       },
     )
   }
@@ -163,6 +246,11 @@ export class TauriTransport implements AgentTransport {
 }
 
 /** Create the transport appropriate for the current environment. */
-export function createTransport(sessionId: string): AgentTransport {
-  return isTauri ? new TauriTransport(sessionId) : new WebSocketTransport(sessionId)
+export function createTransport(
+  sessionId: string,
+  onResync?: () => void,
+): AgentTransport {
+  return isTauri
+    ? new TauriTransport(sessionId)
+    : new WebSocketTransport(sessionId, onResync)
 }

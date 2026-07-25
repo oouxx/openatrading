@@ -1061,12 +1061,27 @@ impl TauriSessionRegistry {
             .create_session(None, None, Some(true), Some(session_id), None)
             .await
             .map_err(|e| e.to_string())?;
-        let mut evt_rx = openatrading_web::agent_ws::setup_event_channel(&facade).await;
+        let (mut delta_rx, mut durable_rx, buffer) =
+            openatrading_web::agent_ws::setup_event_channel_with_buffer(&facade).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
         tokio::spawn(async move {
-            while let Some(event) = evt_rx.recv().await {
-                let payload = serde_json::json!({ "session_id": sid, "event": event });
+            loop {
+                let event = tokio::select! {
+                    ev = delta_rx.recv() => ev,
+                    ev = durable_rx.recv() => ev,
+                    else => break,
+                };
+                let Some(event) = event else { break };
+                let envelope = openatrading_web::agent_ws::EventEnvelope {
+                    schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
+                    seq: 0,
+                    event,
+                };
+                // Serialize to Value first, then push envelope to buffer (push takes ownership).
+                let event_value = serde_json::to_value(&envelope).unwrap_or_default();
+                let _seq = buffer.lock().await.push(envelope);
+                let payload = serde_json::json!({ "session_id": sid, "event": event_value });
                 let _ = app_handle.emit("agent-event", payload);
             }
         });

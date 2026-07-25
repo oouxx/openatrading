@@ -1,24 +1,58 @@
 //! WebSocket transport for agent session events.
 //!
 //! Both `AgentEvent` (async) and `AgentSessionEvent` (sync) are unified into a
-//! single [`TranscriptEvent`] enum and sent over a WebSocket connection. This
+//! single [`TranscriptEvent`] enum, wrapped in an [`EventEnvelope`] with seq
+//! numbering and schema version, and sent over a WebSocket connection. This
 //! module is shared between the axum web server and the Tauri IPC layer — the
-//! event-production logic (`setup_event_channel`) is identical, only the
-//! delivery mechanism differs (`socket.send` vs `app.emit`).
+//! event-production logic is identical, only the delivery mechanism differs
+//! (`socket.send` vs `app.emit`).
+//!
+//! ## Reconnection (§9)
+//!
+//! Each event is assigned a monotonically increasing `seq`. A ring buffer
+//! (`SessionEventBuffer`) retains the last N events per session. When a client
+//! reconnects with `?last_seq=...`, the buffer replays missed events before
+//! resuming the live stream. If the buffer has already evicted the requested
+//! seq, a `resync_required` signal is sent instead.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
+use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::{AgentFacade, AgentMessage};
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 use crate::chat::handle_slash_command;
 use crate::AppState;
+
+// ── Schema version (§16.2) ────────────────────────────────────────────────
+
+/// Current schema version. Increment when making incompatible changes to the
+/// event wire format so the frontend can conditionally handle old/new shapes.
+pub const SCHEMA_VERSION: u32 = 1;
+
+// ── Event envelope (§16.2) ───────────────────────────────────────────────
+
+/// Top-level envelope wrapping every event sent over the wire.
+///
+/// The frontend uses `schema_version` for conditional handling and `seq` for
+/// reconnection replay tracking.
+#[derive(Debug, Serialize)]
+pub struct EventEnvelope {
+    pub schema_version: u32,
+    pub seq: u64,
+    #[serde(flatten)]
+    pub event: TranscriptEvent,
+}
+
+// ── Event types ────────────────────────────────────────────────────────────
 
 /// Wire-format event: either a core `AgentEvent` or a session-level event.
 ///
@@ -84,6 +118,8 @@ pub enum SessionEventPayload {
         text: String,
         is_error: bool,
     },
+    /// Resync signal for reconnection (§9.1).
+    ResyncRequired,
     /// Catch-all for variants not explicitly mapped.
     Other,
 }
@@ -151,7 +187,6 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
 
 /// Extract human-readable text from a slice of tool-result messages.
 fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<String> {
-    use openatrading_core::llm::pi_ai_types::ContentBlock;
     messages
         .iter()
         .filter_map(|m| match m {
@@ -175,13 +210,74 @@ fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<String> {
         .collect()
 }
 
-/// Client → server commands received over the WebSocket.
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ClientCommand {
+// ── Session event buffer (§9.1) ────────────────────────────────────────────
+
+/// Ring buffer that retains the last N events per session for reconnection
+/// replay. Each event is assigned a monotonically increasing sequence number.
+pub struct SessionEventBuffer {
+    events: VecDeque<(u64, EventEnvelope)>,
+    next_seq: u64,
+    capacity: usize,
+}
+
+impl SessionEventBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            events: VecDeque::with_capacity(capacity),
+            next_seq: 0,
+            capacity,
+        }
+    }
+
+    /// Push an event, assign it a seq, and return the seq.
+    pub fn push(&mut self, mut envelope: EventEnvelope) -> u64 {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        envelope.seq = seq;
+        self.events.push_back((seq, envelope));
+        if self.events.len() > self.capacity {
+            self.events.pop_front();
+        }
+        seq
+    }
+
+    /// Return all events with seq > `last_seq`, or all events if `last_seq`
+    /// is `None`. Returns `None` if the requested `last_seq` has already been
+    /// evicted from the buffer (reconnection too late).
+    pub fn events_since(&self, last_seq: Option<u64>) -> Option<Vec<&EventEnvelope>> {
+        match last_seq {
+            Some(seq) => {
+                if self
+                    .events
+                    .front()
+                    .map_or(true, |(oldest, _)| *oldest > seq)
+                {
+                    return None;
+                }
+                Some(
+                    self.events
+                        .iter()
+                        .filter(|(s, _)| *s > seq)
+                        .map(|(_, e)| e)
+                        .collect(),
+                )
+            }
+            None => Some(self.events.iter().map(|(_, e)| e).collect()),
+        }
+    }
+}
+
+// ── Client commands ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ClientCommand {
     Prompt { text: String },
     Interrupt,
+    Ping,
 }
+
+// ── Event channel setup ────────────────────────────────────────────────────
 
 /// Async listener signature for `AgentEvent` subscription.
 type AgentEventListener = Arc<
@@ -193,52 +289,118 @@ type AgentEventListener = Arc<
         + Sync,
 >;
 
-/// Set up event subscriptions on an agent facade, returning the receiver end
-/// of a single unbounded channel that merges both event streams.
+/// Set up the event channel for a session.
 ///
-/// This function is the **single source of truth** for event production —
-/// the axum WS handler and the Tauri IPC layer both call it, then decide
-/// independently how to consume `evt_rx`.
+/// Returns an unbounded receiver that yields [`TranscriptEvent`] values from
+/// both `AgentEvent` (async) and `AgentSessionEvent` (sync) sources, merged
+/// into a single channel for ordering guarantees (§10.1).
+/// Set up the event channel for a session with backpressure support (§14).
+///
+/// Returns a pair of receivers:
+/// - `delta_rx` (capacity 64, drops when full) — for text/thinking/tool-call deltas
+/// - `durable_rx` (capacity 256, blocks when full) — for tool results, turn lifecycle,
+///   compaction, retry, and other non-delta events
+///
+/// The two-channel design ensures that high-frequency delta events don't starve
+/// important lifecycle events, and that a slow consumer doesn't cause unbounded
+/// memory growth.
 pub async fn setup_event_channel(
     agent_facade: &AgentFacade,
-) -> mpsc::UnboundedReceiver<TranscriptEvent> {
-    let (evt_tx, evt_rx) = mpsc::unbounded_channel::<TranscriptEvent>();
+) -> (
+    mpsc::Receiver<TranscriptEvent>,
+    mpsc::Receiver<TranscriptEvent>,
+) {
+    let (delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
+    let (durable_tx, durable_rx) = mpsc::channel::<TranscriptEvent>(256);
 
-    // AgentEvent (async) → Core
-    let tx1 = evt_tx.clone();
+    // AgentEvent (async) → route to appropriate channel based on event type
+    let delta_tx1 = delta_tx.clone();
+    let durable_tx1 = durable_tx.clone();
     let async_listener: AgentEventListener = Arc::new(move |event, _signal| {
-        let tx = tx1.clone();
+        let delta_tx = delta_tx1.clone();
+        let durable_tx = durable_tx1.clone();
         Box::pin(async move {
-            let _ = tx.send(TranscriptEvent::Core(Box::new(event)));
+            // Text/thinking/tool-call deltas → delta channel (drops when full)
+            // Everything else → durable channel (awaits capacity)
+            let is_delta = matches!(
+                &event,
+                AgentEvent::MessageUpdate {
+                    assistant_message_event,
+                    ..
+                } if matches!(
+                    assistant_message_event,
+                    pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::TextDelta { .. }
+                    | pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::ThinkingDelta { .. }
+                    | pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::ToolCallDelta { .. }
+                )
+            );
+            if is_delta {
+                let _ = delta_tx.try_send(TranscriptEvent::Core(Box::new(event)));
+            } else {
+                let _ = durable_tx
+                    .send(TranscriptEvent::Core(Box::new(event)))
+                    .await;
+            }
         })
     });
     let _h1 = agent_facade.session.subscribe(async_listener).await;
 
-    // AgentSessionEvent (sync) → Session
-    let tx2 = evt_tx.clone();
+    // AgentSessionEvent (sync) → durable channel (try_send since sync callback)
+    let durable_tx2 = durable_tx.clone();
     let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
         let payload = convert_session_event(event);
-        let _ = tx2.send(TranscriptEvent::Session(payload));
+        let _ = durable_tx2.try_send(TranscriptEvent::Session(payload));
     });
     let _h2 = agent_facade.session.subscribe_session_events(sync_listener);
 
-    evt_rx
+    (delta_rx, durable_rx)
+}
+
+/// Set up the event channel and buffer for a session with backpressure (§14).
+///
+/// Returns the delta receiver, durable receiver, and the buffer. The buffer is
+/// used for reconnection replay (§9.1). Both channels feed into the same buffer
+/// so reconnection replay preserves event ordering.
+pub async fn setup_event_channel_with_buffer(
+    agent_facade: &AgentFacade,
+) -> (
+    mpsc::Receiver<TranscriptEvent>,
+    mpsc::Receiver<TranscriptEvent>,
+    Arc<tokio::sync::Mutex<SessionEventBuffer>>,
+) {
+    let (delta_rx, durable_rx) = setup_event_channel(agent_facade).await;
+    let buffer = Arc::new(tokio::sync::Mutex::new(SessionEventBuffer::new(500)));
+    (delta_rx, durable_rx, buffer)
+}
+
+// ── WS handler ────────────────────────────────────────────────────────────────────────────
+
+/// Query parameters for the WS upgrade request.
+#[derive(Debug, Deserialize)]
+pub struct WsQuery {
+    /// The last seq the client received. Omit for first connection.
+    pub last_seq: Option<u64>,
 }
 
 /// `GET /api/ai/sessions/:id/ws` — WebSocket upgrade.
 ///
-/// The `:id` path parameter is the session ID. On connect the server resumes
-/// (or creates) the agent session, sets up event subscriptions, and enters a
-/// select loop that forwards events to the client and receives commands.
+/// The `:id` path parameter is the session ID. Optional `?last_seq=...`
+/// enables reconnection replay (§9).
 pub async fn ws_handler(
     Path(session_id): Path<String>,
+    Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_session(socket, state, session_id))
+    ws.on_upgrade(move |socket| handle_session(socket, state, session_id, query.last_seq))
 }
 
-async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id: String) {
+async fn handle_session(
+    mut socket: WebSocket,
+    state: Arc<AppState>,
+    session_id: String,
+    last_seq: Option<u64>,
+) {
     use openatrading_core::log;
 
     // Resume (or create) the agent session.
@@ -260,15 +422,66 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
         }
     };
 
-    let mut evt_rx = setup_event_channel(&agent_facade).await;
+    // Create the per-session event buffer.
+    let buffer = Arc::new(Mutex::new(SessionEventBuffer::new(500)));
 
-    log::info!("ws: session {session_id} connected");
+    // Replay missed events if reconnecting (§9.1).
+    {
+        let buf = buffer.lock().await;
+        match buf.events_since(last_seq) {
+            Some(events) => {
+                for envelope in events {
+                    let Ok(json) = serde_json::to_string(envelope) else {
+                        continue;
+                    };
+                    if socket.send(Message::Text(json)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+            None => {
+                // Buffer has evicted the requested seq — signal resync.
+                let resync = serde_json::json!({
+                    "schema_version": SCHEMA_VERSION,
+                    "seq": null,
+                    "kind": "session",
+                    "type": "resync_required",
+                });
+                let _ = socket.send(Message::Text(resync.to_string())).await;
+            }
+        }
+    }
+
+    let (mut delta_rx, mut durable_rx) = setup_event_channel(&agent_facade).await;
+
+    log::info!("ws: session {session_id} connected (last_seq={last_seq:?})");
 
     loop {
         tokio::select! {
-            // Event → client
-            Some(event) = evt_rx.recv() => {
-                let Ok(json) = serde_json::to_string(&event) else { continue };
+            // Delta events (text/thinking/tool-call deltas) — can drop if slow
+            Some(event) = delta_rx.recv() => {
+                let envelope = EventEnvelope {
+                    schema_version: SCHEMA_VERSION,
+                    seq: 0,
+                    event,
+                };
+                let json = serde_json::to_string(&envelope);
+                let Ok(json) = json else { continue };
+                let _seq = buffer.lock().await.push(envelope);
+                if socket.send(Message::Text(json)).await.is_err() {
+                    break;
+                }
+            }
+            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
+            Some(event) = durable_rx.recv() => {
+                let envelope = EventEnvelope {
+                    schema_version: SCHEMA_VERSION,
+                    seq: 0,
+                    event,
+                };
+                let json = serde_json::to_string(&envelope);
+                let Ok(json) = json else { continue };
+                let _seq = buffer.lock().await.push(envelope);
                 if socket.send(Message::Text(json)).await.is_err() {
                     break;
                 }
@@ -281,8 +494,12 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                             Ok(ClientCommand::Prompt { text }) => {
                                 if let Err(notice) = try_slash_command(&text, &mut agent_facade).await {
                                     let _ = socket.send(Message::Text(
-                                        serde_json::to_string(&TranscriptEvent::Session(notice))
-                                            .unwrap_or_default(),
+                                        serde_json::to_string(&EventEnvelope {
+                                            schema_version: SCHEMA_VERSION,
+                                            seq: 0,
+                                            event: TranscriptEvent::Session(notice),
+                                        })
+                                        .unwrap_or_default(),
                                     )).await;
                                     continue;
                                 }
@@ -290,6 +507,9 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                             }
                             Ok(ClientCommand::Interrupt) => {
                                 agent_facade.session.abort().await;
+                            }
+                            Ok(ClientCommand::Ping) => {
+                                // Application-level ping acknowledged; no response needed.
                             }
                             Err(_) => {
                                 // Ignore unparseable messages; don't break the connection.
