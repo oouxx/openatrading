@@ -286,7 +286,7 @@ pub async fn ai_chat(
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         // 在流内部创建 session，handle 随流生命周期存活
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentSessionEvent>(256);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentSessionEvent>();
         let agent_facade = match Box::pin(runtime
             .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), None))
             .await
@@ -304,11 +304,8 @@ pub async fn ai_chat(
         let listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
             let tx = tx.clone();
             // AgentSessionEvent listener is sync, send to channel
-            // Use try_send instead of blocking_send to avoid panicking
-            // when called from within a Tokio runtime context.
-            if tx.try_send(event).is_err() {
-                openatrading_core::log::warn!("ai/chat: event channel full, dropping event");
-            }
+            // Unbounded channel: send never blocks, safe from sync context.
+            let _ = tx.send(event);
         });
         let _handle = agent_facade.session.subscribe_session_events(listener);
 
