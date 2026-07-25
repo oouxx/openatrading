@@ -19,7 +19,7 @@ disallowed-methods = [
 
 # ===== 禁止使用的类型 =====
 disallowed-types = [
-    { path = "std::collections::HashMap", reason = "考虑使用 ahash::AHashMap 或 hashbrown 提升性能" },
+    # { path = "std::collections::HashMap", reason = "考虑使用 ahash::AHashMap 或 hashbrown 提升性能" },
 ]
 
 # ===== 禁止的宏 =====
