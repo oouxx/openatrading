@@ -84,6 +84,15 @@ async fn api_post(
     dispatch_post(&path, &body, &state).await
 }
 
+#[tauri::command]
+async fn api_patch(
+    path: String,
+    body: serde_json::Value,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    dispatch_patch(&path, &body, &state).await
+}
+
 async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::Value, String> {
     match path {
         "/api/overview" => {
@@ -934,6 +943,51 @@ async fn dispatch_post(
     }
 }
 
+#[allow(unused_variables)]
+async fn dispatch_patch(
+    path: &str,
+    body: &serde_json::Value,
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
+    // PATCH /api/ai/sessions/:id — rename session
+    if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
+        let name = body
+            .get("name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "missing name".to_string())?;
+        let fpath = pi_coding_agent::config::get_sessions_dir().join(format!("{sid}.jsonl"));
+        if !fpath.exists() {
+            return Err("session not found".to_string());
+        }
+        let content = std::fs::read_to_string(&fpath).map_err(|e| format!("{e}"))?;
+        let mut lines: Vec<&str> = content.lines().collect();
+        if lines.is_empty() {
+            return Err("session not found".to_string());
+        }
+        let mut header: serde_json::Value =
+            serde_json::from_str(lines[0]).map_err(|e| format!("{e}"))?;
+        if let Some(obj) = header.as_object_mut() {
+            obj.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        let new_header = serde_json::to_string(&header).map_err(|e| format!("{e}"))?;
+        lines[0] = &new_header;
+        std::fs::write(
+            &fpath,
+            lines.join(
+                "
+",
+            ),
+        )
+        .map_err(|e| format!("{e}"))?;
+        return Ok(serde_json::json!({"ok": true}));
+    }
+    Err(format!("unknown patch path: {path}"))
+}
+
 fn url_decode(s: &str) -> String {
     let s = s.replace('+', " ");
     let mut result = String::with_capacity(s.len());
@@ -1375,6 +1429,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             api_fetch,
             api_post,
+            api_patch,
             send_prompt,
             interrupt_session,
             api_realtime_stream,
