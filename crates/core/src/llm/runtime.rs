@@ -26,6 +26,33 @@ use pi_extension_api::ToolDefinition;
 #[derive(Clone, Default)]
 pub struct AgentRuntime;
 
+/// Find a session JSONL file by session ID in the given directory.
+///
+/// Session files are named `{timestamp}_{id}.jsonl`. This scans the directory
+/// for a file whose name ends with `_{id}.jsonl`. Falls back to `{id}.jsonl`
+/// for legacy naming.
+fn find_session_file_by_id(session_dir: &str, id: &str) -> Option<String> {
+    let dir = PathBuf::from(session_dir);
+    // Legacy: direct {id}.jsonl
+    let direct = dir.join(format!("{id}.jsonl"));
+    if direct.exists() {
+        return Some(direct.to_string_lossy().to_string());
+    }
+    // Current: {timestamp}_{id}.jsonl
+    let suffix = format!("_{id}.jsonl");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with(&suffix) {
+                    return Some(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 impl AgentRuntime {
     #[must_use]
     pub fn new() -> Self {
@@ -55,13 +82,11 @@ impl AgentRuntime {
             .to_string_lossy()
             .to_string();
 
-        // If session_id is provided, construct the file path to reuse the session
-        let session_file = session_id.map(|id| {
-            PathBuf::from(&session_dir)
-                .join(format!("{id}.jsonl"))
-                .to_string_lossy()
-                .to_string()
-        });
+        // If session_id is provided, find the existing session file by ID.
+        // Session files are named `{timestamp}_{id}.jsonl`, so we scan the
+        // session directory for a matching file instead of constructing the
+        // path directly.
+        let session_file = session_id.and_then(|id| find_session_file_by_id(&session_dir, id));
 
         let session_mgr = pi_coding_agent::core::session_manager::SessionManager::new(
             &cwd,
