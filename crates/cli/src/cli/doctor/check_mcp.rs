@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
-use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 use openatrading_core::llm::{McpClient, McpTransportConfig};
 
 /// Network timeout for a single MCP server connect handshake.
@@ -123,9 +123,8 @@ impl Check for McpCheck {
                             }
                         },
                         Err(e) => {
-                            details.push(format!(
-                                "{label} {transport_desc}  ✗ (verify failed: {e})"
-                            ));
+                            details
+                                .push(format!("{label} {transport_desc}  ✗ (verify failed: {e})"));
                             failures += 1;
                         },
                     }

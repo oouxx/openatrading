@@ -23,7 +23,7 @@ pub struct PnlPoint {
 /// historical price snapshots are not stored.  The final point (appended when
 /// `current_positions_value > 0`) uses the live `current_price` from the
 /// positions table, so it reflects real mark-to-market.
-#[must_use] 
+#[must_use]
 pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64) -> Vec<PnlPoint> {
     let initial_capital: f64 = INITIAL_CAPITAL;
     if logs.is_empty() {
@@ -36,8 +36,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
     // Track open positions: position_id -> (symbol, shares, entry_price)
     // Each position is tracked independently so same-symbol positions with
     // different cost bases don't get blended.
-    let mut holdings: std::collections::HashMap<i64, (String, i64, f64)> =
-        std::collections::HashMap::new();
+    let mut holdings: ahash::AHashMap<i64, (String, i64, f64)> = ahash::AHashMap::new();
 
     for log in logs {
         match log.action {

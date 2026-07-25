@@ -1,3 +1,10 @@
+#![allow(clippy::large_futures)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::manual_let_else)]
+#![allow(clippy::option_if_let_else)]
+#![allow(clippy::format_push_string)]
+#![allow(clippy::items_after_statements)]
 use anyhow::Result;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -161,7 +168,8 @@ impl TelegramBot {
             if !body.ok {
                 let desc = body.description.as_deref().unwrap_or("unknown");
                 let code = body
-                    .error_code.map_or_else(|| "-".into(), |c| c.to_string());
+                    .error_code
+                    .map_or_else(|| "-".into(), |c| c.to_string());
                 crate::log::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
                 if body.error_code == Some(409) {
                     crate::log::warn!(
@@ -203,7 +211,9 @@ impl TelegramBot {
                 let role_name = s.role_name.clone();
                 drop(session);
 
-                let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) {
+                    r
+                } else {
                     let mut session = self.session.lock().await;
                     *session = None;
                     drop(session);
@@ -281,7 +291,9 @@ impl TelegramBot {
                     let role_name = parts[0];
                     let question = parts[1];
 
-                    let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                    let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) {
+                        r
+                    } else {
                         let available: Vec<String> =
                             self.roles.iter().map(|r| r.name.clone()).collect();
                         self.send_message(&format!(
@@ -317,7 +329,7 @@ impl TelegramBot {
                         let role_name = s.role_name.clone();
                         drop(session);
 
-                        let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) { r } else {
+                        let Some(role) = self.roles.iter().find(|r| r.name == role_name) else {
                             self.send_message(&format!(
                                 "❌ 当前会话角色 *{role_name}* 已不可用，请使用 /new 开始新对话"
                             ))

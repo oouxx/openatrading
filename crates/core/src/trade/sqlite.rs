@@ -1,3 +1,5 @@
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::missing_errors_doc)]
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::Path;
@@ -106,6 +108,7 @@ impl TradeManager {
             .map_err(Into::into)
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn add_position(&self, pos: Position) -> Result<i64> {
         let conn = self
             .conn
@@ -138,6 +141,7 @@ impl TradeManager {
         Ok(id)
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn update_position(&self, pos: Position) -> Result<()> {
         let conn = self
             .conn
@@ -264,7 +268,8 @@ impl TradeManager {
                     p.symbol,
                     p.stock_name,
                     p.cost_price,
-                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    p.current_price
+                        .map_or_else(|| "N/A".to_string(), |v| v.to_string()),
                     pnl,
                     p.shares,
                     p.sector,

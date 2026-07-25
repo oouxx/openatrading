@@ -9,28 +9,32 @@ use rmcp::model::{
     PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
+use rmcp::transport::StreamableHttpServerConfig;
 use rmcp::{ErrorData, RoleServer};
 use tokio::sync::watch;
 
-/// 持有工具集合，用作 rmcp ServerHandler 状态。
+/// 持有工具集合，用作 rmcp `ServerHandler` 状态。
 #[derive(Clone)]
 pub struct MarketToolsServer {
     tools: Arc<Vec<Arc<DynTool>>>,
 }
 
 impl MarketToolsServer {
+    #[must_use]
     pub fn new(tools: Vec<Arc<DynTool>>) -> Self {
         Self {
             tools: Arc::new(tools),
         }
     }
 
+    #[must_use]
     pub fn tools(&self) -> &[Arc<DynTool>] {
         &self.tools
     }
 
     /// 将内部 DynTool 转换为 rmcp Tool 描述列表。
     #[doc(hidden)]
+    #[must_use]
     pub fn build_tool_descriptors(&self) -> Vec<Tool> {
         self.tools
             .iter()
@@ -42,6 +46,10 @@ impl MarketToolsServer {
     }
 
     /// 路由工具调用到 DynTool.execute 并转换结果为 rmcp 格式。
+    /// Call a tool by name with the given arguments.
+    ///
+    /// # Errors
+    /// Returns an error if the tool is not found or the call fails.
     pub async fn call_tool_inherent(
         &self,
         name: &str,
@@ -104,14 +112,18 @@ impl ServerHandler for MarketToolsServer {
         request: CallToolRequestParams,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let args = request
-            .arguments
-            .map(serde_json::Value::Object)
-            .unwrap_or(serde_json::Value::Object(Default::default()));
+        let args = request.arguments.map_or_else(
+            || serde_json::Value::Object(serde_json::Map::new()),
+            serde_json::Value::Object,
+        );
         self.call_tool_inherent(&request.name, args).await
     }
 }
 
+/// Serve the MCP server over stdio.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
 pub async fn serve_stdio(
     tools: Vec<Arc<DynTool>>,
     mut shutdown: watch::Receiver<bool>,
@@ -133,6 +145,10 @@ pub async fn serve_stdio(
     Ok(())
 }
 
+/// Serve the MCP server over HTTP.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
 pub async fn serve_http(
     tools: Vec<Arc<DynTool>>,
     bind: SocketAddr,
@@ -152,7 +168,7 @@ pub async fn serve_http(
     let service = StreamableHttpService::new(
         service_factory,
         Arc::new(LocalSessionManager::default()),
-        Default::default(),
+        StreamableHttpServerConfig::default(),
     );
 
     let router = axum::Router::new().route_service("/mcp", service);

@@ -150,26 +150,32 @@ pub async fn delete_skill(
     }
 }
 
+/// GET /api/ai/roles — list all available AI roles.
+///
+/// # Errors
+/// Returns `StatusCode` on internal errors (unlikely for this read-only endpoint).
 pub async fn get_ai_roles(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let roles_guard = state.roles.read().await;
-    let roles: Vec<AiRoleItem> = roles_guard
-        .iter()
-        .map(|r| AiRoleItem {
-            name: r.name.clone(),
-            display_name: r.display_name.clone(),
-        })
-        .collect();
+    let roles: Vec<AiRoleItem> = {
+        let roles_guard = state.roles.read().await;
+        roles_guard
+            .iter()
+            .map(|r| AiRoleItem {
+                name: r.name.clone(),
+                display_name: r.display_name.clone(),
+            })
+            .collect()
+    };
     Ok(Json(roles))
 }
 
-#[must_use] 
+#[must_use]
 pub fn build_system_prompt(strategy_text: &str) -> String {
     openatrading_core::skills::SkillRegistry::build_chat_prompt(strategy_text)
 }
 
-#[must_use] 
+#[must_use]
 pub fn build_user_message(
     overview: &OverviewResponse,
     field_items: Option<&str>,
@@ -214,6 +220,10 @@ pub async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
     }
 }
 
+/// Fetch overview data from the API client.
+///
+/// # Errors
+/// Returns an error if the API request fails.
 pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
     let overview = api.xuangubao.fetch_market_overview().await?;
 
@@ -251,6 +261,11 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
     })
 }
 
+/// POST /api/ai/chat — stream an AI chat response via SSE.
+///
+/// # Errors
+/// Returns `400 Bad Request` if the request is invalid or the agent session cannot be created.
+#[allow(clippy::too_many_lines)]
 pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
@@ -281,15 +296,14 @@ pub async fn ai_chat(
     // AgentSession 被销毁，listener 中的 tx clone 也会被 drop，
     // 导致 rx.recv() 返回 None，流提前结束。
     let runtime = state.ctx.runtime.clone();
-    let system_prompt = system_prompt;
     let user_message = req.message.clone();
     let sid = req.session_id.clone();
     openatrading_core::log::info!("ai/chat: SSE stream starting");
     let sse_stream = async_stream::stream! {
         // 在流内部创建 session，handle 随流生命周期存活
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
-        let agent_facade = match runtime
-            .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), None)
+        let agent_facade = match Box::pin(runtime
+            .create_session(Some(&system_prompt), None, Some(true), sid.as_deref(), None))
             .await
         {
             Ok(h) => h,
@@ -386,16 +400,15 @@ pub async fn ai_chat(
                             _ => {},
                         }
                     },
-                    AgentEvent::MessageEnd { message } => {
-                        if let openatrading_core::llm::AgentMessage::Assistant {
+                    AgentEvent::MessageEnd {
+                        message: openatrading_core::llm::AgentMessage::Assistant {
                             error_message: Some(err),
                             ..
-                        } = &message
-                        {
-                            if !err.is_empty() {
-                                yield Ok(Event::default()
-                                    .data(format!("[ERROR] {err}")));
-                            }
+                        },
+                    } => {
+                        if !err.is_empty() {
+                            yield Ok(Event::default()
+                                .data(format!("[ERROR] {err}")));
                         }
                     },
                     AgentEvent::AgentEnd { .. } => break 'outer,
@@ -562,14 +575,16 @@ pub struct SessionMessage {
 }
 
 /// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
+///
+/// # Errors
+/// Returns an empty list if the session file does not exist or cannot be read.
 pub async fn get_session_messages(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
     let path = pi_coding_agent::config::get_sessions_dir().join(format!("{id}.jsonl"));
 
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return Ok(Json(Vec::new())),
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Ok(Json(Vec::new()));
     };
 
     let mut messages: Vec<SessionMessage> = Vec::new();

@@ -27,7 +27,7 @@ use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
 pub struct MarketDataExtension;
 
 impl MarketDataExtension {
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
@@ -62,6 +62,7 @@ impl MarketDataExtension {
     ///
     /// Returns `Some(output)` when `tool_name` is handled by this extension,
     /// `None` otherwise (so other extensions / built-ins can handle it).
+    #[allow(clippy::too_many_lines)]
     async fn dispatch(&self, tool_name: &str, params: Value) -> Option<ToolCallOutput> {
         let result: Result<serde_json::Value, String> = match tool_name {
             "get_limit_up" => {
@@ -142,13 +143,19 @@ impl MarketDataExtension {
                 let article_type = params
                     .get("article_type")
                     .and_then(serde_json::Value::as_i64)
-                    .unwrap_or(0) as i32;
-                let page = params.get("page").and_then(serde_json::Value::as_i64).unwrap_or(1) as i32;
+                    .and_then(|v| i32::try_from(v).ok())
+                    .unwrap_or(0);
+                let page = params
+                    .get("page")
+                    .and_then(serde_json::Value::as_i64)
+                    .and_then(|v| i32::try_from(v).ok())
+                    .unwrap_or(1);
                 let page_size = params
                     .get("page_size")
                     .and_then(serde_json::Value::as_i64)
+                    .and_then(|v| i32::try_from(v).ok())
                     .unwrap_or(20)
-                    .min(50) as i32;
+                    .min(50);
                 let query = CommunityQuery {
                     category_id,
                     article_type,

@@ -1,9 +1,12 @@
+#![allow(clippy::large_futures)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::manual_let_else)]
 use crate::context::AppContext;
 use crate::RoleEntry;
+use ahash::AHashMap as HashMap;
 use anyhow::Result;
 use openatrading_channels::adapter::MessageAdapter;
 use openatrading_channels::event::{MessageEvent, Platform};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -28,7 +31,7 @@ pub async fn run_adapter_handler(
             Platform::Whatsapp => "whatsapp",
         };
 
-        let adapter = if let Some(a) = adapter_map.get(platform_name) { a } else {
+        let Some(adapter) = adapter_map.get(platform_name) else {
             crate::log::warn!("[adapter-handler] no adapter for {platform_name}");
             continue;
         };
@@ -120,7 +123,7 @@ async fn handle_ask(
     roles: &[RoleEntry],
     ctx: &AppContext,
 ) {
-    let (role_name, question) = if let Some((r, q)) = args.split_once(' ') { (r, q) } else {
+    let Some((role_name, question)) = args.split_once(' ') else {
         adapter
             .reply(event, "用法: /ask role_name 你的问题")
             .await
@@ -128,7 +131,7 @@ async fn handle_ask(
         return;
     };
 
-    let role = if let Some(r) = roles.iter().find(|r| r.name == role_name) { r } else {
+    let Some(role) = roles.iter().find(|r| r.name == role_name) else {
         let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
         adapter
             .reply(

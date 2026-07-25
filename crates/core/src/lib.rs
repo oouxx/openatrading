@@ -1,3 +1,8 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::significant_drop_tightening)]
 pub mod api;
 pub mod commands;
 pub mod context;
@@ -22,7 +27,7 @@ use std::path::PathBuf;
 ///
 /// When enabled: daily full-position requirement, every decision must produce
 /// buy/sell/hold instructions (no "wait and see").
-#[must_use] 
+#[must_use]
 pub fn is_aggressive_mode() -> bool {
     std::env::var("OPENATRADING_AGGRESSIVE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -34,16 +39,17 @@ pub fn is_aggressive_mode() -> bool {
 /// Priority:
 /// 1. `$OPENATRADING_HOME` — replaces the home base entirely
 /// 2. `$HOME` / `$USERPROFILE` — standard user home directory
-#[must_use] 
+#[must_use]
 pub fn atrading_home() -> PathBuf {
-    if let Ok(base) = std::env::var("OPENATRADING_HOME") {
-        PathBuf::from(base).join(".atrading")
-    } else {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".atrading")
-    }
+    std::env::var("OPENATRADING_HOME").map_or_else(
+        |_| {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".atrading")
+        },
+        |base| PathBuf::from(base).join(".atrading"),
+    )
 }
 
 // Re-export RoleEntry since it's used across web, cli, and social modules
@@ -61,7 +67,7 @@ use crate::skills::Skill;
 
 impl RoleEntry {
     /// Convert this role into a pi-rs `Skill` for use with skill formatters.
-    #[must_use] 
+    #[must_use]
     pub fn to_skill(&self) -> Skill {
         Skill {
             name: self.name.clone(),

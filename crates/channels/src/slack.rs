@@ -13,7 +13,7 @@ pub struct SlackChannel {
 }
 
 impl SlackChannel {
-    #[must_use] 
+    #[must_use]
     pub fn new(bot_token: String, channel: String) -> Self {
         Self {
             bot_token,

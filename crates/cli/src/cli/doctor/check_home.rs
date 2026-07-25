@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct HomeCheck;
 

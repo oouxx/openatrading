@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::manual_let_else)]
+#![allow(clippy::option_if_let_else)]
+use ahash::AHashMap as HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -50,7 +53,7 @@ pub enum SkillScope {
 
 impl SkillEntry {
     /// Convert to the pi-rs `Skill` type for backward compatibility.
-    #[must_use] 
+    #[must_use]
     pub fn to_pi_skill(&self) -> Skill {
         Skill {
             name: self.name.clone(),
@@ -62,7 +65,7 @@ impl SkillEntry {
     }
 
     /// List bundled resources (scripts, references, assets).
-    #[must_use] 
+    #[must_use]
     pub fn list_resources(&self) -> Vec<String> {
         let base = Path::new(&self.base_dir);
         let mut resources = Vec::new();
@@ -148,14 +151,14 @@ pub fn validate_skill_name(name: &str) -> Result<(), String> {
 
 /// Scan a single skills directory for subdirectories containing `SKILL.md`.
 /// Returns a list of `SkillEntry` values, skipping invalid ones with warnings.
+#[allow(clippy::needless_pass_by_value)]
 fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
     if !dir.is_dir() {
         return Vec::new();
     }
     let mut entries = Vec::new();
-    let read_dir = match std::fs::read_dir(dir) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return Vec::new();
     };
     for entry in read_dir.flatten() {
         let path = entry.path();
@@ -174,22 +177,21 @@ fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
         if !skill_path.is_file() {
             continue;
         }
-        let raw = match std::fs::read_to_string(&skill_path) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let Ok(raw) = std::fs::read_to_string(&skill_path) else {
+            continue;
         };
         let (fm, body) = parse_skill_frontmatter(&raw);
         if body.is_empty() {
             continue;
         }
-        let (name, description) = match &fm {
-            Some(f) => {
+        let (name, description) = fm.as_ref().map_or_else(
+            || (dir_name.clone(), String::new()),
+            |f| {
                 let name = f.name.clone().unwrap_or_else(|| dir_name.clone());
                 let desc = f.description.clone().unwrap_or_default();
                 (name, desc)
             },
-            None => (dir_name.clone(), String::new()),
-        };
+        );
         // Warn on name mismatch but still load
         if name != dir_name {
             crate::log::warn!(
@@ -200,15 +202,17 @@ fn scan_skill_dir(dir: &Path, scope: SkillScope) -> Vec<SkillEntry> {
         if let Err(e) = validate_skill_name(&name) {
             crate::log::warn!("skill name validation: {e}");
         }
-        let (license, compatibility, metadata, allowed_tools) = match &fm {
-            Some(f) => (
-                f.license.clone(),
-                f.compatibility.clone(),
-                f.metadata.clone().unwrap_or_default(),
-                f.allowed_tools.clone(),
-            ),
-            None => (None, None, HashMap::new(), None),
-        };
+        let (license, compatibility, metadata, allowed_tools) = fm.as_ref().map_or_else(
+            || (None, None, HashMap::new(), None),
+            |f| {
+                (
+                    f.license.clone(),
+                    f.compatibility.clone(),
+                    f.metadata.clone().unwrap_or_default(),
+                    f.allowed_tools.clone(),
+                )
+            },
+        );
         entries.push(SkillEntry {
             name,
             description,
@@ -266,7 +270,7 @@ pub struct SkillRequest {
 }
 
 impl SkillRequest {
-    #[must_use] 
+    #[must_use]
     pub fn into_skill_entry(self) -> SkillEntry {
         SkillEntry {
             name: self.name,
@@ -298,7 +302,7 @@ pub struct SkillRegistry {
 }
 
 impl SkillRegistry {
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self { skills: Vec::new() }
     }
@@ -307,18 +311,18 @@ impl SkillRegistry {
         self.skills.push(skill);
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.skills.is_empty()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn skills(&self) -> &[SkillEntry] {
         &self.skills
     }
 
     /// Build the full system prompt for a role (decision path).
-    #[must_use] 
+    #[must_use]
     pub fn build_role_prompt(role: &RoleEntry) -> String {
         let role_skill = role.to_skill();
         let skills = Self::from_disk();
@@ -332,7 +336,7 @@ impl SkillRegistry {
     }
 
     /// Build system prompt for chat paths (web, Tauri, Telegram ask).
-    #[must_use] 
+    #[must_use]
     pub fn build_chat_prompt(strategy_text: &str) -> String {
         let fallback = Skill {
             name: "default".into(),
@@ -352,13 +356,13 @@ impl SkillRegistry {
     }
 
     /// User-level skills directory (`~/.atrading/skills/`).
-    #[must_use] 
+    #[must_use]
     pub fn install_dir() -> PathBuf {
         crate::atrading_home().join("skills")
     }
 
     /// User-level cross-client skills directory (`~/.agents/skills/`).
-    #[must_use] 
+    #[must_use]
     pub fn agents_skills_dir() -> PathBuf {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
@@ -367,23 +371,21 @@ impl SkillRegistry {
     }
 
     /// Project-level cross-client skills directory (`<cwd>/.agents/skills/`).
-    #[must_use] 
+    #[must_use]
     pub fn project_agents_skills_dir() -> PathBuf {
-        if let Ok(cwd) = std::env::current_dir() {
-            cwd.join(".agents").join("skills")
-        } else {
-            PathBuf::from(".agents").join("skills")
-        }
+        std::env::current_dir().map_or_else(
+            |_| PathBuf::from(".agents").join("skills"),
+            |cwd| cwd.join(".agents").join("skills"),
+        )
     }
 
     /// Project-level skills directory (`<cwd>/.atrading/skills/`).
-    #[must_use] 
+    #[must_use]
     pub fn project_skills_dir() -> PathBuf {
-        if let Ok(cwd) = std::env::current_dir() {
-            cwd.join(".atrading").join("skills")
-        } else {
-            PathBuf::from(".atrading").join("skills")
-        }
+        std::env::current_dir().map_or_else(
+            |_| PathBuf::from(".atrading").join("skills"),
+            |cwd| cwd.join(".atrading").join("skills"),
+        )
     }
 
     /// Write a skill to disk. The raw content is written verbatim as `SKILL.md`.
@@ -424,7 +426,7 @@ impl SkillRegistry {
 
     /// Load all skills from all configured directories.
     /// Returns a merged registry with project-level skills overriding user-level.
-    #[must_use] 
+    #[must_use]
     pub fn from_disk() -> Self {
         let user_native = scan_skill_dir(&Self::install_dir(), SkillScope::User);
         // let user_agents = scan_skill_dir(&Self::agents_skills_dir(), SkillScope::User);
@@ -441,7 +443,7 @@ impl SkillRegistry {
 
     /// Parse a raw string into a `SkillEntry`. Accepts any non-empty content.
     /// Returns `None` if the content is empty or whitespace.
-    #[must_use] 
+    #[must_use]
     pub fn parse_skill_from_md(raw: &str) -> Option<SkillEntry> {
         let content = raw.trim().to_string();
         if content.is_empty() {
@@ -456,15 +458,17 @@ impl SkillRegistry {
             .as_ref()
             .and_then(|f| f.description.clone())
             .unwrap_or_default();
-        let (license, compatibility, metadata, allowed_tools) = match &fm {
-            Some(f) => (
-                f.license.clone(),
-                f.compatibility.clone(),
-                f.metadata.clone().unwrap_or_default(),
-                f.allowed_tools.clone(),
-            ),
-            None => (None, None, HashMap::new(), None),
-        };
+        let (license, compatibility, metadata, allowed_tools) = fm.as_ref().map_or_else(
+            || (None, None, HashMap::new(), None),
+            |f| {
+                (
+                    f.license.clone(),
+                    f.compatibility.clone(),
+                    f.metadata.clone().unwrap_or_default(),
+                    f.allowed_tools.clone(),
+                )
+            },
+        );
         Some(SkillEntry {
             name,
             description,
@@ -501,7 +505,7 @@ impl Default for SkillRegistry {
 ///
 /// Includes `name`, `description`, and `location` for each skill.
 /// Skills with `disable_model_invocation: true` are excluded.
-#[must_use] 
+#[must_use]
 pub fn format_skills_catalog(skills: &[SkillEntry]) -> String {
     let visible: Vec<&SkillEntry> = skills
         .iter()
@@ -561,7 +565,7 @@ pub fn format_skills_catalog(skills: &[SkillEntry]) -> String {
 ///
 /// Includes the skill name, file location, and full content.
 /// Optionally appends additional instructions after the skill block.
-#[must_use] 
+#[must_use]
 pub fn format_skill_invocation_entry(
     skill: &Skill,
     additional_instructions: Option<&str>,

@@ -2,6 +2,12 @@
 // Tests
 // ============================================================================
 
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::large_futures)]
+#![allow(clippy::disallowed_methods)]
+#![allow(clippy::match_wildcard_for_single_variants)]
+
 use openatrading_core::llm::AgentRuntime;
 use pi_coding_agent::pi_agent_core::agent::PromptInput;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;

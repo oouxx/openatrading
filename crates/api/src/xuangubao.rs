@@ -7,7 +7,14 @@ use crate::utils::to_yahoo_symbol;
 
 /// UTC+8 Beijing time — all A-share market clock calculations should use this.
 fn beijing_tz() -> FixedOffset {
-    FixedOffset::east_opt(8 * 3600).unwrap()
+    FixedOffset::east_opt(8 * 3600).unwrap_or_else(|| panic!("8*3600 is a valid offset"))
+}
+
+/// Convert f64 to i64, rounding to nearest integer.
+/// Timestamps from the API are always whole numbers.
+#[allow(clippy::cast_possible_truncation)]
+const fn f64_to_i64(v: f64) -> i64 {
+    v as i64
 }
 
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
@@ -110,11 +117,11 @@ pub struct BkjInfo {
 /*
       "BkYiDongType": 1,
       "BkjInfo": {
-        "Id": "56044969",
+        "Id": "56_044_969",
         "Name": "数字人民币"
       },
-      "CreatedAt": 1775797961,
-      "UpdatedAt": 1775798032
+      "CreatedAt": 1_775_797_961,
+      "UpdatedAt": 1_775_798_032
 
 
 */
@@ -270,7 +277,7 @@ pub enum ApiField {
 }
 
 impl ApiField {
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::RiseCount => "rise_count",
@@ -311,7 +318,7 @@ impl ApiField {
     }
 
     /// 将多个字段拼接为逗号分隔的字符串（即 `fields=...` 参数值）。
-    #[must_use] 
+    #[must_use]
     pub fn join(fields: &[Self]) -> String {
         fields
             .iter()
@@ -340,12 +347,12 @@ impl Default for XuanguBaoClient {
 }
 
 impl XuanguBaoClient {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::with_base_url(BASE_URL.to_string())
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn with_base_url(base_url: String) -> Self {
         let client = Self::build_client();
         Self { client, base_url }
@@ -357,7 +364,7 @@ impl XuanguBaoClient {
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
             .timeout(Duration::from_secs(15))
             .build()
-            .expect("reqwest::Client::builder() should never fail with standard settings")
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -374,21 +381,41 @@ impl XuanguBaoClient {
         Ok(resp.data)
     }
 
+    /// Fetch limit-up stocks.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_limit_up(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("limit_up").await
     }
 
+    /// Fetch limit-down stocks.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_limit_down(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("limit_down").await
     }
 
+    /// Fetch yesterday's limit-up stocks.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_yesterday_limit_up(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("yesterday_limit_up").await
     }
+    /// Fetch super stocks.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_super_stock(&self) -> Result<Vec<Stock>> {
         self.fetch_pool("super_stock").await
     }
 
+    /// Fetch market overview data.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_overview(&self) -> Result<MarketOverview> {
         let fields = ApiField::join(&[
             ApiField::RiseCount,
@@ -410,10 +437,12 @@ impl XuanguBaoClient {
             .unwrap_or_default();
 
         Ok(MarketOverview {
-            rise_count: latest["rise_count"].as_u64().unwrap_or(0) as u32,
-            fall_count: latest["fall_count"].as_u64().unwrap_or(0) as u32,
-            limit_up_count: latest["limit_up_count"].as_u64().unwrap_or(0) as u32,
-            limit_down_count: latest["limit_down_count"].as_u64().unwrap_or(0) as u32,
+            rise_count: u32::try_from(latest["rise_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+            fall_count: u32::try_from(latest["fall_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+            limit_up_count: u32::try_from(latest["limit_up_count"].as_u64().unwrap_or(0))
+                .unwrap_or(0),
+            limit_down_count: u32::try_from(latest["limit_down_count"].as_u64().unwrap_or(0))
+                .unwrap_or(0),
             bomb_rate: latest["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
             market_temperature: latest["market_temperature"].as_f64().unwrap_or(50.0) as f64,
             yesterday_limit_up_avg_pcp: latest["yesterday_limit_up_avg_pcp"].as_f64().unwrap_or(0.0)
@@ -421,6 +450,10 @@ impl XuanguBaoClient {
         })
     }
 
+    /// Fetch market overview history for the given number of days.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_overview_history(
         &self,
         days: usize,
@@ -449,10 +482,12 @@ impl XuanguBaoClient {
             .iter()
             .map(|d| MarketOverviewDay {
                 date: d["trade_date"].as_str().unwrap_or("").to_string(),
-                rise_count: d["rise_count"].as_u64().unwrap_or(0) as u32,
-                fall_count: d["fall_count"].as_u64().unwrap_or(0) as u32,
-                limit_up_count: d["limit_up_count"].as_u64().unwrap_or(0) as u32,
-                limit_down_count: d["limit_down_count"].as_u64().unwrap_or(0) as u32,
+                rise_count: u32::try_from(d["rise_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+                fall_count: u32::try_from(d["fall_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+                limit_up_count: u32::try_from(d["limit_up_count"].as_u64().unwrap_or(0))
+                    .unwrap_or(0),
+                limit_down_count: u32::try_from(d["limit_down_count"].as_u64().unwrap_or(0))
+                    .unwrap_or(0),
                 bomb_rate: d["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
                 market_temperature: d["market_temperature"].as_f64().unwrap_or(50.0),
             })
@@ -461,30 +496,37 @@ impl XuanguBaoClient {
 
     /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
-    #[must_use] 
+    #[must_use]
+    /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
+    ///
+    /// # Panics
+    /// Panics if date underflow occurs (should never happen with current dates).
     pub fn last_n_trading_days(n: usize) -> Vec<String> {
         let mut dates = Vec::with_capacity(n);
         let mut current = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
         // If today is a weekend, start from Friday
         while dates.len() < n {
             match current.weekday() {
-                chrono::Weekday::Sat => {
-                    current = current.pred_opt().unwrap();
-                    continue;
-                },
-                chrono::Weekday::Sun => {
-                    current = current.pred_opt().unwrap();
-                    continue;
+                chrono::Weekday::Sat | chrono::Weekday::Sun => {
+                    current = current.pred_opt().unwrap_or_else(|| {
+                        panic!("date underflow - should not happen with current dates")
+                    });
                 },
                 _ => {
                     dates.push(current.format("%Y-%m-%d").to_string());
-                    current = current.pred_opt().unwrap();
+                    current = current.pred_opt().unwrap_or_else(|| {
+                        panic!("date underflow - should not happen with current dates")
+                    });
                 },
             }
         }
         dates
     }
 
+    /// Fetch market overview for a specific date.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_overview_for_date(
         &self,
         date: &str,
@@ -513,14 +555,20 @@ impl XuanguBaoClient {
 
         Ok(Some(MarketOverviewDay {
             date: date.to_string(),
-            rise_count: last["rise_count"].as_u64().unwrap_or(0) as u32,
-            fall_count: last["fall_count"].as_u64().unwrap_or(0) as u32,
-            limit_up_count: last["limit_up_count"].as_u64().unwrap_or(0) as u32,
-            limit_down_count: last["limit_down_count"].as_u64().unwrap_or(0) as u32,
+            rise_count: u32::try_from(last["rise_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+            fall_count: u32::try_from(last["fall_count"].as_u64().unwrap_or(0)).unwrap_or(0),
+            limit_up_count: u32::try_from(last["limit_up_count"].as_u64().unwrap_or(0))
+                .unwrap_or(0),
+            limit_down_count: u32::try_from(last["limit_down_count"].as_u64().unwrap_or(0))
+                .unwrap_or(0),
             bomb_rate: last["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
             market_temperature: last["market_temperature"].as_f64().unwrap_or(50.0),
         }))
     }
+    /// Fetch market trend data for a symbol.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
         let url = format!(
             "{}/market/trend?fields={}&prod_code={symbol}",
@@ -555,7 +603,7 @@ impl XuanguBaoClient {
                     arr.get(idx)?.as_f64()
                 };
                 Some(KlineCandle {
-                    time: get("tick_at")? as i64,
+                    time: get("tick_at").map(f64_to_i64)?,
                     open: get("open_px"),
                     close: get("close_px")?,
                     high: get("high_px"),
@@ -570,6 +618,10 @@ impl XuanguBaoClient {
             candles,
         })
     }
+    /// Fetch real-time market data for multiple symbols.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_real(&self, symbols: &[&str]) -> Result<Vec<IndexQuote>> {
         let joined = symbols.join(",");
         let fields = ApiField::join(&[
@@ -636,6 +688,10 @@ impl XuanguBaoClient {
 
         Ok(results)
     }
+    /// Fetch plate abnormal events.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_plate_abnormal(&self, count: i32) -> Result<Vec<PlateOrStockAbnormalEvent>> {
         let types =
             "10001,10005,10003,10007,10002,10006,10004,10008,10012,10014,10009,10010,11000,11001";
@@ -652,6 +708,10 @@ impl XuanguBaoClient {
     }
 
     /// `fetch_plate_abnormal` with String count — for LLM tool use
+    /// Fetch plate abnormal events as raw JSON.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_plate_abnormal_str(&self, count: &str) -> Result<serde_json::Value> {
         let n: i32 = count.parse().unwrap_or(30);
         let data = self.fetch_plate_abnormal(n).await?;
@@ -660,6 +720,10 @@ impl XuanguBaoClient {
 
     /// Cursor-paginate to fetch ALL events for the latest trading day (09:30–15:00).
     /// Returns events sorted by `event_timestamp` ascending.
+    /// Fetch a page of abnormal events.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_events_page(
         &self,
         timestamp: i64,
@@ -681,6 +745,10 @@ impl XuanguBaoClient {
         Ok(events)
     }
 
+    /// Fetch all abnormal events for the current trading day.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_all_day_events(
         &self,
         min_pcp: f64,
@@ -733,7 +801,11 @@ impl XuanguBaoClient {
 
     /// Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     /// If today's market hasn't closed yet, returns the previous trading day's close.
-    #[must_use] 
+    #[must_use]
+    /// Returns the Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
+    ///
+    /// # Panics
+    /// Panics if the date string cannot be parsed or the time 15:00:00 is invalid (should never happen).
     pub fn latest_trading_day_close_ts() -> i64 {
         let days = Self::last_n_trading_days(2);
         let now_beijing = chrono::Utc::now().with_timezone(&beijing_tz());
@@ -741,22 +813,30 @@ impl XuanguBaoClient {
 
         // If today is a trading day and it's before 15:00, use yesterday's close
         let date_str = if days.first().map(std::string::String::as_str) == Some(&today_str)
-            && now_beijing.time() < chrono::NaiveTime::from_hms_opt(15, 0, 0).unwrap()
+            && now_beijing.time()
+                < chrono::NaiveTime::from_hms_opt(15, 0, 0)
+                    .unwrap_or_else(|| panic!("15,0,0 is a valid time"))
         {
-            days.get(1).map_or("2026-01-01", std::string::String::as_str)
+            days.get(1)
+                .map_or("2026-01-01", std::string::String::as_str)
         } else {
-            days.first().map_or("2026-01-01", std::string::String::as_str)
+            days.first()
+                .map_or("2026-01-01", std::string::String::as_str)
         };
 
         let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .unwrap()
+            .unwrap_or_else(|e| panic!("failed to parse date {date_str}: {e}"))
             .and_hms_opt(15, 0, 0)
-            .unwrap();
+            .unwrap_or_else(|| panic!("15:00:00 is a valid time"));
         let dt = naive.and_local_timezone(beijing_tz()).unwrap();
         dt.timestamp()
     }
 
     // ---大盘异动---------------------------------------
+    /// Fetch dapan (大盘) abnormal events.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_dapan_abnormal(&self) -> Result<Vec<DapanAbnormal>> {
         let url =
             "https://api.xuangubao.com.cn/api/messages/todayDaPanYiDong?headmark=0".to_string();
@@ -780,6 +860,10 @@ impl XuanguBaoClient {
 
     // ─── K线数据 ───────────────────────────────────────
 
+    /// Fetch K-line data for a symbol.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails, the symbol is invalid, or the response cannot be parsed.
     pub async fn fetch_kline(
         &self,
         symbol: &str,
@@ -832,7 +916,7 @@ impl XuanguBaoClient {
                     arr.get(idx)?.as_f64()
                 };
                 Some(KlineCandle {
-                    time: get("tick_at")? as i64,
+                    time: get("tick_at").map(f64_to_i64)?,
                     open: get("open_px"),
                     close: get("close_px")?,
                     high: get("high_px"),
@@ -852,18 +936,25 @@ impl XuanguBaoClient {
 
     /// Fetch kline for multiple symbols in a single API call.
     /// Returns a map keyed by normalized (yahoo) symbol.
+    /// Fetch K-line data for multiple symbols.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails, any symbol is invalid, or the response cannot be parsed.
     pub async fn fetch_kline_batch(
         &self,
         symbols: &[String],
         period: KlinePeriod,
         count: u32,
-    ) -> Result<std::collections::HashMap<String, KlineData>> {
+    ) -> Result<ahash::AHashMap<String, KlineData>> {
         let yahoo_symbols: Vec<String> = symbols
             .iter()
             .map(|s| to_yahoo_symbol(s))
             .collect::<Result<Vec<_>>>()?;
 
-        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(std::string::String::as_str).collect();
+        let prod_codes: Vec<&str> = yahoo_symbols
+            .iter()
+            .map(std::string::String::as_str)
+            .collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
             &ApiField::join(&[
@@ -896,7 +987,7 @@ impl XuanguBaoClient {
             .unwrap_or_default();
 
         let candle_data = &resp["data"]["candle"];
-        let mut result = std::collections::HashMap::new();
+        let mut result = ahash::AHashMap::new();
 
         for yahoo_sym in &yahoo_symbols {
             let lines = candle_data[yahoo_sym]["lines"]
@@ -913,7 +1004,7 @@ impl XuanguBaoClient {
                         arr.get(idx)?.as_f64()
                     };
                     Some(KlineCandle {
-                        time: get("tick_at")? as i64,
+                        time: get("tick_at").map(f64_to_i64)?,
                         open: get("open_px"),
                         close: get("close_px")?,
                         high: get("high_px"),
@@ -937,6 +1028,10 @@ impl XuanguBaoClient {
         Ok(result)
     }
 
+    /// Fetch real-time quote for a single symbol.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails, the symbol is invalid, or the response cannot be parsed.
     pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
@@ -1041,16 +1136,23 @@ impl XuanguBaoClient {
 
     /// Fetch realtime quotes for multiple symbols in a single API call.
     /// Returns a map keyed by normalized (yahoo) symbol.
+    /// Fetch real-time quotes for multiple symbols.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails, any symbol is invalid, or the response cannot be parsed.
     pub async fn fetch_realtime_batch(
         &self,
         symbols: &[String],
-    ) -> Result<std::collections::HashMap<String, RealtimeQuote>> {
+    ) -> Result<ahash::AHashMap<String, RealtimeQuote>> {
         let yahoo_symbols: Vec<String> = symbols
             .iter()
             .map(|s| to_yahoo_symbol(s))
             .collect::<Result<Vec<_>>>()?;
 
-        let prod_codes: Vec<&str> = yahoo_symbols.iter().map(std::string::String::as_str).collect();
+        let prod_codes: Vec<&str> = yahoo_symbols
+            .iter()
+            .map(std::string::String::as_str)
+            .collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
             &ApiField::join(&[
@@ -1113,7 +1215,7 @@ impl XuanguBaoClient {
         };
 
         let snapshots = &resp["data"]["snapshot"];
-        let mut result = std::collections::HashMap::new();
+        let mut result = ahash::AHashMap::new();
         for yahoo_sym in &yahoo_symbols {
             let snap = &snapshots[yahoo_sym];
             if snap.is_null() {
@@ -1153,6 +1255,17 @@ impl XuanguBaoClient {
 
         Ok(result)
     }
+    /// Fetch plates that contain the given stock.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
+    /// Fetch plates that contain the given stock.
+    ///
+    /// # Panics
+    /// Panics if the `plate_id` value does not fit in `i32`.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn plates_by_any_stock(&self, symbol: &str) -> Result<Vec<PlateAndReason>> {
         let url = format!(
             "{}/stage2/plates_by_any_stock?symbol={symbol}&fields={}",
@@ -1174,7 +1287,8 @@ impl XuanguBaoClient {
                 let obj = v.as_object()?;
                 Some(PlateAndReason {
                     core_avg_pcp: obj.get("core_avg_pcp")?.as_f64()?,
-                    plate_id: obj.get("plate_id")?.as_i64()? as i32,
+                    plate_id: i32::try_from(obj.get("plate_id")?.as_i64()?)
+                        .unwrap_or_else(|e| panic!("plate_id should fit in i32: {e}")),
                     plate_name: obj.get("plate_name")?.as_str()?.to_string(),
                     reason: obj
                         .get("reason")
@@ -1200,17 +1314,17 @@ pub enum KlinePeriod {
 }
 
 impl KlinePeriod {
-    #[must_use] 
+    #[must_use]
     pub const fn as_seconds(&self) -> u32 {
         match self {
             Self::Minute => 60,
             Self::Day => 86400,
-            Self::Week => 604800,
-            Self::Month => 2592000,
+            Self::Week => 604_800,
+            Self::Month => 2_592_000,
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(&self) -> &str {
         match self {
             Self::Minute => "minute",
@@ -1390,14 +1504,24 @@ struct PlateAccumulator {
 
 /// Slice events into 5‑minute buckets across 09:30–15:00, computing
 /// cumulative emotion scores and top plates per bucket.
-#[must_use] 
+#[must_use]
+/// Build replay snapshots from abnormal events, grouped into 5-minute buckets.
+///
+/// # Panics
+/// Panics if `events` is empty (caller should check before calling).
 pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeSnapshot> {
     if events.is_empty() {
         return vec![];
     }
 
-    let start_ts = events.first().unwrap().event_timestamp;
-    let end_ts = events.last().unwrap().event_timestamp;
+    let start_ts = events
+        .first()
+        .unwrap_or_else(|| panic!("events should not be empty"))
+        .event_timestamp;
+    let end_ts = events
+        .last()
+        .unwrap_or_else(|| panic!("events should not be empty"))
+        .event_timestamp;
     let bucket_secs: i64 = 5 * 60;
 
     let first_bucket = (start_ts / bucket_secs) * bucket_secs;
@@ -1406,8 +1530,7 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
     let mut snapshots: Vec<TimeSnapshot> = Vec::new();
     let mut bull_acc = 0u32;
     let mut bear_acc = 0u32;
-    let mut plate_map: std::collections::HashMap<String, PlateAccumulator> =
-        std::collections::HashMap::new();
+    let mut plate_map: ahash::AHashMap<String, PlateAccumulator> = ahash::AHashMap::new();
     let mut ev_idx = 0usize;
 
     let mut bucket_start = first_bucket;
@@ -1439,7 +1562,7 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
                             acc.good_or_bad = ev.good_or_bad;
                         }
                         if acc.related_stocks.len() < pd.related_stocks.len() {
-                            acc.related_stocks = pd.related_stocks.clone();
+                            acc.related_stocks.clone_from(&pd.related_stocks);
                         }
                     }
                 }
@@ -1465,7 +1588,12 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
                 related_stocks: acc.related_stocks,
             })
             .collect();
-        top.sort_by(|a, b| b.pcp.abs().partial_cmp(&a.pcp.abs()).unwrap());
+        top.sort_by(|a, b| {
+            b.pcp
+                .abs()
+                .partial_cmp(&a.pcp.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         top.truncate(5);
 
         let time_label = unix_to_hhmm(bucket_start);
@@ -1493,20 +1621,27 @@ fn unix_to_hhmm(ts: i64) -> String {
 }
 
 /// Assemble the text prompt for AI analysis from snapshot data.
-#[must_use] 
+#[must_use]
+/// Build an analysis prompt from snapshots.
+///
+/// # Panics
+/// Panics if writing to the string buffer fails (should never happen).
 pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
+    use std::fmt::Write;
     let mut table = String::from("时间       情绪温度  多/空  主线板块\n");
 
     for s in snapshots.iter().step_by(2) {
         let top_names: Vec<String> = s.top_plates.iter().map(|p| p.plate_name.clone()).collect();
-        table.push_str(&format!(
-            "{}      {:.0}       {}/{:<2}  {}\n",
+        writeln!(
+            table,
+            "{}      {:.0}       {}/{:<2}  {}",
             s.time_label,
             s.emotion_score,
             s.bull_count,
             s.bear_count,
             top_names.join("、"),
-        ));
+        )
+        .unwrap_or_else(|e| panic!("write to string should not fail: {e}"));
     }
 
     format!(
@@ -1540,6 +1675,10 @@ pub struct IndexTick {
     pub close_px: f64,
 }
 
+/// Fetch index trends for major indices (SH, SZ, CYB).
+///
+/// # Errors
+/// Returns an error if any of the HTTP requests fail.
 pub async fn fetch_index_trends(client: &XuanguBaoClient) -> Result<IndexTrendData> {
     let (sh, sz, cyb) = tokio::try_join!(
         client.fetch_index_trend("000001.SS"),
@@ -1577,7 +1716,7 @@ impl XuanguBaoClient {
             .iter()
             .filter_map(|line| {
                 let arr = line.as_array()?;
-                let tick_at = tick_at_idx.and_then(|i| arr.get(i)?.as_f64())? as i64;
+                let tick_at = tick_at_idx.and_then(|i| arr.get(i)?.as_f64().map(f64_to_i64))?;
                 let close_px = close_idx.and_then(|i| arr.get(i)?.as_f64())?;
                 Some(IndexTick { tick_at, close_px })
             })
@@ -1585,6 +1724,10 @@ impl XuanguBaoClient {
         Ok(ticks)
     }
 
+    /// Fetch news stream from xuangubao.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_news_stream(
         &self,
         tailmark: Option<i64>,
@@ -1594,10 +1737,12 @@ impl XuanguBaoClient {
             "https://api.xuangubao.com.cn/api/pc/msgs?subjids=9,723,10,35,469&limit=50",
         );
         if let Some(tm) = tailmark {
-            url.push_str(&format!("&tailmark={tm}"));
+            use std::fmt::Write;
+            writeln!(url, "&tailmark={tm}").ok();
         }
         if let Some(mid) = msg_id_mark {
-            url.push_str(&format!("&msgIdMark={mid}"));
+            use std::fmt::Write;
+            writeln!(url, "&msgIdMark={mid}").ok();
         }
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         let items = resp["NewMsgs"].as_array().cloned().unwrap_or_default();
@@ -1631,7 +1776,9 @@ impl XuanguBaoClient {
         let next_tail = resp["TailMark"]
             .as_str()
             .and_then(|s| s.parse::<i64>().ok());
-        let next_msg = resp["TailMsgId"].as_str().map(std::string::ToString::to_string);
+        let next_msg = resp["TailMsgId"]
+            .as_str()
+            .map(std::string::ToString::to_string);
         tracing::debug!(
             ?tailmark,
             count = result.len(),

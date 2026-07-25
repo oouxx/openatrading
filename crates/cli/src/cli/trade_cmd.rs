@@ -60,7 +60,8 @@ pub fn cmd_trade_list(role: Option<&str>) -> Result<()> {
                     p.symbol,
                     p.stock_name,
                     p.cost_price,
-                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    p.current_price
+                        .map_or_else(|| "N/A".to_string(), |v| v.to_string()),
                     pnl,
                     p.shares,
                 );

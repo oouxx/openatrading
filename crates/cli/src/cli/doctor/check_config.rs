@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct ConfigCheck;
 
@@ -23,8 +23,14 @@ impl Check for ConfigCheck {
     }
 
     async fn check(&self, ctx: &CheckContext) -> CheckResult {
-        match &ctx.app_config {
-            Some(cfg) => {
+        ctx.app_config.as_ref().map_or_else(
+            || CheckResult {
+                status: CheckStatus::Error("无法加载".into()),
+                summary: "config.toml 加载失败".into(),
+                details: vec!["请检查 ~/.atrading/config.toml 是否存在且格式正确".into()],
+                duration_ms: 0,
+            },
+            |cfg| {
                 let roles_count = cfg.roles.len();
                 let mcp_count = cfg.mcp_servers.len();
                 CheckResult {
@@ -34,13 +40,7 @@ impl Check for ConfigCheck {
                     duration_ms: 0,
                 }
             },
-            None => CheckResult {
-                status: CheckStatus::Error("无法加载".into()),
-                summary: "config.toml 加载失败".into(),
-                details: vec!["请检查 ~/.atrading/config.toml 是否存在且格式正确".into()],
-                duration_ms: 0,
-            },
-        }
+        )
     }
 
     async fn fix(&self, ctx: &CheckContext) -> Result<FixResult> {

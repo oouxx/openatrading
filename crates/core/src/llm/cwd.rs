@@ -3,14 +3,15 @@
 /// Resolve the working directory for a session: prefer the session's stored
 /// cwd (when non-empty), else fall back to the process current directory.
 /// Matches pi-rs TS original: `process.cwd()`.
-#[must_use] 
+#[must_use]
 pub fn resolve_session_cwd(session_cwd: Option<&str>) -> String {
-    session_cwd
-        .filter(|s| !s.is_empty())
-        .map(std::string::ToString::to_string)
-        .unwrap_or_else(|| {
-            std::env::current_dir().map_or_else(|_| "/tmp".into(), |p| p.to_string_lossy().to_string())
-        })
+    session_cwd.filter(|s| !s.is_empty()).map_or_else(
+        || {
+            std::env::current_dir()
+                .map_or_else(|_| "/tmp".into(), |p| p.to_string_lossy().to_string())
+        },
+        std::string::ToString::to_string,
+    )
 }
 
 /// Decision for `set_session_cwd`: what to do when the user picks a new folder.
@@ -26,7 +27,7 @@ pub enum CwdAction {
 
 /// Decide the cwd action based on whether the session is already initialized
 /// (has a `session_file`) and whether the new path differs from the current cwd.
-#[must_use] 
+#[must_use]
 pub fn decide_cwd_action(
     session_file: Option<&str>,
     new_path: &str,

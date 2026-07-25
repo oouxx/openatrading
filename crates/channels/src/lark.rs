@@ -22,7 +22,7 @@ pub struct LarkChannel {
 }
 
 impl LarkChannel {
-    #[must_use] 
+    #[must_use]
     pub fn new(app_id: String, app_secret: String, receive_id: String) -> Self {
         Self {
             app_id,
@@ -73,7 +73,7 @@ impl LarkChannel {
             .context("lark auth missing tenant_access_token")?
             .to_string();
         let expire = body["expire"].as_i64().unwrap_or(7200);
-        let ttl = expire.max(60) as u64 - 120;
+        let ttl = u64::try_from(expire.max(60)).unwrap_or(120) - 120;
 
         {
             let mut cache = self.cached_token.write().await;
@@ -122,7 +122,7 @@ impl LarkChannel {
         let code = body["code"].as_i64().unwrap_or(-1);
         if code != 0 {
             let msg = body["msg"].as_str().unwrap_or("unknown");
-            if code == 99991663 {
+            if code == 99_991_663 {
                 self.invalidate_token().await;
             }
             anyhow::bail!("lark bot api error code {code}: {msg}");

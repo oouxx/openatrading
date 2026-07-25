@@ -1,5 +1,5 @@
 use crate::event::Platform;
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -39,11 +39,11 @@ pub struct SessionManager {
 
 #[derive(Debug, Default)]
 struct SessionManagerInner {
-    sessions: HashMap<String, Session>,
+    sessions: AHashMap<String, Session>,
 }
 
 impl SessionManager {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(SessionManagerInner::default())),
@@ -51,11 +51,12 @@ impl SessionManager {
     }
 
     /// 生成会话 key：`{platform}:{user_id}`
-    fn session_key(platform: &Platform, user_id: &str) -> String {
+    fn session_key(platform: Platform, user_id: &str) -> String {
         format!("{platform}:{user_id}")
     }
 
     /// 创建或更新会话。
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn upsert(
         &self,
         platform: Platform,
@@ -63,7 +64,7 @@ impl SessionManager {
         channel_id: String,
         user_name: Option<String>,
     ) -> String {
-        let key = Self::session_key(&platform, &user_id);
+        let key = Self::session_key(platform, &user_id);
         let mut inner = self.inner.write().await;
 
         let entry = inner
@@ -89,7 +90,7 @@ impl SessionManager {
 
     /// 获取会话信息。
     pub async fn get(&self, platform: &Platform, user_id: &str) -> Option<SessionInfo> {
-        let key = Self::session_key(platform, user_id);
+        let key = Self::session_key(*platform, user_id);
         let inner = self.inner.read().await;
         inner.sessions.get(&key).map(|s| SessionInfo {
             platform: s.platform,
@@ -105,7 +106,7 @@ impl SessionManager {
 
     /// 将会话标记为非活跃。
     pub async fn deactivate(&self, platform: &Platform, user_id: &str) {
-        let key = Self::session_key(platform, user_id);
+        let key = Self::session_key(*platform, user_id);
         let mut inner = self.inner.write().await;
         if let Some(s) = inner.sessions.get_mut(&key) {
             s.is_active = false;
@@ -173,7 +174,7 @@ mod tests {
 
         let info = mgr.get(&Platform::Telegram, "user1").await;
         assert!(info.is_some());
-        let info = info.unwrap();
+        let info = info.unwrap_or_else(|| panic!("session should exist"));
         assert_eq!(info.user_id, "user1");
         assert_eq!(info.channel_id, "chan1");
         assert_eq!(info.user_name, Some("Alice".into()));
@@ -198,7 +199,10 @@ mod tests {
             .await;
         mgr.deactivate(&Platform::Telegram, "user1").await;
 
-        let info = mgr.get(&Platform::Telegram, "user1").await.unwrap();
+        let info = mgr
+            .get(&Platform::Telegram, "user1")
+            .await
+            .unwrap_or_else(|| panic!("session should exist"));
         assert!(!info.is_active);
 
         let active = mgr.list_active().await;

@@ -12,7 +12,7 @@ pub mod trading;
 use pi_extension_api::ExtensionRegistry;
 
 /// Create an `ExtensionRegistry` with all openatrading extensions + pi-rs built-ins.
-#[must_use] 
+#[must_use]
 pub fn create_registry() -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
     registry.register(Box::new(trading::MarketDataExtension));

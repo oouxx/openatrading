@@ -221,7 +221,7 @@ impl AppConfig {
             default_role: raw.default_role,
             roles: raw.roles,
             mcp_servers: raw.mcp_servers,
-            service: raw.service.unwrap_or(ServiceConfig {
+            service: raw.service.unwrap_or_else(|| ServiceConfig {
                 db_path: default_db_path(),
                 web_bind: default_web_bind(),
             }),
@@ -298,7 +298,7 @@ impl AppConfig {
             args: Vec<String>,
             /// Environment variables (for stdio).
             #[serde(default)]
-            env: std::collections::HashMap<String, String>,
+            env: ahash::AHashMap<String, String>,
         }
         fn default_transport_type() -> String {
             "streamable-http".to_string()
@@ -310,9 +310,8 @@ impl AppConfig {
             true
         }
 
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => return,
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return;
         };
         let parsed: McpJson = match serde_json::from_str(&content) {
             Ok(p) => p,
@@ -349,33 +348,33 @@ impl AppConfig {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn config_path() -> PathBuf {
         openatrading_core::atrading_home().join("config.toml")
     }
 
     /// Read LLM provider from config.
-    #[must_use] 
+    #[must_use]
     pub fn llm_provider(&self) -> Option<&str> {
         self.llm.provider.as_deref()
     }
 
     /// Read LLM model from config.
-    #[must_use] 
+    #[must_use]
     pub fn llm_model(&self) -> Option<&str> {
         self.llm.model.as_deref()
     }
 
     /// Read LLM provider from config.
-    #[must_use] 
+    #[must_use]
     pub fn social_notify_channel(&self) -> Option<&str> {
         self.social.as_ref()?.notify_channel.as_deref()
     }
-    #[must_use] 
+    #[must_use]
     pub fn social_telegram(&self) -> Option<&TelegramConfig> {
         self.social.as_ref()?.telegram.as_ref()
     }
-    #[must_use] 
+    #[must_use]
     pub fn social_discord(&self) -> Option<&DiscordConfig> {
         self.social.as_ref()?.discord.as_ref()
     }

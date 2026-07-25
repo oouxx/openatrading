@@ -34,7 +34,7 @@ impl StockCode {
         Self(strip_yahoo_suffix(&code.into()))
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }

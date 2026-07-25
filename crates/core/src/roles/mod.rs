@@ -1,6 +1,8 @@
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::manual_let_else)]
+use ahash::AHashMap as HashMap;
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -15,13 +17,13 @@ pub mod pnl;
 pub mod prompt;
 
 /// Path to the skills directory (`{atrading_home}/skills/`).
-#[must_use] 
+#[must_use]
 pub fn default_skills_dir() -> PathBuf {
     crate::atrading_home().join("skills")
 }
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.
-#[must_use] 
+#[must_use]
 pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     match crate::utils::parse_yaml_frontmatter(content) {
         Some((matter, body)) => {
@@ -33,14 +35,13 @@ pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
 }
 
 /// Load all SKILL.md entries from `~/.atrading/skills/` as `RoleEntry`.
-#[must_use] 
+#[must_use]
 pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
     let dir = default_skills_dir();
     let mut roles = Vec::new();
 
-    let entries = match fs::read_dir(&dir) {
-        Ok(d) => d,
-        Err(_) => return roles,
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return roles;
     };
 
     for entry in entries.flatten() {
@@ -53,9 +54,8 @@ pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
             None => continue,
         };
         let skill_path = path.join("SKILL.md");
-        let raw = match fs::read_to_string(&skill_path) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let Ok(raw) = fs::read_to_string(&skill_path) else {
+            continue;
         };
         let (fm, body) = parse_frontmatter(&raw);
         if body.is_empty() {

@@ -22,7 +22,7 @@ pub struct Client {
 }
 
 impl Client {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             xuangubao: XuanguBaoClient::new(),

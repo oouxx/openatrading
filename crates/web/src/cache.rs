@@ -7,10 +7,10 @@ pub type AppCache = Cache<String, CachedEntry>;
 
 // ── A-share market hours constants ──────────────────────────
 // Safety: these are compile-time-known valid clock times (HMS).
-const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
-const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
-const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
-const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
+const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).expect("9:30 is valid");
+const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).expect("11:30 is valid");
+const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).expect("13:00 is valid");
+const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).expect("15:00 is valid");
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CachedEntry {
@@ -18,7 +18,7 @@ pub struct CachedEntry {
     pub expires_at: Option<i64>,
 }
 
-#[must_use] 
+#[must_use]
 pub fn new_cache() -> Arc<AppCache> {
     Arc::new(
         AppCache::builder()
@@ -39,7 +39,7 @@ pub enum MarketPhase {
 }
 
 impl MarketPhase {
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::PreOpen => "preopen",
@@ -52,7 +52,7 @@ impl MarketPhase {
     }
 }
 
-#[must_use] 
+#[must_use]
 pub fn current_market_phase() -> MarketPhase {
     let now = openatrading_core::utils::time::beijing_now();
     let weekday = now.weekday();
@@ -76,7 +76,7 @@ pub fn current_market_phase() -> MarketPhase {
     }
 }
 
-#[must_use] 
+#[must_use]
 pub fn is_trading_hours() -> bool {
     matches!(
         current_market_phase(),
@@ -126,7 +126,7 @@ pub enum CachePolicy {
 }
 
 impl CachePolicy {
-    #[must_use] 
+    #[must_use]
     pub fn overview() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(30))
@@ -135,7 +135,7 @@ impl CachePolicy {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn realtime() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(10))
@@ -144,7 +144,7 @@ impl CachePolicy {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn snapshot() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(60))
@@ -153,13 +153,13 @@ impl CachePolicy {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn daily() -> Self {
         Self::Always(Duration::from_secs(3600 * 6))
     }
 
     /// Replay data: cache after close until next open; no cache during trading.
-    #[must_use] 
+    #[must_use]
     pub fn replay() -> Self {
         if is_trading_hours() {
             Self::Never
@@ -168,12 +168,12 @@ impl CachePolicy {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn never() -> Self {
         Self::Never
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn telegraph() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(30))
@@ -186,8 +186,9 @@ impl CachePolicy {
         let now = openatrading_core::utils::time::beijing_now().timestamp();
         match self {
             Self::Never => None,
-            Self::Always(ttl) => Some(now + ttl.as_secs() as i64),
-            Self::TradingTtl(ttl) => Some(now + ttl.as_secs() as i64),
+            Self::Always(ttl) | Self::TradingTtl(ttl) => {
+                Some(now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX))
+            },
             Self::NonTradingUntilOpen => {
                 let ts = next_open_timestamp();
                 if ts > now {
@@ -201,7 +202,7 @@ impl CachePolicy {
     }
 }
 
-#[must_use] 
+#[must_use]
 pub fn get(cache: &AppCache, key: &str) -> Option<String> {
     let entry = cache.get(key)?;
     if let Some(expires_at) = entry.expires_at {
@@ -229,6 +230,10 @@ pub fn set(cache: &AppCache, key: &str, value: &str, policy: CachePolicy) {
 
 use axum::{http::StatusCode, Json};
 
+/// Fetch a value from cache or call `fetch` to populate it.
+///
+/// # Errors
+/// Returns `StatusCode` if the fetch function fails.
 pub async fn get_or_fetch<F, Fut>(
     cache: &AppCache,
     key: &str,
@@ -248,8 +253,13 @@ where
     Ok(value)
 }
 
-/// Like `get_or_fetch` but works with any Serialize type and returns `Json<Value>` directly,
-/// eliminating the `to_string` → `from_str` round-trip in every handler.
+/// Fetch a JSON value from cache or call `fetch` to populate it.
+///
+/// Unlike `get_or_fetch`, this works with any Serialize type and returns
+/// `Json<Value>` directly, eliminating the `to_string` → `from_str` round-trip.
+///
+/// # Errors
+/// Returns `StatusCode` if the fetch function fails.
 pub async fn get_or_fetch_json<F, Fut, T>(
     cache: &AppCache,
     key: &str,

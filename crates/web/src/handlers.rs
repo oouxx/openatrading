@@ -1138,8 +1138,8 @@ pub async fn get_dragon_tiger_detail(
                 .api
                 .eastmoney
                 .lhb_detail(
-                    dates.last().unwrap().as_str(),
-                    dates.first().unwrap().as_str(),
+                    dates.last().ok_or(StatusCode::BAD_REQUEST)?.as_str(),
+                    dates.first().ok_or(StatusCode::BAD_REQUEST)?.as_str(),
                 )
                 .await
                 .map_err(|e| {

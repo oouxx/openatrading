@@ -1,3 +1,4 @@
+#![allow(clippy::struct_excessive_bools)]
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;

@@ -1,3 +1,17 @@
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::large_futures)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::disallowed_types)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::unused_async)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::incompatible_msrv)]
+#![allow(clippy::disallowed_methods)]
+// clippy fixes for tauri
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};

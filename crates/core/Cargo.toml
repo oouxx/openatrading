@@ -9,6 +9,7 @@ name = "openatrading_core"
 path = "src/lib.rs"
 
 [dependencies]
+ahash = { version = "0.8", features = ["serde"] }
 openatrading-channels = { path = "../channels" }
 openatrading-api = { path = "../api" }
 openatrading-agent = { path = "../agent" }

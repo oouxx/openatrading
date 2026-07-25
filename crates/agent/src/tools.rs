@@ -26,10 +26,12 @@ pub type ExecuteFn = Arc<
         + Sync,
 >;
 
+#[must_use]
 pub fn empty_schema() -> serde_json::Value {
     serde_json::json!({"type": "object", "properties": {}, "required": []})
 }
 
+#[must_use]
 pub fn str_schema(params: &[(&str, &str)]) -> serde_json::Value {
     let properties: serde_json::Map<String, serde_json::Value> = params
         .iter()
@@ -48,6 +50,7 @@ pub fn str_schema(params: &[(&str, &str)]) -> serde_json::Value {
     })
 }
 
+#[must_use]
 pub fn str_arg(args: &serde_json::Value, name: &str) -> String {
     args.get(name)
         .and_then(|v| v.as_str())
