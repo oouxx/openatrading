@@ -1,14 +1,13 @@
-//! Shared chat-session logic for the web (SSE) and Tauri (IPC channel)
+//! Shared chat-session logic for the WebSocket (web) and Tauri IPC (desktop)
 //! backends.
 //!
-//! Both `chat::ai_chat` and `src-tauri`'s `api_chat_stream` drive the same
+//! Both `agent_ws::ws_handler` and `src-tauri`'s `send_prompt` drive the same
 //! agent loop (`openatrading_core::llm::AgentRuntime`) and translate its
-//! `AgentEvent`s into a frontend wire protocol. This module centralizes the
+//! events into a frontend wire protocol. This module centralizes the
 //! two pieces that were previously copy-pasted with subtle drift:
 //!
 //! 1. Command resolution — `role` / `command_type` / `command_name` /
-//!    `skill_name` → `(system_prompt, tools)`. The Tauri copy had drifted and
-//!    skipped the `allowed_tools` filter that the web copy applies.
+//!    `skill_name` → `(system_prompt, tools)`.
 //! 2. Event serialization — `AgentEvent` → a protocol-neutral frame that
 //!    each transport renders into its own wire format. The frame type is
 //!    `pi_agent_core::types::AgentEvent` itself — no custom `ChatFrame`
@@ -31,7 +30,7 @@ use crate::RoleEntry;
 ///
 /// Returned by [`resolve_chat_config`] so callers don't reconstruct the
 /// command→config mapping inline (the previous duplication lived in both
-/// `ai_chat` and `api_chat_stream`).
+/// the web and Tauri handlers).
 pub struct ChatConfig {
     pub system_prompt: String,
     pub tools: Vec<Arc<DynTool>>,
