@@ -7,6 +7,7 @@
 
 import type {
   CoreEvent,
+  HistoryBlock,
   HistoryMessage,
   SessionEvent,
   TranscriptBlock,
@@ -41,7 +42,10 @@ function appendDelta(
     ]
   }
   const blocks = last.blocks
-  // Find the last block of the requested type that is still streaming.
+  // Find the last block of the requested type. Keep scanning backwards past
+  // non-matching blocks (e.g. tool_call / thinking interleaved with text) so a
+  // delta reaches the right block instead of wrongly spawning a new one
+  // (finding #6).
   let idx = -1
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]
@@ -49,9 +53,6 @@ function appendDelta(
       idx = i
       break
     }
-    // A different block after the last matching one means the matching block
-    // is finalized; start a fresh one instead.
-    break
   }
   if (idx >= 0 && blocks[idx].type === blockType && (blocks[idx] as { streaming: boolean }).streaming) {
     const block = blocks[idx] as Extract<TranscriptBlock, { type: "text" | "thinking" }>
@@ -79,13 +80,14 @@ function finalizeBlock(
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
   const blocks = last.blocks
+  // Scan backwards past non-matching blocks to find the last block of the
+  // requested type (finding #6).
   let idx = -1
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].type === blockType) {
       idx = i
       break
     }
-    break
   }
   if (idx >= 0 && blocks[idx].type === blockType) {
     const block = blocks[idx] as Extract<TranscriptBlock, { type: "text" | "thinking" }>
@@ -108,13 +110,14 @@ function appendToolCallDelta(turns: TranscriptTurn[], delta: string): Transcript
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
   const blocks = last.blocks
+  // Scan backwards past non-matching blocks to find the last tool_call
+  // block (finding #6).
   let idx = -1
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].type === "tool_call") {
       idx = i
       break
     }
-    break
   }
   if (idx >= 0 && blocks[idx].type === "tool_call") {
     const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
@@ -179,6 +182,10 @@ function updateToolCall(
 }
 
 function replaceLast(turns: TranscriptTurn[], turn: TranscriptTurn): TranscriptTurn[] {
+  // NOTE: `Array.prototype.with` (ES2023) would avoid the O(n) shallow copy
+  // here (finding #14), but the project's TS `lib` targets ES2022. Bumping the
+  // lib is left as a follow-up; the slice+assign path below is functionally
+  // equivalent.
   const next = turns.slice()
   next[next.length - 1] = turn
   return next
@@ -287,6 +294,13 @@ function applyCoreEvent(turns: TranscriptTurn[], e: CoreEvent): TranscriptTurn[]
           // Trailing assistant error (if any) is surfaced via the message field.
           const err = sub.message?.errorMessage
           if (err) return appendSystemNotice(turns, "notice", err, { isError: true, status: "error" })
+          // The model's final message carries the fully-assembled text content
+          // (`sub.content`). If any text_delta was dropped due to backpressure
+          // on the delta channel, finalize the text block with this authoritative
+          // content so the rendered text is complete (finding #5).
+          if (sub.content) {
+            return finalizeBlock(turns, "text", sub.content)
+          }
           return turns
         }
         default:
@@ -461,14 +475,59 @@ export function applyEvent(
 
 // ── History → turns (one-shot snapshot, §7.2) ─────────────────────────────
 
+/** Convert a persisted structured content block into a renderable block. */
+function historyBlockToTranscriptBlock(
+  block: HistoryBlock,
+): TranscriptBlock | null {
+  switch (block.type) {
+    case "text":
+      return {
+        type: "text",
+        id: newBlockId(),
+        content: block.text,
+        streaming: false,
+      }
+    case "thinking":
+      return {
+        type: "thinking",
+        id: newBlockId(),
+        content: block.text,
+        streaming: false,
+      }
+    case "tool_use":
+      return {
+        type: "tool_call",
+        id: block.id,
+        name: block.name,
+        input:
+          typeof block.input === "string"
+            ? block.input
+            : JSON.stringify(block.input ?? ""),
+        status: "done",
+      }
+    default:
+      return null
+  }
+}
+
 /** Convert persisted history messages into completed turns. */
 export function historyToTurns(messages: HistoryMessage[]): TranscriptTurn[] {
-  return messages.map((m) => ({
-    id: newTurnId(),
-    role: m.role === "user" ? "user" : "assistant",
-    status: "complete" as const,
-    blocks: m.content
-      ? [{ type: "text" as const, id: newBlockId(), content: m.content, streaming: false }]
-      : [],
-  }))
+  return messages.map((m) => {
+    // Prefer structured blocks when present (assistant turns carry thinking /
+    // tool_use blocks); fall back to the flat text content for user turns
+    // (finding #10).
+    const blocks: TranscriptBlock[] = m.blocks
+      ? m.blocks
+          .map(historyBlockToTranscriptBlock)
+          .filter((b): b is TranscriptBlock => b !== null)
+      : m.content
+        ? [{ type: "text", id: newBlockId(), content: m.content, streaming: false }]
+        : []
+    return {
+      id: newTurnId(),
+      role: m.role === "user" ? "user" : "assistant",
+      status: "complete" as const,
+      blocks,
+    }
+  })
 }

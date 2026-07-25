@@ -59,19 +59,32 @@ export class WebSocketTransport implements AgentTransport {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
 
+  /** Heartbeat ping interval for the WebSocket keep-alive (finding #17). */
+  private static readonly HEARTBEAT_INTERVAL_MS = 15_000
+
   constructor(
     private sessionId: string,
     private onResync?: () => void,
   ) {
-    this.readyPromise = new Promise<void>((resolve, reject) => {
+    this.readyPromise = this.newReadyPromise()
+    this.connect()
+  }
+
+  /** Create a fresh ready promise + resolvers. Called on every connect(). */
+  private newReadyPromise(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       this.readyResolve = resolve
       this.readyReject = reject
     })
-    this.connect()
   }
 
   private connect(): void {
     if (this.disposed) return
+
+    // Re-create the ready promise on every (re)connection so `sendPrompt`
+    // awaits a genuinely open socket instead of a stale resolved promise
+    // from a previous connection (finding #3).
+    this.readyPromise = this.newReadyPromise()
 
     const url = new URL(`${wsBaseUrl()}/api/ai/sessions/${this.sessionId}/ws`)
     if (this.lastSeq !== undefined) {
@@ -86,14 +99,14 @@ export class WebSocketTransport implements AgentTransport {
       this.readyResolve = null
       this.readyReject = null
 
-      // Start heartbeat ping every 15s
+      // Start heartbeat ping (finding #17).
       this.heartbeatTimer = setInterval(() => {
         try {
           this.ws?.send(JSON.stringify({ type: "ping" }))
         } catch {
           // Connection may be closed; timer will be cleared on close
         }
-      }, 15_000)
+      }, WebSocketTransport.HEARTBEAT_INTERVAL_MS)
     }
 
     this.ws.onmessage = (ev) => {
@@ -123,12 +136,21 @@ export class WebSocketTransport implements AgentTransport {
       this.clearHeartbeat()
       if (this.disposed) return
 
-      // Surface a synthetic terminal event so the reducer can finalize.
-      for (const cb of this.listeners) {
-        cb({ kind: "session", type: "agent_end", will_retry: false } as TranscriptEvent)
-      }
+      // Do NOT emit a synthetic `agent_end` here. The reducer treats
+      // `agent_end` as a terminal signal and would mark the in-progress turn
+      // complete, so a transient disconnect during streaming would split a
+      // single assistant message across two turns once reconnected. The
+      // server-side buffer replays missed events on reconnect (§9), and the
+      // authoritative `agent_end` is delivered from the agent itself. We only
+      // emit a terminal event on explicit `dispose()` (finding #4).
 
-      // Schedule reconnection with exponential backoff (§9.2)
+      // Reject any pending ready promise so `sendPrompt` doesn't proceed on a
+      // closed socket; a fresh promise is created in the next `connect()`.
+      this.readyReject?.(new Error("websocket closed"))
+      this.readyReject = null
+      this.readyResolve = null
+
+      // Schedule reconnection with exponential backoff (§9.2).
       this.retryTimer = setTimeout(() => {
         this.connect()
       }, this.retryDelay)
@@ -176,6 +198,12 @@ export class WebSocketTransport implements AgentTransport {
 
   dispose(): void {
     this.disposed = true
+    // Surface a synthetic terminal event so the reducer finalizes the
+    // in-progress turn when the transport is torn down intentionally (finding
+    // #4): this is the only place a synthetic `agent_end` is emitted.
+    for (const cb of this.listeners) {
+      cb({ kind: "session", type: "agent_end", will_retry: false } as TranscriptEvent)
+    }
     this.listeners.clear()
     this.clearHeartbeat()
     if (this.retryTimer !== null) {

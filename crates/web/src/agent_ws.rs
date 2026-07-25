@@ -27,7 +27,6 @@ use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventL
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tokio::sync::Mutex;
 
 use crate::chat::handle_slash_command;
 use crate::AppState;
@@ -141,6 +140,9 @@ pub struct ToolResultPayload {
 /// Truncation limit for tool result content in event stream (§15).
 const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
 
+/// Ring buffer capacity: events retained per session for reconnection replay (§9.1).
+const SESSION_BUFFER_CAPACITY: usize = 500;
+
 /// Convert a tool result text into a preview payload, truncating if too long.
 fn to_tool_result_payload(content: &str) -> ToolResultPayload {
     let len = content.chars().count();
@@ -172,7 +174,7 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
             SessionEventPayload::AgentEnd { will_retry }
         }
         AgentSessionEvent::CompactionStart { reason } => SessionEventPayload::CompactionStart {
-            reason: format!("{reason:?}"),
+            reason: reason.to_string(),
         },
         AgentSessionEvent::CompactionEnd {
             reason,
@@ -181,7 +183,7 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
             error_message,
             ..
         } => SessionEventPayload::CompactionEnd {
-            reason: format!("{reason:?}"),
+            reason: reason.to_string(),
             aborted,
             will_retry,
             error_message,
@@ -301,6 +303,15 @@ impl SessionEventBuffer {
             None => Some(self.events.iter().map(|(_, e)| e).collect()),
         }
     }
+
+    /// Return a reference to the envelope assigned `seq`, or `None` if it has
+    /// been evicted. Used to serialize the stored (seq-correct) envelope after
+    /// [`push`](Self::push) assigned the real seq (finding #1).
+    pub fn get(&self, seq: u64) -> Option<&EventEnvelope> {
+        self.events
+            .iter()
+            .find_map(|(s, e)| (*s == seq).then_some(e))
+    }
 }
 
 // ── Client commands ───────────────────────────────────────────────────────
@@ -393,21 +404,62 @@ pub async fn setup_event_channel(
     (delta_rx, durable_rx)
 }
 
-/// Set up the event channel and buffer for a session with backpressure (§14).
+/// Get or create the shared per-session event buffer (§9.1).
 ///
-/// Returns the delta receiver, durable receiver, and the buffer. The buffer is
-/// used for reconnection replay (§9.1). Both channels feed into the same buffer
-/// so reconnection replay preserves event ordering.
-pub async fn setup_event_channel_with_buffer(
-    agent_facade: &AgentFacade,
-) -> (
-    mpsc::Receiver<TranscriptEvent>,
-    mpsc::Receiver<TranscriptEvent>,
-    Arc<tokio::sync::Mutex<SessionEventBuffer>>,
-) {
-    let (delta_rx, durable_rx) = setup_event_channel(agent_facade).await;
-    let buffer = Arc::new(tokio::sync::Mutex::new(SessionEventBuffer::new(500)));
-    (delta_rx, durable_rx, buffer)
+/// The buffer lives in `AppState` so it survives across connections to the
+/// same session: events produced while a client is disconnected are retained
+/// and replayed on reconnect.
+pub async fn get_session_buffer(
+    state: &Arc<AppState>,
+    session_id: &str,
+) -> Arc<tokio::sync::Mutex<SessionEventBuffer>> {
+    let mut buffers = state.session_buffers.lock().await;
+    if let Some(buf) = buffers.get(session_id) {
+        return buf.clone();
+    }
+    let buf = Arc::new(tokio::sync::Mutex::new(SessionEventBuffer::new(
+        SESSION_BUFFER_CAPACITY,
+    )));
+    buffers.insert(session_id.to_string(), buf.clone());
+    buf
+}
+
+/// Assign a real `seq` via the shared buffer, then serialize the envelope.
+///
+/// This fixes the original ordering bug where the envelope was serialized with
+/// `seq: 0` *before* `buffer.push` assigned the real seq (finding #1): the
+/// envelope is pushed first (the buffer mutates `seq` in place), then the
+/// stored envelope — now carrying the correct seq — is serialized while still
+/// holding the buffer lock.
+async fn buffer_and_serialize(
+    buffer: &Arc<tokio::sync::Mutex<SessionEventBuffer>>,
+    event: TranscriptEvent,
+) -> Option<String> {
+    buffer_and_serialize_value(buffer, event)
+        .await
+        .and_then(|v| serde_json::to_string(&v).ok())
+}
+
+/// Same as [`buffer_and_serialize`] but returns a [`serde_json::Value`].
+///
+/// Shared by the WebSocket handler (which sends a `String` over the socket)
+/// and the Tauri forward task (which emits a JSON object to the frontend).
+pub async fn buffer_and_serialize_value(
+    buffer: &Arc<tokio::sync::Mutex<SessionEventBuffer>>,
+    event: TranscriptEvent,
+) -> Option<serde_json::Value> {
+    let mut buf = buffer.lock().await;
+    let probe = EventEnvelope {
+        schema_version: SCHEMA_VERSION,
+        seq: 0,
+        event,
+    };
+    let seq = buf.push(probe);
+    let stored = buf
+        .events
+        .iter()
+        .find_map(|(s, e)| (*s == seq).then_some(e))?;
+    serde_json::to_value(stored).ok()
 }
 
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
@@ -459,18 +511,24 @@ async fn handle_session(
         }
     };
 
-    // Create the per-session event buffer.
-    let buffer = Arc::new(Mutex::new(SessionEventBuffer::new(500)));
+    // Get the shared per-session event buffer (§9.1). It is shared across
+    // connections to the same session so events produced while a client is
+    // disconnected are retained for replay on reconnect (finding #2).
+    let buffer = get_session_buffer(&state, &session_id).await;
 
-    // Replay missed events if reconnecting (§9.1).
+    // Replay missed events if reconnecting (§9.1). Collect the serialized
+    // JSON while holding the buffer lock, then release the lock before
+    // sending so we never hold it across a `.await` point on the socket.
     {
         let buf = buffer.lock().await;
         match buf.events_since(last_seq) {
             Some(events) => {
-                for envelope in events {
-                    let Ok(json) = serde_json::to_string(envelope) else {
-                        continue;
-                    };
+                let replay: Vec<String> = events
+                    .iter()
+                    .filter_map(|e| serde_json::to_string(e).ok())
+                    .collect();
+                drop(buf);
+                for json in replay {
                     if socket.send(Message::Text(json)).await.is_err() {
                         return;
                     }
@@ -494,35 +552,28 @@ async fn handle_session(
     log::info!("ws: session {session_id} connected (last_seq={last_seq:?})");
 
     loop {
+        // `biased` ensures durable events (lifecycle, tool results) are
+        // drained before delta events when both are ready (§14, finding #8).
         tokio::select! {
-            // Delta events (text/thinking/tool-call deltas) — can drop if slow
-            Some(event) = delta_rx.recv() => {
-                let envelope = EventEnvelope {
-                    schema_version: SCHEMA_VERSION,
-                    seq: 0,
-                    event,
-                };
-                let json = serde_json::to_string(&envelope);
-                let Ok(json) = json else { continue };
-                let _seq = buffer.lock().await.push(envelope);
+            biased;
+            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
+            Some(event) = durable_rx.recv() => {
+                // Track running state (§7.4): agent_end/agent_settled → session is idle.
+                if matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled)) {
+                    // Mutex::lock poisoning is treated as an unrecoverable invariant
+                    // violation; `unwrap_or_default` would silently lose state.
+                    state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id);
+                }
+                // Push to buffer first to obtain the real seq, then serialize
+                // the stored envelope (finding #1).
+                let Some(json) = buffer_and_serialize(&buffer, event).await else { continue };
                 if socket.send(Message::Text(json)).await.is_err() {
                     break;
                 }
             }
-            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
-            Some(event) = durable_rx.recv() => {
-                // Track running state (§7.4): agent_end/agent_settled → session is idle
-                if matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled)) {
-                    state.running_sessions.lock().unwrap().remove(&session_id);
-                }
-                let envelope = EventEnvelope {
-                    schema_version: SCHEMA_VERSION,
-                    seq: 0,
-                    event,
-                };
-                let json = serde_json::to_string(&envelope);
-                let Ok(json) = json else { continue };
-                let _seq = buffer.lock().await.push(envelope);
+            // Delta events (text/thinking/tool-call deltas) — can drop if slow
+            Some(event) = delta_rx.recv() => {
+                let Some(json) = buffer_and_serialize(&buffer, event).await else { continue };
                 if socket.send(Message::Text(json)).await.is_err() {
                     break;
                 }
@@ -534,18 +585,12 @@ async fn handle_session(
                         match serde_json::from_str::<ClientCommand>(&text) {
                             Ok(ClientCommand::Prompt { text }) => {
                                 if let Err(notice) = try_slash_command(&text, &mut agent_facade).await {
-                                    let _ = socket.send(Message::Text(
-                                        serde_json::to_string(&EventEnvelope {
-                                            schema_version: SCHEMA_VERSION,
-                                            seq: 0,
-                                            event: TranscriptEvent::Session(notice),
-                                        })
-                                        .unwrap_or_default(),
-                                    )).await;
+                                    let Some(json) = buffer_and_serialize(&buffer, TranscriptEvent::Session(notice)).await else { continue };
+                                    let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }
                                 // Mark session as running (§7.4)
-                                state.running_sessions.lock().unwrap().insert(session_id.clone());
+                                state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone());
                                 agent_facade.send(&text).await;
                             }
                             Ok(ClientCommand::Interrupt) => {
@@ -573,8 +618,14 @@ async fn handle_session(
         }
     }
 
-    // Session disconnected — remove from running tracking (§7.4)
-    state.running_sessions.lock().unwrap().remove(&session_id);
+    // Session disconnected — remove from running tracking (§7.4).
+    // Use `unwrap_or_else(into_inner)` to recover from a poisoned mutex
+    // rather than panicking in the handler (finding #15).
+    state
+        .running_sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&session_id);
     log::info!("ws: session {session_id} disconnected");
 }
 

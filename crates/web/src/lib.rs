@@ -31,6 +31,21 @@ pub struct AppState {
     pub cache: Arc<AppCache>,
     /// Tracks session IDs that currently have an active agent turn in progress (§7.4).
     pub running_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// Per-session event buffers for reconnection replay (§9.1).
+    ///
+    /// The buffer is shared across connections to the same session so that
+    /// events produced while a client is disconnected are retained and
+    /// replayed on reconnect. Stored as `Arc<Mutex<...>>` because it is
+    /// accessed concurrently by the live event producers and reconnecting
+    /// clients.
+    pub session_buffers: Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<
+                String,
+                Arc<tokio::sync::Mutex<crate::agent_ws::SessionEventBuffer>>,
+            >,
+        >,
+    >,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
