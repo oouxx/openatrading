@@ -119,12 +119,6 @@ export default function AiCopilot({
     }
   }, [])
 
-  // Keep a ref to the latest sendPrompt so the running send() closure
-  // always uses the current hook instance (fixes race when creating a new session).
-  useEffect(() => {
-    sendPromptRef.current = wsAgent.sendPrompt
-  }, [wsAgent.sendPrompt])
-
   // ── WebSocket transport (Web) via react-use-websocket hook ──────────────
   const wsAgent = useAgentWebSocket(!isTauri ? activeThreadId : null, {
     onTurnsUpdate: useCallback(
@@ -143,6 +137,12 @@ export default function AiCopilot({
       onReload?.()
     }, [onReload]),
   })
+
+  // Keep a ref to the latest sendPrompt so the running send() closure
+  // always uses the current hook instance (fixes race when creating a new session).
+  useEffect(() => {
+    sendPromptRef.current = wsAgent.sendPrompt
+  }, [wsAgent.sendPrompt])
 
   // ── Tauri IPC transport (desktop) ──────────────────────────────────────
   useEffect(() => {
