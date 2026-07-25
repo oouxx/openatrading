@@ -89,10 +89,16 @@ export default function AiCopilot({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const prevInputRef = useRef("")
 
+  const SCROLL_THRESHOLD = 60
+
+  /** Scroll to bottom only if the user is already near the bottom (§6.2). */
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
-      if (msgContainerRef.current) {
-        msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight
+      const el = msgContainerRef.current
+      if (!el) return
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD
+      if (atBottom) {
+        el.scrollTop = el.scrollHeight
       }
     })
   }, [])
