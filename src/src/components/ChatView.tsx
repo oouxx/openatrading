@@ -119,7 +119,7 @@ export default function AiCopilot({
     }
   }, [])
 
-  // ── WebSocket transport (Web) via react-use-websocket hook ──────────────
+  // ── WebSocket transport (Web) via native WebSocket hook ──────────────
   const wsAgent = useAgentWebSocket(!isTauri ? activeThreadId : null, {
     onTurnsUpdate: useCallback(
       (turns: TranscriptTurn[]) => {
@@ -358,7 +358,7 @@ export default function AiCopilot({
           await transport.ready()
           await transport.sendPrompt(text)
         } else {
-          // Web: use react-use-websocket hook
+          // Web: use native WebSocket hook
           if (!sendPromptRef.current) throw new Error("WebSocket not ready")
           await sendPromptRef.current(text)
         }

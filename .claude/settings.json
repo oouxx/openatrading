@@ -22,7 +22,5 @@
       "Bash(find /var *)"
     ]
   },
-  "enabledPlugins": {
-    "ponytail@ponytail": true
-  }
+  "enabledPlugins": {}
 }
