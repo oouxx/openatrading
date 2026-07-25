@@ -45,47 +45,19 @@ pub struct AiRoleItem {
     pub display_name: String,
 }
 
-pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
-    // Use the pre-built tool registry from AppContext (startup lifetime)
-    let registry = &state.ctx.tool_registry;
-
-    let all_tools = registry.load().all_tools();
-    let mcp_count = registry.load().mcp_tools().len();
-    openatrading_core::log::info!(
-        "get_ai_commands: {} total tools ({} mcp, {} extension-provided)",
-        all_tools.len(),
-        mcp_count,
-        all_tools.len() - mcp_count,
-    );
-
-    // All tools (market + meta skill + MCP + decision)
-    let mut commands: Vec<CommandSpec> = all_tools
-        .iter()
-        .map(|t| CommandSpec {
-            name: t.name.clone(),
-            description: t.description.clone(),
-            command_type: CommandType::Tool,
-        })
-        .collect();
-
-    // Skill commands from SkillRegistry
-    let skills = openatrading_core::skills::SkillRegistry::from_disk();
-    for s in skills.skills() {
-        commands.push(CommandSpec {
-            name: s.name.clone(),
-            description: s.description.clone(),
-            command_type: CommandType::Skill,
-        });
-    }
-
-    // Built-in slash commands from pi-coding-agent
-    for cmd in pi_coding_agent::core::slash_commands::builtin_slash_commands() {
-        commands.push(CommandSpec {
-            name: cmd.name,
-            description: cmd.description,
-            command_type: CommandType::Slash,
-        });
-    }
+pub async fn get_ai_commands() -> Json<Vec<CommandSpec>> {
+    // Commands are provided by pi-coding-agent's built-in slash commands.
+    // Tools and skills are managed internally by pi-coding-agent at session
+    // creation time and are not listed here.
+    let commands: Vec<CommandSpec> =
+        pi_coding_agent::core::slash_commands::builtin_slash_commands()
+            .iter()
+            .map(|cmd| CommandSpec {
+                name: cmd.name.clone(),
+                description: cmd.description.clone(),
+                command_type: CommandType::Slash,
+            })
+            .collect();
 
     Json(commands)
 }
