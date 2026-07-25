@@ -1,5 +1,3 @@
-#![allow(clippy::significant_drop_tightening)]
-#![allow(clippy::missing_errors_doc)]
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::Path;
@@ -108,8 +106,7 @@ impl TradeManager {
             .map_err(Into::into)
     }
 
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn add_position(&self, pos: Position) -> Result<i64> {
+    pub fn add_position(&self, pos: &Position) -> Result<i64> {
         let conn = self
             .conn
             .lock()
@@ -141,8 +138,7 @@ impl TradeManager {
         Ok(id)
     }
 
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn update_position(&self, pos: Position) -> Result<()> {
+    pub fn update_position(&self, pos: &Position) -> Result<()> {
         let conn = self
             .conn
             .lock()
@@ -457,7 +453,7 @@ mod tests {
     #[test]
     fn test_add_and_list_positions() {
         let tm = TradeManager::open(Path::new(":memory:")).unwrap();
-        tm.add_position(test_pos("zarili", "000001", "平安银行"))
+        tm.add_position(&test_pos("zarili", "000001", "平安银行"))
             .unwrap();
         let positions = tm.list_positions("zarili").unwrap();
         assert_eq!(positions.len(), 1);
@@ -468,7 +464,7 @@ mod tests {
     fn test_close_position() {
         let tm = TradeManager::open(Path::new(":memory:")).unwrap();
         let id = tm
-            .add_position(test_pos("trader", "600519", "茅台"))
+            .add_position(&test_pos("trader", "600519", "茅台"))
             .unwrap();
         tm.close_position(id, 1700.0, "止盈").unwrap();
         assert!(tm.list_positions("trader").unwrap().is_empty());
@@ -478,7 +474,7 @@ mod tests {
     #[test]
     fn test_format_positions() {
         let tm = TradeManager::open(Path::new(":memory:")).unwrap();
-        tm.add_position(test_pos("zarili", "000001", "平安银行"))
+        tm.add_position(&test_pos("zarili", "000001", "平安银行"))
             .unwrap();
         let text = tm.format_positions("zarili").unwrap();
         assert!(text.contains("000001"));

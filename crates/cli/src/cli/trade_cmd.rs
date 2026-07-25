@@ -29,7 +29,7 @@ pub fn cmd_trade_add(role: &str, symbol: &str, price: f64, shares: i64) -> Resul
         created_at: String::new(),
         updated_at: String::new(),
     };
-    let id = tm.add_position(pos)?;
+    let id = tm.add_position(&pos)?;
     println!("已添加持仓 #{id}: {symbol} @ {price} x {shares}股");
     Ok(())
 }

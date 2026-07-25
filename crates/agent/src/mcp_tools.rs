@@ -382,10 +382,7 @@ const fn default_enabled() -> bool {
 }
 
 /// Registry of MCP server connections.
-pub struct McpRegistry {
-    #[allow(dead_code)]
-    servers: Vec<McpServerConfig>,
-}
+pub struct McpRegistry;
 
 impl McpRegistry {
     pub fn from_config(servers: &[McpServerConfig]) -> Self {
@@ -397,23 +394,12 @@ impl McpRegistry {
                 tracing::info!("[mcp] register server: {} ({})", s.name, s.transport.url());
             }
         }
-        Self {
-            servers: servers.iter().filter(|s| s.enabled).cloned().collect(),
-        }
+        Self
     }
 
     #[must_use]
-    pub fn single(endpoint: &str) -> Self {
-        Self {
-            servers: vec![McpServerConfig {
-                name: "cli".into(),
-                transport: McpTransportConfig::StreamableHttp {
-                    url: endpoint.to_string(),
-                    auth_token: None,
-                },
-                enabled: true,
-            }],
-        }
+    pub fn single(_endpoint: &str) -> Self {
+        Self
     }
 
     pub fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {

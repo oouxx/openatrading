@@ -6,28 +6,32 @@ use std::path::Path;
 
 // 淘股吧推荐 API 响应结构体
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendResponse {
     dto: TgbRecommendDto,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendDto {
     list: Vec<TgbRecommendItem>,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendItem {
-    topicID: i64,
+    #[serde(rename = "topicID")]
+    topic_id: i64,
     subject: Option<String>,
-    subinfo: Option<String>,
-    userName: Option<String>,
-    totalViewNum: Option<i64>,
-    totalReplyNum: Option<i64>,
-    dateTime: Option<i64>,
-    newTopicID: Option<String>,
+    #[serde(rename = "subinfo")]
+    sub_info: Option<String>,
+    #[serde(rename = "userName")]
+    user_name: Option<String>,
+    #[serde(rename = "totalViewNum")]
+    total_view_num: Option<i64>,
+    #[serde(rename = "totalReplyNum")]
+    total_reply_num: Option<i64>,
+    #[serde(rename = "dateTime")]
+    date_time: Option<i64>,
+    #[serde(rename = "newTopicID")]
+    new_topic_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -426,7 +430,7 @@ impl TgbClient {
             .into_iter()
             .map(|item| {
                 let date_time = item
-                    .dateTime
+                    .date_time
                     .and_then(|ms| {
                         chrono::DateTime::from_timestamp(
                             ms / 1000,
@@ -435,19 +439,21 @@ impl TgbClient {
                             }),
                         )
                     })
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .map(|dt: chrono::DateTime<chrono::Utc>| {
+                        dt.format("%Y-%m-%d %H:%M").to_string()
+                    })
                     .unwrap_or_default();
 
                 TaogubaRecommend {
-                    topic_id: item.topicID,
-                    new_topic_id: item.newTopicID.unwrap_or_default(),
+                    topic_id: item.topic_id,
+                    new_topic_id: item.new_topic_id.unwrap_or_default(),
                     subject: item.subject.unwrap_or_default(),
-                    subinfo: item.subinfo.clone().unwrap_or_default(),
-                    user_name: item.userName.unwrap_or_default(),
-                    view_count: item.totalViewNum.unwrap_or(0),
-                    reply_count: item.totalReplyNum.unwrap_or(0),
+                    subinfo: item.sub_info.clone().unwrap_or_default(),
+                    user_name: item.user_name.unwrap_or_default(),
+                    view_count: item.total_view_num.unwrap_or(0),
+                    reply_count: item.total_reply_num.unwrap_or(0),
                     date_time,
-                    content: item.subinfo.unwrap_or_default(),
+                    content: item.sub_info.unwrap_or_default(),
                 }
             })
             .collect();

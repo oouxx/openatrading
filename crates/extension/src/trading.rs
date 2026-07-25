@@ -20,7 +20,6 @@ use openatrading_api::cls::ClsClient;
 use openatrading_api::eastmoney::LhbClient;
 use openatrading_api::jiuyangongshe::{CommunityQuery, JiuYanSession};
 use openatrading_api::sina::SinaQuoteClient;
-use openatrading_api::utils;
 use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
 /// Market data extension providing A-share trading tools.
@@ -62,7 +61,6 @@ impl MarketDataExtension {
     ///
     /// Returns `Some(output)` when `tool_name` is handled by this extension,
     /// `None` otherwise (so other extensions / built-ins can handle it).
-    #[allow(clippy::too_many_lines)]
     async fn dispatch(&self, tool_name: &str, params: Value) -> Option<ToolCallOutput> {
         let result: Result<serde_json::Value, String> = match tool_name {
             "get_limit_up" => {
@@ -599,13 +597,6 @@ fn str_schema(params: &[(&str, &str)]) -> Value {
         "properties": properties,
         "required": required,
     })
-}
-
-// Keep the date helper referenced so the extension can be extended with
-// date-scoped tools without an unused-import warning.
-#[allow(dead_code)]
-fn today_beijing() -> String {
-    utils::beijing_now().format("%Y-%m-%d").to_string()
 }
 
 // ─── Decision tool ────────────────────────────────────────────────────────

@@ -12,8 +12,7 @@ fn beijing_tz() -> FixedOffset {
 
 /// Convert f64 to i64, rounding to nearest integer.
 /// Timestamps from the API are always whole numbers.
-#[allow(clippy::cast_possible_truncation)]
-const fn f64_to_i64(v: f64) -> i64 {
+fn f64_to_i64(v: f64) -> i64 {
     v as i64
 }
 

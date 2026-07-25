@@ -190,16 +190,18 @@ pub fn build_user_message(
         .unwrap_or_default();
 
     openatrading_core::prompts::build_web_chat_user_message(
-        &overview.date,
-        overview.rise_count,
-        overview.fall_count,
-        overview.limit_up_count,
-        overview.limit_down_count,
-        overview.bomb_rate,
-        &overview.risk_level,
-        &overview.decision_summary,
-        &field_section,
-        &super_section,
+        &openatrading_core::prompts::WebChatMarketData {
+            date: &overview.date,
+            rise: overview.rise_count,
+            fall: overview.fall_count,
+            limit_up: overview.limit_up_count,
+            limit_down: overview.limit_down_count,
+            bomb_rate: overview.bomb_rate,
+            risk_level: &overview.risk_level,
+            summary: &overview.decision_summary,
+            field_items: &field_section,
+            super_stocks: &super_section,
+        },
     )
 }
 
@@ -265,7 +267,6 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
 ///
 /// # Errors
 /// Returns `400 Bad Request` if the request is invalid or the agent session cannot be created.
-#[allow(clippy::too_many_lines)]
 pub async fn ai_chat(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,

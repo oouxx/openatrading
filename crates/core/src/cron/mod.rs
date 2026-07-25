@@ -1,8 +1,3 @@
-#![allow(clippy::large_futures)]
-#![allow(clippy::significant_drop_tightening)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::missing_panics_doc)]
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use chrono_tz::Asia::Shanghai;

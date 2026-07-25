@@ -1,16 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::large_futures)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::similar_names)]
-#![allow(clippy::cast_possible_wrap)]
-#![allow(clippy::cast_precision_loss)]
-#![allow(clippy::incompatible_msrv)]
-#![allow(clippy::disallowed_types)]
-#![allow(clippy::expect_used)]
-#![allow(clippy::assigning_clones)]
-#![allow(clippy::implicit_hasher)]
-
 pub mod cache;
 pub mod chat;
 pub mod chat_session;

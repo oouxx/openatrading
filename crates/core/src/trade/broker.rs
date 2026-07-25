@@ -75,7 +75,7 @@ pub async fn execute_buy(
         updated_at: String::new(),
     };
 
-    let position_id = ctx.trade.add_position(pos)?;
+    let position_id = ctx.trade.add_position(&pos)?;
     crate::log::info!(
         "[cron] BUY {} {} {}shares @ {:.2} (last={:.2}) — {} (position_id={})",
         instr.symbol,
