@@ -606,6 +606,10 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                             }
                             if let Some(msg) = entry.get("message") {
                                 let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                                // Only return user and assistant messages; filter out toolResult
+                                if role != "user" && role != "assistant" {
+                                    continue;
+                                }
                                 let text = msg
                                     .get("content")
                                     .and_then(|v| v.as_array())
@@ -617,6 +621,10 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                                             .join("\n")
                                     })
                                     .unwrap_or_default();
+                                // Skip assistant tool-call-only turns (empty text)
+                                if text.is_empty() {
+                                    continue;
+                                }
                                 messages.push(serde_json::json!({"role": role, "content": text}));
                             }
                         }
@@ -1039,6 +1047,7 @@ async fn api_chat_stream(
 
     use openatrading_core::llm::pi_ai_types::ContentBlock;
     use openatrading_core::llm::AgentEvent;
+    use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 
     // ── 构建对话消息（仅当前用户消息，历史由 pi-coding-agent JSONL 管理）──
     let mut pi_messages: Vec<openatrading_core::llm::AgentMessage> = Vec::new();
@@ -1062,6 +1071,7 @@ async fn api_chat_stream(
 
     // ── 通过 pi-coding-agent 执行 agent loop ──
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
+    let (session_tx, mut session_rx) = tokio::sync::mpsc::unbounded_channel::<AgentSessionEvent>();
 
     let session_id = body
         .get("session_id")
@@ -1078,6 +1088,7 @@ async fn api_chat_stream(
     let system_prompt_clone = system_prompt.clone();
     let user_message_clone = user_message.clone();
     let session_id_clone = session_id.clone();
+    let session_tx_clone = session_tx.clone();
     tokio::spawn(async move {
         let handle = match runtime
             .create_session(
@@ -1096,6 +1107,14 @@ async fn api_chat_stream(
             }
         };
         handle.subscribe(tx).await;
+
+        // Subscribe to session-level events (sync) for UI state updates
+        let stx = session_tx_clone.clone();
+        let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
+            let _ = stx.send(event);
+        });
+        let _session_handle = handle.session.subscribe_session_events(sync_listener);
+
         handle
             .send(user_message_clone.as_deref().unwrap_or(""))
             .await;
@@ -1104,8 +1123,8 @@ async fn api_chat_stream(
     eprintln!("[chat_stream] reading events from channel");
     let mut text_count = 0u32;
     'outer: loop {
-        match rx.recv().await {
-            Some(event) => match event {
+        tokio::select! {
+            Some(event) = rx.recv() => match event {
                 AgentEvent::MessageUpdate {
                     assistant_message_event,
                     ..
@@ -1301,10 +1320,107 @@ async fn api_chat_stream(
                 }
                 _ => {}
             },
-            None => {
-                eprintln!("[chat_stream] channel closed unexpectedly");
-                break;
-            }
+            Some(event) = session_rx.recv() => {
+                match event {
+                    AgentSessionEvent::CompactionStart { .. } => {
+                        channel
+                            .send("\x00COMPACTING\x00".to_string())
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::CompactionEnd { .. } => {
+                        channel
+                            .send("\x00COMPACTED\x00".to_string())
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::AutoRetryStart { attempt, max_attempts, delay_ms, .. } => {
+                        let data = serde_json::to_string(&serde_json::json!({
+                            "attempt": attempt,
+                            "max_attempts": max_attempts,
+                            "delay_ms": delay_ms,
+                        })).unwrap_or_default();
+                        channel
+                            .send(format!("\x00RETRY_START\x00{data}"))
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::AutoRetryEnd { success, .. } => {
+                        let data = serde_json::to_string(&serde_json::json!({
+                            "success": success,
+                        })).unwrap_or_default();
+                        channel
+                            .send(format!("\x00RETRY_END\x00{data}"))
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::AgentSettled => {
+                        channel
+                            .send("\x00SETTLED\x00".to_string())
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::MessageEnd {
+                        message: openatrading_core::llm::AgentMessage::Assistant {
+                            error_message: Some(err),
+                            ..
+                        },
+                    } => {
+                        if !err.is_empty() {
+                            channel
+                                .send(format!("[ERROR] {err}"))
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        }
+                    }
+                    AgentSessionEvent::AgentEnd { will_retry, .. } => {
+                        if will_retry {
+                            channel
+                                .send("\x00RETRY\x00".to_string())
+                                .map_err(|e| format!("channel error: {e}"))?;
+                        } else {
+                            break 'outer;
+                        }
+                    }
+                    AgentSessionEvent::TurnStart => {
+                        channel
+                            .send("\x00TURN_START\x00".to_string())
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    AgentSessionEvent::TurnEnd { tool_results, .. } => {
+                        let results: Vec<String> = tool_results
+                            .iter()
+                            .map(|m| {
+                                if let openatrading_core::llm::AgentMessage::ToolResult {
+                                    content,
+                                    ..
+                                } = m
+                                {
+                                    content
+                                        .iter()
+                                        .filter_map(|b| {
+                                            if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                                text,
+                                                ..
+                                            } = b
+                                            {
+                                                Some(text.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        let data = serde_json::to_string(&serde_json::json!({
+                            "tool_results": results,
+                        })).unwrap_or_default();
+                        channel
+                            .send(format!("\x00TURN_END\x00{data}"))
+                            .map_err(|e| format!("channel error: {e}"))?;
+                    }
+                    _ => {}
+                }
+            },
         }
     }
 

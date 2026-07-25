@@ -479,65 +479,65 @@ pub async fn ai_chat(
                             yield Ok(Event::default().event("settled"));
                             break 'outer;
                         },
-                    AgentSessionEvent::MessageEnd {
-                        message: openatrading_core::llm::AgentMessage::Assistant {
-                            error_message: Some(err),
-                            ..
+                        AgentSessionEvent::MessageEnd {
+                            message: openatrading_core::llm::AgentMessage::Assistant {
+                                error_message: Some(err),
+                                ..
+                            },
+                        } => {
+                            if !err.is_empty() {
+                                yield Ok(Event::default()
+                                    .data(format!("[ERROR] {err}")));
+                            }
                         },
-                    } => {
-                        if !err.is_empty() {
-                            yield Ok(Event::default()
-                                .data(format!("[ERROR] {err}")));
-                        }
-                    },
-                    AgentSessionEvent::AgentEnd { will_retry, .. } => {
-                        if will_retry {
-                            yield Ok(Event::default().event("retry"));
-                        } else {
-                            break 'outer;
-                        }
-                    },
-                    AgentSessionEvent::TurnStart => {
-                        yield Ok(Event::default().event("turn-start"));
-                    },
-                    AgentSessionEvent::TurnEnd { tool_results, .. } => {
-                        let results: Vec<String> = tool_results
-                            .iter()
-                            .map(|m| {
-                                if let openatrading_core::llm::AgentMessage::ToolResult {
-                                    content,
-                                    ..
-                                } = m
-                                {
-                                    content
-                                        .iter()
-                                        .filter_map(|b| {
-                                            if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
-                                                text,
-                                                ..
-                                            } = b
-                                            {
-                                                Some(text.clone())
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
-                                } else {
-                                    String::new()
-                                }
-                            })
-                            .filter(|r| !r.is_empty())
-                            .collect::<Vec<_>>();
-                        if !results.is_empty() {
-                            let data = serde_json::to_string(
-                                &serde_json::json!({ "results": results }),
-                            )
-                            .unwrap_or_default();
-                            yield Ok(Event::default().event("tool-results").data(data));
-                        }
-                    },
+                        AgentSessionEvent::AgentEnd { will_retry, .. } => {
+                            if will_retry {
+                                yield Ok(Event::default().event("retry"));
+                            } else {
+                                break 'outer;
+                            }
+                        },
+                        AgentSessionEvent::TurnStart => {
+                            yield Ok(Event::default().event("turn-start"));
+                        },
+                        AgentSessionEvent::TurnEnd { tool_results, .. } => {
+                            let results: Vec<String> = tool_results
+                                .iter()
+                                .map(|m| {
+                                    if let openatrading_core::llm::AgentMessage::ToolResult {
+                                        content,
+                                        ..
+                                    } = m
+                                    {
+                                        content
+                                            .iter()
+                                            .filter_map(|b| {
+                                                if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
+                                                    text,
+                                                    ..
+                                                } = b
+                                                {
+                                                    Some(text.clone())
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    } else {
+                                        String::new()
+                                    }
+                                })
+                                .filter(|r| !r.is_empty())
+                                .collect::<Vec<_>>();
+                            if !results.is_empty() {
+                                let data = serde_json::to_string(
+                                    &serde_json::json!({ "results": results }),
+                                )
+                                .unwrap_or_default();
+                                yield Ok(Event::default().event("tool-results").data(data));
+                            }
+                        },
                         _ => {},
                     }
                 },
@@ -735,7 +735,9 @@ pub async fn get_session_messages(
                             .join("\n")
                     })
                     .unwrap_or_default();
-                if !role.is_empty() {
+                // Only return user and assistant messages with non-empty content;
+                // filter out toolResult and assistant tool-call-only turns
+                if (role == "user" || role == "assistant") && !content.is_empty() {
                     messages.push(SessionMessage {
                         role,
                         content,
