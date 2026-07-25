@@ -1,0 +1,112 @@
+// ── Transcript rendering data model (docs/agentTransport.md §5) ────────────
+//
+// The frontend renders a conversation as a list of *turns*, each turn a list
+// of *blocks*. This model is shared 1:1 between the WebSocket (Web) and Tauri
+// IPC (desktop) transports; only the transport layer differs.
+
+/** A single renderable unit inside a turn. */
+export type TranscriptBlock =
+  | { type: "text"; id: string; content: string; streaming: boolean }
+  | { type: "thinking"; id: string; content: string; streaming: boolean }
+  | {
+      type: "tool_call"
+      id: string
+      name: string
+      /** Raw tool input — string for completed calls, accumulated deltas while streaming. */
+      input: string
+      status: "streaming" | "running" | "done" | "error"
+      /** Tool result text once available. */
+      result?: string
+      /** Partial result streamed during execution. */
+      partialResult?: string
+    }
+  | {
+      type: "system_notice"
+      id: string
+      kind: "compaction" | "retry" | "turn" | "notice"
+      detail: string
+      isError?: boolean
+      /** Transient lifecycle status for compaction/retry indicators. */
+      status?: "active" | "done" | "error"
+      attempt?: number
+      maxAttempts?: number
+      delayMs?: number
+    }
+
+export interface TranscriptTurn {
+  id: string
+  role: "user" | "assistant"
+  /** `in_progress` while the agent is producing this turn, `complete` once settled. */
+  status: "in_progress" | "complete"
+  blocks: TranscriptBlock[]
+  /** Set when the assistant turn ended in an error. */
+  isError?: boolean
+}
+
+// ── Wire event envelopes (match backend `TranscriptEvent` serde tags) ──────
+//
+// Backend serializes `TranscriptEvent` as:
+//   { "kind": "core",    ...AgentEvent }            — text/tool/thinking deltas
+//   { "kind": "session", "type": "...", ... }       — compaction/retry/turn/notice
+// `AgentEvent` itself is `#[serde(tag = "type")]` (variants NOT renamed:
+// MessageUpdate, TurnStart, TurnEnd, ToolExecutionStart, ...).
+// `assistant_message_event` is a nested `#[serde(tag = "type")]` enum with
+// snake_case variants: text_delta / text_end / thinking_delta / thinking_end /
+// toolcall_delta / toolcall_end / done / error.
+
+export interface AssistantMessageEvent {
+  type: string
+  delta?: string
+  content?: string
+  toolCall?: { id: string; name: string; arguments: unknown }
+  error?: { errorMessage?: string | null }
+  message?: { errorMessage?: string | null }
+}
+
+/** Loosely-typed core event payload — we only read the fields we need. */
+export interface CoreEvent {
+  kind: "core"
+  type: string
+  assistant_message_event?: AssistantMessageEvent
+  tool_call_id?: string
+  tool_name?: string
+  args?: string
+  partial_result?: string
+  result?: string
+  is_error?: boolean
+  tool_results?: Array<{ content?: Array<{ text?: string }> }>
+}
+
+/** Loosely-typed session event payload — matches `SessionEventPayload` (snake_case). */
+export interface SessionEvent {
+  kind: "session"
+  type: string
+  will_retry?: boolean
+  reason?: string
+  aborted?: boolean
+  error_message?: string | null
+  attempt?: number
+  max_attempts?: number
+  delay_ms?: number
+  success?: boolean
+  final_error?: string | null
+  tool_results?: string[]
+  text?: string
+  is_error?: boolean
+}
+
+export type TranscriptEvent = CoreEvent | SessionEvent | { kind: string; [k: string]: unknown }
+
+/** Client → server commands (matches backend `ClientCommand`). */
+export type ClientCommand =
+  | { type: "prompt"; text: string }
+  | { type: "interrupt" }
+  | { type: "ping" }
+
+// ── History message shape (GET /api/ai/sessions/:id/messages) ─────────────
+
+export interface HistoryMessage {
+  role: string
+  content: string
+  created_at?: string
+}
