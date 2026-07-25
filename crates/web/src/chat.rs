@@ -16,6 +16,31 @@ use openatrading_core::skills::SkillRequest;
 use crate::handlers::OverviewResponse;
 use crate::AppState;
 
+/// Find a session JSONL file by session ID.
+///
+/// Session files are named `{timestamp}_{id}.jsonl`, so we cannot construct
+/// the path from the ID alone. This scans the session directory for a file
+/// whose name ends with `_{id}.jsonl`.
+fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
+    let dir = pi_coding_agent::config::get_sessions_dir();
+    let suffix = format!("_{id}.jsonl");
+    let direct = dir.join(format!("{id}.jsonl"));
+    if direct.exists() {
+        return Some(direct);
+    }
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with(&suffix) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Extract the human-readable text from a serialized `AgentToolResult`.
 ///
 /// NOTE: moved to `chat_session::extract_tool_result_text` as the single
@@ -474,7 +499,9 @@ pub enum HistoryBlock {
 pub async fn get_session_messages(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
-    let path = pi_coding_agent::config::get_sessions_dir().join(format!("{id}.jsonl"));
+    let Some(path) = find_session_file(&id) else {
+        return Ok(Json(Vec::new()));
+    };
 
     let Ok(content) = std::fs::read_to_string(&path) else {
         return Ok(Json(Vec::new()));
@@ -572,11 +599,10 @@ pub async fn get_session_messages(
 }
 
 /// DELETE /api/ai/sessions/:id — delete a saved session
-pub async fn delete_session(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<String>,
-) -> StatusCode {
-    let path = std::path::Path::new(&state.ctx.session_dir).join(format!("{id}.jsonl"));
+pub async fn delete_session(axum::extract::Path(id): axum::extract::Path<String>) -> StatusCode {
+    let Some(path) = find_session_file(&id) else {
+        return StatusCode::NOT_FOUND;
+    };
     if path.exists() {
         match std::fs::remove_file(&path) {
             Ok(()) => StatusCode::NO_CONTENT,
@@ -603,7 +629,9 @@ pub async fn rename_session(
     axum::extract::Path(id): axum::extract::Path<String>,
     axum::Json(req): axum::Json<RenameSessionRequest>,
 ) -> StatusCode {
-    let path = pi_coding_agent::config::get_sessions_dir().join(format!("{id}.jsonl"));
+    let Some(path) = find_session_file(&id) else {
+        return StatusCode::NOT_FOUND;
+    };
     if !path.exists() {
         return StatusCode::NOT_FOUND;
     }
@@ -670,7 +698,9 @@ pub async fn rename_session(
 pub async fn get_tool_result(
     axum::extract::Path((session_id, tool_call_id)): axum::extract::Path<(String, String)>,
 ) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
-    let path = pi_coding_agent::config::get_sessions_dir().join(format!("{session_id}.jsonl"));
+    let Some(path) = find_session_file(&session_id) else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
 
     let Ok(content) = std::fs::read_to_string(&path) else {
         return Err(axum::http::StatusCode::NOT_FOUND);
