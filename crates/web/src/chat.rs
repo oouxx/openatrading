@@ -315,19 +315,18 @@ pub async fn handle_slash_command(
 pub struct CreateSessionRequest {
     #[serde(default)]
     name: Option<String>,
-    /// Optional first message to start processing immediately.
-    /// When provided, the session will begin processing the message
-    /// and the frontend can connect via WebSocket to receive streaming events.
-    #[serde(default)]
-    message: Option<String>,
+    /// The first user message. The session will immediately start processing it
+    /// (fire-and-forget); the frontend should connect via WebSocket to receive
+    /// streaming events.
+    pub message: String,
 }
 
 /// POST /api/ai/sessions — create a new session via pi-coding-agent.
 ///
-/// Accepts an optional `{ "name": "<title>", "message": "<first message>" }` body.
-/// The name is persisted as the session title. If `message` is provided, the session
-/// immediately starts processing it (fire-and-forget); the frontend should connect
-/// via WebSocket to receive streaming events.
+/// Accepts `{ "name": "<title>", "message": "<first message>" }`.
+/// The name is persisted as the session title. The session immediately starts
+/// processing the message (fire-and-forget); the frontend should connect via
+/// WebSocket to receive streaming events.
 pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionRequest>,
@@ -350,16 +349,14 @@ pub async fn create_session(
 
     let session_id = agent_facade.get_session_id();
 
-    // If a first message was provided, start processing immediately (fire-and-forget).
+    // Start processing the message immediately (fire-and-forget).
     // The frontend connects via WebSocket to receive streaming events.
-    if let Some(msg) = req.message.as_deref().filter(|s| !s.is_empty()) {
-        state
-            .running_sessions
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(session_id.clone());
-        agent_facade.send(msg).await;
-    }
+    state
+        .running_sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(session_id.clone());
+    agent_facade.send(&req.message).await;
 
     // Use session manager to get session metadata
     let mgr = agent_facade.session.get_session_manager();
