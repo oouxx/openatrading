@@ -492,13 +492,20 @@ async fn handle_session(
 ) {
     use openatrading_core::log;
 
-    // Check for a pending facade from create_session first. This ensures we
-    // reuse the same AgentFacade that was created by the REST API, so events
-    // are not lost. If no pending facade exists, resume from the session file.
-    let (mut agent_facade, pending_message) =
-        match state.pending_facades.lock().await.remove(&session_id) {
-            Some(pending) => (pending.facade, pending.pending_message),
-            None => match state
+    // Retrieve the live facade from the shared pool. We do NOT remove it —
+    // reconnections must reuse the same AgentFacade to preserve the running
+    // agent's context and event stream. If the pool has a pending message
+    // (from create_session), take it and clear it so only the first
+    // connection sends it.
+    let (mut agent_facade, pending_message) = {
+        let mut pool = state.active_facades.lock().await;
+        if let Some(active) = pool.get_mut(&session_id) {
+            let msg = active.pending_message.take();
+            (active.facade.clone(), msg)
+        } else {
+            drop(pool);
+            // Not in pool — resume from session file on disk.
+            match state
                 .ctx
                 .runtime
                 .create_session(None, None, Some(true), Some(&session_id), None)
@@ -514,8 +521,9 @@ async fn handle_session(
                         .await;
                     return;
                 }
-            },
-        };
+            }
+        }
+    };
 
     // Get the shared per-session event buffer (§9.1). It is shared across
     // connections to the same session so events produced while a client is

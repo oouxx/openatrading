@@ -1496,7 +1496,7 @@ fn main() {
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
         running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
-        pending_facades: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        active_facades: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 

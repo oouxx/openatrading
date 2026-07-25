@@ -377,9 +377,9 @@ pub async fn create_session(
     // Store the facade and pending message so the WebSocket handler can
     // subscribe to events BEFORE the agent starts processing. This prevents
     // a race where early events are produced before any subscriber exists.
-    state.pending_facades.lock().await.insert(
+    state.active_facades.lock().await.insert(
         session_id.clone(),
-        crate::PendingSession {
+        crate::ActiveSession {
             facade: agent_facade.clone(),
             pending_message: Some(req.message.clone()),
         },
@@ -608,7 +608,18 @@ pub async fn get_session_messages(
 }
 
 /// DELETE /api/ai/sessions/:id — delete a saved session
-pub async fn delete_session(axum::extract::Path(id): axum::extract::Path<String>) -> StatusCode {
+pub async fn delete_session(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> StatusCode {
+    // Remove the live facade from the shared pool so the agent stops.
+    state.active_facades.lock().await.remove(&id);
+    state
+        .running_sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&id);
+
     let Some(path) = find_session_file(&id) else {
         return StatusCode::NOT_FOUND;
     };
