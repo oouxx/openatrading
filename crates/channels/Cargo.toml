@@ -12,6 +12,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
+ahash = "0.8"
 tracing = "0.1"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"

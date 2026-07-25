@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+#![allow(clippy::large_futures)]
+#![allow(clippy::missing_errors_doc)]
+use ahash::AHashMap as HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -27,7 +29,7 @@ impl Default for AgentRuntime {
 }
 
 impl AgentRuntime {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -133,7 +135,7 @@ impl AgentFacade {
     pub fn get_session_name(&self) -> String {
         self.session
             .get_session_name()
-            .unwrap_or("default".to_string())
+            .unwrap_or_else(|| "default".to_string())
     }
 
     /// Run the agent and return the final text reply.

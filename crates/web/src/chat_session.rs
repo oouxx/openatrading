@@ -61,7 +61,7 @@ pub struct ChatConfigInput<'a> {
 /// `command_type`/`command_name` take precedence; if absent, a present
 /// `skill_name` routes to the `Skill` command. The `Skill` branch applies the
 /// skill's `allowed_tools` filter (the Tauri copy previously skipped this).
-#[must_use] 
+#[must_use]
 pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
     let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
@@ -94,8 +94,7 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
                 .skills()
                 .iter()
                 .find(|s| s.name == effective_command_name);
-            let prompt = skill
-                .map_or(default_strategy, |s| s.content.as_str());
+            let prompt = skill.map_or(default_strategy, |s| s.content.as_str());
             let allowed = skill
                 .and_then(|s| s.allowed_tools.as_ref())
                 .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
@@ -136,11 +135,10 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
 ///
 /// Single source of truth — previously duplicated in `chat.rs` and
 /// `src-tauri/src/main.rs`.
-#[must_use] 
+#[must_use]
 pub fn extract_tool_result_text(result: &serde_json::Value) -> String {
-    let content = match result.get("content") {
-        Some(serde_json::Value::Array(items)) => items,
-        _ => return result.to_string(),
+    let Some(serde_json::Value::Array(content)) = result.get("content") else {
+        return result.to_string();
     };
     let mut texts: Vec<String> = Vec::new();
     for item in content {

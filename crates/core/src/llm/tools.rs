@@ -43,7 +43,11 @@ pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> 
         Arc::new(move |_id, args, _signal, _progress| {
             let memory = memory.clone();
             Box::pin(async move {
-                let days: u32 = args.get("days").and_then(serde_json::Value::as_u64).unwrap_or(5) as u32;
+                let days: u32 = args
+                    .get("days")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|v| u32::try_from(v).ok())
+                    .unwrap_or(5);
                 let ctx = memory
                     .get_historical_context(days)
                     .unwrap_or_else(|_| "暂无历史数据".to_string());
@@ -91,7 +95,11 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
     let execute: ToolExecuteFn = Arc::new(move |_id, args, _signal| {
         let memory = memory.clone();
         Box::pin(async move {
-            let days: u32 = args.get("days").and_then(serde_json::Value::as_u64).unwrap_or(5) as u32;
+            let days: u32 = args
+                .get("days")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| u32::try_from(v).ok())
+                .unwrap_or(5);
             let ctx = memory
                 .get_historical_context(days)
                 .unwrap_or_else(|_| "暂无历史数据".to_string());
@@ -125,7 +133,7 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 ///
 /// Each extension tool's `execute` callback is wrapped to translate between
 /// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent result).
-#[must_use] 
+#[must_use]
 pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
@@ -181,7 +189,7 @@ pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>>
 pub struct ToolRegistry {
     mcp: Vec<Arc<DynTool>>,
     extension: Vec<Arc<DynTool>>,
-    _mcp_handle: Option<McpHandle>,
+    mcp_handle: Option<McpHandle>,
 }
 
 impl Default for ToolRegistry {
@@ -191,10 +199,10 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self {
-            _mcp_handle: None,
+            mcp_handle: None,
             mcp: Vec::new(),
             extension: Vec::new(),
         }
@@ -212,22 +220,22 @@ impl ToolRegistry {
 
     /// Keep stdio MCP handle alive so subprocess transports don't close.
     pub fn set_mcp_handle(&mut self, handle: Option<McpHandle>) {
-        self._mcp_handle = handle;
+        self.mcp_handle = handle;
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
         &self.mcp
     }
 
     /// Extension-provided tools (market data, decision, etc.).
-    #[must_use] 
+    #[must_use]
     pub fn extension_tools(&self) -> &[Arc<DynTool>] {
         &self.extension
     }
 
     /// All tools (MCP + extension).
-    #[must_use] 
+    #[must_use]
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.mcp
             .iter()
@@ -244,7 +252,7 @@ impl ToolRegistry {
 pub async fn build_tools(config: &ToolConfig) -> ToolRegistry {
     let mut registry = ToolRegistry::new();
     let mcp = McpRegistry::from_config(&config.mcp_servers);
-    let (tools, handle) = mcp.discover().await;
+    let (tools, handle) = mcp.discover();
     for t in tools {
         registry.add_mcp(t);
     }

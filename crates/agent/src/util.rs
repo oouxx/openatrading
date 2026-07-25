@@ -2,15 +2,16 @@ use pi_coding_agent::pi_agent_core::types::AgentMessage;
 use pi_coding_agent::pi_ai_types::ContentBlock;
 use serde_json::json;
 
-/// Build a display transcript from agent messages, preserving structured
-/// content blocks (text/thinking/toolCall) instead of flattening to plain
-/// text. Tool results are merged onto their corresponding toolCall blocks so
-/// the frontend can render `ToolCallCard` with `status`/`result`/`isError`
-/// both after a turn completes and on session reload.
+/// Build a display transcript from agent messages.
+///
+/// Preserves structured content blocks (text/thinking/toolCall) instead of
+/// flattening to plain text. Tool results are merged onto their corresponding
+/// toolCall blocks so the frontend can render `ToolCallCard` with
+/// `status`/`result`/`isError` both after a turn completes and on session reload.
+#[must_use]
 pub fn build_display_transcript(msgs: &[AgentMessage]) -> Vec<serde_json::Value> {
     // First pass: collect tool results keyed by tool_call_id.
-    let mut tool_results: std::collections::HashMap<String, (String, bool)> =
-        std::collections::HashMap::new();
+    let mut tool_results: ahash::AHashMap<String, (String, bool)> = ahash::AHashMap::new();
     for msg in msgs {
         if let AgentMessage::ToolResult {
             tool_call_id,
@@ -74,12 +75,10 @@ pub fn build_display_transcript(msgs: &[AgentMessage]) -> Vec<serde_json::Value>
             })
             .collect();
 
-        let ts_secs = ts as f64 / 1000.0;
-        let created = chrono::DateTime::from_timestamp(ts_secs as i64, 0)
-            .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
-            .unwrap_or_else(|| {
-                chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-            });
+        let created = chrono::DateTime::from_timestamp(ts / 1000, 0).map_or_else(
+            || chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            |dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        );
 
         out.push(json!({
             "id": format!("msg-{}", ts),

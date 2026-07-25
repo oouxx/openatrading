@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
-use super::{Check, FixRisk, CheckContext, CheckResult, CheckStatus, Result, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 /// Network timeout for the Telegram API probe.
 ///
@@ -54,28 +54,22 @@ impl Check for TelegramCheck {
             },
         };
 
-        let token = match tg.bot_token.as_ref().filter(|t| !t.is_empty()) {
-            Some(t) => t,
-            None => {
-                return CheckResult {
-                    status: CheckStatus::Error("未配置".into()),
-                    summary: "bot_token 未设置".into(),
-                    details: vec![],
-                    duration_ms: 0,
-                }
-            },
+        let Some(token) = tg.bot_token.as_ref().filter(|t| !t.is_empty()) else {
+            return CheckResult {
+                status: CheckStatus::Error("未配置".into()),
+                summary: "bot_token 未设置".into(),
+                details: vec![],
+                duration_ms: 0,
+            };
         };
 
-        let chat_id = match tg.chat_id.as_ref().filter(|c| !c.is_empty()) {
-            Some(c) => c,
-            None => {
-                return CheckResult {
-                    status: CheckStatus::Error("未配置".into()),
-                    summary: "chat_id 未设置".into(),
-                    details: vec![],
-                    duration_ms: 0,
-                }
-            },
+        let Some(chat_id) = tg.chat_id.as_ref().filter(|c| !c.is_empty()) else {
+            return CheckResult {
+                status: CheckStatus::Error("未配置".into()),
+                summary: "chat_id 未设置".into(),
+                details: vec![],
+                duration_ms: 0,
+            };
         };
 
         let client = match reqwest::Client::builder().timeout(NETWORK_TIMEOUT).build() {

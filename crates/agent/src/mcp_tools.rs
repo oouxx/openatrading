@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use ahash::AHashMap;
 use rmcp::model::{CallToolRequestParams, RawContent};
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{RoleClient, ServiceExt};
-use std::collections::HashMap;
 use thiserror::Error;
 
 use pi_coding_agent::pi_agent_core::types::AgentToolResult;
@@ -28,7 +28,7 @@ pub enum McpError {
     Parse(#[from] serde_json::Error),
 }
 
-/// Specification for creating an MCP-backed DynTool.
+/// Specification for creating an MCP-backed `DynTool`.
 pub struct McpToolSpec {
     pub name: String,
     pub description: String,
@@ -50,6 +50,10 @@ pub struct McpClient {
 
 impl McpClient {
     /// Connect to an MCP server via streamable HTTP transport.
+    /// Connect to an MCP server via URL.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails.
     pub async fn connect(endpoint: impl Into<String>) -> Result<Self, McpError> {
         let config = StreamableHttpClientTransportConfig::with_uri(endpoint.into());
         let transport =
@@ -68,10 +72,14 @@ impl McpClient {
     }
 
     /// Connect to an MCP server via stdio subprocess.
+    /// Connect to an MCP server via stdio.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails.
     pub async fn connect_stdio(
         command: &str,
         args: &[String],
-        env: &HashMap<String, String>,
+        env: &AHashMap<String, String>,
     ) -> Result<Self, McpError> {
         let mut cmd = tokio::process::Command::new(command);
         cmd.args(args)
@@ -103,6 +111,10 @@ impl McpClient {
     }
 
     /// List all tools from the server.
+    /// List available tools from the MCP server.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
     pub async fn list_tools(&self) -> Result<serde_json::Value, McpError> {
         tracing::info!("[mcp] list_tools: calling list_all_tools");
         let tools = self
@@ -115,6 +127,10 @@ impl McpClient {
     }
 
     /// Call a tool.
+    /// Call a tool on the MCP server.
+    ///
+    /// # Errors
+    /// Returns an error if the call fails.
     pub async fn call(
         &self,
         tool_name: &str,
@@ -151,6 +167,10 @@ impl McpClient {
     }
 
     /// Call a tool and return the raw text content without JSON parsing.
+    /// Call a tool on the MCP server with raw arguments.
+    ///
+    /// # Errors
+    /// Returns an error if the call fails.
     pub async fn call_raw(
         &self,
         tool_name: &str,
@@ -191,10 +211,15 @@ impl McpClient {
     ///
     /// Returns `(tool_count, call_result)` where `call_result` is `Ok(())` if
     /// the first tool was called successfully, or an error description.
+    /// Verify the MCP server connection by listing tools.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails.
     pub async fn verify(&self) -> Result<(usize, Result<(), String>), McpError> {
         tracing::info!("[mcp] verify: listing tools");
         let tools = self.list_tools().await?;
-        let arr = tools.as_array().map(|v| v.as_slice()).unwrap_or(&[]);
+        let empty: &[serde_json::Value] = &[];
+        let arr = tools.as_array().map_or(empty, |v| v.as_slice());
         let count = arr.len();
         tracing::info!("[mcp] verify: got {} tools", count);
 
@@ -203,7 +228,7 @@ impl McpClient {
         }
 
         // Try to call the first tool with empty args
-        let first_name = match arr[0]["name"].as_str() {
+        let first_name: String = match arr[0]["name"].as_str() {
             Some(n) => n.to_string(),
             None => return Ok((count, Ok(()))),
         };
@@ -214,7 +239,8 @@ impl McpClient {
         }
     }
 
-    /// Wrap this client into a DynTool factory.
+    /// Wrap this client into a `DynTool` factory.
+    #[must_use]
     pub fn create_tool(&self, spec: McpToolSpec) -> Arc<DynTool> {
         let peer = self.peer.clone();
         let McpToolSpec {
@@ -306,16 +332,16 @@ pub enum McpTransportConfig {
         #[serde(default)]
         args: Vec<String>,
         #[serde(default)]
-        env: HashMap<String, String>,
+        env: AHashMap<String, String>,
     },
 }
 
 impl McpTransportConfig {
+    #[must_use]
     pub fn url(&self) -> &str {
         match self {
-            McpTransportConfig::StreamableHttp { url, .. } => url,
-            McpTransportConfig::Sse { url, .. } => url,
-            McpTransportConfig::Stdio { command, .. } => command,
+            Self::StreamableHttp { url, .. } | Self::Sse { url, .. } => url,
+            Self::Stdio { command, .. } => command,
         }
     }
 }
@@ -332,6 +358,7 @@ pub struct McpServerConfig {
 
 impl McpServerConfig {
     /// Create a new config with just a name (for testing/UI stubs).
+    #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -350,7 +377,7 @@ fn default_transport() -> McpTransportConfig {
         auth_token: None,
     }
 }
-fn default_enabled() -> bool {
+const fn default_enabled() -> bool {
     true
 }
 
@@ -375,6 +402,7 @@ impl McpRegistry {
         }
     }
 
+    #[must_use]
     pub fn single(endpoint: &str) -> Self {
         Self {
             servers: vec![McpServerConfig {
@@ -388,7 +416,7 @@ impl McpRegistry {
         }
     }
 
-    pub async fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {
+    pub fn discover(&self) -> (Vec<Arc<DynTool>>, Option<McpHandle>) {
         tracing::warn!("[mcp] discovery requires pi-agent-core's `mcp` feature — stubbed");
         (Vec::new(), None)
     }

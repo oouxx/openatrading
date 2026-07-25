@@ -8,29 +8,28 @@ fn agent_dir() -> PathBuf {
     pi_coding_agent::config::get_agent_dir()
 }
 
-fn get_state_path() -> Option<PathBuf> {
+fn get_state_path() -> PathBuf {
     let dir = agent_dir();
     let _ = std::fs::create_dir_all(&dir);
-    Some(dir.join("ui-state.json"))
+    dir.join("ui-state.json")
 }
 
 /// Persist only the active session ID.
 pub fn persist_state(state: &DesktopState) {
-    if let Some(path) = get_state_path() {
-        let slim = json!({
-            "selectedSessionId": state.selected_session_id,
-        });
-        if let Ok(json) = serde_json::to_string_pretty(&slim) {
-            let _ = std::fs::write(&path, &json);
-        }
+    let path = get_state_path();
+    let slim = json!({
+        "selectedSessionId": state.selected_session_id,
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&slim) {
+        let _ = std::fs::write(&path, &json);
     }
 }
 
 /// Return a minimal state skeleton with the last active session ID restored.
-#[must_use] 
+#[must_use]
 pub fn restore_state() -> DesktopState {
-    let persisted: Option<Value> = get_state_path()
-        .and_then(|p| std::fs::read_to_string(p).ok())
+    let persisted: Option<Value> = std::fs::read_to_string(get_state_path())
+        .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
     let mut state = default_state();
     if let Some(p) = persisted {
@@ -41,7 +40,7 @@ pub fn restore_state() -> DesktopState {
     state
 }
 
-#[must_use] 
+#[must_use]
 pub const fn default_state() -> DesktopState {
     DesktopState {
         revision: 1,

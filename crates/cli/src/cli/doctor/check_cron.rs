@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::str::FromStr;
 
-use super::{Result, Check, FixRisk, CheckContext, CheckResult, CheckStatus, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct CronCheck;
 
@@ -36,8 +36,14 @@ impl Check for CronCheck {
     }
 
     async fn check(&self, ctx: &CheckContext) -> CheckResult {
-        match &ctx.app_config {
-            Some(cfg) => match &cfg.cron {
+        ctx.app_config.as_ref().map_or_else(
+            || CheckResult {
+                status: CheckStatus::Error("无法加载配置".into()),
+                summary: "无法加载配置".into(),
+                details: vec![],
+                duration_ms: 0,
+            },
+            |cfg| match &cfg.cron {
                 Some(c) if c.enabled => {
                     let mut details = Vec::new();
                     let schedules = [
@@ -80,13 +86,7 @@ impl Check for CronCheck {
                     duration_ms: 0,
                 },
             },
-            None => CheckResult {
-                status: CheckStatus::Error("无法加载配置".into()),
-                summary: "无法加载配置".into(),
-                details: vec![],
-                duration_ms: 0,
-            },
-        }
+        )
     }
 
     async fn fix(&self, ctx: &CheckContext) -> Result<FixResult> {

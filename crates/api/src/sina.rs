@@ -29,6 +29,10 @@ pub struct SinaQuoteClient {
 }
 
 impl SinaQuoteClient {
+    /// Create a new `SinaQuoteClient`.
+    ///
+    /// # Errors
+    /// Returns an error if the reqwest client cannot be built.
     pub fn new() -> Result<Self> {
         let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
         Ok(Self { client })
@@ -37,6 +41,9 @@ impl SinaQuoteClient {
     /// 批量获取竞价行情。
     ///
     /// `codes`: 不带前缀的纯代码，如 `["000001", "600519"]`。
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_quotes(&self, codes: &[&str]) -> Result<Vec<AuctionQuote>> {
         if codes.is_empty() {
             return Ok(vec![]);
@@ -64,13 +71,12 @@ impl SinaQuoteClient {
             tracing::warn!("[sina] GBK 解码存在异常字符");
         }
 
-        parse_sina_response(&text, codes)
+        Ok(parse_sina_response(&text, codes))
     }
 }
 
 fn prefix_for(code: &str) -> &'static str {
     match code.chars().next() {
-        Some('6') => "sh",
         Some('0' | '3') => "sz",
         Some('4' | '8') => "bj",
         _ => "sh",
@@ -79,7 +85,7 @@ fn prefix_for(code: &str) -> &'static str {
 
 // ── 响应解析 ──────────────────────────────────────────
 
-fn parse_sina_response(text: &str, codes: &[&str]) -> Result<Vec<AuctionQuote>> {
+fn parse_sina_response(text: &str, codes: &[&str]) -> Vec<AuctionQuote> {
     let mut quotes = Vec::with_capacity(codes.len());
 
     for (line, code) in text.lines().zip(codes.iter()) {
@@ -120,7 +126,7 @@ fn parse_sina_response(text: &str, codes: &[&str]) -> Result<Vec<AuctionQuote>> 
         });
     }
 
-    Ok(quotes)
+    quotes
 }
 
 // ── 竞价窗口轮询（9:15-9:25）──────────────────────────
@@ -129,9 +135,16 @@ use chrono::{Local, NaiveTime};
 use tokio::time::{interval, Duration as TokioDuration};
 
 /// 在竞价时段（9:15-9:25）每 3 秒拉取一次快照，推入日志。
+///
+/// # Errors
+/// Returns an error if the HTTP request fails.
+///
+/// # Panics
+/// Panics if the hardcoded time values (9:15, 9:25) are invalid (should never happen).
 pub async fn poll_auction_window(client: &SinaQuoteClient, codes: &[&str]) -> Result<()> {
-    let start = NaiveTime::from_hms_opt(9, 15, 0).unwrap();
-    let end = NaiveTime::from_hms_opt(9, 25, 0).unwrap();
+    let start =
+        NaiveTime::from_hms_opt(9, 15, 0).unwrap_or_else(|| panic!("9,15,0 is a valid time"));
+    let end = NaiveTime::from_hms_opt(9, 25, 0).unwrap_or_else(|| panic!("9,25,0 is a valid time"));
     let mut ticker = interval(TokioDuration::from_secs(3));
 
     loop {
@@ -172,9 +185,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_single_stock() {
-        let client = SinaQuoteClient::new().unwrap();
+        let client = SinaQuoteClient::new().unwrap_or_else(|e| panic!("test setup failed: {e}"));
         let start = Instant::now();
-        let quotes = client.fetch_quotes(&["000001"]).await.unwrap();
+        let quotes = client
+            .fetch_quotes(&["000001"])
+            .await
+            .unwrap_or_else(|e| panic!("test failed: {e}"));
         let elapsed = start.elapsed();
         assert!(!quotes.is_empty(), "should return at least 1 quote");
         let q = &quotes[0];
@@ -204,9 +220,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_batch() {
-        let client = SinaQuoteClient::new().unwrap();
+        let client = SinaQuoteClient::new().unwrap_or_else(|e| panic!("test setup failed: {e}"));
         let codes = ["000001", "600519", "300750", "000858"];
-        let quotes = client.fetch_quotes(&codes).await.unwrap();
+        let quotes = client
+            .fetch_quotes(&codes)
+            .await
+            .unwrap_or_else(|e| panic!("test failed: {e}"));
         assert_eq!(quotes.len(), codes.len(), "all codes should return data");
         for q in &quotes {
             assert!(!q.name.is_empty(), "{} name empty", q.code);

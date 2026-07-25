@@ -24,6 +24,10 @@ pub struct GatewayConfig {
 }
 
 impl Gateway {
+    /// Initialize the gateway with a database path.
+    ///
+    /// # Errors
+    /// Returns an error if the database cannot be opened or the parent directory cannot be created.
     pub fn init(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -35,6 +39,10 @@ impl Gateway {
         Ok(Self { memory, trade })
     }
 
+    /// Start the web API server.
+    ///
+    /// # Errors
+    /// Returns an error if the server cannot bind to the address or fails to serve.
     pub async fn start(self, config: GatewayConfig, ctx: AppContext) -> Result<()> {
         let state = Arc::new(AppState {
             ctx,

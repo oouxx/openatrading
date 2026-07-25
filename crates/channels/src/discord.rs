@@ -22,7 +22,7 @@ pub struct DiscordChannel {
 }
 
 impl DiscordChannel {
-    #[must_use] 
+    #[must_use]
     pub fn new(bot_token: String, channel_id: String) -> Self {
         Self {
             bot_token,
@@ -94,7 +94,6 @@ mod op {
     pub const HEARTBEAT: u8 = 1;
     pub const IDENTIFY: u8 = 2;
     pub const HELLO: u8 = 10;
-    pub const HEARTBEAT_ACK: u8 = 11;
 }
 
 /// Gateway 下行帧
@@ -132,7 +131,7 @@ struct MessageAuthor {
 }
 
 impl DiscordAdapter {
-    #[must_use] 
+    #[must_use]
     pub fn new(bot_token: String) -> Self {
         Self {
             bot_token,
@@ -145,6 +144,7 @@ impl DiscordAdapter {
     }
 
     /// 限制只处理指定频道。
+    #[must_use]
     pub fn with_channel(mut self, channel_id: impl Into<String>) -> Self {
         self.allowed_channel_id = Some(channel_id.into());
         self
@@ -157,6 +157,7 @@ impl MessageAdapter for DiscordAdapter {
         "discord"
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError> {
         let bot_token = self.bot_token.clone();
         let allowed_channel_id = self.allowed_channel_id.clone();
@@ -178,13 +179,15 @@ impl MessageAdapter for DiscordAdapter {
             let write = Arc::new(Mutex::new(write));
 
             // 2. 等待 Hello
-            let hello = if let Some(Ok(msg)) = read.next().await { msg } else {
+            let Some(Ok(hello)) = read.next().await else {
                 tracing::error!("[discord-adapter] no hello, retry in 5s");
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             };
 
-            let data: serde_json::Value = if let Message::Text(t) = hello { serde_json::from_str(&t).unwrap_or_default() } else {
+            let data: serde_json::Value = if let Message::Text(t) = hello {
+                serde_json::from_str(&t).unwrap_or_default()
+            } else {
                 tracing::error!("[discord-adapter] unexpected hello message type");
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
@@ -222,7 +225,10 @@ impl MessageAdapter for DiscordAdapter {
 
             ws_send(
                 &write,
-                Message::Text(serde_json::to_string(&identify).unwrap()),
+                Message::Text(
+                    serde_json::to_string(&identify)
+                        .unwrap_or_else(|e| panic!("identify serialization failed: {e}")),
+                ),
             )
             .await;
 
@@ -248,14 +254,19 @@ impl MessageAdapter for DiscordAdapter {
                     });
                     ws_send(
                         &write,
-                        Message::Text(serde_json::to_string(&heartbeat).unwrap()),
+                        Message::Text(
+                            serde_json::to_string(&heartbeat)
+                                .unwrap_or_else(|e| panic!("heartbeat serialization failed: {e}")),
+                        ),
                     )
                     .await;
                 }
 
                 // 读取消息（带超时让心跳检查能跑）
                 let msg = tokio::time::timeout(
-                    std::time::Duration::from_millis(heartbeat_interval.as_millis() as u64 / 3),
+                    std::time::Duration::from_millis(
+                        u64::try_from(heartbeat_interval.as_millis()).unwrap_or(u64::MAX) / 3,
+                    ),
                     read.next(),
                 )
                 .await;
@@ -277,7 +288,6 @@ impl MessageAdapter for DiscordAdapter {
                     Ok(None) => {
                         break;
                     },
-                    Err(_) => continue, // timeout, 继续循环
                     _ => continue,
                 };
 
@@ -345,7 +355,6 @@ impl MessageAdapter for DiscordAdapter {
                             _ => {},
                         }
                     },
-                    op::HEARTBEAT_ACK => {},
                     op::HEARTBEAT => {
                         let heartbeat = serde_json::json!({
                             "op": op::HEARTBEAT,
@@ -353,7 +362,11 @@ impl MessageAdapter for DiscordAdapter {
                         });
                         ws_send(
                             &write,
-                            Message::Text(serde_json::to_string(&heartbeat).unwrap()),
+                            Message::Text(
+                                serde_json::to_string(&heartbeat).unwrap_or_else(|e| {
+                                    panic!("heartbeat serialization failed: {e}")
+                                }),
+                            ),
                         )
                         .await;
                     },

@@ -1,3 +1,4 @@
+#![allow(clippy::missing_errors_doc)]
 use crate::roles::pnl::INITIAL_CAPITAL;
 
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;
@@ -36,25 +37,25 @@ impl Default for PaperBroker {
 
 impl PaperBroker {
     /// 滑点后买入成交价
-    #[must_use] 
+    #[must_use]
     pub fn buy_price(&self, last_price: f64) -> f64 {
         last_price * (1.0 + self.slippage_bps / 10000.0)
     }
 
     /// 滑点后卖出成交价
-    #[must_use] 
+    #[must_use]
     pub fn sell_price(&self, last_price: f64) -> f64 {
         last_price * (1.0 - self.slippage_bps / 10000.0)
     }
 
     /// A股手数取整（100 股 = 1 手，向下取整）
-    #[must_use] 
+    #[must_use]
     pub const fn round_shares(shares: i64) -> i64 {
         (shares / MIN_SHARES) * MIN_SHARES
     }
 
     /// 计算买入费用，返回 (成交金额, 佣金)
-    #[must_use] 
+    #[must_use]
     pub fn buy_cost(&self, price: f64, shares: i64) -> (f64, f64) {
         let total = price * shares as f64;
         let commission = (total * self.commission_rate).max(self.min_commission);
@@ -62,7 +63,7 @@ impl PaperBroker {
     }
 
     /// 计算卖出费用，返回 (成交金额, 佣金, 印花税)
-    #[must_use] 
+    #[must_use]
     pub fn sell_cost(&self, price: f64, shares: i64) -> (f64, f64, f64) {
         let total = price * shares as f64;
         let commission = (total * self.commission_rate).max(self.min_commission);
@@ -78,14 +79,10 @@ impl PaperBroker {
         positions: &PositionSnapshot,
     ) -> Result<(), String> {
         if shares < MIN_SHARES {
-            return Err(format!(
-                "shares {shares} is less than minimum {MIN_SHARES}"
-            ));
+            return Err(format!("shares {shares} is less than minimum {MIN_SHARES}"));
         }
         if shares % MIN_SHARES != 0 {
-            return Err(format!(
-                "shares {shares} is not a multiple of {MIN_SHARES}"
-            ));
+            return Err(format!("shares {shares} is not a multiple of {MIN_SHARES}"));
         }
 
         let (total, commission) = self.buy_cost(exec_price, shares);

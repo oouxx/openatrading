@@ -40,7 +40,7 @@ pub struct CheckResult {
     pub duration_ms: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FixRisk {
     Safe,
     Impossible,
@@ -130,7 +130,7 @@ fn all_checks() -> Vec<Box<dyn Check>> {
 ///
 /// 在文本模式下用于流式输出单行结果；JSON 模式下传 `None`，runner 仍会
 /// 收集完整 `Vec<CheckResult>` 以便序列化为单个 JSON 数组。
-type CheckCallback<'a> = &'a mut dyn FnMut(&dyn Check, &CheckResult);
+type CheckCallback<'a> = &'a mut (dyn FnMut(&dyn Check, &CheckResult) + Send + Sync);
 
 /// 顺序执行所有检查，返回完整的 `CheckResult` 列表。
 ///
@@ -337,6 +337,12 @@ const NETWORK_CHECK_IDS: &[&str] = &["telegram", "llm", "mcp"];
 // ── Entry point ─────────────────────────────────────────
 
 pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()> {
+    #[derive(Serialize)]
+    struct JsonOutput {
+        version: &'static str,
+        items: Vec<FlatCheckResult>,
+    }
+
     let atrading_home = openatrading_core::atrading_home();
     let app_config = AppConfig::load().ok();
 
@@ -364,11 +370,6 @@ pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()>
     // 文本模式：先打印头部，再以流式回调逐项输出单行结果，最后打印尾部汇总。
     let results = if json {
         let results = run_checks(&checks, &ctx, None).await;
-        #[derive(Serialize)]
-        struct JsonOutput {
-            version: &'static str,
-            items: Vec<FlatCheckResult>,
-        }
         let items: Vec<FlatCheckResult> = checks
             .iter()
             .zip(results.iter())

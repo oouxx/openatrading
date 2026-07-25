@@ -1,13 +1,14 @@
 use async_trait::async_trait;
-use std::{time::Duration, todo};
+use std::time::Duration;
 
-use super::{Check, FixRisk, CheckContext, CheckResult, Result, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 /// Network timeout for a single LLM probe request.
 ///
 /// LLM completions can legitimately take a while; 30s leaves headroom for a
 /// slow provider while still bounding a hung endpoint so `doctor` doesn't
 /// stall indefinitely.
+#[allow(dead_code)]
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct LlmCheck;
@@ -31,7 +32,13 @@ impl Check for LlmCheck {
     }
 
     async fn check(&self, _ctx: &CheckContext) -> CheckResult {
-        todo!("实现一个简易的llm请求")
+        // TODO: 实现一个简易的llm请求
+        CheckResult {
+            status: CheckStatus::Warn("未实现".into()),
+            summary: "LLM 连通性检查尚未实现".into(),
+            details: vec![],
+            duration_ms: 0,
+        }
     }
 
     async fn fix(&self, _ctx: &CheckContext) -> Result<FixResult> {

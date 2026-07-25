@@ -15,7 +15,7 @@ pub struct TelegramChannel {
 }
 
 impl TelegramChannel {
-    #[must_use] 
+    #[must_use]
     pub fn new(bot_token: String, chat_id: String) -> Self {
         Self {
             bot_token,
@@ -92,8 +92,17 @@ struct TgUser {
     username: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct SendResp {
+    result: Option<SendResult>,
+}
+#[derive(Deserialize)]
+struct SendResult {
+    message_id: i64,
+}
+
 impl TelegramAdapter {
-    #[must_use] 
+    #[must_use]
     pub fn new(bot_token: String, allowed_chat_id: String) -> Self {
         Self {
             bot_token,
@@ -122,15 +131,6 @@ impl TelegramAdapter {
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
             return Err(AdapterError::SendFailed(format!("{status}: {body}")));
-        }
-
-        #[derive(Deserialize)]
-        struct SendResp {
-            result: Option<SendResult>,
-        }
-        #[derive(Deserialize)]
-        struct SendResult {
-            message_id: i64,
         }
 
         let body: SendResp = resp

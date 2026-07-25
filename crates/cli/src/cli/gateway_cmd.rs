@@ -2,7 +2,10 @@ use anyhow::Result;
 use std::ffi::OsString;
 use std::sync::Arc;
 
-use service_manager::{ServiceManager, ServiceLabel, ServiceInstallCtx, RestartPolicy, ServiceStopCtx, ServiceUninstallCtx, ServiceStartCtx, ServiceStatusCtx, ServiceStatus};
+use service_manager::{
+    RestartPolicy, ServiceInstallCtx, ServiceLabel, ServiceManager, ServiceStartCtx, ServiceStatus,
+    ServiceStatusCtx, ServiceStopCtx, ServiceUninstallCtx,
+};
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use openatrading_core::channels::adapter::{launch_adapters, MessageAdapter};
@@ -264,20 +267,20 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     };
 
     if do_cron {
-        let cron_cfg = match &app_config.cron {
-            Some(c) => CronConfig {
-                enabled: c.enabled,
-                collection_schedule: c.collection_schedule.clone(),
-                decision_schedule: c.decision_schedule.clone(),
-                news_schedule: c.news_schedule.clone(),
-            },
-            None => CronConfig {
+        let cron_cfg = app_config.cron.as_ref().map_or_else(
+            || CronConfig {
                 enabled: true,
                 collection_schedule: "0 0 18 * * 1-5".to_string(),
                 decision_schedule: "0 */30 9-15 * * 1-5".to_string(),
                 news_schedule: "0 */5 9-15 * * 1-5".to_string(),
             },
-        };
+            |c| CronConfig {
+                enabled: c.enabled,
+                collection_schedule: c.collection_schedule.clone(),
+                decision_schedule: c.decision_schedule.clone(),
+                news_schedule: c.news_schedule.clone(),
+            },
+        );
 
         let cron_ctx = Arc::new(
             AppContext::build(

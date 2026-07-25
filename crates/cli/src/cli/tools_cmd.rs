@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::Arc;
 
 use openatrading_core::llm::DynTool;
@@ -8,7 +9,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
         openatrading_core::llm::tools::ToolRegistry::new().all_tools();
 
     let mcp = openatrading_core::llm::McpRegistry::single(endpoint);
-    all_tools.extend(mcp.discover().await.0);
+    all_tools.extend(mcp.discover().0);
 
     // ── Group by installed skills ───────────────────────
     let reg = openatrading_core::skills::SkillRegistry::from_disk();
@@ -20,18 +21,19 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for skill in &skills {
-        out.push_str(&format!("## {}\n\n  \n\n", skill.name));
+        let _ = write!(out, "## {}\n\n  \n\n", skill.name);
         out.push_str("| 工具 | 说明 | 参数 |\n|------|------|------|\n");
 
         let mut count = 0;
         for tool in &all_tools {
             if skill.content.contains(&tool.name) {
-                out.push_str(&format!(
-                    "| `{}` | {} | {} |\n",
+                let _ = writeln!(
+                    out,
+                    "| `{}` | {} | {} |",
                     tool.name,
                     tool.description,
                     format_params(&tool.parameters_schema)
-                ));
+                );
                 used_names.insert(tool.name.clone());
                 count += 1;
             }
@@ -51,12 +53,15 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     if !ungrouped.is_empty() {
         out.push_str("## 其他工具\n\n| 工具 | 说明 | 参数 |\n|------|------|------|\n");
         for tool in &ungrouped {
-            out.push_str(&format!(
-                "| `{}` | {} | {} |\n",
-                tool.name,
-                tool.description,
-                format_params(&tool.parameters_schema)
-            ));
+            let _ = std::fmt::Write::write_fmt(
+                &mut out,
+                format_args!(
+                    "| `{}` | {} | {} |\n",
+                    tool.name,
+                    tool.description,
+                    format_params(&tool.parameters_schema)
+                ),
+            );
         }
         out.push('\n');
     }
@@ -67,9 +72,8 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
 }
 
 fn format_params(schema: &serde_json::Value) -> String {
-    let props = match schema.get("properties").and_then(|p| p.as_object()) {
-        Some(p) => p,
-        None => return "无".to_string(),
+    let Some(props) = schema.get("properties").and_then(|p| p.as_object()) else {
+        return "无".to_string();
     };
     if props.is_empty() {
         return "无".to_string();

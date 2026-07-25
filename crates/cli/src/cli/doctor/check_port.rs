@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::{Result, Check, FixRisk, CheckContext, CheckResult, CheckStatus, FixResult, FixStatus};
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct PortCheck;
 
@@ -43,9 +43,10 @@ impl Check for PortCheck {
         let mut errors = 0usize;
 
         // Check web_bind port
-        let web_bind = ctx
-            .app_config
-            .as_ref().map_or_else(|| "0.0.0.0:8080".to_string(), |c| c.service.web_bind.clone());
+        let web_bind = ctx.app_config.as_ref().map_or_else(
+            || "0.0.0.0:8080".to_string(),
+            |c| c.service.web_bind.clone(),
+        );
 
         match check_port(&web_bind) {
             Ok(()) => details.push(format!("web: {web_bind}  ✓")),
@@ -58,7 +59,8 @@ impl Check for PortCheck {
         // Check mcp_server bind port
         let mcp_bind = ctx
             .app_config
-            .as_ref().map_or_else(|| "0.0.0.0:8082".to_string(), |c| c.mcp_server.bind.clone());
+            .as_ref()
+            .map_or_else(|| "0.0.0.0:8082".to_string(), |c| c.mcp_server.bind.clone());
 
         match check_port(&mcp_bind) {
             Ok(()) => details.push(format!("mcp: {mcp_bind}  ✓")),
