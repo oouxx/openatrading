@@ -1,8 +1,9 @@
 # agentTransport.md 实施情况核对报告
 
-> 生成日期：2026-07-25
+> 生成日期：2026-07-25（更新于 2026-07-26）
 > 范围：`docs/agentTransport.md` 各章节 vs 实际代码实现
 > 方法：逐节核对 + 8 角度代码审查（正确性、缺失行为、跨文件追踪、复用、简化、效率、深度、约定）
+> 状态：大部分问题已在 `c632f67` 中修复
 
 ---
 
@@ -11,11 +12,11 @@
 | 指标 | 值 |
 |------|-----|
 | 总章节数 | 15（§1–§17，不含空节 §8/§13） |
-| 完全实现 | 10 |
-| 部分实现 | 3 |
-| 未实现 | 2 |
-| 实现偏差 | 3 |
-| 严重问题 | 4（其中 2 个使断线重连完全失效） |
+| 完全实现 | 13 |
+| 部分实现 | 1 |
+| 未实现 | 1 |
+| 实现偏差 | 0 |
+| 严重问题 | 0（已修复） |
 
 ---
 
@@ -179,9 +180,39 @@
 
 ---
 
-## 发现的问题
+## 修复状态
 
-### 发现 #1 — `seq` 始终为 0（断线重连完全失效）🔴
+| # | 问题 | 状态 | 提交 |
+|---|------|------|------|
+| 1 | seq 始终为 0 | ✅ 已修复 | `c632f67` |
+| 2 | Buffer per-connection | ✅ 已修复 | `c632f67` |
+| 3 | readyPromise 未刷新 | ✅ 已修复 | `c632f67` |
+| 4 | 合成 agent_end | ✅ 已修复 | `c632f67` |
+| 5 | Done 未覆盖内容 | ✅ 已修复 | `c632f67` |
+| 6 | appendDelta 查找 bug | ✅ 已修复 | `c632f67` |
+| 7 | ClientCommand 缺类型 | ✅ 已修复 | `c632f67` |
+| 8 | 缺少 biased | ✅ 已修复 | `c632f67` |
+| 9 | Permission 未接线 | ⏳ 待上游 | 依赖 pi-coding-agent |
+| 10 | historyToTurns 丢 block | ✅ 已修复 | `c632f67` |
+| 11 | Debug 格式化 | ✅ 已修复 | `c632f67` |
+| 12 | Slash 缺包装 | ✅ 已修复 | `c632f67` |
+| 13 | 重复序列化 | ✅ 已修复 | `c632f67` |
+| 14 | replaceLast 拷贝 | ⏳ 已评估 | TS 目标 ES2022，`Array.with` 需 ES2023 |
+| 15 | unwrap/expect | ✅ 已修复 | `c632f67` |
+| 16 | JoinHandle | ✅ 已修复 | `c632f67` |
+| 17 | 魔法数字 | ✅ 已修复 | `c632f67` |
+
+**剩余问题**：
+- **#9 Permission 未接线**：需等待 pi-coding-agent 暴露权限系统接口
+- **#14 replaceLast 拷贝**：已评估为 deferred，TS lib target 升级后可用 `Array.with`
+
+---
+
+## 发现的问题（历史记录）
+
+以下为原始审查发现，大部分已在 `c632f67` 中修复。
+
+### 发现 #1 — `seq` 始终为 0（断线重连完全失效）🔴 ✅ 已修复
 
 **文件**: `crates/web/src/agent_ws.rs:500-507, 518-525`, `src-tauri/src/main.rs:1160-1167`
 **严重性**: **严重**
@@ -571,20 +602,11 @@ function replaceLast(turns: TranscriptTurn[], turn: TranscriptTurn): TranscriptT
 
 ## 总结
 
-| 严重性 | 数量 | 发现 |
-|--------|------|------|
-| 🔴 严重 | 4 | #1 seq 始终为 0、#2 buffer per-connection、#3 readyPromise 未刷新、#4 合成 agent_end |
-| 🟠 高 | 4 | #5 Done 未覆盖内容、#6 appendDelta 查找 bug、#7 ClientCommand 缺类型、#8 缺少 biased |
-| 🟡 中 | 4 | #9 Permission 未接线、#10 historyToTurns 丢 block、#11 Debug 格式化、#12 Slash 缺包装 |
-| 🟢 低 | 4 | #13 重复序列化、#14 replaceLast 拷贝、#15 unwrap、#16 JoinHandle、#17 魔法数字 |
+| 严重性 | 原始数量 | 已修复 | 剩余 |
+|--------|----------|--------|------|
+| 🔴 严重 | 4 | 4 | 0 |
+| 🟠 高 | 4 | 4 | 0 |
+| 🟡 中 | 4 | 3 | 1（#9 待上游） |
+| 🟢 低 | 5 | 4 | 1（#14 已评估） |
 
-### 核心建议（按优先级）
-
-1. **🔴 修复 seq 序列化顺序**：先 `push` 获取真实 seq，再序列化（#1）
-2. **🔴 将 buffer 改为 per-session 共享**：存储在 `AppState` 中（#2）
-3. **🔴 修复 `readyPromise` 刷新**：每次 `connect()` 创建新 promise（#3）
-4. **🔴 移除 `onclose` 中的合成 `agent_end`**：只在 `dispose()` 时发送（#4）
-5. **🟠 `Done` 事件覆盖 block content**：实现背压恢复（#5）
-6. **🟠 修复 `appendDelta` 等函数的查找循环**：删除无条件 `break`（#6）
-7. **🟠 添加 `biased` 到 `tokio::select!`**：确保 durable 事件优先（#8）
-8. **🟠 修复 `ClientCommand` 类型**：添加 `permission_response`（#7）
+**当前状态**：17 个发现中 15 个已修复，1 个待上游依赖，1 个已评估为 deferred。
