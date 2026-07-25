@@ -261,23 +261,23 @@ impl JiuYanSession {
                             b'"' => {
                                 content_bytes.push(b'"');
                                 i += 2;
-                            },
+                            }
                             b'\\' => {
                                 content_bytes.push(b'\\');
                                 i += 2;
-                            },
+                            }
                             b'n' => {
                                 content_bytes.push(b'\n');
                                 i += 2;
-                            },
+                            }
                             b'r' => {
                                 content_bytes.push(b'\r');
                                 i += 2;
-                            },
+                            }
                             b't' => {
                                 content_bytes.push(b'\t');
                                 i += 2;
-                            },
+                            }
                             b'u' if i + 5 < bytes.len() => {
                                 let hex = &html[i + 2..i + 6];
                                 if let Ok(code) = u32::from_str_radix(hex, 16) {
@@ -291,17 +291,17 @@ impl JiuYanSession {
                                     content_bytes.push(bytes[i]);
                                     i += 1;
                                 }
-                            },
+                            }
                             _ => {
                                 content_bytes.push(bytes[i]);
                                 i += 1;
-                            },
+                            }
                         },
                         b'"' => break,
                         _ => {
                             content_bytes.push(bytes[i]);
                             i += 1;
-                        },
+                        }
                     }
                 }
                 if let Ok(content_str) = String::from_utf8(content_bytes) {
@@ -437,7 +437,7 @@ impl JiuYanSession {
                         .refreshing
                         .store(false, Ordering::SeqCst);
                     return Err(e.into());
-                },
+                }
             },
             Err(e) => {
                 self.inner
@@ -446,7 +446,7 @@ impl JiuYanSession {
                     .refreshing
                     .store(false, Ordering::SeqCst);
                 return Err(e.into());
-            },
+            }
         };
 
         if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {

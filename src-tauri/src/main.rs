@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::todo)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::large_futures)]
@@ -133,12 +135,12 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 "market_temperature": overview.market_temperature,
                 "yesterday_limit_up_avg_pcp": overview.yesterday_limit_up_avg_pcp,
             }))
-        },
+        }
         "/api/limit-up" => {
             let client = XuanguBaoClient::new();
             let data = client.fetch_limit_up().await.map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/limit-down" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -146,7 +148,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/super-stock" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -154,7 +156,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/yesterday-limit-up" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -162,7 +164,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/index-quotes" => {
             let client = XuanguBaoClient::new();
             let data = client
@@ -170,7 +172,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/dapan-abnormal" => {
             let data = state
                 .ctx
@@ -180,7 +182,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/timeline" => {
             if std::env::var("JIUYAN_PHONE").is_err() {
                 return Ok(serde_json::json!([]));
@@ -196,7 +198,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
 
         "/api/telegraph" => {
             let data = state
@@ -207,7 +209,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/dragon-tiger/combined" => {
             let date = XuanguBaoClient::last_n_trading_days(1)
                 .first()
@@ -221,7 +223,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         "/api/ai/roles" => {
             let roles_guard = state.roles.read().await;
             let list: Vec<serde_json::Value> = roles_guard
@@ -229,7 +231,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map(|r| serde_json::json!({"name": r.name, "display_name": r.display_name}))
                 .collect();
             Ok(serde_json::json!(list))
-        },
+        }
         "/api/ai/commands" => {
             let registry = state.ctx.tool_registry.load();
             let skills = openatrading_core::skills::SkillRegistry::from_disk();
@@ -249,7 +251,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 }));
             }
             Ok(serde_json::json!(commands))
-        },
+        }
         "/api/ai/sessions" => {
             let dir = pi_coding_agent::config::get_sessions_dir();
             let mut sessions: Vec<serde_json::Value> = Vec::new();
@@ -305,11 +307,11 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             }
             sessions.sort_by(|a, b| b["id"].as_str().cmp(&a["id"].as_str()));
             Ok(serde_json::to_value(sessions).unwrap_or_default())
-        },
+        }
         "/api/roles" => {
             let roles_guard = state.roles.read().await;
             Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
-        },
+        }
         "/api/watchlist" => {
             #[derive(serde::Serialize, serde::Deserialize)]
             struct WsItem {
@@ -331,7 +333,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                     .unwrap_or_default()
             }
             Ok(serde_json::to_value(load()).unwrap_or_default())
-        },
+        }
         "/api/replay/snapshots" => {
             let client = XuanguBaoClient::new();
             let events = client
@@ -340,7 +342,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .map_err(|e| format!("{e}"))?;
             let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
             Ok(serde_json::to_value(snapshots).unwrap_or_default())
-        },
+        }
         "/api/replay/index" => {
             use openatrading_core::api::xuangubao::fetch_index_trends;
             let client = XuanguBaoClient::new();
@@ -348,7 +350,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 .await
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        }
         _ => {
             if path.strip_prefix("/api/replay/events").is_some() {
                 let min_pcp: f64 = extract_query(path, "min_pcp")
@@ -492,10 +494,10 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                                     existing.explanation = Some(format!("{prefix}{sep}{exp}"));
                                 }
                             }
-                        },
+                        }
                         None => {
                             merged.insert(key, item);
-                        },
+                        }
                     }
                 }
                 let merged_all: Vec<_> = merged.into_values().collect();
@@ -641,7 +643,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
                 return dispatch_roles_get(rest, state).await;
             }
             Err(format!("unknown path: {path}"))
-        },
+        }
     }
 }
 
@@ -673,7 +675,7 @@ async fn dispatch_roles_get(
                 })
                 .collect();
             Ok(serde_json::json!(result))
-        },
+        }
         "logs" => {
             let logs = state
                 .ctx
@@ -691,7 +693,7 @@ async fn dispatch_roles_get(
                 })
                 .collect();
             Ok(serde_json::json!(result))
-        },
+        }
         "pnl-history" => {
             let days: usize = extract_query(rest, "days")
                 .and_then(|s| s.parse().ok())
@@ -713,7 +715,7 @@ async fn dispatch_roles_get(
                 points = points.into_iter().skip(cutoff).collect();
             }
             Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
-        },
+        }
         "history" => {
             let limit: usize = extract_query(rest, "limit")
                 .and_then(|s| s.parse().ok())
@@ -724,7 +726,7 @@ async fn dispatch_roles_get(
                 .get_closed_positions(name, limit)
                 .map_err(|e| format!("{e}"))?;
             Ok(serde_json::to_value(positions).unwrap_or_default())
-        },
+        }
         _ => Err(format!("unknown roles action: {action}")),
     }
 }
@@ -737,7 +739,7 @@ async fn dispatch_post(
     match path {
         "/api/ai/sessions" => {
             todo!("需要整理思路后实现");
-        },
+        }
         "/api/roles" => {
             let name = body
                 .get("name")
@@ -770,7 +772,7 @@ async fn dispatch_post(
                 });
             }
             Ok(serde_json::json!({"ok": true}))
-        },
+        }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
@@ -807,7 +809,7 @@ async fn dispatch_post(
                             entry.strategy = strategy;
                         }
                         Ok(serde_json::json!({"ok": true}))
-                    },
+                    }
                     "reset" => {
                         state
                             .ctx
@@ -820,7 +822,7 @@ async fn dispatch_post(
                             .delete_positions_by_role(name)
                             .map_err(|e| format!("{e}"))?;
                         Ok(serde_json::json!({"ok": true}))
-                    },
+                    }
                     "delete" => {
                         state
                             .ctx
@@ -837,7 +839,7 @@ async fn dispatch_post(
                         let mut roles = state.roles.write().await;
                         roles.retain(|r| r.name != name);
                         Ok(serde_json::json!({"ok": true}))
-                    },
+                    }
                     _ => Err(format!("unknown roles action: {action}")),
                 }
             } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
@@ -919,7 +921,7 @@ async fn dispatch_post(
             } else {
                 Err(format!("unknown path: {path}"))
             }
-        },
+        }
     }
 }
 
@@ -1008,7 +1010,7 @@ async fn api_chat_stream(
             } else {
                 None
             }
-        },
+        }
     };
     let config = openatrading_web::chat_session::resolve_chat_config(
         openatrading_web::chat_session::ChatConfigInput {
@@ -1080,7 +1082,7 @@ async fn api_chat_stream(
             Err(e) => {
                 let _ = sid_tx.send(Err(e.to_string()));
                 return;
-            },
+            }
         };
         let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
@@ -1098,7 +1100,7 @@ async fn api_chat_stream(
             channel
                 .send(format!("\x00SESSION\x00{}", id))
                 .map_err(|e| format!("channel error: {e}"))?;
-        },
+        }
         Ok(Err(e)) => {
             let err = format!("agent error: {e}");
             eprintln!("[chat_stream] {err}");
@@ -1106,7 +1108,7 @@ async fn api_chat_stream(
                 .send(format!("\x00ERROR\x00{}", err))
                 .map_err(|e| format!("channel error: {e}"))?;
             return Ok(());
-        },
+        }
         Err(_) => return Ok(()),
     }
 
@@ -1131,7 +1133,7 @@ async fn api_chat_stream(
                             channel
                                 .send(format!("\x00TEXT\x00{}", delta.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::TextEnd { content, .. } if !content.is_empty() => {
                             text_count += 1;
                             if text_count <= 3 || text_count.is_multiple_of(20) {
@@ -1143,19 +1145,19 @@ async fn api_chat_stream(
                             channel
                                 .send(format!("\x00TEXT\x00{}", content.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::ThinkingDelta { delta, .. } if !delta.is_empty() => {
                             channel
                                 .send(format!("\x00THINKING\x00{}", delta.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::ThinkingEnd { content, .. }
                             if !content.is_empty() =>
                         {
                             channel
                                 .send(format!("\x00THINKING\x00{}", content.replace('\n', "\\n")))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::ToolCallDelta { delta, .. } if !delta.is_empty() => {
                             let data = serde_json::to_string(&serde_json::json!({
                                 "args": delta,
@@ -1164,7 +1166,7 @@ async fn api_chat_stream(
                             channel
                                 .send(format!("\x00TOOL_DELTA\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::ToolCallEnd { tool_call, .. }
                             if !tool_call.name.is_empty() =>
                         {
@@ -1177,7 +1179,7 @@ async fn api_chat_stream(
                             channel
                                 .send(format!("\x00TOOL_CALL\x00{data}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
+                        }
                         AssistantMessageEvent::Done { message, .. } => {
                             for block in &message.content {
                                 if let openatrading_core::llm::pi_ai_types::ContentBlock::Text {
@@ -1195,16 +1197,16 @@ async fn api_chat_stream(
                                     }
                                 }
                             }
-                        },
+                        }
                         AssistantMessageEvent::Error { error, .. } => {
                             let msg = error.error_message.as_deref().unwrap_or("unknown error");
                             channel
                                 .send(format!("[ERROR] {msg}"))
                                 .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
-                },
+                }
                 AgentEvent::MessageEnd { message } => {
                     if let openatrading_core::llm::AgentMessage::Assistant {
                         error_message: Some(err),
@@ -1217,16 +1219,16 @@ async fn api_chat_stream(
                                 .map_err(|e| format!("channel error: {e}"))?;
                         }
                     }
-                },
+                }
                 AgentEvent::AgentEnd { .. } => {
                     eprintln!("[chat_stream] AgentEnd, done");
                     break 'outer;
-                },
+                }
                 AgentEvent::TurnStart => {
                     channel
                         .send("\x00TURN_START\x00".to_string())
                         .map_err(|e| format!("channel error: {e}"))?;
-                },
+                }
                 AgentEvent::TurnEnd { tool_results, .. } => {
                     let results: Vec<String> = tool_results
                             .iter()
@@ -1264,12 +1266,12 @@ async fn api_chat_stream(
                     channel
                         .send(format!("\x00TURN_END\x00{data}"))
                         .map_err(|e| format!("channel error: {e}"))?;
-                },
+                }
                 AgentEvent::ToolExecutionStart { .. } => {
                     channel
                         .send("\x00TOOL_EXEC_START\x00".to_string())
                         .map_err(|e| format!("channel error: {e}"))?;
-                },
+                }
                 AgentEvent::ToolExecutionUpdate {
                     tool_call_id,
                     tool_name,
@@ -1286,7 +1288,7 @@ async fn api_chat_stream(
                     channel
                         .send(format!("\x00TOOL_EXEC_UPDATE\x00{data}"))
                         .map_err(|e| format!("channel error: {e}"))?;
-                },
+                }
                 AgentEvent::ToolExecutionEnd {
                     tool_call_id,
                     tool_name,
@@ -1306,13 +1308,13 @@ async fn api_chat_stream(
                     channel
                         .send(format!("\x00TOOL_RESULT\x00{data}"))
                         .map_err(|e| format!("channel error: {e}"))?;
-                },
-                _ => {},
+                }
+                _ => {}
             },
             None => {
                 eprintln!("[chat_stream] channel closed unexpectedly");
                 break;
-            },
+            }
         }
     }
 
@@ -1340,14 +1342,14 @@ async fn api_realtime_stream(
                 channel
                     .send(json)
                     .map_err(|e| format!("channel error: {e}"))?;
-            },
+            }
             Err(e) => {
                 let msg = e.to_string();
                 eprintln!("[realtime-stream] {:?}: {msg}", symbols);
                 channel
                     .send(format!(r#"{{"error":"{msg}"}}"#))
                     .map_err(|f| format!("channel error: {f}"))?;
-            },
+            }
         }
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
@@ -1375,13 +1377,13 @@ async fn api_kline_stream(
                 channel
                     .send(json)
                     .map_err(|e| format!("channel error: {e}"))?;
-            },
+            }
             Err(e) => {
                 eprintln!("[kline-stream] {symbol}: {e}");
                 channel
                     .send(format!(r#"{{"error":"{e}"}}"#))
                     .map_err(|f| format!("channel error: {f}"))?;
-            },
+            }
         }
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }

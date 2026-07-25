@@ -67,36 +67,36 @@ impl MarketDataExtension {
         let result: Result<serde_json::Value, String> = match tool_name {
             "get_limit_up" => {
                 call(|| async { XuanguBaoClient::new().fetch_limit_up().await }).await
-            },
+            }
             "get_limit_down" => {
                 call(|| async { XuanguBaoClient::new().fetch_limit_down().await }).await
-            },
+            }
             "get_super_stock" => {
                 call(|| async { XuanguBaoClient::new().fetch_super_stock().await }).await
-            },
+            }
             "get_market_overview" => {
                 call(|| async { XuanguBaoClient::new().fetch_market_overview().await }).await
-            },
+            }
             "get_yesterday_limit_up" => {
                 call(|| async { XuanguBaoClient::new().fetch_yesterday_limit_up().await }).await
-            },
+            }
             "get_dapan_abnormal" => {
                 call(|| async { XuanguBaoClient::new().fetch_dapan_abnormal().await }).await
-            },
+            }
             "get_realtime_quote" => {
                 let symbol = str_arg(&params, "symbol");
                 call(|| async move { XuanguBaoClient::new().fetch_realtime(&symbol).await }).await
-            },
+            }
             "get_plates_by_stock" => {
                 let symbol = str_arg(&params, "symbol");
                 call(|| async move { XuanguBaoClient::new().plates_by_any_stock(&symbol).await })
                     .await
-            },
+            }
             "get_market_trend" => {
                 let symbol = str_arg(&params, "symbol");
                 call(|| async move { XuanguBaoClient::new().fetch_market_trend(&symbol).await })
                     .await
-            },
+            }
             "get_plate_abnormal" => {
                 let count = str_arg(&params, "count");
                 call(|| async move {
@@ -105,7 +105,7 @@ impl MarketDataExtension {
                         .await
                 })
                 .await
-            },
+            }
             "get_kline" => {
                 let symbol = str_arg(&params, "symbol");
                 let period = match str_arg(&params, "period").as_str() {
@@ -125,7 +125,7 @@ impl MarketDataExtension {
                         .await
                 })
                 .await
-            },
+            }
             "get_telegraph" => {
                 let category = str_arg(&params, "category");
                 let cat = if category.is_empty() {
@@ -134,10 +134,10 @@ impl MarketDataExtension {
                     category.as_str()
                 };
                 call(|| async move { ClsClient::new().fetch_telegraph(cat, None, 20).await }).await
-            },
+            }
             "get_telegraph_allday" => {
                 call(|| async { ClsClient::new().fetch_telegraph("", None, 100).await }).await
-            },
+            }
             "get_community" => {
                 let category_id = str_arg(&params, "category_id");
                 let article_type = params
@@ -163,10 +163,10 @@ impl MarketDataExtension {
                     page_size,
                 };
                 call(|| async move { JiuYanSession::new().fetch_community(query).await }).await
-            },
+            }
             "get_all_day_events" => {
                 call(|| async { XuanguBaoClient::new().fetch_all_day_events(0.03).await }).await
-            },
+            }
             "get_auction_quotes" => {
                 let codes_str = str_arg(&params, "codes");
                 let codes: Vec<&str> = codes_str
@@ -180,23 +180,23 @@ impl MarketDataExtension {
                     match SinaQuoteClient::new() {
                         Ok(client) => {
                             call(|| async move { client.fetch_quotes(&codes).await }).await
-                        },
+                        }
                         Err(e) => Err(e.to_string()),
                     }
                 }
-            },
+            }
             "get_lhb_detail" => {
                 let start_date = str_arg(&params, "start_date");
                 let end_date = str_arg(&params, "end_date");
                 call(|| async move { LhbClient::new().lhb_detail(&start_date, &end_date).await })
                     .await
-            },
+            }
             "get_lhb_combined" => {
                 let start_date = str_arg(&params, "start_date");
                 let end_date = str_arg(&params, "end_date");
                 call(|| async move { LhbClient::new().lhb_combined(&start_date, &end_date).await })
                     .await
-            },
+            }
             "get_lhb_active_yyb" => {
                 let start_date = str_arg(&params, "start_date");
                 let end_date = str_arg(&params, "end_date");
@@ -206,7 +206,7 @@ impl MarketDataExtension {
                         .await
                 })
                 .await
-            },
+            }
             "submit_trading_decision" => {
                 // The tool does nothing except receive structured data;
                 // terminate: true stops the agent loop immediately.
@@ -216,7 +216,7 @@ impl MarketDataExtension {
                     is_error: false,
                     terminate: Some(true),
                 });
-            },
+            }
             _ => return None,
         };
 
@@ -237,7 +237,7 @@ impl MarketDataExtension {
                     is_error: true,
                     terminate: None,
                 }
-            },
+            }
         })
     }
 }

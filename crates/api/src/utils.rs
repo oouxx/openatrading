@@ -74,13 +74,13 @@ pub fn last_n_trading_days(n: usize) -> Vec<String> {
                 current = current
                     .pred_opt()
                     .unwrap_or_else(|| panic!("current date is not NaiveDate::MIN"));
-            },
+            }
             _ => {
                 dates.push(current.format("%Y%m%d").to_string());
                 current = current
                     .pred_opt()
                     .unwrap_or_else(|| panic!("current date is not NaiveDate::MIN"));
-            },
+            }
         }
     }
     dates
@@ -106,8 +106,8 @@ pub fn to_yahoo_symbol(input: &str) -> Result<String> {
             "SS" | "SZ" | "HK" | "TW" => {
                 let normalized_code = normalize_code(code)?;
                 return Ok(format!("{normalized_code}.{suffix_upper}"));
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 

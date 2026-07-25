@@ -169,7 +169,7 @@ pub async fn poll_auction_window(client: &SinaQuoteClient, codes: &[&str]) -> Re
                         "[sina] 竞价快照"
                     );
                 }
-            },
+            }
             Err(e) => tracing::warn!(error = %e, "[sina] 本次快照拉取失败，跳过"),
         }
     }

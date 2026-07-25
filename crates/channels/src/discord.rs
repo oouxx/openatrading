@@ -171,7 +171,7 @@ impl MessageAdapter for DiscordAdapter {
                     tracing::error!("[discord-adapter] connect failed: {e}, retry in 5s");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
             tracing::info!("[discord-adapter] connected to gateway");
 
@@ -276,18 +276,18 @@ impl MessageAdapter for DiscordAdapter {
                     Ok(Some(Ok(Message::Ping(data)))) => {
                         ws_send(&write, Message::Pong(data)).await;
                         continue;
-                    },
+                    }
                     Ok(Some(Ok(Message::Close(_)))) => {
                         tracing::info!("[discord-adapter] connection closed");
                         break;
-                    },
+                    }
                     Ok(Some(Err(e))) => {
                         tracing::error!("[discord-adapter] ws error: {e}");
                         break;
-                    },
+                    }
                     Ok(None) => {
                         break;
-                    },
+                    }
                     _ => continue,
                 };
 
@@ -296,7 +296,7 @@ impl MessageAdapter for DiscordAdapter {
                     Err(e) => {
                         tracing::error!("[discord-adapter] parse payload error: {e}");
                         continue;
-                    },
+                    }
                 };
 
                 match payload.op {
@@ -339,7 +339,7 @@ impl MessageAdapter for DiscordAdapter {
                                         return Ok(());
                                     }
                                 }
-                            },
+                            }
                             Some("READY") => {
                                 if let Some(url) =
                                     payload.d.get("resume_gateway_url").and_then(|v| v.as_str())
@@ -347,14 +347,14 @@ impl MessageAdapter for DiscordAdapter {
                                     gateway_url = url.to_string();
                                 }
                                 tracing::info!("[discord-adapter] ready");
-                            },
+                            }
                             Some("RECONNECT") => {
                                 tracing::info!("[discord-adapter] reconnect requested");
                                 break;
-                            },
-                            _ => {},
+                            }
+                            _ => {}
                         }
-                    },
+                    }
                     op::HEARTBEAT => {
                         let heartbeat = serde_json::json!({
                             "op": op::HEARTBEAT,
@@ -369,8 +369,8 @@ impl MessageAdapter for DiscordAdapter {
                             ),
                         )
                         .await;
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
 

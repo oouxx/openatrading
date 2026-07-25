@@ -20,7 +20,7 @@ pub fn serialize_event(event: &AgentEvent) -> (String, serde_json::Value) {
         ),
         AgentEvent::MessageStart { message } => {
             ("message_start".into(), json!({"message": message}))
-        },
+        }
         AgentEvent::MessageUpdate {
             assistant_message_event,
             ..

@@ -146,7 +146,7 @@ pub async fn delete_skill(
         Err(e) => {
             openatrading_core::log::error!("failed to delete skill '{name}': {e}");
             StatusCode::NOT_FOUND.into_response()
-        },
+        }
     }
 }
 
@@ -522,7 +522,7 @@ pub async fn create_session(State(state): State<Arc<AppState>>) -> Json<serde_js
                 "success": false,
                 "error": e.to_string(),
             }));
-        },
+        }
     };
 
     // Use session manager to get session metadata
@@ -642,7 +642,7 @@ pub async fn delete_session(
             Err(e) => {
                 openatrading_core::log::error!("delete_session: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
-            },
+            }
         }
     } else {
         StatusCode::NOT_FOUND

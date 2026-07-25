@@ -148,13 +148,13 @@ pub async fn run() -> Result<()> {
                 shares,
             } => {
                 return cmd_trade_add(&role, &symbol, price, shares);
-            },
+            }
             TradeAction::List { role } => {
                 return cmd_trade_list(role.as_deref());
-            },
+            }
             TradeAction::Close { id, price } => {
                 return cmd_trade_close(id, price);
-            },
+            }
         }
     }
 
@@ -168,7 +168,7 @@ pub async fn run() -> Result<()> {
                 } else {
                     cmd_skills_install(&name, &source)
                 }
-            },
+            }
             SkillAction::Uninstall { name } => cmd_skills_uninstall(&name),
         };
     }

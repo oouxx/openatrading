@@ -111,7 +111,7 @@ fn parse_skill_frontmatter(raw: &str) -> (Option<SkillFrontmatter>, String) {
         Some((matter, body)) => {
             let fm = serde_yaml::from_str::<SkillFrontmatter>(&matter).ok();
             (fm, body.trim().to_string())
-        },
+        }
         None => (None, raw.trim().to_string()),
     }
 }

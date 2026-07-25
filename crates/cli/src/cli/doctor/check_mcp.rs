@@ -41,7 +41,7 @@ impl Check for McpCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
         if servers.is_empty() {
@@ -73,13 +73,13 @@ impl Check for McpCheck {
             let transport_desc = match &server.transport {
                 McpTransportConfig::StreamableHttp { url, .. } => {
                     format!("streamable-http → {url}")
-                },
+                }
                 McpTransportConfig::Sse { url, .. } => {
                     format!("sse → {url}")
-                },
+                }
                 McpTransportConfig::Stdio { command, args, .. } => {
                     format!("stdio → {command} {}", args.join(" "))
-                },
+                }
             };
 
             let connect_result = match &server.transport {
@@ -87,12 +87,12 @@ impl Check for McpCheck {
                     tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
                         .await
                         .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                },
+                }
                 McpTransportConfig::Sse { url, .. } => {
                     tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
                         .await
                         .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                },
+                }
                 McpTransportConfig::Stdio { command, args, env } => tokio::time::timeout(
                     NETWORK_TIMEOUT,
                     McpClient::connect_stdio(command, args, env),
@@ -121,22 +121,22 @@ impl Check for McpCheck {
                             if call_outcome.is_err() {
                                 failures += 1;
                             }
-                        },
+                        }
                         Err(e) => {
                             details
                                 .push(format!("{label} {transport_desc}  ✗ (verify failed: {e})"));
                             failures += 1;
-                        },
+                        }
                     }
-                },
+                }
                 Ok(Err(e)) => {
                     details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
-                },
+                }
                 Err(e) => {
                     details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
-                },
+                }
             }
         }
 

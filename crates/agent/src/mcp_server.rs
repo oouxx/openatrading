@@ -73,7 +73,7 @@ impl MarketToolsServer {
             .map(|cb| match cb {
                 pi_coding_agent::pi_ai_types::ContentBlock::Text { text, .. } => {
                     Content::text(text)
-                },
+                }
                 pi_coding_agent::pi_ai_types::ContentBlock::Image {
                     data, mime_type, ..
                 } => Content::image(data, mime_type),

@@ -511,13 +511,13 @@ impl XuanguBaoClient {
                     current = current.pred_opt().unwrap_or_else(|| {
                         panic!("date underflow - should not happen with current dates")
                     });
-                },
+                }
                 _ => {
                     dates.push(current.format("%Y-%m-%d").to_string());
                     current = current.pred_opt().unwrap_or_else(|| {
                         panic!("date underflow - should not happen with current dates")
                     });
-                },
+                }
             }
         }
         dates
@@ -1544,7 +1544,7 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
             match ev.good_or_bad {
                 1 => bucket_bull += 1,
                 2 => bucket_bear += 1,
-                _ => {},
+                _ => {}
             }
             if ev.event_type == 11001 {
                 if let Some(ref pd) = ev.plate_abnormal_event_data {

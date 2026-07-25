@@ -47,10 +47,10 @@ pub async fn run_adapter_handler(
             match command {
                 "ask" => {
                     handle_ask(adapter, &event, args, &roles, &ctx).await;
-                },
+                }
                 "new" => {
                     adapter.reply(&event, "已清空上下文，开始新对话").await.ok();
-                },
+                }
                 "tools" => {
                     let tools = ctx.all_tools();
                     if tools.is_empty() {
@@ -60,7 +60,7 @@ pub async fn run_adapter_handler(
                         let msg = format!("可用工具:\n{}", names.join("\n"));
                         adapter.reply(&event, &msg).await.ok();
                     }
-                },
+                }
                 "skills" => {
                     let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
                     if names.is_empty() {
@@ -76,12 +76,12 @@ pub async fn run_adapter_handler(
                         );
                         adapter.reply(&event, &msg).await.ok();
                     }
-                },
+                }
                 "model" => {
                     // TODO 实现这个slash command
                     let msg = format!("当前模型: {:?}", "");
                     adapter.reply(&event, &msg).await.ok();
-                },
+                }
                 "mcp" => {
                     let tools = ctx.mcp_tools();
                     if tools.is_empty() {
@@ -91,7 +91,7 @@ pub async fn run_adapter_handler(
                         let msg = format!("MCP 服务:\n{}", names.join("\n"));
                         adapter.reply(&event, &msg).await.ok();
                     }
-                },
+                }
                 "start" | "help" => {
                     let msg = "可用命令:\n/ask role_name 问题 — 向指定角色提问\n\
                          /new — 开始新对话\n\
@@ -99,7 +99,7 @@ pub async fn run_adapter_handler(
                          /model — 查看当前模型\n/mcp — 查看 MCP 服务"
                         .to_string();
                     adapter.reply(&event, &msg).await.ok();
-                },
+                }
                 _ => {
                     adapter
                         .reply(
@@ -108,7 +108,7 @@ pub async fn run_adapter_handler(
                         )
                         .await
                         .ok();
-                },
+                }
             }
         }
     }
@@ -159,7 +159,7 @@ async fn handle_ask(
                 .reply(event, &format!("❌ 创建 Agent Session 失败: {e}"))
                 .await;
             return;
-        },
+        }
     };
 
     match agent_facade.clone().process_chat(question).await {
@@ -167,9 +167,9 @@ async fn handle_ask(
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))
                 .await;
-        },
+        }
         Err(e) => {
             let _ = adapter.reply(event, &format!("❌ 处理失败: {e}")).await;
-        },
+        }
     }
 }

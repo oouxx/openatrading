@@ -71,10 +71,10 @@ macro_rules! add_job {
         match Job::new_async_tz($schedule.as_str(), Shanghai, $task) {
             Ok(j) => {
                 $scheduler.add(j).await?;
-            },
+            }
             Err(e) => {
                 crate::log::error!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
-            },
+            }
         }
     };
 }
@@ -192,10 +192,10 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
                 .save_snapshot("xuangubao_overview", &json.to_string())?;
             sources.push("xuangubao_overview".into());
             snapshot_count += 1;
-        },
+        }
         Err(e) => {
             crate::log::warn!("[cron] collection: fetch overview failed: {e}");
-        },
+        }
     }
 
     match ctx.api.xuangubao.fetch_limit_up().await {
@@ -204,10 +204,10 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             ctx.memory.save_snapshot("xuangubao_limit_up", &json)?;
             sources.push("xuangubao_limit_up".into());
             snapshot_count += 1;
-        },
+        }
         Err(e) => {
             crate::log::warn!("[cron] collection: fetch limit_up failed: {e}");
-        },
+        }
     }
 
     match ctx.api.xuangubao.fetch_super_stock().await {
@@ -216,10 +216,10 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             ctx.memory.save_snapshot("xuangubao_super_stock", &json)?;
             sources.push("xuangubao_super_stock".into());
             snapshot_count += 1;
-        },
+        }
         Err(e) => {
             crate::log::warn!("[cron] collection: fetch super_stock failed: {e}");
-        },
+        }
     }
 
     {
@@ -232,10 +232,10 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
                 ctx.memory.save_snapshot("jiuyan_field_items", &json)?;
                 sources.push("jiuyan_field_items".into());
                 snapshot_count += 1;
-            },
+            }
             Err(e) => {
                 crate::log::warn!("[cron] collection: fetch jiuyan field failed: {e}");
-            },
+            }
         }
     }
 
@@ -268,7 +268,7 @@ pub async fn run_decision(ctx: &AppContext, roles: &[RoleEntry]) -> Result<()> {
         Err(e) => {
             crate::log::warn!("[cron] fetch market overview failed: {e}");
             crate::prompts::MARKET_CONTEXT_ERROR.to_string()
-        },
+        }
     };
 
     update_all_position_prices(&ctx.trade, &ctx.api).await;
@@ -289,7 +289,7 @@ async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
         Err(e) => {
             crate::log::error!("[cron] list_all_positions failed: {e}");
             return;
-        },
+        }
     };
 
     if positions.is_empty() {
@@ -312,11 +312,11 @@ async fn update_all_position_prices(trade: &TradeManager, api: &ApiClient) {
                 } else {
                     updated += 1;
                 }
-            },
+            }
             Err(e) => {
                 crate::log::warn!("[cron] fetch realtime failed for {}: {e}", pos.symbol);
                 failed += 1;
-            },
+            }
         }
     }
 
@@ -444,7 +444,7 @@ async fn run_decision_for_role(
                     ))
                     .await;
                 return Err(e);
-            },
+            }
         };
     }
 
@@ -482,7 +482,7 @@ async fn run_decision_for_role(
                     );
                     let _ = ctx.social.notify_trade(&trade_text).await;
                 }
-            },
+            }
             crate::trade::TradeAction::Sell => {
                 if let Err(e) = execute_sell(ctx, &role.name, instr).await {
                     crate::log::error!(
@@ -500,13 +500,13 @@ async fn run_decision_for_role(
                     let trade_text = format!("💹 持仓变动\n操作: 卖出\n理由: {}", instr.reason,);
                     let _ = ctx.social.notify_trade(&trade_text).await;
                 }
-            },
+            }
             crate::trade::TradeAction::Hold => {
                 executed_trades.push(format!(
                     "⏸ 持有 {} {} — {}",
                     instr.symbol, instr.name, instr.reason
                 ));
-            },
+            }
             crate::trade::TradeAction::Open | crate::trade::TradeAction::Close => {
                 crate::log::warn!(
                     "[cron] unexpected action '{}' for {} {}",
@@ -514,7 +514,7 @@ async fn run_decision_for_role(
                     instr.symbol,
                     instr.name
                 );
-            },
+            }
         }
     }
 

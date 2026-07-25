@@ -262,7 +262,7 @@ fn confirm_fix(risk: FixRisk, _id: &str, input: &str) -> FixDecision {
             } else {
                 FixDecision::Skip
             }
-        },
+        }
         FixRisk::Impossible => FixDecision::Skip,
     }
 }
@@ -316,17 +316,17 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
                         CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
                     };
                     println!("    复查: {} {}", icon, new_result.summary);
-                },
+                }
                 FixStatus::Skipped => {
                     println!("  {} {}", "☐".dimmed(), fix_result.message);
-                },
+                }
             },
             // A fix that fails (expected or unexpected) surfaces here as an
             // error message; `FixStatus` only distinguishes success vs
             // no-op since failures propagate via `Result`.
             Err(e) => {
                 println!("  {} 修复失败: {e:#}", "✗".red().bold());
-            },
+            }
         }
     }
 }
