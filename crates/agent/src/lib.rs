@@ -3,7 +3,6 @@ pub mod mcp_server;
 pub mod mcp_tools;
 pub mod session;
 pub mod tools;
-pub mod util;
 
 pub use pi_coding_agent::pi_agent_core::agent;
 pub use pi_coding_agent::pi_agent_core::extraction;

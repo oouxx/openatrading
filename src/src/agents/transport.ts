@@ -22,6 +22,8 @@ export interface AgentTransport {
   sendPrompt(text: string): Promise<void>
   /** Interrupt the running agent turn. */
   interrupt(): Promise<void>
+  /** Respond to a permission request (§11). */
+  respondToPermission(id: string, approved: boolean): Promise<void>
   /** Tear down the connection / listeners. */
   dispose(): void
   /** Resolves once the transport is ready to receive `sendPrompt`. */
@@ -162,6 +164,12 @@ export class WebSocketTransport implements AgentTransport {
     sendCmd(this.ws, { type: "interrupt" })
   }
 
+  async respondToPermission(id: string, approved: boolean): Promise<void> {
+    await this.ready()
+    if (!this.ws) throw new Error("transport not connected")
+    sendCmd(this.ws, { type: "permission_response", id, approved })
+  }
+
   async ready(): Promise<void> {
     return this.readyPromise
   }
@@ -232,6 +240,12 @@ export class TauriTransport implements AgentTransport {
     await this.readyPromise
     if (!this.invokeFn) throw new Error("transport not ready")
     await this.invokeFn("interrupt_session", { sessionId: this.sessionId })
+  }
+
+  async respondToPermission(id: string, approved: boolean): Promise<void> {
+    await this.readyPromise
+    if (!this.invokeFn) throw new Error("transport not ready")
+    await this.invokeFn("respond_permission", { sessionId: this.sessionId, id, approved })
   }
 
   async ready(): Promise<void> {

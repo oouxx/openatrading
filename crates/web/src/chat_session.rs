@@ -14,7 +14,7 @@
 //!    wrapper. Consumers decompose `MessageUpdate` via
 //!    the `AssistantMessageEvent` variants directly.
 //!
-//! This mirrors the `serialize_event` / `mutate` centralization pattern from
+//! This mirrors the centralization pattern from
 //! the desktop `Store`: one source of truth, transports stay thin.
 
 use std::sync::Arc;

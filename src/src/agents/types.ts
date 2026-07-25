@@ -19,6 +19,8 @@ export type TranscriptBlock =
       result?: string
       /** Partial result streamed during execution. */
       partialResult?: string
+      /** Preview info for truncated tool results (§15). */
+      output?: { preview: string; truncated: boolean; fullLength: number }
     }
   | {
       type: "system_notice"
@@ -31,6 +33,13 @@ export type TranscriptBlock =
       attempt?: number
       maxAttempts?: number
       delayMs?: number
+    }
+  | {
+      type: "permission_request"
+      id: string
+      toolName: string
+      toolInput: unknown
+      resolved: boolean
     }
 
 export interface TranscriptTurn {
@@ -90,7 +99,7 @@ export interface SessionEvent {
   delay_ms?: number
   success?: boolean
   final_error?: string | null
-  tool_results?: string[]
+  tool_results?: ToolResultPayload[]
   text?: string
   is_error?: boolean
 }
@@ -104,6 +113,13 @@ export type ClientCommand =
   | { type: "ping" }
 
 // ── History message shape (GET /api/ai/sessions/:id/messages) ─────────────
+
+/** Tool result preview payload with truncation info (§15). */
+export interface ToolResultPayload {
+  preview: string
+  truncated: boolean
+  fullLength: number
+}
 
 export interface HistoryMessage {
   role: string
