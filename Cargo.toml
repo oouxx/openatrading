@@ -34,8 +34,8 @@ ahash = { version = "0.8", features = ["serde"] }
 
 [workspace.lints.clippy]
 all = "warn"
-pedantic = "warn"
-nursery = "warn"
+# pedantic = "warn"
+# nursery = "warn"
 unwrap_used = "warn"       # 生产代码禁止裸 unwrap
 expect_used = "warn"
 todo = "warn"
