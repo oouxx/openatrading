@@ -54,178 +54,324 @@ export interface ChatStreamCallbacks {
   onError: (err: string) => void
 }
 
-export async function apiChatStream(
-  body: {
-    message: string
-    session_id: string
-    role: string
-    command_name?: string
-    command_type?: string
-    skill_name?: string
-  },
-  callbacks: ChatStreamCallbacks
+export interface AgentStreamBody {
+  message: string
+  session_id: string
+}
+
+// ── Transcript event model (unified Web/Tauri transport) ───────────────
+//
+// The backend serializes `TranscriptEvent` as:
+//   { "kind": "core", ...AgentEvent }          — text/tool/thinking deltas
+//   { "kind": "session", "type": "...", ... }  — compaction/retry/turn/notice
+// We treat the events as loosely-typed payloads and only read the fields we
+// need; unknown variants are silently ignored (schema forward-compat).
+
+interface CoreEvent {
+  type: string
+  // MessageUpdate payload
+  assistant_message_event?: {
+    type: string
+    delta?: string
+    content?: string
+    toolCall?: { id: string; name: string; arguments: unknown }
+    error?: { errorMessage?: string | null }
+    message?: { errorMessage?: string | null }
+  }
+  // ToolExecution* payloads
+  tool_call_id?: string
+  tool_name?: string
+  args?: string
+  partial_result?: string
+  result?: string
+  is_error?: boolean
+  // TurnEnd
+  tool_results?: Array<{ content?: Array<{ text?: string }> }>
+}
+
+interface SessionEvent {
+  type: string
+  will_retry?: boolean
+  reason?: string
+  aborted?: boolean
+  error_message?: string | null
+  attempt?: number
+  max_attempts?: number
+  delay_ms?: number
+  success?: boolean
+  final_error?: string | null
+  tool_results?: string[]
+  text?: string
+  is_error?: boolean
+}
+
+interface TranscriptEvent {
+  kind: "core" | "session"
+  type?: string
+  [k: string]: unknown
+}
+
+/// Map a `TranscriptEvent` to the legacy `ChatStreamCallbacks`.
+///
+/// Returns `true` when the event is terminal (the transport should close and
+/// emit `onDone`). Non-terminal events return `false`.
+function applyEventToCallbacks(
+  event: TranscriptEvent,
+  cb: ChatStreamCallbacks,
+): boolean {
+  if (event.kind === "core") {
+    return applyCoreEvent(event as CoreEvent & TranscriptEvent, cb)
+  }
+  if (event.kind === "session") {
+    return applySessionEvent(event as SessionEvent & TranscriptEvent, cb)
+  }
+  return false
+}
+
+function applyCoreEvent(e: CoreEvent & TranscriptEvent, cb: ChatStreamCallbacks): boolean {
+  switch (e.type) {
+    case "MessageUpdate": {
+      const sub = e.assistant_message_event
+      if (!sub) return false
+      switch (sub.type) {
+        case "text_delta":
+          if (sub.delta) cb.onText(sub.delta)
+          break
+        case "text_end":
+          if (sub.content) cb.onText(sub.content)
+          break
+        case "thinking_delta":
+          if (sub.delta) cb.onReasoning?.(sub.delta)
+          break
+        case "thinking_end":
+          if (sub.content) cb.onReasoning?.(sub.content)
+          break
+        case "toolcall_delta":
+          if (sub.delta) cb.onToolDelta?.({ id: "", args: sub.delta })
+          break
+        case "toolcall_end":
+          if (sub.toolCall) {
+            cb.onToolCall?.({
+              id: sub.toolCall.id,
+              name: sub.toolCall.name,
+              args: typeof sub.toolCall.arguments === "string"
+                ? sub.toolCall.arguments
+                : JSON.stringify(sub.toolCall.arguments ?? ""),
+            })
+          }
+          break
+        case "error": {
+          const msg = sub.error?.errorMessage ?? "unknown error"
+          cb.onError(msg ?? "unknown error")
+          break
+        }
+        case "done": {
+          // Assistant message finalized; surface trailing assistant error if any.
+          const err = sub.message?.errorMessage
+          if (err) cb.onError(err)
+          break
+        }
+        default:
+          break
+      }
+      return false
+    }
+    case "TurnStart":
+      cb.onTurnStart?.()
+      return false
+    case "TurnEnd": {
+      const results = (e.tool_results ?? [])
+        .map((m) => (m.content ?? []).map((b) => b.text ?? "").join("\n"))
+        .filter((t) => t.length > 0)
+      cb.onTurnEnd?.({ tool_results: results })
+      return false
+    }
+    case "ToolExecutionStart":
+      // no UI update needed — tool call card is created on toolcall_end
+      return false
+    case "ToolExecutionUpdate":
+      cb.onToolExecUpdate?.({
+        id: e.tool_call_id ?? "",
+        name: e.tool_name ?? "",
+        args: e.args ?? "",
+        partial_result: e.partial_result ?? "",
+      })
+      return false
+    case "ToolExecutionEnd":
+      cb.onToolResult?.({
+        id: e.tool_call_id ?? "",
+        name: e.tool_name ?? "",
+        result: e.result ?? "",
+      })
+      return false
+    case "AgentEnd":
+      // Terminal signal is taken from the session-level AgentEnd (which knows
+      // about retries); ignore the core one to avoid premature close.
+      return false
+    default:
+      return false
+  }
+}
+
+function applySessionEvent(e: SessionEvent & TranscriptEvent, cb: ChatStreamCallbacks): boolean {
+  switch (e.type) {
+    case "turn_start":
+      cb.onTurnStart?.()
+      return false
+    case "turn_end":
+      cb.onTurnEnd?.({ tool_results: e.tool_results ?? [] })
+      return false
+    case "agent_settled":
+      cb.onSettled?.()
+      return false
+    case "agent_end":
+      if (e.will_retry) {
+        cb.onRetry?.()
+        return false
+      }
+      return true
+    case "compaction_start":
+      cb.onCompactionStart?.(e.reason ?? "")
+      return false
+    case "compaction_end":
+      cb.onCompactionEnd?.({
+        reason: e.reason ?? "",
+        aborted: e.aborted ?? false,
+        willRetry: e.will_retry ?? false,
+        error: e.error_message ?? null,
+      })
+      return false
+    case "auto_retry_start":
+      cb.onRetryStart?.({
+        attempt: e.attempt ?? 0,
+        maxAttempts: e.max_attempts ?? 0,
+        delayMs: e.delay_ms ?? 0,
+        error: e.error_message ?? "",
+      })
+      return false
+    case "auto_retry_end":
+      cb.onRetryEnd?.({
+        success: e.success ?? false,
+        attempt: e.attempt ?? 0,
+        finalError: e.final_error ?? null,
+      })
+      return false
+    case "notice": {
+      // Slash command result / error. This is terminal — no AgentEnd follows.
+      if (e.is_error) {
+        if (e.text) cb.onError(e.text)
+      } else {
+        if (e.text) cb.onText(e.text)
+        cb.onSettled?.()
+      }
+      return true
+    }
+    default:
+      return false
+  }
+}
+
+/// Stream an agent prompt over the unified transport (WebSocket on Web,
+/// Tauri IPC on desktop). `callbacks` mirror the legacy SSE callback shape so
+/// the existing ChatView reducer can be reused unchanged.
+export async function agentStream(
+  body: AgentStreamBody,
+  callbacks: ChatStreamCallbacks,
 ): Promise<void> {
   if (isTauri) {
-    const { invoke, Channel } = await import("@tauri-apps/api/core")
-    const channel = new Channel<string>()
-    let chunkCount = 0
-    channel.onmessage = (text) => {
-      chunkCount++
-      if (chunkCount <= 3 || chunkCount % 20 === 0) {
-        console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80))
-      }
-      // Parse \x00TEXT\x00 / \x00THINKING\x00 / \x00TOOL_CALL\x00 markers from Tauri path
-      if (text.startsWith("\x00ERROR\x00")) {
-        callbacks.onError(text.slice(7))
-      } else if (text.startsWith("\x00THINKING\x00")) {
-        callbacks.onReasoning?.(text.slice(11).replace(/\\n/g, "\n"))
-      } else if (text.startsWith("\x00TEXT\x00")) {
-        callbacks.onText(text.slice(6).replace(/\\n/g, "\n"))
-      } else if (text.startsWith("\x00TOOL_CALL\x00")) {
-        try {
-          const tc = JSON.parse(text.slice(12))
-          callbacks.onToolCall?.({ id: tc.id, name: tc.name, args: tc.args })
-        } catch { /* ignore parse errors */ }
-      } else if (text.startsWith("\x00TOOL_DELTA\x00")) {
-        try {
-          const td = JSON.parse(text.slice(13))
-          callbacks.onToolDelta?.({ id: td.id, args: td.args })
-        } catch { /* ignore parse errors */ }
-      } else if (text.startsWith("\x00TOOL_RESULT\x00")) {
-        try {
-          const tr = JSON.parse(text.slice(14))
-          callbacks.onToolResult?.({ id: tr.id, name: tr.name, result: tr.result })
-        } catch { /* ignore parse errors */ }
-      } else if (text.startsWith("\x00TOOL_EXEC_UPDATE\x00")) {
-        try {
-          const tu = JSON.parse(text.slice(19))
-          callbacks.onToolExecUpdate?.({ id: tu.id, name: tu.name, args: tu.args, partial_result: tu.partial_result })
-        } catch { /* ignore parse errors */ }
-      } else if (text.startsWith("\x00TURN_START\x00")) {
-        callbacks.onTurnStart?.()
-      } else if (text.startsWith("\x00TURN_END\x00")) {
-        try {
-          const te = JSON.parse(text.slice(12))
-          callbacks.onTurnEnd?.({ tool_results: te.tool_results || [] })
-        } catch { /* ignore parse errors */ }
-      } else {
-        callbacks.onText(text)
-      }
-    }
-    console.log("[chat_stream] invoking api_chat_stream, body=", body)
-    try {
-      await invoke("api_chat_stream", { body, channel })
-      console.log(`[chat_stream] invoke resolved, total chunks=${chunkCount}`)
-      callbacks.onDone()
-    } catch (e: unknown) {
-      console.error("[chat_stream] invoke rejected:", e)
-      callbacks.onError(String(e))
-    }
-    return
+    return agentStreamTauri(body, callbacks)
   }
+  return agentStreamWs(body, callbacks)
+}
+
+async function agentStreamWs(
+  { message, session_id }: AgentStreamBody,
+  cb: ChatStreamCallbacks,
+): Promise<void> {
   const base = getApiBaseUrl()
-  const resp = await fetch(`${base}/api/ai/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  if (!resp.ok) {
-    callbacks.onError(`HTTP ${resp.status}`)
-    return
-  }
-  const reader = resp.body?.getReader()
-  if (!reader) {
-    callbacks.onError("无法读取响应流")
-    return
-  }
-  const decoder = new TextDecoder()
-  let buffer = ""
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  const wsBase = base
+    ? base.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+    : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
+  const url = `${wsBase}/api/ai/sessions/${session_id}/ws`
+  const ws = new WebSocket(url)
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() || ""
-
-    let currentEvent = ""
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim()
-      } else if (line.startsWith("data: ")) {
-        const data = line.slice(6)
-        if (data === "[DONE]") {
-          callbacks.onDone()
-          return
-        } else if (data.startsWith("[ERROR]")) {
-          // 非致命错误（如 finish_reason 缺失），内容已流出，只记录日志不中断对话
-          console.warn("[chat_stream]", data)
-        } else if (currentEvent === "error") {
-          callbacks.onError(data.replace(/\\n/g, "\n"))
-          return
-        } else {
-          const decoded = data.replace(/\\n/g, "\n")
-          if (currentEvent === "thinking") {
-            callbacks.onReasoning?.(decoded)
-          } else if (currentEvent === "tool-call") {
-            try {
-              callbacks.onToolCall?.(JSON.parse(data))
-            } catch {
-              /* ignore parse errors */
-            }
-          } else if (currentEvent === "tool-delta") {
-            try {
-              callbacks.onToolDelta?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "tool-exec-start") {
-            // tool execution started — no UI update needed
-          } else if (currentEvent === "tool-exec-update") {
-            try {
-              callbacks.onToolExecUpdate?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "turn-start") {
-            callbacks.onTurnStart?.()
-          } else if (currentEvent === "turn-end") {
-            try {
-              callbacks.onTurnEnd?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "retry") {
-            callbacks.onRetry?.()
-          } else if (currentEvent === "compaction-start") {
-            callbacks.onCompactionStart?.(data)
-          } else if (currentEvent === "compaction-end") {
-            try {
-              callbacks.onCompactionEnd?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "retry-start") {
-            try {
-              callbacks.onRetryStart?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "retry-end") {
-            try {
-              callbacks.onRetryEnd?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "settled") {
-            callbacks.onSettled?.()
-          } else if (currentEvent === "tool-exec-end") {
-            try {
-              callbacks.onToolResult?.(JSON.parse(data))
-            } catch { /* ignore parse errors */ }
-          } else if (currentEvent === "tool-end") {
-            // ignore legacy tool-end event
-          } else {
-            callbacks.onText(decoded)
-          }
-        }
-      } else if (line.trim() === "") {
-        // SSE blank line resets event type
-        currentEvent = ""
-      }
+  let closed = false
+  const finish = () => {
+    if (closed) return
+    closed = true
+    cb.onDone()
+    try {
+      ws.close()
+    } catch {
+      /* ignore */
     }
   }
 
-  // 防止 reader 正常结束但没收到 [DONE] 的情况
-  callbacks.onDone()
+  await new Promise<void>((resolve, reject) => {
+    const onOpen = () => {
+      ws.removeEventListener("open", onOpen)
+      ws.removeEventListener("error", onErr)
+      resolve()
+    }
+    const onErr = () => {
+      ws.removeEventListener("open", onOpen)
+      ws.removeEventListener("error", onErr)
+      reject(new Error("websocket 连接失败"))
+    }
+    ws.addEventListener("open", onOpen)
+    ws.addEventListener("error", onErr)
+  })
+
+  ws.onmessage = (ev) => {
+    let event: TranscriptEvent
+    try {
+      event = JSON.parse(typeof ev.data === "string" ? ev.data : "")
+    } catch {
+      return
+    }
+    if (applyEventToCallbacks(event, cb)) finish()
+  }
+  ws.onerror = () => {
+    if (!closed) cb.onError("websocket 错误")
+  }
+  ws.onclose = () => finish()
+
+  ws.send(JSON.stringify({ type: "prompt", text: message }))
+}
+
+async function agentStreamTauri(
+  { message, session_id }: AgentStreamBody,
+  cb: ChatStreamCallbacks,
+): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core")
+  const { listen } = await import("@tauri-apps/api/event")
+
+  let done = false
+  let unlisten: (() => void) | null = null
+  const finish = () => {
+    if (done) return
+    done = true
+    unlisten?.()
+    cb.onDone()
+  }
+
+  unlisten = await listen<{ session_id: string; event: TranscriptEvent }>(
+    "agent-event",
+    (e) => {
+      if (e.payload.session_id !== session_id) return
+      if (applyEventToCallbacks(e.payload.event, cb)) finish()
+    },
+  )
+
+  try {
+    await invoke("send_prompt", { sessionId: session_id, text: message })
+  } catch (err: unknown) {
+    if (!done) {
+      done = true
+      unlisten?.()
+      cb.onError(String(err))
+    }
+  }
 }
 
 // ── Types ──────────────────────────────────────────────
