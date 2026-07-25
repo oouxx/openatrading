@@ -102,6 +102,10 @@ export interface SessionEvent {
   tool_results?: ToolResultPayload[]
   text?: string
   is_error?: boolean
+  /** Fields carried by the `permission_request` variant (§11). */
+  id?: string
+  tool_name?: string
+  tool_input?: unknown
 }
 
 export type TranscriptEvent = CoreEvent | SessionEvent | { kind: string; [k: string]: unknown }
@@ -111,6 +115,7 @@ export type ClientCommand =
   | { type: "prompt"; text: string }
   | { type: "interrupt" }
   | { type: "ping" }
+  | { type: "permission_response"; id: string; approved: boolean }
 
 // ── History message shape (GET /api/ai/sessions/:id/messages) ─────────────
 
@@ -121,8 +126,16 @@ export interface ToolResultPayload {
   fullLength: number
 }
 
+/** Structured content block returned in history messages (finding #10). */
+export type HistoryBlock =
+  | { type: "thinking"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | { type: "text"; text: string }
+
 export interface HistoryMessage {
   role: string
   content: string
   created_at?: string
+  /** Structured blocks for assistant turns (thinking / tool_use / text). */
+  blocks?: HistoryBlock[]
 }

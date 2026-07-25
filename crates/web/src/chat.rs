@@ -367,7 +367,7 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde
     let running = state
         .running_sessions
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .iter()
         .cloned()
         .collect::<std::collections::HashSet<_>>();
@@ -403,6 +403,29 @@ pub struct SessionMessage {
     pub role: String,
     pub content: String,
     pub created_at: String,
+    /// Structured content blocks (thinking / tool_use / text). Populated for
+    /// assistant messages so the frontend can render tool calls and reasoning
+    /// when loading history (finding #10). Empty for user messages, which
+    /// only carry plain text in `content`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub blocks: Vec<HistoryBlock>,
+}
+
+/// Serializable subset of a persisted content block for history replay.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum HistoryBlock {
+    Thinking {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    Text {
+        text: String,
+    },
 }
 
 /// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
@@ -430,32 +453,78 @@ pub async fn get_session_messages(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            if let Some(msg) = entry.get("message") {
-                let role = msg
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let content = msg
-                    .get("content")
-                    .and_then(|v| v.as_array())
-                    .map(|blocks| {
-                        blocks
-                            .iter()
-                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("\n")
+            let Some(msg) = entry.get("message") else {
+                continue;
+            };
+            let role = msg
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(blocks_arr) = msg.get("content").and_then(|v| v.as_array()) else {
+                continue;
+            };
+
+            let text_content: String = blocks_arr
+                .iter()
+                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // Build structured blocks for assistant turns so the frontend can
+            // render thinking + tool calls when loading history (finding #10).
+            let blocks: Vec<HistoryBlock> = if role == "assistant" {
+                blocks_arr
+                    .iter()
+                    .filter_map(|b| {
+                        let ty = b.get("type").and_then(|v| v.as_str())?;
+                        match ty {
+                            "thinking" => b.get("text").and_then(|t| t.as_str()).map(|text| {
+                                HistoryBlock::Thinking {
+                                    text: text.to_string(),
+                                }
+                            }),
+                            "tool_use" => {
+                                let id = b
+                                    .get("id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let name = b
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let input =
+                                    b.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                                Some(HistoryBlock::ToolUse { id, name, input })
+                            }
+                            "text" => b.get("text").and_then(|t| t.as_str()).map(|text| {
+                                HistoryBlock::Text {
+                                    text: text.to_string(),
+                                }
+                            }),
+                            _ => None,
+                        }
                     })
-                    .unwrap_or_default();
-                // Only return user and assistant messages with non-empty content;
-                // filter out toolResult and assistant tool-call-only turns
-                if (role == "user" || role == "assistant") && !content.is_empty() {
-                    messages.push(SessionMessage {
-                        role,
-                        content,
-                        created_at: ts,
-                    });
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            // Only return user and assistant messages. Keep assistant tool-call-only
+            // turns (no text) when they carry structured blocks so history shows
+            // the tool calls; filter out empty turns entirely.
+            if role == "user" || role == "assistant" {
+                if text_content.is_empty() && blocks.is_empty() {
+                    continue;
                 }
+                messages.push(SessionMessage {
+                    role,
+                    content: text_content,
+                    created_at: ts,
+                    blocks,
+                });
             }
         }
     }

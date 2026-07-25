@@ -1054,10 +1054,20 @@ async fn send_prompt(
         let notice = sessions
             .run_slash(&session_id, &state, &app, cmd_name, cmd_args)
             .await;
-        let payload = serde_json::json!({
-            "session_id": session_id,
-            "event": openatrading_web::agent_ws::TranscriptEvent::Session(notice),
-        });
+        // Wrap the slash result in an EventEnvelope for a consistent wire
+        // shape (schema_version + seq) with forwarded events (finding #12).
+        // Tauri has no reconnection, so seq is unused; we still go through the
+        // shared per-session buffer so seq is assigned consistently.
+        let buffer = openatrading_web::agent_ws::get_session_buffer(&state, &session_id).await;
+        let Some(event_value) = openatrading_web::agent_ws::buffer_and_serialize_value(
+            &buffer,
+            openatrading_web::agent_ws::TranscriptEvent::Session(notice),
+        )
+        .await
+        else {
+            return Ok(());
+        };
+        let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
         let _ = app.emit("agent-event", payload);
         return Ok(());
     }
@@ -1069,7 +1079,7 @@ async fn send_prompt(
     sessions
         .running_sessions
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(session_id.clone());
     facade.send(&text).await;
     Ok(())
@@ -1096,6 +1106,13 @@ async fn respond_permission(
         .await;
     Ok(())
 }
+
+// ── Named timing constants (finding #17) ────────────────────────────────────
+/// Polling interval for realtime/kline streaming channels pushed to the
+/// frontend via Tauri IPC.
+const STREAM_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+/// Delay before restarting the app so the IPC response reaches the frontend.
+const APP_RESTART_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Per-session registry for the Tauri transport.
 ///
@@ -1139,34 +1156,55 @@ impl TauriSessionRegistry {
             .create_session(None, None, Some(true), Some(session_id), None)
             .await
             .map_err(|e| e.to_string())?;
-        let (mut delta_rx, mut durable_rx, buffer) =
-            openatrading_web::agent_ws::setup_event_channel_with_buffer(&facade).await;
+        // Use the shared per-session buffer from AppState so events persist
+        // across the session's lifetime and are consistent with the slash
+        // command path (finding #2, #12). The forward task is the sole writer
+        // for a given session, so no duplicate-push concern.
+        let (mut delta_rx, mut durable_rx) =
+            openatrading_web::agent_ws::setup_event_channel(&facade).await;
+        let buffer = openatrading_web::agent_ws::get_session_buffer(state, session_id).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
         let running = self.running_sessions.clone(); // Arc<std::sync::Mutex<HashSet<String>>>
-        tokio::spawn(async move {
+                                                     // Spawn the forward task and track its handle so a panic is surfaced
+                                                     // rather than silently swallowed (finding #16).
+        let join_handle = tokio::spawn(async move {
             loop {
+                // `biased` ensures durable events (lifecycle, tool results)
+                // are drained before delta events when both are ready
+                // (§14, finding #8).
                 let event = tokio::select! {
-                    ev = delta_rx.recv() => ev,
+                    biased;
                     ev = durable_rx.recv() => ev,
+                    ev = delta_rx.recv() => ev,
                     else => break,
                 };
                 let Some(event) = event else { break };
-                // Track running state (§7.4): agent_end/agent_settled → session is idle
+                // Track running state (§7.4): agent_end/agent_settled → session is idle.
                 if matches!(&event, openatrading_web::agent_ws::TranscriptEvent::Session(payload) if matches!(payload, openatrading_web::agent_ws::SessionEventPayload::AgentEnd { .. } | openatrading_web::agent_ws::SessionEventPayload::AgentSettled))
                 {
-                    running.lock().unwrap().remove(&sid);
+                    running
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&sid);
                 }
-                let envelope = openatrading_web::agent_ws::EventEnvelope {
-                    schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
-                    seq: 0,
-                    event,
+                // Push to the shared buffer helper to assign the real seq and
+                // serialize the stored envelope in one step (finding #1, #13).
+                let Some(event_value) =
+                    openatrading_web::agent_ws::buffer_and_serialize_value(&buffer, event).await
+                else {
+                    continue;
                 };
-                // Serialize to Value first, then push envelope to buffer (push takes ownership).
-                let event_value = serde_json::to_value(&envelope).unwrap_or_default();
-                let _seq = buffer.lock().await.push(envelope);
                 let payload = serde_json::json!({ "session_id": sid, "event": event_value });
                 let _ = app_handle.emit("agent-event", payload);
+            }
+        });
+        // Detach but observe: surface panic via the supervisor task.
+        // The handle is intentionally dropped after spawning a watcher that
+        // logs a panic instead of silently losing it (finding #16).
+        tokio::spawn(async move {
+            if let Err(e) = join_handle.await {
+                eprintln!("[agent-forward] forward task panicked: {e}");
             }
         });
         map.insert(session_id.to_string(), facade.clone());
@@ -1270,7 +1308,7 @@ async fn api_realtime_stream(
                     .map_err(|f| format!("channel error: {f}"))?;
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
     }
 }
 
@@ -1304,7 +1342,7 @@ async fn api_kline_stream(
                     .map_err(|f| format!("channel error: {f}"))?;
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
     }
 }
 
@@ -1424,7 +1462,7 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     // Spawn a brief delay so the IPC response can reach the frontend
     let h = app_handle.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(APP_RESTART_DELAY).await;
         h.restart();
     });
     Ok(())
@@ -1458,6 +1496,7 @@ fn main() {
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
         running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+        session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     let tauri_sessions = Arc::new(TauriSessionRegistry::new());
