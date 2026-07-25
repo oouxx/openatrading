@@ -1,6 +1,7 @@
 #![allow(clippy::large_futures)]
 #![allow(clippy::missing_errors_doc)]
 use ahash::AHashMap as HashMap;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -37,12 +38,17 @@ impl AgentRuntime {
     }
 
     /// Create a new agent session (the only way to invoke LLM).
+    ///
+    /// If `session_id` is provided, it reuses the existing session file
+    /// at `{session_dir}/{session_id}.jsonl` instead of creating a new one.
+    /// This allows the chat endpoint to continue a session created by
+    /// the sessions API.
     pub async fn create_session(
         &self,
         system_prompt: Option<&str>,
         custom_tools: Option<Vec<ToolDefinition>>,
         persist: Option<bool>,
-        _: Option<&str>,
+        session_id: Option<&str>,
         session_name: Option<&str>,
     ) -> Result<Arc<AgentFacade>> {
         let cwd = std::env::current_dir()
@@ -54,10 +60,18 @@ impl AgentRuntime {
             .to_string_lossy()
             .to_string();
 
+        // If session_id is provided, construct the file path to reuse the session
+        let session_file = session_id.map(|id| {
+            PathBuf::from(&session_dir)
+                .join(format!("{id}.jsonl"))
+                .to_string_lossy()
+                .to_string()
+        });
+
         let session_mgr = pi_coding_agent::core::session_manager::SessionManager::new(
             &cwd,
             &session_dir,
-            None,
+            session_file.as_deref(),
             persist.unwrap_or(true),
             None,
         );

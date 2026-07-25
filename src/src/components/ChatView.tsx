@@ -4,6 +4,9 @@ import { Search, Send, ToolCaseIcon } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import ToolCallBlock from "@/components/chat/ToolCallBlock"
+import ToolResultBlock from "@/components/chat/ToolResultBlock"
+import CompactionIndicator from "@/components/chat/CompactionIndicator"
+import RetryIndicator from "@/components/chat/RetryIndicator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -35,6 +38,12 @@ interface DisplayMessage {
     partialResult?: string
     status?: "streaming" | "running" | "success" | "error"
   }[]
+  toolResults?: {
+    name: string
+    result: string
+    isError?: boolean
+  }[]
+  isError?: boolean
 }
 
 interface SlashCommand {
@@ -62,6 +71,14 @@ export default function AiCopilot({
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
   const [threadMessages, setThreadMessages] = useState<Map<string, DisplayMessage[]>>(new Map())
+  const [compactionStatus, setCompactionStatus] = useState<"idle" | "compacting" | "done" | "error">("idle")
+  const [compactionReason, setCompactionReason] = useState<string>("")
+  const [compactionError, setCompactionError] = useState<string | null>(null)
+  const [retryStatus, setRetryStatus] = useState<"idle" | "will-retry" | "retrying" | "done" | "error">("idle")
+  const [retryAttempt, setRetryAttempt] = useState<number>(0)
+  const [retryMaxAttempts, setRetryMaxAttempts] = useState<number>(0)
+  const [retryDelayMs, setRetryDelayMs] = useState<number>(0)
+  const [retryError, setRetryError] = useState<string | null>(null)
   const pendingCmdRef = useRef<{ name: string; type: string } | null>(null)
   const streamThreadRef = useRef<string | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
@@ -203,74 +220,75 @@ export default function AiCopilot({
       if (!text) return
       if (streaming && streamThreadRef.current === activeThreadId) return
 
-      const threadId = activeThreadId // null = new conversation (backend generates session_id)
       const cmd = pendingCmdRef.current
       pendingCmdRef.current = null
       setShowSlash(false)
       setInput("")
 
+      // For new threads, create a session first via the sessions API
+      let sessionId = activeThreadId
+      if (!sessionId) {
+        try {
+          const result = await fetchJson<{ id: string }>("/api/ai/sessions", {
+            method: "POST",
+            body: JSON.stringify({ name: text }),
+          })
+          sessionId = result.id
+          onActiveThreadChange(sessionId)
+        } catch (e) {
+          setStreaming(false)
+          const key = `_new_${Date.now()}`
+          const msgs = threadMessagesRef.current.get(key) ?? []
+          msgs.push({ id: newMsgId(), role: "assistant", content: `[错误] 创建会话失败: ${e}` })
+          threadMessagesRef.current.set(key, msgs)
+          setThreadMessages(new Map(threadMessagesRef.current))
+          return
+        }
+      }
+
       const userMsg: DisplayMessage = { id: newMsgId(), role: "user", content: text }
       const aiMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
 
-      // Use a stable key for the in-memory message store
-      const msgKey = threadId ?? `_new_${Date.now()}`
-      const existing = threadMessagesRef.current.get(msgKey) ?? []
-      threadMessagesRef.current.set(msgKey, [...existing, userMsg, aiMsg])
+      const existing = threadMessagesRef.current.get(sessionId) ?? []
+      threadMessagesRef.current.set(sessionId, [...existing, userMsg, aiMsg])
       setThreadMessages(new Map(threadMessagesRef.current))
       scrollDown()
 
       setStreaming(true)
-      streamThreadRef.current = msgKey
-
-      // Track the last session_id for this message store key
-      const sessionIdRef = { current: threadId }
+      streamThreadRef.current = sessionId
 
       try {
         await apiChatStream(
           {
             message: text,
-            session_id: threadId ?? undefined,
+            session_id: sessionId,
             role: "",
             command_name: cmd?.name,
             command_type: cmd?.type,
             skill_name: cmd?.type === "skill" ? cmd.name : undefined,
           },
           {
-            onSession: (sid) => {
-              sessionIdRef.current = sid
-              onActiveThreadChange(sid)
-              // Move messages from temp key to the real session key
-              const msgs = threadMessagesRef.current.get(msgKey) ?? []
-              if (msgKey !== sid) {
-                threadMessagesRef.current.delete(msgKey)
-                threadMessagesRef.current.set(sid, msgs)
-                setThreadMessages(new Map(threadMessagesRef.current))
-              }
-            },
             onText: (data) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 msgs[msgs.length - 1] = { ...last, content: last.content + data }
-                threadMessagesRef.current.set(key, msgs)
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
-                if (activeThreadId === key) scrollDown()
+                if (activeThreadId === sessionId) scrollDown()
               }
             },
             onReasoning: (data) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + data }
-                threadMessagesRef.current.set(key, msgs)
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
             onToolCall: (tool) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -281,13 +299,12 @@ export default function AiCopilot({
                     { name: tool.name, id: tool.id, args: tool.args, status: "streaming" },
                   ],
                 }
-                threadMessagesRef.current.set(key, msgs)
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
             onToolDelta: (delta) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -299,14 +316,13 @@ export default function AiCopilot({
                     status: "streaming",
                   }
                   msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(key, msgs)
+                  threadMessagesRef.current.set(sessionId, msgs)
                   setThreadMessages(new Map(threadMessagesRef.current))
                 }
               }
             },
             onToolResult: (result) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -314,14 +330,13 @@ export default function AiCopilot({
                 if (idx !== -1) {
                   calls[idx] = { ...calls[idx], result: result.result, status: "success" }
                   msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(key, msgs)
+                  threadMessagesRef.current.set(sessionId, msgs)
                   setThreadMessages(new Map(threadMessagesRef.current))
                 }
               }
             },
             onToolExecUpdate: (update) => {
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
                 const calls = last.toolCalls ?? []
@@ -333,53 +348,90 @@ export default function AiCopilot({
                     status: "running",
                   }
                   msgs[msgs.length - 1] = { ...last, toolCalls: [...calls] }
-                  threadMessagesRef.current.set(key, msgs)
+                  threadMessagesRef.current.set(sessionId, msgs)
                   setThreadMessages(new Map(threadMessagesRef.current))
                 }
               }
             },
             onTurnStart: () => {
-              // Finalize current assistant message and start a new one
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              // Always start a new assistant message for the next turn
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
+              const newMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
+              msgs.push(newMsg)
+              threadMessagesRef.current.set(sessionId, msgs)
+              setThreadMessages(new Map(threadMessagesRef.current))
+              scrollDown()
+            },
+            onTurnEnd: (data) => {
+              // Store tool results as structured data on the current message
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant" && last.content) {
-                // Add a new assistant message for the next turn
-                const newMsg: DisplayMessage = { id: newMsgId(), role: "assistant", content: "" }
-                msgs.push(newMsg)
-                threadMessagesRef.current.set(key, msgs)
+              if (last && last.role === "assistant" && data.tool_results.length > 0) {
+                const results = data.tool_results.map((r) => ({
+                  name: "工具结果",
+                  result: r,
+                  isError: false,
+                }))
+                msgs[msgs.length - 1] = {
+                  ...last,
+                  toolResults: [...(last.toolResults ?? []), ...results],
+                }
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
                 scrollDown()
               }
             },
-            onTurnEnd: (data) => {
-              // Append tool results to the current message
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+            onRetry: () => {
+              // Finalize current message as error and prepare for retry
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
-              if (last && last.role === "assistant" && data.tool_results.length > 0) {
-                const resultsText = data.tool_results.join("\n\n")
-                msgs[msgs.length - 1] = {
-                  ...last,
-                  content: last.content + (last.content ? "\n\n" : "") + resultsText,
-                }
-                threadMessagesRef.current.set(key, msgs)
+              if (last && last.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, isError: true }
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
-                scrollDown()
               }
+              setRetryStatus("will-retry")
+            },
+            onCompactionStart: (reason) => {
+              setCompactionStatus("compacting")
+              setCompactionReason(reason)
+              setCompactionError(null)
+            },
+            onCompactionEnd: (data) => {
+              setCompactionStatus(data.error ? "error" : "done")
+              setCompactionError(data.error)
+              if (data.willRetry) {
+                setRetryStatus("will-retry")
+              }
+            },
+            onRetryStart: (data) => {
+              setRetryStatus("retrying")
+              setRetryAttempt(data.attempt)
+              setRetryMaxAttempts(data.maxAttempts)
+              setRetryDelayMs(data.delayMs)
+              setRetryError(data.error)
+            },
+            onRetryEnd: (data) => {
+              setRetryStatus(data.success ? "done" : "error")
+              setRetryError(data.finalError)
+            },
+            onSettled: () => {
+              setCompactionStatus("idle")
+              setRetryStatus("idle")
             },
             onDone: () => {
               setStreaming(false)
+              setCompactionStatus("idle")
+              setRetryStatus("idle")
               onReload?.()
             },
             onError: (err) => {
               setStreaming(false)
-              const key = sessionIdRef.current ?? msgKey
-              const msgs = threadMessagesRef.current.get(key) ?? []
+              const msgs = threadMessagesRef.current.get(sessionId) ?? []
               const last = msgs[msgs.length - 1]
               if (last && last.role === "assistant") {
-                msgs[msgs.length - 1] = { ...last, content: last.content + `\n\n[错误] ${err}` }
-                threadMessagesRef.current.set(key, msgs)
+                msgs[msgs.length - 1] = { ...last, content: last.content + \`\n\n[错误] \${err}\` }
+                threadMessagesRef.current.set(sessionId, msgs)
                 setThreadMessages(new Map(threadMessagesRef.current))
               }
             },
@@ -387,19 +439,20 @@ export default function AiCopilot({
         )
       } catch (e: unknown) {
         setStreaming(false)
-        const key = sessionIdRef.current ?? msgKey
-        const msgs = threadMessagesRef.current.get(key) ?? []
+        const msgs = threadMessagesRef.current.get(sessionId) ?? []
         const last = msgs[msgs.length - 1]
         if (last && last.role === "assistant") {
           msgs[msgs.length - 1] = {
             ...last,
-            content: `[错误] ${(e as Error).message || "网络请求失败"}`,
+            content: \`[错误] \${(e as Error).message || "网络请求失败"}\`,
           }
-          threadMessagesRef.current.set(key, msgs)
+          threadMessagesRef.current.set(sessionId, msgs)
           setThreadMessages(new Map(threadMessagesRef.current))
         }
       }
     },
+    [activeThreadId, input, streaming, threadMessages, onActiveThreadChange, onReload, scrollDown]
+  )
     [input, streaming, activeThreadId, onActiveThreadChange, scrollDown, onReload]
   )
 
@@ -537,6 +590,16 @@ export default function AiCopilot({
                     >
                       {msg.role === "assistant" ? (
                         <>
+                          {msg.isError && (
+                            <div className="border-red-500/30 bg-red-500/5 mb-2 flex items-center gap-2 rounded-lg border px-3 py-2">
+                              <div className="flex size-5 items-center justify-center rounded-full bg-red-500/20">
+                                <span className="text-[10px] font-bold text-red-500">!</span>
+                              </div>
+                              <span className="text-ink-muted text-[11px]">
+                                此消息因错误已自动重试
+                              </span>
+                            </div>
+                          )}
                           <ThinkingBlock
                             content={msg.reasoning ?? ""}
                             isStreaming={streaming && isLastAi}
@@ -552,7 +615,24 @@ export default function AiCopilot({
                             }))}
                             isStreaming={streaming && isLastAi}
                           />
+                          <ToolResultBlock results={msg.toolResults ?? []} />
                           <TextBlock content={msg.content} isStreaming={streaming && isLastAi} />
+                          {isLastAi && (
+                            <>
+                              <CompactionIndicator
+                                status={compactionStatus}
+                                reason={compactionReason}
+                                error={compactionError}
+                              />
+                              <RetryIndicator
+                                status={retryStatus}
+                                attempt={retryAttempt}
+                                maxAttempts={retryMaxAttempts}
+                                delayMs={retryDelayMs}
+                                error={retryError}
+                              />
+                            </>
+                          )}
                         </>
                       ) : (
                         <div className="bg-ink-dim inline-block max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-white">
@@ -581,27 +661,38 @@ export default function AiCopilot({
 
                 <CommandList>
                   <CommandEmpty>无匹配命令</CommandEmpty>
-                  <CommandGroup heading="Tools">
-                    {commands.map((cmd) => (
-                      <CommandItem
-                        key={cmd.name}
-                        onSelect={() => {
-                          pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
-                          setInput(`/${cmd.name} `)
-                          setShowSlash(false)
-                          requestAnimationFrame(() => textareaRef.current?.focus())
-                        }}
-                      >
-                        <ToolCaseIcon />
-                        <span className="flex-1 truncate font-medium">{cmd.name}</span>
-                        {cmd.description && (
-                          <span className="text-ink-muted ml-auto max-w-[180px] truncate text-[10px]">
-                            {cmd.description}
-                          </span>
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
+                  {(["tool", "skill", "slash"] as const).map((groupType) => {
+                    const groupCmds = commands.filter((c) => c.command_type === groupType)
+                    if (groupCmds.length === 0) return null
+                    const headings: Record<string, string> = {
+                      tool: "Tools",
+                      skill: "Skills",
+                      slash: "Slash Commands",
+                    }
+                    return (
+                      <CommandGroup key={groupType} heading={headings[groupType]}>
+                        {groupCmds.map((cmd) => (
+                          <CommandItem
+                            key={cmd.name}
+                            onSelect={() => {
+                              pendingCmdRef.current = { name: cmd.name, type: cmd.command_type }
+                              setInput(\`/\${cmd.name} \`)
+                              setShowSlash(false)
+                              requestAnimationFrame(() => textareaRef.current?.focus())
+                            }}
+                          >
+                            <ToolCaseIcon />
+                            <span className="flex-1 truncate font-medium">{cmd.name}</span>
+                            {cmd.description && (
+                              <span className="text-ink-muted ml-auto max-w-[180px] truncate text-[10px]">
+                                {cmd.description}
+                              </span>
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )
+                  })}
                 </CommandList>
               </Command>
             </CommandDialog>

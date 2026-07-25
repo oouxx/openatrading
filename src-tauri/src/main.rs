@@ -723,7 +723,26 @@ async fn dispatch_post(
 ) -> Result<serde_json::Value, String> {
     match path {
         "/api/ai/sessions" => {
-            todo!("需要整理思路后实现");
+            let name = body
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
+            let agent_facade = state
+                .ctx
+                .runtime
+                .create_session(None, None, Some(true), None, name)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            let mgr = agent_facade.session.get_session_manager();
+            let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
+            let session_name = mgr.get_session_name();
+            drop(mgr);
+            Ok(serde_json::json!({"success": true,
+                "id": agent_facade.get_session_id(),
+                "name": session_name,
+                "path": session_file.map(|p| p.to_string_lossy().to_string()),
+                "message_count": 0,
+            }))
         }
         "/api/roles" => {
             let name = body
@@ -1047,56 +1066,42 @@ async fn api_chat_stream(
     let session_id = body
         .get("session_id")
         .and_then(|v| v.as_str())
-        .map(String::from);
-    let (sid_tx, sid_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .ok_or_else(|| {
+            let err =
+                "missing session_id — create session via POST /api/ai/sessions first".to_string();
+            eprintln!("[chat_stream] {}", err);
+            err
+        })?;
     let runtime = state.ctx.runtime.clone();
     let system_prompt_clone = system_prompt.clone();
     let user_message_clone = user_message.clone();
+    let session_id_clone = session_id.clone();
     tokio::spawn(async move {
         let handle = match runtime
             .create_session(
                 Some(&system_prompt_clone),
                 None,
                 Some(true),
-                session_id.as_deref(),
-                user_message_clone.as_deref(),
+                Some(&session_id_clone),
+                None,
             )
             .await
         {
             Ok(h) => h,
             Err(e) => {
-                let _ = sid_tx.send(Err(e.to_string()));
+                eprintln!("[chat_stream] agent error: {e}");
                 return;
             }
         };
-        let id = handle.get_session_id().to_string();
         handle.subscribe(tx).await;
         handle
             .send(user_message_clone.as_deref().unwrap_or(""))
             .await;
-        let _ = sid_tx.send(Ok(id));
     });
 
     eprintln!("[chat_stream] reading events from channel");
-
-    // Send session_id first so the frontend can store it
-    match sid_rx.await {
-        Ok(Ok(id)) => {
-            channel
-                .send(format!("\x00SESSION\x00{}", id))
-                .map_err(|e| format!("channel error: {e}"))?;
-        }
-        Ok(Err(e)) => {
-            let err = format!("agent error: {e}");
-            eprintln!("[chat_stream] {err}");
-            channel
-                .send(format!("\x00ERROR\x00{}", err))
-                .map_err(|e| format!("channel error: {e}"))?;
-            return Ok(());
-        }
-        Err(_) => return Ok(()),
-    }
-
     let mut text_count = 0u32;
     'outer: loop {
         match rx.recv().await {
