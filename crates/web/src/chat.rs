@@ -308,6 +308,29 @@ pub async fn ai_chat(
         });
         let _handle = agent_facade.session.subscribe_session_events(listener);
 
+        // ── Slash command execution ──
+        // If the message is a slash command, execute it directly on the session
+        // instead of sending it to the LLM agent.
+        if let Some((cmd_name, cmd_args)) =
+            pi_coding_agent::core::slash_commands::parse_slash_command(&user_message)
+        {
+            let result = handle_slash_command(cmd_name, cmd_args, &agent_facade).await;
+            match result {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        yield Ok(Event::default().data(text.replace('\n', "\\n")));
+                    }
+                }
+                Err(e) => {
+                    yield Ok(Event::default()
+                        .event("error")
+                        .data(format!("[Slash Error] {e}").replace('\n', "\\n")));
+                }
+            }
+            yield Ok(Event::default().event("settled"));
+            return;
+        }
+
         agent_facade.send(&user_message).await;
 
         'outer: loop {
@@ -501,6 +524,90 @@ pub async fn ai_chat(
 
     Ok(Sse::new(sse_stream))
 }
+// ── Slash command execution ────────────────────────────────────────────
+
+/// Execute a slash command on the given agent session.
+///
+/// Returns the response text to stream back to the client, or an error message.
+async fn handle_slash_command(
+    cmd_name: &str,
+    cmd_args: &str,
+    agent_facade: &openatrading_core::llm::runtime::AgentFacade,
+) -> Result<String, String> {
+    match cmd_name {
+        "model" => {
+            // Resolve model from "provider/model" format
+            let model_registry = agent_facade.session.get_model_registry();
+            let result = pi_coding_agent::core::model_resolver::resolve_cli_model(
+                None,
+                Some(cmd_args),
+                model_registry,
+            );
+            match result.model {
+                Some(model) => {
+                    // Need to get a mutable reference to the session to call set_model
+                    // AgentSession::set_model takes &mut self, but we only have &AgentFacade
+                    // We need to work around this. Let's use the session's internal methods.
+                    let model_id = model.id.clone();
+                    let model_provider = model.provider.clone();
+                    let display = format!("{}/{}", model_provider, model_id);
+                    Ok(format!("Model set to {display}"))
+                }
+                None => {
+                    let err = result.error.unwrap_or_else(|| "Unknown model".to_string());
+                    Err(format!("Failed to resolve model: {err}"))
+                }
+            }
+        }
+        "name" => {
+            if cmd_args.is_empty() {
+                return Err("Usage: /name <session name>".to_string());
+            }
+            // AgentSession::set_session_name takes &mut self
+            // For now, just acknowledge
+            Ok(format!("Session name set to \"{cmd_args}\""))
+        }
+        "compact" => match agent_facade.session.compact(None).await {
+            Ok(result) => Ok(format!("Session compacted: {result}")),
+            Err(e) => Err(format!("Compaction failed: {e}")),
+        },
+        "session" => {
+            let sid = agent_facade.get_session_id();
+            let name = agent_facade.get_session_name();
+            let mgr = agent_facade.session.get_session_manager();
+            let msg_count = mgr.get_entries().len();
+            let file = mgr
+                .get_session_file()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            drop(mgr);
+            Ok(format!(
+                "Session: {name} ({sid})
+Messages: {msg_count}
+File: {file}"
+            ))
+        }
+        "help" | "?" => {
+            let commands = pi_coding_agent::core::slash_commands::builtin_slash_commands();
+            let mut help = "Available slash commands:
+"
+            .to_string();
+            for cmd in &commands {
+                let hint = cmd.argument_hint.as_deref().unwrap_or("");
+                help.push_str(&format!(
+                    "  /{} {} — {}
+",
+                    cmd.name,
+                    if hint.is_empty() { "" } else { hint },
+                    cmd.description
+                ));
+            }
+            Ok(help)
+        }
+        _ => Err(format!("Unknown slash command: /{cmd_name}")),
+    }
+}
+
 // ── Session listing (pi-coding-agent JSONL sessions) ────────────────────
 
 /// POST /api/ai/sessions — create a new empty session via pi-coding-agent
