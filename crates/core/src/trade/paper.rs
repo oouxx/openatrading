@@ -1,4 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
 use crate::roles::pnl::INITIAL_CAPITAL;
 
 const MAX_SINGLE_POSITION_RATIO: f64 = 0.3;

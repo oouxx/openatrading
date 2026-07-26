@@ -1,5 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::manual_let_else)]
 use ahash::AHashMap as HashMap;
 use anyhow::{Context, Result};
 use serde::Deserialize;

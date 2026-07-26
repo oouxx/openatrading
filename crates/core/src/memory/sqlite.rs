@@ -1,5 +1,3 @@
-#![allow(clippy::significant_drop_tightening)]
-#![allow(clippy::missing_errors_doc)]
 use anyhow::Result;
 use rusqlite::Connection;
 use std::path::Path;

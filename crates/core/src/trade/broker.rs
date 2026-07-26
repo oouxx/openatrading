@@ -1,4 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
 use crate::context::AppContext;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::TradeInstruction;
