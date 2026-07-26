@@ -504,14 +504,28 @@ async fn handle_session(
             (active.facade.clone(), msg)
         } else {
             drop(pool);
-            // Not in pool — resume from session file on disk.
+            // Not in pool — resume from session file on disk. This happens
+            // after a backend restart (the in-memory pool is empty) or when a
+            // client reconnects to a session whose facade was evicted.
             match state
                 .ctx
                 .runtime
                 .create_session(None, None, Some(true), Some(&session_id), None)
                 .await
             {
-                Ok(h) => (h, None),
+                Ok(h) => {
+                    // Insert the resumed facade back into the shared pool so
+                    // subsequent reconnects reuse it instead of creating a
+                    // duplicate facade that would race on the same JSONL file.
+                    state.active_facades.lock().await.insert(
+                        session_id.clone(),
+                        crate::ActiveSession {
+                            facade: h.clone(),
+                            pending_message: None,
+                        },
+                    );
+                    (h, None)
+                }
                 Err(e) => {
                     log::error!("ws: failed to create/resume session {session_id}: {e}");
                     let _ = socket
