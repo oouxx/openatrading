@@ -391,7 +391,7 @@ pub async fn setup_event_channel(
             }
         })
     });
-    let _h1 = agent_facade.session.subscribe(async_listener).await;
+    let _h1 = agent_facade.subscribe(async_listener).await;
 
     // AgentSessionEvent (sync) → durable channel (try_send since sync callback)
     let durable_tx2 = durable_tx.clone();
@@ -399,7 +399,7 @@ pub async fn setup_event_channel(
         let payload = convert_session_event(event);
         let _ = durable_tx2.try_send(TranscriptEvent::Session(payload));
     });
-    let _h2 = agent_facade.session.subscribe_session_events(sync_listener);
+    let _h2 = agent_facade.subscribe_session_events(sync_listener);
 
     (delta_rx, durable_rx)
 }
@@ -639,7 +639,7 @@ async fn handle_session(
                                 });
                             }
                             Ok(ClientCommand::Interrupt) => {
-                                agent_facade.session.abort().await;
+                                agent_facade.abort().await;
                             }
                             Ok(ClientCommand::Ping) => {
                                 // Application-level ping acknowledged; no response needed.

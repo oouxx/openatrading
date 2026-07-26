@@ -34,7 +34,7 @@ async fn test_create_agent_session_with_extension() {
         .await
         .expect("创建agent session 失败");
     // Verify that the session has trading extension tools available.
-    let agent_state = agent_facade.session.get_agent().state().await;
+    let agent_state = agent_facade.state().await;
     let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
     println!("[dbg] Available tools: {tool_names:?}");
 
@@ -62,8 +62,7 @@ async fn test_trading_tools_exec() {
     // Let the agent handle the full flow: LLM decides to call get_limit_up,
     // tool executes, LLM analyzes the result.
     let messages = agent_facade
-        .session
-        .get_agent()
+        .agent()
         .prompt(PromptInput::Text("获取今日涨停数据并分析市场情绪"))
         .await
         .expect("agent prompt failed");
@@ -162,8 +161,7 @@ async fn test_bash_tool_exec() {
         .expect("创建agent session 失败");
 
     let messages = agent_facade
-        .session
-        .get_agent()
+        .agent()
         .prompt(PromptInput::Text("执行ls命令"))
         .await
         .expect("agent prompt failed");
