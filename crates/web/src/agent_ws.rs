@@ -1,7 +1,8 @@
 //! WebSocket transport for agent session events.
 //!
-//! Both `AgentEvent` (async) and `AgentSessionEvent` (sync) are unified into a
-//! single [`TranscriptEvent`] enum, wrapped in an [`EventEnvelope`] with seq
+//! All events are unified into a single [`TranscriptEvent`] enum via
+//! [`SessionEventPayload`], which includes both `AgentEvent` passthrough variants
+//! and session-level events., wrapped in an [`EventEnvelope`] with seq
 //! numbering and schema version, and sent over a WebSocket connection. This
 //! module is shared between the axum web server and the Tauri IPC layer — the
 //! event-production logic is identical, only the delivery mechanism differs
@@ -53,21 +54,41 @@ pub struct EventEnvelope {
 
 // ── Event types ────────────────────────────────────────────────────────────
 
-/// Wire-format event: either a core `AgentEvent` or a session-level event.
-///
-/// `AgentEvent` already derives `Serialize` (with `#[serde(tag = "type")]`),
-/// so it is embedded directly. `AgentSessionEvent` does **not** derive
-/// `Serialize`, so we convert the variants we care about into
-/// [`SessionEventPayload`] before wrapping.
+/// Wire-format event: all agent session events, including both `AgentEvent`
+/// passthrough variants and session-level events, unified into a single
+/// [`SessionEventPayload`] enum.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind")]
 pub enum TranscriptEvent {
-    /// Core agent event (text deltas, tool calls, thinking, etc.)
-    #[serde(rename = "core")]
-    Core(Box<AgentEvent>),
-    /// Session-level event (compaction, retry, turn lifecycle, settled)
+    /// Agent session event (text deltas, tool calls, thinking, lifecycle, etc.)
     #[serde(rename = "session")]
     Session(SessionEventPayload),
+}
+
+impl TranscriptEvent {
+    /// Short human-readable label for logging (never serialized).
+    pub fn kind_label(&self) -> &'static str {
+        match &self {
+            TranscriptEvent::Session(p) => match p {
+                SessionEventPayload::AgentStart => "session:agent_start",
+                SessionEventPayload::AgentEnd { .. } => "session:agent_end",
+                SessionEventPayload::TurnStart => "session:turn_start",
+                SessionEventPayload::TurnEnd { .. } => "session:turn_end",
+                SessionEventPayload::MessageStart => "session:message_start",
+                SessionEventPayload::MessageUpdate { .. } => "session:message_update",
+                SessionEventPayload::MessageEnd => "session:message_end",
+                SessionEventPayload::ToolExecutionStart { .. } => "session:tool_start",
+                SessionEventPayload::ToolExecutionUpdate { .. } => "session:tool_update",
+                SessionEventPayload::ToolExecutionEnd { .. } => "session:tool_end",
+                SessionEventPayload::AgentSettled => "session:agent_settled",
+                SessionEventPayload::CompactionStart { .. } => "session:compaction_start",
+                SessionEventPayload::CompactionEnd { .. } => "session:compaction_end",
+                SessionEventPayload::AutoRetryStart { .. } => "session:auto_retry_start",
+                SessionEventPayload::AutoRetryEnd { .. } => "session:auto_retry_end",
+                _ => "session:other",
+            },
+        }
+    }
 }
 
 /// Serializable subset of [`AgentSessionEvent`].
@@ -77,46 +98,79 @@ pub enum TranscriptEvent {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEventPayload {
+    // ── AgentEvent passthrough variants ──
+    /// Agent started thinking.
+    AgentStart,
+    /// Agent turn ended (with retry info).
+    AgentEnd { will_retry: bool },
+    /// A new assistant turn started.
     TurnStart,
+    /// An assistant turn ended, with tool results.
     TurnEnd {
         tool_results: Vec<ToolResultPayload>,
     },
+    /// A message within a turn started.
+    MessageStart,
+    /// Streaming update for a message (text/thinking/tool-call delta).
+    MessageUpdate {
+        assistant_message_event: serde_json::Value,
+    },
+    /// A message within a turn ended.
+    MessageEnd,
+    /// A tool execution started.
+    ToolExecutionStart {
+        tool_call_id: String,
+        tool_name: String,
+        args: serde_json::Value,
+    },
+    /// Streaming update for a running tool execution.
+    ToolExecutionUpdate {
+        tool_call_id: String,
+        tool_name: String,
+        args: serde_json::Value,
+        partial_result: serde_json::Value,
+    },
+    /// A tool execution completed.
+    ToolExecutionEnd {
+        tool_call_id: String,
+        tool_name: String,
+        result: serde_json::Value,
+        is_error: bool,
+    },
+    // ── Session-specific events ──
+    /// All agent tasks fully settled — input can be re-enabled.
     AgentSettled,
-    AgentEnd {
-        will_retry: bool,
-    },
-    CompactionStart {
-        reason: String,
-    },
+    /// Session compaction started.
+    CompactionStart { reason: String },
+    /// Session compaction ended.
     CompactionEnd {
         reason: String,
         aborted: bool,
         will_retry: bool,
         error_message: Option<String>,
     },
+    /// Automatic retry started.
     AutoRetryStart {
         attempt: u32,
         max_attempts: u32,
         delay_ms: u64,
         error_message: String,
     },
+    /// Automatic retry ended.
     AutoRetryEnd {
         success: bool,
         attempt: u32,
         final_error: Option<String>,
     },
+    /// Queue status update.
     QueueUpdate {
         steering: Vec<String>,
         follow_up: Vec<String>,
     },
-    SessionInfoChanged {
-        name: Option<String>,
-    },
+    /// Session metadata changed.
+    SessionInfoChanged { name: Option<String> },
     /// Slash command result / error rendered as a system notice block.
-    Notice {
-        text: String,
-        is_error: bool,
-    },
+    Notice { text: String, is_error: bool },
     /// Permission request for human-in-the-loop approval (§11).
     PermissionRequest {
         id: String,
@@ -223,6 +277,62 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
     }
 }
 
+/// Convert an [`AgentEvent`] into the serializable [`SessionEventPayload`].
+///
+/// All `AgentEvent` variants are mapped to their corresponding
+/// `SessionEventPayload` variants so the frontend only needs to handle
+/// a single event kind.
+pub fn convert_agent_event(event: AgentEvent) -> SessionEventPayload {
+    match event {
+        AgentEvent::AgentStart => SessionEventPayload::AgentStart,
+        AgentEvent::AgentEnd { .. } => SessionEventPayload::AgentEnd { will_retry: false },
+        AgentEvent::TurnStart => SessionEventPayload::TurnStart,
+        AgentEvent::TurnEnd { tool_results, .. } => SessionEventPayload::TurnEnd {
+            tool_results: extract_tool_result_texts(&tool_results),
+        },
+        AgentEvent::MessageStart { .. } => SessionEventPayload::MessageStart,
+        AgentEvent::MessageUpdate {
+            assistant_message_event,
+            ..
+        } => SessionEventPayload::MessageUpdate {
+            assistant_message_event: serde_json::to_value(assistant_message_event)
+                .unwrap_or_default(),
+        },
+        AgentEvent::MessageEnd { .. } => SessionEventPayload::MessageEnd,
+        AgentEvent::ToolExecutionStart {
+            tool_call_id,
+            tool_name,
+            args,
+        } => SessionEventPayload::ToolExecutionStart {
+            tool_call_id,
+            tool_name,
+            args,
+        },
+        AgentEvent::ToolExecutionUpdate {
+            tool_call_id,
+            tool_name,
+            args,
+            partial_result,
+        } => SessionEventPayload::ToolExecutionUpdate {
+            tool_call_id,
+            tool_name,
+            args,
+            partial_result,
+        },
+        AgentEvent::ToolExecutionEnd {
+            tool_call_id,
+            tool_name,
+            result,
+            is_error,
+        } => SessionEventPayload::ToolExecutionEnd {
+            tool_call_id,
+            tool_name,
+            result,
+            is_error,
+        },
+    }
+}
+
 /// Extract human-readable text from a slice of tool-result messages.
 fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<ToolResultPayload> {
     messages
@@ -265,6 +375,11 @@ impl SessionEventBuffer {
             next_seq: 0,
             capacity,
         }
+    }
+
+    /// The next seq that will be assigned to a pushed event.
+    pub fn next_seq(&self) -> u64 {
+        self.next_seq
     }
 
     /// Push an event, assign it a seq, and return the seq.
@@ -361,33 +476,21 @@ pub async fn setup_event_channel(
     let (delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
     let (durable_tx, durable_rx) = mpsc::channel::<TranscriptEvent>(256);
 
-    // AgentEvent (async) → route to appropriate channel based on event type
+    // AgentEvent (async) → convert to SessionEventPayload, route to appropriate channel
     let delta_tx1 = delta_tx.clone();
     let durable_tx1 = durable_tx.clone();
     let async_listener: AgentEventListener = Arc::new(move |event, _signal| {
         let delta_tx = delta_tx1.clone();
         let durable_tx = durable_tx1.clone();
         Box::pin(async move {
+            let payload = convert_agent_event(event);
             // Text/thinking/tool-call deltas → delta channel (drops when full)
             // Everything else → durable channel (awaits capacity)
-            let is_delta = matches!(
-                &event,
-                AgentEvent::MessageUpdate {
-                    assistant_message_event,
-                    ..
-                } if matches!(
-                    assistant_message_event,
-                    pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::TextDelta { .. }
-                    | pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::ThinkingDelta { .. }
-                    | pi_coding_agent::pi_agent_core::pi_ai::types::AssistantMessageEvent::ToolCallDelta { .. }
-                )
-            );
+            let is_delta = matches!(&payload, SessionEventPayload::MessageUpdate { .. });
             if is_delta {
-                let _ = delta_tx.try_send(TranscriptEvent::Core(Box::new(event)));
+                let _ = delta_tx.try_send(TranscriptEvent::Session(payload));
             } else {
-                let _ = durable_tx
-                    .send(TranscriptEvent::Core(Box::new(event)))
-                    .await;
+                let _ = durable_tx.send(TranscriptEvent::Session(payload)).await;
             }
         })
     });
@@ -401,6 +504,11 @@ pub async fn setup_event_channel(
     });
     let _h2 = agent_facade.subscribe_session_events(sync_listener);
 
+    use openatrading_core::log;
+    log::info!(
+        "ws: event channel ready (delta cap=64, durable cap=256) for session {}",
+        agent_facade.session_id()
+    );
     (delta_rx, durable_rx)
 }
 
@@ -431,13 +539,16 @@ pub async fn get_session_buffer(
 /// envelope is pushed first (the buffer mutates `seq` in place), then the
 /// stored envelope — now carrying the correct seq — is serialized while still
 /// holding the buffer lock.
+/// Like [`buffer_and_serialize_value`] but also returns the assigned `seq`,
+/// so callers can log which sequence number was actually pushed to the wire.
 async fn buffer_and_serialize(
     buffer: &Arc<tokio::sync::Mutex<SessionEventBuffer>>,
     event: TranscriptEvent,
-) -> Option<String> {
-    buffer_and_serialize_value(buffer, event)
-        .await
-        .and_then(|v| serde_json::to_string(&v).ok())
+) -> Option<(u64, String)> {
+    let v = buffer_and_serialize_value(buffer, event).await?;
+    // `seq` is always present on a stored envelope (set by `push`).
+    let seq = v.get("seq").and_then(|s| s.as_u64()).unwrap_or(0);
+    serde_json::to_string(&v).ok().map(|json| (seq, json))
 }
 
 /// Same as [`buffer_and_serialize`] but returns a [`serde_json::Value`].
@@ -492,6 +603,8 @@ async fn handle_session(
 ) {
     use openatrading_core::log;
 
+    log::info!("ws: upgrade accepted session_id={session_id} last_seq={last_seq:?}");
+
     // Retrieve the live facade from the shared pool. We do NOT remove it —
     // reconnections must reuse the same AgentFacade to preserve the running
     // agent's context and event stream. If the pool has a pending message
@@ -499,11 +612,20 @@ async fn handle_session(
     // connection sends it.
     let (mut agent_facade, pending_message) = {
         let mut pool = state.active_facades.lock().await;
+        log::info!(
+            "ws: shared pool size={}; looking up session_id={session_id}",
+            pool.len()
+        );
         if let Some(active) = pool.get_mut(&session_id) {
+            log::info!("ws: pool HIT — reusing live facade for {session_id}");
             let msg = active.pending_message.take();
+            if msg.is_some() {
+                log::info!("ws: took pending_message from pool for {session_id}");
+            }
             (active.facade.clone(), msg)
         } else {
             drop(pool);
+            log::info!("ws: pool MISS for {session_id} — auto-resume from disk JSONL");
             // Not in pool — resume from session file on disk. This happens
             // after a backend restart (the in-memory pool is empty) or when a
             // client reconnects to a session whose facade was evicted.
@@ -514,6 +636,7 @@ async fn handle_session(
                 .await
             {
                 Ok(h) => {
+                    log::info!("ws: resume OK for {session_id} — backfilling shared pool");
                     // Insert the resumed facade back into the shared pool so
                     // subsequent reconnects reuse it instead of creating a
                     // duplicate facade that would race on the same JSONL file.
@@ -528,11 +651,11 @@ async fn handle_session(
                 }
                 Err(e) => {
                     log::error!("ws: failed to create/resume session {session_id}: {e}");
-                    let _ = socket
-                        .send(Message::Text(format!(
-                            r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                        )))
-                        .await;
+                    let notice = format!(
+                        r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                    );
+                    log::info!("ws: {session_id} -> error notice");
+                    let _ = socket.send(Message::Text(notice)).await;
                     return;
                 }
             }
@@ -543,26 +666,51 @@ async fn handle_session(
     // connections to the same session so events produced while a client is
     // disconnected are retained for replay on reconnect (finding #2).
     let buffer = get_session_buffer(&state, &session_id).await;
+    log::info!("ws: acquired event buffer for {session_id}");
 
     // Replay missed events if reconnecting (§9.1). Collect the serialized
     // JSON while holding the buffer lock, then release the lock before
     // sending so we never hold it across a `.await` point on the socket.
     {
         let buf = buffer.lock().await;
+        let next_seq = buf.next_seq();
+        log::info!(
+            "ws: buffer next_seq={next_seq} for {session_id}; requesting since last_seq={last_seq:?}"
+        );
         match buf.events_since(last_seq) {
             Some(events) => {
+                log::info!(
+                    "ws: replaying {} missed event(s) to {session_id}",
+                    events.len()
+                );
                 let replay: Vec<String> = events
                     .iter()
                     .filter_map(|e| serde_json::to_string(e).ok())
                     .collect();
                 drop(buf);
-                for json in replay {
-                    if socket.send(Message::Text(json)).await.is_err() {
+                for json in &replay {
+                    let seq_str = serde_json::from_str::<serde_json::Value>(json)
+                        .ok()
+                        .and_then(|v| v.get("seq").and_then(|s| s.as_u64()))
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "?".into());
+                    log::debug!("ws: {session_id} -> replay seq={seq_str}");
+                    if socket.send(Message::Text(json.clone())).await.is_err() {
+                        log::warn!(
+                            "ws: socket send failed during replay seq={seq_str} for {session_id}"
+                        );
                         return;
                     }
                 }
+                log::info!(
+                    "ws: replay complete ({} events) for {session_id}",
+                    replay.len()
+                );
             }
             None => {
+                log::warn!(
+                    "ws: buffer evicted last_seq={last_seq:?} for {session_id} — sending resync_required"
+                );
                 // Buffer has evicted the requested seq — signal resync.
                 let resync = serde_json::json!({
                     "schema_version": SCHEMA_VERSION,
@@ -570,12 +718,15 @@ async fn handle_session(
                     "kind": "session",
                     "type": "resync_required",
                 });
+                log::info!("ws: {session_id} -> resync_required");
                 let _ = socket.send(Message::Text(resync.to_string())).await;
+                log::info!("ws: {session_id} resync_required sent");
             }
         }
     }
 
     let (mut delta_rx, mut durable_rx) = setup_event_channel(&agent_facade).await;
+    log::info!("ws: event channel subscribed for {session_id}");
 
     // If there is a pending message from create_session, send it now that
     // event subscribers are in place (prevents losing early events).
@@ -590,18 +741,24 @@ async fn handle_session(
     //     deadlock the listener since nothing drains the channel.
     // Spawning lets the loop drain both channels concurrently with the agent.
     if let Some(msg) = pending_message {
+        log::info!(
+            "ws: firing pending_message (len={}) to {session_id} in background task",
+            msg.len()
+        );
         state
             .running_sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(session_id.clone());
         let facade = agent_facade.clone();
+        let id_for_task = session_id.clone();
         tokio::spawn(async move {
             facade.send(&msg).await;
+            log::info!("ws: pending_message turn completed for {id_for_task}");
         });
     }
 
-    log::info!("ws: session {session_id} connected (last_seq={last_seq:?})");
+    log::info!("ws: session {session_id} connected (last_seq={last_seq:?}) — entering event loop");
 
     loop {
         // `biased` ensures durable events (lifecycle, tool results) are
@@ -610,23 +767,31 @@ async fn handle_session(
             biased;
             // Durable events (tool results, lifecycle, compaction, retry) — must deliver
             Some(event) = durable_rx.recv() => {
+                log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
                 // Track running state (§7.4): agent_end/agent_settled → session is idle.
                 if matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled)) {
                     // Mutex::lock poisoning is treated as an unrecoverable invariant
                     // violation; `unwrap_or_default` would silently lose state.
                     state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id);
+                    log::info!("ws: {session_id} agent_end/settled — marked idle");
                 }
                 // Push to buffer first to obtain the real seq, then serialize
                 // the stored envelope (finding #1).
-                let Some(json) = buffer_and_serialize(&buffer, event).await else { continue };
+                let label = event.kind_label();
+                let Some((seq, json)) = buffer_and_serialize(&buffer, event).await else { continue };
+                log::debug!("ws: {session_id} -> durable seq={seq} ({label})");
                 if socket.send(Message::Text(json)).await.is_err() {
+                    log::warn!("ws: {session_id} socket send failed on durable seq={seq} — breaking");
                     break;
                 }
             }
             // Delta events (text/thinking/tool-call deltas) — can drop if slow
             Some(event) = delta_rx.recv() => {
-                let Some(json) = buffer_and_serialize(&buffer, event).await else { continue };
+                let label = event.kind_label();
+                let Some((seq, json)) = buffer_and_serialize(&buffer, event).await else { continue };
+                log::trace!("ws: {session_id} -> delta seq={seq} ({label})");
                 if socket.send(Message::Text(json)).await.is_err() {
+                    log::warn!("ws: {session_id} socket send failed on delta seq={seq} — breaking");
                     break;
                 }
             }
@@ -634,10 +799,17 @@ async fn handle_session(
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
+                        log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         match serde_json::from_str::<ClientCommand>(&text) {
                             Ok(ClientCommand::Prompt { text }) => {
+                                log::info!(
+                                    "ws: {session_id} <- Prompt (len={}) is_slash={}",
+                                    text.len(),
+                                    text.trim_start().starts_with('/')
+                                );
                                 if let Err(notice) = try_slash_command(&text, &mut agent_facade).await {
-                                    let Some(json) = buffer_and_serialize(&buffer, TranscriptEvent::Session(notice)).await else { continue };
+                                    let Some((seq, json)) = buffer_and_serialize(&buffer, TranscriptEvent::Session(notice)).await else { continue };
+                                    log::info!("ws: {session_id} -> slash-command notice seq={seq}");
                                     let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }
@@ -648,30 +820,39 @@ async fn handle_session(
                                 // pending_message comment above for why we
                                 // cannot await send() inline).
                                 let facade = agent_facade.clone();
+                                let task_id = session_id.clone();
                                 tokio::spawn(async move {
+                                    log::info!("ws: agent turn started for {task_id}");
                                     facade.send(&text).await;
+                                    log::info!("ws: agent turn completed for {task_id}");
                                 });
                             }
                             Ok(ClientCommand::Interrupt) => {
+                                log::info!("ws: {session_id} <- Interrupt");
                                 agent_facade.abort().await;
                             }
                             Ok(ClientCommand::Ping) => {
+                                log::debug!("ws: {session_id} <- Ping");
                                 // Application-level ping acknowledged; no response needed.
                             }
                             Ok(ClientCommand::PermissionResponse { id, approved }) => {
                                 // TODO: Wire up to pi-coding-agent's permission system when available.
                                 // See docs/agentTransport.md §11 for the planned implementation.
-                                log::warn!("permission response received but not yet wired: id={id}, approved={approved}");
+                                log::warn!("ws: {session_id} <- PermissionResponse id={id} approved={approved} (not yet wired)");
                             }
-                            Err(_) => {
+                            Err(e) => {
                                 // Ignore unparseable messages; don't break the connection.
+                                log::debug!("ws: {session_id} <- unparseable message: {e}");
                             }
                         }
                     }
                     Some(Ok(Message::Ping(data))) => {
                         let _ = socket.send(Message::Pong(data)).await;
                     }
-                    _ => break,
+                    _ => {
+                        log::info!("ws: {session_id} socket closed/error — exiting event loop");
+                        break;
+                    }
                 }
             }
         }

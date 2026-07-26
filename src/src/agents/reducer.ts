@@ -6,7 +6,6 @@
 // pi-rs enum variants).
 
 import type {
-  CoreEvent,
   HistoryBlock,
   HistoryMessage,
   SessionEvent,
@@ -16,9 +15,24 @@ import type {
 } from "./types"
 
 let blockSeq = 0
-const newBlockId = () => `blk-${++blockSeq}`
+export const newBlockId = () => `blk-${++blockSeq}`
 let turnSeq = 0
-const newTurnId = () => `turn-${++turnSeq}`
+export const newTurnId = () => `turn-${++turnSeq}`
+
+/** Coerce a tool result/partial-result value (which may arrive as a string,
+ *  number, boolean, object, or array) into a displayable string. Objects and
+ *  arrays are JSON-stringified so the render layer never receives a raw
+ *  object (which React rejects as a child). */
+function asResultString(v: unknown): string {
+  if (v === null || v === undefined) return ""
+  if (typeof v === "string") return v
+  if (typeof v === "number" || typeof v === "boolean") return String(v)
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
 
 /** Append a text/thinking delta to the last block of that type, creating one if needed. */
 function appendDelta(
@@ -267,72 +281,29 @@ function updateSystemNotice(
 
 // ── Core (AgentEvent) handling ────────────────────────────────────────────
 
-function applyCoreEvent(turns: TranscriptTurn[], e: CoreEvent): TranscriptTurn[] {
-  switch (e.type) {
-    case "MessageUpdate": {
-      const sub = e.assistant_message_event
-      if (!sub) return turns
-      switch (sub.type) {
-        case "text_delta":
-          return appendDelta(turns, "text", sub.delta ?? "")
-        case "text_end":
-          return finalizeBlock(turns, "text", sub.content ?? "")
-        case "thinking_delta":
-          return appendDelta(turns, "thinking", sub.delta ?? "")
-        case "thinking_end":
-          return finalizeBlock(turns, "thinking", sub.content ?? "")
-        case "toolcall_delta":
-          return appendToolCallDelta(turns, sub.delta ?? "")
-        case "toolcall_end":
-          if (sub.toolCall) return finalizeToolCall(turns, sub.toolCall)
-          return turns
-        case "error": {
-          const msg = sub.error?.errorMessage ?? "unknown error"
-          return appendSystemNotice(turns, "notice", msg, { isError: true, status: "error" })
-        }
-        case "done": {
-          // Trailing assistant error (if any) is surfaced via the message field.
-          const err = sub.message?.errorMessage
-          if (err) return appendSystemNotice(turns, "notice", err, { isError: true, status: "error" })
-          // The model's final message carries the fully-assembled text content
-          // (`sub.content`). If any text_delta was dropped due to backpressure
-          // on the delta channel, finalize the text block with this authoritative
-          // content so the rendered text is complete (finding #5).
-          if (sub.content) {
-            return finalizeBlock(turns, "text", sub.content)
-          }
-          return turns
-        }
-        default:
-          return turns
-      }
-    }
-    case "TurnStart":
-    case "TurnEnd":
-      // Core also emits TurnStart/TurnEnd, but the session-level turn_start /
-      // turn_end are authoritative (they carry extracted tool_results). Ignore
-      // the core variants to avoid duplicate turn blocks (§5).
-      return turns
-    case "ToolExecutionStart":
-      // Tool call card already created on toolcall_end; nothing to do here.
-      return turns
-    case "ToolExecutionUpdate":
-      return updateToolCall(turns, e.tool_call_id ?? "", {
-        partialResult: e.partial_result ?? "",
-        status: "running",
-      })
-    case "ToolExecutionEnd":
-      return updateToolCall(turns, e.tool_call_id ?? "", {
-        result: e.result ?? "",
-        status: e.is_error ? "error" : "done",
-      })
-    case "AgentEnd":
-      // Terminal signal is taken from the session-level AgentEnd (which knows
-      // about retries); ignore the core one to avoid premature completion.
-      return turns
-    default:
-      return turns
+function addToolCall(
+  turns: TranscriptTurn[],
+  id: string,
+  name: string,
+  input: string,
+): TranscriptTurn[] {
+  const last = turns[turns.length - 1]
+  if (!last || last.status === "complete") {
+    // No active turn — start one and add the tool call block
+    return [
+      ...turns,
+      {
+        id: newTurnId(),
+        role: "assistant",
+        status: "in_progress",
+        blocks: [{ type: "tool_call", id, name, input, status: "running" }],
+      },
+    ]
   }
+  return replaceLast(turns, {
+    ...last,
+    blocks: [...last.blocks, { type: "tool_call", id, name, input, status: "running" }],
+  })
 }
 
 function startTurnIfIdle(turns: TranscriptTurn[]): TranscriptTurn[] {
@@ -349,6 +320,71 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
   terminal: boolean
 } {
   switch (e.type) {
+    // ── AgentEvent passthrough variants ──
+    case "agent_start":
+      return { turns: startTurnIfIdle(turns), terminal: false }
+    case "agent_end":
+      if (e.will_retry) {
+        const last = turns[turns.length - 1]
+        let next = turns
+        if (last && last.status === "in_progress") {
+          next = replaceLast(turns, { ...last, status: "complete", isError: true })
+        }
+        return { turns: next, terminal: false }
+      }
+      return { turns: markAllComplete(turns), terminal: true }
+    case "message_update": {
+      const sub = e.assistant_message_event
+      if (!sub) return { turns, terminal: false }
+      switch (sub.type) {
+        case "text_delta":
+          return { turns: appendDelta(turns, "text", sub.delta ?? ""), terminal: false }
+        case "text_end":
+          return { turns: finalizeBlock(turns, "text", sub.content ?? ""), terminal: false }
+        case "thinking_delta":
+          return { turns: appendDelta(turns, "thinking", sub.delta ?? ""), terminal: false }
+        case "thinking_end":
+          return { turns: finalizeBlock(turns, "thinking", sub.content ?? ""), terminal: false }
+        case "toolcall_delta":
+          return { turns: appendToolCallDelta(turns, sub.delta ?? ""), terminal: false }
+        case "toolcall_end":
+          if (sub.toolCall) return { turns: finalizeToolCall(turns, sub.toolCall), terminal: false }
+          return { turns, terminal: false }
+        case "error": {
+          const msg = sub.error?.errorMessage ?? "unknown error"
+          return { turns: appendSystemNotice(turns, "notice", msg, { isError: true, status: "error" }), terminal: false }
+        }
+        case "done": {
+          const err = sub.message?.errorMessage
+          if (err) return { turns: appendSystemNotice(turns, "notice", err, { isError: true, status: "error" }), terminal: false }
+          if (sub.content) {
+            return { turns: finalizeBlock(turns, "text", sub.content), terminal: false }
+          }
+          return { turns, terminal: false }
+        }
+        default:
+          return { turns, terminal: false }
+      }
+    }
+    case "tool_execution_start":
+      return { turns: addToolCall(turns, e.tool_call_id ?? "", e.tool_name ?? "", asResultString(e.args)), terminal: false }
+    case "tool_execution_update":
+      return { turns: updateToolCall(turns, e.tool_call_id ?? "", {
+        partialResult: asResultString(e.partial_result),
+        status: "running",
+      }), terminal: false }
+    case "tool_execution_end":
+      return { turns: updateToolCall(turns, e.tool_call_id ?? "", {
+        result: asResultString(e.result),
+        status: e.is_error ? "error" : "done",
+      }), terminal: false }
+    case "message_start":
+    case "message_end":
+      // Message boundaries are handled via message_update sub-types; no
+      // separate rendering needed.
+      return { turns, terminal: false }
+
+    // ── Session-specific variants ──
     case "turn_start":
       return { turns: startTurnIfIdle(turns), terminal: false }
     case "turn_end": {
@@ -368,17 +404,6 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
     }
     case "agent_settled":
       return { turns: markAllComplete(turns), terminal: false }
-    case "agent_end":
-      if (e.will_retry) {
-        // Finalize current assistant turn as error; a new turn will start on retry.
-        const last = turns[turns.length - 1]
-        let next = turns
-        if (last && last.status === "in_progress") {
-          next = replaceLast(turns, { ...last, status: "complete", isError: true })
-        }
-        return { turns: next, terminal: false }
-      }
-      return { turns: markAllComplete(turns), terminal: true }
     case "compaction_start":
       return {
         turns: appendSystemNotice(turns, "compaction", e.reason ?? "", { status: "active" }),
@@ -413,7 +438,6 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
         terminal: false,
       }
     case "permission_request": {
-      // Permission request block — add to the current turn's blocks
       const last = turns[turns.length - 1]
       if (!last || last.status === "complete") {
         return { turns, terminal: false }
@@ -436,7 +460,6 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
       }
     }
     case "notice": {
-      // Slash command result / error. Terminal — no AgentEnd follows.
       let next = turns
       if (e.is_error) {
         if (e.text) next = appendSystemNotice(next, "notice", e.text, { isError: true, status: "error" })
@@ -448,22 +471,20 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
     }
     case "queue_update":
     case "session_info_changed":
+    case "resync_required":
     case "other":
     default:
       return { turns, terminal: false }
   }
 }
 
-// ── Public reducer ────────────────────────────────────────────────────────
+// ── Public reducer ────────────────────────────────────────────────────────// ── Public reducer ────────────────────────────────────────────────────────
 
 /** @returns `{ turns, terminal }` — `terminal` signals the transport can close. */
 export function applyEvent(
   turns: TranscriptTurn[],
   event: TranscriptEvent,
 ): { turns: TranscriptTurn[]; terminal: boolean } {
-  if (event.kind === "core") {
-    return { turns: applyCoreEvent(turns, event as CoreEvent), terminal: false }
-  }
   if (event.kind === "session") {
     return applySessionEvent(turns, event as SessionEvent)
   }
