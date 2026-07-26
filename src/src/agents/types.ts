@@ -52,13 +52,12 @@ export interface TranscriptTurn {
   isError?: boolean
 }
 
-// ── Wire event envelopes (match backend `TranscriptEvent` serde tags) ──────
+// ── Wire event envelope (matches backend `TranscriptEvent` serde tags) ──────
 //
-// Backend serializes `TranscriptEvent` as:
-//   { "kind": "core",    ...AgentEvent }            — text/tool/thinking deltas
-//   { "kind": "session", "type": "...", ... }       — compaction/retry/turn/notice
-// `AgentEvent` itself is `#[serde(tag = "type")]` (variants NOT renamed:
-// MessageUpdate, TurnStart, TurnEnd, ToolExecutionStart, ...).
+// Backend serializes all events as `TranscriptEvent::Session(SessionEventPayload)`:
+//   { "kind": "session", "type": "...", ... }
+// The `type` field discriminates all variants: AgentStart, MessageUpdate,
+// ToolExecutionStart, TurnStart, AgentSettled, CompactionStart, etc.
 // `assistant_message_event` is a nested `#[serde(tag = "type")]` enum with
 // snake_case variants: text_delta / text_end / thinking_delta / thinking_end /
 // toolcall_delta / toolcall_end / done / error.
@@ -72,24 +71,28 @@ export interface AssistantMessageEvent {
   message?: { errorMessage?: string | null }
 }
 
-/** Loosely-typed core event payload — we only read the fields we need. */
-export interface CoreEvent {
-  kind: "core"
-  type: string
-  assistant_message_event?: AssistantMessageEvent
-  tool_call_id?: string
-  tool_name?: string
-  args?: string
-  partial_result?: string
-  result?: string
-  is_error?: boolean
-  tool_results?: Array<{ content?: Array<{ text?: string }> }>
-}
-
-/** Loosely-typed session event payload — matches `SessionEventPayload` (snake_case). */
+/** Unified session event payload — matches `SessionEventPayload` (snake_case).
+ *
+ * All events from the backend use `kind: "session"` with a `type` field that
+ * discriminates the variant: AgentStart, MessageUpdate, ToolExecutionStart,
+ * TurnStart, AgentSettled, CompactionStart, etc. */
 export interface SessionEvent {
   kind: "session"
   type: string
+  /** Assistant message event (nested serde enum) — present for MessageUpdate. */
+  assistant_message_event?: AssistantMessageEvent
+  /** Tool execution fields — present for ToolExecutionStart/Update/End. */
+  tool_call_id?: string
+  tool_name?: string
+  args?: unknown
+  /** Streamed partial result — may arrive as a JSON value (object/array). */
+  partial_result?: unknown
+  /** Final tool result — may arrive as a JSON value (object/array). */
+  result?: unknown
+  is_error?: boolean
+  /** Tool results from turn_end. */
+  tool_results?: ToolResultPayload[]
+  /** Retry / lifecycle fields. */
   will_retry?: boolean
   reason?: string
   aborted?: boolean
@@ -99,16 +102,14 @@ export interface SessionEvent {
   delay_ms?: number
   success?: boolean
   final_error?: string | null
-  tool_results?: ToolResultPayload[]
+  /** Notice fields. */
   text?: string
-  is_error?: boolean
-  /** Fields carried by the `permission_request` variant (§11). */
+  /** Permission request fields (§11). */
   id?: string
-  tool_name?: string
   tool_input?: unknown
 }
 
-export type TranscriptEvent = CoreEvent | SessionEvent | { kind: string; [k: string]: unknown }
+export type TranscriptEvent = SessionEvent | { kind: string; [k: string]: unknown }
 
 /** Client → server commands (matches backend `ClientCommand`). */
 export type ClientCommand =

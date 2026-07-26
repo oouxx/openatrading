@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, startTransition } from "react"
 import type { ReactNode } from "react"
-import { Search, Send, ToolCaseIcon } from "lucide-react"
+import { Search, Send } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import ToolCallBlock from "@/components/chat/ToolCallBlock"
@@ -10,23 +10,15 @@ import RetryIndicator from "@/components/chat/RetryIndicator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
+
 import { fetchJson } from "@/stores/data"
-import { fetchCommands } from "@/hooks/useChatThreads"
+import { fetchCommands, type ChatSession } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useAgentWebSocket } from "@/agents/useAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { applyEvent, historyToTurns } from "@/agents/reducer"
+import { applyEvent, historyToTurns, newTurnId } from "@/agents/reducer"
 import type {
   HistoryMessage,
   TranscriptBlock,
@@ -46,9 +38,6 @@ interface AiCopilotProps {
   sessions?: ChatSession[]
 }
 
-let turnSeq = 0
-const newTurnId = () => `turn-${++turnSeq}`
-
 const isTauri = "__TAURI_INTERNALS__" in window
 
 export default function AiCopilot({
@@ -64,6 +53,7 @@ export default function AiCopilot({
   // Per-thread transcript turns — the single source of truth for rendering.
   const [threadTurns, setThreadTurns] = useState<Map<string, TranscriptTurn[]>>(new Map())
   const streamThreadRef = useRef<string | null>(null)
+  const [streamThreadId, setStreamThreadId] = useState<string | null>(null)
   const transportRef = useRef<AgentTransport | null>(null)
   // Ref to always have the latest sendPrompt from useAgentWebSocket hook
   const sendPromptRef = useRef<((text: string) => Promise<void>) | null>(null)
@@ -134,6 +124,7 @@ export default function AiCopilot({
       if (isTauri) return
       setStreaming(false)
       streamThreadRef.current = null
+      setStreamThreadId(null)
       onReload?.()
     }, [onReload]),
   })
@@ -163,6 +154,7 @@ export default function AiCopilot({
       if (terminal) {
         setStreaming(false)
         streamThreadRef.current = null
+        setStreamThreadId(null)
         transport.dispose()
         transportRef.current = null
         onReload?.()
@@ -257,6 +249,21 @@ export default function AiCopilot({
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
+  // Reset the streaming flag when switching to a different thread that is
+  // not the one currently streaming. The new-session path sets
+  // `streamThreadRef` to the new id before `onActiveThreadChange` re-renders,
+  // so the guard preserves its `streaming=true`. Selecting an existing
+  // (resumed) thread clears a stale `streaming=true` that would otherwise
+  // block every subsequent `send()` via its `if (streaming && ...) return`
+  // guard.
+  useEffect(() => {
+    if (streamThreadRef.current !== activeThreadId) {
+      setStreaming(false)
+      streamThreadRef.current = null
+      setStreamThreadId(null)
+    }
+  }, [activeThreadId])
+
   const currentTurns = activeThreadId !== null ? (threadTurns.get(activeThreadId) ?? []) : []
   const isEmpty = currentTurns.length === 0
   const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab)
@@ -283,7 +290,14 @@ export default function AiCopilot({
     async (question?: string) => {
       const text = (question || input).trim()
       if (!text) return
-      if (streaming && streamThreadRef.current === activeThreadId) return
+      if (streaming && streamThreadId === activeThreadId) {
+        console.warn("[ChatView] send() blocked by streaming guard", {
+          streaming,
+          streamThread: streamThreadRef.current,
+          activeThreadId,
+        })
+        return
+      }
 
       setShowSlash(false)
       setInput("")
@@ -338,6 +352,7 @@ export default function AiCopilot({
 
       setStreaming(true)
       streamThreadRef.current = sid
+      setStreamThreadId(sid)
 
       // For new sessions, the backend already started processing the message
       // (fire-and-forget in create_session). We just need to connect WebSocket
@@ -365,6 +380,7 @@ export default function AiCopilot({
       } catch (e: unknown) {
         setStreaming(false)
         streamThreadRef.current = null
+        setStreamThreadId(null)
         transportRef.current?.dispose()
         transportRef.current = null
         const prev = threadTurnsRef.current.get(sid) ?? []
@@ -388,7 +404,7 @@ export default function AiCopilot({
         setThreadTurns(new Map(threadTurnsRef.current))
       }
     },
-    [activeThreadId, input, streaming, onActiveThreadChange, onReload, scrollDown, ]
+    [activeThreadId, input, streaming, streamThreadId, onActiveThreadChange, onReload, scrollDown]
   )
 
   const onInputKeyDown = useCallback(
@@ -530,7 +546,6 @@ export default function AiCopilot({
                           sessionId={activeThreadId}
                           turn={turn}
                           isStreaming={isLastAi && streaming}
-                          transport={transportRef.current}
                           respondToPermission={
                             isTauri
                               ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
@@ -574,7 +589,7 @@ export default function AiCopilot({
                   size="icon"
                   className="absolute bottom-1.5 right-1.5 size-8 rounded-lg"
                   onClick={() => send()}
-                  disabled={!input.trim() || (streaming && streamThreadRef.current === activeThreadId)}
+                  disabled={!input.trim() || (streaming && streamThreadId === activeThreadId)}
                 >
                   <Send className="size-4" />
                 </Button>
@@ -619,16 +634,23 @@ interface TurnRendererProps {
   sessionId: string | null
   turn: TranscriptTurn
   isStreaming: boolean
-  transport: AgentTransport | null
   respondToPermission: (id: string, approved: boolean) => Promise<void>
 }
 
-function TurnRenderer({ sessionId, turn, isStreaming, transport, respondToPermission }: TurnRendererProps) {
+function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: TurnRendererProps) {
   const segments = groupBlocks(turn.blocks)
   const compaction = lastNotice(turn, "compaction")
   const retry = lastNotice(turn, "retry")
-  const compactionStatus = compaction?.status ?? null
-  const retryStatus = retry?.status ?? null
+  const compactionStatus: "idle" | "compacting" | "done" | "error" =
+    compaction?.status === "active" ? "compacting"
+    : compaction?.status === "done" ? "done"
+    : compaction?.status === "error" ? "error"
+    : "idle"
+  const retryStatus: "idle" | "retrying" | "will-retry" | "done" | "error" =
+    retry?.status === "active" ? "retrying"
+    : retry?.status === "done" ? "done"
+    : retry?.status === "error" ? "error"
+    : "idle"
 
   return (
     <>
@@ -769,11 +791,12 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
 
 // ── Block grouping helpers ─────────────────────────────────────────────────
 
-interface BlockGroup {
-  kind: "thinking" | "text" | "tools" | "results" | "permission"
-  block?: TranscriptBlock
-  blocks: TranscriptBlock[]
-}
+type BlockGroup =
+  | { kind: "thinking"; block: Extract<TranscriptBlock, { type: "thinking" }>; blocks: Extract<TranscriptBlock, { type: "thinking" }>[] }
+  | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }>; blocks: Extract<TranscriptBlock, { type: "text" }>[] }
+  | { kind: "tools"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "tool_call" }>[] }
+  | { kind: "results"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "system_notice" }>[] }
+  | { kind: "permission"; block: Extract<TranscriptBlock, { type: "permission_request" }>; blocks: Extract<TranscriptBlock, { type: "permission_request" }>[] }
 
 function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
   const groups: BlockGroup[] = []

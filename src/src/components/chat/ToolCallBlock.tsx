@@ -1,7 +1,28 @@
 import { useState, useMemo } from "react"
 import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw, Terminal, FileEdit } from "lucide-react"
-import { diffLines, formatLines } from "diff"
+import { diffLines } from "diff"
 import { getApiBaseUrl } from "@/stores/data"
+
+/**
+ * Coerce any tool result / partial-result payload to a renderable string.
+ *
+ * The backend serializes tool results as `serde_json::Value`, so they may
+ * arrive as objects/arrays (e.g. `{ content, details }`). Rendering a non-string
+ * directly crashes React ("Objects are not valid as a React child"). This is a
+ * defensive guard at the render layer — the reducer also normalizes, but stale
+ * in-memory turns (from before a hot reload) or future event-shape changes must
+ * never white-screen the whole app.
+ */
+function asText(v: unknown): string {
+  if (v == null) return ""
+  if (typeof v === "string") return v
+  if (typeof v === "number" || typeof v === "boolean") return String(v)
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
 
 interface ToolCall {
   id: string
@@ -43,7 +64,8 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
         .map((tc, i) => {
           const isExpanded = expanded[tc.id] ?? isAutoExpanded(tc) ?? false
           const status = tc.status ?? (isStreaming ? "streaming" : "success")
-          const hasPartial = tc.partialResult && tc.partialResult.length > 0
+          const partialText = asText(tc.partialResult)
+          const hasPartial = partialText.length > 0
           const hasArgs = tc.args && tc.args.length > 0
           const hasContent = hasArgs || hasPartial
 
@@ -92,7 +114,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                   {hasPartial && (
                     <Section title="中间结果">
                       <ContentBlock
-                        content={tc.partialResult!}
+                        content={partialText}
                         showCursor={status === "running"}
                       />
                     </Section>
@@ -102,7 +124,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                     <Section title="结果">
                       <ToolResultContent
                         name={tc.name}
-                        content={tc.result}
+                        content={asText(tc.result)}
                         toolCallId={tc.id}
                         sessionId={sessionId}
                         output={tc.output}
@@ -193,26 +215,27 @@ function ToolResultContent({
 
 /** Simple diff view for edit tool results (§6.3). */
 function DiffView({ content }: { content: string }) {
+  const safeContent = asText(content)
   const diffResult = useMemo(() => {
     // Try to parse the content as a unified diff or structured edit result
     // If it contains "---" and "+++" lines, render as diff
-    const lines = content.split("\n")
+    const lines = safeContent.split("\n")
     const hasDiffMarkers = lines.some((l) => l.startsWith("---") || l.startsWith("+++"))
     if (hasDiffMarkers) {
       try {
-        const changes = diffLines(content, "")
+        const changes = diffLines(safeContent, "")
         return { type: "diff" as const, changes }
       } catch {
-        return { type: "raw" as const, content }
+        return { type: "raw" as const, content: safeContent }
       }
     }
-    return { type: "raw" as const, content }
-  }, [content])
+    return { type: "raw" as const, content: safeContent }
+  }, [safeContent])
 
   if (diffResult.type === "diff") {
     return (
       <pre className="overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-        {content.split("\n").map((line, i) => {
+        {safeContent.split("\n").map((line, i) => {
           let className = ""
           if (line.startsWith("+")) className = "text-emerald-500"
           else if (line.startsWith("-")) className = "text-red-500"
@@ -227,7 +250,7 @@ function DiffView({ content }: { content: string }) {
     )
   }
 
-  return <ResultBlock content={content} toolCallId="" />
+  return <ResultBlock content={safeContent} toolCallId="" />
 }
 
 /** Renders tool result content with truncation and expand-from-server support (§15.2). */
@@ -246,7 +269,7 @@ function ResultBlock({
   const [loading, setLoading] = useState(false)
 
   const isTruncated = output?.truncated ?? false
-  const displayText = fullContent ?? (isTruncated ? (output?.preview ?? content) : content)
+  const displayText = asText(fullContent ?? (isTruncated ? (output?.preview ?? content) : content))
 
   const expand = async () => {
     if (!sessionId) return
@@ -294,11 +317,12 @@ function ContentBlock({
   showCursor?: boolean
 }) {
   const [showFull, setShowFull] = useState(false)
-  const isLong = content.length > COLLAPSE_THRESHOLD
+  const safeContent = asText(content)
+  const isLong = safeContent.length > COLLAPSE_THRESHOLD
 
   // Default: collapsed if long, expanded if short
   const effectivelyExpanded = isLong ? showFull : true
-  const displayText = effectivelyExpanded ? content : content.slice(0, 300)
+  const displayText = effectivelyExpanded ? safeContent : safeContent.slice(0, 300)
 
   return (
     <div>
@@ -322,7 +346,7 @@ function ContentBlock({
           className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
           onClick={() => setShowFull(!showFull)}
         >
-          {showFull ? "收起" : `展开全部 (${content.length} 字符)`}
+          {showFull ? "收起" : `展开全部 (${safeContent.length} 字符)`}
         </button>
       )}
     </div>
