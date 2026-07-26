@@ -442,16 +442,6 @@ enum ClientCommand {
 
 // ── Event channel setup ────────────────────────────────────────────────────
 
-/// Async listener signature for `AgentEvent` subscription.
-type AgentEventListener = Arc<
-    dyn Fn(
-            AgentEvent,
-            Option<tokio::sync::watch::Receiver<bool>>,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        + Send
-        + Sync,
->;
-
 /// Set up the event channel for a session.
 ///
 /// Returns an unbounded receiver that yields [`TranscriptEvent`] values from

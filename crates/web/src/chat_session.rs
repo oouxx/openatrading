@@ -129,29 +129,3 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
         tools,
     }
 }
-
-/// Extract the human-readable text from a serialized `AgentToolResult`.
-///
-/// The `ToolExecutionEnd` event carries `result` as the full
-/// `AgentToolResult` JSON (`{ content: [...], details, terminate }`).
-/// The frontend tool-call block expects a plain string, so we concatenate
-/// the `text` of every `content` block. Falls back to the raw JSON string
-/// when the shape is unexpected.
-///
-/// Single source of truth — previously duplicated in `chat.rs` and
-/// `src-tauri/src/main.rs`.
-pub fn extract_tool_result_text(result: &serde_json::Value) -> String {
-    let Some(serde_json::Value::Array(content)) = result.get("content") else {
-        return result.to_string();
-    };
-    let mut texts: Vec<String> = Vec::new();
-    for item in content {
-        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-            texts.push(text.to_string());
-        }
-    }
-    if texts.is_empty() {
-        return result.to_string();
-    }
-    texts.join("\n")
-}
