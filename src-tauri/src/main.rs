@@ -943,11 +943,10 @@ async fn dispatch_post(
     }
 }
 
-#[allow(unused_variables)]
 async fn dispatch_patch(
     path: &str,
     body: &serde_json::Value,
-    state: &Arc<AppState>,
+    _state: &Arc<AppState>,
 ) -> Result<serde_json::Value, String> {
     // PATCH /api/ai/sessions/:id — rename session
     if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {

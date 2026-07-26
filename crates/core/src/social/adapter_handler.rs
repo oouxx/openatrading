@@ -1,6 +1,3 @@
-#![allow(clippy::large_futures)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::manual_let_else)]
 use crate::context::AppContext;
 use crate::RoleEntry;
 use ahash::AHashMap as HashMap;

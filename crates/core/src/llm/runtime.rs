@@ -1,5 +1,3 @@
-#![allow(clippy::large_futures)]
-#![allow(clippy::missing_errors_doc)]
 //! Thin wrapper layer over pi-coding-agent's [`AgentSession`].
 //!
 //! [`AgentFacade`] owns a single [`AgentSession`] and re-exposes every
