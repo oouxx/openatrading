@@ -240,7 +240,6 @@ impl McpClient {
     }
 
     /// Wrap this client into a `DynTool` factory.
-    #[must_use]
     pub fn create_tool(&self, spec: McpToolSpec) -> Arc<DynTool> {
         let peer = self.peer.clone();
         let McpToolSpec {
@@ -337,7 +336,6 @@ pub enum McpTransportConfig {
 }
 
 impl McpTransportConfig {
-    #[must_use]
     pub fn url(&self) -> &str {
         match self {
             Self::StreamableHttp { url, .. } | Self::Sse { url, .. } => url,
@@ -358,7 +356,6 @@ pub struct McpServerConfig {
 
 impl McpServerConfig {
     /// Create a new config with just a name (for testing/UI stubs).
-    #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -397,7 +394,6 @@ impl McpRegistry {
         Self
     }
 
-    #[must_use]
     pub fn single(_endpoint: &str) -> Self {
         Self
     }

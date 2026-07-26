@@ -60,7 +60,6 @@ pub struct ChatConfigInput<'a> {
 /// `command_type`/`command_name` take precedence; if absent, a present
 /// `skill_name` routes to the `Skill` command. The `Skill` branch applies the
 /// skill's `allowed_tools` filter (the Tauri copy previously skipped this).
-#[must_use]
 pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
     let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
 
@@ -141,7 +140,6 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
 ///
 /// Single source of truth — previously duplicated in `chat.rs` and
 /// `src-tauri/src/main.rs`.
-#[must_use]
 pub fn extract_tool_result_text(result: &serde_json::Value) -> String {
     let Some(serde_json::Value::Array(content)) = result.get("content") else {
         return result.to_string();

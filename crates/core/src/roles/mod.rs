@@ -15,13 +15,11 @@ pub mod pnl;
 pub mod prompt;
 
 /// Path to the skills directory (`{atrading_home}/skills/`).
-#[must_use]
 pub fn default_skills_dir() -> PathBuf {
     crate::atrading_home().join("skills")
 }
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.
-#[must_use]
 pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     match crate::utils::parse_yaml_frontmatter(content) {
         Some((matter, body)) => {
@@ -33,7 +31,6 @@ pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
 }
 
 /// Load all SKILL.md entries from `~/.atrading/skills/` as `RoleEntry`.
-#[must_use]
 pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
     let dir = default_skills_dir();
     let mut roles = Vec::new();

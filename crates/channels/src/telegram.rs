@@ -15,7 +15,6 @@ pub struct TelegramChannel {
 }
 
 impl TelegramChannel {
-    #[must_use]
     pub fn new(bot_token: String, chat_id: String) -> Self {
         Self {
             bot_token,
@@ -102,7 +101,6 @@ struct SendResult {
 }
 
 impl TelegramAdapter {
-    #[must_use]
     pub fn new(bot_token: String, allowed_chat_id: String) -> Self {
         Self {
             bot_token,

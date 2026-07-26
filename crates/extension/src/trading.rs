@@ -26,7 +26,6 @@ use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
 pub struct MarketDataExtension;
 
 impl MarketDataExtension {
-    #[must_use]
     pub const fn new() -> Self {
         Self
     }

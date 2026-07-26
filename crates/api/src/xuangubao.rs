@@ -276,7 +276,6 @@ pub enum ApiField {
 }
 
 impl ApiField {
-    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::RiseCount => "rise_count",
@@ -317,7 +316,6 @@ impl ApiField {
     }
 
     /// 将多个字段拼接为逗号分隔的字符串（即 `fields=...` 参数值）。
-    #[must_use]
     pub fn join(fields: &[Self]) -> String {
         fields
             .iter()
@@ -346,12 +344,10 @@ impl Default for XuanguBaoClient {
 }
 
 impl XuanguBaoClient {
-    #[must_use]
     pub fn new() -> Self {
         Self::with_base_url(BASE_URL.to_string())
     }
 
-    #[must_use]
     pub fn with_base_url(base_url: String) -> Self {
         let client = Self::build_client();
         Self { client, base_url }
@@ -495,7 +491,6 @@ impl XuanguBaoClient {
 
     /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
-    #[must_use]
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
     ///
     /// # Panics
@@ -800,7 +795,6 @@ impl XuanguBaoClient {
 
     /// Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     /// If today's market hasn't closed yet, returns the previous trading day's close.
-    #[must_use]
     /// Returns the Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     ///
     /// # Panics
@@ -1313,7 +1307,6 @@ pub enum KlinePeriod {
 }
 
 impl KlinePeriod {
-    #[must_use]
     pub const fn as_seconds(&self) -> u32 {
         match self {
             Self::Minute => 60,
@@ -1323,7 +1316,6 @@ impl KlinePeriod {
         }
     }
 
-    #[must_use]
     pub const fn as_str(&self) -> &str {
         match self {
             Self::Minute => "minute",
@@ -1503,7 +1495,6 @@ struct PlateAccumulator {
 
 /// Slice events into 5‑minute buckets across 09:30–15:00, computing
 /// cumulative emotion scores and top plates per bucket.
-#[must_use]
 /// Build replay snapshots from abnormal events, grouped into 5-minute buckets.
 ///
 /// # Panics
@@ -1620,7 +1611,6 @@ fn unix_to_hhmm(ts: i64) -> String {
 }
 
 /// Assemble the text prompt for AI analysis from snapshot data.
-#[must_use]
 /// Build an analysis prompt from snapshots.
 ///
 /// # Panics

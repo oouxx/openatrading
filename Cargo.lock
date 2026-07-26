@@ -3408,8 +3408,8 @@ dependencies = [
 
 [[package]]
 name = "pi-agent-core"
-version = "1.79.35"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.35#678ec46d2d56b76fb671a9c544f9533f7dbc11f4"
+version = "1.79.36"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3431,8 +3431,8 @@ dependencies = [
 
 [[package]]
 name = "pi-ai"
-version = "1.79.35"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.35#678ec46d2d56b76fb671a9c544f9533f7dbc11f4"
+version = "1.79.36"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3448,8 +3448,8 @@ dependencies = [
 
 [[package]]
 name = "pi-coding-agent"
-version = "1.79.35"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.35#678ec46d2d56b76fb671a9c544f9533f7dbc11f4"
+version = "1.79.36"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3475,8 +3475,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extension-api"
-version = "1.79.35"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.35#678ec46d2d56b76fb671a9c544f9533f7dbc11f4"
+version = "1.79.36"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
 dependencies = [
  "async-trait",
  "futures",
@@ -3487,8 +3487,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extensions"
-version = "1.79.35"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.35#678ec46d2d56b76fb671a9c544f9533f7dbc11f4"
+version = "1.79.36"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
 dependencies = [
  "async-trait",
  "pi-extension-api",

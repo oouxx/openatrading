@@ -37,7 +37,6 @@ const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
 
 impl CircuitBreaker {
-    #[must_use]
     pub fn new(threshold: u32, reset_timeout: std::time::Duration) -> Self {
         Self {
             inner: Arc::new(CircuitBreakerInner {
@@ -55,7 +54,6 @@ impl CircuitBreaker {
     /// # Panics
     ///
     /// Panics if the internal mutex is poisoned.
-    #[must_use]
     pub fn is_allowed(&self) -> bool {
         let state = self.inner.state.load(Ordering::Acquire);
         match state {
@@ -124,7 +122,6 @@ impl CircuitBreaker {
     }
 
     /// 获取当前状态（用于监控/日志）。
-    #[must_use]
     pub fn state(&self) -> CircuitState {
         match self.inner.state.load(Ordering::Acquire) {
             STATE_CLOSED => CircuitState::Closed,
@@ -135,7 +132,6 @@ impl CircuitBreaker {
     }
 
     /// 获取当前连续失败次数。
-    #[must_use]
     pub fn failures(&self) -> u32 {
         self.inner.failures.load(Ordering::Acquire)
     }

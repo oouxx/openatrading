@@ -20,21 +20,18 @@ pub struct MarketToolsServer {
 }
 
 impl MarketToolsServer {
-    #[must_use]
     pub fn new(tools: Vec<Arc<DynTool>>) -> Self {
         Self {
             tools: Arc::new(tools),
         }
     }
 
-    #[must_use]
     pub fn tools(&self) -> &[Arc<DynTool>] {
         &self.tools
     }
 
     /// 将内部 DynTool 转换为 rmcp Tool 描述列表。
     #[doc(hidden)]
-    #[must_use]
     pub fn build_tool_descriptors(&self) -> Vec<Tool> {
         self.tools
             .iter()

@@ -17,14 +17,11 @@
 //! fork, new session).
 
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::Result;
-use futures::Future;
-use tokio::sync::mpsc;
 
-use openatrading_agent::types::{AgentEvent, AgentMessage};
+use openatrading_agent::types::AgentMessage;
 use pi_coding_agent::core::agent_session::{
     AgentSession, AgentSessionEventListener, SessionEventUnsubscribeHandle, SessionStats,
 };
@@ -35,7 +32,6 @@ use pi_coding_agent::core::prompt_templates::PromptTemplate;
 use pi_coding_agent::core::sdk::{self, prelude::SettingsManager, CreateAgentSessionOptions};
 use pi_coding_agent::core::session_manager::SessionTreeNode;
 use pi_coding_agent::core::{compaction::CompactionSettings, session_manager::SessionManager};
-use pi_coding_agent::pi_agent_core::agent::UnsubscribeHandle;
 use pi_coding_agent::pi_agent_core::pi_ai_types::{ContentBlock, Model, ThinkingLevel};
 use pi_coding_agent::pi_agent_core::types::QueueMode;
 
@@ -79,7 +75,6 @@ fn find_session_file_by_id(session_dir: &str, id: &str) -> Option<String> {
 }
 
 impl AgentRuntime {
-    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -197,27 +192,12 @@ pub struct AgentFacade {
     session: AgentSession,
 }
 
-/// Async listener for [`AgentFacade::subscribe`].
-///
-/// Mirrors pi-coding-agent's (private) `AgentEventListener` type alias so
-/// callers can name the type without importing from `pi_coding_agent`
-/// internals. Wrap your closure in `Arc::new(...)` and it coerces here.
-pub type AgentEventListener = Arc<
-    dyn Fn(
-            AgentEvent,
-            Option<tokio::sync::watch::Receiver<bool>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
-        + Send
-        + Sync,
->;
-
 impl AgentFacade {
     /// Borrow the underlying [`AgentSession`] directly.
     ///
     /// This escape hatch exists for the rare case where a capability is not
     /// (yet) wrapped. Prefer adding a wrapper method here instead of relying
     /// on this accessor long-term.
-    #[must_use]
     pub fn raw(&self) -> &AgentSession {
         &self.session
     }
@@ -225,7 +205,6 @@ impl AgentFacade {
     /// Mutably borrow the underlying [`AgentSession`] directly (e.g. for
     /// `&mut self` operations not yet wrapped). See [`Self::raw`] for the
     /// rationale.
-    #[must_use]
     pub fn raw_mut(&mut self) -> &mut AgentSession {
         &mut self.session
     }
@@ -233,26 +212,22 @@ impl AgentFacade {
     /// Borrow the underlying [`pi_coding_agent`] `Agent` (the LLM driving
     /// this session). Exposed for low-level prompts that need the returned
     /// message vector rather than the higher-level [`Self::prompt`] flow.
-    #[must_use]
     pub fn agent(&self) -> &openatrading_agent::agent::Agent {
         self.session.get_agent()
     }
 
     // ── Metadata ─────────────────────────────────────────────────────────
 
-    #[must_use]
     pub fn session_id(&self) -> String {
         self.session.get_session_id()
     }
 
     /// The session's persisted name, if any was set.
-    #[must_use]
     pub fn session_name_raw(&self) -> Option<String> {
         self.session.get_session_name()
     }
 
     /// The session's name, falling back to `"default"` when none is set.
-    #[must_use]
     pub fn session_name(&self) -> String {
         self.session
             .get_session_name()
@@ -265,22 +240,18 @@ impl AgentFacade {
         self.session.set_session_name(name);
     }
 
-    #[must_use]
     pub fn session_file(&self) -> Option<PathBuf> {
         self.session.get_session_file()
     }
 
-    #[must_use]
     pub fn session_dir(&self) -> PathBuf {
         self.session.get_session_dir()
     }
 
-    #[must_use]
     pub fn cwd(&self) -> String {
         self.session.get_cwd().to_string()
     }
 
-    #[must_use]
     pub fn session_stats(&self) -> SessionStats {
         self.session.get_session_stats()
     }
@@ -297,7 +268,6 @@ impl AgentFacade {
         self.session.get_state().await
     }
 
-    #[must_use]
     pub fn session_tree(&self) -> Vec<SessionTreeNode> {
         self.session.get_tree()
     }
@@ -312,12 +282,10 @@ impl AgentFacade {
         self.session.is_idle().await
     }
 
-    #[must_use]
     pub fn is_compacting(&self) -> bool {
         self.session.is_compacting()
     }
 
-    #[must_use]
     pub fn is_retrying(&self) -> bool {
         self.session.is_retrying()
     }
@@ -330,7 +298,6 @@ impl AgentFacade {
         self.session.get_context_usage().await
     }
 
-    #[must_use]
     pub fn pending_message_count(&self) -> usize {
         self.session.pending_message_count()
     }
@@ -457,7 +424,6 @@ impl AgentFacade {
     }
 
     /// The configured scoped models (cloned).
-    #[must_use]
     pub fn scoped_models(&self) -> Vec<(Model, Option<ThinkingLevel>)> {
         self.session.get_scoped_models().to_vec()
     }
@@ -468,7 +434,6 @@ impl AgentFacade {
     }
 
     /// Borrow the model registry (used for resolving model specs from CLI/UI).
-    #[must_use]
     pub fn model_registry(&self) -> &ModelRegistry {
         self.session.get_model_registry()
     }
@@ -487,11 +452,10 @@ impl AgentFacade {
     pub async fn compact(
         &self,
         custom_instructions: Option<&str>,
-    ) -> std::result::Result<String, String> {
+    ) -> Result<pi_coding_agent::core::compaction::CompactionResult, String> {
         self.session.compact(custom_instructions).await
     }
 
-    #[must_use]
     pub fn compaction_settings(&self) -> CompactionSettings {
         self.session.get_compaction_settings().clone()
     }
@@ -502,7 +466,6 @@ impl AgentFacade {
 
     // ── Auto-retry ───────────────────────────────────────────────────────
 
-    #[must_use]
     pub fn auto_retry_enabled(&self) -> bool {
         self.session.auto_retry_enabled()
     }
@@ -511,7 +474,6 @@ impl AgentFacade {
         self.session.set_auto_retry_enabled(enabled);
     }
 
-    #[must_use]
     pub fn retry_attempt(&self) -> u32 {
         self.session.retry_attempt()
     }
@@ -526,12 +488,10 @@ impl AgentFacade {
         self.session.follow_up(text, images).await;
     }
 
-    #[must_use]
     pub fn steering_messages(&self) -> Vec<String> {
         self.session.get_steering_messages()
     }
 
-    #[must_use]
     pub fn follow_up_messages(&self) -> Vec<String> {
         self.session.get_follow_up_messages()
     }
@@ -562,12 +522,10 @@ impl AgentFacade {
         self.session.set_active_tools_by_name(tool_names).await;
     }
 
-    #[must_use]
     pub fn all_tools(&self) -> Vec<ToolInfo> {
         self.session.get_all_tools()
     }
 
-    #[must_use]
     pub fn tool_definition(&self, name: &str) -> Option<&ToolDefinition> {
         self.session.get_tool_definition(name)
     }
@@ -583,33 +541,8 @@ impl AgentFacade {
     /// pi-coding-agent does not export the type alias, so the equivalent
     /// `Arc<dyn ...>` signature is spelled out here; it is structurally
     /// identical to the underlying `AgentEventListener` type.
-    pub async fn subscribe(&self, listener: AgentEventListener) -> UnsubscribeHandle {
-        self.session.subscribe(listener).await
-    }
-
-    /// Subscribe a sync `AgentSessionEvent` listener. Returns an unsubscribe
-    /// handle.
-    pub fn subscribe_session_events(
-        &self,
-        listener: AgentSessionEventListener,
-    ) -> SessionEventUnsubscribeHandle {
-        self.session.subscribe_session_events(listener)
-    }
-
-    /// Convenience: subscribe to `AgentEvent` and forward every event into an
-    /// mpsc channel. The returned handle keeps the listener alive while held.
-    pub async fn subscribe_to_channel(&self, tx: mpsc::Sender<AgentEvent>) -> UnsubscribeHandle {
-        let event_tx = tx;
-        self.session
-            .subscribe(Arc::new(
-                move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-                    let tx = event_tx.clone();
-                    Box::pin(async move {
-                        let _ = tx.send(event).await;
-                    }) as Pin<Box<dyn Future<Output = ()> + Send>>
-                },
-            ))
-            .await
+    pub fn subscribe(&self, listener: AgentSessionEventListener) -> SessionEventUnsubscribeHandle {
+        self.session.subscribe(listener)
     }
 
     // ── Session switching / resume ───────────────────────────────────────
@@ -644,12 +577,10 @@ impl AgentFacade {
         self.session.get_system_prompt().await
     }
 
-    #[must_use]
     pub fn extension_registry(&self) -> Option<Arc<ExtensionRegistry>> {
         self.session.get_extension_registry()
     }
 
-    #[must_use]
     pub fn prompt_templates(&self) -> Vec<PromptTemplate> {
         self.session.prompt_templates()
     }

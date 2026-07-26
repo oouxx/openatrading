@@ -11,7 +11,6 @@ pub const DEFAULT_CHAT_SYSTEM_PROMPT: &str =
 // ── Market context ─────────────────────────────────
 
 /// Format market overview data into a structured context block.
-#[must_use]
 pub fn build_market_context(overview: &MarketOverview, date: &str) -> String {
     format!(
         "## 当前市场数据\n\
@@ -36,7 +35,6 @@ pub const MARKET_CONTEXT_ERROR: &str = "## 市场数据获取失败\n";
 // ── Decision ───────────────────────────────────────
 
 /// Build the user message for the cron decision path.
-#[must_use]
 pub fn build_decision_user_message(market_context: &str, display_name: &str) -> String {
     format!(
         "{market_context}\n\n请以【{display_name}】身份，根据策略体系分析当前市场状态和持仓情况。你可以调用 get_current_positions 查询持仓，调用 get_historical_context 查询历史数据。给出今日复盘和明日操作建议。\n\n\
@@ -78,7 +76,6 @@ pub struct WebChatMarketData<'a> {
 }
 
 /// Build the user message for the web chat endpoint (richer format with risk analysis).
-#[must_use]
 pub fn build_web_chat_user_message(data: &WebChatMarketData<'_>) -> String {
     let ratio = f64::from(data.rise) / f64::from(data.fall.max(1));
     format!(
@@ -111,7 +108,6 @@ pub fn build_web_chat_user_message(data: &WebChatMarketData<'_>) -> String {
 // ── Replay analysis ─────────────────────────────────
 
 /// Build the replay analysis system prompt for the web SSE endpoint.
-#[must_use]
 pub fn build_replay_analysis_prompt(date: &str, data_table: &str) -> String {
     format!(
         r"你是A股短线复盘专家。以下是{date}全天5分钟级别行情快照数据：
@@ -161,7 +157,6 @@ pub const EXTRACTION_SYSTEM_PROMPT: &str =
 // ── Historical context ────────────────────────────
 
 /// Build the historical context text shown to the LLM as tool output.
-#[must_use]
 pub fn build_historical_context(days: u32, snapshots: &[MarketSnapshot]) -> String {
     if snapshots.is_empty() {
         return "暂无历史数据".to_string();

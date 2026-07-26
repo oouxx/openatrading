@@ -26,7 +26,6 @@ pub fn persist_state(state: &DesktopState) {
 }
 
 /// Return a minimal state skeleton with the last active session ID restored.
-#[must_use]
 pub fn restore_state() -> DesktopState {
     let persisted: Option<Value> = std::fs::read_to_string(get_state_path())
         .ok()
@@ -40,7 +39,6 @@ pub fn restore_state() -> DesktopState {
     state
 }
 
-#[must_use]
 pub const fn default_state() -> DesktopState {
     DesktopState {
         revision: 1,

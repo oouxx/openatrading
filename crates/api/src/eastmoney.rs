@@ -163,7 +163,6 @@ impl LhbClient {
     ///
     /// # Panics
     /// Panics if the reqwest client cannot be built (should never happen).
-    #[must_use]
     pub fn new() -> Self {
         Self {
             client: Client::builder()
