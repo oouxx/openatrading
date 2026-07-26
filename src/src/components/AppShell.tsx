@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
 import AiCopilot from "@/components/ChatView"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import ConversationSidebar from "./ConversationSidebar"
 import { useThreads } from "@/hooks/useChatThreads"
 import { useStockTabStore } from "@/stores/stockTabStore"
@@ -64,12 +65,14 @@ export default function AppShell() {
           {mode === "chat" ? (
             <div className="flex h-full max-h-screen min-w-0 flex-1 flex-row">
               <div className="flex min-w-0 flex-1 flex-col">
-                <AiCopilot
-                  activeThreadId={activeThreadId}
-                  onActiveThreadChange={handleActiveChange}
-                  onReload={reload}
-                  sessions={sessions}
-                />
+                <ErrorBoundary name="AiCopilot">
+                  <AiCopilot
+                    activeThreadId={activeThreadId}
+                    onActiveThreadChange={handleActiveChange}
+                    onReload={reload}
+                    sessions={sessions}
+                  />
+                </ErrorBoundary>
               </div>
               <RightPanel />
             </div>
