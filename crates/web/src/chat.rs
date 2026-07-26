@@ -355,7 +355,16 @@ pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Json<serde_json::Value> {
+    openatrading_core::log::info!(
+        "create_session: POST /api/ai/sessions name={:?} message_len={}",
+        req.name,
+        req.message.len()
+    );
     let name = req.name.as_deref().filter(|s| !s.is_empty());
+    openatrading_core::log::info!(
+        "create_session: calling runtime.create_session (resume=false, name={:?})",
+        name
+    );
     let agent_facade = match state
         .ctx
         .runtime
@@ -364,6 +373,7 @@ pub async fn create_session(
     {
         Ok(session) => session,
         Err(e) => {
+            openatrading_core::log::error!("create_session: runtime.create_session failed: {e}");
             return Json(serde_json::json!({
                 "success": false,
                 "error": e.to_string(),
@@ -372,6 +382,7 @@ pub async fn create_session(
     };
 
     let session_id = agent_facade.session_id();
+    openatrading_core::log::info!("create_session: created session id={session_id}");
 
     // Store the facade and pending message so the WebSocket handler can
     // subscribe to events BEFORE the agent starts processing. This prevents
@@ -382,6 +393,10 @@ pub async fn create_session(
             facade: agent_facade.clone(),
             pending_message: Some(req.message.clone()),
         },
+    );
+    openatrading_core::log::info!(
+        "create_session: facade inserted into shared pool, pending_message queued (len={})",
+        req.message.len()
     );
 
     // Mark session as running so list_sessions shows the correct status.
@@ -419,6 +434,10 @@ pub async fn create_session(
         }
     }
     drop(mgr);
+    openatrading_core::log::info!(
+        "create_session: responding id={session_id} name={:?}",
+        session_name
+    );
 
     Json(serde_json::json!({
         "success": true,

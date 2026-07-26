@@ -5,9 +5,9 @@
 // Manages connection lifecycle, reconnection, and event processing.
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { applyEvent } from "./reducer"
-import type { TranscriptEvent, TranscriptTurn } from "./types"
-import { getApiBaseUrl } from "@/stores/data"
+import { applyEvent, historyToTurns } from "./reducer"
+import type { HistoryMessage, TranscriptEvent, TranscriptTurn } from "./types"
+import { fetchJson, getApiBaseUrl } from "@/stores/data"
 
 export enum ReadyState {
   UNINSTANTIATED = -1,
@@ -30,6 +30,11 @@ export interface UseAgentWebSocketOptions {
   onTurnsUpdate?: (turns: TranscriptTurn[]) => void
   /** Called when a terminal event (agent_end / notice) is received */
   onTerminal?: () => void
+  /** Called when the backend signals `resync_required` (event buffer evicted
+   *  the requested seq). The hook refetches the full message history itself,
+   *  rebuilds turns, and calls `onTurnsUpdate`; this callback lets the host
+   *  react (e.g. clear UI streaming state). */
+  onResync?: () => void
 }
 
 export function useAgentWebSocket(
@@ -37,7 +42,6 @@ export function useAgentWebSocket(
   options: UseAgentWebSocketOptions = {},
 ) {
   const turnsRef = useRef<TranscriptTurn[]>([])
-  const [isReady, setIsReady] = useState(false)
   const [readyState, setReadyState] = useState<ReadyState>(ReadyState.UNINSTANTIATED)
   const wsRef = useRef<WebSocket | null>(null)
   const readyResolveRef = useRef<(() => void) | null>(null)
@@ -46,8 +50,11 @@ export function useAgentWebSocket(
   const optionsRef = useRef(options)
   const mountedRef = useRef(true)
 
-  // Keep options ref current
-  optionsRef.current = options
+  // Keep options ref current. Done in an effect so we never mutate a ref
+  // during render (react-hooks/refs rule).
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   // Connect/disconnect WebSocket based on sessionId
   useEffect(() => {
@@ -69,8 +76,6 @@ export function useAgentWebSocket(
       reconnectTimerRef.current = null
     }
     reconnectCountRef.current = 0
-    setReadyState(ReadyState.UNINSTANTIATED)
-    setIsReady(false)
 
     if (!sessionId) return
 
@@ -81,7 +86,6 @@ export function useAgentWebSocket(
       if (!mountedRef.current) return
 
       setReadyState(ReadyState.CONNECTING)
-      setIsReady(false)
 
       const ws = new WebSocket(url)
       wsRef.current = ws
@@ -90,7 +94,6 @@ export function useAgentWebSocket(
         if (!mountedRef.current || ws !== wsRef.current) return
         console.log('[useAgentWebSocket] connected', url)
         setReadyState(ReadyState.OPEN)
-        setIsReady(true)
         reconnectCountRef.current = 0
         readyResolveRef.current?.()
         readyResolveRef.current = null
@@ -100,7 +103,6 @@ export function useAgentWebSocket(
         if (!mountedRef.current || ws !== wsRef.current) return
         console.log('[useAgentWebSocket] closed', url)
         setReadyState(ReadyState.CLOSED)
-        setIsReady(false)
 
         // Auto-reconnect
         const maxAttempts = 20
@@ -122,8 +124,26 @@ export function useAgentWebSocket(
         try {
           const parsed = JSON.parse(event.data) as Record<string, unknown>
 
-          // Handle resync signal
+          // Handle resync signal: the server-side event buffer has evicted the
+          // requested `last_seq` (happens after a backend restart or a long
+          // disconnection). Discard the partial in-memory turns and rebuild
+          // the transcript from the persisted JSONL via REST.
           if (parsed.type === "resync_required") {
+            const sid = sessionId
+            // Clear the accumulated turns first so stale/incomplete state
+            // does not bleed into the rebuilt transcript.
+            turnsRef.current = []
+            optionsRef.current.onTurnsUpdate?.([])
+            fetchJson<HistoryMessage[]>(`/api/ai/sessions/${sid}/messages`)
+              .then((msgs) => {
+                const turns = msgs && msgs.length > 0 ? historyToTurns(msgs) : []
+                turnsRef.current = turns
+                optionsRef.current.onTurnsUpdate?.([...turns])
+                optionsRef.current.onResync?.()
+              })
+              .catch((e) => {
+                console.error("[useAgentWebSocket] resync fetch failed", e)
+              })
             return
           }
 
@@ -161,13 +181,20 @@ export function useAgentWebSocket(
     }
   }, [sessionId])
 
+  // Exposed connection state. When there is no active session the hook reports
+  // UNINSTANTIATED regardless of any lingering ws state, which replaces the
+  // previous synchronous reset setState.
+  const effectiveReadyState =
+    sessionId !== null ? readyState : ReadyState.UNINSTANTIATED
+  const isReady = effectiveReadyState === ReadyState.OPEN
+
   /** Wait for the WebSocket connection to be open */
   const waitForReady = useCallback(async (): Promise<void> => {
-    if (readyState === ReadyState.OPEN) return
+    if (effectiveReadyState === ReadyState.OPEN) return
     return new Promise<void>((resolve) => {
       readyResolveRef.current = resolve
     })
-  }, [readyState])
+  }, [effectiveReadyState])
 
   /** Send a user prompt to the agent */
   const sendPrompt = useCallback(
@@ -209,7 +236,7 @@ export function useAgentWebSocket(
     interrupt,
     respondToPermission,
     isReady,
-    readyState,
+    readyState: effectiveReadyState,
     reset,
   }
 }
