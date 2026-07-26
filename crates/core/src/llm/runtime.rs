@@ -545,32 +545,6 @@ impl AgentFacade {
         self.session.subscribe(listener)
     }
 
-    // ── Session switching / resume ───────────────────────────────────────
-
-    /// Switch to an existing session JSONL file (resume). Requires unique
-    /// access.
-    pub async fn switch_session(
-        &mut self,
-        session_path: &str,
-        cwd_override: Option<&str>,
-    ) -> std::result::Result<(), String> {
-        self.session
-            .switch_session(session_path, cwd_override)
-            .await
-    }
-
-    /// Start a fresh session (optionally parented to `parent_session`).
-    /// Requires unique access.
-    pub async fn new_session(&mut self, parent_session: Option<&str>) {
-        self.session.new_session(parent_session).await;
-    }
-
-    /// Fork the session at `entry_id`. Returns the new session file path.
-    /// Requires unique access.
-    pub async fn fork_session(&mut self, entry_id: &str) -> std::result::Result<String, String> {
-        self.session.fork_session(entry_id).await
-    }
-
     // ── System prompt / extensions ───────────────────────────────────────
 
     pub async fn system_prompt(&self) -> String {

@@ -36,7 +36,7 @@ teloxide = { version = "0.15", optional = true }
 tauri = { version = "2", optional = true }
 thiserror = "2"
 tracing = "0.1"
-
+uuid = { version = "1", features = ["v4"] }
 [features]
 telegram = ["dep:teloxide"]
 tauri = ["dep:tauri"]
