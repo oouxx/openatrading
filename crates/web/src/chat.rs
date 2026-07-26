@@ -41,13 +41,6 @@ fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Extract the human-readable text from a serialized `AgentToolResult`.
-///
-/// NOTE: moved to `chat_session::extract_tool_result_text` as the single
-/// source of truth shared with the Tauri backend. This re-export keeps any
-/// external callers working.
-pub use crate::chat_session::extract_tool_result_text;
-
 #[derive(Serialize)]
 pub struct AiRoleItem {
     pub name: String,
