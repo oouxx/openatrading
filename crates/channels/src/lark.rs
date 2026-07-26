@@ -22,7 +22,6 @@ pub struct LarkChannel {
 }
 
 impl LarkChannel {
-    #[must_use]
     pub fn new(app_id: String, app_secret: String, receive_id: String) -> Self {
         Self {
             app_id,

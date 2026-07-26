@@ -43,7 +43,6 @@ struct SessionManagerInner {
 }
 
 impl SessionManager {
-    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(SessionManagerInner::default())),

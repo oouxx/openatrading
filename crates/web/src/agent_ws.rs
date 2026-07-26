@@ -473,28 +473,8 @@ pub async fn setup_event_channel(
     mpsc::Receiver<TranscriptEvent>,
     mpsc::Receiver<TranscriptEvent>,
 ) {
-    let (delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
+    let (_delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
     let (durable_tx, durable_rx) = mpsc::channel::<TranscriptEvent>(256);
-
-    // AgentEvent (async) → convert to SessionEventPayload, route to appropriate channel
-    let delta_tx1 = delta_tx.clone();
-    let durable_tx1 = durable_tx.clone();
-    let async_listener: AgentEventListener = Arc::new(move |event, _signal| {
-        let delta_tx = delta_tx1.clone();
-        let durable_tx = durable_tx1.clone();
-        Box::pin(async move {
-            let payload = convert_agent_event(event);
-            // Text/thinking/tool-call deltas → delta channel (drops when full)
-            // Everything else → durable channel (awaits capacity)
-            let is_delta = matches!(&payload, SessionEventPayload::MessageUpdate { .. });
-            if is_delta {
-                let _ = delta_tx.try_send(TranscriptEvent::Session(payload));
-            } else {
-                let _ = durable_tx.send(TranscriptEvent::Session(payload)).await;
-            }
-        })
-    });
-    let _h1 = agent_facade.subscribe(async_listener).await;
 
     // AgentSessionEvent (sync) → durable channel (try_send since sync callback)
     let durable_tx2 = durable_tx.clone();
@@ -502,7 +482,7 @@ pub async fn setup_event_channel(
         let payload = convert_session_event(event);
         let _ = durable_tx2.try_send(TranscriptEvent::Session(payload));
     });
-    let _h2 = agent_facade.subscribe_session_events(sync_listener);
+    let _h2 = agent_facade.subscribe(sync_listener);
 
     use openatrading_core::log;
     log::info!(

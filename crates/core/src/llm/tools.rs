@@ -133,7 +133,6 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 ///
 /// Each extension tool's `execute` callback is wrapped to translate between
 /// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent result).
-#[must_use]
 pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
@@ -199,7 +198,6 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    #[must_use]
     pub const fn new() -> Self {
         Self {
             mcp_handle: None,
@@ -223,19 +221,16 @@ impl ToolRegistry {
         self.mcp_handle = handle;
     }
 
-    #[must_use]
     pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
         &self.mcp
     }
 
     /// Extension-provided tools (market data, decision, etc.).
-    #[must_use]
     pub fn extension_tools(&self) -> &[Arc<DynTool>] {
         &self.extension
     }
 
     /// All tools (MCP + extension).
-    #[must_use]
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.mcp
             .iter()

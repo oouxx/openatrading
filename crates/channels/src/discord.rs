@@ -22,7 +22,6 @@ pub struct DiscordChannel {
 }
 
 impl DiscordChannel {
-    #[must_use]
     pub fn new(bot_token: String, channel_id: String) -> Self {
         Self {
             bot_token,
@@ -128,7 +127,6 @@ struct MessageAuthor {
 }
 
 impl DiscordAdapter {
-    #[must_use]
     pub fn new(bot_token: String) -> Self {
         Self {
             bot_token,
@@ -141,7 +139,6 @@ impl DiscordAdapter {
     }
 
     /// 限制只处理指定频道。
-    #[must_use]
     pub fn with_channel(mut self, channel_id: impl Into<String>) -> Self {
         self.allowed_channel_id = Some(channel_id.into());
         self

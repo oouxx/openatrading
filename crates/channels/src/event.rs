@@ -43,7 +43,6 @@ pub struct MessageEvent {
 }
 
 impl MessageEvent {
-    #[must_use]
     pub const fn new(
         platform: Platform,
         channel_id: String,
@@ -62,13 +61,11 @@ impl MessageEvent {
         }
     }
 
-    #[must_use]
     pub fn with_user_name(mut self, name: String) -> Self {
         self.user_name = Some(name);
         self
     }
 
-    #[must_use]
     pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         self.raw = raw;
         self

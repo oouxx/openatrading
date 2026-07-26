@@ -317,7 +317,6 @@ impl JiuYanSession {
     ///
     /// # Panics
     /// Panics if the reqwest client cannot be built or default headers are invalid (should never happen).
-    #[must_use]
     pub fn new() -> Self {
         let builder = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36");

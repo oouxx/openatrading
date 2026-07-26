@@ -348,33 +348,27 @@ impl AppConfig {
         }
     }
 
-    #[must_use]
     pub fn config_path() -> PathBuf {
         openatrading_core::atrading_home().join("config.toml")
     }
 
     /// Read LLM provider from config.
-    #[must_use]
     pub fn llm_provider(&self) -> Option<&str> {
         self.llm.provider.as_deref()
     }
 
     /// Read LLM model from config.
-    #[must_use]
     pub fn llm_model(&self) -> Option<&str> {
         self.llm.model.as_deref()
     }
 
     /// Read LLM provider from config.
-    #[must_use]
     pub fn social_notify_channel(&self) -> Option<&str> {
         self.social.as_ref()?.notify_channel.as_deref()
     }
-    #[must_use]
     pub fn social_telegram(&self) -> Option<&TelegramConfig> {
         self.social.as_ref()?.telegram.as_ref()
     }
-    #[must_use]
     pub fn social_discord(&self) -> Option<&DiscordConfig> {
         self.social.as_ref()?.discord.as_ref()
     }

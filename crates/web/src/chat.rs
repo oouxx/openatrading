@@ -160,12 +160,10 @@ pub async fn get_ai_roles(
     Ok(Json(roles))
 }
 
-#[must_use]
 pub fn build_system_prompt(strategy_text: &str) -> String {
     openatrading_core::skills::SkillRegistry::build_chat_prompt(strategy_text)
 }
 
-#[must_use]
 pub fn build_user_message(
     overview: &OverviewResponse,
     field_items: Option<&str>,
@@ -295,7 +293,7 @@ pub async fn handle_slash_command(
             Ok(format!("Session name set to \"{cmd_args}\""))
         }
         "compact" => match agent_facade.compact(None).await {
-            Ok(result) => Ok(format!("Session compacted: {result}")),
+            Ok(_) => Ok("Session compacted".to_string()),
             Err(e) => Err(format!("Compaction failed: {e}")),
         },
         "session" => {

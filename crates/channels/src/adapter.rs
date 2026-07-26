@@ -41,7 +41,6 @@ pub struct AdapterRuntime {
 
 impl AdapterRuntime {
     /// 创建带默认配置的新运行时。
-    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: SessionManager::new(),
@@ -50,7 +49,6 @@ impl AdapterRuntime {
     }
 
     /// 创建带自定义断路器的新运行时。
-    #[must_use]
     pub fn with_circuit_breaker(cb: CircuitBreaker) -> Self {
         Self {
             sessions: SessionManager::new(),
@@ -112,7 +110,6 @@ impl Default for AdapterRuntime {
 /// 启动所有适配器，每个适配器的输出都路由到同一个 `Receiver`。
 /// 返回 `(接收端, 适配器列表, JoinHandle 列表)`。
 /// 适配器列表可用于之后调用 `reply()` 回复消息。
-#[must_use]
 pub fn launch_adapters(adapters: Vec<Arc<dyn MessageAdapter>>, buffer: usize) -> AdapterStream {
     let (tx, rx) = mpsc::channel(buffer);
     let mut handles = Vec::with_capacity(adapters.len());

@@ -4,7 +4,6 @@ use md5;
 ///
 /// # Panics
 /// Panics if the UTC+8 offset is invalid (should never happen).
-#[must_use]
 pub fn beijing_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(
         &chrono::FixedOffset::east_opt(8 * 3600)
@@ -12,7 +11,6 @@ pub fn beijing_now() -> chrono::DateTime<chrono::FixedOffset> {
     )
 }
 
-#[must_use]
 /// Get current timestamp in milliseconds (Beijing time).
 ///
 /// # Panics
@@ -31,7 +29,6 @@ pub fn now_ts() -> i64 {
     now_bj.timestamp_millis()
 }
 
-#[must_use]
 pub fn gen_jiuyan_token(timestamp_ms: i64) -> String {
     let secret = "Uu0KfOB8iUP69d3c";
     let input = format!("{secret}:{timestamp_ms}");
@@ -39,7 +36,6 @@ pub fn gen_jiuyan_token(timestamp_ms: i64) -> String {
     let token = format!("{:x}", md5::compute(input));
     token
 }
-#[must_use]
 /// Convert HTML to Markdown text.
 ///
 /// # Panics
@@ -59,7 +55,6 @@ pub fn html_to_markdown(html: &str) -> String {
         .join("\n\n")
 }
 
-#[must_use]
 /// Get the last `n` trading days as date strings (YYYYMMDD).
 ///
 /// # Panics

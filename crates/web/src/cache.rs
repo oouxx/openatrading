@@ -18,7 +18,6 @@ pub struct CachedEntry {
     pub expires_at: Option<i64>,
 }
 
-#[must_use]
 pub fn new_cache() -> Arc<AppCache> {
     Arc::new(
         AppCache::builder()
@@ -39,7 +38,6 @@ pub enum MarketPhase {
 }
 
 impl MarketPhase {
-    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::PreOpen => "preopen",
@@ -52,7 +50,6 @@ impl MarketPhase {
     }
 }
 
-#[must_use]
 pub fn current_market_phase() -> MarketPhase {
     let now = openatrading_core::utils::time::beijing_now();
     let weekday = now.weekday();
@@ -76,12 +73,11 @@ pub fn current_market_phase() -> MarketPhase {
     }
 }
 
-#[must_use]
 pub fn is_trading_hours() -> bool {
-    matches!(
-        current_market_phase(),
-        MarketPhase::MorningOpen | MarketPhase::AfternoonOpen
-    )
+    match current_market_phase() {
+        MarketPhase::MorningOpen | MarketPhase::AfternoonOpen => true,
+        _ => false,
+    }
 }
 
 fn next_open_timestamp() -> i64 {
@@ -126,7 +122,6 @@ pub enum CachePolicy {
 }
 
 impl CachePolicy {
-    #[must_use]
     pub fn overview() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(30))
@@ -135,7 +130,6 @@ impl CachePolicy {
         }
     }
 
-    #[must_use]
     pub fn realtime() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(10))
@@ -144,7 +138,6 @@ impl CachePolicy {
         }
     }
 
-    #[must_use]
     pub fn snapshot() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(60))
@@ -153,13 +146,11 @@ impl CachePolicy {
         }
     }
 
-    #[must_use]
     pub const fn daily() -> Self {
         Self::Always(Duration::from_secs(3600 * 6))
     }
 
     /// Replay data: cache after close until next open; no cache during trading.
-    #[must_use]
     pub fn replay() -> Self {
         if is_trading_hours() {
             Self::Never
@@ -168,12 +159,10 @@ impl CachePolicy {
         }
     }
 
-    #[must_use]
     pub const fn never() -> Self {
         Self::Never
     }
 
-    #[must_use]
     pub fn telegraph() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(30))
@@ -202,7 +191,6 @@ impl CachePolicy {
     }
 }
 
-#[must_use]
 pub fn get(cache: &AppCache, key: &str) -> Option<String> {
     let entry = cache.get(key)?;
     if let Some(expires_at) = entry.expires_at {
