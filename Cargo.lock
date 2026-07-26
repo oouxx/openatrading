@@ -3122,6 +3122,7 @@ dependencies = [
  "tokio-cron-scheduler",
  "toml 0.8.23",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -3408,8 +3409,8 @@ dependencies = [
 
 [[package]]
 name = "pi-agent-core"
-version = "1.79.36"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
+version = "1.79.37"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.37#796089f0fd52dfecbd8e7118d4c15bcfea595001"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3431,8 +3432,8 @@ dependencies = [
 
 [[package]]
 name = "pi-ai"
-version = "1.79.36"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
+version = "1.79.37"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.37#796089f0fd52dfecbd8e7118d4c15bcfea595001"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3448,8 +3449,8 @@ dependencies = [
 
 [[package]]
 name = "pi-coding-agent"
-version = "1.79.36"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
+version = "1.79.37"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.37#796089f0fd52dfecbd8e7118d4c15bcfea595001"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3475,8 +3476,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extension-api"
-version = "1.79.36"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
+version = "1.79.37"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.37#796089f0fd52dfecbd8e7118d4c15bcfea595001"
 dependencies = [
  "async-trait",
  "futures",
@@ -3487,8 +3488,8 @@ dependencies = [
 
 [[package]]
 name = "pi-extensions"
-version = "1.79.36"
-source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.36#1581cf961e5cd77fc6a7ae89d99e4d166053e92f"
+version = "1.79.37"
+source = "git+https://github.com/oouxx/pi-rs?tag=v1.79.37#796089f0fd52dfecbd8e7118d4c15bcfea595001"
 dependencies = [
  "async-trait",
  "pi-extension-api",

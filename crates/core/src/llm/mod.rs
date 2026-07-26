@@ -1,5 +1,8 @@
 // Re-exports from openatrading-agent (the canonical agent crate).
 // Core's business-specific agent code lives in the sibling modules below.
+pub mod factory;
+pub mod gui_event;
+pub mod pool;
 pub mod runtime;
 pub mod tools;
 
