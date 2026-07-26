@@ -747,12 +747,12 @@ async fn dispatch_post(
                 .create_session(None, None, Some(true), None, name)
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let mgr = agent_facade.session.get_session_manager();
+            let mgr = agent_facade.session_manager();
             let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
             let session_name = mgr.get_session_name();
             drop(mgr);
             Ok(serde_json::json!({"success": true,
-                "id": agent_facade.get_session_id(),
+                "id": agent_facade.session_id(),
                 "name": session_name,
                 "path": session_file.map(|p| p.to_string_lossy().to_string()),
                 "message_count": 0,
@@ -1266,7 +1266,7 @@ impl TauriSessionRegistry {
     async fn interrupt(&self, session_id: &str) {
         let map = self.sessions.lock().await;
         if let Some(facade) = map.get(session_id) {
-            facade.session.abort().await;
+            facade.abort().await;
         }
     }
 

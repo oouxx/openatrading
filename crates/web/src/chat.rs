@@ -266,7 +266,7 @@ pub async fn handle_slash_command(
     match cmd_name {
         "model" => {
             // Resolve model from "provider/model" format
-            let model_registry = agent_facade.session.get_model_registry();
+            let model_registry = agent_facade.model_registry();
             let result = pi_coding_agent::core::model_resolver::resolve_cli_model(
                 None,
                 Some(cmd_args),
@@ -276,7 +276,6 @@ pub async fn handle_slash_command(
                 Some(model) => {
                     let display = format!("{}/{}", model.provider, model.id);
                     agent_facade
-                        .session
                         .set_model(model)
                         .await
                         .map(|_| format!("Model set to {display}"))
@@ -292,17 +291,17 @@ pub async fn handle_slash_command(
             if cmd_args.is_empty() {
                 return Err("Usage: /name <session name>".to_string());
             }
-            agent_facade.session.set_session_name(cmd_args);
+            agent_facade.set_session_name(cmd_args);
             Ok(format!("Session name set to \"{cmd_args}\""))
         }
-        "compact" => match agent_facade.session.compact(None).await {
+        "compact" => match agent_facade.compact(None).await {
             Ok(result) => Ok(format!("Session compacted: {result}")),
             Err(e) => Err(format!("Compaction failed: {e}")),
         },
         "session" => {
-            let sid = agent_facade.get_session_id();
-            let name = agent_facade.get_session_name();
-            let mgr = agent_facade.session.get_session_manager();
+            let sid = agent_facade.session_id();
+            let name = agent_facade.session_name();
+            let mgr = agent_facade.session_manager();
             let msg_count = mgr.get_entries().len();
             let file = mgr
                 .get_session_file()
@@ -372,7 +371,7 @@ pub async fn create_session(
         }
     };
 
-    let session_id = agent_facade.get_session_id();
+    let session_id = agent_facade.session_id();
 
     // Store the facade and pending message so the WebSocket handler can
     // subscribe to events BEFORE the agent starts processing. This prevents
@@ -393,7 +392,7 @@ pub async fn create_session(
         .insert(session_id.clone());
 
     // Use session manager to get session metadata
-    let mgr = agent_facade.session.get_session_manager();
+    let mgr = agent_facade.session_manager();
     let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
     let session_name = mgr.get_session_name();
 
