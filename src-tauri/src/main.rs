@@ -1077,12 +1077,6 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up the first time the session was registered.
     ensure_session_tauri(&session_id, &state, &app).await?;
-    // Mark session as running (§7.4)
-    state
-        .running_sessions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(session_id.clone());
     if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
         let text = text.clone();
         tokio::task::spawn_blocking(move || {
@@ -1155,7 +1149,6 @@ async fn ensure_session_tauri(
         let buffer = openatrading_web::agent_ws::get_session_buffer(state, session_id).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
-        let running = state.running_sessions.clone();
 
         let join_handle = tokio::spawn(async move {
             loop {
@@ -1166,13 +1159,6 @@ async fn ensure_session_tauri(
                     else => break,
                 };
                 let Some(event) = event else { break };
-                if matches!(&event, openatrading_web::agent_ws::TranscriptEvent::Session(payload) if matches!(payload, openatrading_web::agent_ws::SessionEventPayload::AgentEnd { .. } | openatrading_web::agent_ws::SessionEventPayload::AgentSettled))
-                {
-                    running
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&sid);
-                }
                 let Some(event_value) =
                     openatrading_web::agent_ws::buffer_and_serialize_value(&buffer, event).await
                 else {
@@ -1437,7 +1423,6 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
-        running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });

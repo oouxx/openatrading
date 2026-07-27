@@ -716,11 +716,6 @@ async fn handle_session(
             "ws: firing pending_message (len={}) to {session_id} in background task",
             msg.len()
         );
-        state
-            .running_sessions
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(session_id.clone());
         let rt = runtime.clone();
         let id_for_task = session_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -744,12 +739,7 @@ async fn handle_session(
             Some(event) = durable_rx.recv() => {
                 log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
                 // Track running state (§7.4): agent_end/agent_settled → session is idle.
-                if matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled)) {
-                    // Mutex::lock poisoning is treated as an unrecoverable invariant
-                    // violation; `unwrap_or_default` would silently lose state.
-                    state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id);
-                    log::info!("ws: {session_id} agent_end/settled — marked idle");
-                }
+                matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled));
                 // Push to buffer first to obtain the real seq, then serialize
                 // the stored envelope (finding #1).
                 let label = event.kind_label();
@@ -788,8 +778,6 @@ async fn handle_session(
                                     let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }
-                                // Mark session as running (§7.4)
-                                state.running_sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone());
                                 // Spawn the turn so this select! loop keeps
                                 // forwarding events concurrently (see the
                                 // pending_message comment above for why we
@@ -841,14 +829,6 @@ async fn handle_session(
         }
     }
 
-    // Session disconnected — remove from running tracking (§7.4).
-    // Use `unwrap_or_else(into_inner)` to recover from a poisoned mutex
-    // rather than panicking in the handler (finding #15).
-    state
-        .running_sessions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&session_id);
     log::info!("ws: session {session_id} disconnected");
 }
 

@@ -385,13 +385,6 @@ pub async fn create_session(
         req.message.len()
     );
 
-    // Mark session as running so list_sessions shows the correct status.
-    state
-        .running_sessions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(session_id.clone());
-
     // Get session metadata from the runtime
     let runtime = state.ctx.pool.get_session(&session_id).await;
     let (session_file, session_name) = if let Some(rt) = runtime {
@@ -448,36 +441,26 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde
     ))
     .await;
 
-    let running = state
-        .running_sessions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .cloned()
-        .collect::<std::collections::HashSet<_>>();
-
-    let sessions: Vec<serde_json::Value> = infos
-        .into_iter()
-        .map(|info| {
-            let status = if running.contains(&info.id) {
-                "running"
-            } else {
-                "idle"
-            };
-            serde_json::json!({
-                "id": info.id,
-                "name": info.name,
-                "created": info.created.to_rfc3339(),
-                "modified": info.modified.to_rfc3339(),
-                "message_count": info.message_count,
-                "status": status,
-                "path": info.path.to_string_lossy(),
-                "cwd": info.cwd,
-                "first_message": info.first_message,
-                "parent_session_path": info.parent_session_path,
-            })
-        })
-        .collect();
+    let mut sessions = Vec::with_capacity(infos.len());
+    for info in infos {
+        let status = if state.ctx.pool.is_stream(&info.id).await {
+            "running"
+        } else {
+            "idle"
+        };
+        sessions.push(serde_json::json!({
+            "id": info.id,
+            "name": info.name,
+            "created": info.created.to_rfc3339(),
+            "modified": info.modified.to_rfc3339(),
+            "message_count": info.message_count,
+            "status": status,
+            "path": info.path.to_string_lossy(),
+            "cwd": info.cwd,
+            "first_message": info.first_message,
+            "parent_session_path": info.parent_session_path,
+        }));
+    }
 
     Json(sessions)
 }
@@ -625,11 +608,6 @@ pub async fn delete_session(
 ) -> StatusCode {
     // Remove the live facade from the shared pool so the agent stops.
     state.ctx.pool.close_session(&id).await;
-    state
-        .running_sessions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(&id);
 
     let Some(path) = find_session_file(&id) else {
         return StatusCode::NOT_FOUND;

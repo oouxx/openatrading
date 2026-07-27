@@ -1,4 +1,3 @@
-use crate::llm::create_factory;
 use pi_coding_agent::core::agent_session_runtime::{
     create_agent_session_runtime, AgentSessionRuntime, CreateAgentSessionRuntimeFactory,
     CreateAgentSessionRuntimeParams,
@@ -41,9 +40,7 @@ impl SessionPool {
         let session_manager = SessionManager::new(cwd, &session_dir, None, true, None);
 
         let runtime = create_agent_session_runtime(
-            // Create a fresh factory for each session since the factory is
-            // consumed and stored inside the returned AgentSessionRuntime.
-            create_factory(&agent_dir, None, None, None),
+            self.factory.clone(),
             CreateAgentSessionRuntimeParams {
                 cwd: cwd.to_string(),
                 agent_dir,
@@ -126,5 +123,16 @@ impl SessionPool {
     /// Check if a session exists in the pool.
     pub async fn has_session(&self, session_id: &str) -> bool {
         self.sessions.lock().await.contains_key(session_id)
+    }
+
+    /// Check whether a session is currently streaming a response.
+    ///
+    /// Returns `false` if the session does not exist in the pool.
+    pub async fn is_stream(&self, session_id: &str) -> bool {
+        let Some(session) = self.sessions.lock().await.get(session_id).cloned() else {
+            return false;
+        };
+        let rt = session.lock().await;
+        rt.session().is_streaming().await
     }
 }
