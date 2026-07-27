@@ -15,7 +15,7 @@ mod check_cron;
 mod check_env;
 mod check_home;
 mod check_llm;
-mod check_mcp;
+// mod check_mcp;
 mod check_port;
 mod check_skills;
 mod check_sqlite;
@@ -118,7 +118,7 @@ fn all_checks() -> Vec<Box<dyn Check>> {
         Box::new(check_cron::CronCheck),
         Box::new(check_telegram::TelegramCheck),
         Box::new(check_llm::LlmCheck),
-        Box::new(check_mcp::McpCheck),
+        // Box::new(check_mcp::McpCheck),
         Box::new(check_skills::SkillsCheck),
         Box::new(check_port::PortCheck),
     ]
