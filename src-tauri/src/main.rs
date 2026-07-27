@@ -737,22 +737,28 @@ async fn dispatch_post(
 ) -> Result<serde_json::Value, String> {
     match path {
         "/api/ai/sessions" => {
-            let name = body
-                .get("name")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty());
-            let agent_facade = state
+            let cwd = std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let session_id = state
                 .ctx
-                .runtime
-                .create_session(None, None, Some(true), None, name)
+                .pool.create_session(&cwd, None, None)
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let mgr = agent_facade.session_manager();
-            let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
-            let session_name = mgr.get_session_name();
-            drop(mgr);
+            let (session_file, session_name) = if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
+                let rt = rt.lock().await;
+                let session = rt.session();
+                let mgr = session.get_session_manager();
+                let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
+                let sname = mgr.get_session_name();
+                drop(mgr);
+                (sfile, sname)
+            } else {
+                (None, None)
+            };
             Ok(serde_json::json!({"success": true,
-                "id": agent_facade.session_id(),
+                "id": session_id,
                 "name": session_name,
                 "path": session_file.map(|p| p.to_string_lossy().to_string()),
                 "message_count": 0,
@@ -1042,17 +1048,12 @@ async fn send_prompt(
     text: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
-    sessions: tauri::State<'_, Arc<TauriSessionRegistry>>,
 ) -> Result<(), String> {
-    // Slash commands need `&mut AgentSession` (set_model / set_session_name),
-    // so they take the facade out of the registry uniquely, run, then put it
-    // back. The result is emitted as a `Notice` event.
+    // Slash commands need `&mut AgentSession` (set_model / set_session_name).
     if let Some((cmd_name, cmd_args)) =
         pi_coding_agent::core::slash_commands::parse_slash_command(&text)
     {
-        let notice = sessions
-            .run_slash(&session_id, &state, &app, cmd_name, cmd_args)
-            .await;
+        let notice = run_slash_tauri(&session_id, &state, cmd_name, cmd_args).await;
         // Wrap the slash result in an EventEnvelope for a consistent wire
         // shape (schema_version + seq) with forwarded events (finding #12).
         // Tauri has no reconnection, so seq is unused; we still go through the
@@ -1073,23 +1074,28 @@ async fn send_prompt(
 
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up the first time the session was registered.
-    let facade = sessions.ensure_session(&session_id, &state, &app).await?;
+    ensure_session_tauri(&session_id, &state, &app).await?;
     // Mark session as running (§7.4)
-    sessions
+    state
         .running_sessions
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(session_id.clone());
-    facade.send(&text).await;
+    if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
+        let session = rt.lock().await;
+        session.prompt(&text, None).await;
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn interrupt_session(
     session_id: String,
-    sessions: tauri::State<'_, Arc<TauriSessionRegistry>>,
+    state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    sessions.interrupt(&session_id).await;
+    if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
+        rt.lock().await.abort().await;
+    }
     Ok(())
 }
 
@@ -1098,11 +1104,8 @@ async fn respond_permission(
     session_id: String,
     id: String,
     approved: bool,
-    sessions: tauri::State<'_, Arc<TauriSessionRegistry>>,
 ) -> Result<(), String> {
-    sessions
-        .respond_permission(&session_id, &id, approved)
-        .await;
+    eprintln!("permission response received but not yet wired: session={session_id}, id={id}, approved={approved}");
     Ok(())
 }
 
@@ -1113,65 +1116,41 @@ const STREAM_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs
 /// Delay before restarting the app so the IPC response reaches the frontend.
 const APP_RESTART_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
-/// Per-session registry for the Tauri transport.
-///
-/// Owns one long-lived `Arc<AgentFacade>` per session plus a background forward
-/// task that pumps `TranscriptEvent`s to the frontend via `app.emit`. The
-/// facade is the *only* strong reference while idle, so slash commands can
-/// `Arc::get_mut` to obtain `&mut AgentSession`.
-struct TauriSessionRegistry {
-    sessions: tokio::sync::Mutex<
-        std::collections::HashMap<String, Arc<openatrading_core::llm::AgentFacade>>,
-    >,
-    /// Tracks session IDs that currently have an active agent turn in progress (§7.4).
-    running_sessions: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
-}
-
-impl TauriSessionRegistry {
-    fn new() -> Self {
-        Self {
-            sessions: tokio::sync::Mutex::new(std::collections::HashMap::new()),
-            running_sessions: std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashSet::new(),
-            )),
-        }
+/// Ensure a session runtime exists in the pool, setting up a background forward
+/// task that pumps `TranscriptEvent`s to the frontend via `app.emit`.
+async fn ensure_session_tauri(
+    session_id: &str,
+    state: &Arc<AppState>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    // If the session already exists in the pool, nothing to do.
+    if state.ctx.pool.has_session(session_id).await {
+        return Ok(());
     }
 
-    /// Ensure a facade + forward task exist for `session_id`, returning a
-    /// shared clone for `AgentFacade::send` (which only needs `&self`).
-    async fn ensure_session(
-        &self,
-        session_id: &str,
-        state: &Arc<AppState>,
-        app: &tauri::AppHandle,
-    ) -> Result<Arc<openatrading_core::llm::AgentFacade>, String> {
-        let mut map = self.sessions.lock().await;
-        if let Some(facade) = map.get(session_id) {
-            return Ok(facade.clone());
-        }
-        let facade = state
-            .ctx
-            .runtime
-            .create_session(None, None, Some(true), Some(session_id), None)
-            .await
-            .map_err(|e| e.to_string())?;
-        // Use the shared per-session buffer from AppState so events persist
-        // across the session's lifetime and are consistent with the slash
-        // command path (finding #2, #12). The forward task is the sole writer
-        // for a given session, so no duplicate-push concern.
+    // Create a new session in the pool.
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let new_id = state
+        .ctx
+        .pool.create_session(&cwd, None, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Set up the forward task for this session.
+    if let Some(rt) = state.ctx.pool.get_session(&new_id).await {
+        let session = rt.lock().await.clone_handle();
         let (mut delta_rx, mut durable_rx) =
-            openatrading_web::agent_ws::setup_event_channel(&facade).await;
+            openatrading_web::agent_ws::setup_event_channel(&session).await;
         let buffer = openatrading_web::agent_ws::get_session_buffer(state, session_id).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
-        let running = self.running_sessions.clone(); // Arc<std::sync::Mutex<HashSet<String>>>
-                                                     // Spawn the forward task and track its handle so a panic is surfaced
-                                                     // rather than silently swallowed (finding #16).
+        let running = state.running_sessions.clone();
+
         let join_handle = tokio::spawn(async move {
             loop {
-                // `biased` ensures durable events (lifecycle, tool results)
-                // are drained before delta events when both are ready
-                // (§14, finding #8).
                 let event = tokio::select! {
                     biased;
                     ev = durable_rx.recv() => ev,
@@ -1179,7 +1158,6 @@ impl TauriSessionRegistry {
                     else => break,
                 };
                 let Some(event) = event else { break };
-                // Track running state (§7.4): agent_end/agent_settled → session is idle.
                 if matches!(&event, openatrading_web::agent_ws::TranscriptEvent::Session(payload) if matches!(payload, openatrading_web::agent_ws::SessionEventPayload::AgentEnd { .. } | openatrading_web::agent_ws::SessionEventPayload::AgentSettled))
                 {
                     running
@@ -1187,8 +1165,6 @@ impl TauriSessionRegistry {
                         .unwrap_or_else(|e| e.into_inner())
                         .remove(&sid);
                 }
-                // Push to the shared buffer helper to assign the real seq and
-                // serialize the stored envelope in one step (finding #1, #13).
                 let Some(event_value) =
                     openatrading_web::agent_ws::buffer_and_serialize_value(&buffer, event).await
                 else {
@@ -1198,58 +1174,36 @@ impl TauriSessionRegistry {
                 let _ = app_handle.emit("agent-event", payload);
             }
         });
-        // Detach but observe: surface panic via the supervisor task.
-        // The handle is intentionally dropped after spawning a watcher that
-        // logs a panic instead of silently losing it (finding #16).
         tokio::spawn(async move {
             if let Err(e) = join_handle.await {
                 eprintln!("[agent-forward] forward task panicked: {e}");
             }
         });
-        map.insert(session_id.to_string(), facade.clone());
-        Ok(facade)
+    }
+    Ok(())
+}
+
+/// Run a slash command on a session, emitting a `Notice` payload.
+async fn run_slash_tauri(
+    session_id: &str,
+    state: &Arc<AppState>,
+    cmd_name: &str,
+    cmd_args: &str,
+) -> openatrading_web::agent_ws::SessionEventPayload {
+    use openatrading_web::agent_ws::SessionEventPayload;
+
+    // Make sure the session exists.
+    if let Err(e) = ensure_session_tauri(session_id, state, &tauri::AppHandle::default()).await {
+        return SessionEventPayload::Notice {
+            text: format!("[Slash Error] {e}"),
+            is_error: true,
+        };
     }
 
-    /// Take the facade out of the registry (unique ownership), run a slash
-    /// command with `&mut` access, then return it. Emits a `Notice` payload
-    /// describing the outcome.
-    async fn run_slash(
-        &self,
-        session_id: &str,
-        state: &Arc<AppState>,
-        app: &tauri::AppHandle,
-        cmd_name: &str,
-        cmd_args: &str,
-    ) -> openatrading_web::agent_ws::SessionEventPayload {
-        use openatrading_web::agent_ws::SessionEventPayload;
-
-        // Make sure the session exists (creates + registers if missing).
-        if let Err(e) = self.ensure_session(session_id, state, app).await {
-            return SessionEventPayload::Notice {
-                text: format!("[Slash Error] {e}"),
-                is_error: true,
-            };
-        }
-
-        let mut map = self.sessions.lock().await;
-        let Some(mut facade) = map.remove(session_id) else {
-            return SessionEventPayload::Notice {
-                text: "session not initialized".to_string(),
-                is_error: true,
-            };
-        };
-        // `ensure_session` returned a clone to the caller and dropped it by
-        // now (send_prompt does not keep one in the slash branch), so this
-        // facade is uniquely owned → `Arc::get_mut` succeeds.
-        let result = match Arc::get_mut(&mut facade) {
-            Some(agent) => {
-                openatrading_web::chat::handle_slash_command(cmd_name, cmd_args, agent).await
-            }
-            None => Err("session busy, cannot run slash command".to_string()),
-        };
-        map.insert(session_id.to_string(), facade);
-
-        match result {
+    if let Some(rt) = state.ctx.pool.get_session(session_id).await {
+        let mut rt = rt.lock().await;
+        let session = rt.session_mut();
+        match openatrading_web::chat::handle_slash_command(cmd_name, cmd_args, session).await {
             Ok(text) => SessionEventPayload::Notice {
                 text,
                 is_error: false,
@@ -1259,22 +1213,11 @@ impl TauriSessionRegistry {
                 is_error: true,
             },
         }
-    }
-
-    /// Abort the agent run for `session_id`, if one is registered.
-    async fn interrupt(&self, session_id: &str) {
-        let map = self.sessions.lock().await;
-        if let Some(facade) = map.get(session_id) {
-            facade.abort().await;
+    } else {
+        SessionEventPayload::Notice {
+            text: "session not found".to_string(),
+            is_error: true,
         }
-    }
-
-    /// Handle a permission response from the frontend (§11).
-    /// Currently a no-op — pi-coding-agent does not yet expose the
-    /// permission system. Once it does, this method will forward the
-    /// response to the agent session.
-    async fn respond_permission(&self, session_id: &str, id: &str, approved: bool) {
-        eprintln!("permission response received but not yet wired: session={session_id}, id={id}, approved={approved}");
     }
 }
 
@@ -1495,15 +1438,12 @@ fn main() {
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
         running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
-        active_facades: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
-    let tauri_sessions = Arc::new(TauriSessionRegistry::new());
 
     tauri::Builder::default()
         .manage(app_state)
-        .manage(tauri_sessions)
         .invoke_handler(tauri::generate_handler![
             api_fetch,
             api_post,

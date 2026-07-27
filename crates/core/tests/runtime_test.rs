@@ -2,7 +2,7 @@
 // Tests
 // ============================================================================
 
-use openatrading_core::llm::AgentRuntime;
+use openatrading_core::llm::{create_factory, SessionPool};
 use pi_coding_agent::pi_agent_core::agent::PromptInput;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;
 use pi_coding_agent::pi_ai_types::ContentBlock;
@@ -22,13 +22,22 @@ fn setup_test_env() {
 async fn test_create_agent_session_with_extension() {
     setup_test_env();
 
-    let runtime = AgentRuntime::new();
-    let agent_facade = runtime
-        .create_session(None, None, Some(true), None, None)
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let pool = SessionPool::new(&agent_dir, None, None);
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let session_id = pool.create_session(&cwd, None, None)
         .await
         .expect("创建agent session 失败");
+    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = rt.lock().await;
+    let session = rt.session();
     // Verify that the session has trading extension tools available.
-    let agent_state = agent_facade.state().await;
+    let agent_state = session.get_state().await;
     let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
     println!("[dbg] Available tools: {tool_names:?}");
 
@@ -47,16 +56,25 @@ async fn test_trading_tools_exec() {
     let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
     std::env::set_current_dir(workspace_root).ok();
 
-    let runtime = AgentRuntime::new();
-    let agent_facade = runtime
-        .create_session(None, None, Some(true), None, None)
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let pool = SessionPool::new(&agent_dir, None, None);
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let session_id = pool.create_session(&cwd, None, None)
         .await
         .expect("创建agent session 失败");
+    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = rt.lock().await;
+    let session = rt.session();
 
     // Let the agent handle the full flow: LLM decides to call get_limit_up,
     // tool executes, LLM analyzes the result.
-    let messages = agent_facade
-        .agent()
+    let messages = session
+        .get_agent()
         .prompt(PromptInput::Text("获取今日涨停数据并分析市场情绪"))
         .await
         .expect("agent prompt failed");
@@ -148,14 +166,24 @@ async fn test_trading_tools_exec() {
 #[tokio::test]
 async fn test_bash_tool_exec() {
     setup_test_env();
-    let runtime = AgentRuntime::new();
-    let agent_facade = runtime
-        .create_session(None, None, Some(true), None, None)
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let pool = SessionPool::new(&agent_dir, None, None);
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let session_id = pool
+        .create_session(&cwd, None, None)
         .await
         .expect("创建agent session 失败");
+    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = rt.lock().await;
+    let session = rt.session();
 
-    let messages = agent_facade
-        .agent()
+    let messages = session
+        .get_agent()
         .prompt(PromptInput::Text("执行ls命令"))
         .await
         .expect("agent prompt failed");
@@ -305,7 +333,7 @@ async fn debug_session_creation() {
         .to_string_lossy()
         .to_string();
 
-    // Create settings manager (same as AgentRuntime::create_session)
+    // Create settings manager (same as pool.create_session)
     let settings_mgr = SettingsManager::create(&cwd, None);
     let settings = settings_mgr.get_settings();
     println!("[dbg] default_provider: {:?}", settings.default_provider);

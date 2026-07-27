@@ -18,7 +18,7 @@ pub use openatrading_agent::llm::{
 
 pub use openatrading_agent::mcp_server::{serve_http, serve_stdio, MarketToolsServer};
 pub use openatrading_agent::mcp_tools::{
-    McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
+    McpClient, McpRegistry, McpServerConfig, ToolConfig,
 };
 pub use openatrading_agent::tools::{empty_schema, text_result, to_box_err, tool, ExecuteFn};
 
@@ -30,8 +30,12 @@ pub use openatrading_agent::types::{
     ConvertToLlmFn, DynTool, QueueMode, ShouldStopAfterTurnContext,
 };
 
-// Unified runtime — the single entry point for all LLM operations
-pub use self::runtime::{AgentFacade, AgentRuntime, SessionResult};
+// Re-export the pool and factory
+pub use self::pool::SessionPool;
+pub use self::factory::create_factory;
+
+// Session file lookup utility
+pub use self::runtime::find_session_file_by_id;
 
 // Business-specific tool registry (stays in core, references market tools)
 pub use self::tools::ToolRegistry;

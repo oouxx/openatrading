@@ -23,7 +23,8 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
-use openatrading_core::llm::{AgentFacade, AgentMessage};
+use openatrading_core::llm::AgentMessage;
+use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
 use serde::{Deserialize, Serialize};
@@ -458,7 +459,7 @@ enum ClientCommand {
 /// important lifecycle events, and that a slow consumer doesn't cause unbounded
 /// memory growth.
 pub async fn setup_event_channel(
-    agent_facade: &AgentFacade,
+    session: &AgentSession,
 ) -> (
     mpsc::Receiver<TranscriptEvent>,
     mpsc::Receiver<TranscriptEvent>,
@@ -472,12 +473,12 @@ pub async fn setup_event_channel(
         let payload = convert_session_event(event);
         let _ = durable_tx2.try_send(TranscriptEvent::Session(payload));
     });
-    let _h2 = agent_facade.subscribe(sync_listener);
+    let _h2 = session.subscribe(sync_listener);
 
     use openatrading_core::log;
     log::info!(
         "ws: event channel ready (delta cap=64, durable cap=256) for session {}",
-        agent_facade.session_id()
+        session.get_session_id()
     );
     (delta_rx, durable_rx)
 }
@@ -575,58 +576,55 @@ async fn handle_session(
 
     log::info!("ws: upgrade accepted session_id={session_id} last_seq={last_seq:?}");
 
-    // Retrieve the live facade from the shared pool. We do NOT remove it —
-    // reconnections must reuse the same AgentFacade to preserve the running
-    // agent's context and event stream. If the pool has a pending message
-    // (from create_session), take it and clear it so only the first
-    // connection sends it.
-    let (mut agent_facade, pending_message) = {
-        let mut pool = state.active_facades.lock().await;
+    // Retrieve the live runtime from the SessionPool. We do NOT remove it —
+    // reconnections must reuse the same AgentSessionRuntime to preserve the
+    // running agent's context and event stream. If there is a pending message
+    // (from create_session), take it so only the first connection sends it.
+    let (runtime, pending_message) = {
+        let msg = state.pending_messages.lock().await.remove(&session_id);
         log::info!(
-            "ws: shared pool size={}; looking up session_id={session_id}",
-            pool.len()
+            "ws: pending_messages lookup for {session_id}: {}",
+            if msg.is_some() { "HIT" } else { "MISS" }
         );
-        if let Some(active) = pool.get_mut(&session_id) {
-            log::info!("ws: pool HIT — reusing live facade for {session_id}");
-            let msg = active.pending_message.take();
-            if msg.is_some() {
-                log::info!("ws: took pending_message from pool for {session_id}");
+        match state.ctx.pool.get_session(&session_id).await {
+            Some(rt) => {
+                log::info!("ws: pool HIT — reusing live runtime for {session_id}");
+                (rt, msg)
             }
-            (active.facade.clone(), msg)
-        } else {
-            drop(pool);
-            log::info!("ws: pool MISS for {session_id} — auto-resume from disk JSONL");
-            // Not in pool — resume from session file on disk. This happens
-            // after a backend restart (the in-memory pool is empty) or when a
-            // client reconnects to a session whose facade was evicted.
-            match state
-                .ctx
-                .runtime
-                .create_session(None, None, Some(true), Some(&session_id), None)
-                .await
-            {
-                Ok(h) => {
-                    log::info!("ws: resume OK for {session_id} — backfilling shared pool");
-                    // Insert the resumed facade back into the shared pool so
-                    // subsequent reconnects reuse it instead of creating a
-                    // duplicate facade that would race on the same JSONL file.
-                    state.active_facades.lock().await.insert(
-                        session_id.clone(),
-                        crate::ActiveSession {
-                            facade: h.clone(),
-                            pending_message: None,
-                        },
-                    );
-                    (h, None)
-                }
-                Err(e) => {
-                    log::error!("ws: failed to create/resume session {session_id}: {e}");
-                    let notice = format!(
-                        r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                    );
-                    log::info!("ws: {session_id} -> error notice");
-                    let _ = socket.send(Message::Text(notice)).await;
-                    return;
+            None => {
+                log::info!("ws: pool MISS for {session_id} — creating new runtime");
+                // Not in pool — create a new runtime. This happens after a
+                // backend restart (the in-memory pool is empty) or when a
+                // client reconnects to a session whose runtime was evicted.
+                let cwd = std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                match state.ctx.pool.create_session(&cwd).await {
+                    Ok(new_id) => {
+                        log::info!("ws: created new runtime {new_id} for {session_id}");
+                        match state.ctx.pool.get_session(&new_id).await {
+                            Some(rt) => (rt, None),
+                            None => {
+                                let e = "failed to get runtime after creation";
+                                log::error!("ws: {e}");
+                                let notice = format!(
+                                    r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                                );
+                                let _ = socket.send(Message::Text(notice)).await;
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("ws: failed to create session {session_id}: {e}");
+                        let notice = format!(
+                            r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                        );
+                        log::info!("ws: {session_id} -> error notice");
+                        let _ = socket.send(Message::Text(notice)).await;
+                        return;
+                    }
                 }
             }
         }
@@ -695,13 +693,14 @@ async fn handle_session(
         }
     }
 
-    let (mut delta_rx, mut durable_rx) = setup_event_channel(&agent_facade).await;
+    let session = runtime.lock().await.clone_handle();
+    let (mut delta_rx, mut durable_rx) = setup_event_channel(&session).await;
     log::info!("ws: event channel subscribed for {session_id}");
 
     // If there is a pending message from create_session, send it now that
     // event subscribers are in place (prevents losing early events).
     //
-    // The send MUST run in a background task. `AgentFacade::send` awaits
+    // The send MUST run in a background task. `AgentSession::send` awaits
     // `add_user_text` → `agent.process()` → the full agent turn, which only
     // completes once the assistant finishes. If we awaited it inline here, the
     // event-forwarding loop below would not run until the turn ended, so:
@@ -777,7 +776,7 @@ async fn handle_session(
                                     text.len(),
                                     text.trim_start().starts_with('/')
                                 );
-                                if let Err(notice) = try_slash_command(&text, &mut agent_facade).await {
+                                if let Err(notice) = try_slash_command(&text, &runtime).await {
                                     let Some((seq, json)) = buffer_and_serialize(&buffer, TranscriptEvent::Session(notice)).await else { continue };
                                     log::info!("ws: {session_id} -> slash-command notice seq={seq}");
                                     let _ = socket.send(Message::Text(json)).await;
@@ -789,17 +788,22 @@ async fn handle_session(
                                 // forwarding events concurrently (see the
                                 // pending_message comment above for why we
                                 // cannot await send() inline).
-                                let facade = agent_facade.clone();
+                                let rt = runtime.clone();
                                 let task_id = session_id.clone();
+                                let text = text.to_string();
                                 tokio::spawn(async move {
                                     log::info!("ws: agent turn started for {task_id}");
-                                    facade.send(&text).await;
+                                    let session = rt.lock().await;
+                                    session.prompt(&text, None).await;
                                     log::info!("ws: agent turn completed for {task_id}");
                                 });
                             }
                             Ok(ClientCommand::Interrupt) => {
                                 log::info!("ws: {session_id} <- Interrupt");
-                                agent_facade.abort().await;
+                                let rt = runtime.clone();
+                                tokio::spawn(async move {
+                                    rt.lock().await.abort().await;
+                                });
                             }
                             Ok(ClientCommand::Ping) => {
                                 log::debug!("ws: {session_id} <- Ping");
@@ -844,19 +848,17 @@ async fn handle_session(
 /// slash command (caller should forward it to the agent).
 async fn try_slash_command(
     text: &str,
-    agent_facade: &mut Arc<AgentFacade>,
+    runtime: &Arc<tokio::sync::Mutex<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>>,
 ) -> Result<(), SessionEventPayload> {
     let Some((cmd_name, cmd_args)) =
         pi_coding_agent::core::slash_commands::parse_slash_command(text)
     else {
         return Ok(());
     };
-    // `handle_slash_command` needs a unique mutable reference to the facade.
-    let agent = Arc::get_mut(agent_facade).ok_or_else(|| SessionEventPayload::Notice {
-        text: "session busy, cannot run slash command".to_string(),
-        is_error: true,
-    })?;
-    match handle_slash_command(cmd_name, cmd_args, agent).await {
+    // `handle_slash_command` needs a mutable reference to the session.
+    let mut rt = runtime.lock().await;
+    let session = rt.session_mut();
+    match handle_slash_command(cmd_name, cmd_args, session).await {
         Ok(text) if !text.is_empty() => Err(SessionEventPayload::Notice {
             text,
             is_error: false,
