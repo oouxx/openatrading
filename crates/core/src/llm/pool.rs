@@ -58,6 +58,38 @@ impl SessionPool {
         Ok(session_id)
     }
 
+    /// Create a new session with a specific ID (for reconnection after pool miss).
+    /// Returns an error if a session with this ID already exists.
+    pub async fn create_session_with_id(&self, session_id: &str, cwd: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().await;
+        if sessions.contains_key(session_id) {
+            return Err(format!("Session {session_id} already exists"));
+        }
+        let session_dir = pi_coding_agent::config::get_sessions_dir()
+            .to_string_lossy()
+            .to_string();
+        let agent_dir = pi_coding_agent::config::get_agent_dir()
+            .to_string_lossy()
+            .to_string();
+
+        let session_manager = SessionManager::new(cwd, &session_dir, None, true, None);
+
+        let runtime = create_agent_session_runtime(
+            self.factory.clone(),
+            CreateAgentSessionRuntimeParams {
+                cwd: cwd.to_string(),
+                agent_dir,
+                session_manager,
+                session_start_event: None,
+            },
+        )
+        .await;
+
+        let runtime = Arc::new(Mutex::new(runtime));
+        sessions.insert(session_id.to_string(), runtime);
+        Ok(())
+    }
+
     /// Get a reference to a session runtime by ID.
     pub async fn get_session(&self, id: &str) -> Option<Arc<Mutex<AgentSessionRuntime>>> {
         self.sessions.lock().await.get(id).cloned()
