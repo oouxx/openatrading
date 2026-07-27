@@ -14,7 +14,7 @@ use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::AgentMessage;
-use pi_coding_agent::core::agent_session::AgentSession;
+use pi_coding_agent::core::agent_session::{AgentSession, PromptOptions};
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
 use serde::{Deserialize, Serialize};
@@ -484,52 +484,87 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
     };
     log::info!("ws: event channel subscribed for {session_id}");
 
+    // Read the first client message as the prompt, then start the agent turn
+    // in a background task while this task forwards events to the WebSocket.
+    let first_msg = socket.recv().await;
+    match first_msg {
+        Some(Ok(Message::Text(text))) => {
+            log::info!("ws: {session_id} <- first message (len={})", text.len());
+            if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text)
+            {
+                let rt = runtime.clone();
+                let task_id = session_id.clone();
+                tokio::task::spawn_blocking(move || {
+                    let handle = tokio::runtime::Handle::current();
+                    handle.block_on(async {
+                        log::info!("ws: agent turn started for {task_id}");
+                        let session = rt.lock().await;
+                        let streaming_behavior = if session.session().is_streaming().await {
+                            Some("followUp".to_string())
+                        } else {
+                            None
+                        };
+                        let opts = PromptOptions {
+                            streaming_behavior,
+                            ..Default::default()
+                        };
+                        session.session().prompt(&text, Some(opts)).await;
+                        log::info!("ws: agent turn completed for {task_id}");
+                    });
+                });
+            } else {
+                log::warn!("ws: {session_id} first message is not a Prompt command — ignoring");
+            }
+        }
+        Some(Ok(Message::Ping(_))) => {
+            log::debug!("ws: {session_id} first message is Ping — no prompt to process");
+        }
+        _ => {
+            log::info!(
+                "ws: {session_id} socket closed before first message — no prompt to process"
+            );
+        }
+    }
+
     log::info!("ws: session {session_id} connected — entering event loop");
 
+    // Event loop: forward events to WebSocket, handle pings, detect disconnect.
     loop {
-        // `biased` ensures durable events (lifecycle, tool results) are
-        // drained before delta events when both are ready (§14, finding #8).
         tokio::select! {
-        biased;
-        // Durable events (tool results, lifecycle, compaction, retry) — must deliver
-        Some(event) = durable_rx.recv() => {
-            log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
-            // Track running state (§7.4): agent_end/agent_settled → session is idle.
-            matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled));
-            // Serialize the envelope and send to the WebSocket.
-            let label = event.kind_label();
-            let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-            log::debug!("ws: {session_id} -> durable event ({label})");
-            if socket.send(Message::Text(json)).await.is_err() {
-                log::warn!("ws: {session_id} socket send failed on durable event — breaking");
-                break;
-            }
-        }
-        // Delta events (text/thinking/tool-call deltas) — can drop if slow
-        Some(event) = delta_rx.recv() => {
-            let label = event.kind_label();
-            let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-            log::trace!("ws: {session_id} -> delta ({label})");
-            if socket.send(Message::Text(json)).await.is_err() {
-                log::warn!("ws: {session_id} socket send failed on delta — breaking");
-                break;
-            }
-        }
-        // Client → command (ignored — command handling not yet wired)
-        msg = socket.recv() => {
-            match msg {
-                Some(Ok(Message::Text(text))) => {
-                    log::debug!("ws: {session_id} <- client text ignored (len={})", text.len());
-                }
-                Some(Ok(Message::Ping(data))) => {
-                    let _ = socket.send(Message::Pong(data)).await;
-                }
-                _ => {
-                    log::info!("ws: {session_id} socket closed/error — exiting event loop");
+            biased;
+            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
+            Some(event) = durable_rx.recv() => {
+                log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
+                let label = event.kind_label();
+                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+                log::debug!("ws: {session_id} -> durable event ({label})");
+                if socket.send(Message::Text(json)).await.is_err() {
+                    log::warn!("ws: {session_id} socket send failed on durable event — breaking");
                     break;
                 }
             }
-        }
+            // Delta events (text/thinking/tool-call deltas) — can drop if slow
+            Some(event) = delta_rx.recv() => {
+                let label = event.kind_label();
+                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+                log::trace!("ws: {session_id} -> delta ({label})");
+                if socket.send(Message::Text(json)).await.is_err() {
+                    log::warn!("ws: {session_id} socket send failed on delta — breaking");
+                    break;
+                }
+            }
+            // WebSocket events: respond to pings, break on close/error
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Ping(data))) => {
+                        let _ = socket.send(Message::Pong(data)).await;
+                    }
+                    _ => {
+                        log::info!("ws: {session_id} socket closed/error — exiting event loop");
+                        break;
+                    }
+                }
+            }
         }
     }
 
