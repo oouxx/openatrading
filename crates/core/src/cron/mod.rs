@@ -331,7 +331,7 @@ async fn run_decision_for_role(
         user_message.push_str(crate::prompts::AGGRESSIVE_MODE_USER_PROMPT);
     }
 
-    let system = crate::skills::SkillRegistry::build_role_prompt(role);
+    let _system = crate::skills::SkillRegistry::build_role_prompt(role);
 
     // ── Build make_decision tool ──
     // The LLM calls this tool with structured DecisionOutput params.
@@ -359,7 +359,7 @@ async fn run_decision_for_role(
             })
         });
 
-        let make_decision_tool = ToolDefinition {
+        let _make_decision_tool = ToolDefinition {
             name: "make_decision".to_string(),
             label: None,
             description: "提交交易决策。包含市场分析、交易指令列表（买入/卖出/持有）。                每次决策必须调用此工具提交最终决策结果。                参数：analysis（市场分析文本）、trades（交易指令数组）。                每个交易指令包含：action（Buy/Sell/Hold）、symbol（股票代码）、                name（股票名称）、shares（股数）、reason（理由）。".to_string(),
@@ -416,16 +416,7 @@ async fn run_decision_for_role(
             .to_string_lossy()
             .to_string();
 
-        let _text = match ctx
-            .pool
-            .prompt_once(
-                &cwd,
-                Some(system.as_str()),
-                Some(vec![make_decision_tool]),
-                user_message.as_str(),
-            )
-            .await
-        {
+        let _text = match ctx.pool.prompt_once(&cwd, user_message.as_str()).await {
             Ok(t) => t,
             Err(e) => {
                 let err_msg = format!("❌ LLM 调用失败: {e}");

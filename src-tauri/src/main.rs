@@ -743,20 +743,22 @@ async fn dispatch_post(
                 .to_string();
             let session_id = state
                 .ctx
-                .pool.create_session(&cwd, None, None)
+                .pool
+                .create_session(&cwd, None, None)
                 .await
                 .map_err(|e| format!("{e}"))?;
-            let (session_file, session_name) = if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
-                let rt = rt.lock().await;
-                let session = rt.session();
-                let mgr = session.get_session_manager();
-                let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
-                let sname = mgr.get_session_name();
-                drop(mgr);
-                (sfile, sname)
-            } else {
-                (None, None)
-            };
+            let (session_file, session_name) =
+                if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
+                    let rt = rt.lock().await;
+                    let session = rt.session();
+                    let mgr = session.get_session_manager();
+                    let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
+                    let sname = mgr.get_session_name();
+                    drop(mgr);
+                    (sfile, sname)
+                } else {
+                    (None, None)
+                };
             Ok(serde_json::json!({"success": true,
                 "id": session_id,
                 "name": session_name,
@@ -1100,11 +1102,7 @@ async fn interrupt_session(
 }
 
 #[tauri::command]
-async fn respond_permission(
-    session_id: String,
-    id: String,
-    approved: bool,
-) -> Result<(), String> {
+async fn respond_permission(session_id: String, id: String, approved: bool) -> Result<(), String> {
     eprintln!("permission response received but not yet wired: session={session_id}, id={id}, approved={approved}");
     Ok(())
 }
@@ -1135,7 +1133,8 @@ async fn ensure_session_tauri(
         .to_string();
     let new_id = state
         .ctx
-        .pool.create_session(&cwd, None, None)
+        .pool
+        .create_session(&cwd, None, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1440,7 +1439,6 @@ fn main() {
         running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
-
 
     tauri::Builder::default()
         .manage(app_state)

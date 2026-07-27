@@ -3,9 +3,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{
-    build_tools, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry,
-};
+use crate::llm::{build_tools, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;

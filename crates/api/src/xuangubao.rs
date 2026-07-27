@@ -567,7 +567,7 @@ impl XuanguBaoClient {
         let url = format!(
             "{}/market/trend?fields={}&prod_code={symbol}",
             "https://api-ddc-wscn.xuangubao.com.cn",
-            &ApiField::join(&[ApiField::TickAt, ApiField::ClosePx]),
+            ApiField::join(&[ApiField::TickAt, ApiField::ClosePx]),
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
@@ -866,7 +866,7 @@ impl XuanguBaoClient {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
-            &ApiField::join(&[
+            ApiField::join(&[
                 ApiField::TickAt,
                 ApiField::OpenPx,
                 ApiField::ClosePx,
@@ -950,7 +950,7 @@ impl XuanguBaoClient {
             .collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
-            &ApiField::join(&[
+            ApiField::join(&[
                 ApiField::TickAt,
                 ApiField::OpenPx,
                 ApiField::ClosePx,
@@ -1029,7 +1029,7 @@ impl XuanguBaoClient {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
-            &ApiField::join(&[
+            ApiField::join(&[
                 ApiField::ProdName,
                 ApiField::TradeStatus,
                 ApiField::UpdateTime,
@@ -1053,7 +1053,7 @@ impl XuanguBaoClient {
                 ApiField::CirculationShares,
                 ApiField::TotalShares,
             ]),
-            &symbol
+            symbol
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -1148,7 +1148,7 @@ impl XuanguBaoClient {
             .collect();
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
-            &ApiField::join(&[
+            ApiField::join(&[
                 ApiField::ProdName,
                 ApiField::TradeStatus,
                 ApiField::UpdateTime,
@@ -1263,7 +1263,7 @@ impl XuanguBaoClient {
         let url = format!(
             "{}/stage2/plates_by_any_stock?symbol={symbol}&fields={}",
             self.base_url,
-            &ApiField::join(&[ApiField::CoreAvgPcp, ApiField::PlateName]),
+            ApiField::join(&[ApiField::CoreAvgPcp, ApiField::PlateName]),
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -1681,7 +1681,7 @@ impl XuanguBaoClient {
     async fn fetch_index_trend(&self, prod_code: &str) -> Result<Vec<IndexTick>> {
         let url = format!(
             "https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields={}&prod_code={prod_code}",
-            &ApiField::join(&[ApiField::TickAt, ApiField::ClosePx])
+            ApiField::join(&[ApiField::TickAt, ApiField::ClosePx])
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(

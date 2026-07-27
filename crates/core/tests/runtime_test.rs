@@ -30,10 +30,14 @@ async fn test_create_agent_session_with_extension() {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let session_id = pool.create_session(&cwd, None, None)
+    let session_id = pool
+        .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = pool
+        .get_session(&session_id)
+        .await
+        .expect("runtime not found");
     let rt = rt.lock().await;
     let session = rt.session();
     // Verify that the session has trading extension tools available.
@@ -64,10 +68,14 @@ async fn test_trading_tools_exec() {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let session_id = pool.create_session(&cwd, None, None)
+    let session_id = pool
+        .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = pool
+        .get_session(&session_id)
+        .await
+        .expect("runtime not found");
     let rt = rt.lock().await;
     let session = rt.session();
 
@@ -175,10 +183,13 @@ async fn test_bash_tool_exec() {
         .to_string_lossy()
         .to_string();
     let session_id = pool
-        .create_session(&cwd, None, None)
+        .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool.get_session(&session_id).await.expect("runtime not found");
+    let rt = pool
+        .get_session(&session_id)
+        .await
+        .expect("runtime not found");
     let rt = rt.lock().await;
     let session = rt.session();
 

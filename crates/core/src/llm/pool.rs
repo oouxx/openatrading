@@ -1,7 +1,6 @@
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions};
 use pi_coding_agent::pi_ai_types::Model;
-use pi_extension_api::ToolDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -27,11 +26,7 @@ pub struct SessionPool {
 }
 
 impl SessionPool {
-    pub fn new(
-        agent_dir: &str,
-        model: Option<Model>,
-        tools: Option<Vec<String>>,
-    ) -> Self {
+    pub fn new(agent_dir: &str, model: Option<Model>, tools: Option<Vec<String>>) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
             agent_dir: agent_dir.to_string(),
@@ -45,12 +40,7 @@ impl SessionPool {
     /// `system_prompt` — if provided, overrides the default system prompt
     ///   on the session's agent after creation.
     /// `custom_tools` — additional tool definitions to register.
-    pub async fn create_session(
-        &self,
-        cwd: &str,
-        system_prompt: Option<&str>,
-        custom_tools: Option<Vec<ToolDefinition>>,
-    ) -> Result<String, String> {
+    pub async fn create_session(&self, cwd: &str) -> Result<String, String> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
@@ -61,12 +51,11 @@ impl SessionPool {
         // each session gets its own independent copy.
         let ext_registry = openatrading_extension::create_registry();
 
-        let (mut session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
+        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
             cwd: cwd.to_string(),
             agent_dir: Some(self.agent_dir.clone()),
             model: self.model.clone(),
             tools: self.tools.clone(),
-            custom_tools,
             extension_registry: Some(ext_registry),
             session_dir: Some(session_dir),
             persist_session: true,
@@ -75,13 +64,11 @@ impl SessionPool {
         .await
         .map_err(|e| format!("Failed to create session: {e}"))?;
 
-        // Set custom system prompt if provided
-        if let Some(prompt) = system_prompt {
-            session.get_agent().set_system_prompt(prompt.to_string()).await;
-        }
-
         let session = Arc::new(Mutex::new(session));
-        self.sessions.lock().await.insert(session_id.clone(), session);
+        self.sessions
+            .lock()
+            .await
+            .insert(session_id.clone(), session);
         Ok(session_id)
     }
 
@@ -99,7 +86,7 @@ impl SessionPool {
             .get(session_id)
             .ok_or_else(|| "Session not found".to_string())?
             .clone();
-        let mut s = session.lock().await;
+        let s = session.lock().await;
         s.prompt(text, None).await;
         Ok(())
     }
@@ -111,24 +98,21 @@ impl SessionPool {
     ///
     /// `prompt()` on `AgentSession` is `!Send` (holds `std::sync::MutexGuard`
     /// across `.await`), so we isolate it via `spawn_blocking`.
-    pub async fn prompt_once(
-        &self,
-        cwd: &str,
-        system_prompt: Option<&str>,
-        custom_tools: Option<Vec<ToolDefinition>>,
-        text: &str,
-    ) -> Result<String, String> {
-        let session_id = self.create_session(cwd, system_prompt, custom_tools).await?;
-        let session = self.get_session(&session_id).await
+    pub async fn prompt_once(&self, cwd: &str, text: &str) -> Result<String, String> {
+        let session_id = self.create_session(cwd).await?;
+        let session = self
+            .get_session(&session_id)
+            .await
             .ok_or_else(|| "Session not found after creation".to_string())?;
 
         let msg = text.to_string();
         let result = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
-                let mut s = session.lock().await;
+                let s = session.lock().await;
                 s.prompt(&msg, None).await;
-                s.get_last_assistant_text().await
+                s.get_last_assistant_text()
+                    .await
                     .ok_or_else(|| "No assistant response".to_string())
             })
         })

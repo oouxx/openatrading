@@ -144,26 +144,20 @@ async fn handle_ask(
         .reply(event, &format!("🤔 {} 正在思考…", role.display_name))
         .await;
 
-    let system = crate::skills::SkillRegistry::build_role_prompt(role);
+    let _system = crate::skills::SkillRegistry::build_role_prompt(role);
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
-    match ctx
-        .pool
-        .prompt_once(&cwd, Some(&system), None, question)
-        .await
-    {
+    match ctx.pool.prompt_once(&cwd, question).await {
         Ok(response) => {
             let _ = adapter
                 .reply(event, &format!("**{}**: {}", role.display_name, response))
                 .await;
         }
         Err(e) => {
-            let _ = adapter
-                .reply(event, &format!("❌ 处理失败: {e}"))
-                .await;
+            let _ = adapter.reply(event, &format!("❌ 处理失败: {e}")).await;
         }
     }
 }

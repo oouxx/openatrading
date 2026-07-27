@@ -848,7 +848,9 @@ async fn handle_session(
 /// slash command (caller should forward it to the agent).
 async fn try_slash_command(
     text: &str,
-    runtime: &Arc<tokio::sync::Mutex<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>>,
+    runtime: &Arc<
+        tokio::sync::Mutex<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>,
+    >,
 ) -> Result<(), SessionEventPayload> {
     let Some((cmd_name, cmd_args)) =
         pi_coding_agent::core::slash_commands::parse_slash_command(text)

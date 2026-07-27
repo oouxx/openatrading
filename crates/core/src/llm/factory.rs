@@ -77,8 +77,13 @@ async fn test_factory() {
     std::fs::create_dir_all(&session_dir).unwrap();
 
     let factory = create_factory("/tmp/pi", None, None, None);
-    let session_manager =
-        pi_coding_agent::core::session_manager::SessionManager::new(&cwd, &session_dir.to_string_lossy(), None, false, None);
+    let session_manager = pi_coding_agent::core::session_manager::SessionManager::new(
+        &cwd,
+        &session_dir.to_string_lossy(),
+        None,
+        false,
+        None,
+    );
 
     let runtime = create_agent_session_runtime(
         factory,
@@ -92,5 +97,5 @@ async fn test_factory() {
     .await;
 
     assert!(!runtime.cwd().is_empty());
-    assert!(runtime.session().get_session_id().len() > 0);
+    assert!(!runtime.session().get_session_id().is_empty());
 }
