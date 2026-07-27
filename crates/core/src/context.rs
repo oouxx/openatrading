@@ -3,7 +3,9 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{build_tools, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry};
+use crate::llm::{
+    build_tools, create_factory, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry,
+};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
@@ -34,7 +36,8 @@ impl AppContext {
             .to_string_lossy()
             .to_string();
 
-        let pool = Arc::new(SessionPool::new(&agent_dir, None, None));
+        let factory = create_factory(&agent_dir, None, None, None);
+        let pool = Arc::new(SessionPool::new(factory));
 
         let api = ApiClient::new();
         let tool_cfg = ToolConfig {

@@ -744,9 +744,9 @@ async fn dispatch_post(
             let session_id = state
                 .ctx
                 .pool
-                .create_session(&cwd, None, None)
+                .create_session(&cwd)
                 .await
-                .map_err(|e| format!("{e}"))?;
+                .map_err(|e| e.to_string())?;
             let (session_file, session_name) =
                 if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
                     let rt = rt.lock().await;
@@ -1084,8 +1084,16 @@ async fn send_prompt(
         .unwrap_or_else(|e| e.into_inner())
         .insert(session_id.clone());
     if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
-        let session = rt.lock().await;
-        session.prompt(&text, None).await;
+        let text = text.clone();
+        tokio::task::spawn_blocking(move || {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let session = rt.lock().await;
+                session.session().prompt(&text, None).await;
+            });
+        })
+        .await
+        .map_err(|e| format!("Blocking task failed: {e}"))?;
     }
     Ok(())
 }
@@ -1096,7 +1104,7 @@ async fn interrupt_session(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
-        rt.lock().await.abort().await;
+        rt.lock().await.session().abort().await;
     }
     Ok(())
 }
@@ -1134,15 +1142,16 @@ async fn ensure_session_tauri(
     let new_id = state
         .ctx
         .pool
-        .create_session(&cwd, None, None)
+        .create_session(&cwd)
         .await
         .map_err(|e| e.to_string())?;
 
     // Set up the forward task for this session.
     if let Some(rt) = state.ctx.pool.get_session(&new_id).await {
-        let session = rt.lock().await.clone_handle();
+        let guard = rt.lock().await;
+        let session = guard.session();
         let (mut delta_rx, mut durable_rx) =
-            openatrading_web::agent_ws::setup_event_channel(&session).await;
+            openatrading_web::agent_ws::setup_event_channel(session).await;
         let buffer = openatrading_web::agent_ws::get_session_buffer(state, session_id).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
@@ -1190,14 +1199,6 @@ async fn run_slash_tauri(
     cmd_args: &str,
 ) -> openatrading_web::agent_ws::SessionEventPayload {
     use openatrading_web::agent_ws::SessionEventPayload;
-
-    // Make sure the session exists.
-    if let Err(e) = ensure_session_tauri(session_id, state, &tauri::AppHandle::default()).await {
-        return SessionEventPayload::Notice {
-            text: format!("[Slash Error] {e}"),
-            is_error: true,
-        };
-    }
 
     if let Some(rt) = state.ctx.pool.get_session(session_id).await {
         let mut rt = rt.lock().await;
@@ -1438,6 +1439,7 @@ fn main() {
         cache: openatrading_web::cache::new_cache(),
         running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     tauri::Builder::default()

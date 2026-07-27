@@ -1,12 +1,12 @@
 // Re-exports from openatrading-agent (the canonical agent crate).
 // Core's business-specific agent code lives in the sibling modules below.
+pub mod cwd;
 pub mod factory;
 pub mod gui_event;
+pub mod mcp;
 pub mod pool;
 pub mod runtime;
 pub mod tools;
-
-pub mod cwd;
 pub mod types;
 pub mod ui;
 pub use types::*;
@@ -17,7 +17,9 @@ pub use openatrading_agent::llm::{
 };
 
 pub use openatrading_agent::mcp_server::{serve_http, serve_stdio, MarketToolsServer};
-pub use openatrading_agent::mcp_tools::{McpClient, McpRegistry, McpServerConfig, ToolConfig};
+pub use openatrading_agent::mcp_tools::{
+    McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
+};
 pub use openatrading_agent::tools::{empty_schema, text_result, to_box_err, tool, ExecuteFn};
 
 pub use openatrading_agent::agent::{Agent, AgentOptions};

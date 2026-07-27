@@ -290,9 +290,9 @@ pub async fn handle_slash_command(
             Err(e) => Err(format!("Compaction failed: {e}")),
         },
         "session" => {
-            let sid = session.session_id();
-            let name = session.session_name();
-            let mgr = session.session_manager();
+            let sid = session.get_session_id();
+            let name = session.get_session_name().unwrap_or_default();
+            let mgr = session.get_session_manager();
             let msg_count = mgr.get_entries().len();
             let file = mgr
                 .get_session_file()
@@ -360,7 +360,7 @@ pub async fn create_session(
         "create_session: calling pool.create_session (resume=false, name={:?})",
         name
     );
-    let session_id = match state.ctx.pool.create_session(&cwd, None, None).await {
+    let session_id = match state.ctx.pool.create_session(&cwd).await {
         Ok(id) => id,
         Err(e) => {
             openatrading_core::log::error!("create_session: pool.create_session failed: {e}");

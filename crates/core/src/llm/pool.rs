@@ -1,79 +1,68 @@
-use pi_coding_agent::core::agent_session::AgentSession;
-use pi_coding_agent::core::sdk::{self, CreateAgentSessionOptions};
-use pi_coding_agent::pi_ai_types::Model;
+use crate::llm::create_factory;
+use pi_coding_agent::core::agent_session_runtime::{
+    create_agent_session_runtime, AgentSessionRuntime, CreateAgentSessionRuntimeFactory,
+    CreateAgentSessionRuntimeParams,
+};
+use pi_coding_agent::core::session_manager::SessionManager;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Manages multiple concurrent LLM agent sessions.
 ///
-/// Each session is backed by a pi-coding-agent [`AgentSession`] created
-/// via `sdk::create_agent_session`. Sessions are identified by UUID and
-/// stored in a HashMap for concurrent access.
-///
-/// The extension registry is created fresh for each session via
-/// `openatrading_extension::create_registry()` since `ExtensionRegistry`
-/// does not implement `Clone` and cannot be shared across sessions.
+/// Each session is backed by a pi-coding-agent [`AgentSessionRuntime`] created
+/// via `create_agent_session_runtime` + a factory. Sessions are identified by
+/// UUID and stored in a HashMap for concurrent access.
 pub struct SessionPool {
     /// All active sessions, keyed by session ID.
-    sessions: Mutex<HashMap<String, Arc<Mutex<AgentSession>>>>,
-    /// Base directory for agent data.
-    agent_dir: String,
-    /// Default model override.
-    model: Option<Model>,
-    /// Default tool names to activate.
-    tools: Option<Vec<String>>,
+    sessions: Mutex<HashMap<String, Arc<Mutex<AgentSessionRuntime>>>>,
+    /// Factory for creating new `AgentSessionRuntime` instances.
+    factory: CreateAgentSessionRuntimeFactory,
 }
 
 impl SessionPool {
-    pub fn new(agent_dir: &str, model: Option<Model>, tools: Option<Vec<String>>) -> Self {
+    pub fn new(factory: CreateAgentSessionRuntimeFactory) -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
-            agent_dir: agent_dir.to_string(),
-            model,
-            tools,
+            factory,
         }
     }
 
     /// Create a new session and return its ID.
-    ///
-    /// `system_prompt` — if provided, overrides the default system prompt
-    ///   on the session's agent after creation.
-    /// `custom_tools` — additional tool definitions to register.
     pub async fn create_session(&self, cwd: &str) -> Result<String, String> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
             .to_string();
+        let agent_dir = pi_coding_agent::config::get_agent_dir()
+            .to_string_lossy()
+            .to_string();
 
-        // Create a fresh extension registry for each session.
-        // ExtensionRegistry is !Clone, so it cannot be stored and shared;
-        // each session gets its own independent copy.
-        let ext_registry = openatrading_extension::create_registry();
+        let session_manager = SessionManager::new(cwd, &session_dir, None, true, None);
 
-        let (session, _result) = sdk::create_agent_session(CreateAgentSessionOptions {
-            cwd: cwd.to_string(),
-            agent_dir: Some(self.agent_dir.clone()),
-            model: self.model.clone(),
-            tools: self.tools.clone(),
-            extension_registry: Some(ext_registry),
-            session_dir: Some(session_dir),
-            persist_session: true,
-            ..Default::default()
-        })
-        .await
-        .map_err(|e| format!("Failed to create session: {e}"))?;
+        let runtime = create_agent_session_runtime(
+            // Create a fresh factory for each session since the factory is
+            // consumed and stored inside the returned AgentSessionRuntime.
+            create_factory(&agent_dir, None, None, None),
+            CreateAgentSessionRuntimeParams {
+                cwd: cwd.to_string(),
+                agent_dir,
+                session_manager,
+                session_start_event: None,
+            },
+        )
+        .await;
 
-        let session = Arc::new(Mutex::new(session));
+        let runtime = Arc::new(Mutex::new(runtime));
         self.sessions
             .lock()
             .await
-            .insert(session_id.clone(), session);
+            .insert(session_id.clone(), runtime);
         Ok(session_id)
     }
 
-    /// Get a reference to a session by ID.
-    pub async fn get_session(&self, id: &str) -> Option<Arc<Mutex<AgentSession>>> {
+    /// Get a reference to a session runtime by ID.
+    pub async fn get_session(&self, id: &str) -> Option<Arc<Mutex<AgentSessionRuntime>>> {
         self.sessions.lock().await.get(id).cloned()
     }
 
@@ -86,8 +75,8 @@ impl SessionPool {
             .get(session_id)
             .ok_or_else(|| "Session not found".to_string())?
             .clone();
-        let s = session.lock().await;
-        s.prompt(text, None).await;
+        let rt = session.lock().await;
+        rt.session().prompt(text, None).await;
         Ok(())
     }
 
@@ -109,7 +98,8 @@ impl SessionPool {
         let result = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
-                let s = session.lock().await;
+                let rt = session.lock().await;
+                let s = rt.session();
                 s.prompt(&msg, None).await;
                 s.get_last_assistant_text()
                     .await

@@ -25,7 +25,7 @@ async fn test_create_agent_session_with_extension() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(&agent_dir, None, None);
+    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -63,7 +63,7 @@ async fn test_trading_tools_exec() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(&agent_dir, None, None);
+    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -177,7 +177,7 @@ async fn test_bash_tool_exec() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(&agent_dir, None, None);
+    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()

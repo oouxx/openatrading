@@ -693,8 +693,10 @@ async fn handle_session(
         }
     }
 
-    let session = runtime.lock().await.clone_handle();
-    let (mut delta_rx, mut durable_rx) = setup_event_channel(&session).await;
+    let (mut delta_rx, mut durable_rx) = {
+        let rt = runtime.lock().await;
+        setup_event_channel(rt.session()).await
+    };
     log::info!("ws: event channel subscribed for {session_id}");
 
     // If there is a pending message from create_session, send it now that
@@ -719,10 +721,14 @@ async fn handle_session(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(session_id.clone());
-        let facade = agent_facade.clone();
+        let rt = runtime.clone();
         let id_for_task = session_id.clone();
-        tokio::spawn(async move {
-            facade.send(&msg).await;
+        tokio::task::spawn_blocking(move || {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let session = rt.lock().await;
+                session.session().prompt(&msg, None).await;
+            });
             log::info!("ws: pending_message turn completed for {id_for_task}");
         });
     }
@@ -791,18 +797,21 @@ async fn handle_session(
                                 let rt = runtime.clone();
                                 let task_id = session_id.clone();
                                 let text = text.to_string();
-                                tokio::spawn(async move {
-                                    log::info!("ws: agent turn started for {task_id}");
-                                    let session = rt.lock().await;
-                                    session.prompt(&text, None).await;
-                                    log::info!("ws: agent turn completed for {task_id}");
+                                tokio::task::spawn_blocking(move || {
+                                    let handle = tokio::runtime::Handle::current();
+                                    handle.block_on(async {
+                                        log::info!("ws: agent turn started for {task_id}");
+                                        let session = rt.lock().await;
+                                        session.session().prompt(&text, None).await;
+                                        log::info!("ws: agent turn completed for {task_id}");
+                                    });
                                 });
                             }
                             Ok(ClientCommand::Interrupt) => {
                                 log::info!("ws: {session_id} <- Interrupt");
                                 let rt = runtime.clone();
                                 tokio::spawn(async move {
-                                    rt.lock().await.abort().await;
+                                    rt.lock().await.session().abort().await;
                                 });
                             }
                             Ok(ClientCommand::Ping) => {
