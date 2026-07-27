@@ -2,25 +2,15 @@
 //!
 //! All events are unified into a single [`TranscriptEvent`] enum via
 //! [`SessionEventPayload`], which includes both `AgentEvent` passthrough variants
-//! and session-level events., wrapped in an [`EventEnvelope`] with seq
-//! numbering and schema version, and sent over a WebSocket connection. This
-//! module is shared between the axum web server and the Tauri IPC layer — the
-//! event-production logic is identical, only the delivery mechanism differs
-//! (`socket.send` vs `app.emit`).
-//!
-//! ## Reconnection (§9)
-//!
-//! Each event is assigned a monotonically increasing `seq`. A ring buffer
-//! (`SessionEventBuffer`) retains the last N events per session. When a client
-//! reconnects with `?last_seq=...`, the buffer replays missed events before
-//! resuming the live stream. If the buffer has already evicted the requested
-//! seq, a `resync_required` signal is sent instead.
+//! and session-level events, wrapped in an [`EventEnvelope`] with schema version,
+//! and sent over a WebSocket connection. This module is shared between the axum
+//! web server and the Tauri IPC layer — the event-production logic is identical,
+//! only the delivery mechanism differs (`socket.send` vs `app.emit`).
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::AgentMessage;
@@ -48,7 +38,6 @@ pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Serialize)]
 pub struct EventEnvelope {
     pub schema_version: u32,
-    pub seq: u64,
     #[serde(flatten)]
     pub event: TranscriptEvent,
 }
@@ -196,7 +185,6 @@ pub struct ToolResultPayload {
 const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
 
 /// Ring buffer capacity: events retained per session for reconnection replay (§9.1).
-const SESSION_BUFFER_CAPACITY: usize = 500;
 
 /// Convert a tool result text into a preview payload, truncating if too long.
 fn to_tool_result_payload(content: &str) -> ToolResultPayload {
@@ -359,77 +347,6 @@ fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<ToolResultPayload
         .collect()
 }
 
-// ── Session event buffer (§9.1) ────────────────────────────────────────────
-
-/// Ring buffer that retains the last N events per session for reconnection
-/// replay. Each event is assigned a monotonically increasing sequence number.
-pub struct SessionEventBuffer {
-    events: VecDeque<(u64, EventEnvelope)>,
-    next_seq: u64,
-    capacity: usize,
-}
-
-impl SessionEventBuffer {
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            events: VecDeque::with_capacity(capacity),
-            next_seq: 0,
-            capacity,
-        }
-    }
-
-    /// The next seq that will be assigned to a pushed event.
-    pub fn next_seq(&self) -> u64 {
-        self.next_seq
-    }
-
-    /// Push an event, assign it a seq, and return the seq.
-    pub fn push(&mut self, mut envelope: EventEnvelope) -> u64 {
-        let seq = self.next_seq;
-        self.next_seq += 1;
-        envelope.seq = seq;
-        self.events.push_back((seq, envelope));
-        if self.events.len() > self.capacity {
-            self.events.pop_front();
-        }
-        seq
-    }
-
-    /// Return all events with seq > `last_seq`, or all events if `last_seq`
-    /// is `None`. Returns `None` if the requested `last_seq` has already been
-    /// evicted from the buffer (reconnection too late).
-    pub fn events_since(&self, last_seq: Option<u64>) -> Option<Vec<&EventEnvelope>> {
-        match last_seq {
-            Some(seq) => {
-                if self
-                    .events
-                    .front()
-                    .map_or(true, |(oldest, _)| *oldest > seq)
-                {
-                    return None;
-                }
-                Some(
-                    self.events
-                        .iter()
-                        .filter(|(s, _)| *s > seq)
-                        .map(|(_, e)| e)
-                        .collect(),
-                )
-            }
-            None => Some(self.events.iter().map(|(_, e)| e).collect()),
-        }
-    }
-
-    /// Return a reference to the envelope assigned `seq`, or `None` if it has
-    /// been evicted. Used to serialize the stored (seq-correct) envelope after
-    /// [`push`](Self::push) assigned the real seq (finding #1).
-    pub fn get(&self, seq: u64) -> Option<&EventEnvelope> {
-        self.events
-            .iter()
-            .find_map(|(s, e)| (*s == seq).then_some(e))
-    }
-}
-
 // ── Client commands ───────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -483,98 +400,21 @@ pub async fn setup_event_channel(
     (delta_rx, durable_rx)
 }
 
-/// Get or create the shared per-session event buffer (§9.1).
-///
-/// The buffer lives in `AppState` so it survives across connections to the
-/// same session: events produced while a client is disconnected are retained
-/// and replayed on reconnect.
-pub async fn get_session_buffer(
-    state: &Arc<AppState>,
-    session_id: &str,
-) -> Arc<tokio::sync::Mutex<SessionEventBuffer>> {
-    let mut buffers = state.session_buffers.lock().await;
-    if let Some(buf) = buffers.get(session_id) {
-        return buf.clone();
-    }
-    let buf = Arc::new(tokio::sync::Mutex::new(SessionEventBuffer::new(
-        SESSION_BUFFER_CAPACITY,
-    )));
-    buffers.insert(session_id.to_string(), buf.clone());
-    buf
-}
-
-/// Assign a real `seq` via the shared buffer, then serialize the envelope.
-///
-/// This fixes the original ordering bug where the envelope was serialized with
-/// `seq: 0` *before* `buffer.push` assigned the real seq (finding #1): the
-/// envelope is pushed first (the buffer mutates `seq` in place), then the
-/// stored envelope — now carrying the correct seq — is serialized while still
-/// holding the buffer lock.
-/// Like [`buffer_and_serialize_value`] but also returns the assigned `seq`,
-/// so callers can log which sequence number was actually pushed to the wire.
-async fn buffer_and_serialize(
-    buffer: &Arc<tokio::sync::Mutex<SessionEventBuffer>>,
-    event: TranscriptEvent,
-) -> Option<(u64, String)> {
-    let v = buffer_and_serialize_value(buffer, event).await?;
-    // `seq` is always present on a stored envelope (set by `push`).
-    let seq = v.get("seq").and_then(|s| s.as_u64()).unwrap_or(0);
-    serde_json::to_string(&v).ok().map(|json| (seq, json))
-}
-
-/// Same as [`buffer_and_serialize`] but returns a [`serde_json::Value`].
-///
-/// Shared by the WebSocket handler (which sends a `String` over the socket)
-/// and the Tauri forward task (which emits a JSON object to the frontend).
-pub async fn buffer_and_serialize_value(
-    buffer: &Arc<tokio::sync::Mutex<SessionEventBuffer>>,
-    event: TranscriptEvent,
-) -> Option<serde_json::Value> {
-    let mut buf = buffer.lock().await;
-    let probe = EventEnvelope {
-        schema_version: SCHEMA_VERSION,
-        seq: 0,
-        event,
-    };
-    let seq = buf.push(probe);
-    let stored = buf
-        .events
-        .iter()
-        .find_map(|(s, e)| (*s == seq).then_some(e))?;
-    serde_json::to_value(stored).ok()
-}
-
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
 
-/// Query parameters for the WS upgrade request.
-#[derive(Debug, Deserialize)]
-pub struct WsQuery {
-    /// The last seq the client received. Omit for first connection.
-    pub last_seq: Option<u64>,
-}
-
 /// `GET /api/ai/sessions/:id/ws` — WebSocket upgrade.
-///
-/// The `:id` path parameter is the session ID. Optional `?last_seq=...`
-/// enables reconnection replay (§9).
 pub async fn ws_handler(
     Path(session_id): Path<String>,
-    Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_session(socket, state, session_id, query.last_seq))
+    ws.on_upgrade(move |socket| handle_session(socket, state, session_id))
 }
 
-async fn handle_session(
-    mut socket: WebSocket,
-    state: Arc<AppState>,
-    session_id: String,
-    last_seq: Option<u64>,
-) {
+async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id: String) {
     use openatrading_core::log;
 
-    log::info!("ws: upgrade accepted session_id={session_id} last_seq={last_seq:?}");
+    log::info!("ws: upgrade accepted session_id={session_id}");
 
     // Retrieve the live runtime from the SessionPool. We do NOT remove it —
     // reconnections must reuse the same AgentSessionRuntime to preserve the
@@ -622,76 +462,13 @@ async fn handle_session(
         }
     };
 
-    // Get the shared per-session event buffer (§9.1). It is shared across
-    // connections to the same session so events produced while a client is
-    // disconnected are retained for replay on reconnect (finding #2).
-    let buffer = get_session_buffer(&state, &session_id).await;
-    log::info!("ws: acquired event buffer for {session_id}");
-
-    // Replay missed events if reconnecting (§9.1). Collect the serialized
-    // JSON while holding the buffer lock, then release the lock before
-    // sending so we never hold it across a `.await` point on the socket.
-    {
-        let buf = buffer.lock().await;
-        let next_seq = buf.next_seq();
-        log::info!(
-            "ws: buffer next_seq={next_seq} for {session_id}; requesting since last_seq={last_seq:?}"
-        );
-        match buf.events_since(last_seq) {
-            Some(events) => {
-                log::info!(
-                    "ws: replaying {} missed event(s) to {session_id}",
-                    events.len()
-                );
-                let replay: Vec<String> = events
-                    .iter()
-                    .filter_map(|e| serde_json::to_string(e).ok())
-                    .collect();
-                drop(buf);
-                for json in &replay {
-                    let seq_str = serde_json::from_str::<serde_json::Value>(json)
-                        .ok()
-                        .and_then(|v| v.get("seq").and_then(|s| s.as_u64()))
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "?".into());
-                    log::debug!("ws: {session_id} -> replay seq={seq_str}");
-                    if socket.send(Message::Text(json.clone())).await.is_err() {
-                        log::warn!(
-                            "ws: socket send failed during replay seq={seq_str} for {session_id}"
-                        );
-                        return;
-                    }
-                }
-                log::info!(
-                    "ws: replay complete ({} events) for {session_id}",
-                    replay.len()
-                );
-            }
-            None => {
-                log::warn!(
-                    "ws: buffer evicted last_seq={last_seq:?} for {session_id} — sending resync_required"
-                );
-                // Buffer has evicted the requested seq — signal resync.
-                let resync = serde_json::json!({
-                    "schema_version": SCHEMA_VERSION,
-                    "seq": null,
-                    "kind": "session",
-                    "type": "resync_required",
-                });
-                log::info!("ws: {session_id} -> resync_required");
-                let _ = socket.send(Message::Text(resync.to_string())).await;
-                log::info!("ws: {session_id} resync_required sent");
-            }
-        }
-    }
-
     let (mut delta_rx, mut durable_rx) = {
         let rt = runtime.lock().await;
         setup_event_channel(rt.session()).await
     };
     log::info!("ws: event channel subscribed for {session_id}");
 
-    log::info!("ws: session {session_id} connected (last_seq={last_seq:?}) — entering event loop");
+    log::info!("ws: session {session_id} connected — entering event loop");
 
     loop {
         // `biased` ensures durable events (lifecycle, tool results) are
@@ -706,20 +483,20 @@ async fn handle_session(
                 // Push to buffer first to obtain the real seq, then serialize
                 // the stored envelope (finding #1).
                 let label = event.kind_label();
-                let Some((seq, json)) = buffer_and_serialize(&buffer, event).await else { continue };
-                log::debug!("ws: {session_id} -> durable seq={seq} ({label})");
+                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+                log::debug!("ws: {session_id} -> durable event ({label})");
                 if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on durable seq={seq} — breaking");
+                    log::warn!("ws: {session_id} socket send failed on durable event — breaking");
                     break;
                 }
             }
             // Delta events (text/thinking/tool-call deltas) — can drop if slow
             Some(event) = delta_rx.recv() => {
                 let label = event.kind_label();
-                let Some((seq, json)) = buffer_and_serialize(&buffer, event).await else { continue };
-                log::trace!("ws: {session_id} -> delta seq={seq} ({label})");
+                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+                log::trace!("ws: {session_id} -> delta ({label})");
                 if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on delta seq={seq} — breaking");
+                    log::warn!("ws: {session_id} socket send failed on delta — breaking");
                     break;
                 }
             }
@@ -736,8 +513,8 @@ async fn handle_session(
                                     text.trim_start().starts_with('/')
                                 );
                                 if let Err(notice) = try_slash_command(&text, &runtime).await {
-                                    let Some((seq, json)) = buffer_and_serialize(&buffer, TranscriptEvent::Session(notice)).await else { continue };
-                                    log::info!("ws: {session_id} -> slash-command notice seq={seq}");
+                                    let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event: TranscriptEvent::Session(notice) }) else { continue };
+                                    log::info!("ws: {session_id} -> slash-command notice");
                                     let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }

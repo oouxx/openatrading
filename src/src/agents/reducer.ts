@@ -471,7 +471,6 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
     }
     case "queue_update":
     case "session_info_changed":
-    case "resync_required":
     case "other":
     default:
       return { turns, terminal: false }

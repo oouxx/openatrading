@@ -36,7 +36,6 @@ export class TauriTransport implements AgentTransport {
   private unlisten: (() => void) | null = null
   private readyPromise: Promise<void>
   private invokeFn: typeof import("@tauri-apps/api/core").invoke | null = null
-  private lastSeq: number | undefined
 
   constructor(private sessionId: string) {
     this.readyPromise = this.init()
@@ -52,10 +51,6 @@ export class TauriTransport implements AgentTransport {
     }>("agent-event", (e) => {
       if (e.payload.session_id !== this.sessionId) return
       const envelope = e.payload.event
-      // Track seq for reconnection replay
-      if (typeof envelope.seq === "number") {
-        this.lastSeq = envelope.seq
-      }
       // The event field is the EventEnvelope with flattened TranscriptEvent.
       // Strip the envelope fields to get the inner event for the reducer.
       const { schema_version, seq, ...innerEvent } = envelope
