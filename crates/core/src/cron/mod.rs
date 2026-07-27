@@ -411,20 +411,19 @@ async fn run_decision_for_role(
             execute: Some(execute),
         };
 
-        let agent_facade = ctx
-            .runtime
-            .create_session(
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let _text = match ctx
+            .pool
+            .prompt_once(
+                &cwd,
                 Some(system.as_str()),
                 Some(vec![make_decision_tool]),
-                Some(false),
-                None,
-                None,
+                user_message.as_str(),
             )
-            .await?;
-
-        let _text = match agent_facade
-            .clone()
-            .process_decision(user_message.as_str())
             .await
         {
             Ok(t) => t,
@@ -438,7 +437,7 @@ async fn run_decision_for_role(
                         role.display_name, err_msg
                     ))
                     .await;
-                return Err(e);
+                return Err(anyhow::anyhow!(err_msg));
             }
         };
     }

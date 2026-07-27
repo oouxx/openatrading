@@ -3,16 +3,17 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{build_tools, AgentRuntime, DynTool, McpServerConfig, ToolConfig, ToolRegistry};
+use crate::llm::{
+    build_tools, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry,
+};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
 
 #[derive(Clone)]
 pub struct AppContext {
-    /// Unified runtime for all LLM operations (streaming agent sessions).
-    /// Arc'd because `AgentRuntime` is shared across concurrent sessions
-    pub runtime: Arc<AgentRuntime>,
+    /// Session pool managing all LLM agent sessions.
+    pub pool: Arc<SessionPool>,
     pub api: ApiClient,
     pub tool_registry: Arc<ArcSwap<ToolRegistry>>,
     pub memory: Arc<MemoryStore>,
@@ -31,7 +32,12 @@ impl AppContext {
         trade: Arc<TradeManager>,
         social: Arc<dyn NotificationSender>,
     ) -> Self {
-        let runtime = Arc::new(AgentRuntime::new());
+        let agent_dir = pi_coding_agent::config::get_agent_dir()
+            .to_string_lossy()
+            .to_string();
+
+        let pool = Arc::new(SessionPool::new(&agent_dir, None, None));
+
         let api = ApiClient::new();
         let tool_cfg = ToolConfig {
             mcp_servers: mcp_servers.to_vec(),
@@ -44,7 +50,7 @@ impl AppContext {
             .to_string_lossy()
             .to_string();
         Self {
-            runtime,
+            pool,
             api,
             tool_registry,
             memory,

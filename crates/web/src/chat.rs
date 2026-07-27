@@ -252,12 +252,12 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
 pub async fn handle_slash_command(
     cmd_name: &str,
     cmd_args: &str,
-    agent_facade: &mut openatrading_core::llm::runtime::AgentFacade,
+    session: &mut pi_coding_agent::core::agent_session::AgentSession,
 ) -> Result<String, String> {
     match cmd_name {
         "model" => {
             // Resolve model from "provider/model" format
-            let model_registry = agent_facade.model_registry();
+            let model_registry = session.get_model_registry();
             let result = pi_coding_agent::core::model_resolver::resolve_cli_model(
                 None,
                 Some(cmd_args),
@@ -266,7 +266,7 @@ pub async fn handle_slash_command(
             match result.model {
                 Some(model) => {
                     let display = format!("{}/{}", model.provider, model.id);
-                    agent_facade
+                    session
                         .set_model(model)
                         .await
                         .map(|_| format!("Model set to {display}"))
@@ -282,17 +282,17 @@ pub async fn handle_slash_command(
             if cmd_args.is_empty() {
                 return Err("Usage: /name <session name>".to_string());
             }
-            agent_facade.set_session_name(cmd_args);
+            session.set_session_name(cmd_args);
             Ok(format!("Session name set to \"{cmd_args}\""))
         }
-        "compact" => match agent_facade.compact(None).await {
+        "compact" => match session.compact(None).await {
             Ok(_) => Ok("Session compacted".to_string()),
             Err(e) => Err(format!("Compaction failed: {e}")),
         },
         "session" => {
-            let sid = agent_facade.session_id();
-            let name = agent_facade.session_name();
-            let mgr = agent_facade.session_manager();
+            let sid = session.session_id();
+            let name = session.session_name();
+            let mgr = session.session_manager();
             let msg_count = mgr.get_entries().len();
             let file = mgr
                 .get_session_file()
@@ -352,41 +352,35 @@ pub async fn create_session(
         req.message.len()
     );
     let name = req.name.as_deref().filter(|s| !s.is_empty());
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     openatrading_core::log::info!(
-        "create_session: calling runtime.create_session (resume=false, name={:?})",
+        "create_session: calling pool.create_session (resume=false, name={:?})",
         name
     );
-    let agent_facade = match state
-        .ctx
-        .runtime
-        .create_session(None, None, Some(true), None, name)
-        .await
-    {
-        Ok(session) => session,
+    let session_id = match state.ctx.pool.create_session(&cwd, None, None).await {
+        Ok(id) => id,
         Err(e) => {
-            openatrading_core::log::error!("create_session: runtime.create_session failed: {e}");
+            openatrading_core::log::error!("create_session: pool.create_session failed: {e}");
             return Json(serde_json::json!({
                 "success": false,
                 "error": e.to_string(),
             }));
         }
     };
-
-    let session_id = agent_facade.session_id();
     openatrading_core::log::info!("create_session: created session id={session_id}");
 
-    // Store the facade and pending message so the WebSocket handler can
-    // subscribe to events BEFORE the agent starts processing. This prevents
-    // a race where early events are produced before any subscriber exists.
-    state.active_facades.lock().await.insert(
+    // Store the pending message so the WebSocket handler can send it
+    // after subscribing to events. This prevents a race where early events
+    // are produced before any subscriber exists.
+    state.pending_messages.lock().await.insert(
         session_id.clone(),
-        crate::ActiveSession {
-            facade: agent_facade.clone(),
-            pending_message: Some(req.message.clone()),
-        },
+        req.message.clone(),
     );
     openatrading_core::log::info!(
-        "create_session: facade inserted into shared pool, pending_message queued (len={})",
+        "create_session: pending_message queued (len={})",
         req.message.len()
     );
 
@@ -397,34 +391,42 @@ pub async fn create_session(
         .unwrap_or_else(|e| e.into_inner())
         .insert(session_id.clone());
 
-    // Use session manager to get session metadata
-    let mgr = agent_facade.session_manager();
-    let session_file = mgr.get_session_file().map(std::path::Path::to_path_buf);
-    let session_name = mgr.get_session_name();
+    // Get session metadata from the runtime
+    let runtime = state.ctx.pool.get_session(&session_id).await;
+    let (session_file, session_name) = if let Some(rt) = runtime {
+        let rt = rt.lock().await;
+        let session = rt.session();
+        let mgr = session.get_session_manager();
+        let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
+        let sname = mgr.get_session_name();
+        drop(mgr);
 
-    // Force-write the session file to disk so list_sessions can find it
-    // even before the first assistant message is added. Write header +
-    // all entries (session_info for name, etc.) so the file is complete.
-    if let Some(ref path) = session_file {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let mut lines: Vec<String> = Vec::new();
-        if let Some(hdr) = mgr.get_header() {
-            if let Ok(json) = serde_json::to_string(hdr) {
-                lines.push(json);
+        // Force-write the session file to disk so list_sessions can find it
+        if let Some(ref path) = sfile {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let mut lines: Vec<String> = Vec::new();
+            if let Some(hdr) = session.get_session_manager().get_header() {
+                if let Ok(json) = serde_json::to_string(hdr) {
+                    lines.push(json);
+                }
+            }
+            for entry in session.get_session_manager().get_entries() {
+                if let Ok(json) = serde_json::to_string(entry) {
+                    lines.push(json);
+                }
+            }
+            if !lines.is_empty() {
+                let _ = std::fs::write(path, lines.join("\n") + "\n");
             }
         }
-        for entry in mgr.get_entries() {
-            if let Ok(json) = serde_json::to_string(entry) {
-                lines.push(json);
-            }
-        }
-        if !lines.is_empty() {
-            let _ = std::fs::write(path, lines.join("\n") + "\n");
-        }
-    }
-    drop(mgr);
+        (sfile, sname)
+    } else {
+        (None, None)
+    };
+
+    
     openatrading_core::log::info!(
         "create_session: responding id={session_id} name={:?}",
         session_name
@@ -622,7 +624,7 @@ pub async fn delete_session(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> StatusCode {
     // Remove the live facade from the shared pool so the agent stops.
-    state.active_facades.lock().await.remove(&id);
+    state.ctx.pool.close_session(&id).await;
     state
         .running_sessions
         .lock()

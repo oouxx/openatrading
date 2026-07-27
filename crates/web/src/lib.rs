@@ -21,20 +21,8 @@ use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use openatrading_core::context::AppContext;
-use openatrading_core::llm::AgentFacade;
 use openatrading_core::llm::McpServerConfig;
 pub use openatrading_core::RoleEntry;
-
-/// A live agent facade shared across WebSocket connections to the same session.
-///
-/// Created by `create_session` and kept in the pool so reconnections reuse
-/// the same `AgentFacade` — preserving the running agent's context and
-/// event stream.
-pub struct ActiveSession {
-    pub facade: Arc<AgentFacade>,
-    /// The first user message to send after the WebSocket subscribes.
-    pub pending_message: Option<String>,
-}
 
 pub struct AppState {
     pub ctx: AppContext,
@@ -43,11 +31,9 @@ pub struct AppState {
     pub cache: Arc<AppCache>,
     /// Tracks session IDs that currently have an active agent turn in progress (§7.4).
     pub running_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
-    /// Shared pool of live agent facades. `create_session` inserts a facade
-    /// here; `handle_session` retrieves (but does NOT remove) it so
-    /// reconnections reuse the same instance. The pending message is
-    /// cleared after the first WebSocket connection sends it.
-    pub active_facades: Arc<tokio::sync::Mutex<std::collections::HashMap<String, ActiveSession>>>,
+    /// Pending first messages for sessions created via POST /api/ai/sessions.
+    /// The WebSocket handler takes the message after subscribing to events.
+    pub pending_messages: Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// Per-session event buffers for reconnection replay (§9.1).
     ///
     /// The buffer is shared across connections to the same session so that
