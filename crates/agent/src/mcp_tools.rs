@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use rmcp::model::{CallToolRequestParams, RawContent};
+use rmcp::model::{CallToolRequestParams, ContentBlock as McpContentBlock};
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
-use rmcp::{RoleClient, ServiceExt};
+use rmcp::{serve_client, RoleClient};
 use thiserror::Error;
 
 use pi_coding_agent::pi_agent_core::types::AgentToolResult;
-use pi_coding_agent::pi_ai_types::ContentBlock;
 
 use crate::tools::{to_box_err, tool};
 use pi_coding_agent::pi_agent_core::types::DynTool;
@@ -60,8 +59,7 @@ impl McpClient {
             rmcp::transport::streamable_http_client::StreamableHttpClientTransport::from_config(
                 config,
             );
-        let service: RunningService<RoleClient, ()> = ()
-            .serve(transport)
+        let service: RunningService<RoleClient, ()> = serve_client((), transport)
             .await
             .map_err(|e| McpError::Connect(e.into()))?;
         let peer = service.peer().clone();
@@ -98,8 +96,7 @@ impl McpClient {
         );
         let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::Connect(e.into()))?;
         tracing::info!("[mcp] connect_stdio: child process spawned, serving...");
-        let service: RunningService<RoleClient, ()> = ()
-            .serve(transport)
+        let service: RunningService<RoleClient, ()> = serve_client((), transport)
             .await
             .map_err(|e| McpError::Connect(e.into()))?;
         let peer = service.peer().clone();
@@ -156,8 +153,8 @@ impl McpClient {
         let text = result
             .content
             .first()
-            .and_then(|c| match &c.raw {
-                RawContent::Text(t) => Some(t.text.as_str()),
+            .and_then(|c| match c {
+                McpContentBlock::Text(t) => Some(t.text.as_str()),
                 _ => None,
             })
             .ok_or(McpError::NoContent)?;
@@ -196,8 +193,8 @@ impl McpClient {
         let text = result
             .content
             .first()
-            .and_then(|c| match &c.raw {
-                RawContent::Text(t) => Some(t.text.clone()),
+            .and_then(|c| match c {
+                McpContentBlock::Text(t) => Some(t.text.clone()),
                 _ => None,
             })
             .ok_or(McpError::NoContent)?;
@@ -254,7 +251,7 @@ impl McpClient {
             Box::pin(async move {
                 match Self::do_call(&peer, &method, args).await {
                     Ok(result) => Ok(AgentToolResult {
-                        content: vec![ContentBlock::text(
+                        content: vec![pi_coding_agent::pi_ai_types::ContentBlock::text(
                             serde_json::to_string_pretty(&result)
                                 .unwrap_or_else(|_| "{}".to_string()),
                         )],
@@ -294,8 +291,8 @@ impl McpClient {
         let text = result
             .content
             .first()
-            .and_then(|c| match &c.raw {
-                RawContent::Text(t) => Some(t.text.as_str()),
+            .and_then(|c| match c {
+                McpContentBlock::Text(t) => Some(t.text.as_str()),
                 _ => None,
             })
             .ok_or(McpError::NoContent)?;

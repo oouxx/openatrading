@@ -4,8 +4,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use pi_coding_agent::pi_agent_core::types::DynTool;
 use rmcp::handler::server::ServerHandler;
+use rmcp::model::ContentBlock as McpContentBlock;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, ErrorCode, Implementation, ListToolsResult,
+    CallToolRequestParams, CallToolResult, ErrorCode, Implementation, ListToolsResult,
     PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
@@ -64,17 +65,17 @@ impl MarketToolsServer {
             .await
             .map_err(|e| ErrorData::internal_error(format!("{e}"), None))?;
 
-        let contents: Vec<Content> = result
+        let contents: Vec<McpContentBlock> = result
             .content
             .into_iter()
             .map(|cb| match cb {
                 pi_coding_agent::pi_ai_types::ContentBlock::Text { text, .. } => {
-                    Content::text(text)
+                    McpContentBlock::text(text)
                 }
                 pi_coding_agent::pi_ai_types::ContentBlock::Image {
                     data, mime_type, ..
-                } => Content::image(data, mime_type),
-                other => Content::text(format!("{other:?}")),
+                } => McpContentBlock::image(data, mime_type),
+                other => McpContentBlock::text(format!("{other:?}")),
             })
             .collect();
 

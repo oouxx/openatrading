@@ -51,6 +51,7 @@ impl Gateway {
             cache: cache::new_cache(),
             running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });
 
         // Seed config roles first, then discover disk roles (config wins)
