@@ -475,7 +475,7 @@ impl TelegramBot {
         }
         user_msg.push_str(&format!("\n\nuser: {question}"));
 
-        let system = crate::skills::SkillRegistry::build_role_prompt(role);
+        let _system = crate::skills::SkillRegistry::build_role_prompt(role);
 
         let cwd = std::env::current_dir()
             .unwrap_or_default()
@@ -484,7 +484,7 @@ impl TelegramBot {
         let accumulated = self
             .ctx
             .pool
-            .prompt_once(&cwd, Some(&system), None, &user_msg)
+            .prompt_once(&cwd, &user_msg)
             .await
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));
 

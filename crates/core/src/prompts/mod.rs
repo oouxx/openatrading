@@ -166,7 +166,7 @@ pub fn build_historical_context(days: u32, snapshots: &[MarketSnapshot]) -> Stri
         let _ = writeln!(
             ctx,
             "- {} | {} | {}",
-            s.captured_at, s.data_source, &s.raw_json
+            s.captured_at, s.data_source, s.raw_json
         );
     }
     ctx

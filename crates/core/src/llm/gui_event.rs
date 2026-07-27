@@ -1,7 +1,5 @@
 /// GUI 收到的事件，包含 session 标识
 use pi_coding_agent::core::agent_session::AgentSessionEvent;
-use pi_coding_agent::pi_agent_core::types::AgentEvent;
-use tokio::sync::mpsc;
 pub enum GuiEvent {
     SessionEvent {
         session_id: String,

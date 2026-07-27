@@ -17,9 +17,7 @@ pub use openatrading_agent::llm::{
 };
 
 pub use openatrading_agent::mcp_server::{serve_http, serve_stdio, MarketToolsServer};
-pub use openatrading_agent::mcp_tools::{
-    McpClient, McpRegistry, McpServerConfig, ToolConfig,
-};
+pub use openatrading_agent::mcp_tools::{McpClient, McpRegistry, McpServerConfig, ToolConfig};
 pub use openatrading_agent::tools::{empty_schema, text_result, to_box_err, tool, ExecuteFn};
 
 pub use openatrading_agent::agent::{Agent, AgentOptions};
@@ -31,8 +29,8 @@ pub use openatrading_agent::types::{
 };
 
 // Re-export the pool and factory
-pub use self::pool::SessionPool;
 pub use self::factory::create_factory;
+pub use self::pool::SessionPool;
 
 // Session file lookup utility
 pub use self::runtime::find_session_file_by_id;
