@@ -49,7 +49,6 @@ impl Gateway {
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
-            running_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });

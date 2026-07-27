@@ -2,6 +2,7 @@ use pi_coding_agent::core::agent_session_runtime::*;
 use pi_coding_agent::core::agent_session_services::*;
 use pi_coding_agent::pi_ai_types::Model;
 use pi_extension_api::ToolDefinition;
+use std::sync::Arc;
 
 /// Create a factory closure that produces `AgentSessionRuntime` instances.
 ///
@@ -19,7 +20,7 @@ pub fn create_factory(
 ) -> CreateAgentSessionRuntimeFactory {
     let agent_dir = agent_dir.to_string();
 
-    Box::new(move |params: CreateAgentSessionRuntimeParams| {
+    Arc::new(move |params: CreateAgentSessionRuntimeParams| {
         let agent_dir = agent_dir.clone();
         let model = model.clone();
         let tools = tools.clone();

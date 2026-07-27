@@ -29,8 +29,6 @@ pub struct AppState {
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
-    /// Tracks session IDs that currently have an active agent turn in progress (§7.4).
-    pub running_sessions: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// Pending first messages for sessions created via POST /api/ai/sessions.
     /// The WebSocket handler takes the message after subscribing to events.
     pub pending_messages: Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
