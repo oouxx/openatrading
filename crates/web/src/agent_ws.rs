@@ -24,7 +24,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::AgentMessage;
-use pi_coding_agent::core::agent_session::AgentSession;
+use pi_coding_agent::core::agent_session::{AgentSession, PromptOptions};
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
 use serde::{Deserialize, Serialize};
@@ -578,53 +578,45 @@ async fn handle_session(
 
     // Retrieve the live runtime from the SessionPool. We do NOT remove it —
     // reconnections must reuse the same AgentSessionRuntime to preserve the
-    // running agent's context and event stream. If there is a pending message
-    // (from create_session), take it so only the first connection sends it.
-    let (runtime, pending_message) = {
-        let msg = state.pending_messages.lock().await.remove(&session_id);
-        log::info!(
-            "ws: pending_messages lookup for {session_id}: {}",
-            if msg.is_some() { "HIT" } else { "MISS" }
-        );
-        match state.ctx.pool.get_session(&session_id).await {
-            Some(rt) => {
-                log::info!("ws: pool HIT — reusing live runtime for {session_id}");
-                (rt, msg)
-            }
-            None => {
-                log::info!("ws: pool MISS for {session_id} — creating new runtime");
-                // Not in pool — create a new runtime. This happens after a
-                // backend restart (the in-memory pool is empty) or when a
-                // client reconnects to a session whose runtime was evicted.
-                let cwd = std::env::current_dir()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                match state.ctx.pool.create_session(&cwd).await {
-                    Ok(new_id) => {
-                        log::info!("ws: created new runtime {new_id} for {session_id}");
-                        match state.ctx.pool.get_session(&new_id).await {
-                            Some(rt) => (rt, None),
-                            None => {
-                                let e = "failed to get runtime after creation";
-                                log::error!("ws: {e}");
-                                let notice = format!(
-                                    r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                                );
-                                let _ = socket.send(Message::Text(notice)).await;
-                                return;
-                            }
+    // running agent's context and event stream.
+    let runtime = match state.ctx.pool.get_session(&session_id).await {
+        Some(rt) => {
+            log::info!("ws: pool HIT — reusing live runtime for {session_id}");
+            rt
+        }
+        None => {
+            log::info!("ws: pool MISS for {session_id} — creating new runtime");
+            // Not in pool — create a new runtime. This happens after a
+            // backend restart (the in-memory pool is empty) or when a
+            // client reconnects to a session whose runtime was evicted.
+            let cwd = std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            match state.ctx.pool.create_session(&cwd).await {
+                Ok(new_id) => {
+                    log::info!("ws: created new runtime {new_id} for {session_id}");
+                    match state.ctx.pool.get_session(&new_id).await {
+                        Some(rt) => rt,
+                        None => {
+                            let e = "failed to get runtime after creation";
+                            log::error!("ws: {e}");
+                            let notice = format!(
+                                r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                            );
+                            let _ = socket.send(Message::Text(notice)).await;
+                            return;
                         }
                     }
-                    Err(e) => {
-                        log::error!("ws: failed to create session {session_id}: {e}");
-                        let notice = format!(
-                            r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                        );
-                        log::info!("ws: {session_id} -> error notice");
-                        let _ = socket.send(Message::Text(notice)).await;
-                        return;
-                    }
+                }
+                Err(e) => {
+                    log::error!("ws: failed to create session {session_id}: {e}");
+                    let notice = format!(
+                        r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
+                    );
+                    log::info!("ws: {session_id} -> error notice");
+                    let _ = socket.send(Message::Text(notice)).await;
+                    return;
                 }
             }
         }
@@ -699,35 +691,6 @@ async fn handle_session(
     };
     log::info!("ws: event channel subscribed for {session_id}");
 
-    // If there is a pending message from create_session, send it now that
-    // event subscribers are in place (prevents losing early events).
-    //
-    // The send MUST run in a background task. `AgentSession::send` awaits
-    // `add_user_text` → `agent.process()` → the full agent turn, which only
-    // completes once the assistant finishes. If we awaited it inline here, the
-    // event-forwarding loop below would not run until the turn ended, so:
-    //   - text deltas (delta_tx, try_send, cap 64) would overflow and be
-    //     silently dropped, and
-    //   - durable events (durable_tx, send().await, cap 256) would eventually
-    //     deadlock the listener since nothing drains the channel.
-    // Spawning lets the loop drain both channels concurrently with the agent.
-    if let Some(msg) = pending_message {
-        log::info!(
-            "ws: firing pending_message (len={}) to {session_id} in background task",
-            msg.len()
-        );
-        let rt = runtime.clone();
-        let id_for_task = session_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                let session = rt.lock().await;
-                session.session().prompt(&msg, None).await;
-            });
-            log::info!("ws: pending_message turn completed for {id_for_task}");
-        });
-    }
-
     log::info!("ws: session {session_id} connected (last_seq={last_seq:?}) — entering event loop");
 
     loop {
@@ -778,10 +741,15 @@ async fn handle_session(
                                     let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }
+                                // If the session is already streaming, queue as follow-up
+                                // instead of interrupting the current turn.
+                                let streaming_behavior = if runtime.lock().await.session().is_streaming().await {
+                                    Some("followUp".to_string())
+                                } else {
+                                    None
+                                };
                                 // Spawn the turn so this select! loop keeps
-                                // forwarding events concurrently (see the
-                                // pending_message comment above for why we
-                                // cannot await send() inline).
+                                // forwarding events concurrently.
                                 let rt = runtime.clone();
                                 let task_id = session_id.clone();
                                 let text = text.to_string();
@@ -790,7 +758,11 @@ async fn handle_session(
                                     handle.block_on(async {
                                         log::info!("ws: agent turn started for {task_id}");
                                         let session = rt.lock().await;
-                                        session.session().prompt(&text, None).await;
+                                        let opts = PromptOptions {
+                                            streaming_behavior,
+                                            ..Default::default()
+                                        };
+                                        session.session().prompt(&text, Some(opts)).await;
                                         log::info!("ws: agent turn completed for {task_id}");
                                     });
                                 });

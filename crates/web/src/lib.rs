@@ -29,9 +29,6 @@ pub struct AppState {
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
-    /// Pending first messages for sessions created via POST /api/ai/sessions.
-    /// The WebSocket handler takes the message after subscribing to events.
-    pub pending_messages: Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// Per-session event buffers for reconnection replay (§9.1).
     ///
     /// The buffer is shared across connections to the same session so that

@@ -372,19 +372,6 @@ pub async fn create_session(
     };
     openatrading_core::log::info!("create_session: created session id={session_id}");
 
-    // Store the pending message so the WebSocket handler can send it
-    // after subscribing to events. This prevents a race where early events
-    // are produced before any subscriber exists.
-    state
-        .pending_messages
-        .lock()
-        .await
-        .insert(session_id.clone(), req.message.clone());
-    openatrading_core::log::info!(
-        "create_session: pending_message queued (len={})",
-        req.message.len()
-    );
-
     // Get session metadata from the runtime
     let runtime = state.ctx.pool.get_session(&session_id).await;
     let (session_file, session_name) = if let Some(rt) = runtime {
