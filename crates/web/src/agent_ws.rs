@@ -484,51 +484,9 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
     };
     log::info!("ws: event channel subscribed for {session_id}");
 
-    // Read the first client message as the prompt, then start the agent turn
-    // in a background task while this task forwards events to the WebSocket.
-    let first_msg = socket.recv().await;
-    match first_msg {
-        Some(Ok(Message::Text(text))) => {
-            log::info!("ws: {session_id} <- first message (len={})", text.len());
-            if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text)
-            {
-                let rt = runtime.clone();
-                let task_id = session_id.clone();
-                tokio::task::spawn_blocking(move || {
-                    let handle = tokio::runtime::Handle::current();
-                    handle.block_on(async {
-                        log::info!("ws: agent turn started for {task_id}");
-                        let session = rt.lock().await;
-                        let streaming_behavior = if session.session().is_streaming().await {
-                            Some("followUp".to_string())
-                        } else {
-                            None
-                        };
-                        let opts = PromptOptions {
-                            streaming_behavior,
-                            ..Default::default()
-                        };
-                        session.session().prompt(&text, Some(opts)).await;
-                        log::info!("ws: agent turn completed for {task_id}");
-                    });
-                });
-            } else {
-                log::warn!("ws: {session_id} first message is not a Prompt command — ignoring");
-            }
-        }
-        Some(Ok(Message::Ping(_))) => {
-            log::debug!("ws: {session_id} first message is Ping — no prompt to process");
-        }
-        _ => {
-            log::info!(
-                "ws: {session_id} socket closed before first message — no prompt to process"
-            );
-        }
-    }
-
     log::info!("ws: session {session_id} connected — entering event loop");
 
-    // Event loop: forward events to WebSocket, handle pings, detect disconnect.
+    // Event loop: forward events to WebSocket, handle client prompts, detect disconnect.
     loop {
         tokio::select! {
             biased;
@@ -553,9 +511,36 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     break;
                 }
             }
-            // WebSocket events: respond to pings, break on close/error
+            // Client messages: handle Prompt, respond to Ping, break on close/error
             msg = socket.recv() => {
                 match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        log::debug!("ws: {session_id} <- client text (len={})", text.len());
+                        if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
+                            let rt = runtime.clone();
+                            let task_id = session_id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let handle = tokio::runtime::Handle::current();
+                                handle.block_on(async {
+                                    log::info!("ws: agent turn started for {task_id}");
+                                    let session = rt.lock().await;
+                                    let streaming_behavior = if session.session().is_streaming().await {
+                                        Some("followUp".to_string())
+                                    } else {
+                                        None
+                                    };
+                                    let opts = PromptOptions {
+                                        streaming_behavior,
+                                        ..Default::default()
+                                    };
+                                    session.session().prompt(&text, Some(opts)).await;
+                                    log::info!("ws: agent turn completed for {task_id}");
+                                });
+                            });
+                        } else {
+                            log::debug!("ws: {session_id} <- unparseable command — ignored");
+                        }
+                    }
                     Some(Ok(Message::Ping(data))) => {
                         let _ = socket.send(Message::Pong(data)).await;
                     }
