@@ -50,7 +50,6 @@ impl Gateway {
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
             session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-            pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });
 
         // Seed config roles first, then discover disk roles (config wins)

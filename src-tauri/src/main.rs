@@ -1424,7 +1424,6 @@ fn main() {
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
         session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-        pending_messages: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     tauri::Builder::default()
