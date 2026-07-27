@@ -124,29 +124,6 @@ export function useAgentWebSocket(
         try {
           const parsed = JSON.parse(event.data) as Record<string, unknown>
 
-          // Handle resync signal: the server-side event buffer has evicted the
-          // requested `last_seq` (happens after a backend restart or a long
-          // disconnection). Discard the partial in-memory turns and rebuild
-          // the transcript from the persisted JSONL via REST.
-          if (parsed.type === "resync_required") {
-            const sid = sessionId
-            // Clear the accumulated turns first so stale/incomplete state
-            // does not bleed into the rebuilt transcript.
-            turnsRef.current = []
-            optionsRef.current.onTurnsUpdate?.([])
-            fetchJson<HistoryMessage[]>(`/api/ai/sessions/${sid}/messages`)
-              .then((msgs) => {
-                const turns = msgs && msgs.length > 0 ? historyToTurns(msgs) : []
-                turnsRef.current = turns
-                optionsRef.current.onTurnsUpdate?.([...turns])
-                optionsRef.current.onResync?.()
-              })
-              .catch((e) => {
-                console.error("[useAgentWebSocket] resync fetch failed", e)
-              })
-            return
-          }
-
           const prev = turnsRef.current
           const { turns: newTurns, terminal } = applyEvent(prev, parsed as TranscriptEvent)
           turnsRef.current = newTurns

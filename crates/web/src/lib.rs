@@ -29,21 +29,6 @@ pub struct AppState {
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
-    /// Per-session event buffers for reconnection replay (§9.1).
-    ///
-    /// The buffer is shared across connections to the same session so that
-    /// events produced while a client is disconnected are retained and
-    /// replayed on reconnect. Stored as `Arc<Mutex<...>>` because it is
-    /// accessed concurrently by the live event producers and reconnecting
-    /// clients.
-    pub session_buffers: Arc<
-        tokio::sync::Mutex<
-            std::collections::HashMap<
-                String,
-                Arc<tokio::sync::Mutex<crate::agent_ws::SessionEventBuffer>>,
-            >,
-        >,
-    >,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {

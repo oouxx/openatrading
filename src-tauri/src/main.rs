@@ -1056,19 +1056,11 @@ async fn send_prompt(
         pi_coding_agent::core::slash_commands::parse_slash_command(&text)
     {
         let notice = run_slash_tauri(&session_id, &state, cmd_name, cmd_args).await;
-        // Wrap the slash result in an EventEnvelope for a consistent wire
-        // shape (schema_version + seq) with forwarded events (finding #12).
-        // Tauri has no reconnection, so seq is unused; we still go through the
-        // shared per-session buffer so seq is assigned consistently.
-        let buffer = openatrading_web::agent_ws::get_session_buffer(&state, &session_id).await;
-        let Some(event_value) = openatrading_web::agent_ws::buffer_and_serialize_value(
-            &buffer,
-            openatrading_web::agent_ws::TranscriptEvent::Session(notice),
-        )
-        .await
-        else {
-            return Ok(());
-        };
+        let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
+            schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
+            event: openatrading_web::agent_ws::TranscriptEvent::Session(notice),
+        })
+        .unwrap_or_default();
         let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
         let _ = app.emit("agent-event", payload);
         return Ok(());
@@ -1146,7 +1138,6 @@ async fn ensure_session_tauri(
         let session = guard.session();
         let (mut delta_rx, mut durable_rx) =
             openatrading_web::agent_ws::setup_event_channel(session).await;
-        let buffer = openatrading_web::agent_ws::get_session_buffer(state, session_id).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
 
@@ -1159,11 +1150,11 @@ async fn ensure_session_tauri(
                     else => break,
                 };
                 let Some(event) = event else { break };
-                let Some(event_value) =
-                    openatrading_web::agent_ws::buffer_and_serialize_value(&buffer, event).await
-                else {
-                    continue;
-                };
+                let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
+                    schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
+                    event,
+                })
+                .unwrap_or_default();
                 let payload = serde_json::json!({ "session_id": sid, "event": event_value });
                 let _ = app_handle.emit("agent-event", payload);
             }
@@ -1423,7 +1414,6 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
-        session_buffers: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     tauri::Builder::default()
