@@ -39,11 +39,9 @@ pub fn create_factory(
             let diagnostics = services.diagnostics.clone();
 
             // Create a fresh extension registry for each session.
-            // ExtensionRegistry is !Clone, so it cannot be captured and shared;
-            // each session gets its own independent copy.
             let ext_registry = openatrading_extension::create_registry();
 
-            let (session, result) =
+            let (session, services, result) =
                 create_agent_session_from_services(CreateAgentSessionFromServicesOptions {
                     services,
                     session_manager: params.session_manager,
