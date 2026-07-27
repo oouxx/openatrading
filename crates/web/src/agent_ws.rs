@@ -14,13 +14,12 @@ use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::AgentMessage;
-use pi_coding_agent::core::agent_session::{AgentSession, PromptOptions};
+use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
 use pi_coding_agent::pi_agent_core::types::AgentEvent;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use crate::chat::handle_slash_command;
 use crate::AppState;
 
 // ── Schema version (§16.2) ────────────────────────────────────────────────
@@ -350,6 +349,7 @@ fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<ToolResultPayload
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 enum ClientCommand {
     Prompt { text: String },
     Interrupt,
@@ -490,143 +490,48 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
         // `biased` ensures durable events (lifecycle, tool results) are
         // drained before delta events when both are ready (§14, finding #8).
         tokio::select! {
-            biased;
-            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
-            Some(event) = durable_rx.recv() => {
-                log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
-                // Track running state (§7.4): agent_end/agent_settled → session is idle.
-                matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled));
-                // Serialize the envelope and send to the WebSocket.
-                let label = event.kind_label();
-                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-                log::debug!("ws: {session_id} -> durable event ({label})");
-                if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on durable event — breaking");
+        biased;
+        // Durable events (tool results, lifecycle, compaction, retry) — must deliver
+        Some(event) = durable_rx.recv() => {
+            log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
+            // Track running state (§7.4): agent_end/agent_settled → session is idle.
+            matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled));
+            // Serialize the envelope and send to the WebSocket.
+            let label = event.kind_label();
+            let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+            log::debug!("ws: {session_id} -> durable event ({label})");
+            if socket.send(Message::Text(json)).await.is_err() {
+                log::warn!("ws: {session_id} socket send failed on durable event — breaking");
+                break;
+            }
+        }
+        // Delta events (text/thinking/tool-call deltas) — can drop if slow
+        Some(event) = delta_rx.recv() => {
+            let label = event.kind_label();
+            let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
+            log::trace!("ws: {session_id} -> delta ({label})");
+            if socket.send(Message::Text(json)).await.is_err() {
+                log::warn!("ws: {session_id} socket send failed on delta — breaking");
+                break;
+            }
+        }
+        // Client → command (ignored — command handling not yet wired)
+        msg = socket.recv() => {
+            match msg {
+                Some(Ok(Message::Text(text))) => {
+                    log::debug!("ws: {session_id} <- client text ignored (len={})", text.len());
+                }
+                Some(Ok(Message::Ping(data))) => {
+                    let _ = socket.send(Message::Pong(data)).await;
+                }
+                _ => {
+                    log::info!("ws: {session_id} socket closed/error — exiting event loop");
                     break;
                 }
             }
-            // Delta events (text/thinking/tool-call deltas) — can drop if slow
-            Some(event) = delta_rx.recv() => {
-                let label = event.kind_label();
-                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-                log::trace!("ws: {session_id} -> delta ({label})");
-                if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on delta — breaking");
-                    break;
-                }
-            }
-            // Client → command
-            msg = socket.recv() => {
-                match msg {
-                    Some(Ok(Message::Text(text))) => {
-                        log::debug!("ws: {session_id} <- client text (len={})", text.len());
-                        match serde_json::from_str::<ClientCommand>(&text) {
-                            Ok(ClientCommand::Prompt { text }) => {
-                                log::info!(
-                                    "ws: {session_id} <- Prompt (len={}) is_slash={}",
-                                    text.len(),
-                                    text.trim_start().starts_with('/')
-                                );
-                                if let Err(notice) = try_slash_command(&text, &runtime).await {
-                                    let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event: TranscriptEvent::Session(notice) }) else { continue };
-                                    log::info!("ws: {session_id} -> slash-command notice");
-                                    let _ = socket.send(Message::Text(json)).await;
-                                    continue;
-                                }
-                                // Spawn the turn so this select! loop keeps
-                                // forwarding events concurrently.
-                                // Check streaming state and submit prompt atomically
-                                // under the same lock to avoid races.
-                                let rt = runtime.clone();
-                                let task_id = session_id.clone();
-                                let text = text.to_string();
-                                tokio::task::spawn_blocking(move || {
-                                    let handle = tokio::runtime::Handle::current();
-                                    handle.block_on(async {
-                                        log::info!("ws: agent turn started for {task_id}");
-                                        let session = rt.lock().await;
-                                        let streaming_behavior = if session.session().is_streaming().await {
-                                            Some("followUp".to_string())
-                                        } else {
-                                            None
-                                        };
-                                        let opts = PromptOptions {
-                                            streaming_behavior,
-                                            ..Default::default()
-                                        };
-                                        session.session().prompt(&text, Some(opts)).await;
-                                        log::info!("ws: agent turn completed for {task_id}");
-                                    });
-                                });
-                            }
-                            Ok(ClientCommand::Interrupt) => {
-                                log::info!("ws: {session_id} <- Interrupt");
-                                let rt = runtime.clone();
-                                tokio::spawn(async move {
-                                    rt.lock().await.session().abort().await;
-                                });
-                            }
-                            Ok(ClientCommand::Ping) => {
-                                log::debug!("ws: {session_id} <- Ping");
-                                // Application-level ping acknowledged; no response needed.
-                            }
-                            Ok(ClientCommand::PermissionResponse { id, approved }) => {
-                                // TODO: Wire up to pi-coding-agent's permission system when available.
-                                // See docs/agentTransport.md §11 for the planned implementation.
-                                log::warn!("ws: {session_id} <- PermissionResponse id={id} approved={approved} (not yet wired)");
-                            }
-                            Err(e) => {
-                                // Ignore unparseable messages; don't break the connection.
-                                log::debug!("ws: {session_id} <- unparseable message: {e}");
-                            }
-                        }
-                    }
-                    Some(Ok(Message::Ping(data))) => {
-                        let _ = socket.send(Message::Pong(data)).await;
-                    }
-                    _ => {
-                        log::info!("ws: {session_id} socket closed/error — exiting event loop");
-                        break;
-                    }
-                }
-            }
+        }
         }
     }
 
     log::info!("ws: session {session_id} disconnected");
-}
-
-/// If `text` is a slash command, execute it on the facade and return a
-/// `Notice` payload to emit back. Returns `Ok(())` when the text is not a
-/// slash command (caller should forward it to the agent).
-async fn try_slash_command(
-    text: &str,
-    runtime: &Arc<
-        tokio::sync::Mutex<pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime>,
-    >,
-) -> Result<(), SessionEventPayload> {
-    let Some((cmd_name, cmd_args)) =
-        pi_coding_agent::core::slash_commands::parse_slash_command(text)
-    else {
-        return Ok(());
-    };
-    // `handle_slash_command` needs a mutable reference to the session.
-    // Hold the lock only for the duration of the command. The lock is
-    // released when `rt` is dropped at the end of this block.
-    let mut rt = runtime.lock().await;
-    let session = rt.session_mut();
-    match handle_slash_command(cmd_name, cmd_args, session).await {
-        Ok(text) if !text.is_empty() => Err(SessionEventPayload::Notice {
-            text,
-            is_error: false,
-        }),
-        Ok(_) => Err(SessionEventPayload::Notice {
-            text: String::new(),
-            is_error: false,
-        }),
-        Err(e) => Err(SessionEventPayload::Notice {
-            text: format!("[Slash Error] {e}"),
-            is_error: true,
-        }),
-    }
 }
