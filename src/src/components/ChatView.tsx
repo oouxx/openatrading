@@ -354,15 +354,12 @@ export default function AiCopilot({
       streamThreadRef.current = sid
       setStreamThreadId(sid)
 
-      // For new sessions, the backend already started processing the message
-      // (fire-and-forget in create_session). We just need to connect WebSocket
-      // to receive streaming events — no need to send a separate prompt.
+      // For new sessions, yield to React so useAgentWebSocket re-renders
+      // with the new sessionId and establishes the WebSocket connection,
+      // then fall through to send the prompt via WebSocket.
       if (!activeThreadId && !isTauri) {
-        // Yield to React so useAgentWebSocket re-renders with the new sessionId
-        // and establishes the WebSocket connection.
         await new Promise((resolve) => setTimeout(resolve, 0))
         setStreaming(true)
-        return
       }
 
       try {

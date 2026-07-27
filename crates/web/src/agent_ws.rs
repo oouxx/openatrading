@@ -33,8 +33,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Top-level envelope wrapping every event sent over the wire.
 ///
-/// The frontend uses `schema_version` for conditional handling and `seq` for
-/// reconnection replay tracking.
+/// The frontend uses `schema_version` for conditional handling.
 #[derive(Debug, Serialize)]
 pub struct EventEnvelope {
     pub schema_version: u32,
@@ -380,24 +379,34 @@ pub async fn setup_event_channel(
 ) -> (
     mpsc::Receiver<TranscriptEvent>,
     mpsc::Receiver<TranscriptEvent>,
+    pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle,
 ) {
-    let (_delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
+    let (delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
     let (durable_tx, durable_rx) = mpsc::channel::<TranscriptEvent>(256);
 
-    // AgentSessionEvent (sync) → durable channel (try_send since sync callback)
+    // Route events to the appropriate channel:
+    // - Delta events (high-frequency text/thinking/tool-call updates) → delta channel (drops when full)
+    // - Durable events (lifecycle, tool results, compaction, retry) → durable channel (blocks when full)
+    let delta_tx2 = delta_tx.clone();
     let durable_tx2 = durable_tx.clone();
     let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
         let payload = convert_session_event(event);
-        let _ = durable_tx2.try_send(TranscriptEvent::Session(payload));
+        let is_delta = matches!(
+            &payload,
+            SessionEventPayload::MessageUpdate { .. }
+                | SessionEventPayload::ToolExecutionUpdate { .. }
+        );
+        let tx: &mpsc::Sender<TranscriptEvent> = if is_delta { &delta_tx2 } else { &durable_tx2 };
+        let _ = tx.try_send(TranscriptEvent::Session(payload));
     });
-    let _h2 = session.subscribe(sync_listener);
+    let handle = session.subscribe(sync_listener);
 
     use openatrading_core::log;
     log::info!(
         "ws: event channel ready (delta cap=64, durable cap=256) for session {}",
         session.get_session_id()
     );
-    (delta_rx, durable_rx)
+    (delta_rx, durable_rx, handle)
 }
 
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
@@ -429,17 +438,24 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
             // Not in pool — create a new runtime. This happens after a
             // backend restart (the in-memory pool is empty) or when a
             // client reconnects to a session whose runtime was evicted.
+            // Use the original session_id so REST API calls using the same
+            // ID continue to work.
             let cwd = std::env::current_dir()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            match state.ctx.pool.create_session(&cwd).await {
-                Ok(new_id) => {
-                    log::info!("ws: created new runtime {new_id} for {session_id}");
-                    match state.ctx.pool.get_session(&new_id).await {
+            match state
+                .ctx
+                .pool
+                .create_session_with_id(&session_id, &cwd)
+                .await
+            {
+                Ok(()) => {
+                    log::info!("ws: re-created runtime for {session_id}");
+                    match state.ctx.pool.get_session(&session_id).await {
                         Some(rt) => rt,
                         None => {
-                            let e = "failed to get runtime after creation";
+                            let e = "failed to get runtime after re-creation";
                             log::error!("ws: {e}");
                             let notice = format!(
                                 r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
@@ -462,7 +478,7 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
         }
     };
 
-    let (mut delta_rx, mut durable_rx) = {
+    let (mut delta_rx, mut durable_rx, _subscription_handle) = {
         let rt = runtime.lock().await;
         setup_event_channel(rt.session()).await
     };
@@ -480,8 +496,7 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                 log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
                 // Track running state (§7.4): agent_end/agent_settled → session is idle.
                 matches!(&event, TranscriptEvent::Session(payload) if matches!(payload, SessionEventPayload::AgentEnd { .. } | SessionEventPayload::AgentSettled));
-                // Push to buffer first to obtain the real seq, then serialize
-                // the stored envelope (finding #1).
+                // Serialize the envelope and send to the WebSocket.
                 let label = event.kind_label();
                 let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
                 log::debug!("ws: {session_id} -> durable event ({label})");
@@ -518,15 +533,10 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                                     let _ = socket.send(Message::Text(json)).await;
                                     continue;
                                 }
-                                // If the session is already streaming, queue as follow-up
-                                // instead of interrupting the current turn.
-                                let streaming_behavior = if runtime.lock().await.session().is_streaming().await {
-                                    Some("followUp".to_string())
-                                } else {
-                                    None
-                                };
                                 // Spawn the turn so this select! loop keeps
                                 // forwarding events concurrently.
+                                // Check streaming state and submit prompt atomically
+                                // under the same lock to avoid races.
                                 let rt = runtime.clone();
                                 let task_id = session_id.clone();
                                 let text = text.to_string();
@@ -535,6 +545,11 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                                     handle.block_on(async {
                                         log::info!("ws: agent turn started for {task_id}");
                                         let session = rt.lock().await;
+                                        let streaming_behavior = if session.session().is_streaming().await {
+                                            Some("followUp".to_string())
+                                        } else {
+                                            None
+                                        };
                                         let opts = PromptOptions {
                                             streaming_behavior,
                                             ..Default::default()
@@ -596,6 +611,8 @@ async fn try_slash_command(
         return Ok(());
     };
     // `handle_slash_command` needs a mutable reference to the session.
+    // Hold the lock only for the duration of the command. The lock is
+    // released when `rt` is dropped at the end of this block.
     let mut rt = runtime.lock().await;
     let session = rt.session_mut();
     match handle_slash_command(cmd_name, cmd_args, session).await {

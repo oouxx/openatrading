@@ -30,11 +30,6 @@ export interface UseAgentWebSocketOptions {
   onTurnsUpdate?: (turns: TranscriptTurn[]) => void
   /** Called when a terminal event (agent_end / notice) is received */
   onTerminal?: () => void
-  /** Called when the backend signals `resync_required` (event buffer evicted
-   *  the requested seq). The hook refetches the full message history itself,
-   *  rebuilds turns, and calls `onTurnsUpdate`; this callback lets the host
-   *  react (e.g. clear UI streaming state). */
-  onResync?: () => void
 }
 
 export function useAgentWebSocket(
