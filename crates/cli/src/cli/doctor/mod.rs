@@ -15,7 +15,7 @@ mod check_cron;
 mod check_env;
 mod check_home;
 mod check_llm;
-// mod check_mcp;
+mod check_mcp;
 mod check_port;
 mod check_skills;
 mod check_sqlite;
