@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::llm::runtime::find_session_file_by_id;
+
 /// Manages multiple concurrent LLM agent sessions.
 ///
 /// Each session is backed by a pi-coding-agent [`AgentSessionRuntime`] created
@@ -58,13 +60,21 @@ impl SessionPool {
         Ok(session_id)
     }
 
-    /// Create a new session with a specific ID (for reconnection after pool miss).
-    /// Returns an error if a session with this ID already exists.
-    pub async fn create_session_with_id(&self, session_id: &str, cwd: &str) -> Result<(), String> {
-        let mut sessions = self.sessions.lock().await;
-        if sessions.contains_key(session_id) {
-            return Err(format!("Session {session_id} already exists"));
+    /// Resume a session from disk by ID (for reconnection after pool miss).
+    ///
+    /// Finds the session's JSONL file on disk via `find_session_file_by_id`,
+    /// creates a fresh `AgentSessionRuntime`, and imports the session state
+    /// from the file. Returns an error if the session already exists in the
+    /// pool or if no session file is found on disk.
+    pub async fn resume_session(&self, session_id: &str) -> Result<(), String> {
+        // Check for duplicate — drop lock before the !Send import_from_jsonl.
+        {
+            let sessions = self.sessions.lock().await;
+            if sessions.contains_key(session_id) {
+                return Err(format!("Session {session_id} already exists in pool"));
+            }
         }
+
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
             .to_string();
@@ -72,21 +82,53 @@ impl SessionPool {
             .to_string_lossy()
             .to_string();
 
-        let session_manager = SessionManager::new(cwd, &session_dir, None, true, None);
+        let session_file = find_session_file_by_id(&session_dir, session_id)
+            .ok_or_else(|| format!("No session file found for {session_id}"))?;
 
-        let runtime = create_agent_session_runtime(
-            self.factory.clone(),
-            CreateAgentSessionRuntimeParams {
-                cwd: cwd.to_string(),
-                agent_dir,
-                session_manager,
-                session_start_event: None,
-            },
-        )
-        .await;
+        // import_from_jsonl is !Send (holds std::sync::MutexGuard across .await),
+        // so isolate the entire create+import via spawn_blocking.
+        let factory = self.factory.clone();
+        let session_dir2 = session_dir.clone();
+        let agent_dir2 = agent_dir.clone();
+        let session_file2 = session_file.clone();
+        let sid = session_id.to_string();
+
+        let runtime = tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                let session_manager = SessionManager::new(
+                    "/tmp",
+                    &session_dir2,
+                    None,
+                    true,
+                    None,
+                );
+
+                let mut runtime = create_agent_session_runtime(
+                    factory,
+                    CreateAgentSessionRuntimeParams {
+                        cwd: "/tmp".to_string(),
+                        agent_dir: agent_dir2,
+                        session_manager,
+                        session_start_event: None,
+                    },
+                )
+                .await;
+
+                runtime.import_from_jsonl(&session_file2, None).await?;
+
+                Ok::<_, String>(runtime)
+            })
+        })
+        .await
+        .map_err(|e| format!("Blocking task failed: {e}"))?
+        .map_err(|e| format!("Failed to import session: {e}"))?;
 
         let runtime = Arc::new(Mutex::new(runtime));
-        sessions.insert(session_id.to_string(), runtime);
+        self.sessions
+            .lock()
+            .await
+            .insert(sid, runtime);
         Ok(())
     }
 

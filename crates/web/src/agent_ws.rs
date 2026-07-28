@@ -475,28 +475,24 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
             rt
         }
         None => {
-            log::info!("ws: pool MISS for {session_id} — creating new runtime");
-            // Not in pool — create a new runtime. This happens after a
+            log::info!("ws: pool MISS for {session_id} — resuming from disk");
+            // Not in pool — resume from disk. This happens after a
             // backend restart (the in-memory pool is empty) or when a
             // client reconnects to a session whose runtime was evicted.
             // Use the original session_id so REST API calls using the same
             // ID continue to work.
-            let cwd = std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
             match state
                 .ctx
                 .pool
-                .create_session_with_id(&session_id, &cwd)
+                .resume_session(&session_id)
                 .await
             {
                 Ok(()) => {
-                    log::info!("ws: re-created runtime for {session_id}");
+                    log::info!("ws: resumed runtime for {session_id}");
                     match state.ctx.pool.get_session(&session_id).await {
                         Some(rt) => rt,
                         None => {
-                            let e = "failed to get runtime after re-creation";
+                            let e = "failed to get runtime after resume";
                             log::error!("ws: {e}");
                             let notice = format!(
                                 r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
@@ -507,7 +503,7 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     }
                 }
                 Err(e) => {
-                    log::error!("ws: failed to create session {session_id}: {e}");
+                    log::error!("ws: failed to resume session {session_id}: {e}");
                     let notice = format!(
                         r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
                     );
