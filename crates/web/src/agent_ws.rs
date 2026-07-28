@@ -558,19 +558,29 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
-                            log::info!("ws: agent turn started for {session_id}");
-                            let session = runtime.lock().await;
-                            let streaming_behavior = if session.session().is_streaming().await {
-                                Some("followUp".to_string())
-                            } else {
-                                None
-                            };
-                            let opts = PromptOptions {
-                                streaming_behavior,
-                                ..Default::default()
-                            };
-                            session.session().prompt(&text, Some(opts)).await;
-                            log::info!("ws: agent turn completed for {session_id}");
+                            let rt = runtime.clone();
+                            let task_id = session_id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                // Create a dedicated runtime so prompt()'s async I/O (HTTP calls to
+                                // LLM API) has its own I/O driver.  Using Handle::current().block_on()
+                                // would share the main runtime's driver and can deadlock.
+                                let io = tokio::runtime::Runtime::new().unwrap();
+                                io.block_on(async {
+                                    log::info!("ws: agent turn started for {task_id}");
+                                    let session = rt.lock().await;
+                                    let streaming_behavior = if session.session().is_streaming().await {
+                                        Some("followUp".to_string())
+                                    } else {
+                                        None
+                                    };
+                                    let opts = PromptOptions {
+                                        streaming_behavior,
+                                        ..Default::default()
+                                    };
+                                    session.session().prompt(&text, Some(opts)).await;
+                                    log::info!("ws: agent turn completed for {task_id}");
+                                });
+                            });
                         } else {
                             log::debug!("ws: {session_id} <- unparseable command — ignored");
                         }
