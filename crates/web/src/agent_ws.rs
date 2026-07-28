@@ -260,6 +260,47 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
             SessionEventPayload::SessionInfoChanged { name }
         }
         // Ignore unused variants for now; they map to Other.
+        AgentSessionEvent::AgentStart => SessionEventPayload::AgentStart,
+        AgentSessionEvent::MessageStart { .. } => SessionEventPayload::MessageStart,
+        AgentSessionEvent::MessageUpdate {
+            assistant_message_event,
+            ..
+        } => SessionEventPayload::MessageUpdate {
+            assistant_message_event: serde_json::to_value(assistant_message_event)
+                .unwrap_or_default(),
+        },
+        AgentSessionEvent::MessageEnd { .. } => SessionEventPayload::MessageEnd,
+        AgentSessionEvent::ToolExecutionStart {
+            tool_call_id,
+            tool_name,
+            args,
+        } => SessionEventPayload::ToolExecutionStart {
+            tool_call_id,
+            tool_name,
+            args,
+        },
+        AgentSessionEvent::ToolExecutionUpdate {
+            tool_call_id,
+            tool_name,
+            args,
+            partial_result,
+        } => SessionEventPayload::ToolExecutionUpdate {
+            tool_call_id,
+            tool_name,
+            args,
+            partial_result,
+        },
+        AgentSessionEvent::ToolExecutionEnd {
+            tool_call_id,
+            tool_name,
+            result,
+            is_error,
+        } => SessionEventPayload::ToolExecutionEnd {
+            tool_call_id,
+            tool_name,
+            result,
+            is_error,
+        },
         _ => SessionEventPayload::Other,
     }
 }
@@ -348,7 +389,7 @@ fn extract_tool_result_texts(messages: &[AgentMessage]) -> Vec<ToolResultPayload
 // ── Client commands ───────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[allow(dead_code)]
 enum ClientCommand {
     Prompt { text: String },
@@ -489,7 +530,7 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
     // Event loop: forward events to WebSocket, handle client prompts, detect disconnect.
     loop {
         tokio::select! {
-            biased;
+            // unbiased: all branches polled fairly to prevent socket.recv() starvation
             // Durable events (tool results, lifecycle, compaction, retry) — must deliver
             Some(event) = durable_rx.recv() => {
                 log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
@@ -517,26 +558,19 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
-                            let rt = runtime.clone();
-                            let task_id = session_id.clone();
-                            tokio::task::spawn_blocking(move || {
-                                let handle = tokio::runtime::Handle::current();
-                                handle.block_on(async {
-                                    log::info!("ws: agent turn started for {task_id}");
-                                    let session = rt.lock().await;
-                                    let streaming_behavior = if session.session().is_streaming().await {
-                                        Some("followUp".to_string())
-                                    } else {
-                                        None
-                                    };
-                                    let opts = PromptOptions {
-                                        streaming_behavior,
-                                        ..Default::default()
-                                    };
-                                    session.session().prompt(&text, Some(opts)).await;
-                                    log::info!("ws: agent turn completed for {task_id}");
-                                });
-                            });
+                            log::info!("ws: agent turn started for {session_id}");
+                            let session = runtime.lock().await;
+                            let streaming_behavior = if session.session().is_streaming().await {
+                                Some("followUp".to_string())
+                            } else {
+                                None
+                            };
+                            let opts = PromptOptions {
+                                streaming_behavior,
+                                ..Default::default()
+                            };
+                            session.session().prompt(&text, Some(opts)).await;
+                            log::info!("ws: agent turn completed for {session_id}");
                         } else {
                             log::debug!("ws: {session_id} <- unparseable command — ignored");
                         }
