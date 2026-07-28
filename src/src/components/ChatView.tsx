@@ -5,8 +5,6 @@ import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import ToolCallBlock from "@/components/chat/ToolCallBlock"
 import ToolResultBlock from "@/components/chat/ToolResultBlock"
-import CompactionIndicator from "@/components/chat/CompactionIndicator"
-import RetryIndicator from "@/components/chat/RetryIndicator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -636,29 +634,9 @@ interface TurnRendererProps {
 
 function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: TurnRendererProps) {
   const segments = groupBlocks(turn.blocks)
-  const compaction = lastNotice(turn, "compaction")
-  const retry = lastNotice(turn, "retry")
-  const compactionStatus: "idle" | "compacting" | "done" | "error" =
-    compaction?.status === "active" ? "compacting"
-    : compaction?.status === "done" ? "done"
-    : compaction?.status === "error" ? "error"
-    : "idle"
-  const retryStatus: "idle" | "retrying" | "will-retry" | "done" | "error" =
-    retry?.status === "active" ? "retrying"
-    : retry?.status === "done" ? "done"
-    : retry?.status === "error" ? "error"
-    : "idle"
 
   return (
     <>
-      {turn.isError && (
-        <div className="border-red-500/30 bg-red-500/5 mb-2 flex items-center gap-2 rounded-lg border px-3 py-2">
-          <div className="flex size-5 items-center justify-center rounded-full bg-red-500/20">
-            <span className="text-[10px] font-bold text-red-500">!</span>
-          </div>
-          <span className="text-ink-muted text-[11px]">此消息因错误已自动重试</span>
-        </div>
-      )}
       {segments.map((seg, i) => {
         if (seg.kind === "thinking") {
           return (
@@ -717,18 +695,6 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
           />
         )
       })}
-      <CompactionIndicator
-        status={compactionStatus}
-        reason={compaction?.detail ?? ""}
-        error={compaction?.isError ? compaction.detail : null}
-      />
-      <RetryIndicator
-        status={retryStatus}
-        attempt={retry?.attempt}
-        maxAttempts={retry?.maxAttempts}
-        delayMs={retry?.delayMs}
-        error={retry?.isError ? retry.detail : null}
-      />
     </>
   )
 }
@@ -809,7 +775,7 @@ function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
       } else {
         groups.push({ kind: "tools", blocks: [block] })
       }
-    } else if (block.type === "system_notice") {
+    } else if (block.type === "system_notice" && block.kind !== "compaction" && block.kind !== "retry") {
       groups.push({ kind: "results", blocks: [block] })
     } else if (block.type === "permission_request") {
       groups.push({ kind: "permission", block, blocks: [block] })
@@ -818,13 +784,3 @@ function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
   return groups
 }
 
-function lastNotice(
-  turn: TranscriptTurn,
-  kind: "compaction" | "retry",
-): Extract<TranscriptBlock, { type: "system_notice" }> | undefined {
-  for (let i = turn.blocks.length - 1; i >= 0; i--) {
-    const b = turn.blocks[i]
-    if (b.type === "system_notice" && b.kind === kind) return b
-  }
-  return undefined
-}
