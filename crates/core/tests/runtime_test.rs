@@ -428,3 +428,239 @@ async fn debug_settings_path() {
         settings.default_provider, settings.default_model
     );
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_multi_turn_conversation() {
+    setup_test_env();
+
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let session_id = pool
+        .create_session(&cwd)
+        .await
+        .expect("创建agent session 失败");
+    let rt = pool
+        .get_session(&session_id)
+        .await
+        .expect("runtime not found");
+    let rt = rt.lock().await;
+    let session = rt.session();
+
+    // =========================================================================
+    // Turn 1: 初始问候 —— 验证助手能正常回复
+    // =========================================================================
+    let turn1_messages = session
+        .get_agent()
+        .prompt(PromptInput::Text("你好，请简单介绍一下你自己"))
+        .await
+        .expect("第一轮对话失败");
+
+    let turn1_assistant_messages: Vec<&AgentMessage> = turn1_messages
+        .iter()
+        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
+        .collect();
+    assert!(
+        !turn1_assistant_messages.is_empty(),
+        "第一轮应至少有一条 assistant 消息"
+    );
+
+    // 提取第一条 assistant 的文本内容
+    let turn1_text: String = turn1_assistant_messages
+        .iter()
+        .flat_map(|msg| {
+            if let AgentMessage::Assistant { content, .. } = msg {
+                content
+                    .iter()
+                    .filter_map(|block| {
+                        if let ContentBlock::Text { text, .. } = block {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<&str>>()
+            } else {
+                vec![]
+            }
+        })
+        .collect();
+    println!(
+        "[Turn 1] 助手回复 ({} chars): {}",
+        turn1_text.len(),
+        turn1_text.chars().take(200).collect::<String>()
+    );
+    assert!(!turn1_text.is_empty(), "第一轮助手回复不应为空");
+
+    // 验证 conversation 中已有 1 条 user + 1 条 assistant
+    let conv1 = session.get_messages().await;
+    let user_count_1 = conv1.iter().filter(|m| m.role() == "user").count();
+    let asst_count_1 = conv1.iter().filter(|m| m.role() == "assistant").count();
+    println!(
+        "[Turn 1] 对话状态: user={user_count_1}, assistant={asst_count_1}, total={}",
+        conv1.len()
+    );
+    assert!(user_count_1 >= 1, "第一轮后至少应有 1 条 user 消息");
+    assert!(asst_count_1 >= 1, "第一轮后至少应有 1 条 assistant 消息");
+
+    // =========================================================================
+    // Turn 2: 追问股票分析能力 —— 验证助手能理解上下文并延续对话
+    // =========================================================================
+    let turn2_messages = session
+        .get_agent()
+        .prompt(PromptInput::Text(
+            "你能帮我分析股票吗？具体能提供哪些数据？",
+        ))
+        .await
+        .expect("第二轮对话失败");
+
+    let turn2_assistant_messages: Vec<&AgentMessage> = turn2_messages
+        .iter()
+        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
+        .collect();
+    assert!(
+        !turn2_assistant_messages.is_empty(),
+        "第二轮应至少有一条 assistant 消息"
+    );
+
+    let turn2_text: String = turn2_assistant_messages
+        .iter()
+        .flat_map(|msg| {
+            if let AgentMessage::Assistant { content, .. } = msg {
+                content
+                    .iter()
+                    .filter_map(|block| {
+                        if let ContentBlock::Text { text, .. } = block {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<&str>>()
+            } else {
+                vec![]
+            }
+        })
+        .collect();
+    println!(
+        "[Turn 2] 助手回复 ({} chars): {}",
+        turn2_text.len(),
+        turn2_text.chars().take(200).collect::<String>()
+    );
+    assert!(!turn2_text.is_empty(), "第二轮助手回复不应为空");
+
+    // 验证 conversation 已增长
+    let conv2 = session.get_messages().await;
+    let user_count_2 = conv2.iter().filter(|m| m.role() == "user").count();
+    let asst_count_2 = conv2.iter().filter(|m| m.role() == "assistant").count();
+    println!(
+        "[Turn 2] 对话状态: user={user_count_2}, assistant={asst_count_2}, total={}",
+        conv2.len()
+    );
+    assert!(
+        user_count_2 >= user_count_1 + 1,
+        "第二轮后 user 消息应增加：之前 {user_count_1}，现在 {user_count_2}"
+    );
+    assert!(
+        asst_count_2 >= asst_count_1 + 1,
+        "第二轮后 assistant 消息应增加：之前 {asst_count_1}，现在 {asst_count_2}"
+    );
+
+    // =========================================================================
+    // Turn 3: 上下文保持测试 —— 验证助手能回忆第一轮的问题
+    // =========================================================================
+    let turn3_messages = session
+        .get_agent()
+        .prompt(PromptInput::Text("我刚才第一个问题问的是什么？请复述一遍"))
+        .await
+        .expect("第三轮对话失败");
+
+    let turn3_assistant_messages: Vec<&AgentMessage> = turn3_messages
+        .iter()
+        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
+        .collect();
+    assert!(
+        !turn3_assistant_messages.is_empty(),
+        "第三轮应至少有一条 assistant 消息"
+    );
+
+    let turn3_text: String = turn3_assistant_messages
+        .iter()
+        .flat_map(|msg| {
+            if let AgentMessage::Assistant { content, .. } = msg {
+                content
+                    .iter()
+                    .filter_map(|block| {
+                        if let ContentBlock::Text { text, .. } = block {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<&str>>()
+            } else {
+                vec![]
+            }
+        })
+        .collect();
+    println!(
+        "[Turn 3] 助手回复 ({} chars): {}",
+        turn3_text.len(),
+        turn3_text.chars().take(200).collect::<String>()
+    );
+    assert!(!turn3_text.is_empty(), "第三轮助手回复不应为空");
+
+    // 验证助手确实提到了"介绍自己"或"你好"（表明记住了第一轮上下文）
+    let has_context = turn3_text.contains("介绍")
+        || turn3_text.contains("你好")
+        || turn3_text.contains("自己")
+        || turn3_text.contains("简单")
+        || turn3_text.contains("第一个");
+    assert!(
+        has_context,
+        "助手应能回忆第一轮问题，但回复中未包含相关关键词。回复：{}",
+        turn3_text.chars().take(300).collect::<String>()
+    );
+
+    // =========================================================================
+    // 最终验证：整体 conversation 结构
+    // =========================================================================
+    let final_conv = session.get_messages().await;
+    let total_user = final_conv.iter().filter(|m| m.role() == "user").count();
+    let total_asst = final_conv
+        .iter()
+        .filter(|m| m.role() == "assistant")
+        .count();
+    let total_tool_results = final_conv
+        .iter()
+        .filter(|m| matches!(m, AgentMessage::ToolResult { .. }))
+        .count();
+
+    println!(
+        "[Final] 三轮对话总览: user={total_user}, assistant={total_asst}, tool_result={total_tool_results}, total={}",
+        final_conv.len()
+    );
+
+    // 三轮对话后至少有 3 条 user 消息和 3 条 assistant 消息
+    assert!(
+        total_user >= 3,
+        "三轮对话应至少 3 条 user 消息，实际 {total_user}"
+    );
+    assert!(
+        total_asst >= 3,
+        "三轮对话应至少 3 条 assistant 消息，实际 {total_asst}"
+    );
+
+    // 关闭 session
+    pool.close_session(&session_id).await;
+}
+
+#[tokio::test]
+async fn test_multi_turn() {}
