@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   ReasoningRoot,
   ReasoningTrigger,
@@ -12,7 +12,15 @@ interface ThinkingBlockProps {
 }
 
 export default function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
-  const [userOpen, setUserOpen] = useState(true)
+  const [userOpen, setUserOpen] = useState(false)
+
+  // Auto-expand when streaming starts (Claude-style), but user can still
+  // toggle closed during streaming.
+  useEffect(() => {
+    if (isStreaming) {
+      setUserOpen(true)
+    }
+  }, [isStreaming])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -23,23 +31,12 @@ export default function ThinkingBlock({ content, isStreaming }: ThinkingBlockPro
 
   if (!content) return null
 
-  // When streaming, force open; otherwise respect user's toggle
-  const open = isStreaming ? true : userOpen
-
   return (
-    <ReasoningRoot open={open} onOpenChange={handleOpenChange}>
+    <ReasoningRoot open={userOpen} onOpenChange={handleOpenChange}>
       <ReasoningTrigger active={isStreaming} />
       <ReasoningContent>
         <ReasoningText>
           {content}
-          {isStreaming && (
-            <span className="text-ai relative ml-0.5 inline-block h-3 w-1.5 align-middle">
-              <span
-                className="absolute inset-y-0 left-0 w-0.5 animate-pulse rounded-full bg-current"
-                style={{ animationDuration: "0.8s" }}
-              />
-            </span>
-          )}
         </ReasoningText>
       </ReasoningContent>
     </ReasoningRoot>

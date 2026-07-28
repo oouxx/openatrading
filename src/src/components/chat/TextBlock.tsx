@@ -109,29 +109,34 @@ const mdComponents: Components = {
   ),
 }
 
-// ── Streaming Cursor ──────────────────────────────────
+// ── Streaming Indicator ────────────────────────────────
+// A subtle pulsing cursor shown at the end of streaming text (Claude-style).
 
-function StreamingCursor() {
+function StreamingIndicator() {
   return (
-    <span className="text-ai relative ml-0.5 inline-block h-4 w-2 align-middle">
+    <span className="relative ml-0.5 inline-block h-[1em] w-[2px] align-text-bottom">
       <span
-        className="absolute inset-y-0 left-0 w-0.5 animate-pulse rounded-full bg-current"
-        style={{ animationDuration: "0.8s" }}
+        className="absolute inset-y-0 left-0 w-full animate-pulse rounded-sm bg-current opacity-70"
+        style={{ animationDuration: "1s" }}
       />
     </span>
   )
 }
 
-// ── Loading Dots ──────────────────────────────────────
+// ── Pulsating Dots ────────────────────────────────────
+// Claude-style loading indicator: three dots that pulse in/out with opacity.
 
-function LoadingDots() {
+function PulsatingDots() {
   return (
-    <div className="flex gap-1 py-1">
+    <div className="flex items-center gap-1 py-1">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="bg-ink-muted size-1.5 animate-bounce rounded-full"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: "0.8s" }}
+          className="bg-ink-muted inline-block size-1.5 rounded-full"
+          style={{
+            animation: "pulsating-dot 1.4s ease-in-out infinite",
+            animationDelay: `${i * 0.2}s`,
+          }}
         />
       ))}
     </div>
@@ -147,22 +152,15 @@ interface TextBlockProps {
 
 export default function TextBlock({ content, isStreaming }: TextBlockProps) {
   if (!content && isStreaming) {
-    return <LoadingDots />
+    return <PulsatingDots />
   }
 
   if (!content) return null
 
-  // While streaming, render as plain text to avoid markdown re-parsing flicker (§6.1).
-  // Once streaming is complete, switch to full react-markdown rendering.
-  if (isStreaming) {
-    return (
-      <div className="prose-custom text-sm/relaxed">
-        <span className="whitespace-pre-wrap">{content}</span>
-        <StreamingCursor />
-      </div>
-    )
-  }
-
+  // Always render with ReactMarkdown, even during streaming (Claude-style
+  // progressive markdown rendering). The markdown parser handles partial
+  // content gracefully — incomplete constructs simply don't close until the
+  // final delta arrives.
   return (
     <div className="prose-custom text-sm/relaxed">
       <ReactMarkdown
@@ -172,6 +170,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
       >
         {content}
       </ReactMarkdown>
+      {isStreaming && <StreamingIndicator />}
     </div>
   )
 }

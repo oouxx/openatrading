@@ -52,9 +52,9 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  // Auto-expand running/streaming tool calls
+  // Auto-expand completed tool calls (Claude-style: show details only after done)
   const isAutoExpanded = (tc: ToolCall) => {
-    return tc.status === "running" || tc.status === "streaming"
+    return tc.status === "success" || tc.status === "error"
   }
 
   return (
@@ -64,22 +64,36 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
         .map((tc, i) => {
           const isExpanded = expanded[tc.id] ?? isAutoExpanded(tc) ?? false
           const status = tc.status ?? (isStreaming ? "streaming" : "success")
-          const partialText = asText(tc.partialResult)
-          const hasPartial = partialText.length > 0
+          const isRunning = status === "streaming" || status === "running"
           const hasArgs = tc.args && tc.args.length > 0
-          const hasContent = hasArgs || hasPartial
+          const hasResult = !!tc.result
+          const hasContent = hasArgs || hasResult
+
+          // Claude-style: during streaming/running, show a compact loading card
+          // with just the tool name and spinner. Details (args + result) are
+          // shown only after completion.
+          if (isRunning) {
+            return (
+              <div
+                key={tc.id || i}
+                className="border-hairline overflow-hidden rounded-lg border bg-bg-hover/40 transition-all duration-200"
+              >
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <ToolIcon name={tc.name} />
+                  <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
+                  <StatusBadge status={status} />
+                </div>
+              </div>
+            )
+          }
 
           return (
             <div
               key={tc.id || i}
               className={`border-hairline overflow-hidden rounded-lg border transition-all duration-200 ${
-                status === "running"
-                  ? "border-amber-500/30 bg-amber-500/5"
-                  : status === "streaming"
-                    ? "border-ai/20 bg-ai/5"
-                    : status === "error"
-                      ? "border-red-500/30 bg-red-500/5"
-                      : "bg-bg-hover/40"
+                status === "error"
+                  ? "border-red-500/30 bg-red-500/5"
+                  : "bg-bg-hover/40"
               }`}
             >
               <button
@@ -100,27 +114,14 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 )}
               </button>
 
-              {hasContent && (
-                <div
-                  className={`border-hairline space-y-2 border-t px-3 py-2 ${
-                    isExpanded ? "" : "hidden"
-                  }`}
-                >
+              {hasContent && isExpanded && (
+                <div className="border-hairline space-y-2 border-t px-3 py-2">
                   {hasArgs && (
                     <Section title="参数">
                       <ToolArgsContent name={tc.name} args={tc.args!} />
                     </Section>
                   )}
-                  {hasPartial && (
-                    <Section title="中间结果">
-                      <ContentBlock
-                        content={partialText}
-                        showCursor={status === "running"}
-                      />
-                    </Section>
-                  )}
-                  {/* Tool result with truncation support (§15.2) */}
-                  {tc.result && (
+                  {hasResult && (
                     <Section title="结果">
                       <ToolResultContent
                         name={tc.name}
@@ -140,45 +141,36 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
   )
 }
 
-// ── Tool card dispatch by name (§6.3) ──────────────────────────────
+// ── Tool icon by name ─────────────────────────────────
 
 function ToolIcon({ name }: { name: string }) {
-  switch (name) {
-    case "bash":
-    case "command":
-    case "terminal":
-      return <Terminal className="text-ink-muted size-3.5 shrink-0" />
-    case "edit":
-    case "write":
-    case "edit_file":
-    case "write_file":
-      return <FileEdit className="text-ink-muted size-3.5 shrink-0" />
-    default:
-      return <Wrench className="text-ink-muted size-3.5 shrink-0" />
+  if (name.startsWith("edit") || name === "file_edit" || name === "write_file" || name === "create_file") {
+    return <FileEdit className="size-3.5 shrink-0 text-amber-500" />
   }
+  if (name.startsWith("bash") || name === "execute_command" || name === "run") {
+    return <Terminal className="size-3.5 shrink-0 text-sky-500" />
+  }
+  return <Wrench className="size-3.5 shrink-0 text-ink-muted" />
 }
 
+// ── Tool args content ─────────────────────────────────
+
 function ToolArgsContent({ name, args }: { name: string; args: string }) {
-  switch (name) {
-    case "bash":
-    case "command":
-    case "terminal":
-      // Show bash commands in a terminal-like code block
-      return (
-        <pre className="bg-bg-hover overflow-x-auto rounded-md p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-          <code>$ {formatArgs(args)}</code>
-        </pre>
-      )
-    case "edit":
-    case "write":
-    case "edit_file":
-    case "write_file":
-      // Show edit args as structured content
-      return <ContentBlock content={formatArgs(args)} />
-    default:
-      return <ContentBlock content={formatArgs(args)} />
+  const safeContent = useMemo(() => formatArgs(args), [args])
+
+  // For edit-type tools, render args as a diff
+  if (name.startsWith("edit") || name === "file_edit") {
+    return <DiffContent content={safeContent} />
   }
+
+  return (
+    <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+      {safeContent}
+    </pre>
+  )
 }
+
+// ── Tool result content ───────────────────────────────
 
 function ToolResultContent({
   name,
@@ -193,41 +185,25 @@ function ToolResultContent({
   sessionId?: string
   output?: { preview: string; truncated: boolean; fullLength: number }
 }) {
-  switch (name) {
-    case "edit":
-    case "write":
-    case "edit_file":
-    case "write_file": {
-      // For edit tools, try to render a diff view
-      return <DiffView content={content} />
-    }
-    default:
-      return (
-        <ResultBlock
-          content={content}
-          toolCallId={toolCallId}
-          sessionId={sessionId}
-          output={output}
-        />
-      )
+  const safeContent = useMemo(() => asText(content), [content])
+
+  // For edit-type tools, render result as a diff
+  if (name.startsWith("edit") || name === "file_edit") {
+    return <DiffContent content={safeContent} />
   }
+
+  return <ResultBlock content={safeContent} toolCallId={toolCallId} sessionId={sessionId} output={output} />
 }
 
-/** Simple diff view for edit tool results (§6.3). */
-function DiffView({ content }: { content: string }) {
-  const safeContent = asText(content)
+// ── Diff content ─────────────────────────────────────
+
+function DiffContent({ content }: { content: string }) {
+  const safeContent = useMemo(() => asText(content), [content])
+
   const diffResult = useMemo(() => {
-    // Try to parse the content as a unified diff or structured edit result
-    // If it contains "---" and "+++" lines, render as diff
-    const lines = safeContent.split("\n")
-    const hasDiffMarkers = lines.some((l) => l.startsWith("---") || l.startsWith("+++"))
+    const hasDiffMarkers = safeContent.split("\n").some((l) => l.startsWith("+") || l.startsWith("-") || l.startsWith("@"))
     if (hasDiffMarkers) {
-      try {
-        const changes = diffLines(safeContent, "")
-        return { type: "diff" as const, changes }
-      } catch {
-        return { type: "raw" as const, content: safeContent }
-      }
+      return { type: "diff" as const }
     }
     return { type: "raw" as const, content: safeContent }
   }, [safeContent])
@@ -302,51 +278,6 @@ function ResultBlock({
           {loading
             ? "加载中..."
             : `展开全部（${output?.fullLength ?? content.length} 字符）`}
-        </button>
-      )}
-    </div>
-  )
-}
-
-/** Renders content, collapsing if too long */
-function ContentBlock({
-  content,
-  showCursor,
-}: {
-  content: string
-  showCursor?: boolean
-}) {
-  const [showFull, setShowFull] = useState(false)
-  const safeContent = asText(content)
-  const isLong = safeContent.length > COLLAPSE_THRESHOLD
-
-  // Default: collapsed if long, expanded if short
-  const effectivelyExpanded = isLong ? showFull : true
-  const displayText = effectivelyExpanded ? safeContent : safeContent.slice(0, 300)
-
-  return (
-    <div>
-      <pre
-        className={`text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap ${
-          effectivelyExpanded ? "max-h-none" : "max-h-48"
-        }`}
-      >
-        {displayText}
-        {isLong && !showFull && (
-          <span className="text-ink-muted/50">…</span>
-        )}
-        {showCursor && (
-          <span className="text-ai ml-0.5 inline-block h-2.5 w-1 animate-pulse align-middle">
-            |
-          </span>
-        )}
-      </pre>
-      {isLong && (
-        <button
-          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
-          onClick={() => setShowFull(!showFull)}
-        >
-          {showFull ? "收起" : `展开全部 (${safeContent.length} 字符)`}
         </button>
       )}
     </div>
