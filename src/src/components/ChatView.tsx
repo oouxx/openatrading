@@ -217,6 +217,9 @@ export default function AiCopilot({
     if (!sessionId) {
       sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       onActiveThreadChange(sessionId)
+      // Yield to React so the re-render triggers useMultiAgentWebSocket
+      // to create the WebSocket connection before we try to send.
+      await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
     setInput("")
