@@ -67,11 +67,10 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
           const isRunning = status === "streaming" || status === "running"
           const hasArgs = tc.args && tc.args.length > 0
           const hasResult = !!tc.result
+          const hasPartial = !!tc.partialResult
           const hasContent = hasArgs || hasResult
 
-          // Claude-style: during streaming/running, show a compact loading card
-          // with just the tool name and spinner. Details (args + result) are
-          // shown only after completion.
+          // ── Running state: compact card + optional partial result ──
           if (isRunning) {
             return (
               <div
@@ -83,10 +82,26 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                   <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                   <StatusBadge status={status} />
                 </div>
+                {/* ── Partial result inline (ToolExecutionUpdate) ── */}
+                {hasPartial && (
+                  <div className="border-hairline animate-notice-fade-in border-t px-3 py-1.5">
+                    <div className="text-ink-muted/50 mb-0.5 font-mono text-[9px] font-medium tracking-wider">
+                      实时输出
+                    </div>
+                    <pre className="text-ink-muted/80 max-h-[120px] overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+                      {asText(tc.partialResult)}
+                    </pre>
+                    {/* Streaming cursor for live partial result */}
+                    <span className="mt-0.5 inline-flex">
+                      <span className="bg-ai inline-block size-1.5 animate-pulse rounded-full" />
+                    </span>
+                  </div>
+                )}
               </div>
             )
           }
 
+          // ── Completed state: expandable card ──
           return (
             <div
               key={tc.id || i}
@@ -141,26 +156,32 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
   )
 }
 
-// ── Tool icon by name ─────────────────────────────────
+// ── Tool icon ──────────────────────────────────────────
 
 function ToolIcon({ name }: { name: string }) {
-  if (name.startsWith("edit") || name === "file_edit" || name === "write_file" || name === "create_file") {
-    return <FileEdit className="size-3.5 shrink-0 text-amber-500" />
-  }
-  if (name.startsWith("bash") || name === "execute_command" || name === "run") {
-    return <Terminal className="size-3.5 shrink-0 text-sky-500" />
-  }
-  return <Wrench className="size-3.5 shrink-0 text-ink-muted" />
+  const icon = useMemo(() => {
+    if (name.startsWith("bash") || name.startsWith("execute") || name.startsWith("run"))
+      return <Terminal className="size-3.5" />
+    if (name.startsWith("edit") || name === "file_edit" || name.startsWith("write") || name.startsWith("create"))
+      return <FileEdit className="size-3.5" />
+    return <Wrench className="size-3.5" />
+  }, [name])
+
+  return <span className="text-ink-muted/60 shrink-0">{icon}</span>
 }
 
 // ── Tool args content ─────────────────────────────────
 
 function ToolArgsContent({ name, args }: { name: string; args: string }) {
-  const safeContent = useMemo(() => formatArgs(args), [args])
+  const safeContent = useMemo(() => asText(args), [args])
 
-  // For edit-type tools, render args as a diff
+  // For edit-type tools, show args as a diff preview
   if (name.startsWith("edit") || name === "file_edit") {
-    return <DiffContent content={safeContent} />
+    return (
+      <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+        {safeContent}
+      </pre>
+    )
   }
 
   return (
