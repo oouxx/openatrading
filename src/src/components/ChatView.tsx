@@ -5,6 +5,10 @@ import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import ToolCallBlock from "@/components/chat/ToolCallBlock"
 import ToolResultBlock from "@/components/chat/ToolResultBlock"
+import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
+import AgentStatusBar from "@/components/chat/AgentStatusBar"
+import TurnDivider from "@/components/chat/TurnDivider"
+import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -61,11 +65,39 @@ export default function AiCopilot({
   const closeTab = useStockTabStore((s) => s.closeTab)
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
 
+  // Agent lifecycle phase — derived from the latest turn's status.
+  const [agentPhase, setAgentPhase] = useState<AgentPhase>("idle")
+
   // Keep a ref mirror so async transport callbacks read the latest turns.
   const threadTurnsRef = useRef<Map<string, TranscriptTurn[]>>(threadTurns)
   useEffect(() => {
     threadTurnsRef.current = threadTurns
   }, [threadTurns])
+
+  // Derive agent phase from turns
+  useEffect(() => {
+    const turns = activeThreadId ? threadTurns.get(activeThreadId) : undefined
+    if (!turns || turns.length === 0) {
+      setAgentPhase("idle")
+      return
+    }
+    const lastTurn = turns[turns.length - 1]
+    if (lastTurn.isError) {
+      setAgentPhase("error")
+    } else if (lastTurn.status === "in_progress") {
+      // Check if any tool is running or streaming
+      const hasRunningTool = lastTurn.blocks.some(
+        (b) => b.type === "tool_call" && (b.status === "running" || b.status === "streaming")
+      )
+      if (hasRunningTool) {
+        setAgentPhase("processing")
+      } else {
+        setAgentPhase("starting")
+      }
+    } else {
+      setAgentPhase("settled")
+    }
+  }, [threadTurns, activeThreadId])
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("")
@@ -133,273 +165,82 @@ export default function AiCopilot({
     sendPromptRef.current = wsAgent.sendPrompt
   }, [wsAgent.sendPrompt])
 
-  // ── Tauri IPC transport (desktop) ──────────────────────────────────────
-  useEffect(() => {
-    if (!isTauri || !activeThreadId) return
-
-    // Dispose any previous transport
-    transportRef.current?.dispose()
-
-    const transport = new TauriTransport(activeThreadId)
-    transportRef.current = transport
-
-    transport.onEvent((event) => {
-      const prev = threadTurnsRef.current.get(activeThreadId) ?? []
-      const { turns, terminal } = applyEvent(prev, event)
-      threadTurnsRef.current.set(activeThreadId, turns)
-      setThreadTurns(new Map(threadTurnsRef.current))
-      scrollDown()
-      if (terminal) {
-        setStreaming(false)
-        streamThreadRef.current = null
-        setStreamThreadId(null)
-        transport.dispose()
-        transportRef.current = null
-        onReload?.()
-      }
-    })
-
-    return () => {
-      transport.dispose()
-      transportRef.current = null
-    }
-  }, [activeThreadId, onReload, scrollDown])
-
-  // Load persisted history when switching to an existing session (§7.3:
-  // history is loaded via REST, the live transport only carries events after
-  // connect).
-  useEffect(() => {
-    if (activeThreadId === null) return
-    if (threadTurnsRef.current.has(activeThreadId)) {
-      scrollDown()
-      return
-    }
-    fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
-      .then((msgs) => {
-        if (!msgs || msgs.length === 0) return
-        const turns = historyToTurns(msgs)
-        // If the session is currently running, add a placeholder in_progress
-        // assistant turn so the UI shows "生成中..." until real events arrive (§7.4).
-        const session = sessions?.find((s) => s.id === activeThreadId)
-        if (session?.status === "running") {
-          turns.push({
-            id: newTurnId(),
-            role: "assistant",
-            status: "in_progress",
-            blocks: [{
-              type: "text",
-              id: `blk-placeholder-${Date.now()}`,
-              content: "",
-              streaming: true,
-            }],
-          })
-        }
-        threadTurnsRef.current.set(activeThreadId, turns)
+  // ── Tauri transport ──────────────────────────────────────────────────
+  const startTauriTransport = useCallback(
+    async (threadId: string) => {
+      if (!isTauri) return
+      transportRef.current?.dispose()
+      const transport = new TauriTransport(threadId)
+      transportRef.current = transport
+      transport.onTurnsUpdate = (turns: TranscriptTurn[]) => {
+        threadTurnsRef.current.set(threadId, turns)
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
-      })
-      .catch(() => {})
-  }, [activeThreadId, scrollDown, sessions])
-
-  // Stock search debounce
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!searchQuery.trim()) {
-      startTransition(() => setSearchResults([]))
-      return
-    }
-    debounceRef.current = setTimeout(async () => {
-      setSearchLoading(true)
-      try {
-        const data = await fetchJson<{ code: string; name: string }[]>(
-          `/api/search-stocks?q=${encodeURIComponent(searchQuery.trim())}`
-        )
-        setSearchResults(data)
-      } catch {
-        setSearchResults([])
-      } finally {
-        setSearchLoading(false)
       }
-    }, 200)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [searchQuery])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
-        e.preventDefault()
-        searchRef.current?.focus()
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [])
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [])
-
-  // Reset the streaming flag when switching to a different thread that is
-  // not the one currently streaming. The new-session path sets
-  // `streamThreadRef` to the new id before `onActiveThreadChange` re-renders,
-  // so the guard preserves its `streaming=true`. Selecting an existing
-  // (resumed) thread clears a stale `streaming=true` that would otherwise
-  // block every subsequent `send()` via its `if (streaming && ...) return`
-  // guard.
-  useEffect(() => {
-    if (streamThreadRef.current !== activeThreadId) {
-      setStreaming(false)
-      streamThreadRef.current = null
-      setStreamThreadId(null)
-    }
-  }, [activeThreadId])
-
-  const currentTurns = activeThreadId !== null ? (threadTurns.get(activeThreadId) ?? []) : []
-  const isEmpty = currentTurns.length === 0
-  const showStockTab = activeStockTab && stockTabs.some((t) => t.id === activeStockTab)
-
-  let bodyContent: ReactNode | null = null
-  if (showStockTab && activeStockTab) {
-    const tab = stockTabs.find((t) => t.id === activeStockTab)
-    bodyContent = (
-      <div className="min-h-0 flex-1">
-        {tab && (
-          <div className="h-full overflow-y-auto">
-            <KlineDrawer
-              symbol={activeStockTab}
-              name={tab.name}
-              onClose={() => closeTab(activeStockTab)}
-            />
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const send = useCallback(
-    async (question?: string) => {
-      const text = (question || input).trim()
-      if (!text) return
-      if (streaming && streamThreadId === activeThreadId) {
-        console.warn("[ChatView] send() blocked by streaming guard", {
-          streaming,
-          streamThread: streamThreadRef.current,
-          activeThreadId,
-        })
-        return
-      }
-
-      setShowSlash(false)
-      setInput("")
-
-      // For new threads, create a session first via the sessions API; the
-      // session name is the user's first message (§12 title auto-generation).
-      let sessionId = activeThreadId
-      if (!sessionId) {
-        try {
-          const result = await fetchJson<{ id: string }>("/api/ai/sessions", {
-            method: "POST",
-            body: JSON.stringify({ name: text, message: text }),
-          })
-          sessionId = result.id
-          onActiveThreadChange(sessionId)
-        } catch (e) {
-          const key = `_new_${Date.now()}`
-          threadTurnsRef.current.set(key, [
-            {
-              id: newTurnId(),
-              role: "assistant",
-              status: "complete",
-              isError: true,
-              blocks: [
-                {
-                  type: "text",
-                  id: `blk-err-${Date.now()}`,
-                  content: `[错误] 创建会话失败: ${e}`,
-                  streaming: false,
-                },
-              ],
-            },
-          ])
-          setThreadTurns(new Map(threadTurnsRef.current))
-          return
-        }
-      }
-
-      const sid = sessionId
-      // Append the user turn; the agent's first assistant turn is created by
-      // the reducer when turn_start arrives.
-      const userTurn: TranscriptTurn = {
-        id: newTurnId(),
-        role: "user",
-        status: "complete",
-        blocks: [{ type: "text", id: `blk-u-${Date.now()}`, content: text, streaming: false }],
-      }
-      const existing = threadTurnsRef.current.get(sid) ?? []
-      threadTurnsRef.current.set(sid, [...existing, userTurn])
-      setThreadTurns(new Map(threadTurnsRef.current))
-      scrollDown()
-
-      setStreaming(true)
-      streamThreadRef.current = sid
-      setStreamThreadId(sid)
-
-      // For new sessions, yield to React so useAgentWebSocket re-renders
-      // with the new sessionId and establishes the WebSocket connection,
-      // then fall through to send the prompt via WebSocket.
-      if (!activeThreadId && !isTauri) {
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        setStreaming(true)
-      }
-
-      try {
-        if (isTauri) {
-          // Tauri: use TauriTransport
-          const transport = transportRef.current
-          if (!transport) throw new Error("transport not ready")
-          await transport.ready()
-          await transport.sendPrompt(text)
-        } else {
-          // Web: use native WebSocket hook
-          if (!sendPromptRef.current) throw new Error("WebSocket not ready")
-          await sendPromptRef.current(text)
-        }
-      } catch (e: unknown) {
+      transport.onTerminal = () => {
         setStreaming(false)
         streamThreadRef.current = null
         setStreamThreadId(null)
-        transportRef.current?.dispose()
-        transportRef.current = null
-        const prev = threadTurnsRef.current.get(sid) ?? []
-        threadTurnsRef.current.set(sid, [
-          ...prev,
-          {
-            id: newTurnId(),
-            role: "assistant",
-            status: "complete",
-            isError: true,
-            blocks: [
-              {
-                type: "text",
-                id: `blk-err-${Date.now()}`,
-                content: `[错误] ${(e as Error).message || "网络请求失败"}`,
-                streaming: false,
-              },
-            ],
-          },
-        ])
-        setThreadTurns(new Map(threadTurnsRef.current))
+        onReload?.()
+      }
+      await transport.start()
+    },
+    [scrollDown, onReload],
+  )
+
+  // ── Send ──────────────────────────────────────────────────────────────
+  const send = useCallback(async () => {
+    const text = input.trim()
+    if (!text || !activeThreadId) return
+
+    setInput("")
+    setShowSlash(false)
+    setStreaming(true)
+    setAgentPhase("starting")
+    streamThreadRef.current = activeThreadId
+    setStreamThreadId(activeThreadId)
+
+    if (isTauri) {
+      await startTauriTransport(activeThreadId)
+      transportRef.current?.sendPrompt(text)
+    } else {
+      await sendPromptRef.current?.(text)
+    }
+  }, [input, activeThreadId, startTauriTransport])
+
+  // ── Permission response ──────────────────────────────────────────────
+  const respondToPermission = useCallback(
+    async (id: string, approved: boolean) => {
+      if (isTauri) {
+        await transportRef.current?.respondToPermission(id, approved)
+      } else {
+        await wsAgent.respondToPermission(id, approved)
       }
     },
-    [activeThreadId, input, streaming, streamThreadId, onActiveThreadChange, onReload, scrollDown]
+    [wsAgent.respondToPermission],
+  )
+
+  // ── Input handlers ────────────────────────────────────────────────────
+  const onInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value
+      setInput(value)
+
+      // Slash command detection
+      if (value.startsWith("/") && !value.includes(" ")) {
+        setShowSlash(true)
+      } else {
+        setShowSlash(false)
+      }
+
+      // Auto-resize
+      const el = textareaRef.current
+      if (el) {
+        el.style.height = "auto"
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+      }
+    },
+    [],
   )
 
   const onInputKeyDown = useCallback(
@@ -409,96 +250,130 @@ export default function AiCopilot({
         send()
       }
     },
-    [send]
+    [send],
   )
 
-  const onInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    const prev = prevInputRef.current
-    prevInputRef.current = val
-    setInput(val)
-    // Only trigger slash dialog when user actually types "/" (not when value already has "/" from command select)
-    if (val.startsWith("/") && !prev.startsWith("/")) {
-      setShowSlash(true)
-    } else if (!val.startsWith("/")) {
-      setShowSlash(false)
+  // ── Stock search ──────────────────────────────────────────────────────
+  const onSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const q = e.target.value
+      setSearchQuery(q)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (q.length < 1) {
+        setShowDropdown(false)
+        setSearchResults([])
+        return
+      }
+      debounceRef.current = setTimeout(async () => {
+        setSearchLoading(true)
+        try {
+          const data = await fetchJson<any>(`/api/stocks/search?q=${encodeURIComponent(q)}`)
+          setSearchResults(data?.results ?? data ?? [])
+          setShowDropdown(true)
+        } catch {
+          setSearchResults([])
+        } finally {
+          setSearchLoading(false)
+        }
+      }, 200)
+    },
+    [],
+  )
+
+  const selectStock = useCallback(
+    (code: string, name: string) => {
+      openTab(code, name)
+      setShowDropdown(false)
+      setSearchQuery("")
+    },
+    [openTab],
+  )
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
     }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
+  // ── Derived state ─────────────────────────────────────────────────────
+  const currentTurns = activeThreadId ? threadTurns.get(activeThreadId) ?? [] : []
+  const isEmpty = currentTurns.length === 0 && !streaming
+
+  // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex size-full flex-col">
-      <div className="bg-bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-4 py-1.5">
-        <SidebarTrigger className="shrink-0" />
-        <div className="text-ink-muted flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
-          <span className="font-medium text-white">OpenATrading</span>
-        </div>
-        <div className="flex flex-1 justify-center">
-          <div className="relative w-full max-w-[200px]" ref={searchContainerRef}>
-            <Search className="text-ink-muted pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2" />
+    <div className="flex h-full flex-col">
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <div className="border-hairline flex shrink-0 items-center gap-2 border-b px-4 py-2">
+        <SidebarTrigger />
+        <div className="flex flex-1 items-center gap-2">
+          <div ref={searchContainerRef} className="relative flex-1">
+            <Search className="text-ink-muted absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="bg-bg border-hairline focus:border-ai placeholder:text-ink-muted h-7 w-full rounded-lg border pr-12 pl-7 text-xs text-white transition-colors outline-none"
-              placeholder="搜索股票..."
+              className="bg-bg border-hairline focus:border-ai w-full rounded-lg border py-1.5 pl-9 pr-3 text-xs text-white outline-none transition-colors placeholder:text-gray-500"
+              placeholder="搜索股票代码或名称..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
-                setShowDropdown(true)
-              }}
-              onFocus={() => setShowDropdown(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setShowDropdown(false)
-                  searchRef.current?.blur()
-                }
-              }}
+              onChange={onSearchChange}
             />
-            <span className="bg-bg rounded-badge text-ink-muted pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 px-1 py-0.5 text-[9px] leading-none">
-              ⌘P
-            </span>
-            {showDropdown && searchQuery.trim() && (
-              <div className="bg-bg-surface border-hairline rounded-card absolute inset-x-0 top-full z-50 mt-0.5 max-h-72 overflow-y-auto border shadow-lg">
-                {searchLoading && <div className="text-ink-muted px-3 py-2 text-xs">搜索中...</div>}
-                {!searchLoading && searchResults.length === 0 && (
-                  <div className="text-ink-muted px-3 py-2 text-xs">无匹配结果</div>
+            {showDropdown && (
+              <div className="bg-bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg">
+                {searchLoading ? (
+                  <div className="text-ink-muted px-3 py-2 text-xs">搜索中...</div>
+                ) : searchResults.length === 0 ? (
+                  <div className="text-ink-muted px-3 py-2 text-xs">未找到结果</div>
+                ) : (
+                  searchResults.map((stock) => (
+                    <button
+                      key={stock.code}
+                      className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors"
+                      onClick={() => selectStock(stock.code, stock.name)}
+                    >
+                      <span className="text-ink-muted font-mono">{stock.code}</span>
+                      <span className="text-white">{stock.name}</span>
+                    </button>
+                  ))
                 )}
-                {searchResults.map((s) => (
-                  <button
-                    key={s.code}
-                    className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors"
-                    onClick={() => {
-                      openTab(`${s.code}`, s.name)
-                      setSearchQuery("")
-                      setShowDropdown(false)
-                      searchRef.current?.blur()
-                    }}
-                  >
-                    <span className="font-medium text-white">{s.name}</span>
-                    <span className="text-ink-muted font-mono">{s.code}</span>
-                  </button>
-                ))}
               </div>
             )}
           </div>
-        </div>
-        <div className="shrink-0">
-          <button
-            className="hover:bg-bg-hover rounded-button text-ink-muted flex size-6 items-center justify-center text-sm transition-colors hover:text-white"
-            title="更多"
-          >
-            ⋯
-          </button>
+          {/* Stock tabs */}
+          {stockTabs.length > 0 && (
+            <div className="flex items-center gap-1">
+              {stockTabs.map((tab) => (
+                <button
+                  key={tab.code}
+                  className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
+                    activeStockTab === tab.code
+                      ? "bg-ai/15 text-ai"
+                      : "text-ink-muted hover:bg-bg-hover"
+                  }`}
+                  onClick={() => setActiveStockTab(tab.code)}
+                >
+                  {tab.name}
+                  <span
+                    className="ml-1.5 text-[10px] opacity-50 hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeTab(tab.code)
+                    }}
+                  >
+                    ×
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <ChromeTabs
-        tabs={stockTabs.map((t) => ({ id: t.id, label: t.name }))}
-        activeTab={activeStockTab}
-        onSelect={setActiveStockTab}
-        onClose={closeTab}
-      />
-
-      {bodyContent ? (
-        bodyContent
+      {/* ── Body ────────────────────────────────────────────────────── */}
+      {activeStockTab ? (
+        <KlineDrawer />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div
@@ -515,43 +390,59 @@ export default function AiCopilot({
                 </div>
               </div>
             ) : (
-              currentTurns.map((turn, idx) => {
-                const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
-                return (
-                  <div
-                    key={turn.id}
-                    className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
-                  >
-                    <span
-                      className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
-                      }`}
-                    >
-                      {turn.role === "user" ? "U" : "AI"}
-                    </span>
-                    <div
-                      className={`min-w-0 flex-1 text-sm leading-relaxed ${
-                        turn.role === "user" ? "flex items-center" : ""
-                      }`}
-                    >
-                      {turn.role === "user" ? (
-                        <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
-                      ) : (
-                        <TurnRenderer
-                          sessionId={activeThreadId}
-                          turn={turn}
-                          isStreaming={isLastAi && streaming}
-                          respondToPermission={
-                            isTauri
-                              ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
-                              : wsAgent.respondToPermission
-                          }
+              <>
+                {/* ── Agent status bar ─────────────────────────────── */}
+                <AgentStatusBar phase={agentPhase} />
+
+                {currentTurns.map((turn, idx) => {
+                  const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
+                  const isFirst = idx === 0
+
+                  return (
+                    <div key={turn.id}>
+                      {/* ── Turn divider (between turns) ──────────── */}
+                      {turn.role === "assistant" && !isFirst && (
+                        <TurnDivider
+                          label={turn.status === "complete" ? "Turn 结束" : undefined}
+                          isError={turn.isError}
                         />
                       )}
+
+                      <div
+                        className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
+                      >
+                        <span
+                          className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                            turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
+                          }`}
+                        >
+                          {turn.role === "user" ? "U" : "AI"}
+                        </span>
+                        <div
+                          className={`min-w-0 flex-1 text-sm leading-relaxed ${
+                            turn.role === "user" ? "flex items-center" : ""
+                          }`}
+                        >
+                          {turn.role === "user" ? (
+                            <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
+                          ) : (
+                            <TurnRenderer
+                              sessionId={activeThreadId}
+                              turn={turn}
+                              isStreaming={isLastAi && streaming}
+                              respondToPermission={
+                                isTauri
+                                  ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
+                                  : wsAgent.respondToPermission
+                              }
+                            />
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )
-              })
+                  )
+                })}
+              </>
             )}
           </div>
 
@@ -683,6 +574,23 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
             />
           )
         }
+        if (seg.kind === "system") {
+          return (
+            <SystemNoticeBlock
+              key={`t-${i}`}
+              notices={seg.blocks.map((b) => ({
+                id: b.id,
+                kind: b.kind as "compaction" | "retry" | "turn" | "notice",
+                detail: b.detail,
+                isError: b.isError,
+                status: b.status as "active" | "done" | "error" | undefined,
+                attempt: b.attempt,
+                maxAttempts: b.maxAttempts,
+                delayMs: b.delayMs,
+              }))}
+            />
+          )
+        }
         // results
         return (
           <ToolResultBlock
@@ -759,6 +667,7 @@ type BlockGroup =
   | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }>; blocks: Extract<TranscriptBlock, { type: "text" }>[] }
   | { kind: "tools"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "tool_call" }>[] }
   | { kind: "results"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "system_notice" }>[] }
+  | { kind: "system"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "system_notice" }>[] }
   | { kind: "permission"; block: Extract<TranscriptBlock, { type: "permission_request" }>; blocks: Extract<TranscriptBlock, { type: "permission_request" }>[] }
 
 function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
@@ -775,7 +684,16 @@ function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
       } else {
         groups.push({ kind: "tools", blocks: [block] })
       }
-    } else if (block.type === "system_notice" && block.kind !== "compaction" && block.kind !== "retry") {
+    } else if (block.type === "system_notice" && (block.kind === "compaction" || block.kind === "retry")) {
+      // Compaction and retry blocks get their own "system" group
+      const last = groups[groups.length - 1]
+      if (last && last.kind === "system") {
+        last.blocks.push(block)
+      } else {
+        groups.push({ kind: "system", blocks: [block] })
+      }
+    } else if (block.type === "system_notice") {
+      // Regular notices (turn, notice) go to results
       groups.push({ kind: "results", blocks: [block] })
     } else if (block.type === "permission_request") {
       groups.push({ kind: "permission", block, blocks: [block] })
@@ -783,4 +701,3 @@ function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
   }
   return groups
 }
-

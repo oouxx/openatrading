@@ -50,4 +50,41 @@
       transform: scale(1);
     }
   }
+
+  /* ── Agent lifecycle progress bar ────────────────────────────────────
+   * Used by AgentStatusBar for the animated progress indicator during
+   * "starting" and "processing" phases. */
+  @keyframes agent-progress {
+    0% { transform: translateX(-100%); width: 20%; }
+    25% { width: 30%; }
+    50% { transform: translateX(0%); width: 50%; }
+    75% { width: 30%; }
+    100% { transform: translateX(100%); width: 20%; }
+  }
+
+  @keyframes agent-progress-start {
+    0% { transform: translateX(-100%); width: 10%; }
+    100% { transform: translateX(0%); width: 30%; }
+  }
+
+  /* ── Notice fade-in ────────────────────────────────────────────────
+   * Used by SystemNoticeBlock and ToolCallBlock partial result sections
+   * for a subtle entrance animation. */
+  @keyframes notice-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Utility animation classes ────────────────────────────────────── */
+  .animate-agent-progress {
+    animation: agent-progress 2s ease-in-out infinite;
+  }
+
+  .animate-agent-progress-start {
+    animation: agent-progress-start 1s ease-in-out infinite;
+  }
+
+  .animate-notice-fade-in {
+    animation: notice-fade-in 0.3s ease-out;
+  }
 }
