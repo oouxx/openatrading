@@ -400,54 +400,37 @@ enum ClientCommand {
 
 // ── Event channel setup ────────────────────────────────────────────────────
 
-/// Set up the event channel for a session.
-///
-/// Returns an unbounded receiver that yields [`TranscriptEvent`] values from
-/// both `AgentEvent` (async) and `AgentSessionEvent` (sync) sources, merged
-/// into a single channel for ordering guarantees (§10.1).
 /// Set up the event channel for a session with backpressure support (§14).
 ///
-/// Returns a pair of receivers:
-/// - `delta_rx` (capacity 64, drops when full) — for text/thinking/tool-call deltas
-/// - `durable_rx` (capacity 256, blocks when full) — for tool results, turn lifecycle,
-///   compaction, retry, and other non-delta events
-///
-/// The two-channel design ensures that high-frequency delta events don't starve
-/// important lifecycle events, and that a slow consumer doesn't cause unbounded
-/// memory growth.
+/// Returns a single receiver (capacity 256, blocks when full) for all event types:
+/// text/thinking/tool-call deltas, tool results, turn lifecycle, compaction, retry, etc.
+/// All events share one channel so that backpressure propagates uniformly — a slow
+/// consumer blocks the producer regardless of event type.
 pub async fn setup_event_channel(
     session: &AgentSession,
 ) -> (
     mpsc::Receiver<TranscriptEvent>,
-    mpsc::Receiver<TranscriptEvent>,
     pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle,
 ) {
-    let (delta_tx, delta_rx) = mpsc::channel::<TranscriptEvent>(64);
-    let (durable_tx, durable_rx) = mpsc::channel::<TranscriptEvent>(256);
+    let (tx, rx) = mpsc::channel::<TranscriptEvent>(256);
 
-    // Route events to the appropriate channel:
-    // - Delta events (high-frequency text/thinking/tool-call updates) → delta channel (drops when full)
-    // - Durable events (lifecycle, tool results, compaction, retry) → durable channel (blocks when full)
-    let delta_tx2 = delta_tx.clone();
-    let durable_tx2 = durable_tx.clone();
+    // All events share a single channel. `send().await` blocks when the channel
+    // is full, applying backpressure uniformly across all event types.
+    let tx2 = tx.clone();
     let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
         let payload = convert_session_event(event);
-        let is_delta = matches!(
-            &payload,
-            SessionEventPayload::MessageUpdate { .. }
-                | SessionEventPayload::ToolExecutionUpdate { .. }
-        );
-        let tx: &mpsc::Sender<TranscriptEvent> = if is_delta { &delta_tx2 } else { &durable_tx2 };
-        let _ = tx.try_send(TranscriptEvent::Session(payload));
+        // In the sync callback we can't block, so use try_send. The channel is
+        // large enough (256) that this should rarely fail under normal operation.
+        let _ = tx2.try_send(TranscriptEvent::Session(payload));
     });
     let handle = session.subscribe(sync_listener);
 
     use openatrading_core::log;
     log::info!(
-        "ws: event channel ready (delta cap=64, durable cap=256) for session {}",
+        "ws: event channel ready (cap=256) for session {}",
         session.get_session_id()
     );
-    (delta_rx, durable_rx, handle)
+    (rx, handle)
 }
 
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
@@ -515,7 +498,7 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
         }
     };
 
-    let (mut delta_rx, mut durable_rx, _subscription_handle) = {
+    let (mut rx, _subscription_handle) = {
         let rt = runtime.lock().await;
         setup_event_channel(rt.session()).await
     };
@@ -526,25 +509,13 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
     // Event loop: forward events to WebSocket, handle client prompts, detect disconnect.
     loop {
         tokio::select! {
-            // unbiased: all branches polled fairly to prevent socket.recv() starvation
-            // Durable events (tool results, lifecycle, compaction, retry) — must deliver
-            Some(event) = durable_rx.recv() => {
-                log::debug!("ws: {session_id} -> durable event ({})", event.kind_label());
+            // All events share a single channel with backpressure.
+            Some(event) = rx.recv() => {
                 let label = event.kind_label();
                 let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-                log::debug!("ws: {session_id} -> durable event ({label})");
+                log::trace!("ws: {session_id} -> event ({label})");
                 if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on durable event — breaking");
-                    break;
-                }
-            }
-            // Delta events (text/thinking/tool-call deltas) — can drop if slow
-            Some(event) = delta_rx.recv() => {
-                let label = event.kind_label();
-                let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
-                log::trace!("ws: {session_id} -> delta ({label})");
-                if socket.send(Message::Text(json)).await.is_err() {
-                    log::warn!("ws: {session_id} socket send failed on delta — breaking");
+                    log::warn!("ws: {session_id} socket send failed — breaking");
                     break;
                 }
             }

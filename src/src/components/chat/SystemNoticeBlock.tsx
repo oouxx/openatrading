@@ -1,7 +1,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
-  Compress,
+  Shrink,
   Loader2,
   RefreshCw,
   XCircle,
@@ -30,7 +30,7 @@ interface SystemNoticeBlockProps {
 function KindIcon({ kind, status }: { kind: SystemNotice["kind"]; status?: SystemNotice["status"] }) {
   switch (kind) {
     case "compaction":
-      if (status === "active") return <Compress className="size-3.5 animate-pulse text-blue-500" />
+      if (status === "active") return <Shrink className="size-3.5 animate-pulse text-blue-500" />
       if (status === "error") return <XCircle className="size-3.5 text-red-500" />
       return <CheckCircle2 className="size-3.5 text-blue-500" />
     case "retry":

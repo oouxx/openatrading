@@ -1136,20 +1136,14 @@ async fn ensure_session_tauri(
     if let Some(rt) = state.ctx.pool.get_session(&new_id).await {
         let guard = rt.lock().await;
         let session = guard.session();
-        let (mut delta_rx, mut durable_rx, _subscription_handle) =
+        let (mut rx, _subscription_handle) =
             openatrading_web::agent_ws::setup_event_channel(session).await;
         let app_handle = app.clone();
         let sid = session_id.to_string();
 
         let join_handle = tokio::spawn(async move {
             loop {
-                let event = tokio::select! {
-                    biased;
-                    ev = durable_rx.recv() => ev,
-                    ev = delta_rx.recv() => ev,
-                    else => break,
-                };
-                let Some(event) = event else { break };
+                let Some(event) = rx.recv().await else { break };
                 let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
                     schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
                     event,
