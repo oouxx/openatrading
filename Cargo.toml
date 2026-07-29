@@ -31,6 +31,7 @@ pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.39" }
 pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.39" }
 pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.79.39" }
 ahash = { version = "0.8", features = ["serde"] }
+lru = "0.12"
 
 [workspace.lints.clippy]
 all = "warn"

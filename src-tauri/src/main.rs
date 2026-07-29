@@ -1069,18 +1069,7 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up the first time the session was registered.
     ensure_session_tauri(&session_id, &state, &app).await?;
-    if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
-        let text = text.clone();
-        tokio::task::spawn_blocking(move || {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                let session = rt.lock().await;
-                session.session().prompt(&text, None).await;
-            });
-        })
-        .await
-        .map_err(|e| format!("Blocking task failed: {e}"))?;
-    }
+    state.ctx.pool.prompt_with_opts(&session_id, &text, Default::default()).await?;
     Ok(())
 }
 
@@ -1133,32 +1122,33 @@ async fn ensure_session_tauri(
         .map_err(|e| e.to_string())?;
 
     // Set up the forward task for this session.
-    if let Some(rt) = state.ctx.pool.get_session(&new_id).await {
-        let guard = rt.lock().await;
-        let session = guard.session();
-        let (mut rx, _subscription_handle) =
-            openatrading_web::agent_ws::setup_event_channel(session).await;
-        let app_handle = app.clone();
-        let sid = session_id.to_string();
+    let Some(rt) = state.ctx.pool.get_session(&new_id).await else {
+        return Err("Session not found after creation".to_string());
+    };
+    let guard = rt.lock().await;
+    let session = guard.session();
+    let (mut rx, _subscription_handle) =
+        openatrading_web::agent_ws::setup_event_channel(session).await;
+    let app_handle = app.clone();
+    let sid = session_id.to_string();
 
-        let join_handle = tokio::spawn(async move {
-            loop {
-                let Some(event) = rx.recv().await else { break };
-                let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
-                    schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
-                    event,
-                })
-                .unwrap_or_default();
-                let payload = serde_json::json!({ "session_id": sid, "event": event_value });
-                let _ = app_handle.emit("agent-event", payload);
-            }
-        });
-        tokio::spawn(async move {
-            if let Err(e) = join_handle.await {
-                eprintln!("[agent-forward] forward task panicked: {e}");
-            }
-        });
-    }
+    let join_handle = tokio::spawn(async move {
+        loop {
+            let Some(event) = rx.recv().await else { break };
+            let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
+                schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
+                event,
+            })
+            .unwrap_or_default();
+            let payload = serde_json::json!({ "session_id": sid, "event": event_value });
+            let _ = app_handle.emit("agent-event", payload);
+        }
+    });
+    tokio::spawn(async move {
+        if let Err(e) = join_handle.await {
+            eprintln!("[agent-forward] forward task panicked: {e}");
+        }
+    });
     Ok(())
 }
 

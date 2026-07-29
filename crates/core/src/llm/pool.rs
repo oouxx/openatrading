@@ -1,22 +1,32 @@
+use lru::LruCache;
 use pi_coding_agent::core::agent_session_runtime::{
     create_agent_session_runtime, AgentSessionRuntime, CreateAgentSessionRuntimeFactory,
     CreateAgentSessionRuntimeParams,
 };
 use pi_coding_agent::core::session_manager::SessionManager;
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::llm::runtime::find_session_file_by_id;
 
-/// Manages multiple concurrent LLM agent sessions.
+/// Default maximum number of sessions in the pool.
+///
+/// When the pool is full, the least-recently-used session is evicted.
+/// Sessions are persisted to disk, so eviction only removes the in-memory
+/// runtime — the session data remains on disk and can be resumed later.
+const DEFAULT_POOL_CAPACITY: usize = 128;
+
+/// Manages multiple concurrent LLM agent sessions with LRU eviction.
 ///
 /// Each session is backed by a pi-coding-agent [`AgentSessionRuntime`] created
 /// via `create_agent_session_runtime` + a factory. Sessions are identified by
-/// UUID and stored in a HashMap for concurrent access.
+/// UUID and stored in an LRU cache. When the cache is full, the least-recently-
+/// accessed session is evicted (its in-memory runtime is dropped; session data
+/// on disk is preserved and can be resumed later).
 pub struct SessionPool {
-    /// All active sessions, keyed by session ID.
-    sessions: Mutex<HashMap<String, Arc<Mutex<AgentSessionRuntime>>>>,
+    /// Active sessions with LRU eviction, keyed by session ID.
+    sessions: Mutex<LruCache<String, Arc<Mutex<AgentSessionRuntime>>>>,
     /// Factory for creating new `AgentSessionRuntime` instances.
     factory: CreateAgentSessionRuntimeFactory,
 }
@@ -24,7 +34,10 @@ pub struct SessionPool {
 impl SessionPool {
     pub fn new(factory: CreateAgentSessionRuntimeFactory) -> Self {
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Mutex::new(LruCache::new(
+                NonZeroUsize::new(DEFAULT_POOL_CAPACITY)
+                    .expect("DEFAULT_POOL_CAPACITY > 0"),
+            )),
             factory,
         }
     }
@@ -56,7 +69,7 @@ impl SessionPool {
         self.sessions
             .lock()
             .await
-            .insert(session_id.clone(), runtime);
+            .put(session_id.clone(), runtime);
         Ok(session_id)
     }
 
@@ -70,7 +83,7 @@ impl SessionPool {
         // Check for duplicate — drop lock before the !Send import_from_jsonl.
         {
             let sessions = self.sessions.lock().await;
-            if sessions.contains_key(session_id) {
+            if sessions.contains(session_id) {
                 return Err(format!("Session {session_id} already exists in pool"));
             }
         }
@@ -128,13 +141,27 @@ impl SessionPool {
         self.sessions
             .lock()
             .await
-            .insert(sid, runtime);
+            .put(sid, runtime);
         Ok(())
     }
 
     /// Get a reference to a session runtime by ID.
+    ///
+    /// Accessing a session promotes it to the front of the LRU cache.
     pub async fn get_session(&self, id: &str) -> Option<Arc<Mutex<AgentSessionRuntime>>> {
         self.sessions.lock().await.get(id).cloned()
+    }
+
+    /// Get a session from the pool, or resume it from disk if not found.
+    ///
+    /// This combines `get_session()` + `resume_session()` into a single call,
+    /// returning an error if the session doesn't exist on disk either.
+    pub async fn get_or_resume(&self, session_id: &str) -> Result<Arc<Mutex<AgentSessionRuntime>>, String> {
+        if let Some(rt) = self.get_session(session_id).await {
+            return Ok(rt);
+        }
+        self.resume_session(session_id).await?;
+        self.get_session(session_id).await.ok_or_else(|| "Session not found after resume".to_string())
     }
 
     /// Send a prompt to a session (streaming output).
@@ -148,6 +175,36 @@ impl SessionPool {
             .clone();
         let rt = session.lock().await;
         rt.session().prompt(text, None).await;
+        Ok(())
+    }
+
+    /// Send a prompt with full options, handling `!Send` isolation internally.
+    ///
+    /// `prompt()` on `AgentSession` is `!Send` (holds `std::sync::MutexGuard`
+    /// across `.await`), so we isolate it via `spawn_blocking`.
+    pub async fn prompt_with_opts(
+        &self,
+        session_id: &str,
+        text: &str,
+        opts: pi_coding_agent::core::agent_session::PromptOptions,
+    ) -> Result<(), String> {
+        let session = self
+            .sessions
+            .lock()
+            .await
+            .get(session_id)
+            .ok_or_else(|| "Session not found".to_string())?
+            .clone();
+        let text = text.to_string();
+        tokio::task::spawn_blocking(move || {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let rt = session.lock().await;
+                rt.session().prompt(&text, Some(opts)).await;
+            });
+        })
+        .await
+        .map_err(|e| format!("Blocking task failed: {e}"))?;
         Ok(())
     }
 
@@ -186,17 +243,22 @@ impl SessionPool {
 
     /// Close and remove a session.
     pub async fn close_session(&self, session_id: &str) {
-        self.sessions.lock().await.remove(session_id);
+        self.sessions.lock().await.pop(session_id);
     }
 
     /// List all active session IDs.
     pub async fn list_session_ids(&self) -> Vec<String> {
-        self.sessions.lock().await.keys().cloned().collect()
+        self.sessions
+            .lock()
+            .await
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect()
     }
 
     /// Check if a session exists in the pool.
     pub async fn has_session(&self, session_id: &str) -> bool {
-        self.sessions.lock().await.contains_key(session_id)
+        self.sessions.lock().await.contains(session_id)
     }
 
     /// Check whether a session is currently streaming a response.

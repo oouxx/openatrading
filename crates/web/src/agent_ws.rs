@@ -449,52 +449,20 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
 
     log::info!("ws: upgrade accepted session_id={session_id}");
 
-    // Retrieve the live runtime from the SessionPool. We do NOT remove it —
-    // reconnections must reuse the same AgentSessionRuntime to preserve the
-    // running agent's context and event stream.
-    let runtime = match state.ctx.pool.get_session(&session_id).await {
-        Some(rt) => {
-            log::info!("ws: pool HIT — reusing live runtime for {session_id}");
+    // Retrieve the live runtime from the SessionPool (HIT) or resume from disk (MISS).
+    // LRU eviction in the pool ensures stale sessions are cleaned up automatically.
+    let runtime = match state.ctx.pool.get_or_resume(&session_id).await {
+        Ok(rt) => {
+            log::info!("ws: runtime ready for {session_id}");
             rt
         }
-        None => {
-            log::info!("ws: pool MISS for {session_id} — resuming from disk");
-            // Not in pool — resume from disk. This happens after a
-            // backend restart (the in-memory pool is empty) or when a
-            // client reconnects to a session whose runtime was evicted.
-            // Use the original session_id so REST API calls using the same
-            // ID continue to work.
-            match state
-                .ctx
-                .pool
-                .resume_session(&session_id)
-                .await
-            {
-                Ok(()) => {
-                    log::info!("ws: resumed runtime for {session_id}");
-                    match state.ctx.pool.get_session(&session_id).await {
-                        Some(rt) => rt,
-                        None => {
-                            let e = "failed to get runtime after resume";
-                            log::error!("ws: {e}");
-                            let notice = format!(
-                                r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                            );
-                            let _ = socket.send(Message::Text(notice)).await;
-                            return;
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("ws: failed to resume session {session_id}: {e}");
-                    let notice = format!(
-                        r#"{{"kind":"session","type":"notice","text":"{e}","is_error":true}}"#
-                    );
-                    log::info!("ws: {session_id} -> error notice");
-                    let _ = socket.send(Message::Text(notice)).await;
-                    return;
-                }
-            }
+        Err(e) => {
+            log::error!("ws: failed to get/resume session {session_id}: {e}");
+            let notice = format!(
+                r#"{{"kind":"session","type":"notice","text":"session not found: {e}","is_error":true}}"#
+            );
+            let _ = socket.send(Message::Text(notice)).await;
+            return;
         }
     };
 
@@ -525,31 +493,21 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
-                            let rt = runtime.clone();
-                            let task_id = session_id.clone();
+                            let pool = state.ctx.pool.clone();
+                            let sid = session_id.clone();
                             tokio::spawn(async move {
-                                let _ = tokio::task::spawn_blocking(move || {
-                                    // Create a dedicated runtime so prompt()'s async I/O (HTTP
-                                    // calls to LLM API) has its own I/O driver.  Using
-                                    // Handle::current().block_on() would share the main
-                                    // runtime's driver and can deadlock.
-                                    let io = tokio::runtime::Runtime::new().unwrap();
-                                    io.block_on(async {
-                                        log::info!("ws: agent turn started for {task_id}");
-                                        let session = rt.lock().await;
-                                        let streaming_behavior = if session.session().is_streaming().await {
-                                            Some("followUp".to_string())
-                                        } else {
-                                            None
-                                        };
-                                        let opts = PromptOptions {
-                                            streaming_behavior,
-                                            ..Default::default()
-                                        };
-                                        session.session().prompt(&text, Some(opts)).await;
-                                        log::info!("ws: agent turn completed for {task_id}");
-                                    });
-                                }).await;
+                                log::info!("ws: agent turn started for {sid}");
+                                let streaming_behavior = if pool.is_stream(&sid).await {
+                                    Some("followUp".to_string())
+                                } else {
+                                    None
+                                };
+                                let opts = PromptOptions {
+                                    streaming_behavior,
+                                    ..Default::default()
+                                };
+                                let _ = pool.prompt_with_opts(&sid, &text, opts).await;
+                                log::info!("ws: agent turn completed for {sid}");
                             });
                         } else {
                             log::debug!("ws: {session_id} <- unparseable command — ignored");
