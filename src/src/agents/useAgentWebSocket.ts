@@ -74,7 +74,7 @@ export function useAgentWebSocket(
 
     if (!sessionId) return
 
-    const url = `${wsBaseUrl()}/api/ai/sessions/${sessionId}/ws`
+    const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sessionId}`
     console.log('[useAgentWebSocket] connecting to', url)
 
     const connect = () => {

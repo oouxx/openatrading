@@ -96,7 +96,7 @@ export function useMultiAgentWebSocket(
   function connectSession(sid: string, conn: ConnectionState) {
     if (!mountedRef.current) return
 
-    const url = `${wsBaseUrl()}/api/ai/sessions/${sid}/ws`
+    const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sid}`
     conn.readyState = ReadyState.CONNECTING
 
     const ws = new WebSocket(url)
