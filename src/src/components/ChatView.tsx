@@ -141,8 +141,14 @@ export default function AiCopilot({
 
   // ── WebSocket transport (Web) — multi-session ────────────────────────
   // Collect all session IDs that need live connections.
+  // Include both persisted sessions and the active thread (which may be a
+  // newly created session not yet persisted). This ensures the WebSocket
+  // connection is established for the active session immediately.
   const allSessionIds = !isTauri
-    ? (sessions ?? []).map((s) => s.id).filter(Boolean)
+    ? [...new Set([
+        ...(sessions ?? []).map((s) => s.id).filter(Boolean),
+        ...(activeThreadId ? [activeThreadId] : []),
+      ])]
     : []
 
   const wsAgent = useMultiAgentWebSocket(allSessionIds, {
