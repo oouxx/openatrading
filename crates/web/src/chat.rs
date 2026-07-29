@@ -548,7 +548,7 @@ pub async fn get_session_messages(
                                     text: text.to_string(),
                                 }
                             }),
-                            "tool_use" => {
+                            "tool_use" | "toolCall" => {
                                 let id = b
                                     .get("id")
                                     .and_then(|v| v.as_str())
