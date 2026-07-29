@@ -72,66 +72,6 @@ export function useMultiAgentWebSocket(
   // Track previous sessionIds to detect actual changes.
   const prevSessionIdsRef = useRef<string[]>(sessionIds)
 
-  // Sync connections when sessionIds actually change.
-  //
-  // IMPORTANT: This effect has NO cleanup function. The cleanup would run on
-  // every dependency change and tear down ALL connections before the new
-  // effect runs, even when the quick check below decides nothing changed.
-  // That caused mass disconnects of all sessions on every re-render where
-  // the sessionIds array reference changed but contents were identical.
-  //
-  // Unmount-only teardown is handled by a separate useEffect([]) below.
-  useEffect(() => {
-    mountedRef.current = true
-    const prev = prevSessionIdsRef.current
-    prevSessionIdsRef.current = sessionIds
-
-    const connections = connectionsRef.current
-    const desired = new Set(sessionIds)
-    const previous = new Set(prev)
-
-    // Quick check: if nothing changed, skip entirely.
-    if (desired.size === previous.size) {
-      let same = true
-      for (const sid of desired) {
-        if (!previous.has(sid)) { same = false; break }
-      }
-      if (same) return
-    }
-
-    // Disconnect sessions no longer in the list
-    for (const [sid, conn] of connections) {
-      if (!desired.has(sid)) {
-        teardownConnection(sid, conn)
-        connections.delete(sid)
-      }
-    }
-
-    // Connect new sessions
-    for (const sid of desired) {
-      if (!connections.has(sid)) {
-        const conn = createConnectionState()
-        connections.set(sid, conn)
-        connectSession(sid, conn)
-      }
-    }
-  }, [sessionIds])
-
-  // Unmount-only cleanup: tear down all connections when the component
-  // unmounts. This is a separate effect with [] deps so it only runs once
-  // on mount and cleans up on unmount — never on intermediate re-renders.
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false
-      for (const [sid, conn] of connectionsRef.current) {
-        teardownConnection(sid, conn)
-      }
-      connectionsRef.current.clear()
-    }
-  }, [])
-
-  // ── Connection lifecycle helpers ──────────────────────────────────────
-
   function teardownConnection(_sid: string, conn: ConnectionState) {
     if (conn.ws) {
       conn.ws.onopen = null
@@ -235,6 +175,66 @@ export function useMultiAgentWebSocket(
       // History loading is best-effort; live events will still arrive.
     }
   }
+
+  // Sync connections when sessionIds actually change.
+  //
+  // IMPORTANT: This effect has NO cleanup function. The cleanup would run on
+  // every dependency change and tear down ALL connections before the new
+  // effect runs, even when the quick check below decides nothing changed.
+  // That caused mass disconnects of all sessions on every re-render where
+  // the sessionIds array reference changed but contents were identical.
+  //
+  // Unmount-only teardown is handled by a separate useEffect([]) below.
+  useEffect(() => {
+    mountedRef.current = true
+    const prev = prevSessionIdsRef.current
+    prevSessionIdsRef.current = sessionIds
+
+    const connections = connectionsRef.current
+    const desired = new Set(sessionIds)
+    const previous = new Set(prev)
+
+    // Quick check: if nothing changed, skip entirely.
+    if (desired.size === previous.size) {
+      let same = true
+      for (const sid of desired) {
+        if (!previous.has(sid)) { same = false; break }
+      }
+      if (same) return
+    }
+
+    // Disconnect sessions no longer in the list
+    for (const [sid, conn] of connections) {
+      if (!desired.has(sid)) {
+        teardownConnection(sid, conn)
+        connections.delete(sid)
+      }
+    }
+
+    // Connect new sessions
+    for (const sid of desired) {
+      if (!connections.has(sid)) {
+        const conn = createConnectionState()
+        connections.set(sid, conn)
+        connectSession(sid, conn)
+      }
+    }
+  }, [sessionIds])
+
+  // Unmount-only cleanup: tear down all connections when the component
+  // unmounts. This is a separate effect with [] deps so it only runs once
+  // on mount and cleans up on unmount — never on intermediate re-renders.
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      for (const [sid, conn] of connectionsRef.current) {
+        teardownConnection(sid, conn)
+      }
+      connectionsRef.current.clear()
+    }
+  }, [])
+
+  // ── Connection lifecycle helpers ──────────────────────────────────────
 
   // ── Public API ────────────────────────────────────────────────────────
 
