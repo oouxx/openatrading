@@ -37,6 +37,7 @@ tauri = { version = "2", optional = true }
 thiserror = "2"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
+lru = { workspace = true }
 rmcp = { version = "2.2.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 [features]
 telegram = ["dep:teloxide"]
