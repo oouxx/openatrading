@@ -565,11 +565,11 @@ async fn test_multi_turn_conversation() {
         conv2.len()
     );
     assert!(
-        user_count_2 >= user_count_1 + 1,
+        user_count_2 > user_count_1,
         "第二轮后 user 消息应增加：之前 {user_count_1}，现在 {user_count_2}"
     );
     assert!(
-        asst_count_2 >= asst_count_1 + 1,
+        asst_count_2 > asst_count_1,
         "第二轮后 assistant 消息应增加：之前 {asst_count_1}，现在 {asst_count_2}"
     );
 

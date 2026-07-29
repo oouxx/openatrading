@@ -70,7 +70,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/telegraph/:category", get(handlers::get_telegraph))
         .route("/api/dapan-abnormal", get(handlers::get_dapan_abnormal))
         .route("/api/market-trend/:symbol", get(handlers::get_market_trend))
-        .route("/api/ai/sessions/:id/ws", get(agent_ws::ws_handler))
+        .route("/api/ai/sessions/ws", get(agent_ws::ws_handler))
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
         .route("/api/skills", get(chat::get_skills))
@@ -112,7 +112,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::get_dragon_tiger_stock_seat),
         )
         .route("/api/ai/sessions", get(chat::list_sessions))
-        .route("/api/ai/sessions", post(chat::create_session))
         .route(
             "/api/ai/sessions/:id/messages",
             get(chat::get_session_messages),

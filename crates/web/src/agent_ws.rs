@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
+use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::pi_ai_types::ContentBlock;
 use openatrading_core::llm::AgentMessage;
@@ -435,13 +435,21 @@ pub async fn setup_event_channel(
 
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
 
-/// `GET /api/ai/sessions/:id/ws` — WebSocket upgrade.
+#[derive(Deserialize)]
+pub struct WsQuery {
+    pub id: String,
+}
+
+/// `GET /api/ai/sessions/ws?id=xxxx` — WebSocket upgrade.
+///
+/// If the session ID exists (in pool or on disk), resume it.
+/// Otherwise, create a new session with the given ID.
 pub async fn ws_handler(
-    Path(session_id): Path<String>,
+    Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_session(socket, state, session_id))
+    ws.on_upgrade(move |socket| handle_session(socket, state, query.id))
 }
 
 async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id: String) {
@@ -450,19 +458,45 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
     log::info!("ws: upgrade accepted session_id={session_id}");
 
     // Retrieve the live runtime from the SessionPool (HIT) or resume from disk (MISS).
-    // LRU eviction in the pool ensures stale sessions are cleaned up automatically.
+    // If neither exists, create a new session with the given ID.
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let runtime = match state.ctx.pool.get_or_resume(&session_id).await {
         Ok(rt) => {
-            log::info!("ws: runtime ready for {session_id}");
+            log::info!("ws: runtime ready for {session_id} (resumed)");
             rt
         }
-        Err(e) => {
-            log::error!("ws: failed to get/resume session {session_id}: {e}");
-            let notice = format!(
-                r#"{{"kind":"session","type":"notice","text":"session not found: {e}","is_error":true}}"#
-            );
-            let _ = socket.send(Message::Text(notice)).await;
-            return;
+        Err(_) => {
+            log::info!("ws: session {session_id} not found, creating new");
+            match state
+                .ctx
+                .pool
+                .create_session_with_id(&cwd, Some(&session_id))
+                .await
+            {
+                Ok(_) => match state.ctx.pool.get_session(&session_id).await {
+                    Some(rt) => {
+                        log::info!("ws: new session created: {session_id}");
+                        rt
+                    }
+                    None => {
+                        log::error!("ws: created session {session_id} but not found in pool");
+                        let notice = r#"{"kind":"session","type":"notice","text":"failed to create session","is_error":true}"#.to_string();
+                        let _ = socket.send(Message::Text(notice)).await;
+                        return;
+                    }
+                },
+                Err(e) => {
+                    log::error!("ws: failed to create session {session_id}: {e}");
+                    let notice = format!(
+                        r#"{{"kind":"session","type":"notice","text":"failed to create session: {e}","is_error":true}}"#
+                    );
+                    let _ = socket.send(Message::Text(notice)).await;
+                    return;
+                }
+            }
         }
     };
 

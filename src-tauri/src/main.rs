@@ -1069,7 +1069,11 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up the first time the session was registered.
     ensure_session_tauri(&session_id, &state, &app).await?;
-    state.ctx.pool.prompt_with_opts(&session_id, &text, Default::default()).await?;
+    state
+        .ctx
+        .pool
+        .prompt_with_opts(&session_id, &text, Default::default())
+        .await?;
     Ok(())
 }
 

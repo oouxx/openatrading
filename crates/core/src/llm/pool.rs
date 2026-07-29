@@ -3,7 +3,7 @@ use pi_coding_agent::core::agent_session_runtime::{
     create_agent_session_runtime, AgentSessionRuntime, CreateAgentSessionRuntimeFactory,
     CreateAgentSessionRuntimeParams,
 };
-use pi_coding_agent::core::session_manager::SessionManager;
+use pi_coding_agent::core::session_manager::{NewSessionOptions, SessionManager};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,16 +35,29 @@ impl SessionPool {
     pub fn new(factory: CreateAgentSessionRuntimeFactory) -> Self {
         Self {
             sessions: Mutex::new(LruCache::new(
-                NonZeroUsize::new(DEFAULT_POOL_CAPACITY)
-                    .expect("DEFAULT_POOL_CAPACITY > 0"),
+                NonZeroUsize::new(DEFAULT_POOL_CAPACITY).expect("DEFAULT_POOL_CAPACITY > 0"),
             )),
             factory,
         }
     }
 
     /// Create a new session and return its ID.
+    ///
+    /// If `session_id` is `Some`, use that value instead of generating a new UUID.
+    /// The caller is responsible for ensuring the ID is unique.
     pub async fn create_session(&self, cwd: &str) -> Result<String, String> {
-        let session_id = uuid::Uuid::new_v4().to_string();
+        self.create_session_with_id(cwd, None).await
+    }
+
+    /// Create a new session with an optional custom ID.
+    pub async fn create_session_with_id(
+        &self,
+        cwd: &str,
+        session_id: Option<&str>,
+    ) -> Result<String, String> {
+        let session_id = session_id
+            .unwrap_or(&uuid::Uuid::new_v4().to_string())
+            .to_string();
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
             .to_string();
@@ -52,7 +65,14 @@ impl SessionPool {
             .to_string_lossy()
             .to_string();
 
-        let session_manager = SessionManager::new(cwd, &session_dir, None, true, None);
+        // Pass the custom session ID via NewSessionOptions so pi-coding-agent
+        // uses the same ID internally (session file naming, header, etc.).
+        let new_session_opts = NewSessionOptions {
+            id: Some(session_id.clone()),
+            parent_session: None,
+        };
+        let session_manager =
+            SessionManager::new(cwd, &session_dir, None, true, Some(new_session_opts));
 
         let runtime = create_agent_session_runtime(
             self.factory.clone(),
@@ -66,10 +86,7 @@ impl SessionPool {
         .await;
 
         let runtime = Arc::new(Mutex::new(runtime));
-        self.sessions
-            .lock()
-            .await
-            .put(session_id.clone(), runtime);
+        self.sessions.lock().await.put(session_id.clone(), runtime);
         Ok(session_id)
     }
 
@@ -109,13 +126,7 @@ impl SessionPool {
         let runtime = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
-                let session_manager = SessionManager::new(
-                    "/tmp",
-                    &session_dir2,
-                    None,
-                    true,
-                    None,
-                );
+                let session_manager = SessionManager::new("/tmp", &session_dir2, None, true, None);
 
                 let mut runtime = create_agent_session_runtime(
                     factory,
@@ -138,10 +149,7 @@ impl SessionPool {
         .map_err(|e| format!("Failed to import session: {e}"))?;
 
         let runtime = Arc::new(Mutex::new(runtime));
-        self.sessions
-            .lock()
-            .await
-            .put(sid, runtime);
+        self.sessions.lock().await.put(sid, runtime);
         Ok(())
     }
 
@@ -156,12 +164,17 @@ impl SessionPool {
     ///
     /// This combines `get_session()` + `resume_session()` into a single call,
     /// returning an error if the session doesn't exist on disk either.
-    pub async fn get_or_resume(&self, session_id: &str) -> Result<Arc<Mutex<AgentSessionRuntime>>, String> {
+    pub async fn get_or_resume(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<Mutex<AgentSessionRuntime>>, String> {
         if let Some(rt) = self.get_session(session_id).await {
             return Ok(rt);
         }
         self.resume_session(session_id).await?;
-        self.get_session(session_id).await.ok_or_else(|| "Session not found after resume".to_string())
+        self.get_session(session_id)
+            .await
+            .ok_or_else(|| "Session not found after resume".to_string())
     }
 
     /// Send a prompt to a session (streaming output).

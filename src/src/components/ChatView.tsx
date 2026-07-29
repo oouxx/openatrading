@@ -203,22 +203,32 @@ export default function AiCopilot({
   // ── Send ──────────────────────────────────────────────────────────────
   const send = useCallback(async () => {
     const text = input.trim()
-    if (!text || !activeThreadId) return
+    if (!text) return
+
+    // If no active session, generate a client-side ID and use it directly.
+    // The WebSocket endpoint will create the session if it doesn't exist.
+    let sessionId = activeThreadId
+    if (!sessionId) {
+      sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      onActiveThreadChange(sessionId)
+    }
 
     setInput("")
     setShowSlash(false)
     setStreaming(true)
     setAgentPhase("starting")
-    streamThreadRef.current = activeThreadId
-    setStreamThreadId(activeThreadId)
+    streamThreadRef.current = sessionId
+    setStreamThreadId(sessionId)
 
     if (isTauri) {
-      await startTauriTransport(activeThreadId)
+      await startTauriTransport(sessionId)
       transportRef.current?.sendPrompt(text)
     } else {
-      await sendPromptRef.current?.(text)
+      // Use wsAgent directly with the resolved sessionId so we don't
+      // depend on sendPromptRef being updated after onActiveThreadChange.
+      await wsAgent.sendPrompt(sessionId, text)
     }
-  }, [input, activeThreadId, startTauriTransport])
+  }, [input, activeThreadId, onActiveThreadChange, startTauriTransport, wsAgent.sendPrompt])
 
   // ── Permission response ──────────────────────────────────────────────
   const respondToPermission = useCallback(

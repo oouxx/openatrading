@@ -330,6 +330,9 @@ pub async fn handle_slash_command(
 pub struct CreateSessionRequest {
     #[serde(default)]
     name: Option<String>,
+    /// Optional custom session ID. If not provided, a UUID is generated.
+    #[serde(default)]
+    pub session_id: Option<String>,
     /// The first user message. The session will immediately start processing it
     /// (fire-and-forget); the frontend should connect via WebSocket to receive
     /// streaming events.
@@ -360,7 +363,12 @@ pub async fn create_session(
         "create_session: calling pool.create_session (resume=false, name={:?})",
         name
     );
-    let session_id = match state.ctx.pool.create_session(&cwd).await {
+    let session_id = match state
+        .ctx
+        .pool
+        .create_session_with_id(&cwd, req.session_id.as_deref())
+        .await
+    {
         Ok(id) => id,
         Err(e) => {
             openatrading_core::log::error!("create_session: pool.create_session failed: {e}");
