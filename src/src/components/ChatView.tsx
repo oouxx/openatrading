@@ -18,7 +18,7 @@ import { fetchCommands, type ChatSession } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
-import { useAgentWebSocket } from "@/agents/useAgentWebSocket"
+import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { applyEvent, historyToTurns, newTurnId } from "@/agents/reducer"
 import type {
@@ -139,31 +139,43 @@ export default function AiCopilot({
     }
   }, [])
 
-  // ── WebSocket transport (Web) via native WebSocket hook ──────────────
-  const wsAgent = useAgentWebSocket(!isTauri ? activeThreadId : null, {
+  // ── WebSocket transport (Web) — multi-session ────────────────────────
+  // Collect all session IDs that need live connections.
+  const allSessionIds = !isTauri
+    ? (sessions ?? []).map((s) => s.id).filter(Boolean)
+    : []
+
+  const wsAgent = useMultiAgentWebSocket(allSessionIds, {
     onTurnsUpdate: useCallback(
-      (turns: TranscriptTurn[]) => {
-        if (isTauri || !activeThreadId) return
-        threadTurnsRef.current.set(activeThreadId, turns)
+      (sessionId: string, turns: TranscriptTurn[]) => {
+        if (isTauri) return
+        threadTurnsRef.current.set(sessionId, turns)
         setThreadTurns(new Map(threadTurnsRef.current))
-        scrollDown()
+        if (sessionId === activeThreadId) {
+          scrollDown()
+        }
       },
       [activeThreadId, scrollDown],
     ),
-    onTerminal: useCallback(() => {
-      if (isTauri) return
-      setStreaming(false)
-      streamThreadRef.current = null
-      setStreamThreadId(null)
-      onReload?.()
-    }, [onReload]),
+    onTerminal: useCallback(
+      (sessionId: string) => {
+        if (isTauri) return
+        setStreaming(false)
+        if (sessionId === streamThreadRef.current) {
+          streamThreadRef.current = null
+          setStreamThreadId(null)
+        }
+        onReload?.()
+      },
+      [onReload],
+    ),
   })
 
   // Keep a ref to the latest sendPrompt so the running send() closure
   // always uses the current hook instance (fixes race when creating a new session).
   useEffect(() => {
-    sendPromptRef.current = wsAgent.sendPrompt
-  }, [wsAgent.sendPrompt])
+    sendPromptRef.current = (text: string) => wsAgent.sendPrompt(activeThreadId ?? "", text)
+  }, [wsAgent.sendPrompt, activeThreadId])
 
   // ── Tauri transport ──────────────────────────────────────────────────
   const startTauriTransport = useCallback(
@@ -213,11 +225,11 @@ export default function AiCopilot({
     async (id: string, approved: boolean) => {
       if (isTauri) {
         await transportRef.current?.respondToPermission(id, approved)
-      } else {
-        await wsAgent.respondToPermission(id, approved)
+      } else if (activeThreadId) {
+        await wsAgent.respondToPermission(activeThreadId, id, approved)
       }
     },
-    [wsAgent.respondToPermission],
+    [wsAgent.respondToPermission, activeThreadId],
   )
 
   // ── Input handlers ────────────────────────────────────────────────────

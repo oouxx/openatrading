@@ -155,7 +155,8 @@ function finalizeToolCall(
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
   const blocks = last.blocks
-  const idx = blocks.findIndex(
+  // First, try to find a block with the matching toolCall.id
+  let idx = blocks.findIndex(
     (b) => b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === toolCall.id,
   )
   const args =
@@ -166,6 +167,17 @@ function finalizeToolCall(
     const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
     const nextBlocks = blocks.slice()
     nextBlocks[idx] = { ...tc, id: toolCall.id, name: toolCall.name || tc.name, input: args || tc.input, status: "running" }
+    return replaceLast(turns, { ...last, blocks: nextBlocks })
+  }
+  // Not found by id — look for a placeholder block created by appendToolCallDelta
+  // (which uses newBlockId() and has an empty name). Update it with the real id.
+  idx = blocks.findIndex(
+    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name,
+  )
+  if (idx >= 0) {
+    const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
+    const nextBlocks = blocks.slice()
+    nextBlocks[idx] = { ...tc, id: toolCall.id, name: toolCall.name, input: args || tc.input, status: "running" }
     return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   return replaceLast(turns, {
@@ -299,6 +311,18 @@ function addToolCall(
         blocks: [{ type: "tool_call", id, name, input, status: "running" }],
       },
     ]
+  }
+  // Check if a block with the same id already exists (e.g. from toolcall_end).
+  // If so, update it instead of adding a duplicate.
+  const blocks = last.blocks
+  const existing = blocks.findIndex(
+    (b) => b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === id,
+  )
+  if (existing >= 0) {
+    const tc = blocks[existing] as Extract<TranscriptBlock, { type: "tool_call" }>
+    const nextBlocks = blocks.slice()
+    nextBlocks[existing] = { ...tc, name: name || tc.name, input: input || tc.input, status: "running" }
+    return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   return replaceLast(turns, {
     ...last,
