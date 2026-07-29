@@ -5,13 +5,6 @@ import { getApiBaseUrl } from "@/stores/data"
 
 /**
  * Coerce any tool result / partial-result payload to a renderable string.
- *
- * The backend serializes tool results as `serde_json::Value`, so they may
- * arrive as objects/arrays (e.g. `{ content, details }`). Rendering a non-string
- * directly crashes React ("Objects are not valid as a React child"). This is a
- * defensive guard at the render layer — the reducer also normalizes, but stale
- * in-memory turns (from before a hot reload) or future event-shape changes must
- * never white-screen the whole app.
  */
 function asText(v: unknown): string {
   if (v == null) return ""
@@ -31,7 +24,6 @@ interface ToolCall {
   result?: string
   partialResult?: string
   status?: "streaming" | "running" | "success" | "error"
-  /** Preview info for truncated tool results (§15). */
   output?: { preview: string; truncated: boolean; fullLength: number }
 }
 
@@ -42,6 +34,7 @@ interface ToolCallBlockProps {
 }
 
 const COLLAPSE_THRESHOLD = 500
+const RESULT_PREVIEW_LENGTH = 200
 
 export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -52,25 +45,22 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  // Auto-expand completed tool calls (Claude-style: show details only after done)
-  const isAutoExpanded = (tc: ToolCall) => {
-    return tc.status === "success" || tc.status === "error"
-  }
+  // Default collapsed for all completed tool calls.
+  const isAutoExpanded = () => false
 
   return (
     <div className="my-2 flex flex-col gap-1.5">
       {toolCalls
         .filter((tc) => tc.name)
         .map((tc, i) => {
-          const isExpanded = expanded[tc.id] ?? isAutoExpanded(tc) ?? false
+          const isExpanded = expanded[tc.id] ?? isAutoExpanded() ?? false
           const status = tc.status ?? (isStreaming ? "streaming" : "success")
           const isRunning = status === "streaming" || status === "running"
           const hasArgs = tc.args && tc.args.length > 0
           const hasResult = !!tc.result
-          const hasPartial = !!tc.partialResult
           const hasContent = hasArgs || hasResult
 
-          // ── Running state: compact card + optional partial result ──
+          // ── Running state: compact card ──
           if (isRunning) {
             return (
               <div
@@ -82,26 +72,16 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                   <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                   <StatusBadge status={status} />
                 </div>
-                {/* ── Partial result inline (ToolExecutionUpdate) ── */}
-                {hasPartial && (
-                  <div className="border-hairline animate-notice-fade-in border-t px-3 py-1.5">
-                    <div className="text-ink-muted/50 mb-0.5 font-mono text-[9px] font-medium tracking-wider">
-                      实时输出
-                    </div>
-                    <pre className="text-ink-muted/80 max-h-[120px] overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                      {asText(tc.partialResult)}
-                    </pre>
-                    {/* Streaming cursor for live partial result */}
-                    <span className="mt-0.5 inline-flex">
-                      <span className="bg-ai inline-block size-1.5 animate-pulse rounded-full" />
-                    </span>
-                  </div>
-                )}
               </div>
             )
           }
 
-          // ── Completed state: expandable card ──
+          // ── Completed state: collapsed by default, expandable ──
+          const resultText = asText(tc.result ?? "")
+          const preview = resultText.length > RESULT_PREVIEW_LENGTH
+            ? resultText.slice(0, RESULT_PREVIEW_LENGTH) + "…"
+            : ""
+
           return (
             <div
               key={tc.id || i}
@@ -118,15 +98,19 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 <ToolIcon name={tc.name} />
                 <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
-                {hasContent && (
-                  <span className="text-ink-muted/50 ml-auto">
-                    {isExpanded ? (
-                      <ChevronDown className="size-3" />
-                    ) : (
-                      <ChevronRight className="size-3" />
-                    )}
+                {/* Show result length in collapsed state */}
+                {hasResult && !isExpanded && (
+                  <span className="text-ink-muted/40 font-mono text-[10px]">
+                    {resultText.length} 字符
                   </span>
                 )}
+                <span className="text-ink-muted/50 ml-auto">
+                  {isExpanded ? (
+                    <ChevronDown className="size-3" />
+                  ) : (
+                    <ChevronRight className="size-3" />
+                  )}
+                </span>
               </button>
 
               {hasContent && isExpanded && (
@@ -140,7 +124,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                     <Section title="结果">
                       <ToolResultContent
                         name={tc.name}
-                        content={asText(tc.result)}
+                        content={resultText}
                         toolCallId={tc.id}
                         sessionId={sessionId}
                         output={tc.output}
@@ -156,32 +140,25 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
   )
 }
 
-// ── Tool icon ──────────────────────────────────────────
+// ── Tool icon by name ─────────────────────────────────
 
 function ToolIcon({ name }: { name: string }) {
-  const icon = useMemo(() => {
-    if (name.startsWith("bash") || name.startsWith("execute") || name.startsWith("run"))
-      return <Terminal className="size-3.5" />
-    if (name.startsWith("edit") || name === "file_edit" || name.startsWith("write") || name.startsWith("create"))
-      return <FileEdit className="size-3.5" />
-    return <Wrench className="size-3.5" />
-  }, [name])
-
-  return <span className="text-ink-muted/60 shrink-0">{icon}</span>
+  if (name.startsWith("edit") || name === "file_edit" || name === "write_file" || name === "create_file") {
+    return <FileEdit className="size-3.5 shrink-0 text-amber-500" />
+  }
+  if (name.startsWith("bash") || name === "execute_command" || name === "run") {
+    return <Terminal className="size-3.5 shrink-0 text-sky-500" />
+  }
+  return <Wrench className="size-3.5 shrink-0 text-ink-muted" />
 }
 
 // ── Tool args content ─────────────────────────────────
 
 function ToolArgsContent({ name, args }: { name: string; args: string }) {
-  const safeContent = useMemo(() => asText(args), [args])
+  const safeContent = useMemo(() => formatArgs(args), [args])
 
-  // For edit-type tools, show args as a diff preview
   if (name.startsWith("edit") || name === "file_edit") {
-    return (
-      <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-        {safeContent}
-      </pre>
-    )
+    return <DiffContent content={safeContent} />
   }
 
   return (
@@ -208,7 +185,6 @@ function ToolResultContent({
 }) {
   const safeContent = useMemo(() => asText(content), [content])
 
-  // For edit-type tools, render result as a diff
   if (name.startsWith("edit") || name === "file_edit") {
     return <DiffContent content={safeContent} />
   }
@@ -250,7 +226,7 @@ function DiffContent({ content }: { content: string }) {
   return <ResultBlock content={safeContent} toolCallId="" />
 }
 
-/** Renders tool result content with truncation and expand-from-server support (§15.2). */
+/** Renders tool result content with client-side truncation and server-side expand support. */
 function ResultBlock({
   content,
   toolCallId,
@@ -263,12 +239,22 @@ function ResultBlock({
   output?: { preview: string; truncated: boolean; fullLength: number }
 }) {
   const [fullContent, setFullContent] = useState<string | null>(null)
+  const [showFull, setShowFull] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const isTruncated = output?.truncated ?? false
-  const displayText = asText(fullContent ?? (isTruncated ? (output?.preview ?? content) : content))
+  const isLong = content.length > COLLAPSE_THRESHOLD && !isTruncated
 
-  const expand = async () => {
+  // Server-truncated: use preview, can expand via API
+  // Client-long: show first part, can expand locally
+  const displayText = asText(
+    fullContent ??
+    (isTruncated ? (output?.preview ?? content) :
+     isLong && !showFull ? content.slice(0, COLLAPSE_THRESHOLD) + "\n…" :
+     content)
+  )
+
+  const expandFromServer = async () => {
     if (!sessionId) return
     setLoading(true)
     try {
@@ -287,18 +273,28 @@ function ResultBlock({
 
   return (
     <div>
-      <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+      <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
         {displayText}
       </pre>
+      {/* Server-side truncation: expand via API */}
       {isTruncated && !fullContent && (
         <button
           className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
-          onClick={expand}
+          onClick={expandFromServer}
           disabled={loading}
         >
           {loading
             ? "加载中..."
             : `展开全部（${output?.fullLength ?? content.length} 字符）`}
+        </button>
+      )}
+      {/* Client-side truncation: expand locally */}
+      {isLong && !showFull && !isTruncated && (
+        <button
+          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+          onClick={() => setShowFull(true)}
+        >
+          展开全部（{content.length} 字符）
         </button>
       )}
     </div>

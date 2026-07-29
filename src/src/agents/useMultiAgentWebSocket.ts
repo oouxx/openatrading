@@ -5,8 +5,8 @@
 // list. Connections are created/removed as the sessionIds array changes.
 
 import { useCallback, useEffect, useRef } from "react"
-import { applyEvent } from "./reducer"
-import type { TranscriptEvent, TranscriptTurn } from "./types"
+import { applyEvent, historyToTurns } from "./reducer"
+import type { HistoryMessage, TranscriptEvent, TranscriptTurn } from "./types"
 import { getApiBaseUrl } from "@/stores/data"
 
 export enum ReadyState {
@@ -69,13 +69,35 @@ export function useMultiAgentWebSocket(
     optionsRef.current = options
   }, [options])
 
-  // Sync connections with sessionIds on every render (compares internally).
-  // We use a layout-effect-like pattern: run after every render, compare
-  // current sessionIds with previous ones stored in a ref.
+  // Track previous sessionIds to detect actual changes.
+  const prevSessionIdsRef = useRef<string[]>(sessionIds)
+
+  // Sync connections when sessionIds actually change.
+  //
+  // IMPORTANT: This effect has NO cleanup function. The cleanup would run on
+  // every dependency change and tear down ALL connections before the new
+  // effect runs, even when the quick check below decides nothing changed.
+  // That caused mass disconnects of all sessions on every re-render where
+  // the sessionIds array reference changed but contents were identical.
+  //
+  // Unmount-only teardown is handled by a separate useEffect([]) below.
   useEffect(() => {
     mountedRef.current = true
+    const prev = prevSessionIdsRef.current
+    prevSessionIdsRef.current = sessionIds
+
     const connections = connectionsRef.current
     const desired = new Set(sessionIds)
+    const previous = new Set(prev)
+
+    // Quick check: if nothing changed, skip entirely.
+    if (desired.size === previous.size) {
+      let same = true
+      for (const sid of desired) {
+        if (!previous.has(sid)) { same = false; break }
+      }
+      if (same) return
+    }
 
     // Disconnect sessions no longer in the list
     for (const [sid, conn] of connections) {
@@ -93,17 +115,20 @@ export function useMultiAgentWebSocket(
         connectSession(sid, conn)
       }
     }
+  }, [sessionIds])
 
+  // Unmount-only cleanup: tear down all connections when the component
+  // unmounts. This is a separate effect with [] deps so it only runs once
+  // on mount and cleans up on unmount — never on intermediate re-renders.
+  useEffect(() => {
     return () => {
       mountedRef.current = false
-      for (const [sid, conn] of connections) {
+      for (const [sid, conn] of connectionsRef.current) {
         teardownConnection(sid, conn)
       }
-      connections.clear()
+      connectionsRef.current.clear()
     }
-    // Intentionally no deps — runs on every render to detect sessionIds changes.
-    // The function compares current vs previous sessionIds internally.
-  })
+  }, [])
 
   // ── Connection lifecycle helpers ──────────────────────────────────────
 
@@ -122,6 +147,9 @@ export function useMultiAgentWebSocket(
       clearTimeout(conn.reconnectTimer)
       conn.reconnectTimer = null
     }
+    // Resolve any pending waitForReady promise so callers don't hang forever.
+    conn.readyResolve?.()
+    conn.readyResolve = null
     conn.readyState = ReadyState.CLOSED
   }
 
@@ -140,6 +168,10 @@ export function useMultiAgentWebSocket(
       conn.reconnectCount = 0
       conn.readyResolve?.()
       conn.readyResolve = null
+      // Load history messages from REST API when the WebSocket connects.
+      // This ensures the turn list is populated with past messages before
+      // any live events arrive via the WebSocket.
+      fetchHistory(sid, conn)
     }
 
     ws.onclose = () => {
@@ -151,8 +183,13 @@ export function useMultiAgentWebSocket(
       if (conn.reconnectCount < maxAttempts) {
         const delay = Math.min(1000 * Math.pow(1.5, conn.reconnectCount), 30000)
         conn.reconnectCount++
+        // Clear any previous timer before setting a new one (prevents duplicate
+        // reconnects when onclose fires multiple times).
+        if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
         conn.reconnectTimer = setTimeout(() => {
-          if (mountedRef.current) connectSession(sid, conn)
+          // Check ws !== conn.ws: if the connection was torn down and recreated
+          // during the delay, this stale timer must not start a new connection.
+          if (mountedRef.current && ws === conn.ws) connectSession(sid, conn)
         }, delay)
       }
     }
@@ -178,11 +215,35 @@ export function useMultiAgentWebSocket(
     }
   }
 
+  // ── History loading ────────────────────────────────────────────────────
+
+  async function fetchHistory(sid: string, conn: ConnectionState) {
+    try {
+      const base = getApiBaseUrl()
+      const res = await fetch(`${base}/api/ai/sessions/${sid}/messages`)
+      if (!res.ok) return
+      const msgs: HistoryMessage[] = await res.json()
+      if (!msgs || msgs.length === 0) return
+      const turns = historyToTurns(msgs)
+      conn.turns = turns
+      // Only notify if the connection is still alive and hasn't been
+      // replaced by a newer connection.
+      if (mountedRef.current && conn.ws?.readyState === WebSocket.OPEN) {
+        optionsRef.current.onTurnsUpdate?.(sid, [...turns])
+      }
+    } catch {
+      // History loading is best-effort; live events will still arrive.
+    }
+  }
+
   // ── Public API ────────────────────────────────────────────────────────
 
   const waitForReady = useCallback(async (sid: string): Promise<void> => {
     const conn = connectionsRef.current.get(sid)
-    if (!conn || conn.readyState === ReadyState.OPEN) return
+    if (!conn) {
+      throw new Error(`Session ${sid} not found`)
+    }
+    if (conn.readyState === ReadyState.OPEN) return
     return new Promise<void>((resolve) => {
       conn.readyResolve = resolve
     })

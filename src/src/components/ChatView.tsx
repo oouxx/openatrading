@@ -20,7 +20,7 @@ import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { applyEvent, historyToTurns, newTurnId } from "@/agents/reducer"
+import { newTurnId } from "@/agents/reducer"
 import type {
   HistoryMessage,
   TranscriptBlock,

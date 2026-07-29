@@ -15,6 +15,7 @@ const COLLAPSE_THRESHOLD = 500
 
 export default function ToolResultBlock({ results }: ToolResultBlockProps) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const [showFull, setShowFull] = useState<Record<number, boolean>>({})
 
   if (!results || results.length === 0) return null
 
@@ -27,6 +28,7 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
       {results.map((tr, i) => {
         const isExpanded = expanded[i] ?? false
         const isLong = tr.result.length > COLLAPSE_THRESHOLD
+        const isFullShown = showFull[i] ?? false
 
         return (
           <div
@@ -49,25 +51,35 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
               <span className="text-ink-muted font-mono text-[11px] font-medium">
                 {tr.name || "工具结果"}
               </span>
-              <span className="text-ink-muted/50 text-[10px]">
-                {tr.result.length} 字符
-              </span>
-              {(isLong || isExpanded) && (
-                <span className="ml-auto">
-                  {isExpanded ? (
-                    <ChevronDown className="size-3 text-ink-muted/50" />
-                  ) : (
-                    <ChevronRight className="size-3 text-ink-muted/50" />
-                  )}
+              {!isExpanded && (
+                <span className="text-ink-muted/40 font-mono text-[10px]">
+                  {tr.result.length} 字符
                 </span>
               )}
+              <span className="ml-auto">
+                {isExpanded ? (
+                  <ChevronDown className="size-3 text-ink-muted/50" />
+                ) : (
+                  <ChevronRight className="size-3 text-ink-muted/50" />
+                )}
+              </span>
             </button>
 
             {tr.result && isExpanded && (
               <div className="border-hairline border-t px-3 py-2">
-                <pre className="text-ink-muted max-h-none overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
-                  {tr.result}
+                <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+                  {isLong && !isFullShown
+                    ? tr.result.slice(0, COLLAPSE_THRESHOLD) + "\n…"
+                    : tr.result}
                 </pre>
+                {isLong && !isFullShown && (
+                  <button
+                    className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+                    onClick={() => setShowFull((prev) => ({ ...prev, [i]: true }))}
+                  >
+                    展开全部（{tr.result.length} 字符）
+                  </button>
+                )}
               </div>
             )}
           </div>
