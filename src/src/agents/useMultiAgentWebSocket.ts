@@ -239,9 +239,19 @@ export function useMultiAgentWebSocket(
   // ── Public API ────────────────────────────────────────────────────────
 
   const waitForReady = useCallback(async (sid: string): Promise<void> => {
-    const conn = connectionsRef.current.get(sid)
+    // Poll until the connection exists (may not be created yet if the
+    // caller just triggered a state update that will cause a re-render
+    // and subsequent connection creation via the useEffect).
+    let conn = connectionsRef.current.get(sid)
     if (!conn) {
-      throw new Error(`Session ${sid} not found`)
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 50))
+        conn = connectionsRef.current.get(sid)
+        if (conn) break
+      }
+      if (!conn) {
+        throw new Error(`Session ${sid} not found`)
+      }
     }
     if (conn.readyState === ReadyState.OPEN) return
     return new Promise<void>((resolve) => {
