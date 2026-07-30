@@ -17,7 +17,36 @@ pub struct SessionWithEvents {
     pub runtime: Arc<Mutex<AgentSessionRuntime>>,
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
-    pub _subscription_handle: SessionEventUnsubscribeHandle,
+    /// Auto-unsubscribes the session event listener when dropped.
+    ///
+    /// pi-rs' [`SessionEventUnsubscribeHandle`] has no `Drop` impl of its own,
+    /// so dropping it silently leaves the listener subscribed on the
+    /// [`AgentSession`]. On every WebSocket reconnect a *new* listener would
+    /// accumulate while the old one kept emitting into a dead channel — every
+    /// event was emitted N times into the ring buffer, so the next
+    /// reconnect-replay delivered each event N times, producing duplicated /
+    /// garbled content in the live transcript (refresh was clean because the
+    /// REST history path reads from disk, not the ring). Unsubscribing here on
+    /// disconnect guarantees exactly one live listener per session at a time.
+    pub subscription_handle: UnsubscribeOnDrop,
+}
+
+/// RAII wrapper that calls `unsubscribe()` on drop — see
+/// [`SessionWithEvents::subscription_handle`] for the rationale.
+pub struct UnsubscribeOnDrop(Option<SessionEventUnsubscribeHandle>);
+
+impl UnsubscribeOnDrop {
+    pub fn new(handle: SessionEventUnsubscribeHandle) -> Self {
+        Self(Some(handle))
+    }
+}
+
+impl Drop for UnsubscribeOnDrop {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            handle.unsubscribe();
+        }
+    }
 }
 
 /// Ensure a session exists (resume from disk or create new) and set up its
@@ -57,6 +86,6 @@ pub async fn ensure_session_with_events(
         runtime,
         tx,
         rx,
-        _subscription_handle,
+        subscription_handle: UnsubscribeOnDrop::new(_subscription_handle),
     })
 }

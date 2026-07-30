@@ -63,11 +63,12 @@ const EVENT_RING_CAPACITY: usize = 512;
 /// through [`SessionEventState::emit`], so every event the client can receive
 /// carries a `seq` and is retained in the ring for reconnect resume.
 ///
-/// The ring also recovers events that the live mpsc `try_send` dropped when
-/// full: `emit` pushes to the ring *before* `try_send`, so a dropped live event
-/// is still replayed on the next reconnect (if within the window). If the gap
-/// is larger than the window, [`SessionEventState::replay_after`] returns
-/// `Err(())` and the caller emits [`SessionEventPayload::ResyncRequired`].
+/// The ring also retains events emitted while the live mpsc channel is full
+/// (the listener blocks via `block_in_place` + `blocking_send` rather than
+/// dropping), so every event is replayed on the next reconnect (if within the
+/// window). If the gap is larger than the window,
+/// [`SessionEventState::replay_after`] returns `Err(())` and the caller emits
+/// [`SessionEventPayload::ResyncRequired`].
 pub struct SessionEventState {
     seq: AtomicU64,
     ring: StdMutex<VecDeque<(u64, String)>>,
@@ -571,15 +572,28 @@ pub async fn setup_event_channel(
 
     // All events share a single channel. The listener serializes the event
     // through `event_state.emit` (assigning `seq` + pushing to the ring) and
-    // forwards the JSON string. `try_send` is used because the sync callback
-    // can't block; when the channel is full the event is still retained in the
-    // ring buffer and recovered on the next reconnect-replay.
+    // forwards the JSON string. The listener is a *sync* callback invoked from
+    // the agent's async streaming task, so it cannot `.await`. To honor the
+    // "single channel, block-when-full" backpressure contract (§14) we use
+    // `block_in_place` + `blocking_send`: the agent's event-dispatch worker is
+    // moved off the async pool and blocks until the channel has capacity, so a
+    // slow WebSocket consumer slows the agent down rather than silently
+    // dropping live deltas. This is safe because the WebSocket path runs on
+    // the CLI's multi-threaded tokio runtime. `emit` runs *before* the send,
+    // so every event is assigned a `seq` and retained in the ring regardless.
     let tx2 = tx.clone();
     let state = Arc::clone(event_state);
     let sync_listener: AgentSessionEventListener = Arc::new(move |event: AgentSessionEvent| {
         let payload = convert_session_event(event);
         let json = state.emit(TranscriptEvent::Session(payload));
-        let _ = tx2.try_send(json);
+        // `block_in_place` escapes the async runtime context so
+        // `blocking_send` (which panics from within an async context) is safe.
+        // On a closed channel (receiver dropped — the WS connection ended and
+        // `SessionWithEvents` is being torn down) `blocking_send` returns
+        // `Err`, which we ignore: the event is already in the ring buffer.
+        tokio::task::block_in_place(|| {
+            let _ = tx2.blocking_send(json);
+        });
     });
     let handle = session.subscribe(sync_listener);
 
@@ -784,9 +798,12 @@ async fn forward_events(
                             }
                             Ok(ClientCommand::Interrupt) => {
                                 log::debug!("ws: {session_id} <- interrupt");
-                                if let Some(rt) = state.ctx.pool.get_session(session_id).await {
-                                    rt.lock().await.session().abort().await;
-                                }
+                                // Signal the in-flight prompt via the per-session
+                                // Notify rather than locking the runtime mutex
+                                // (which is held for the whole stream and would
+                                // deadlock the interrupt). See
+                                // `SessionPool::prompt_with_opts`.
+                                state.ctx.pool.signal_abort(session_id).await;
                             }
                             Ok(ClientCommand::PermissionResponse { id, approved }) => {
                                 log::debug!("ws: {session_id} <- permission_response id={id} approved={approved}");

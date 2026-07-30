@@ -455,9 +455,10 @@ async fn interrupt_session(
     session_id: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    if let Some(rt) = state.ctx.pool.get_session(&session_id).await {
-        rt.lock().await.session().abort().await;
-    }
+    // Signal the in-flight prompt via the per-session Notify rather than
+    // locking the runtime mutex (held for the whole stream — would deadlock
+    // the interrupt). See `SessionPool::prompt_with_opts`.
+    state.ctx.pool.signal_abort(&session_id).await;
     Ok(())
 }
 

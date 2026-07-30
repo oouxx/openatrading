@@ -116,6 +116,16 @@ export default function AiCopilot({
     })
   }, [])
 
+  /** Unconditionally scroll to bottom — used after loading session history
+   *  (switching sessions, page refresh) where content is replaced and the
+   *  user's previous scroll position is no longer meaningful. */
+  const scrollToBottomForced = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = msgContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  }, [])
+
   useEffect(() => {
     fetchCommands()
       .then(setCommands)
@@ -182,12 +192,13 @@ export default function AiCopilot({
           const turns = historyToTurns(msgs)
           threadTurnsRef.current.set(activeThreadId, turns)
           setThreadTurns(new Map(threadTurnsRef.current))
+          scrollToBottomForced()
         })
         .catch(() => {})
     } else {
-      wsAgent.loadHistory(activeThreadId)
+      wsAgent.loadHistory(activeThreadId).then(scrollToBottomForced)
     }
-  }, [activeThreadId, wsAgent.loadHistory])
+  }, [activeThreadId, wsAgent.loadHistory, scrollToBottomForced])
 
   // ── Tauri transport ──────────────────────────────────────────────────
   const startTauriTransport = useCallback(
@@ -468,9 +479,6 @@ export default function AiCopilot({
               </div>
             ) : (
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6">
-                {/* ── Agent status bar ─────────────────────────────── */}
-                <AgentStatusBar phase={agentPhase} />
-
                 {currentTurns.map((turn, idx) => {
                   const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
                   const isFirst = idx === 0
@@ -516,6 +524,9 @@ export default function AiCopilot({
                     </div>
                   )
                 })}
+
+                {/* ── Agent status bar (follows the latest content) ──── */}
+                <AgentStatusBar phase={agentPhase} />
               </div>
             )}
           </div>

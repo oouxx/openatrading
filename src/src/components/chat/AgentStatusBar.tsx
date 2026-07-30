@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { type ReactNode } from "react"
 import { Loader2, Sparkles, CheckCircle2, XCircle } from "lucide-react"
 
 // ── Types ────────────────────────────────────────────────
@@ -15,7 +15,7 @@ interface AgentStatusBarProps {
 // ── Phase descriptors ────────────────────────────────────
 
 interface PhaseVisual {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   color: string                       /* Tailwind text color */
   barColor: string                    /* Tailwind bg for progress bar */
@@ -72,8 +72,11 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
 export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarProps) {
   const vis = phaseVisual(phase)
 
-  // Don't show when idle (no active agent)
-  if (phase === "idle") return null
+  // Only render while the agent is actively working or has errored. The
+  // completed assistant message itself signals success, so a lingering
+  // "处理完成" banner (like `idle`) is hidden — matching Claude/ChatGPT,
+  // which show no persistent status bar once a turn is done.
+  if (phase === "idle" || phase === "settled") return null
 
   return (
     <div className="flex items-center gap-2 px-0 py-1">
