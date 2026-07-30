@@ -47,9 +47,10 @@ pub async fn get_overview_data(state: &Arc<AppState>) -> Result<serde_json::Valu
         CachePolicy::overview(),
         || async {
             let client = XuanguBaoClient::new();
-            let overview = client.fetch_market_overview().await.map_err(|e| {
-                format!("overview error: {e}")
-            })?;
+            let overview = client
+                .fetch_market_overview()
+                .await
+                .map_err(|e| format!("overview error: {e}"))?;
 
             let ratio = f64::from(overview.rise_count) / f64::from(overview.fall_count.max(1));
             let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
@@ -134,7 +135,10 @@ pub async fn get_super_stock_data(state: &Arc<AppState>) -> Result<serde_json::V
         CachePolicy::realtime(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = client.fetch_super_stock().await.map_err(|e| e.to_string())?;
+            let data = client
+                .fetch_super_stock()
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -142,7 +146,9 @@ pub async fn get_super_stock_data(state: &Arc<AppState>) -> Result<serde_json::V
 }
 
 /// GET /api/yesterday-limit-up
-pub async fn get_yesterday_limit_up_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+pub async fn get_yesterday_limit_up_data(
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
     use openatrading_core::api::xuangubao::XuanguBaoClient;
 
     get_or_fetch_json_tauri(
@@ -151,7 +157,10 @@ pub async fn get_yesterday_limit_up_data(state: &Arc<AppState>) -> Result<serde_
         CachePolicy::realtime(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = client.fetch_yesterday_limit_up().await.map_err(|e| e.to_string())?;
+            let data = client
+                .fetch_yesterday_limit_up()
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -284,7 +293,9 @@ pub async fn list_sessions_data(state: &Arc<AppState>) -> Result<serde_json::Val
 }
 
 /// GET /api/sentiment-history
-pub async fn get_sentiment_history_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+pub async fn get_sentiment_history_data(
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
     use openatrading_core::api::xuangubao::XuanguBaoClient;
 
     get_or_fetch_json_tauri(
@@ -448,19 +459,14 @@ pub async fn get_kline_data(
         _ => KlinePeriod::Day,
     };
     let cache_key = format!("kline_{symbol}_{period}_{count}");
-    get_or_fetch_json_tauri(
-        &state.cache,
-        &cache_key,
-        CachePolicy::daily(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = client
-                .fetch_kline(symbol, kline_period, count)
-                .await
-                .map_err(|e| format!("kline error: {e}"))?;
-            Ok(data)
-        },
-    )
+    get_or_fetch_json_tauri(&state.cache, &cache_key, CachePolicy::daily(), || async {
+        let client = XuanguBaoClient::new();
+        let data = client
+            .fetch_kline(symbol, kline_period, count)
+            .await
+            .map_err(|e| format!("kline error: {e}"))?;
+        Ok(data)
+    })
     .await
 }
 
@@ -582,8 +588,7 @@ pub async fn get_role_pnl_history_data(
         .iter()
         .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
         .sum();
-    let mut points =
-        openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
+    let mut points = openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
     if days > 0 {
         let cutoff = points.len().saturating_sub(days);
         points = points.into_iter().skip(cutoff).collect();
@@ -637,10 +642,7 @@ pub async fn get_replay_events_data(min_pcp: f64) -> Result<serde_json::Value, S
         .fetch_all_day_events(min_pcp)
         .await
         .map_err(|e| format!("{e}"))?;
-    let events: Vec<ReplayEvent> = all_events
-        .iter()
-        .map(ReplayEvent::from)
-        .collect();
+    let events: Vec<ReplayEvent> = all_events.iter().map(ReplayEvent::from).collect();
     let date = XuanguBaoClient::last_n_trading_days(1)
         .first()
         .cloned()
@@ -821,12 +823,12 @@ pub async fn get_watchlist_data() -> Result<serde_json::Value, String> {
 }
 
 /// POST /api/watchlist
-pub async fn add_watchlist_data(
-    code: &str,
-    name: &str,
-) -> Result<serde_json::Value, String> {
+pub async fn add_watchlist_data(code: &str, name: &str) -> Result<serde_json::Value, String> {
     let mut items = load_watchlist();
-    if items.iter().any(|i| i.get("code").and_then(|v| v.as_str()) == Some(code)) {
+    if items
+        .iter()
+        .any(|i| i.get("code").and_then(|v| v.as_str()) == Some(code))
+    {
         return Err("already exists".to_string());
     }
     let now = chrono::Utc::now().to_rfc3339();
@@ -860,8 +862,7 @@ pub async fn create_role_data(
     display_name: &str,
     strategy: &str,
 ) -> Result<serde_json::Value, String> {
-    openatrading_core::roles::save_role_strategy(name, strategy)
-        .map_err(|e| format!("{e}"))?;
+    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| format!("{e}"))?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
@@ -894,8 +895,7 @@ pub async fn update_role_strategy_data(
             }
         }
     }
-    openatrading_core::roles::save_role_strategy(name, strategy)
-        .map_err(|e| format!("{e}"))?;
+    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| format!("{e}"))?;
     {
         let mut roles = state.roles.write().await;
         if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
@@ -971,7 +971,9 @@ pub async fn get_session_messages_data(
         .filter_map(|msg| {
             let (role, content_blocks, timestamp) = match msg {
                 AgentMessage::User { content, timestamp } => ("user", content, *timestamp),
-                AgentMessage::Assistant { content, timestamp, .. } => ("assistant", content, *timestamp),
+                AgentMessage::Assistant {
+                    content, timestamp, ..
+                } => ("assistant", content, *timestamp),
                 _ => return None,
             };
 
@@ -987,7 +989,12 @@ pub async fn get_session_messages_data(
                     ContentBlock::Thinking { thinking, .. } => {
                         blocks.push(serde_json::json!({"type": "thinking", "text": thinking}));
                     }
-                    ContentBlock::ToolCall { id, name, arguments, .. } => {
+                    ContentBlock::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                        ..
+                    } => {
                         blocks.push(serde_json::json!({
                             "type": "tool_use", "id": id, "name": name, "input": arguments
                         }));
@@ -1094,10 +1101,7 @@ pub async fn delete_session_data(
 }
 
 /// PATCH /api/ai/sessions/:id — rename a session
-pub async fn rename_session_data(
-    id: &str,
-    new_name: &str,
-) -> Result<serde_json::Value, String> {
+pub async fn rename_session_data(id: &str, new_name: &str) -> Result<serde_json::Value, String> {
     let path = crate::chat::find_session_file(id).ok_or_else(|| "not found".to_string())?;
     if !path.exists() {
         return Err("not found".to_string());
@@ -1111,7 +1115,10 @@ pub async fn rename_session_data(
 
     let mut header: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(lines[0]).map_err(|e| format!("{e}"))?;
-    header.insert("name".to_string(), serde_json::Value::String(new_name.to_string()));
+    header.insert(
+        "name".to_string(),
+        serde_json::Value::String(new_name.to_string()),
+    );
 
     let new_header = serde_json::to_string(&header).map_err(|e| format!("{e}"))?;
     lines[0] = &new_header;

@@ -100,11 +100,15 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/limit-up" => openatrading_web::handlers::get_limit_up_data(state).await,
         "/api/limit-down" => openatrading_web::handlers::get_limit_down_data(state).await,
         "/api/super-stock" => openatrading_web::handlers::get_super_stock_data(state).await,
-        "/api/yesterday-limit-up" => openatrading_web::handlers::get_yesterday_limit_up_data(state).await,
+        "/api/yesterday-limit-up" => {
+            openatrading_web::handlers::get_yesterday_limit_up_data(state).await
+        }
         "/api/index-quotes" => openatrading_web::handlers::get_index_quotes_data(state).await,
         "/api/dapan-abnormal" => openatrading_web::handlers::get_dapan_abnormal_data(state).await,
         "/api/timeline" => openatrading_web::handlers::get_timeline_data(state).await,
-        "/api/telegraph" => openatrading_web::handlers::get_telegraph_all_data(state, None, None).await,
+        "/api/telegraph" => {
+            openatrading_web::handlers::get_telegraph_all_data(state, None, None).await
+        }
         "/api/ai/roles" => openatrading_web::handlers::get_ai_roles_data(state).await,
         "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
         "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
@@ -112,19 +116,25 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
         "/api/replay/snapshots" => openatrading_web::handlers::get_replay_snapshots_data().await,
         "/api/replay/index" => openatrading_web::handlers::get_replay_index_data().await,
-        "/api/sentiment-history" => openatrading_web::handlers::get_sentiment_history_data(state).await,
+        "/api/sentiment-history" => {
+            openatrading_web::handlers::get_sentiment_history_data(state).await
+        }
         _ => dispatch_get_fallback(path, state).await,
     }
 }
 
-async fn dispatch_get_fallback(path: &str, state: &Arc<AppState>) -> Result<serde_json::Value, String> {
-
+async fn dispatch_get_fallback(
+    path: &str,
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
     // Paths with query parameters or path parameters
     if let Some(rest) = path.strip_prefix("/api/kline/") {
         let parts: Vec<&str> = rest.split('?').collect();
         let symbol = parts[0];
         let period = extract_query(path, "period").unwrap_or_else(|| "day".into());
-        let count: u32 = extract_query(path, "count").and_then(|s| s.parse().ok()).unwrap_or(256);
+        let count: u32 = extract_query(path, "count")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(256);
         return openatrading_web::handlers::get_kline_data(state, symbol, &period, count).await;
     }
     if let Some(rest) = path.strip_prefix("/api/realtime/") {
@@ -144,7 +154,9 @@ async fn dispatch_get_fallback(path: &str, state: &Arc<AppState>) -> Result<serd
         return openatrading_web::handlers::get_plates_by_any_stock_data(state, symbol).await;
     }
     if path.strip_prefix("/api/replay/events").is_some() {
-        let min_pcp: f64 = extract_query(path, "min_pcp").and_then(|v| v.parse().ok()).unwrap_or(0.03);
+        let min_pcp: f64 = extract_query(path, "min_pcp")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.03);
         return openatrading_web::handlers::get_replay_events_data(min_pcp).await;
     }
     if path.strip_prefix("/api/replay/news").is_some() {
@@ -162,7 +174,10 @@ async fn dispatch_get_fallback(path: &str, state: &Arc<AppState>) -> Result<serd
     }
     if path.strip_prefix("/api/plate-abnormal").is_some() {
         let date = extract_query(path, "count").unwrap_or_else(|| {
-            openatrading_core::api::utils::last_n_trading_days(1).first().cloned().unwrap_or_default()
+            openatrading_core::api::utils::last_n_trading_days(1)
+                .first()
+                .cloned()
+                .unwrap_or_default()
         });
         return openatrading_web::handlers::get_plate_abnormal_data(state, Some(date)).await;
     }
@@ -170,15 +185,23 @@ async fn dispatch_get_fallback(path: &str, state: &Arc<AppState>) -> Result<serd
         return openatrading_web::handlers::get_sentiment_history_data(state).await;
     }
     if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
-        let page: usize = extract_query(path, "page").and_then(|s| s.parse().ok()).unwrap_or(1);
-        let page_size: usize = extract_query(path, "page_size").and_then(|s| s.parse().ok()).unwrap_or(20);
-        return openatrading_web::handlers::get_dragon_tiger_detail_data(state, page, page_size).await;
+        let page: usize = extract_query(path, "page")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let page_size: usize = extract_query(path, "page_size")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
+        return openatrading_web::handlers::get_dragon_tiger_detail_data(state, page, page_size)
+            .await;
     }
     if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
         let code = extract_query(path, "code").unwrap_or_default();
         let date = extract_query(path, "date").unwrap_or_default();
         let flag = extract_query(path, "flag").unwrap_or_default();
-        return openatrading_web::handlers::get_dragon_tiger_stock_seat_data(state, &code, &date, &flag).await;
+        return openatrading_web::handlers::get_dragon_tiger_stock_seat_data(
+            state, &code, &date, &flag,
+        )
+        .await;
     }
     if let Some(rest) = path.strip_prefix("/api/ai/sessions/") {
         if let Some(msg_id) = rest.strip_suffix("/messages") {
@@ -189,8 +212,17 @@ async fn dispatch_get_fallback(path: &str, state: &Arc<AppState>) -> Result<serd
         return dispatch_roles_get(rest, state).await;
     }
     if path.strip_prefix("/api/dragon-tiger/combined").is_some() {
-        let date = XuanguBaoClient::last_n_trading_days(1).first().cloned().unwrap_or_default();
-        let data = state.ctx.api.eastmoney.lhb_combined(&date, &date).await.map_err(|e| format!("{e}"))?;
+        let date = XuanguBaoClient::last_n_trading_days(1)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        let data = state
+            .ctx
+            .api
+            .eastmoney
+            .lhb_combined(&date, &date)
+            .await
+            .map_err(|e| format!("{e}"))?;
         return Ok(serde_json::to_value(data).unwrap_or_default());
     }
     Err(format!("unknown path: {path}"))
@@ -254,7 +286,8 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            openatrading_web::handlers::create_role_data(state, &name, &display_name, &strategy).await
+            openatrading_web::handlers::create_role_data(state, &name, &display_name, &strategy)
+                .await
         }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
@@ -272,7 +305,10 @@ async fn dispatch_post(
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        openatrading_web::handlers::update_role_strategy_data(state, name, &strategy).await
+                        openatrading_web::handlers::update_role_strategy_data(
+                            state, name, &strategy,
+                        )
+                        .await
                     }
                     "reset" => openatrading_web::handlers::reset_role_data(state, name).await,
                     "delete" => openatrading_web::handlers::delete_role_data(state, name).await,
@@ -552,7 +588,7 @@ async fn api_kline_stream(
     count: u32,
     channel: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
-        let kline_period = match period.as_str() {
+    let kline_period = match period.as_str() {
         "week" => KlinePeriod::Week,
         "month" => KlinePeriod::Month,
         "minute" => KlinePeriod::Minute,

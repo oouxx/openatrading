@@ -130,10 +130,10 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
     }
 }
 
-use pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime;
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle;
-use tokio::sync::{Mutex, mpsc};
+use pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime;
+use tokio::sync::{mpsc, Mutex};
 
 use crate::agent_ws::{setup_event_channel, TranscriptEvent};
 
