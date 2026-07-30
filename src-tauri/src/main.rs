@@ -736,18 +736,19 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(clippy::disallowed_methods)]
 fn main() {
     load_env();
 
     let db_path = openatrading_core::atrading_home().join("data.db");
 
-    let gateway = Gateway::init(&db_path).expect("failed to init gateway");
+    let gateway = Gateway::init(&db_path).unwrap_or_else(|e| panic!("failed to init gateway: {e}"));
 
     let roles = build_roles();
 
     let (provider, model) = load_llm_config_from_toml();
 
-    let app_ctx = tokio::runtime::Runtime::new().unwrap().block_on(
+    let app_ctx = tokio::runtime::Runtime::new().unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}")).block_on(
         openatrading_core::context::AppContext::build(
             provider.as_deref(),
             model.as_deref(),
@@ -782,5 +783,5 @@ fn main() {
             restart_app
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| panic!("error while running tauri application: {e}"));
 }

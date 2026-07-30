@@ -236,9 +236,8 @@ impl TelegramBot {
         match cmd {
             "/new" => {
                 let mut session = self.session.lock().await;
-                if session.is_some() {
-                    let old_role = session.as_ref().unwrap().role_name.clone();
-                    *session = None;
+                if let Some(old) = session.take() {
+                    let old_role = old.role_name;
                     drop(session);
                     self.send_message(&format!("🗑 已清空与 *{old_role}* 的对话历史，开始新会话"))
                         .await?;
@@ -296,7 +295,7 @@ impl TelegramBot {
                     };
 
                     let mut session = self.session.lock().await;
-                    if session.is_none() || session.as_ref().unwrap().role_name != role_name {
+                    if session.as_ref().map(|s| s.role_name.as_str()) != Some(role_name) {
                         *session = Some(ChatSession {
                             role_name: role_name.to_string(),
                             history: Vec::new(),

@@ -41,7 +41,7 @@ fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-web -p openatrading-tui -p openatrading-agent -p openatrading-extension -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"

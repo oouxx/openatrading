@@ -2,6 +2,8 @@
 // Tests
 // ============================================================================
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
+
 use openatrading_core::llm::{create_factory, SessionPool};
 use pi_coding_agent::pi_agent_core::agent::PromptInput;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;

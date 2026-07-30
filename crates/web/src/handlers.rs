@@ -241,7 +241,7 @@ pub async fn get_telegraph_all_data(
             .cls
             .fetch_telegraph("cls", Some(lt), count)
             .await
-            .map_err(|e| format!("{{e}}"))?;
+            .map_err(|e| e.to_string())?;
         return Ok(serde_json::to_value(data).unwrap_or_default());
     }
 
@@ -535,7 +535,7 @@ pub async fn get_role_positions_data(
         .ctx
         .trade
         .list_positions(name)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let result: Vec<serde_json::Value> = positions
         .iter()
         .map(|p| {
@@ -558,7 +558,7 @@ pub async fn get_role_logs_data(
         .ctx
         .trade
         .get_trade_logs_by_role(name, 20)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let result: Vec<serde_json::Value> = logs
         .iter()
         .map(|l| {
@@ -582,7 +582,7 @@ pub async fn get_role_pnl_history_data(
         .ctx
         .trade
         .get_all_trade_logs_by_role(name)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let positions = state.ctx.trade.list_positions(name).unwrap_or_default();
     let current_value: f64 = positions
         .iter()
@@ -606,7 +606,7 @@ pub async fn get_role_history_data(
         .ctx
         .trade
         .get_closed_positions(name, limit)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::to_value(positions).unwrap_or_default())
 }
 
@@ -619,7 +619,7 @@ pub async fn get_replay_snapshots_data() -> Result<serde_json::Value, String> {
     let events = client
         .fetch_all_day_events(0.03)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
     Ok(serde_json::to_value(snapshots).unwrap_or_default())
 }
@@ -630,7 +630,7 @@ pub async fn get_replay_index_data() -> Result<serde_json::Value, String> {
     let client = XuanguBaoClient::new();
     let data = fetch_index_trends(&client)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::to_value(data).unwrap_or_default())
 }
 
@@ -641,7 +641,7 @@ pub async fn get_replay_events_data(min_pcp: f64) -> Result<serde_json::Value, S
     let all_events = client
         .fetch_all_day_events(min_pcp)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let events: Vec<ReplayEvent> = all_events.iter().map(ReplayEvent::from).collect();
     let date = XuanguBaoClient::last_n_trading_days(1)
         .first()
@@ -666,7 +666,7 @@ pub async fn get_replay_news_data(
     let (items, next_tail, next_msg) = client
         .fetch_news_stream(tailmark, msg_id_mark.as_deref())
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "items": items,
         "tailmark": next_tail,
@@ -695,7 +695,7 @@ pub async fn get_dragon_tiger_detail_data(
             dates.first().map(|s| s.as_str()).unwrap_or(""),
         )
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
 
     let mut merged: HashMap<(String, String), openatrading_core::api::eastmoney::LhbDetail> =
         HashMap::new();
@@ -770,7 +770,7 @@ pub async fn get_dragon_tiger_stock_seat_data(
         .eastmoney
         .lhb_stock_seat(code, date, seat_flag)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::to_value(seats).unwrap_or_default())
 }
 
@@ -783,7 +783,7 @@ pub async fn search_stocks_data(q: &str) -> Result<serde_json::Value, String> {
         return Err("missing q".to_string());
     }
     let client = LhbClient::new();
-    let items = client.search_stocks(q).await.map_err(|e| format!("{e}"))?;
+    let items = client.search_stocks(q).await.map_err(|e| e.to_string())?;
     Ok(serde_json::to_value(items).unwrap_or_default())
 }
 
@@ -862,7 +862,7 @@ pub async fn create_role_data(
     display_name: &str,
     strategy: &str,
 ) -> Result<serde_json::Value, String> {
-    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| format!("{e}"))?;
+    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| e.to_string())?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
@@ -895,7 +895,7 @@ pub async fn update_role_strategy_data(
             }
         }
     }
-    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| format!("{e}"))?;
+    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| e.to_string())?;
     {
         let mut roles = state.roles.write().await;
         if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
@@ -938,12 +938,12 @@ pub async fn reset_role_data(
         .ctx
         .trade
         .delete_trade_logs_by_role(name)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     state
         .ctx
         .trade
         .delete_positions_by_role(name)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({"ok": true}))
 }
 
@@ -962,7 +962,7 @@ pub async fn get_session_messages_data(
         .pool
         .get_or_resume(id)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
     let rt = runtime.lock().await;
     let messages = rt.session().get_messages().await;
 
@@ -1037,7 +1037,7 @@ pub async fn create_session_data(
         .pool
         .create_session_with_id(&cwd, session_id)
         .await
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| e.to_string())?;
 
     // Get session metadata from the runtime
     let runtime = state.ctx.pool.get_session(&sid).await;
@@ -1093,7 +1093,7 @@ pub async fn delete_session_data(
 
     let path = crate::chat::find_session_file(id).ok_or_else(|| "not found".to_string())?;
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("{e}"))?;
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         Ok(serde_json::json!({"ok": true}))
     } else {
         Err("not found".to_string())
@@ -1107,23 +1107,23 @@ pub async fn rename_session_data(id: &str, new_name: &str) -> Result<serde_json:
         return Err("not found".to_string());
     }
 
-    let content = std::fs::read_to_string(&path).map_err(|e| format!("{e}"))?;
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return Err("empty session file".to_string());
     }
 
     let mut header: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(lines[0]).map_err(|e| format!("{e}"))?;
+        serde_json::from_str(lines[0]).map_err(|e| e.to_string())?;
     header.insert(
         "name".to_string(),
         serde_json::Value::String(new_name.to_string()),
     );
 
-    let new_header = serde_json::to_string(&header).map_err(|e| format!("{e}"))?;
+    let new_header = serde_json::to_string(&header).map_err(|e| e.to_string())?;
     lines[0] = &new_header;
 
-    std::fs::write(&path, lines.join("\n")).map_err(|e| format!("{e}"))?;
+    std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({"ok": true}))
 }
 

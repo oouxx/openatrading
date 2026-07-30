@@ -35,7 +35,9 @@ impl SessionPool {
     pub fn new(factory: CreateAgentSessionRuntimeFactory) -> Self {
         Self {
             sessions: Mutex::new(LruCache::new(
-                NonZeroUsize::new(DEFAULT_POOL_CAPACITY).expect("DEFAULT_POOL_CAPACITY > 0"),
+                // SAFETY: DEFAULT_POOL_CAPACITY is a positive constant
+                #[allow(clippy::unwrap_used)]
+                NonZeroUsize::new(DEFAULT_POOL_CAPACITY).unwrap(),
             )),
             factory,
         }

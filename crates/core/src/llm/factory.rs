@@ -73,7 +73,7 @@ pub fn create_factory(
                     session_start_event: params.session_start_event,
                 })
                 .await
-                .expect("Failed to create session");
+                .unwrap_or_else(|e| panic!("Failed to create session: {e}"));
 
             CreateAgentSessionRuntimeResult {
                 session,
@@ -85,6 +85,7 @@ pub fn create_factory(
     })
 }
 
+#[allow(clippy::unwrap_used)]
 #[tokio::test]
 async fn test_factory() {
     let dir = tempfile::tempdir().unwrap();
