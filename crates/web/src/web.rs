@@ -1,3 +1,4 @@
+use async_stream::stream;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -7,7 +8,6 @@ use axum::{
     },
     Json,
 };
-use async_stream::stream;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,11 +17,11 @@ use tokio::sync::broadcast;
 use crate::AppState;
 
 use crate::cache::{self, CachePolicy};
+use crate::market_stream::{FetchFn, StreamSpec};
 use openatrading_core::api::eastmoney::LhbDetail;
 use openatrading_core::api::utils::last_n_trading_days;
-use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 use openatrading_core::api::utils::to_yahoo_symbol;
-use crate::market_stream::{FetchFn, StreamSpec};
+use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
 // ── Response types ────────────────────────────────────
 
