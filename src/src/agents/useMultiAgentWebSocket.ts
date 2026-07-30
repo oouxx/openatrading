@@ -168,7 +168,7 @@ export function useMultiAgentWebSocket(
       conn.turns = turns
       // Only notify if the connection is still alive and hasn't been
       // replaced by a newer connection.
-      if (mountedRef.current && conn.ws?.readyState === WebSocket.OPEN) {
+      if (mountedRef.current) {
         optionsRef.current.onTurnsUpdate?.(sid, [...turns])
       }
     } catch {

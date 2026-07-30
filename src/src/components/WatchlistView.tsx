@@ -297,13 +297,13 @@ export default function WatchlistView() {
                     className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("change")}
                   >
-                    涨幅 <SortIcon field="change" />
+                    涨幅 {renderSortIcon("change")}
                   </button>
                   <button
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("market_value")}
                   >
-                    总市值 <SortIcon field="market_value" />
+                    总市值 {renderSortIcon("market_value")}
                   </button>
                   <button
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"

@@ -413,6 +413,10 @@ async fn send_prompt(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
+    // Ensure the session exists before handling any command.
+    // This creates the session if needed and sets up the event forward task.
+    ensure_session_tauri(&session_id, &state, &app).await?;
+
     // Slash commands need `&mut AgentSession` (set_model / set_session_name).
     if let Some((cmd_name, cmd_args)) =
         pi_coding_agent::core::slash_commands::parse_slash_command(&text)
@@ -429,12 +433,20 @@ async fn send_prompt(
     }
 
     // Normal prompt — forward to the agent. Events flow via the background
-    // forward task set up the first time the session was registered.
-    ensure_session_tauri(&session_id, &state, &app).await?;
+    // forward task set up by ensure_session_tauri.
+    let streaming_behavior = if state.ctx.pool.is_stream(&session_id).await {
+        Some("followUp".to_string())
+    } else {
+        None
+    };
+    let opts = pi_coding_agent::core::agent_session::PromptOptions {
+        streaming_behavior,
+        ..Default::default()
+    };
     state
         .ctx
         .pool
-        .prompt_with_opts(&session_id, &text, Default::default())
+        .prompt_with_opts(&session_id, &text, opts)
         .await?;
     Ok(())
 }
@@ -465,36 +477,20 @@ const APP_RESTART_DELAY: std::time::Duration = std::time::Duration::from_millis(
 
 /// Ensure a session runtime exists in the pool, setting up a background forward
 /// task that pumps `TranscriptEvent`s to the frontend via `app.emit`.
+///
+/// Uses the shared `ensure_session_with_events` logic (same as the WebSocket
+/// path) so that session creation, resumption, and event channel setup are
+/// consistent between Tauri and Web.
 async fn ensure_session_tauri(
     session_id: &str,
     state: &Arc<AppState>,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
-    // If the session already exists in the pool, nothing to do.
-    if state.ctx.pool.has_session(session_id).await {
-        return Ok(());
-    }
+    let session_with_events =
+        openatrading_web::chat_session::ensure_session_with_events(&state.ctx.pool, session_id)
+            .await?;
 
-    // Create a new session in the pool.
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let new_id = state
-        .ctx
-        .pool
-        .create_session(&cwd)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Set up the forward task for this session.
-    let Some(rt) = state.ctx.pool.get_session(&new_id).await else {
-        return Err("Session not found after creation".to_string());
-    };
-    let guard = rt.lock().await;
-    let session = guard.session();
-    let (mut rx, _subscription_handle) =
-        openatrading_web::agent_ws::setup_event_channel(session).await;
+    let mut rx = session_with_events.rx;
     let app_handle = app.clone();
     let sid = session_id.to_string();
 

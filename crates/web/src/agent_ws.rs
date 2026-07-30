@@ -506,25 +506,41 @@ async fn forward_events(
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
-                        if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
-                            let pool = state.ctx.pool.clone();
-                            let sid = session_id.to_string();
-                            tokio::spawn(async move {
-                                log::info!("ws: agent turn started for {sid}");
-                                let streaming_behavior = if pool.is_stream(&sid).await {
-                                    Some("followUp".to_string())
-                                } else {
-                                    None
-                                };
-                                let opts = PromptOptions {
-                                    streaming_behavior,
-                                    ..Default::default()
-                                };
-                                let _ = pool.prompt_with_opts(&sid, &text, opts).await;
-                                log::info!("ws: agent turn completed for {sid}");
-                            });
-                        } else {
-                            log::debug!("ws: {session_id} <- unparseable command — ignored");
+                        match serde_json::from_str::<ClientCommand>(&text) {
+                            Ok(ClientCommand::Prompt { text }) => {
+                                let pool = state.ctx.pool.clone();
+                                let sid = session_id.to_string();
+                                tokio::spawn(async move {
+                                    log::info!("ws: agent turn started for {sid}");
+                                    let streaming_behavior = if pool.is_stream(&sid).await {
+                                        Some("followUp".to_string())
+                                    } else {
+                                        None
+                                    };
+                                    let opts = PromptOptions {
+                                        streaming_behavior,
+                                        ..Default::default()
+                                    };
+                                    let _ = pool.prompt_with_opts(&sid, &text, opts).await;
+                                    log::info!("ws: agent turn completed for {sid}");
+                                });
+                            }
+                            Ok(ClientCommand::Interrupt) => {
+                                log::debug!("ws: {session_id} <- interrupt");
+                                if let Some(rt) = state.ctx.pool.get_session(session_id).await {
+                                    rt.lock().await.session().abort().await;
+                                }
+                            }
+                            Ok(ClientCommand::PermissionResponse { id, approved }) => {
+                                log::debug!("ws: {session_id} <- permission_response id={id} approved={approved}");
+                                // Permission response forwarding is not yet implemented.
+                            }
+                            Ok(ClientCommand::Ping) => {
+                                // Ignore pings in text form; they're handled as WebSocket pings.
+                            }
+                            Err(_) => {
+                                log::debug!("ws: {session_id} <- unparseable command — ignored");
+                            }
                         }
                     }
                     Some(Ok(Message::Ping(data))) => {
