@@ -272,7 +272,6 @@ pub async fn get_ai_roles_data(state: &Arc<AppState>) -> Result<serde_json::Valu
             serde_json::json!({
                 "name": r.name,
                 "display_name": r.display_name,
-                "strategy": r.strategy,
                 "readonly": r.readonly,
             })
         })
@@ -860,46 +859,18 @@ pub async fn create_role_data(
     state: &Arc<AppState>,
     name: &str,
     display_name: &str,
-    strategy: &str,
 ) -> Result<serde_json::Value, String> {
-    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| e.to_string())?;
+    openatrading_core::roles::save_role(name, display_name).map_err(|e| e.to_string())?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
             existing.display_name = display_name.to_string();
-            existing.strategy = strategy.to_string();
         } else {
             roles.push(crate::RoleEntry {
                 name: name.to_string(),
                 display_name: display_name.to_string(),
-                strategy: strategy.to_string(),
                 readonly: false,
             });
-        }
-    }
-    Ok(serde_json::json!({"ok": true}))
-}
-
-/// PUT /api/roles/:name/strategy — update role strategy
-pub async fn update_role_strategy_data(
-    state: &Arc<AppState>,
-    name: &str,
-    strategy: &str,
-) -> Result<serde_json::Value, String> {
-    // Reject edits on config-toml readonly roles
-    {
-        let roles = state.roles.read().await;
-        if let Some(role) = roles.iter().find(|r| r.name == name) {
-            if role.readonly {
-                return Err("readonly role".to_string());
-            }
-        }
-    }
-    openatrading_core::roles::save_role_strategy(name, strategy).map_err(|e| e.to_string())?;
-    {
-        let mut roles = state.roles.write().await;
-        if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
-            entry.strategy = strategy.to_string();
         }
     }
     Ok(serde_json::json!({"ok": true}))
@@ -921,7 +892,7 @@ pub async fn delete_role_data(
     }
     state.ctx.trade.delete_positions_by_role(name).ok();
     state.ctx.trade.delete_trade_logs_by_role(name).ok();
-    openatrading_core::roles::delete_role_dir(name).ok();
+    openatrading_core::roles::delete_role(name).ok();
     {
         let mut roles = state.roles.write().await;
         roles.retain(|r| r.name != name);

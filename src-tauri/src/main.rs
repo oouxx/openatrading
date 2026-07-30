@@ -32,37 +32,28 @@ fn build_roles() -> Vec<RoleEntry> {
             #[derive(serde::Deserialize)]
             struct RoleItem {
                 name: String,
-                display_name: String,
+                #[serde(default)]
+                display_name: Option<String>,
             }
             if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
-                let skills_dir = openatrading_core::roles::default_skills_dir();
                 for rc in parsed.roles {
                     if !roles.iter().any(|r| r.name == rc.name) {
-                        let role_path = skills_dir.join(&rc.name).join("SKILL.md");
-                        if let Ok(raw) = std::fs::read_to_string(&role_path) {
-                            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
-                            if !body.is_empty() {
-                                roles.push(RoleEntry {
-                                    name: rc.name,
-                                    display_name: fm
-                                        .get("description")
-                                        .cloned()
-                                        .unwrap_or(rc.display_name),
-                                    strategy: body.to_string(),
-                                    readonly: true,
-                                });
-                            }
-                        }
+                        let display_name = rc.display_name.unwrap_or_else(|| rc.name.clone());
+                        roles.push(RoleEntry {
+                            name: rc.name,
+                            display_name,
+                            readonly: true,
+                        });
                     }
                 }
             }
         }
     }
 
-    // Discover roles from disk (editable)
+    // Discover editable roles from disk
     roles.extend(openatrading_core::roles::list_roles_from_disk());
     if roles.is_empty() {
-        eprintln!("[tauri] 警告: skills/ 目录中未发现任何角色");
+        eprintln!("[tauri] 警告: 未发现任何角色，可在角色管理或 config.toml [[roles]] 中添加");
     }
     roles
 }
@@ -281,13 +272,7 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let strategy = body
-                .get("strategy")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            openatrading_web::handlers::create_role_data(state, &name, &display_name, &strategy)
-                .await
+            openatrading_web::handlers::create_role_data(state, &name, &display_name).await
         }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
@@ -299,17 +284,6 @@ async fn dispatch_post(
                 }
                 let action = parts[1];
                 match action {
-                    "strategy" => {
-                        let strategy = body
-                            .get("strategy")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        openatrading_web::handlers::update_role_strategy_data(
-                            state, name, &strategy,
-                        )
-                        .await
-                    }
                     "reset" => openatrading_web::handlers::reset_role_data(state, name).await,
                     "delete" => openatrading_web::handlers::delete_role_data(state, name).await,
                     _ => Err(format!("unknown roles action: {action}")),

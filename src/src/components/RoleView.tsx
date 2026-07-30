@@ -1,6 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { AnimatePresence } from "framer-motion"
 import { useQueries } from "@tanstack/react-query"
 import {
@@ -19,7 +17,6 @@ import {
 } from "@/hooks/query/useRoleQueries"
 import {
   useCreateRole,
-  useUpdateRoleStrategy,
   useDeleteRole,
   useResetRole,
 } from "@/hooks/query/useRoleMutations"
@@ -283,7 +280,6 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
 // ── Main Component ────────────────────────────────────
 
 const TABS = [
-  { id: "strategy", label: "策略文档" },
   { id: "holdings", label: "持仓管理" },
   { id: "performance", label: "盈利分析" },
 ]
@@ -291,16 +287,13 @@ const TABS = [
 export default function RoleView() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [_search, _setSearch] = useState("")
-  const [tab, setTab] = useState("strategy")
+  const [tab, setTab] = useState("holdings")
   const [holdingView, setHoldingView] = useState<"current" | "history">("current")
   const [showCreate, setShowCreate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState<string | null>(null)
   const [newName, setNewName] = useState("")
-  const [editStrategyText, setEditStrategyText] = useState("")
-  const [saveFeedback, setSaveFeedback] = useState(false)
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
-  const mdEditorRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: roles = [] } = useRoleList()
   const { data: positions = [] } = useRolePositions(selectedRole ?? "")
@@ -308,7 +301,6 @@ export default function RoleView() {
   const { data: pnlPoints = [] } = useRolePnlHistory(selectedRole ?? "")
 
   const createRoleMutation = useCreateRole()
-  const updateStrategyMutation = useUpdateRoleStrategy()
   const deleteRoleMutation = useDeleteRole()
   const resetRoleMutation = useResetRole()
 
@@ -329,16 +321,6 @@ export default function RoleView() {
       setSelectedRole(roles[0].name)
     }
   }, [roles])
-
-  // Sync editor strategy when role changes — controlled editor pattern
-  useEffect(() => {
-    if (selectedRole) {
-      const role = roles.find((r) => r.name === selectedRole)
-      if (role)
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setEditStrategyText(role.strategy)
-    }
-  }, [selectedRole, roles])
 
   const currentRole = roles.find((r) => r.name === selectedRole)
 
@@ -379,7 +361,6 @@ export default function RoleView() {
     await createRoleMutation.mutateAsync({
       name: id,
       displayName: name,
-      strategy: `# ${name}\n\n在此编写策略文档…`,
     })
     setShowCreate(false)
     setNewName("")
@@ -402,13 +383,6 @@ export default function RoleView() {
     },
     [resetRoleMutation]
   )
-
-  const saveStrategy = useCallback(async () => {
-    if (!selectedRole) return
-    await updateStrategyMutation.mutateAsync({ name: selectedRole, strategy: editStrategyText })
-    setSaveFeedback(true)
-    setTimeout(() => setSaveFeedback(false), 1500)
-  }, [selectedRole, editStrategyText, updateStrategyMutation])
 
   return (
     <>
@@ -492,48 +466,6 @@ export default function RoleView() {
 
               {/* Stats */}
               <StatsRow positions={positions} history={history} />
-
-              {/* Tab: Strategy */}
-              {tab === "strategy" && (
-                <div className="bg-bg-surface border-hairline overflow-hidden rounded-xl border">
-                  <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
-                    <h3 className="text-base font-medium text-white">策略文档（Markdown）</h3>
-                    <button
-                      onClick={saveStrategy}
-                      disabled={currentRole?.readonly}
-                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                        saveFeedback
-                          ? "bg-down border-none text-white"
-                          : currentRole?.readonly
-                            ? "border-hairline bg-ink-dim text-ink-muted cursor-not-allowed border opacity-40"
-                            : "border-hairline bg-ink-dim text-ink-muted border hover:text-white"
-                      }`}
-                    >
-                      {saveFeedback ? "✓ 已保存" : "保存策略"}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-0 lg:grid-cols-2" style={{ minHeight: 300 }}>
-                    <textarea
-                      ref={mdEditorRef}
-                      value={editStrategyText}
-                      onChange={(e) => setEditStrategyText(e.target.value)}
-                      readOnly={currentRole?.readonly}
-                      className="bg-bg border-hairline min-h-[300px] w-full resize-y border-0 border-r border-b p-5 font-mono text-xs/relaxed text-white outline-none lg:border-r lg:border-b-0"
-                      placeholder="在此编写策略文档，支持 Markdown 格式…"
-                      style={{ background: "rgb(var(--color-bg-rgb) / 0.8)" }}
-                    />
-                    <div className="markdown-preview min-h-[300px] overflow-y-auto p-5 text-[13px] leading-relaxed">
-                      {editStrategyText ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {editStrategyText}
-                        </ReactMarkdown>
-                      ) : (
-                        <p className="text-ink-muted">预览区域</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Tab: Holdings */}
               {tab === "holdings" && (

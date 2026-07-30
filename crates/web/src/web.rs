@@ -51,12 +51,6 @@ pub struct SentimentHistoryDay {
 pub struct CreateRoleRequest {
     pub name: String,
     pub display_name: String,
-    pub strategy: String,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateStrategyRequest {
-    pub strategy: String,
 }
 
 #[derive(Serialize)]
@@ -497,19 +491,7 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::create_role_data(&state, &body.name, &body.display_name, &body.strategy)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
-
-/// PUT /api/roles/:name/strategy — update role strategy
-pub async fn update_role_strategy(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-    Json(body): Json<UpdateStrategyRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::update_role_strategy_data(&state, &name, &body.strategy)
+    crate::handlers::create_role_data(&state, &body.name, &body.display_name)
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)

@@ -8,29 +8,13 @@ export function useCreateRole() {
     mutationFn: ({
       name,
       displayName,
-      strategy,
     }: {
       name: string
       displayName: string
-      strategy: string
     }) =>
       fetchJson("/api/roles", {
         method: "POST",
-        body: JSON.stringify({ name, display_name: displayName, strategy }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roleKeys.all })
-    },
-  })
-}
-
-export function useUpdateRoleStrategy() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ name, strategy }: { name: string; strategy: string }) =>
-      fetchJson(`/api/roles/${name}/strategy`, {
-        method: "PUT",
-        body: JSON.stringify({ strategy }),
+        body: JSON.stringify({ name, display_name: displayName }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: roleKeys.all })
