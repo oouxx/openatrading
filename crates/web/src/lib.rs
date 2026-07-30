@@ -4,8 +4,8 @@ pub mod chat;
 pub mod chat_session;
 pub mod gateway;
 pub mod handlers;
-pub mod mcp;
 pub mod market_stream;
+pub mod mcp;
 pub mod web;
 
 use cache::AppCache;
