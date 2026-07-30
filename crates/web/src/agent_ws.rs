@@ -183,7 +183,6 @@ pub struct ToolResultPayload {
 const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
 
 /// Ring buffer capacity: events retained per session for reconnection replay (§9.1).
-
 /// Convert a tool result text into a preview payload, truncating if too long.
 fn to_tool_result_payload(content: &str) -> ToolResultPayload {
     let len = content.chars().count();

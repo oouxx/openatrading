@@ -7,10 +7,14 @@ pub type AppCache = Cache<String, CachedEntry>;
 
 // ── A-share market hours constants ──────────────────────────
 // Safety: these are compile-time-known valid clock times (HMS).
-const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).expect("9:30 is valid");
-const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).expect("11:30 is valid");
-const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).expect("13:00 is valid");
-const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).expect("15:00 is valid");
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
+const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
+const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
+const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
+const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CachedEntry {
@@ -74,10 +78,7 @@ pub fn current_market_phase() -> MarketPhase {
 }
 
 pub fn is_trading_hours() -> bool {
-    match current_market_phase() {
-        MarketPhase::MorningOpen | MarketPhase::AfternoonOpen => true,
-        _ => false,
-    }
+    matches!(current_market_phase(), MarketPhase::MorningOpen | MarketPhase::AfternoonOpen)
 }
 
 fn next_open_timestamp() -> i64 {

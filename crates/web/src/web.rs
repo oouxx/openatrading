@@ -573,7 +573,7 @@ pub async fn get_role_history(
 
 /// GET /api/replay/events — fetch all events for latest trading day
 pub async fn get_replay_events(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let min_pcp: f64 = params
@@ -588,7 +588,7 @@ pub async fn get_replay_events(
 
 /// GET /api/replay/index — three-index trend data
 pub async fn get_replay_index(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     crate::handlers::get_replay_index_data()
         .await
@@ -606,7 +606,7 @@ pub struct ReplayNewsQuery {
 }
 
 pub async fn get_replay_news(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Query(q): Query<ReplayNewsQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     crate::handlers::get_replay_news_data(q.tailmark, q.msg_id_mark)
@@ -617,7 +617,7 @@ pub async fn get_replay_news(
 
 /// GET /api/replay/snapshots — 5-min bucketed emotion snapshots
 pub async fn get_replay_snapshots(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     crate::handlers::get_replay_snapshots_data()
         .await

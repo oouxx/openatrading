@@ -9,8 +9,10 @@ use openatrading_core::llm::{McpClient, McpTransportConfig};
 /// A healthy MCP server should complete the initialize handshake quickly;
 /// 10s is generous for a slow cold start (e.g. a stdio child) while still
 /// failing fast on a hung endpoint.
+#[allow(dead_code)]
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
+#[allow(dead_code)]
 pub struct McpCheck;
 
 #[async_trait]

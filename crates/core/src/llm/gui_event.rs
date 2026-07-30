@@ -3,7 +3,7 @@ use pi_coding_agent::core::agent_session::AgentSessionEvent;
 pub enum GuiEvent {
     SessionEvent {
         session_id: String,
-        event: AgentSessionEvent,
+        event: Box<AgentSessionEvent>,
     },
     SessionError {
         session_id: String,
