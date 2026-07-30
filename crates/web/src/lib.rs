@@ -8,8 +8,9 @@ pub mod mcp;
 pub mod web;
 
 use cache::AppCache;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -30,6 +31,27 @@ pub struct AppState {
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
+    /// Per-session [`SessionEventState`] (monotonic `seq` + ring buffer).
+    /// Persists across WebSocket reconnects for the same session so the
+    /// `lastSeq` handshake can resume the gap.
+    pub event_states: Arc<Mutex<HashMap<String, Arc<agent_ws::SessionEventState>>>>,
+}
+
+impl AppState {
+    /// Get (lazily creating) the [`SessionEventState`] for a session.
+    ///
+    /// The state is retained for the lifetime of the process — it is keyed by
+    /// session id and survives WS reconnects. Cleanup is left to natural
+    /// session eviction elsewhere; the ring buffer bounds per-session memory.
+    pub async fn get_event_state(&self, session_id: &str) -> Arc<agent_ws::SessionEventState> {
+        let mut states = self.event_states.lock().await;
+        if let Some(s) = states.get(session_id) {
+            return Arc::clone(s);
+        }
+        let s = Arc::new(agent_ws::SessionEventState::new());
+        states.insert(session_id.to_string(), Arc::clone(&s));
+        s
+    }
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
