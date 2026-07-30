@@ -9,15 +9,19 @@ build:
 
 run:
 	cargo run -p openatrading-cli
+
 doctor:
 	cargo run -p openatrading-cli -- doctor
+
 watch-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo watch -x "run -p openatrading-cli -- gateway run"
+
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	@echo $(PI_RS_HOME)
 	cargo run -p openatrading-cli -- gateway run
+
 run-frontend:
 	cd src && bun run dev
 
@@ -48,7 +52,7 @@ run-mcp-stdio:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui
+	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui -p openatrading-agent -p openatrading-extension
 
 test-tui:
 	cargo test -p openatrading-tui
@@ -57,7 +61,7 @@ fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui -- -D warnings
+	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui -p openatrading-agent -p openatrading-extension -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"
@@ -182,15 +186,17 @@ help:
 	@echo ""
 	@echo "Debug:"
 	@echo "  build          dev build"
-	@echo "  run            CLI test run"
+	@echo "  run            CLI run"
+	@echo "  doctor         CLI doctor check"
 	@echo "  chat           CLI AI chat TUI"
 	@echo "  decision       手动触发一次所有角色的每日决策"
 	@echo "  decision-dry-run 决策 dry-run 模式（仅输出到终端）"
-	@echo "  run-web        Web server"
+	@echo "  run-web        Web server (gateway)"
+	@echo "  watch-web      Web server with auto-reload"
 	@echo "  run-mcp-http   MCP server (HTTP, :8082)"
 	@echo "  run-mcp-stdio  MCP server (stdio)"
 	@echo "  run-frontend   Vue dev server"
-	@echo "  dev-tauri      Tauri desktop dev"
+	@echo "  run-tauri      Tauri desktop dev"
 	@echo "  build-tauri    Tauri desktop build"
 	@echo ""
 	@echo "Quality:"
@@ -218,3 +224,5 @@ help:
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"
+	@echo "  install        安装到 /usr/local/bin"
+	@echo "  uninstall      从 /usr/local/bin 卸载"
