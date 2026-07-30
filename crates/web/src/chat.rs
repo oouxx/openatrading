@@ -434,7 +434,7 @@ pub struct SessionMessage {
 }
 
 /// Serializable subset of a persisted content block for history replay.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HistoryBlock {
     Thinking {
@@ -457,31 +457,48 @@ pub enum HistoryBlock {
     },
 }
 
-/// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
+/// Read the message history of a session **directly from its JSONL file**,
+/// without materializing an `AgentSessionRuntime` in the pool.
 ///
-/// # Errors
-/// Returns an empty list if the session file does not exist or cannot be read.
-pub async fn get_session_messages(
-    axum::extract::Path(id): axum::extract::Path<String>,
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
+/// This is a pure read with no side effects: it does not touch the LRU
+/// `SessionPool` (so loading history for an idle session cannot evict a
+/// live one) and does not mutate the agent's in-memory state. It reuses
+/// pi-rs's `SessionManager::open` + `get_entries` to parse the JSONL — the
+/// same source of truth `AgentSession::load_messages_from_session` uses —
+/// rather than re-implementing JSONL parsing.
+///
+/// `SessionManager::open` and file parsing are synchronous, so the work is
+/// offloaded to `spawn_blocking` to avoid stalling the async executor.
+pub(crate) fn read_messages_from_disk(session_id: &str) -> Vec<openatrading_core::llm::AgentMessage> {
+    use openatrading_core::llm::AgentMessage;
+    use pi_coding_agent::core::session_manager::{SessionEntry, SessionManager};
+
+    let Some(path) = find_session_file(session_id) else {
+        return Vec::new();
+    };
+    // `open` extracts cwd from the session header and loads + migrates entries.
+    let mgr = SessionManager::open(&path.to_string_lossy(), None, None);
+    mgr.get_entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            SessionEntry::Message { message, .. } => {
+                serde_json::from_value::<AgentMessage>(message.clone()).ok()
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Turn a slice of `AgentMessage`s into the serializable history shape,
+/// joining `ToolResult` messages onto the `ToolUse` block that issued the call
+/// (keyed by `tool_call_id`) so the frontend can render results inline.
+pub(crate) fn messages_to_session_messages(
+    messages: &[openatrading_core::llm::AgentMessage],
+) -> Vec<SessionMessage> {
     use openatrading_core::llm::pi_ai_types::ContentBlock;
     use openatrading_core::llm::AgentMessage;
-
-    // Get or resume the session from the pool.
-    let runtime = match state.ctx.pool.get_or_resume(&id).await {
-        Ok(rt) => rt,
-        Err(_) => return Ok(Json(Vec::new())),
-    };
-
-    let rt = runtime.lock().await;
-    let messages = rt.session().get_messages().await;
-
-    // Join tool results onto the assistant turn that issued the call.
-    // `AgentMessage::ToolResult` is a separate message keyed by `tool_call_id`;
-    // attach its text + error flag to the matching `ToolUse` block so the
-    // frontend can render the result on the tool-call card in history.
     use std::collections::HashMap;
+
     let tool_results: HashMap<String, (String, bool)> = messages
         .iter()
         .filter_map(|msg| match msg {
@@ -505,7 +522,7 @@ pub async fn get_session_messages(
         })
         .collect();
 
-    let session_messages: Vec<SessionMessage> = messages
+    messages
         .iter()
         .filter_map(|msg| {
             let (role, content_blocks, timestamp) = match msg {
@@ -518,7 +535,6 @@ pub async fn get_session_messages(
                 _ => return None,
             };
 
-            // Extract plain text and structured blocks from content blocks.
             let mut text_parts: Vec<String> = Vec::new();
             let mut blocks: Vec<HistoryBlock> = Vec::new();
 
@@ -565,9 +581,27 @@ pub async fn get_session_messages(
                 blocks,
             })
         })
-        .collect();
+        .collect()
+}
 
-    Ok(Json(session_messages))
+/// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
+///
+/// Reads history directly from disk (no pool/runtime side effects). Returns
+/// an empty list if the session file does not exist.
+pub async fn get_session_messages(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
+    // File parsing is synchronous; offload it so we don't stall the executor.
+    // On panic (e.g. a corrupt session file that fails `SessionManager::open`),
+    // surface it in the logs rather than silently swallowing it.
+    match tokio::task::spawn_blocking(move || read_messages_from_disk(&id)).await {
+        Ok(messages) => Ok(Json(messages_to_session_messages(&messages))),
+        Err(join_err) => {
+            openatrading_core::log::error!("get_session_messages: read task failed: {join_err}");
+            Ok(Json(Vec::new()))
+        }
+    }
 }
 /// DELETE /api/ai/sessions/:id — delete a saved session
 pub async fn delete_session(
@@ -744,4 +778,102 @@ pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value
     }
 
     sessions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{messages_to_session_messages, HistoryBlock};
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
+    use openatrading_core::llm::{pi_ai_types::Usage, AgentMessage};
+
+    fn user_text(text: &str) -> AgentMessage {
+        AgentMessage::User {
+            content: vec![ContentBlock::text(text)],
+            timestamp: 1,
+        }
+    }
+
+    fn assistant_with_tool_call(id: &str, name: &str) -> AgentMessage {
+        AgentMessage::Assistant {
+            content: vec![ContentBlock::ToolCall {
+                id: id.to_string(),
+                name: name.to_string(),
+                arguments: serde_json::json!({}),
+                thought_signature: None,
+            }],
+            api: "openai".into(),
+            provider: "openrouter".into(),
+            model: "m".into(),
+            usage: Usage::default(),
+            stop_reason: None,
+            error_message: None,
+            timestamp: 2,
+        }
+    }
+
+    fn tool_result(id: &str, text: &str, is_error: bool) -> AgentMessage {
+        AgentMessage::ToolResult {
+            tool_call_id: id.to_string(),
+            tool_name: "read".into(),
+            content: vec![ContentBlock::text(text)],
+            details: serde_json::Value::Null,
+            is_error,
+            timestamp: 3,
+        }
+    }
+
+    /// Happy path: a tool_result is joined onto the matching ToolUse block,
+    /// and ToolResult is not emitted as a standalone history entry.
+    #[test]
+    fn tool_result_joins_onto_tool_use() {
+        let messages = vec![
+            user_text("run it"),
+            assistant_with_tool_call("t1", "read"),
+            tool_result("t1", "file contents", false),
+        ];
+        let out = messages_to_session_messages(&messages);
+        assert_eq!(out.len(), 2, "user + assistant only; tool_result joined");
+        let assistant = &out[1];
+        assert_eq!(assistant.blocks.len(), 1);
+        match &assistant.blocks[0] {
+            HistoryBlock::ToolUse { result, is_error, .. } => {
+                assert_eq!(result.as_deref(), Some("file contents"));
+                assert!(!*is_error);
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    /// Failure path: an errored tool_result surfaces `is_error=true`.
+    #[test]
+    fn errored_tool_result_marks_error() {
+        let messages = vec![
+            assistant_with_tool_call("t2", "read"),
+            tool_result("t2", "boom", true),
+        ];
+        let out = messages_to_session_messages(&messages);
+        let block = &out[0].blocks[0];
+        match block {
+            HistoryBlock::ToolUse { is_error, result, .. } => {
+                assert!(*is_error);
+                assert_eq!(result.as_deref(), Some("boom"));
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    /// Edge case: a ToolUse whose result is missing (in-flight / not yet
+    /// recorded) still renders, with no result and `is_error=false`.
+    #[test]
+    fn tool_use_without_result_renders_empty() {
+        let messages = vec![assistant_with_tool_call("t3", "read")];
+        let out = messages_to_session_messages(&messages);
+        match &out[0].blocks[0] {
+            HistoryBlock::ToolUse { result, is_error, .. } => {
+                assert!(result.is_none());
+                assert!(!*is_error);
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
 }

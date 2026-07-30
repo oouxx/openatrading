@@ -949,74 +949,32 @@ pub async fn reset_role_data(
 
 // ── Session CRUD ─────────────────────────────────────────────────────────
 
-/// GET /api/ai/sessions/:id/messages — read messages from a session
+/// GET /api/ai/sessions/:id/messages — read messages from a session.
+///
+/// Thin Tauri-side wrapper that delegates to the shared history reader
+/// (`chat::read_messages_from_disk` + `chat::messages_to_session_messages`),
+/// so the web and Tauri paths produce identical history shapes and neither
+/// materializes an `AgentSessionRuntime` in the LRU pool just to read past
+/// messages. Tool results are joined onto their `ToolUse` block here too.
 pub async fn get_session_messages_data(
-    state: &Arc<AppState>,
+    _state: &Arc<AppState>,
     id: &str,
 ) -> Result<serde_json::Value, String> {
-    use openatrading_core::llm::pi_ai_types::ContentBlock;
-    use openatrading_core::llm::AgentMessage;
+    use openatrading_core::log;
+    use crate::chat;
 
-    let runtime = state
-        .ctx
-        .pool
-        .get_or_resume(id)
+    // File parsing is synchronous; offload it so we don't stall the executor.
+    let id = id.to_string();
+    let messages = match tokio::task::spawn_blocking(move || chat::read_messages_from_disk(&id))
         .await
-        .map_err(|e| e.to_string())?;
-    let rt = runtime.lock().await;
-    let messages = rt.session().get_messages().await;
-
-    let session_messages: Vec<serde_json::Value> = messages
-        .iter()
-        .filter_map(|msg| {
-            let (role, content_blocks, timestamp) = match msg {
-                AgentMessage::User { content, timestamp } => ("user", content, *timestamp),
-                AgentMessage::Assistant {
-                    content, timestamp, ..
-                } => ("assistant", content, *timestamp),
-                _ => return None,
-            };
-
-            let mut text_parts: Vec<String> = Vec::new();
-            let mut blocks: Vec<serde_json::Value> = Vec::new();
-
-            for block in content_blocks {
-                match block {
-                    ContentBlock::Text { text, .. } => {
-                        text_parts.push(text.clone());
-                        blocks.push(serde_json::json!({"type": "text", "text": text}));
-                    }
-                    ContentBlock::Thinking { thinking, .. } => {
-                        blocks.push(serde_json::json!({"type": "thinking", "text": thinking}));
-                    }
-                    ContentBlock::ToolCall {
-                        id,
-                        name,
-                        arguments,
-                        ..
-                    } => {
-                        blocks.push(serde_json::json!({
-                            "type": "tool_use", "id": id, "name": name, "input": arguments
-                        }));
-                    }
-                    ContentBlock::Image { .. } => {}
-                }
-            }
-
-            let content = text_parts.join("\n");
-            if content.is_empty() && blocks.is_empty() {
-                return None;
-            }
-
-            Some(serde_json::json!({
-                "role": role,
-                "content": content,
-                "created_at": timestamp,
-                "blocks": blocks,
-            }))
-        })
-        .collect();
-
+    {
+        Ok(m) => m,
+        Err(join_err) => {
+            log::error!("get_session_messages_data: read task failed: {join_err}");
+            Vec::new()
+        }
+    };
+    let session_messages = chat::messages_to_session_messages(&messages);
     Ok(serde_json::to_value(session_messages).unwrap_or_default())
 }
 
