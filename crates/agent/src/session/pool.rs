@@ -352,9 +352,7 @@ impl SessionPool {
         // (different key) from an in-place replacement of the same key.
         let inserted_id = id.clone();
         let evicted = self.sessions.lock().await.push(id, runtime);
-        if let Some((evicted_id, _)) =
-            evicted.filter(|(k, _)| k.as_str() != inserted_id.as_str())
-        {
+        if let Some((evicted_id, _)) = evicted.filter(|(k, _)| k.as_str() != inserted_id.as_str()) {
             self.abort_signals.lock().await.remove(&evicted_id);
         }
     }
