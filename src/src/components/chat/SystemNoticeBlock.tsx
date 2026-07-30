@@ -27,7 +27,13 @@ interface SystemNoticeBlockProps {
 
 // ── Icons per kind ───────────────────────────────────────
 
-function KindIcon({ kind, status }: { kind: SystemNotice["kind"]; status?: SystemNotice["status"] }) {
+function KindIcon({
+  kind,
+  status,
+}: {
+  kind: SystemNotice["kind"]
+  status?: SystemNotice["status"]
+}) {
   switch (kind) {
     case "compaction":
       if (status === "active") return <Shrink className="size-3.5 animate-pulse text-blue-500" />
@@ -38,7 +44,7 @@ function KindIcon({ kind, status }: { kind: SystemNotice["kind"]; status?: Syste
       if (status === "error") return <XCircle className="size-3.5 text-red-500" />
       return <CheckCircle2 className="size-3.5 text-emerald-500" />
     case "turn":
-      return <ArrowRight className="size-3 text-ink-muted/30" />
+      return <ArrowRight className="text-ink-muted/30 size-3" />
     case "notice":
       if (status === "error") return <AlertTriangle className="size-3.5 text-red-500" />
       return <CheckCircle2 className="size-3.5 text-emerald-500" />
@@ -47,7 +53,11 @@ function KindIcon({ kind, status }: { kind: SystemNotice["kind"]; status?: Syste
 
 // ── Tailwind classes per kind ────────────────────────────
 
-function cardStyle(kind: SystemNotice["kind"], status?: SystemNotice["status"], isError?: boolean): string {
+function cardStyle(
+  kind: SystemNotice["kind"],
+  status?: SystemNotice["status"],
+  isError?: boolean
+): string {
   if (isError || status === "error") return "border-red-500/25 bg-red-500/[0.04]"
   switch (kind) {
     case "compaction":
@@ -59,9 +69,6 @@ function cardStyle(kind: SystemNotice["kind"], status?: SystemNotice["status"], 
       return "border-amber-500/20 bg-amber-500/[0.02]"
     case "turn":
       return "border-transparent"
-    case "notice":
-      if (status === "error") return "border-red-500/25 bg-red-500/[0.04]"
-      return "border-emerald-500/15 bg-emerald-500/[0.02]"
   }
 }
 
@@ -89,20 +96,28 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
     const isActive = status === "active"
     const failed = status === "error"
     return (
-      <div className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}>
+      <div
+        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
+      >
         <div className="flex items-center gap-2 px-3 py-1.5">
           <KindIcon kind={kind} status={status} />
-          <span className={`font-mono text-[11px] font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-ink-muted/70"}`}>
+          <span
+            className={`font-mono text-[11px] font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-ink-muted/70"}`}
+          >
             会话压缩
           </span>
           {isActive && (
             <span className="ml-auto flex items-center gap-1.5">
-              <span className="bg-blue-500/30 size-1.5 animate-pulse rounded-full" />
+              <span className="size-1.5 animate-pulse rounded-full bg-blue-500/30" />
               <span className="text-ink-muted/50 font-mono text-[10px]">压缩中…</span>
             </span>
           )}
-          {failed && <span className="ml-auto text-red-500/70 font-mono text-[10px]">压缩失败</span>}
-          {status === "done" && <span className="ml-auto text-blue-500/50 font-mono text-[10px]">已完成</span>}
+          {failed && (
+            <span className="ml-auto font-mono text-[10px] text-red-500/70">压缩失败</span>
+          )}
+          {status === "done" && (
+            <span className="ml-auto font-mono text-[10px] text-blue-500/50">已完成</span>
+          )}
         </div>
         {detail && !isActive && (
           <div className="border-hairline border-t px-3 py-1.5">
@@ -118,14 +133,20 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
     const isActive = status === "active"
     const failed = status === "error"
     return (
-      <div className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}>
+      <div
+        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
+      >
         <div className="flex items-center gap-2 px-3 py-1.5">
           <KindIcon kind={kind} status={status} />
-          <span className={`font-mono text-[11px] font-medium ${isActive ? "text-amber-500" : failed ? "text-red-500" : "text-emerald-500"}`}>
+          <span
+            className={`font-mono text-[11px] font-medium ${isActive ? "text-amber-500" : failed ? "text-red-500" : "text-emerald-500"}`}
+          >
             自动重试
           </span>
           {attempt != null && maxAttempts != null && (
-            <span className="text-ink-muted/60 font-mono text-[10px]">{attempt}/{maxAttempts}</span>
+            <span className="text-ink-muted/60 font-mono text-[10px]">
+              {attempt}/{maxAttempts}
+            </span>
           )}
           {isActive && (
             <span className="ml-auto flex items-center gap-1.5">
@@ -133,14 +154,22 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
               <span className="text-ink-muted/50 font-mono text-[10px]">重试中…</span>
             </span>
           )}
-          {status === "done" && <span className="ml-auto text-emerald-500/70 font-mono text-[10px]">重试成功</span>}
-          {failed && <span className="ml-auto text-red-500/70 font-mono text-[10px]">已达上限</span>}
+          {status === "done" && (
+            <span className="ml-auto font-mono text-[10px] text-emerald-500/70">重试成功</span>
+          )}
+          {failed && (
+            <span className="ml-auto font-mono text-[10px] text-red-500/70">已达上限</span>
+          )}
         </div>
         {(detail || delayMs != null) && (
           <div className="border-hairline border-t px-3 py-1.5">
-            {detail && <p className="text-ink-muted/60 font-mono text-[10px] leading-relaxed">{detail}</p>}
+            {detail && (
+              <p className="text-ink-muted/60 font-mono text-[10px] leading-relaxed">{detail}</p>
+            )}
             {delayMs != null && (
-              <p className="text-ink-muted/40 mt-0.5 font-mono text-[10px]">等待 {formatDelay(delayMs)}</p>
+              <p className="text-ink-muted/40 mt-0.5 font-mono text-[10px]">
+                等待 {formatDelay(delayMs)}
+              </p>
             )}
           </div>
         )}
@@ -152,23 +181,27 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
   if (kind === "turn") {
     return (
       <div className="flex items-center gap-2 px-0 py-0.5">
-        <div className="flex-1 border-t border-hairline" />
+        <div className="border-hairline flex-1 border-t" />
         {detail && (
           <span className="text-ink-muted/30 shrink-0 font-mono text-[9px] tracking-wider uppercase">
             {detail}
           </span>
         )}
-        <ArrowRight className="size-2.5 shrink-0 text-ink-muted/30" />
+        <ArrowRight className="text-ink-muted/30 size-2.5 shrink-0" />
       </div>
     )
   }
 
   // ── Generic notice ──────────────────────────────────────
   return (
-    <div className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status, isError)}`}>
+    <div
+      className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status, isError)}`}
+    >
       <div className="flex items-center gap-2 px-3 py-1.5">
         <KindIcon kind={kind} status={status} />
-        <span className={`text-ink-muted/70 font-mono text-[11px] ${isError || status === "error" ? "text-red-500" : ""}`}>
+        <span
+          className={`text-ink-muted/70 font-mono text-[11px] ${isError || status === "error" ? "text-red-500" : ""}`}
+        >
           {detail || "通知"}
         </span>
       </div>

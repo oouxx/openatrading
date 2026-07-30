@@ -176,7 +176,7 @@ export default function AiCopilot({
       transportRef.current = transport
       transport.onEvent((event) => {
         const currentTurns = threadTurnsRef.current.get(threadId) ?? []
-        const newTurns = applyEvent(currentTurns, event)
+        const { turns: newTurns } = applyEvent(currentTurns, event)
         threadTurnsRef.current.set(threadId, newTurns)
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
@@ -205,7 +205,6 @@ export default function AiCopilot({
     setInput("")
     setShowSlash(false)
     setStreaming(true)
-    setAgentPhase("starting")
     streamThreadRef.current = sessionId
     setStreamThreadId(sessionId)
 
@@ -357,20 +356,20 @@ export default function AiCopilot({
             <div className="flex items-center gap-1">
               {stockTabs.map((tab) => (
                 <button
-                  key={tab.code}
+                  key={tab.id}
                   className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
-                    activeStockTab === tab.code
+                    activeStockTab === tab.id
                       ? "bg-ai/15 text-ai"
                       : "text-ink-muted hover:bg-bg-hover"
                   }`}
-                  onClick={() => setActiveStockTab(tab.code)}
+                  onClick={() => setActiveStockTab(tab.id)}
                 >
                   {tab.name}
                   <span
                     className="ml-1.5 text-[10px] opacity-50 hover:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
-                      closeTab(tab.code)
+                      closeTab(tab.id)
                     }}
                   >
                     ×
@@ -384,7 +383,11 @@ export default function AiCopilot({
 
       {/* ── Body ────────────────────────────────────────────────────── */}
       {activeStockTab ? (
-        <KlineDrawer />
+        <KlineDrawer
+          symbol={activeStockTab}
+          name={stockTabs.find((t) => t.id === activeStockTab)?.name ?? activeStockTab}
+          onClose={() => setActiveStockTab(null)}
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div
@@ -444,7 +447,7 @@ export default function AiCopilot({
                               respondToPermission={
                                 isTauri
                                   ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
-                                  : wsAgent.respondToPermission
+                                  : (id: string, approved: boolean) => wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
                               }
                             />
                           )}
