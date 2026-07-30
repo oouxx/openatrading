@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision run-mcp-http run-mcp-stdio release-tauri-local
+.PHONY: build run run-web watch-web test  fmt lint check run-frontend run-tauri  deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version release-tauri-local
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -25,29 +25,9 @@ run-web:
 run-frontend:
 	cd src && bun run dev
 
-chat:
-	cargo run -p openatrading-cli -- chat
-
-decision:
-	cargo run -p openatrading-cli -- decision
-
-decision-dry-run:
-	cargo run -p openatrading-cli -- decision --dry-run
-
 run-tauri:
 	cd src-tauri && cargo tauri dev
 
-build-tauri:
-	cd src-tauri && cargo tauri build
-
-# ─── MCP Server ──────────────────────────────────────
-
-run-mcp-http:
-	@lsof -ti:8082 | xargs kill -9 2>/dev/null || true
-	cargo run -p openatrading-cli -- mcp serve
-
-run-mcp-stdio:
-	cargo run -p openatrading-cli -- mcp serve --transport stdio
 
 # ─── Quality ──────────────────────────────────────────
 
@@ -182,20 +162,13 @@ help:
 	@echo "  build          dev build"
 	@echo "  run            CLI run"
 	@echo "  doctor         CLI doctor check"
-	@echo "  chat           CLI AI chat TUI"
-	@echo "  decision       手动触发一次所有角色的每日决策"
-	@echo "  decision-dry-run 决策 dry-run 模式（仅输出到终端）"
 	@echo "  run-web        Web server (gateway)"
 	@echo "  watch-web      Web server with auto-reload"
-	@echo "  run-mcp-http   MCP server (HTTP, :8082)"
-	@echo "  run-mcp-stdio  MCP server (stdio)"
 	@echo "  run-frontend   Vue dev server"
 	@echo "  run-tauri      Tauri desktop dev"
-	@echo "  build-tauri    Tauri desktop build"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test (all crates)"
-	@echo "  test-tui       cargo test (tui only)"
 	@echo "  fmt            cargo fmt"
 	@echo "  lint           cargo clippy"
 	@echo "  check          fmt + lint + test"
