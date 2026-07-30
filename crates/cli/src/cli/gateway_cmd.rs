@@ -26,7 +26,9 @@ fn manager() -> Result<Box<dyn ServiceManager>> {
 }
 
 fn label() -> ServiceLabel {
-    SERVICE_LABEL.parse().unwrap_or_else(|e| panic!("invalid SERVICE_LABEL: {e}"))
+    SERVICE_LABEL
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid SERVICE_LABEL: {e}"))
 }
 
 /// 安装并启用 gateway 系统服务（跨平台：systemd / launchctl 等）

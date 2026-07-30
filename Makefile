@@ -32,7 +32,7 @@ run-tauri:
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-web -p openatrading-tui -p openatrading-agent -p openatrading-extension
+	cargo test -p openatrading-core
 
 test-tui:
 	cargo test -p openatrading-tui

@@ -15,7 +15,10 @@ use crate::AppState;
 /// # Panics
 /// Panics if the MCP server lock is poisoned.
 pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerConfig>> {
-    let guard = state.mcp_servers.lock().unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+    let guard = state
+        .mcp_servers
+        .lock()
+        .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
     Json(guard.clone())
 }
 
@@ -31,7 +34,10 @@ pub async fn add_handler(
     Json(config): Json<McpServerConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     {
-        let mut guard = state.mcp_servers.lock().unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         if guard.iter().any(|s| s.name == config.name) {
             return Err(StatusCode::CONFLICT);
         }
@@ -53,7 +59,10 @@ pub async fn delete_handler(
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     {
-        let mut guard = state.mcp_servers.lock().unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         let before = guard.len();
         guard.retain(|s| s.name != name);
         if guard.len() == before {
@@ -76,7 +85,10 @@ pub async fn toggle_handler(
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let found = {
-        let mut guard = state.mcp_servers.lock().unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         guard.iter_mut().find(|s| s.name == name).map(|s| {
             s.enabled = !s.enabled;
         })
@@ -88,7 +100,10 @@ pub async fn toggle_handler(
 
 async fn load_servers_and_reload(state: &Arc<AppState>) {
     let servers = {
-        let guard = state.mcp_servers.lock().unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        let guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         guard.clone()
     };
     reload_and_persist(state, &servers).await;
@@ -116,7 +131,8 @@ async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) 
         .map(|s| {
             (
                 s.name.clone(),
-                serde_json::to_value(s).unwrap_or_else(|e| panic!("MCP server config serialization failed: {e}")),
+                serde_json::to_value(s)
+                    .unwrap_or_else(|e| panic!("MCP server config serialization failed: {e}")),
             )
         })
         .collect();

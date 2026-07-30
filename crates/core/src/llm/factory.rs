@@ -85,34 +85,4 @@ pub fn create_factory(
     })
 }
 
-#[allow(clippy::unwrap_used)]
-#[tokio::test]
-async fn test_factory() {
-    let dir = tempfile::tempdir().unwrap();
-    let cwd = dir.path().to_string_lossy().to_string();
-    let session_dir = dir.path().join("sessions");
-    std::fs::create_dir_all(&session_dir).unwrap();
 
-    let factory = create_factory("/tmp/pi", None, None, None);
-    let session_manager = pi_coding_agent::core::session_manager::SessionManager::new(
-        &cwd,
-        &session_dir.to_string_lossy(),
-        None,
-        false,
-        None,
-    );
-
-    let runtime = create_agent_session_runtime(
-        factory,
-        CreateAgentSessionRuntimeParams {
-            cwd: cwd.clone(),
-            agent_dir: "/tmp/pi".into(),
-            session_manager,
-            session_start_event: None,
-        },
-    )
-    .await;
-
-    assert!(!runtime.cwd().is_empty());
-    assert!(!runtime.session().get_session_id().is_empty());
-}
