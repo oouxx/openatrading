@@ -7,11 +7,12 @@ use axum::{
     },
     Json,
 };
-use futures::stream::{self, Stream};
+use async_stream::stream;
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 
 use crate::AppState;
 
@@ -19,6 +20,8 @@ use crate::cache::{self, CachePolicy};
 use openatrading_core::api::eastmoney::LhbDetail;
 use openatrading_core::api::utils::last_n_trading_days;
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::api::utils::to_yahoo_symbol;
+use crate::market_stream::{FetchFn, StreamSpec};
 
 // ── Response types ────────────────────────────────────
 
@@ -165,8 +168,42 @@ pub struct KlineStreamQuery {
     symbols: String,
 }
 
+/// Build an SSE body from a hub subscription.
+///
+/// Replays `last` (if any) so a fresh subscriber gets immediate data, then
+/// forwards live broadcast messages. The first live message equal to `last`
+/// is skipped — the race between reading `last` and subscribing can otherwise
+/// duplicate the most recent payload.
+fn market_sse(
+    rx: broadcast::Receiver<String>,
+    last: Option<String>,
+) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let s = stream! {
+        let mut rx = rx;
+        let mut skip = last.clone();
+        if let Some(json) = last {
+            yield Ok::<_, std::convert::Infallible>(Event::default().data(json));
+        }
+        loop {
+            match rx.recv().await {
+                Ok(json) => {
+                    if let Some(prev) = skip.take() {
+                        if prev == json {
+                            continue;
+                        }
+                    }
+                    yield Ok::<_, std::convert::Infallible>(Event::default().data(json));
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+    Sse::new(s).keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
+}
+
 pub async fn get_kline_stream(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Query(q): Query<KlineStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     let period = match q.period.as_str() {
@@ -175,6 +212,7 @@ pub async fn get_kline_stream(
         "minute" => KlinePeriod::Minute,
         _ => KlinePeriod::Day,
     };
+    let period_str = q.period.clone();
     let count = q.count;
     let symbols: Vec<String> = q
         .symbols
@@ -182,74 +220,48 @@ pub async fn get_kline_stream(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    let client = XuanguBaoClient::new();
+    if symbols.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
-    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
-    tokio::spawn(async move {
-        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
-        let json = match client.fetch_kline_batch(&symbols, period, count).await {
-            Ok(data) => match serde_json::to_string(&data) {
-                Ok(s) => s,
-                Err(e) => {
-                    openatrading_core::log::error!(
-                        "[kline-stream] initial serialize failed {:?}: {e}",
-                        symbols
-                    );
-                    return;
-                }
-            },
-            Err(e) => {
-                openatrading_core::log::warn!("[kline-stream] initial fetch {:?}: {e}", symbols);
-                serde_json::json!({ "error": e.to_string() }).to_string()
-            }
-        };
-        if tx.send(Ok(Event::default().data(json))).await.is_err() {
-            return;
-        }
-
-        loop {
-            let is_trading = cache::is_trading_hours();
-            let delay = if is_trading {
-                Duration::from_secs(3)
-            } else {
-                Duration::from_secs(30)
-            };
-
-            tokio::select! {
-                () = tx.closed() => break,
-                () = tokio::time::sleep(delay) => {},
-            }
-
-            if is_trading {
-                openatrading_core::log::info!("[kline-stream] kline streaming {:?}", symbols);
-                let json = match client.fetch_kline_batch(&symbols, period, count).await {
-                    Ok(data) => match serde_json::to_string(&data) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            openatrading_core::log::error!(
-                                "[kline-stream] serialize failed {:?}: {e}",
-                                symbols
-                            );
-                            continue;
+    // One shared upstream poll per symbol set, fanned out to every SSE
+    // connection via the hub. The fetch closure also repopulates the
+    // per-symbol kline cache, so the single-shot `/api/kline/:symbol`
+    // endpoint reads stream-fresh data instead of fetching upstream itself.
+    let cache = Arc::clone(&state.cache);
+    let client = Arc::new(XuanguBaoClient::new());
+    let fetch: FetchFn = Arc::new(move |syms: &[String]| {
+        let client = Arc::clone(&client);
+        let cache = Arc::clone(&cache);
+        let period_str = period_str.clone();
+        let syms: Vec<String> = syms.to_vec();
+        Box::pin(async move {
+            let data = client
+                .fetch_kline_batch(&syms, period, count)
+                .await
+                .map_err(|e| e.to_string())?;
+            for sym in &syms {
+                if let Ok(ykey) = to_yahoo_symbol(sym) {
+                    if let Some(kline) = data.get(&ykey) {
+                        if let Ok(serialized) = serde_json::to_string(kline) {
+                            let key = format!("kline_{sym}_{period_str}_{count}");
+                            cache::set(&cache, &key, &serialized, CachePolicy::daily());
                         }
-                    },
-                    Err(e) => {
-                        openatrading_core::log::warn!("[kline-stream] {:?}: {e}", symbols);
-                        serde_json::json!({ "error": e.to_string() }).to_string()
                     }
-                };
-                if tx.send(Ok(Event::default().data(json))).await.is_err() {
-                    break;
                 }
             }
-        }
+            serde_json::to_string(&data).map_err(|e| e.to_string())
+        })
     });
 
-    let stream = stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    });
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
+    let spec = StreamSpec {
+        key: format!("kline:{}:{}", period.as_str(), symbols.join(",")),
+        trading_interval: Duration::from_secs(3),
+        nontrading_interval: Duration::from_secs(30),
+        fetch,
+    };
+    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(rx, last))
 }
 
 /// GET /api/kline/:symbol
@@ -297,7 +309,7 @@ pub struct RealtimeStreamQuery {
 }
 
 pub async fn get_realtime_stream(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Query(q): Query<RealtimeStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     let symbols: Vec<String> = q
@@ -306,57 +318,51 @@ pub async fn get_realtime_stream(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    let client = XuanguBaoClient::new();
+    if symbols.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
-    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
-    tokio::spawn(async move {
-        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
-        let json = match client.fetch_realtime_batch(&symbols).await {
-            Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-            Err(e) => {
-                openatrading_core::log::warn!("[realtime-stream] initial fetch {:?}: {e}", symbols);
-                serde_json::json!({ "error": e.to_string() }).to_string()
-            }
-        };
-        if tx.send(Ok(Event::default().data(json))).await.is_err() {
-            return;
-        }
-
-        loop {
-            let is_trading = cache::is_trading_hours();
-            let delay = if is_trading {
-                Duration::from_secs(3)
-            } else {
-                Duration::from_secs(30)
-            };
-
-            tokio::select! {
-                () = tx.closed() => break,
-                () = tokio::time::sleep(delay) => {},
-            }
-
-            if is_trading {
-                openatrading_core::log::info!("[realtime-stream] realtime streaming {:?}", symbols);
-                let json = match client.fetch_realtime_batch(&symbols).await {
-                    Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-                    Err(e) => {
-                        openatrading_core::log::warn!("[realtime-stream] {:?}: {e}", symbols);
-                        serde_json::json!({ "error": e.to_string() }).to_string()
+    // One shared upstream poll per symbol set, fanned out to every SSE
+    // connection via the hub. The fetch closure also repopulates the
+    // per-symbol realtime cache, so the single-shot `/api/realtime/:symbol`
+    // endpoint reads stream-fresh data instead of fetching upstream itself.
+    let cache = Arc::clone(&state.cache);
+    let client = Arc::new(XuanguBaoClient::new());
+    let fetch: FetchFn = Arc::new(move |syms: &[String]| {
+        let client = Arc::clone(&client);
+        let cache = Arc::clone(&cache);
+        let syms: Vec<String> = syms.to_vec();
+        Box::pin(async move {
+            let data = client
+                .fetch_realtime_batch(&syms)
+                .await
+                .map_err(|e| e.to_string())?;
+            for sym in &syms {
+                if let Ok(ykey) = to_yahoo_symbol(sym) {
+                    if let Some(quote) = data.get(&ykey) {
+                        if let Ok(serialized) = serde_json::to_string(quote) {
+                            cache::set(
+                                &cache,
+                                &format!("realtime_{sym}"),
+                                &serialized,
+                                CachePolicy::realtime(),
+                            );
+                        }
                     }
-                };
-                if tx.send(Ok(Event::default().data(json))).await.is_err() {
-                    break;
                 }
             }
-            // 非交易时间：不拉取、不发事件；keep-alive 保持连接，前端保留最后一笔数据。
-        }
+            serde_json::to_string(&data).map_err(|e| e.to_string())
+        })
     });
 
-    let stream = stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    });
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
+    let spec = StreamSpec {
+        key: format!("realtime:{}", symbols.join(",")),
+        trading_interval: Duration::from_secs(3),
+        nontrading_interval: Duration::from_secs(30),
+        fetch,
+    };
+    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(rx, last))
 }
 
 /// GET /api/yesterday-limit-up
