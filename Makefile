@@ -133,11 +133,8 @@ _bump-set:
 	$(call _set_version,$(VERSION))
 
 define _set_version
-	# Update workspace version in Cargo.toml (single source of truth)
 	sed -i '' '/^\[workspace\.package\]/,/^\[/{ s/^version = "[0-9][^"]*"/version = "$(1)"/; }' Cargo.toml
-	# Sync tauri.conf.json from workspace version
-	sed -i '' 's/"version": "[0-9][^"]*"/"version": "$(1)"/' src-tauri/tauri.conf.json
-	@echo "✓ version $(1) written to Cargo.toml and src-tauri/tauri.conf.json"
+	@echo "✓ version $(1)"
 endef
 
 _release:
