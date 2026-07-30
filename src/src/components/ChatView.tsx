@@ -8,6 +8,7 @@ import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import TurnDivider from "@/components/chat/TurnDivider"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
+import type { HistoryMessage } from "@/agents/types"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,7 +19,7 @@ import KlineDrawer from "@/components/KlineDrawer"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { applyEvent } from "@/agents/reducer"
+import { applyEvent, historyToTurns } from "@/agents/reducer"
 import type {
   TranscriptBlock,
   TranscriptTurn,
@@ -162,7 +163,17 @@ export default function AiCopilot({
   // The WebSocket onopen only loads history once per connection, so
   // switching to an already-connected session needs an explicit fetch.
   useEffect(() => {
-    if (activeThreadId && !isTauri) {
+    if (!activeThreadId) return
+    if (isTauri) {
+      fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
+        .then((msgs) => {
+          if (!msgs || msgs.length === 0) return
+          const turns = historyToTurns(msgs)
+          threadTurnsRef.current.set(activeThreadId, turns)
+          setThreadTurns(new Map(threadTurnsRef.current))
+        })
+        .catch(() => {})
+    } else {
       wsAgent.loadHistory(activeThreadId)
     }
   }, [activeThreadId, wsAgent.loadHistory])
@@ -176,10 +187,18 @@ export default function AiCopilot({
       transportRef.current = transport
       transport.onEvent((event) => {
         const currentTurns = threadTurnsRef.current.get(threadId) ?? []
-        const { turns: newTurns } = applyEvent(currentTurns, event)
+        const { turns: newTurns, terminal } = applyEvent(currentTurns, event)
         threadTurnsRef.current.set(threadId, newTurns)
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
+        if (terminal) {
+          setStreaming(false)
+          if (threadId === streamThreadRef.current) {
+            streamThreadRef.current = null
+            setStreamThreadId(null)
+          }
+          onReload?.()
+        }
       })
       await transport.ready()
     },

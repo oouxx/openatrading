@@ -35,7 +35,7 @@ export default function AppShell() {
       if (activeThreadId === id) setActiveThreadId(null)
       reload()
     },
-    [activeThreadId, deleteSession, reload]
+    [activeThreadId, deleteSession, reload, setActiveThreadId]
   )
 
   const handleActiveChange = useCallback(
@@ -44,7 +44,7 @@ export default function AppShell() {
       useStockTabStore.getState().setActiveStockTab(null)
       reload()
     },
-    [reload]
+    [reload, setActiveThreadId]
   )
 
   return (
