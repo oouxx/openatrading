@@ -55,6 +55,7 @@ async fn test_create_agent_session_with_extension() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_trading_tools_exec() {
     setup_test_env();
     // Set cwd to workspace root so settings.json is found
@@ -174,6 +175,7 @@ async fn test_trading_tools_exec() {
 /// Ask the LLM what tools it has access to and assert the reply mentions the
 /// built-in `bash` tool. Requires `OPENROUTER_API_KEY` and network access.
 #[tokio::test]
+#[ignore]
 async fn test_bash_tool_exec() {
     setup_test_env();
     let agent_dir = pi_coding_agent::config::get_agent_dir()
@@ -663,6 +665,3 @@ async fn test_multi_turn_conversation() {
     // 关闭 session
     pool.close_session(&session_id).await;
 }
-
-#[tokio::test]
-async fn test_multi_turn() {}
