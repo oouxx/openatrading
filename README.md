@@ -51,7 +51,6 @@ openatrading --data limit_up,overview   # 指定数据源
 openatrading --ai              # 全量 + AI 分析
 openatrading decision          # 手动触发决策
 openatrading decision --dry-run --role zarili   # 指定角色试运行
-openatrading chat              # AI 对话终端
 openatrading doctor            # 诊断服务状态
 openatrading skills list       # 列出可安装技能
 openatrading mcp list          # 列出 MCP 工具
@@ -112,7 +111,6 @@ db_path = "data.db"
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5 *"
-decision_schedule = "0 */30 9-15 * * 1-5 *"
 
 [social]
 notify_channel = "telegram"

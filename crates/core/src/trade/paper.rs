@@ -46,7 +46,7 @@ impl PaperBroker {
     }
 
     /// A股手数取整（100 股 = 1 手，向下取整）
-    pub fn round_shares(shares: i64) -> i64 {
+    pub const fn round_shares(shares: i64) -> i64 {
         (shares / MIN_SHARES) * MIN_SHARES
     }
 
@@ -73,16 +73,10 @@ impl PaperBroker {
         positions: &PositionSnapshot,
     ) -> Result<(), String> {
         if shares < MIN_SHARES {
-            return Err(format!(
-                "shares {} is less than minimum {}",
-                shares, MIN_SHARES
-            ));
+            return Err(format!("shares {shares} is less than minimum {MIN_SHARES}"));
         }
         if shares % MIN_SHARES != 0 {
-            return Err(format!(
-                "shares {} is not a multiple of {}",
-                shares, MIN_SHARES
-            ));
+            return Err(format!("shares {shares} is not a multiple of {MIN_SHARES}"));
         }
 
         let (total, commission) = self.buy_cost(exec_price, shares);
@@ -114,7 +108,7 @@ impl PaperBroker {
     /// 校验卖出：持仓存在且可卖
     pub fn validate_sell(symbol: &str, shares: i64) -> Result<(), String> {
         if shares == 0 {
-            return Err(format!("no open position found for {}", symbol));
+            return Err(format!("no open position found for {symbol}"));
         }
         Ok(())
     }

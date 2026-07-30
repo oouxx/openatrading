@@ -1,24 +1,29 @@
-pub mod mcp_server;
-pub mod mcp_tools;
-pub mod session;
+//! LLM / agent glue re-exported for the openatrading layers.
+//!
+//! The pure pi-coding-agent session lifecycle (pool, factory, session-file
+//! lookup) lives in [`openatrading_agent::session`]; this module re-exports it
+//! alongside the MCP infrastructure and the domain-specific tool registry.
+//!
+//! Domain tools that couple to core's types (`TradeManager`, `MemoryStore`)
+//! stay in [`tools`] — they cannot move to the agent crate without creating a
+//! circular `agent → core` dependency.
+
 pub mod tools;
 
-pub use openatrading_provider::llm::{
-    assistant_event_to_stream_events, LlmClient, StreamEvent, StreamFn, StreamFnOptions,
-    StreamResult, ToolCall, ToolCallFunction, ToolCallItem, ToolCallMessage, ToolChatChoice,
-    ToolChatResponse, ToolStreamResult,
+// ── Session lifecycle (from the agent crate) ───────────────────────────────
+pub use openatrading_agent::session::{
+    create_factory, find_session_file_by_id, FactoryOptions, SessionPool,
 };
 
-pub use mcp_server::{serve_http, serve_stdio, MarketToolsServer};
-pub use mcp_tools::{
-    build_tools, McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
+// ── MCP infrastructure (from the agent crate) ─────────────────────────────
+pub use openatrading_agent::mcp_server::{serve_http, serve_stdio};
+pub use openatrading_agent::mcp_tools::{
+    McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
 };
-pub use tools::ToolRegistry;
 
-pub use openatrading_agent::agent::{Agent, AgentOptions};
+// ── pi-rs types ────────────────────────────────────────────────────────────
 pub use openatrading_agent::pi_ai_types;
-pub use openatrading_agent::types::{
-    AfterToolCallContext, AfterToolCallResult, AgentContext, AgentEvent, AgentMessage, AgentState,
-    AgentTool, AgentToolCall, AgentToolResult, BeforeToolCallContext, BeforeToolCallResult,
-    ConvertToLlmFn, DynTool, QueueMode, ShouldStopAfterTurnContext,
-};
+pub use openatrading_agent::types::{AgentMessage, DynTool};
+
+// ── Domain tool registry (stays in core) ──────────────────────────────────
+pub use self::tools::{build_tools, ToolRegistry};

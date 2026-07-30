@@ -409,14 +409,14 @@ export default function BreakoutView() {
       </div>
 
       {!hasYesterdayData && (
-        <div className="border-hairline bg-bg-surface text-ink-muted mb-[18px] rounded-xl border px-4 py-3 text-center text-xs">
+        <div className="bg-bg-surface border-hairline text-ink-muted mb-[18px] rounded-xl border px-4 py-3 text-center text-xs">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
 
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[220px_1fr]">
         {/* Filter Panel */}
-        <div className="border-hairline bg-bg-surface order-2 overflow-hidden rounded-xl border md:order-none">
+        <div className="bg-bg-surface border-hairline order-2 overflow-hidden rounded-xl border md:order-0">
           <div className="border-hairline border-b px-3.5 py-3 text-[13px] font-medium text-white">
             筛选 & 统计
           </div>
@@ -498,7 +498,7 @@ export default function BreakoutView() {
         </div>
 
         {/* Table */}
-        <div className="border-hairline bg-bg-surface order-1 overflow-hidden rounded-xl border md:order-none">
+        <div className="bg-bg-surface border-hairline order-1 overflow-hidden rounded-xl border md:order-0">
           <div className="border-hairline flex items-center justify-between gap-2.5 border-b px-4 py-2.5">
             <h3 className="text-[13px] font-medium text-white">涨停对比明细</h3>
             <span className="text-ink-muted text-[11px]">{items.length} 只</span>
@@ -611,7 +611,7 @@ export default function BreakoutView() {
               onClick={() => setSelectedStock(null)}
             />
             <motion.div
-              className="border-hairline bg-bg-surface fixed top-0 right-0 z-50 h-full overflow-y-auto border-l"
+              className="bg-bg-surface border-hairline fixed top-0 right-0 z-50 h-full overflow-y-auto border-l"
               style={{ width: 520 }}
               initial={{ x: 520 }}
               animate={{ x: 0 }}
@@ -619,7 +619,7 @@ export default function BreakoutView() {
               transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
             >
               {/* Header */}
-              <div className="border-hairline bg-bg-surface sticky top-0 z-10 border-b p-4">
+              <div className="bg-bg-surface border-hairline sticky top-0 z-10 border-b p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-white">{selectedStock.name}</span>
@@ -649,7 +649,7 @@ export default function BreakoutView() {
               </div>
 
               {/* K-line Tabs */}
-              <div className="border-hairline bg-bg-surface sticky top-[89px] z-10 flex gap-1 border-b px-4 py-2">
+              <div className="bg-bg-surface border-hairline sticky top-[89px] z-10 flex gap-1 border-b px-4 py-2">
                 {[
                   { label: "分时", value: "minute" },
                   { label: "日K", value: "day" },
@@ -685,7 +685,7 @@ export default function BreakoutView() {
               {selectedStock.reason && (
                 <div className="border-hairline border-t px-4 py-3">
                   <p className="text-ink-muted mb-2 text-xs">板块分析</p>
-                  <p className="text-xs leading-relaxed text-white/70">{selectedStock.reason}</p>
+                  <p className="text-xs/relaxed text-white/70">{selectedStock.reason}</p>
                 </div>
               )}
             </motion.div>
@@ -739,7 +739,7 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
   return (
     <div className="grid grid-cols-3 gap-2 p-4 text-xs">
       {metrics.map((m) => (
-        <div key={m.label} className="rounded-card border-hairline bg-bg border p-3 text-center">
+        <div key={m.label} className="bg-bg border-hairline rounded-card border p-3 text-center">
           <p className="text-ink-muted text-[11px]">{m.label}</p>
           <p className={`mt-1 font-mono text-xs text-white ${m.cls || ""}`}>{m.value}</p>
         </div>

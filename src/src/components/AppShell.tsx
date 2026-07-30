@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
-import AiCopilot from "@/components/AiCopilot"
+import AiCopilot from "@/components/ChatView"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import ConversationSidebar from "./ConversationSidebar"
 import { useThreads } from "@/hooks/useChatThreads"
 import { useStockTabStore } from "@/stores/stockTabStore"
@@ -16,33 +17,34 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 export default function AppShell() {
-  const { mode } = useAppMode()
+  const { mode, setMode } = useAppMode()
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance")
   const activeThreadId = useThreadStore((s) => s.activeThreadId)
   const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
-  const { threads, createThread, deleteThread, reload } = useThreads()
+  const { sessions, deleteSession, reload } = useThreads()
 
-  const handleNewThread = async () => {
-    const thread = await createThread("新对话")
-    setActiveThreadId(thread.id)
+  const handleNewThread = () => {
+    setActiveThreadId(null)
+    useStockTabStore.getState().setActiveStockTab(null)
+    setMode("chat")
   }
 
   const handleDeleteThread = useCallback(
-    async (id: number) => {
-      await deleteThread(id)
+    async (id: string) => {
+      await deleteSession(id)
       if (activeThreadId === id) setActiveThreadId(null)
       reload()
     },
-    [activeThreadId, deleteThread, reload]
+    [activeThreadId, deleteSession, reload, setActiveThreadId]
   )
 
   const handleActiveChange = useCallback(
-    (id: number | null) => {
+    (id: string | null) => {
       setActiveThreadId(id)
       useStockTabStore.getState().setActiveStockTab(null)
       reload()
     },
-    [reload]
+    [reload, setActiveThreadId]
   )
 
   return (
@@ -52,7 +54,7 @@ export default function AppShell() {
           <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
         ) : (
           <ConversationSidebar
-            threads={threads}
+            threads={sessions}
             activeThreadId={activeThreadId}
             onSelectThread={handleActiveChange}
             onNewThread={handleNewThread}
@@ -63,11 +65,14 @@ export default function AppShell() {
           {mode === "chat" ? (
             <div className="flex h-full max-h-screen min-w-0 flex-1 flex-row">
               <div className="flex min-w-0 flex-1 flex-col">
-                <AiCopilot
-                  activeThreadId={activeThreadId}
-                  onActiveThreadChange={handleActiveChange}
-                  onReload={reload}
-                />
+                <ErrorBoundary name="AiCopilot">
+                  <AiCopilot
+                    activeThreadId={activeThreadId}
+                    onActiveThreadChange={handleActiveChange}
+                    onReload={reload}
+                    sessions={sessions}
+                  />
+                </ErrorBoundary>
               </div>
               <RightPanel />
             </div>

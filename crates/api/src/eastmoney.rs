@@ -1,6 +1,6 @@
+use ahash::AHashMap;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use thiserror::Error;
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ pub enum StatsCycle {
 }
 
 impl StatsCycle {
-    fn as_code(&self) -> &'static str {
+    const fn as_code(self) -> &'static str {
         match self {
             Self::OneMonth => "01",
             Self::ThreeMonths => "02",
@@ -159,18 +159,22 @@ pub struct StockSearchItem {
 }
 
 impl LhbClient {
+    /// Create a new `LhbClient`.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built (should never happen).
     pub fn new() -> Self {
         Self {
             client: Client::builder()
                 .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
                 .build()
-                .expect("failed to build reqwest client"),
+                .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}")),
         }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    /// 把 "20240115" 转成 "2024-01-15"
+    /// 把 "`20_240_115`" 转成 "2024-01-15"
     fn fmt_date(date: &str) -> Result<String, LhbError> {
         if date.len() != 8 || !date.chars().all(|c| c.is_ascii_digit()) {
             return Err(LhbError::InvalidDate(date.to_string()));
@@ -179,16 +183,18 @@ impl LhbClient {
     }
 
     fn f64_field(v: &serde_json::Value, key: &str) -> Option<f64> {
-        v.get(key).and_then(|x| x.as_f64())
+        v.get(key).and_then(serde_json::Value::as_f64)
     }
 
     fn str_field(v: &serde_json::Value, key: &str) -> Option<String> {
-        v.get(key).and_then(|x| x.as_str()).map(|s| s.to_string())
+        v.get(key)
+            .and_then(|x| x.as_str())
+            .map(std::string::ToString::to_string)
     }
 
     async fn fetch_all_pages(
         &self,
-        params: &mut HashMap<&str, String>,
+        params: &mut AHashMap<&str, String>,
     ) -> Result<Vec<serde_json::Value>, LhbError> {
         let first: ApiResponse = self
             .client
@@ -199,9 +205,8 @@ impl LhbClient {
             .json()
             .await?;
 
-        let result = match first.result {
-            Some(r) => r,
-            None => return Ok(vec![]),
+        let Some(result) = first.result else {
+            return Ok(vec![]);
         };
         let total_pages = result.pages.unwrap_or(1);
         let mut rows = result.data.unwrap_or_default();
@@ -227,6 +232,9 @@ impl LhbClient {
     // ── public API ───────────────────────────────────────────────────────────
 
     /// 龙虎榜详情列表（按日期范围）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn lhb_detail(
         &self,
         start_date: &str,
@@ -234,7 +242,7 @@ impl LhbClient {
     ) -> Result<Vec<LhbDetail>, LhbError> {
         let s = Self::fmt_date(start_date)?;
         let e = Self::fmt_date(end_date)?;
-        let mut params: HashMap<&str, String> = [
+        let mut params: AHashMap<&str, String> = [
             ("reportName", "RPT_DAILYBILLBOARD_DETAILSNEW".into()),
             ("columns", "SECURITY_CODE,SECURITY_NAME_ABBR,TRADE_DATE,CLOSE_PRICE,CHANGE_RATE,BILLBOARD_NET_AMT,BILLBOARD_BUY_AMT,BILLBOARD_SELL_AMT,BILLBOARD_DEAL_AMT,ACCUM_AMOUNT,TURNOVERRATE,FREE_MARKET_CAP,EXPLANATION,D1_CLOSE_ADJCHRATE,D2_CLOSE_ADJCHRATE,D5_CLOSE_ADJCHRATE,D10_CLOSE_ADJCHRATE".into()),
             ("filter", format!("(TRADE_DATE<='{e}')(TRADE_DATE>='{s}')")),
@@ -272,6 +280,9 @@ impl LhbClient {
     }
 
     /// 个股龙虎榜席位明细（买入 or 卖出）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn lhb_stock_seat(
         &self,
         code: &str,
@@ -286,7 +297,7 @@ impl LhbClient {
             SeatFlag::Buy => ("RPT_BILLBOARD_DAILYDETAILSBUY", "BUY"),
             SeatFlag::Sell => ("RPT_BILLBOARD_DAILYDETAILSSELL", "SELL"),
         };
-        let mut params: HashMap<&str, String> = [
+        let mut params: AHashMap<&str, String> = [
             ("reportName", report_name.into()),
             ("columns", "ALL".into()),
             (
@@ -318,6 +329,9 @@ impl LhbClient {
     }
 
     /// 龙虎榜合并数据（详情 + 买卖席位），并发请求，用于前端一次性渲染
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn lhb_combined(
         &self,
         start_date: &str,
@@ -377,6 +391,9 @@ impl LhbClient {
     }
 
     /// 每日活跃营业部
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn lhb_active_yyb(
         &self,
         start_date: &str,
@@ -384,7 +401,7 @@ impl LhbClient {
     ) -> Result<Vec<LhbActiveYyb>, LhbError> {
         let s = Self::fmt_date(start_date)?;
         let e = Self::fmt_date(end_date)?;
-        let mut params: HashMap<&str, String> = [
+        let mut params: AHashMap<&str, String> = [
             ("reportName", "RPT_OPERATEDEPT_ACTIVE".into()),
             ("columns", "ALL".into()),
             (
@@ -410,8 +427,10 @@ impl LhbClient {
                 dept_name: Self::str_field(v, "OPERATEDEPT_NAME").unwrap_or_default(),
                 dept_code: Self::str_field(v, "OPERATEDEPT_CODE").unwrap_or_default(),
                 onlist_date: Self::str_field(v, "ONLIST_DATE").unwrap_or_default(),
-                buy_stock_count: v.get("BUY_STOCK_COUNT").and_then(|x| x.as_i64()),
-                sell_stock_count: v.get("SELL_STOCK_COUNT").and_then(|x| x.as_i64()),
+                buy_stock_count: v.get("BUY_STOCK_COUNT").and_then(serde_json::Value::as_i64),
+                sell_stock_count: v
+                    .get("SELL_STOCK_COUNT")
+                    .and_then(serde_json::Value::as_i64),
                 buy_total_amt: Self::f64_field(v, "BUY_AMT"),
                 sell_total_amt: Self::f64_field(v, "SELL_AMT"),
                 net_amt: Self::f64_field(v, "TOTAL_NETAMT"),
@@ -420,11 +439,14 @@ impl LhbClient {
     }
 
     /// 个股上榜统计（近一月/三月/六月/一年）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn lhb_stock_statistic(
         &self,
         cycle: StatsCycle,
     ) -> Result<Vec<serde_json::Value>, LhbError> {
-        let mut params: HashMap<&str, String> = [
+        let mut params: AHashMap<&str, String> = [
             ("reportName", "RPT_BILLBOARD_TRADEALL".into()),
             ("columns", "ALL".into()),
             (
@@ -446,6 +468,9 @@ impl LhbClient {
     }
 
     /// Search stocks by keyword (name or code) via 东方财富 suggestion API.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn search_stocks(&self, keyword: &str) -> Result<Vec<StockSearchItem>, LhbError> {
         let url = "https://searchapi.eastmoney.com/api/suggest/get";
         let params = [
@@ -497,8 +522,14 @@ mod tests {
 
     #[test]
     fn test_fmt_date_valid() {
-        assert_eq!(LhbClient::fmt_date("20240115").unwrap(), "2024-01-15");
-        assert_eq!(LhbClient::fmt_date("20230101").unwrap(), "2023-01-01");
+        assert_eq!(
+            LhbClient::fmt_date("20240115").unwrap_or_else(|_| panic!("test failed")),
+            "2024-01-15"
+        );
+        assert_eq!(
+            LhbClient::fmt_date("20230101").unwrap_or_else(|_| panic!("test failed")),
+            "2023-01-01"
+        );
     }
 
     #[test]
@@ -557,7 +588,7 @@ mod tests {
         let client = LhbClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
             .block_on(client.lhb_stock_seat("123", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
@@ -567,8 +598,8 @@ mod tests {
         let client = LhbClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
-            .unwrap()
-            .block_on(client.lhb_stock_seat("1234567", "20240115", SeatFlag::Buy));
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
+            .block_on(client.lhb_stock_seat("1_234_567", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
@@ -577,13 +608,13 @@ mod tests {
         let client = LhbClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
             .block_on(client.lhb_stock_seat("", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_seat_valid_symbol() {
         let client = LhbClient::new();
         let result = client
@@ -597,22 +628,22 @@ mod tests {
         let client = LhbClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
             .block_on(client.lhb_stock_seat("000001", "2024-115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidDate(_))));
     }
 
-    // ── 集成测试（真实网络，加 #[ignore] 默认跳过）────────────────────────────
+    // ── 集成测试（真实网络，加 #[ignore = "integration test, requires network"] 默认跳过）────────────────────────────
     // 运行：cargo test -- --ignored
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_detail_returns_data() {
         let client = LhbClient::new();
         let rows = client
-            .lhb_detail("20240415", "20240417")
+            .lhb_detail("20_240_415", "20_240_417")
             .await
-            .expect("request failed");
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
 
         assert!(!rows.is_empty(), "should have at least one row");
 
@@ -625,14 +656,14 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_seat_buy() {
         let client = LhbClient::new();
         // 用一个确定有龙虎榜记录的日期和股票
         let rows = client
-            .lhb_stock_seat("000788", "20220315", SeatFlag::Buy)
+            .lhb_stock_seat("000788", "20_220_315", SeatFlag::Buy)
             .await
-            .expect("request failed");
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
 
         println!("lhb_stock_seat buy: {} seats", rows.len());
         for seat in &rows {
@@ -641,13 +672,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_active_yyb() {
         let client = LhbClient::new();
         let rows = client
-            .lhb_active_yyb("20240415", "20240417")
+            .lhb_active_yyb("20_240_415", "20_240_417")
             .await
-            .expect("request failed");
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
 
         assert!(!rows.is_empty());
         println!("active yyb: {} rows", rows.len());
@@ -655,13 +686,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_statistic() {
         let client = LhbClient::new();
         let rows = client
             .lhb_stock_statistic(StatsCycle::OneMonth)
             .await
-            .expect("request failed");
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
 
         assert!(!rows.is_empty());
         println!("stock statistic: {} rows", rows.len());
@@ -676,13 +707,13 @@ mod tests {
             "TRADE_DATE": "2025-01-20 00:00:00",
             "CLOSE_PRICE": 1685.0,
             "CHANGE_RATE": 2.35,
-            "BILLBOARD_NET_AMT": 320000000.0,
-            "BILLBOARD_BUY_AMT": 437000000.0,
-            "BILLBOARD_SELL_AMT": 117000000.0,
-            "BILLBOARD_DEAL_AMT": 554000000.0,
-            "ACCUM_AMOUNT": 8632000000.0,
+            "BILLBOARD_NET_AMT": 320_000_000.0,
+            "BILLBOARD_BUY_AMT": 437_000_000.0,
+            "BILLBOARD_SELL_AMT": 117_000_000.0,
+            "BILLBOARD_DEAL_AMT": 554_000_000.0,
+            "ACCUM_AMOUNT": 8_632_000_000.0,
             "TURNOVERRATE": 0.85,
-            "FREE_MARKET_CAP": 2112000000000.0,
+            "FREE_MARKET_CAP": 2_112_000_000_000.0,
             "EXPLANATION": "日涨幅偏离值达7%",
             "D1_CLOSE_ADJCHRATE": 1.2,
             "D2_CLOSE_ADJCHRATE": -0.5,
@@ -712,9 +743,9 @@ mod tests {
         assert_eq!(detail.name, "贵州茅台");
         assert_eq!(detail.close_price, Some(1685.0));
         assert_eq!(detail.change_rate, Some(2.35));
-        assert_eq!(detail.billboard_net_amt, Some(320000000.0));
-        assert_eq!(detail.billboard_buy_amt, Some(437000000.0));
-        assert_eq!(detail.billboard_sell_amt, Some(117000000.0));
+        assert_eq!(detail.billboard_net_amt, Some(320_000_000.0));
+        assert_eq!(detail.billboard_buy_amt, Some(437_000_000.0));
+        assert_eq!(detail.billboard_sell_amt, Some(117_000_000.0));
         assert_eq!(detail.explanation, Some("日涨幅偏离值达7%".to_string()));
         assert_eq!(detail.d1_chg, Some(1.2));
         assert_eq!(detail.d2_chg, Some(-0.5));
@@ -766,13 +797,13 @@ mod tests {
             trade_date: "2025-01-20 00:00:00".into(),
             close_price: Some(1685.0),
             change_rate: Some(2.35),
-            billboard_net_amt: Some(320000000.0),
-            billboard_buy_amt: Some(437000000.0),
-            billboard_sell_amt: Some(117000000.0),
-            billboard_deal_amt: Some(554000000.0),
-            accum_amount: Some(8632000000.0),
+            billboard_net_amt: Some(320_000_000.0),
+            billboard_buy_amt: Some(437_000_000.0),
+            billboard_sell_amt: Some(117_000_000.0),
+            billboard_deal_amt: Some(554_000_000.0),
+            accum_amount: Some(8_632_000_000.0),
             turnover_rate: Some(0.85),
-            free_market_cap: Some(2112000000000.0),
+            free_market_cap: Some(2_112_000_000_000.0),
             explanation: Some("日涨幅偏离值达7%".into()),
             d1_chg: Some(1.2),
             d2_chg: Some(-0.5),
@@ -782,11 +813,11 @@ mod tests {
         let seats = vec![LhbSeatDetail {
             dept_name: "机构专用".into(),
             seat_type: Some("机构".into()),
-            buy_amt: Some(152000000.0),
+            buy_amt: Some(152_000_000.0),
             buy_ratio: Some(0.035),
             sell_amt: None,
             sell_ratio: None,
-            net_amt: Some(152000000.0),
+            net_amt: Some(152_000_000.0),
         }];
         let combined = LhbCombinedEntry {
             code: detail.code.clone(),
@@ -804,12 +835,12 @@ mod tests {
             d2_chg: detail.d2_chg,
             d5_chg: detail.d5_chg,
             d10_chg: detail.d10_chg,
-            buy_seats: seats.clone(),
+            buy_seats: seats,
             sell_seats: vec![],
         };
         assert_eq!(combined.code, "600519");
         assert_eq!(combined.name, "贵州茅台");
-        assert_eq!(combined.billboard_net_amt, Some(320000000.0));
+        assert_eq!(combined.billboard_net_amt, Some(320_000_000.0));
         assert_eq!(combined.buy_seats.len(), 1);
         assert_eq!(combined.buy_seats[0].dept_name, "机构专用");
         assert_eq!(combined.sell_seats.len(), 0);
@@ -862,13 +893,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "integration test, requires network"]
     async fn integration_lhb_combined() {
         let client = LhbClient::new();
         let rows = client
-            .lhb_combined("20240415", "20240417")
+            .lhb_combined("20_240_415", "20_240_417")
             .await
-            .expect("request failed");
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
         assert!(!rows.is_empty(), "should have at least one row");
         let first = &rows[0];
         assert_eq!(first.code.len(), 6);

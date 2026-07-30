@@ -14,9 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 openatrading-core = { path = "../core" }
-openatrading-tui = { path = "../tui" }
 openatrading-web = { path = "../web" }
-openatrading-provider = { path = "../provider" }
 owo-colors = "4"
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
@@ -36,3 +34,7 @@ service-manager = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "local-time"] }
 tracing-appender = "0.2"
+ahash = { workspace = true }
+
+[lints]
+workspace = true

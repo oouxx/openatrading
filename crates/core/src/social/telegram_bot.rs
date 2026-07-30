@@ -5,8 +5,6 @@ use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
 use crate::context::AppContext;
-use crate::cron::run_decision;
-use crate::llm::session::AgentSession;
 use crate::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
@@ -19,13 +17,12 @@ struct ChatSession {
 pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
-    pub mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
+    pub mcp_servers: Vec<crate::llm::McpServerConfig>,
 }
 
 pub struct TelegramBot {
     bot_token: String,
     chat_id: String,
-    mcp_servers: Vec<crate::llm::mcp_tools::McpServerConfig>,
     ctx: AppContext,
     roles: Vec<RoleEntry>,
     session: Arc<Mutex<Option<ChatSession>>>,
@@ -58,9 +55,7 @@ struct GetUpdatesResponse {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct SendMessageResponse {
-    ok: bool,
     result: Option<TgMessageObj>,
 }
 
@@ -74,7 +69,6 @@ impl TelegramBot {
         Self {
             bot_token: config.bot_token,
             chat_id: config.chat_id,
-            mcp_servers: config.mcp_servers,
             ctx,
             roles,
             session: Arc::new(Mutex::new(None)),
@@ -99,10 +93,6 @@ impl TelegramBot {
                     {
                         "command": "new",
                         "description": "开始新对话，清空当前会话历史"
-                    },
-                    {
-                        "command": "decision",
-                        "description": "手动触发每日决策，可选指定角色: /decision [role_name ...]"
                     }
                 ]
             }))
@@ -137,7 +127,7 @@ impl TelegramBot {
                     crate::log::error!("[telegram-bot] getUpdates error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let text = match resp.text().await {
@@ -146,7 +136,7 @@ impl TelegramBot {
                     crate::log::error!("[telegram-bot] read response body error: {e}");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             let body: GetUpdatesResponse = match serde_json::from_str(&text) {
@@ -158,15 +148,14 @@ impl TelegramBot {
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
 
             if !body.ok {
                 let desc = body.description.as_deref().unwrap_or("unknown");
                 let code = body
                     .error_code
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "-".into());
+                    .map_or_else(|| "-".into(), |c| c.to_string());
                 crate::log::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
                 if body.error_code == Some(409) {
                     crate::log::warn!(
@@ -208,19 +197,17 @@ impl TelegramBot {
                 let role_name = s.role_name.clone();
                 drop(session);
 
-                let role = match self.roles.iter().find(|r| r.name == role_name) {
-                    Some(r) => r,
-                    None => {
-                        let mut session = self.session.lock().await;
-                        *session = None;
-                        drop(session);
-                        self.send_message(&format!(
-                            "❌ 当前会话角色 *{}* 已不可用，请使用 /ask role\\_name question 开始新对话",
-                            role_name
-                        ))
-                        .await?;
-                        return Ok(());
-                    },
+                let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) {
+                    r
+                } else {
+                    let mut session = self.session.lock().await;
+                    *session = None;
+                    drop(session);
+                    self.send_message(&format!(
+                        "❌ 当前会话角色 *{role_name}* 已不可用，请使用 /ask role\\_name question 开始新对话"
+                    ))
+                    .await?;
+                    return Ok(());
                 };
 
                 let msg_id = self
@@ -244,18 +231,17 @@ impl TelegramBot {
         match cmd {
             "/new" => {
                 let mut session = self.session.lock().await;
-                if session.is_some() {
-                    let old_role = session.as_ref().unwrap().role_name.clone();
-                    *session = None;
+                if let Some(old) = session.take() {
+                    let old_role = old.role_name;
                     drop(session);
-                    self.send_message(&format!("🗑 已清空与 *{}* 的对话历史，开始新会话", old_role))
+                    self.send_message(&format!("🗑 已清空与 *{old_role}* 的对话历史，开始新会话"))
                         .await?;
                 } else {
                     drop(session);
                     self.send_message("当前没有进行中的对话，使用 /ask role_name question 开始")
                         .await?;
                 }
-            },
+            }
             "/ask" => {
                 if args.is_empty() {
                     let session = self.session.lock().await;
@@ -290,22 +276,21 @@ impl TelegramBot {
                     let role_name = parts[0];
                     let question = parts[1];
 
-                    let role = match self.roles.iter().find(|r| r.name == role_name) {
-                        Some(r) => r,
-                        None => {
-                            let available: Vec<String> =
-                                self.roles.iter().map(|r| r.name.clone()).collect();
-                            self.send_message(&format!(
-                                "❌ 未知角色: {role_name}\n可用角色: {}",
-                                available.join(", ")
-                            ))
-                            .await?;
-                            return Ok(());
-                        },
+                    let role = if let Some(r) = self.roles.iter().find(|r| r.name == role_name) {
+                        r
+                    } else {
+                        let available: Vec<String> =
+                            self.roles.iter().map(|r| r.name.clone()).collect();
+                        self.send_message(&format!(
+                            "❌ 未知角色: {role_name}\n可用角色: {}",
+                            available.join(", ")
+                        ))
+                        .await?;
+                        return Ok(());
                     };
 
                     let mut session = self.session.lock().await;
-                    if session.is_none() || session.as_ref().unwrap().role_name != role_name {
+                    if session.as_ref().map(|s| s.role_name.as_str()) != Some(role_name) {
                         *session = Some(ChatSession {
                             role_name: role_name.to_string(),
                             history: Vec::new(),
@@ -329,16 +314,12 @@ impl TelegramBot {
                         let role_name = s.role_name.clone();
                         drop(session);
 
-                        let role = match self.roles.iter().find(|r| r.name == role_name) {
-                            Some(r) => r,
-                            None => {
-                                self.send_message(&format!(
-                                    "❌ 当前会话角色 *{}* 已不可用，请使用 /new 开始新对话",
-                                    role_name
-                                ))
-                                .await?;
-                                return Ok(());
-                            },
+                        let Some(role) = self.roles.iter().find(|r| r.name == role_name) else {
+                            self.send_message(&format!(
+                                "❌ 当前会话角色 *{role_name}* 已不可用，请使用 /new 开始新对话"
+                            ))
+                            .await?;
+                            return Ok(());
                         };
 
                         let msg_id = self
@@ -357,86 +338,7 @@ impl TelegramBot {
                         .await?;
                     }
                 }
-            },
-            "/decision" => {
-                let filtered_roles: Vec<RoleEntry> = if args.is_empty() {
-                    self.roles.clone()
-                } else {
-                    let names: Vec<&str> = args.split_whitespace().collect();
-                    let matched: Vec<RoleEntry> = self
-                        .roles
-                        .iter()
-                        .filter(|r| names.contains(&r.name.as_str()))
-                        .cloned()
-                        .collect();
-                    if matched.is_empty() {
-                        let available: Vec<String> =
-                            self.roles.iter().map(|r| r.name.clone()).collect();
-                        self.send_message(&format!(
-                            "❌ 未找到角色: {}\n可用角色: {}",
-                            args,
-                            available.join(", ")
-                        ))
-                        .await?;
-                        return Ok(());
-                    }
-                    matched
-                };
-
-                let role_names: Vec<&str> =
-                    filtered_roles.iter().map(|r| r.name.as_str()).collect();
-                let msg_id = self
-                    .send_message(&format!(
-                        "📋 正在执行决策: {}，请稍候...",
-                        role_names.join(", ")
-                    ))
-                    .await?;
-
-                struct DecisionNotifier {
-                    client: reqwest::Client,
-                    bot_token: String,
-                    chat_id: String,
-                }
-
-                #[async_trait::async_trait]
-                impl crate::social::NotificationSender for DecisionNotifier {
-                    async fn send_text(&self, text: &str) -> anyhow::Result<()> {
-                        let url =
-                            format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
-                        let resp = self
-                            .client
-                            .post(&url)
-                            .json(&serde_json::json!({
-                                "chat_id": self.chat_id,
-                                "text": text,
-                            }))
-                            .send()
-                            .await?;
-                        if !resp.status().is_success() {
-                            let body = resp.text().await.unwrap_or_default();
-                            anyhow::bail!("telegram sendMessage failed: {body}");
-                        }
-                        Ok(())
-                    }
-                }
-
-                let mut decision_ctx = self.ctx.clone();
-                decision_ctx.social = Arc::new(DecisionNotifier {
-                    client: self.client.clone(),
-                    bot_token: self.bot_token.clone(),
-                    chat_id: self.chat_id.clone(),
-                });
-                match run_decision(&decision_ctx, &filtered_roles).await {
-                    Ok(()) => {
-                        self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
-                            .await?;
-                    },
-                    Err(e) => {
-                        self.edit_message(msg_id, &format!("❌ 决策执行失败: {e}"))
-                            .await?;
-                    },
-                }
-            },
+            }
             "/start" | "/help" => {
                 let role_list: Vec<String> = self
                     .roles
@@ -447,16 +349,15 @@ impl TelegramBot {
                     "🤖 *OpenATrading Bot*\n\n\
                      *命令列表:*\n\
                      /ask role\\_name question — 向指定角色提问（开始新会话）\n\
-                     /new — 清空对话历史，开始新会话\n\
-                     /decision — 手动触发每日决策（可选: /decision role\\_name ...）\n\n\
+                     /new — 清空对话历史，开始新会话\n\n\
                      *多轮对话:*\n\
                      首次使用 /ask 指定角色后，直接发送消息即可继续对话\n\n\
                      *可用角色:*\n{}",
                     role_list.join("\n")
                 ))
                 .await?;
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         Ok(())
@@ -475,14 +376,6 @@ impl TelegramBot {
             None => crate::prompts::MARKET_CONTEXT_ERROR.to_string(),
         };
 
-        let tool_cfg = crate::llm::ToolConfig {
-            mcp_servers: self.mcp_servers.clone(),
-        };
-        let tools: Vec<Arc<crate::llm::DynTool>> = crate::llm::build_tools(&tool_cfg)
-            .await
-            .all_tools()
-            .to_vec();
-
         let mut user_msg = market_context;
         {
             let session = self.session.lock().await;
@@ -490,21 +383,25 @@ impl TelegramBot {
                 for msg in &s.history {
                     let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
                     let c = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                    user_msg.push_str(&format!("\n{}: {}", role, c));
+                    user_msg.push_str(&format!("\n{role}: {c}"));
                 }
             }
         }
-        user_msg.push_str(&format!("\n\nuser: {}", question));
+        user_msg.push_str(&format!("\n\nuser: {question}"));
 
-        let system = crate::skills::SkillRegistry::build_role_prompt(role);
-        let accumulated = AgentSession::new(&self.ctx.llm, &system)
-            .with_tools(&tools)
-            .process_chat(&user_msg)
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let accumulated = self
+            .ctx
+            .pool
+            .prompt_once(&cwd, &user_msg)
             .await
             .unwrap_or_else(|e| format!("❌ LLM 调用失败: {e}"));
 
         let prefix = format!("*{} 回复:*\n\n", role.display_name);
-        let display = format!("{}{}", prefix, accumulated);
+        let display = format!("{prefix}{accumulated}");
         self.edit_message(msg_id, &display).await?;
 
         {
@@ -546,12 +443,12 @@ impl TelegramBot {
             .send()
             .await?;
 
-        let body: SendMessageResponse = resp.json().await.unwrap_or(SendMessageResponse {
-            ok: false,
-            result: None,
-        });
+        let body: SendMessageResponse = resp
+            .json()
+            .await
+            .unwrap_or(SendMessageResponse { result: None });
 
-        let msg_id = body.result.map(|r| r.message_id).unwrap_or(-1);
+        let msg_id = body.result.map_or(-1, |r| r.message_id);
         Ok(msg_id)
     }
 

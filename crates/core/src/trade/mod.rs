@@ -12,13 +12,13 @@ pub enum TradeAction {
 }
 
 impl TradeAction {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            TradeAction::Buy => "buy",
-            TradeAction::Sell => "sell",
-            TradeAction::Hold => "hold",
-            TradeAction::Open => "open",
-            TradeAction::Close => "close",
+            Self::Buy => "buy",
+            Self::Sell => "sell",
+            Self::Hold => "hold",
+            Self::Open => "open",
+            Self::Close => "close",
         }
     }
 }
@@ -88,8 +88,10 @@ pub struct ClosedPosition {
 
 pub mod broker;
 pub mod paper;
+pub mod paper_executor;
 pub mod sqlite;
 
 pub use broker::execute_buy;
 pub use broker::execute_sell;
+pub use paper_executor::PaperExecutor;
 pub use sqlite::TradeManager;

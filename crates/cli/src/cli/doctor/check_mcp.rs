@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 use openatrading_core::llm::{McpClient, McpTransportConfig};
 
 /// Network timeout for a single MCP server connect handshake.
@@ -9,8 +9,10 @@ use openatrading_core::llm::{McpClient, McpTransportConfig};
 /// A healthy MCP server should complete the initialize handshake quickly;
 /// 10s is generous for a slow cold start (e.g. a stdio child) while still
 /// failing fast on a hung endpoint.
+#[allow(dead_code)]
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
+#[allow(dead_code)]
 pub struct McpCheck;
 
 #[async_trait]
@@ -41,7 +43,7 @@ impl Check for McpCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
         if servers.is_empty() {
@@ -66,20 +68,20 @@ impl Check for McpCheck {
             };
 
             if !server.enabled {
-                details.push(format!("{} ⤚ 跳过（已禁用）", label));
+                details.push(format!("{label} ⤚ 跳过（已禁用）"));
                 continue;
             }
 
             let transport_desc = match &server.transport {
                 McpTransportConfig::StreamableHttp { url, .. } => {
                     format!("streamable-http → {url}")
-                },
+                }
                 McpTransportConfig::Sse { url, .. } => {
                     format!("sse → {url}")
-                },
+                }
                 McpTransportConfig::Stdio { command, args, .. } => {
                     format!("stdio → {command} {}", args.join(" "))
-                },
+                }
             };
 
             let connect_result = match &server.transport {
@@ -87,12 +89,12 @@ impl Check for McpCheck {
                     tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
                         .await
                         .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                },
+                }
                 McpTransportConfig::Sse { url, .. } => {
                     tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
                         .await
                         .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                },
+                }
                 McpTransportConfig::Stdio { command, args, env } => tokio::time::timeout(
                     NETWORK_TIMEOUT,
                     McpClient::connect_stdio(command, args, env),
@@ -116,30 +118,27 @@ impl Check for McpCheck {
                                 Err(e) => format!(", call failed: {e}"),
                             };
                             details.push(format!(
-                                "{} {}  ✓ ({} tools, {} tool call{})",
-                                label, transport_desc, tool_count, call_icon, call_note
+                                "{label} {transport_desc}  ✓ ({tool_count} tools, {call_icon} tool call{call_note})"
                             ));
                             if call_outcome.is_err() {
                                 failures += 1;
                             }
-                        },
+                        }
                         Err(e) => {
-                            details.push(format!(
-                                "{} {}  ✗ (verify failed: {})",
-                                label, transport_desc, e
-                            ));
+                            details
+                                .push(format!("{label} {transport_desc}  ✗ (verify failed: {e})"));
                             failures += 1;
-                        },
+                        }
                     }
-                },
+                }
                 Ok(Err(e)) => {
-                    details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
+                    details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
-                },
+                }
                 Err(e) => {
-                    details.push(format!("{} {}  ✗ ({})", label, transport_desc, e));
+                    details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
-                },
+                }
             }
         }
 

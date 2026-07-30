@@ -9,10 +9,13 @@ name = "openatrading_core"
 path = "src/lib.rs"
 
 [dependencies]
+ahash = { version = "0.8", features = ["serde"] }
 openatrading-channels = { path = "../channels" }
 openatrading-api = { path = "../api" }
-openatrading-provider = { path = "../provider" }
-openatrading-agent = { path = "../agent", features = ["mcp"] }
+openatrading-agent = { path = "../agent" }
+openatrading-extension = { path = "../extension" }
+pi-coding-agent = { workspace= true }
+pi-extension-api = { workspace = true }
 arc-swap = "1"
 tokio = { workspace = true }
 reqwest = { workspace = true }
@@ -27,23 +30,19 @@ chrono-tz = "0.10"
 async-trait = "0.1"
 schemars = { version = "0.8", features = ["derive"] }
 gray_matter = "0.3"
-axum = "0.7"
-serde_yaml = "0.9"
-rmcp = { version = "1.7", features = [
-    "client",
-    "server",
-    "transport-streamable-http-client-reqwest",
-    "transport-streamable-http-server",
-    "transport-io",
-    "transport-child-process",
-] }
 teloxide = { version = "0.15", optional = true }
-thiserror = "2"
+tauri = { version = "2", optional = true }
+toml = "0.8"
 tracing = "0.1"
-
+uuid = { version = "1", features = ["v4"] }
 [features]
 telegram = ["dep:teloxide"]
+tauri = ["dep:tauri"]
+web = []
 
 [dev-dependencies]
-toml = "0.8"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync"] }
+tempfile = "3"
+
+[lints]
+workspace = true

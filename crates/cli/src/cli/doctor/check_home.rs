@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct HomeCheck;
 
@@ -35,14 +35,14 @@ impl Check for HomeCheck {
             error_count += 1;
         }
 
-        let subdirs = ["skills", "logs", "pipelines"];
+        let subdirs = ["skills", "logs"];
         for name in &subdirs {
             let p = home.join(name);
             if !p.exists() {
-                details.push(format!("子目录缺失: {}", name));
+                details.push(format!("子目录缺失: {name}"));
                 error_count += 1;
             } else if !p.is_dir() {
-                details.push(format!("子目录不是目录: {}", name));
+                details.push(format!("子目录不是目录: {name}"));
                 error_count += 1;
             }
         }
@@ -56,7 +56,7 @@ impl Check for HomeCheck {
             }
         } else {
             CheckResult {
-                status: CheckStatus::Error(format!("{} 个问题", error_count)),
+                status: CheckStatus::Error(format!("{error_count} 个问题")),
                 summary: format!("{}", home.display()),
                 details,
                 duration_ms: 0,
@@ -67,7 +67,7 @@ impl Check for HomeCheck {
     async fn fix(&self, ctx: &CheckContext) -> Result<FixResult> {
         let home = &ctx.atrading_home;
         std::fs::create_dir_all(home)?;
-        for name in &["skills", "logs", "pipelines"] {
+        for name in &["skills", "logs"] {
             std::fs::create_dir_all(home.join(name))?;
         }
         Ok(FixResult {

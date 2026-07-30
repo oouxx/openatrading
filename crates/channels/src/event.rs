@@ -14,11 +14,11 @@ pub enum Platform {
 impl fmt::Display for Platform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Platform::Telegram => write!(f, "telegram"),
-            Platform::Discord => write!(f, "discord"),
-            Platform::Slack => write!(f, "slack"),
-            Platform::Lark => write!(f, "lark"),
-            Platform::Whatsapp => write!(f, "whatsapp"),
+            Self::Telegram => write!(f, "telegram"),
+            Self::Discord => write!(f, "discord"),
+            Self::Slack => write!(f, "slack"),
+            Self::Lark => write!(f, "lark"),
+            Self::Whatsapp => write!(f, "whatsapp"),
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct MessageEvent {
 }
 
 impl MessageEvent {
-    pub fn new(
+    pub const fn new(
         platform: Platform,
         channel_id: String,
         user_id: String,

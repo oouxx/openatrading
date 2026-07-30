@@ -32,7 +32,11 @@ export function ReasoningRoot({
     <Collapsible.Root
       open={isOpen}
       onOpenChange={handleOpenChange}
-      className={`border-hairline mb-3 w-full rounded-lg border ${className}`}
+      className={`my-2 w-full overflow-hidden rounded-xl border transition-all duration-200 ${
+        isOpen
+          ? "border-ai/15 bg-ai/[0.03]"
+          : "border-hairline bg-transparent"
+      } ${className}`}
     >
       {children}
     </Collapsible.Root>
@@ -43,28 +47,40 @@ export function ReasoningRoot({
 
 export function ReasoningTrigger({ active = false }: { active?: boolean }) {
   return (
-    <Collapsible.Trigger className="group text-caption text-ink-muted hover:bg-bg-hover flex w-full cursor-pointer items-center gap-2 px-3 py-2 transition-colors">
-      {/* Brain icon */}
+    <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-ai/[0.03]">
+      {/* Sparkle icon (Claude-style) */}
       <svg
-        className="size-4 shrink-0"
-        viewBox="0 0 24 24"
+        className="size-3.5 shrink-0 text-ink-muted"
+        viewBox="0 0 16 16"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M12 2a7 7 0 0 1 7 7c0 1.5-.5 2.9-1.3 4 .8.6 1.3 1.5 1.3 2.5a3 3 0 0 1-3 3c-.6 0-1.2-.2-1.7-.5A7 7 0 0 1 12 22a7 7 0 0 1-7-7c0-1.5.5-2.9 1.3-4-.8-.6-1.3-1.5-1.3-2.5a3 3 0 0 1 3-3c.6 0 1.2.2 1.7.5A7 7 0 0 1 12 2z" />
+        <path d="M8 1C8 1 8.5 3.5 10.5 5.5C12.5 7.5 15 8 15 8C15 8 12.5 8.5 10.5 10.5C8.5 12.5 8 15 8 15C8 15 7.5 12.5 5.5 10.5C3.5 8.5 1 8 1 8C1 8 3.5 7.5 5.5 5.5C7.5 3.5 8 1 8 1Z" />
       </svg>
-      <span className="font-mono">思考过程</span>
+      <span className="text-ink-muted font-mono text-[11px] font-medium tracking-wide">
+        思考过程
+      </span>
       {active && (
-        <span
-          className="bg-ai inline-block size-1.5 rounded-full"
-          style={{ animation: "reasoning-shimmer 1.2s ease-in-out infinite" }}
-        />
+        <span className="flex items-center gap-1">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="bg-ai inline-block rounded-full"
+              style={{
+                width: i === 1 ? "5px" : "4px",
+                height: i === 1 ? "5px" : "4px",
+                animation: "pulsating-dot 1.2s ease-in-out infinite",
+                animationDelay: `${i * 0.2}s`,
+              }}
+            />
+          ))}
+        </span>
       )}
       <svg
-        className="ml-auto size-3 shrink-0 transition-transform group-data-[state=open]:rotate-180"
+        className="ml-auto size-3 shrink-0 text-ink-muted/50 transition-transform duration-200 group-data-[state=open]:rotate-180"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -88,7 +104,10 @@ export interface ReasoningContentProps {
 
 export function ReasoningContent({ className = "", children, ...props }: ReasoningContentProps) {
   return (
-    <Collapsible.Content className={`reasoning-content ${className}`} {...props}>
+    <Collapsible.Content
+      className={`reasoning-content overflow-hidden ${className}`}
+      {...props}
+    >
       {children}
     </Collapsible.Content>
   )
@@ -104,13 +123,13 @@ export interface ReasoningTextProps {
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="text-caption text-ink-muted max-h-48 overflow-y-auto px-3 pt-1 pb-2 leading-relaxed whitespace-pre-wrap">
+      <div className="text-ink-muted max-h-48 overflow-y-auto px-3 pb-3 text-[11px] leading-relaxed whitespace-pre-wrap font-[family-name:var(--font-mono)]">
         {children}
       </div>
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
         style={{
-          background: "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
+          background: "linear-gradient(to bottom, transparent, color-mix(in oklch, var(--color-bg) 90%, transparent))",
         }}
       />
     </div>
@@ -122,9 +141,9 @@ export function ReasoningText({ className = "", children }: ReasoningTextProps) 
 export function ReasoningFade() {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-6"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
       style={{
-        background: "linear-gradient(to bottom, transparent, rgb(var(--color-bg-rgb)))",
+        background: "linear-gradient(to bottom, transparent, color-mix(in oklch, var(--color-bg) 90%, transparent))",
       }}
     />
   )

@@ -25,7 +25,7 @@ impl SlackChannel {
 #[async_trait]
 impl NotificationSender for SlackChannel {
     async fn send_text(&self, text: &str) -> Result<()> {
-        let url = format!("{}/chat.postMessage", SLACK_API_BASE);
+        let url = format!("{SLACK_API_BASE}/chat.postMessage");
         let resp = self
             .client
             .post(&url)
@@ -41,13 +41,13 @@ impl NotificationSender for SlackChannel {
         let status = resp.status();
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("slack bot returned {}: {}", status, body);
+            anyhow::bail!("slack bot returned {status}: {body}");
         }
 
         let body: serde_json::Value = resp.json().await.unwrap_or_default();
         if body["ok"].as_bool() != Some(true) {
             let error = body["error"].as_str().unwrap_or("unknown");
-            anyhow::bail!("slack bot api error: {}", error);
+            anyhow::bail!("slack bot api error: {error}");
         }
         Ok(())
     }

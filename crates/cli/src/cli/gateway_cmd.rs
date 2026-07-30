@@ -2,7 +2,10 @@ use anyhow::Result;
 use std::ffi::OsString;
 use std::sync::Arc;
 
-use service_manager::*;
+use service_manager::{
+    RestartPolicy, ServiceInstallCtx, ServiceLabel, ServiceManager, ServiceStartCtx, ServiceStatus,
+    ServiceStatusCtx, ServiceStopCtx, ServiceUninstallCtx,
+};
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
 use openatrading_core::channels::adapter::{launch_adapters, MessageAdapter};
@@ -23,7 +26,9 @@ fn manager() -> Result<Box<dyn ServiceManager>> {
 }
 
 fn label() -> ServiceLabel {
-    SERVICE_LABEL.parse().expect("invalid SERVICE_LABEL")
+    SERVICE_LABEL
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid SERVICE_LABEL: {e}"))
 }
 
 /// 安装并启用 gateway 系统服务（跨平台：systemd / launchctl 等）
@@ -33,7 +38,7 @@ pub fn cmd_gateway_install() -> Result<()> {
     let m = manager()?;
 
     m.install(ServiceInstallCtx {
-        label: label.clone(),
+        label,
         program,
         args: vec![OsString::from("gateway"), OsString::from("run")],
         contents: None,
@@ -91,7 +96,7 @@ pub fn cmd_gateway_status() -> Result<()> {
                 "⏹  服务已停止{}",
                 msg.as_deref().map(|s| format!(": {s}")).unwrap_or_default()
             );
-        },
+        }
         ServiceStatus::NotInstalled => println!("❌ 服务未安装"),
     }
     Ok(())
@@ -162,7 +167,7 @@ pub fn create_notification_sender(
                 "unknown notify_channel: {other}, falling back to telegram"
             );
             sc.telegram.as_ref().and_then(create_telegram_sender)
-        },
+        }
     };
 
     match sender {
@@ -178,30 +183,21 @@ pub fn create_notification_sender(
 }
 
 pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
-    let skills_dir = openatrading_core::roles::default_skills_dir();
     let mut roles: Vec<RoleEntry> = Vec::new();
 
     // Config-toml roles: mark as readonly
     for entry in &app_config.roles {
-        let skill_path = skills_dir.join(&entry.name).join("SKILL.md");
-        if let Ok(raw) = std::fs::read_to_string(&skill_path) {
-            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
-            if !body.is_empty() {
-                let display_name = fm
-                    .get("description")
-                    .cloned()
-                    .unwrap_or_else(|| entry.name.clone());
-                if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.name) {
-                    existing.readonly = entry.readonly;
-                } else {
-                    roles.push(RoleEntry {
-                        name: entry.name.clone(),
-                        display_name,
-                        strategy: body.to_string(),
-                        readonly: entry.readonly,
-                    });
-                }
-            }
+        if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.name) {
+            existing.readonly = entry.readonly;
+        } else {
+            roles.push(RoleEntry {
+                name: entry.name.clone(),
+                display_name: entry
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| entry.name.clone()),
+                readonly: entry.readonly,
+            });
         }
     }
 
@@ -214,7 +210,9 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     }
 
     if roles.is_empty() {
-        openatrading_core::log::warn!("警告: skills/ 目录中未发现任何角色");
+        openatrading_core::log::warn!(
+            "警告: 未发现任何角色，可在角色管理或 config.toml [[roles]] 中添加"
+        );
     }
 
     roles
@@ -264,20 +262,18 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     };
 
     if do_cron {
-        let cron_cfg = match &app_config.cron {
-            Some(c) => CronConfig {
-                enabled: c.enabled,
-                collection_schedule: c.collection_schedule.clone(),
-                decision_schedule: c.decision_schedule.clone(),
-                news_schedule: c.news_schedule.clone(),
-            },
-            None => CronConfig {
+        let cron_cfg = app_config.cron.as_ref().map_or_else(
+            || CronConfig {
                 enabled: true,
                 collection_schedule: "0 0 18 * * 1-5".to_string(),
-                decision_schedule: "0 */30 9-15 * * 1-5".to_string(),
                 news_schedule: "0 */5 9-15 * * 1-5".to_string(),
             },
-        };
+            |c| CronConfig {
+                enabled: c.enabled,
+                collection_schedule: c.collection_schedule.clone(),
+                news_schedule: c.news_schedule.clone(),
+            },
+        );
 
         let cron_ctx = Arc::new(
             AppContext::build(
@@ -290,9 +286,8 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             )
             .await,
         );
-        let cron_roles = roles.clone();
         handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, cron_roles).await {
+            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg).await {
                 openatrading_core::log::error!("cron error: {e}");
             }
         }));
@@ -343,8 +338,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         mcp_shutdown.replace(mcp_tx);
 
         let registry = openatrading_core::llm::ToolRegistry::new();
-        let mut tools = registry.market_tools().to_vec();
-        tools.push(registry.meta_skill_tool().clone());
+        let tools = registry.all_tools();
         handles.push(tokio::spawn(async move {
             if let Err(e) = openatrading_core::llm::serve_http(tools, mcp_bind, mcp_rx).await {
                 openatrading_core::log::error!("[gateway] mcp error: {e}");

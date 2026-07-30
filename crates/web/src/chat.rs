@@ -1,42 +1,43 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{sse::Event, IntoResponse, Sse},
+    response::IntoResponse,
     Json,
 };
-use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
-use openatrading_core::llm::{assistant_event_to_stream_events, StreamEvent};
 use openatrading_core::skills::SkillEntry;
-use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
 
-use crate::handlers::OverviewResponse;
+use crate::web::OverviewResponse;
 use crate::AppState;
 
-#[derive(Deserialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Deserialize)]
-pub struct ChatRequest {
-    message: String,
-    #[serde(default)]
-    role: Option<String>,
-    #[serde(default)]
-    history: Vec<ChatMessage>,
-    #[serde(default)]
-    command_name: Option<String>,
-    #[serde(default)]
-    command_type: Option<openatrading_core::commands::CommandType>,
-    #[serde(default)]
-    skill_name: Option<String>,
+/// Find a session JSONL file by session ID.
+///
+/// Session files are named `{timestamp}_{id}.jsonl`, so we cannot construct
+/// the path from the ID alone. This scans the session directory for a file
+/// whose name ends with `_{id}.jsonl`.
+pub fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
+    let dir = pi_coding_agent::config::get_sessions_dir();
+    let suffix = format!("_{id}.jsonl");
+    let direct = dir.join(format!("{id}.jsonl"));
+    if direct.exists() {
+        return Some(direct);
+    }
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with(&suffix) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[derive(Serialize)]
@@ -45,45 +46,11 @@ pub struct AiRoleItem {
     pub display_name: String,
 }
 
-pub async fn get_ai_commands(State(state): State<Arc<AppState>>) -> Json<Vec<CommandSpec>> {
-    // Use the pre-built tool registry from AppContext (startup lifetime)
-    let registry = &state.ctx.tool_registry;
-
-    let all_tools = registry.load().all_tools();
-    let mcp_count = registry.load().mcp_tools().len();
-    openatrading_core::log::info!(
-        "get_ai_commands: {} total tools ({} market, {} mcp, {} meta/skill/decision)",
-        all_tools.len(),
-        registry.load().market_tools().len(),
-        mcp_count,
-        all_tools.len() - registry.load().market_tools().len() - mcp_count,
-    );
-
-    // All tools (market + meta skill + MCP + decision)
-    let mut commands: Vec<CommandSpec> = all_tools
-        .iter()
-        .map(|t| CommandSpec {
-            name: t.name.clone(),
-            description: t.description.clone(),
-            command_type: CommandType::Tool,
-        })
-        .collect();
-
-    // Skill commands from SkillRegistry
-    let skills = openatrading_core::skills::SkillRegistry::from_disk();
-    for s in skills.skills() {
-        commands.push(CommandSpec {
-            name: s.name.clone(),
-            description: s.description.clone(),
-            command_type: CommandType::Skill,
-        });
-    }
-
-    // Pipeline commands from PipelineRegistry
-    let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-    commands.extend(pipelines.commands());
-
-    Json(commands)
+pub async fn get_ai_commands() -> Json<Vec<CommandSpec>> {
+    let data = crate::handlers::get_ai_commands_data()
+        .await
+        .unwrap_or_default();
+    Json(serde_json::from_value(data).unwrap_or_default())
 }
 
 #[derive(Serialize)]
@@ -93,8 +60,7 @@ pub struct ToolResponse {
 }
 
 pub async fn get_skills(State(_state): State<Arc<AppState>>) -> Json<Vec<SkillEntry>> {
-    let skills = openatrading_core::skills::SkillRegistry::from_disk();
-    Json(skills.skills().to_vec())
+    Json(openatrading_core::skills::list_skill_entries())
 }
 
 pub async fn get_tools(State(state): State<Arc<AppState>>) -> Json<Vec<ToolResponse>> {
@@ -123,8 +89,7 @@ pub async fn save_skill(
         )
             .into_response();
     }
-    let entry = req.into_skill_entry();
-    if let Err(e) = SkillRegistry::install_skill(&entry) {
+    if let Err(e) = openatrading_core::skills::install_skill(&req) {
         openatrading_core::log::error!("failed to save skill: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -132,12 +97,9 @@ pub async fn save_skill(
         )
             .into_response();
     }
-    let skills = SkillRegistry::from_disk();
-    let saved = skills
-        .skills()
-        .iter()
-        .find(|s| s.name == entry.name)
-        .cloned();
+    let saved = openatrading_core::skills::list_skill_entries()
+        .into_iter()
+        .find(|s| s.name == req.name);
     (StatusCode::OK, Json(saved)).into_response()
 }
 
@@ -146,31 +108,26 @@ pub async fn delete_skill(
     State(_state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    match SkillRegistry::uninstall_skill(&name) {
+    match openatrading_core::skills::uninstall_skill(&name) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             openatrading_core::log::error!("failed to delete skill '{name}': {e}");
             StatusCode::NOT_FOUND.into_response()
-        },
+        }
     }
 }
 
+/// GET /api/ai/roles — list all available AI roles.
+///
+/// # Errors
+/// Returns `StatusCode` on internal errors (unlikely for this read-only endpoint).
 pub async fn get_ai_roles(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let roles_guard = state.roles.read().await;
-    let roles: Vec<AiRoleItem> = roles_guard
-        .iter()
-        .map(|r| AiRoleItem {
-            name: r.name.clone(),
-            display_name: r.display_name.clone(),
-        })
-        .collect();
-    Ok(Json(roles))
-}
-
-pub fn build_system_prompt(strategy_text: &str) -> String {
-    openatrading_core::skills::SkillRegistry::build_chat_prompt(strategy_text)
+    crate::handlers::get_ai_roles_data(&state)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub fn build_user_message(
@@ -187,16 +144,18 @@ pub fn build_user_message(
         .unwrap_or_default();
 
     openatrading_core::prompts::build_web_chat_user_message(
-        &overview.date,
-        overview.rise_count,
-        overview.fall_count,
-        overview.limit_up_count,
-        overview.limit_down_count,
-        overview.bomb_rate,
-        &overview.risk_level,
-        &overview.decision_summary,
-        &field_section,
-        &super_section,
+        &openatrading_core::prompts::WebChatMarketData {
+            date: &overview.date,
+            rise: overview.rise_count,
+            fall: overview.fall_count,
+            limit_up: overview.limit_up_count,
+            limit_down: overview.limit_down_count,
+            bomb_rate: overview.bomb_rate,
+            risk_level: &overview.risk_level,
+            summary: &overview.decision_summary,
+            field_items: &field_section,
+            super_stocks: &super_section,
+        },
     )
 }
 
@@ -217,10 +176,14 @@ pub async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
     }
 }
 
+/// Fetch overview data from the API client.
+///
+/// # Errors
+/// Returns an error if the API request fails.
 pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResponse> {
     let overview = api.xuangubao.fetch_market_overview().await?;
 
-    let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+    let ratio = f64::from(overview.rise_count) / f64::from(overview.fall_count.max(1));
     let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
         "高"
     } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
@@ -254,407 +217,725 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
     })
 }
 
-pub async fn ai_chat(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<ChatRequest>,
-) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
-    use openatrading_core::llm::{AgentEvent, AgentMessage};
+// ── Slash command execution ────────────────────────────────────────────
 
-    // Use the pre-built tool registry from AppContext (startup lifetime)
-    let tools_registry = &state.ctx.tool_registry;
-
-    // ── Command-aware configuration ──
-    let role_name = req.role.as_deref().unwrap_or("");
-    let roles_guard = state.roles.read().await;
-    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
-
-    // skill_name support: route to Skill command if skill_name present
-    let effective_command_type = req.command_type.clone().or_else(|| {
-        req.skill_name
-            .as_ref()
-            .map(|_| openatrading_core::commands::CommandType::Skill)
-    });
-    let effective_command_name = req.command_name.clone().or_else(|| req.skill_name.clone());
-
-    let (system_prompt, tools) = match effective_command_type {
-        Some(CommandType::Tool) => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            let sp = build_system_prompt(strategy_text);
-            let tool_name = req.command_name.as_deref().unwrap_or("");
-            if tool_name.is_empty() {
-                openatrading_core::log::warn!("ai_chat: Tool command with empty command_name");
+/// Execute a slash command on the given agent session.
+///
+/// Returns the response text to stream back to the client, or an error message.
+pub async fn handle_slash_command(
+    cmd_name: &str,
+    cmd_args: &str,
+    session: &mut pi_coding_agent::core::agent_session::AgentSession,
+) -> Result<String, String> {
+    match cmd_name {
+        "model" => {
+            // Resolve model from "provider/model" format
+            let model_registry = session.get_model_registry();
+            let result = pi_coding_agent::core::model_resolver::resolve_cli_model(
+                None,
+                Some(cmd_args),
+                model_registry,
+            );
+            match result.model {
+                Some(model) => {
+                    let display = format!("{}/{}", model.provider, model.id);
+                    session
+                        .set_model(model)
+                        .await
+                        .map(|_| format!("Model set to {display}"))
+                        .map_err(|e| format!("Failed to set model: {e}"))
+                }
+                None => {
+                    let err = result.error.unwrap_or_else(|| "Unknown model".to_string());
+                    Err(format!("Failed to resolve model: {err}"))
+                }
             }
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| t.name == tool_name)
-                .cloned()
-                .collect();
-            (sp, filtered)
+        }
+        "name" => {
+            if cmd_args.is_empty() {
+                return Err("Usage: /name <session name>".to_string());
+            }
+            session.set_session_name(cmd_args);
+            Ok(format!("Session name set to \"{cmd_args}\""))
+        }
+        "compact" => match session.compact(None).await {
+            Ok(_) => Ok("Session compacted".to_string()),
+            Err(e) => Err(format!("Compaction failed: {e}")),
         },
-        Some(CommandType::Skill) => {
-            let skill_name = effective_command_name.as_deref().unwrap_or("");
-            let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let skill = skills.skills().iter().find(|s| s.name == skill_name);
-            let prompt = skill
-                .map(|s| s.content.as_str())
-                .unwrap_or(default_strategy);
-            let allowed = skill
-                .and_then(|s| s.allowed_tools.as_ref())
-                .map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
-                .filter(|v| !v.is_empty());
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = match allowed {
-                Some(names) => tools_registry
-                    .load()
-                    .all_tools()
-                    .iter()
-                    .filter(|t| names.contains(&t.name))
-                    .cloned()
-                    .collect(),
-                None => tools_registry.load().all_tools().to_vec(),
-            };
-            (build_system_prompt(prompt), filtered)
-        },
-        Some(CommandType::Pipeline) => {
-            let pipeline_name = req.command_name.as_deref().unwrap_or("");
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            let spec = pipelines.find(pipeline_name);
-            let prompt = spec.map(|s| s.prompt.as_str()).unwrap_or(default_strategy);
-            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
-            let filtered: Vec<Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
-                .cloned()
-                .collect();
-            (build_system_prompt(prompt), filtered)
-        },
-        None => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            (
-                build_system_prompt(strategy_text),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-    };
+        "session" => {
+            let sid = session.get_session_id();
+            let name = session.get_session_name().unwrap_or_default();
+            let mgr = session.get_session_manager();
+            let msg_count = mgr.get_entries().len();
+            let file = mgr
+                .get_session_file()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            drop(mgr);
+            Ok(format!(
+                "Session: {name} ({sid})\nMessages: {msg_count}\nFile: {file}"
+            ))
+        }
+        "help" | "?" => {
+            let commands = pi_coding_agent::core::slash_commands::builtin_slash_commands();
+            let mut help = "Available slash commands:\n".to_string();
+            for cmd in &commands {
+                let hint = cmd.argument_hint.as_deref().unwrap_or("");
+                help.push_str(&format!(
+                    "  /{} {} — {}\n",
+                    cmd.name,
+                    if hint.is_empty() { "" } else { hint },
+                    cmd.description
+                ));
+            }
+            Ok(help)
+        }
+        _ => Err(format!("Unknown slash command: /{cmd_name}")),
+    }
+}
 
-    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
+/// Session-level slash commands handled locally (they mutate AgentSession
+/// state, which pi-rs `prompt()` does not do). `/skill:` is intentionally
+/// absent — it flows through to pi-rs `prompt()`, which expands it itself.
+const SESSION_SLASH_COMMANDS: &[&str] = &["model", "name", "compact", "session", "help", "?"];
 
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    for h in req.history {
-        match h.role.as_str() {
-            "user" => {
-                pi_messages.push(AgentMessage::User {
-                    content: vec![ContentBlock::Text {
-                        text: h.content,
-                        text_signature: None,
-                    }],
-                    timestamp: 0,
-                });
+/// If `text` is a session-level slash command we handle locally, return its
+/// `(name, args)`. Returns `None` for `/skill:`, unknown commands, and non-slash
+/// input so they reach pi-rs `prompt()` (skill expansion / normal turn).
+pub fn parse_session_slash_command(text: &str) -> Option<(String, String)> {
+    let (cmd, args) = pi_coding_agent::core::slash_commands::parse_slash_command(text)?;
+    if SESSION_SLASH_COMMANDS.contains(&cmd) {
+        Some((cmd.to_string(), args.to_string()))
+    } else {
+        None
+    }
+}
+
+/// Run a session-level slash command against the pooled session, returning a
+/// `Notice` payload. Shared by the WebSocket and Tauri paths.
+pub async fn run_session_slash_command(
+    pool: &openatrading_core::llm::SessionPool,
+    session_id: &str,
+    cmd_name: &str,
+    cmd_args: &str,
+) -> crate::agent_ws::SessionEventPayload {
+    if let Some(rt) = pool.get_session(session_id).await {
+        let mut rt = rt.lock().await;
+        let session = rt.session_mut();
+        match handle_slash_command(cmd_name, cmd_args, session).await {
+            Ok(text) => crate::agent_ws::SessionEventPayload::Notice {
+                text,
+                is_error: false,
             },
-            "assistant" => {
-                pi_messages.push(AgentMessage::Assistant {
-                    content: vec![ContentBlock::Text {
-                        text: h.content,
-                        text_signature: None,
-                    }],
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    usage: Default::default(),
-                    stop_reason: Some(StopReason::Stop),
-                    error_message: None,
-                    timestamp: 0,
-                });
+            Err(e) => crate::agent_ws::SessionEventPayload::Notice {
+                text: format!("[Slash Error] {e}"),
+                is_error: true,
             },
-            _ => {},
+        }
+    } else {
+        crate::agent_ws::SessionEventPayload::Notice {
+            text: "session not found".to_string(),
+            is_error: true,
         }
     }
-    pi_messages.push(AgentMessage::User {
-        content: vec![ContentBlock::Text {
-            text: req.message,
-            text_signature: None,
-        }],
-        timestamp: 0,
-    });
+}
 
-    // ── 注册事件监听器，实现渐进式 SSE 推送 ──
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+// ── Session listing (pi-coding-agent JSONL sessions) ────────────────────
 
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-            let tx = tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event);
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        },
+/// Request body for `POST /api/ai/sessions`.
+///
+/// `name` is the first user message — the session is created lazily after the
+/// user sends their first prompt, so the session name reflects that message.
+#[derive(Deserialize)]
+pub struct CreateSessionRequest {
+    #[serde(default)]
+    name: Option<String>,
+    /// Optional custom session ID. If not provided, a UUID is generated.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// The first user message. The session will immediately start processing it
+    /// (fire-and-forget); the frontend should connect via WebSocket to receive
+    /// streaming events.
+    pub message: String,
+}
+
+/// POST /api/ai/sessions — create a new session via pi-coding-agent.
+///
+/// Accepts `{ "name": "<title>", "message": "<first message>" }`.
+/// The name is persisted as the session title. The message is stored and
+/// only sent to the agent after a WebSocket connection subscribes to events,
+/// ensuring no events are lost.
+pub async fn create_session(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateSessionRequest>,
+) -> Json<serde_json::Value> {
+    openatrading_core::log::info!(
+        "create_session: POST /api/ai/sessions name={:?} message_len={}",
+        req.name,
+        req.message.len()
+    );
+    let name = req.name.as_deref().filter(|s| !s.is_empty());
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    openatrading_core::log::info!(
+        "create_session: calling pool.create_session (resume=false, name={:?})",
+        name
+    );
+    let session_id = match state
+        .ctx
+        .pool
+        .create_session_with_id(&cwd, req.session_id.as_deref())
+        .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            openatrading_core::log::error!("create_session: pool.create_session failed: {e}");
+            return Json(serde_json::json!({
+                "success": false,
+                "error": e.to_string(),
+            }));
+        }
+    };
+    openatrading_core::log::info!("create_session: created session id={session_id}");
+
+    // Get session metadata from the runtime
+    let runtime = state.ctx.pool.get_session(&session_id).await;
+    let (session_file, session_name) = if let Some(rt) = runtime {
+        let rt = rt.lock().await;
+        let session = rt.session();
+        let mgr = session.get_session_manager();
+        let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
+        let sname = mgr.get_session_name();
+        drop(mgr);
+
+        // Force-write the session file to disk so list_sessions can find it
+        if let Some(ref path) = sfile {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let mut lines: Vec<String> = Vec::new();
+            if let Some(hdr) = session.get_session_manager().get_header() {
+                if let Ok(json) = serde_json::to_string(hdr) {
+                    lines.push(json);
+                }
+            }
+            for entry in session.get_session_manager().get_entries() {
+                if let Ok(json) = serde_json::to_string(entry) {
+                    lines.push(json);
+                }
+            }
+            if !lines.is_empty() {
+                let _ = std::fs::write(path, lines.join("\n") + "\n");
+            }
+        }
+        (sfile, sname)
+    } else {
+        (None, None)
+    };
+
+    openatrading_core::log::info!(
+        "create_session: responding id={session_id} name={:?}",
+        session_name
     );
 
-    let handle = agent.subscribe(listener).await;
+    Json(serde_json::json!({
+        "success": true,
+        "id": session_id,
+        "name": session_name,
+        "path": session_file.map(|p| p.to_string_lossy().to_string()),
+        "message_count": 0,
+    }))
+}
 
-    let agent_clone = Arc::clone(&agent);
-    tokio::spawn(async move {
-        let _ = agent_clone.process(pi_messages).await;
-        // Keep handle alive until process completes (Drop replaces listener
-        // with no-op, causing the SSE stream to miss events).
-        drop(handle);
-    });
+/// GET /api/ai/sessions — list all saved sessions
+pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
+    let data = crate::handlers::list_sessions_data(&state)
+        .await
+        .unwrap_or_default();
+    Json(serde_json::from_value(data).unwrap_or_default())
+}
 
-    openatrading_core::log::info!("ai/chat: SSE stream starting");
-    let sse_stream = async_stream::stream! {
-        loop {
-            match rx.recv().await {
-                Some(AgentEvent::MessageUpdate { assistant_message_event, .. }) => {
-                    for stream_event in assistant_event_to_stream_events(&assistant_message_event) {
-                        match stream_event {
-                            StreamEvent::Text(t) => {
-                                openatrading_core::log::trace!("ai/chat: Text {} chars", t.len());
-                                yield Ok(Event::default().data(t.replace('\n', "\\n")));
-                            }
-                            StreamEvent::ReasoningText(t) => {
-                                yield Ok(Event::default().event("thinking").data(t.replace('\n', "\\n")));
-                            }
-                            StreamEvent::ToolCallStart(tc) => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "id": tc.id,
-                                    "name": tc.function_name,
-                                    "args": tc.arguments,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-call").data(data));
-                            }
-                            StreamEvent::ToolCallDelta(tc) => {
-                                let data = serde_json::to_string(&serde_json::json!({
-                                    "args": tc.arguments,
-                                })).unwrap_or_default();
-                                yield Ok(Event::default().event("tool-delta").data(data));
-                            }
-                            StreamEvent::Error(e) => {
-                                openatrading_core::log::warn!("ai/chat: assistant error: {e}");
-                                yield Ok(Event::default().data(format!("[ERROR] {e}")));
-                            }
-                        }
+#[derive(Serialize)]
+pub struct SessionMessage {
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+    /// Structured content blocks (thinking / tool_use / text). Populated for
+    /// assistant messages so the frontend can render tool calls and reasoning
+    /// when loading history (finding #10). Empty for user messages, which
+    /// only carry plain text in `content`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub blocks: Vec<HistoryBlock>,
+}
+
+/// Serializable subset of a persisted content block for history replay.
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum HistoryBlock {
+    Thinking {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+        /// Tool result text, attached when the corresponding `toolResult` message
+        /// is present in the session history (joined by `tool_call_id`).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        result: Option<String>,
+        /// Whether the tool result reported an error.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
+    },
+    Text {
+        text: String,
+    },
+}
+
+/// Read the message history of a session **directly from its JSONL file**,
+/// without materializing an `AgentSessionRuntime` in the pool.
+///
+/// This is a pure read with no side effects: it does not touch the LRU
+/// `SessionPool` (so loading history for an idle session cannot evict a
+/// live one) and does not mutate the agent's in-memory state. It reuses
+/// pi-rs's `SessionManager::open` + `get_entries` to parse the JSONL — the
+/// same source of truth `AgentSession::load_messages_from_session` uses —
+/// rather than re-implementing JSONL parsing.
+///
+/// `SessionManager::open` and file parsing are synchronous, so the work is
+/// offloaded to `spawn_blocking` to avoid stalling the async executor.
+pub(crate) fn read_messages_from_disk(
+    session_id: &str,
+) -> Vec<openatrading_core::llm::AgentMessage> {
+    use openatrading_core::llm::AgentMessage;
+    use pi_coding_agent::core::session_manager::{SessionEntry, SessionManager};
+
+    let Some(path) = find_session_file(session_id) else {
+        return Vec::new();
+    };
+    // `open` extracts cwd from the session header and loads + migrates entries.
+    let mgr = SessionManager::open(&path.to_string_lossy(), None, None);
+    mgr.get_entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            SessionEntry::Message { message, .. } => {
+                serde_json::from_value::<AgentMessage>(message.clone()).ok()
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Turn a slice of `AgentMessage`s into the serializable history shape,
+/// joining `ToolResult` messages onto the `ToolUse` block that issued the call
+/// (keyed by `tool_call_id`) so the frontend can render results inline.
+pub(crate) fn messages_to_session_messages(
+    messages: &[openatrading_core::llm::AgentMessage],
+) -> Vec<SessionMessage> {
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
+    use openatrading_core::llm::AgentMessage;
+    use std::collections::HashMap;
+
+    let tool_results: HashMap<String, (String, bool)> = messages
+        .iter()
+        .filter_map(|msg| match msg {
+            AgentMessage::ToolResult {
+                tool_call_id,
+                content,
+                is_error,
+                ..
+            } => {
+                let text = content
+                    .iter()
+                    .filter_map(|b| match b {
+                        ContentBlock::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Some((tool_call_id.clone(), (text, *is_error)))
+            }
+            _ => None,
+        })
+        .collect();
+
+    messages
+        .iter()
+        .filter_map(|msg| {
+            let (role, content_blocks, timestamp) = match msg {
+                AgentMessage::User { content, timestamp } => ("user", content, *timestamp),
+                AgentMessage::Assistant {
+                    content, timestamp, ..
+                } => ("assistant", content, *timestamp),
+                // ToolResult messages are joined onto ToolUse blocks above,
+                // not emitted as standalone history entries.
+                _ => return None,
+            };
+
+            let mut text_parts: Vec<String> = Vec::new();
+            let mut blocks: Vec<HistoryBlock> = Vec::new();
+
+            for block in content_blocks {
+                match block {
+                    ContentBlock::Text { text, .. } => {
+                        text_parts.push(text.clone());
+                        blocks.push(HistoryBlock::Text { text: text.clone() });
                     }
-                }
-                Some(AgentEvent::MessageEnd { message }) => {
-                    openatrading_core::log::info!("ai/chat: MessageEnd received");
-                    if let AgentMessage::Assistant { error_message: Some(err), .. } = &message {
-                        if !err.is_empty() {
-                            openatrading_core::log::warn!("ai/chat: MessageEnd carries error: {err}");
-                            yield Ok(Event::default().data(format!("[ERROR] {err}")));
-                        }
+                    ContentBlock::Thinking { thinking, .. } => {
+                        blocks.push(HistoryBlock::Thinking {
+                            text: thinking.clone(),
+                        });
                     }
-                }
-                Some(AgentEvent::AgentEnd { .. }) => {
-                    openatrading_core::log::info!("ai/chat: AgentEnd, breaking SSE loop");
-                    break;
-                }
-                Some(AgentEvent::ToolExecutionStart { .. }) => {
-                    yield Ok(Event::default().event("tool-exec-start"));
-                }
-                Some(AgentEvent::ToolExecutionEnd { .. }) => {
-                    yield Ok(Event::default().event("tool-exec-end"));
-                }
-                Some(_) => {}
-                None => {
-                    openatrading_core::log::warn!("ai/chat: channel closed unexpectedly");
-                    break;
+                    ContentBlock::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                        ..
+                    } => {
+                        let (result, is_error) = tool_results.get(id).cloned().unwrap_or_default();
+                        blocks.push(HistoryBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: arguments.clone(),
+                            result: (!result.is_empty()).then_some(result),
+                            is_error,
+                        });
+                    }
+                    ContentBlock::Image { .. } => {}
                 }
             }
-        }
-        yield Ok(Event::default().data("[DONE]"));
-    };
 
-    Ok(Sse::new(sse_stream))
-}
+            let content = text_parts.join("\n");
+            if content.is_empty() && blocks.is_empty() {
+                return None;
+            }
 
-// ── Chat Thread CRUD ─────────────────────────────────
-
-#[derive(Serialize)]
-pub struct ThreadResponse {
-    pub id: i64,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct MessageResponse {
-    pub id: i64,
-    pub thread_id: i64,
-    pub role: String,
-    pub content: String,
-    pub created_at: String,
-}
-
-#[derive(Deserialize)]
-pub struct CreateThreadPayload {
-    pub title: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct RenameThreadPayload {
-    pub title: String,
-}
-
-#[derive(Deserialize)]
-pub struct SaveMessagePayload {
-    pub role: String,
-    pub content: String,
-}
-
-/// GET /api/ai/threads — list all threads
-pub async fn list_threads(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<ThreadResponse>>, StatusCode> {
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("list_threads: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(
-        threads
-            .into_iter()
-            .map(|t| ThreadResponse {
-                id: t.id,
-                title: t.title,
-                created_at: t.created_at,
-                updated_at: t.updated_at,
+            Some(SessionMessage {
+                role: role.to_string(),
+                content,
+                created_at: timestamp.to_string(),
+                blocks,
             })
-            .collect(),
-    ))
+        })
+        .collect()
 }
 
-/// POST /api/ai/threads — create a new thread
-pub async fn create_thread(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<CreateThreadPayload>,
-) -> Result<Json<ThreadResponse>, StatusCode> {
-    let title = payload.title.unwrap_or_else(|| "新对话".to_string());
-    let id = state.chat_threads.create_thread(&title).map_err(|e| {
-        openatrading_core::log::error!("create_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("create_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        openatrading_core::log::error!("create_thread: thread not found after insert");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(ThreadResponse {
-        id: thread.id,
-        title: thread.title,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
-    }))
+/// GET /api/ai/sessions/:id/messages — read messages from a session JSONL file
+///
+/// Reads history directly from disk (no pool/runtime side effects). Returns
+/// an empty list if the session file does not exist.
+pub async fn get_session_messages(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
+    // File parsing is synchronous; offload it so we don't stall the executor.
+    // On panic (e.g. a corrupt session file that fails `SessionManager::open`),
+    // surface it in the logs rather than silently swallowing it.
+    match tokio::task::spawn_blocking(move || read_messages_from_disk(&id)).await {
+        Ok(messages) => Ok(Json(messages_to_session_messages(&messages))),
+        Err(join_err) => {
+            openatrading_core::log::error!("get_session_messages: read task failed: {join_err}");
+            Ok(Json(Vec::new()))
+        }
+    }
 }
-
-/// PUT /api/ai/threads/:id — rename a thread
-pub async fn rename_thread(
+/// DELETE /api/ai/sessions/:id — delete a saved session
+pub async fn delete_session(
     State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-    Json(payload): Json<RenameThreadPayload>,
-) -> Result<Json<ThreadResponse>, StatusCode> {
-    state
-        .chat_threads
-        .rename_thread(id, &payload.title)
-        .map_err(|e| {
-            openatrading_core::log::error!("rename_thread: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let threads = state.chat_threads.list_threads().map_err(|e| {
-        openatrading_core::log::error!("rename_thread: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let thread = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-        openatrading_core::log::error!("rename_thread: thread not found");
-        StatusCode::NOT_FOUND
-    })?;
-    Ok(Json(ThreadResponse {
-        id: thread.id,
-        title: thread.title,
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
-    }))
-}
-
-/// DELETE /api/ai/threads/:id — delete a thread
-pub async fn delete_thread(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
+    axum::extract::Path(id): axum::extract::Path<String>,
 ) -> StatusCode {
-    match state.chat_threads.delete_thread(id) {
-        Ok(()) => StatusCode::NO_CONTENT,
-        Err(e) => {
-            openatrading_core::log::error!("delete_thread: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        },
+    match crate::handlers::delete_session_data(&state, &id).await {
+        Ok(_) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::NOT_FOUND,
     }
 }
 
-/// GET /api/ai/threads/:id/messages — get messages for a thread
-pub async fn get_thread_messages(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
-    let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        openatrading_core::log::error!("get_thread_messages: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(
-        messages
-            .into_iter()
-            .map(|m| MessageResponse {
-                id: m.id,
-                thread_id: m.thread_id,
-                role: m.role,
-                content: m.content,
-                created_at: m.created_at,
-            })
-            .collect(),
-    ))
+#[derive(Deserialize)]
+pub struct RenameSessionRequest {
+    pub name: String,
 }
 
-/// POST /api/ai/threads/:id/messages — save a message to a thread
-pub async fn save_thread_message(
-    State(state): State<Arc<AppState>>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-    Json(payload): Json<SaveMessagePayload>,
-) -> Result<Json<MessageResponse>, StatusCode> {
-    let msg_id = state
-        .chat_threads
-        .save_message(id, &payload.role, &payload.content)
-        .map_err(|e| {
-            openatrading_core::log::error!("save_thread_message: {}", e);
+/// PATCH /api/ai/sessions/:id — rename a session
+///
+/// Updates the session name in the JSONL file header. Returns 204 on success,
+/// 404 if the session file does not exist, 500 on I/O error.
+pub async fn rename_session(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<RenameSessionRequest>,
+) -> StatusCode {
+    let Some(path) = find_session_file(&id) else {
+        return StatusCode::NOT_FOUND;
+    };
+    if !path.exists() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: read error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    // Parse the header line (first line) and update the name field.
+    let header: serde_json::Value = match serde_json::from_str(lines[0]) {
+        Ok(v) => v,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: parse header error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let mut header = match header.as_object() {
+        Some(obj) => obj.clone(),
+        None => {
+            openatrading_core::log::error!("rename_session: header is not an object");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    header.insert("name".to_string(), serde_json::Value::String(req.name));
+
+    let new_header = match serde_json::to_string(&header) {
+        Ok(s) => s,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: serialize error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    lines[0] = &new_header;
+
+    match std::fs::write(&path, lines.join("\n")) {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(e) => {
+            openatrading_core::log::error!("rename_session: write error: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let messages = state.chat_threads.get_messages(id).map_err(|e| {
-        openatrading_core::log::error!("save_thread_message: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let msg = messages
-        .into_iter()
-        .find(|m| m.id == msg_id)
-        .ok_or_else(|| {
-            openatrading_core::log::error!("save_thread_message: message not found after insert");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(MessageResponse {
-        id: msg.id,
-        thread_id: msg.thread_id,
-        role: msg.role,
-        content: msg.content,
-        created_at: msg.created_at,
-    }))
+        }
+    }
+}
+
+/// GET /api/ai/sessions/:id/tool-results/:tool_call_id — fetch full tool result content (§15)
+///
+/// Returns the full tool result text for a given tool call. This is used by the
+/// frontend to expand truncated tool results that were sent as previews in the
+/// event stream.
+///
+/// # Errors
+/// Returns 404 if the session file or tool result is not found.
+pub async fn get_tool_result(
+    axum::extract::Path((session_id, tool_call_id)): axum::extract::Path<(String, String)>,
+) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    let Some(path) = find_session_file(&session_id) else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
+
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
+
+    // Scan the JSONL file for the matching tool result message
+    for line in content.lines().skip(1) {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            if let Some(msg) = entry.get("message") {
+                if msg.get("role").and_then(|v| v.as_str()) != Some("toolResult") {
+                    continue;
+                }
+                if msg.get("tool_call_id").and_then(|v| v.as_str()) != Some(&tool_call_id) {
+                    continue;
+                }
+                // Found the matching tool result — extract the text content
+                let text: String = msg
+                    .get("content")
+                    .and_then(|v| v.as_array())
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+                return Ok(axum::Json(serde_json::json!({
+                    "tool_call_id": tool_call_id,
+                    "content": text,
+                })));
+            }
+        }
+    }
+
+    Err(axum::http::StatusCode::NOT_FOUND)
+}
+
+// ── Inner functions for Tauri compatibility ─────────────────────────────
+
+/// Inner version of `get_ai_commands` that returns `Vec<CommandSpec>`.
+pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
+    // Only expose the session-level slash commands this GUI actually handles
+    // (model/compact/name/session/help). The rest of pi-rs's builtins
+    // (quit/login/trust/export/import/share/...) are CLI/TUI-only and have
+    // no meaning here. `/skill:` is not a builtin — it's expanded by pi-rs
+    // `prompt()`, so we surface loaded skills below as invokable commands.
+    let mut specs: Vec<CommandSpec> =
+        pi_coding_agent::core::slash_commands::builtin_slash_commands()
+            .iter()
+            .filter(|cmd| SESSION_SLASH_COMMANDS.contains(&cmd.name.as_str()))
+            .map(|cmd| CommandSpec {
+                name: cmd.name.clone(),
+                description: cmd.description.clone(),
+                command_type: CommandType::Slash,
+            })
+            .collect();
+
+    // Skills are invoked via `/skill:<name>`; pi-rs expands them in prompt().
+    for skill in openatrading_core::skills::list_skills() {
+        specs.push(CommandSpec {
+            name: format!("skill:{}", skill.name),
+            description: skill.description,
+            command_type: CommandType::Skill,
+        });
+    }
+
+    specs
+}
+
+/// Inner version of `list_sessions` that returns `Vec<serde_json::Value>`.
+pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value> {
+    use std::path::Path;
+
+    let dir = Path::new(&state.ctx.session_dir);
+    let infos =
+        pi_coding_agent::core::session_manager::list_sessions_concurrent(dir, None, None).await;
+
+    let mut sessions = Vec::with_capacity(infos.len());
+    for info in infos {
+        let status = if state.ctx.pool.is_stream(&info.id).await {
+            "running"
+        } else {
+            "idle"
+        };
+        let mut val = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("status".to_string(), serde_json::json!(status));
+            obj.remove("all_messages_text");
+        }
+        sessions.push(val);
+    }
+
+    sessions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{messages_to_session_messages, HistoryBlock};
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
+    use openatrading_core::llm::{pi_ai_types::Usage, AgentMessage};
+
+    fn user_text(text: &str) -> AgentMessage {
+        AgentMessage::User {
+            content: vec![ContentBlock::text(text)],
+            timestamp: 1,
+        }
+    }
+
+    fn assistant_with_tool_call(id: &str, name: &str) -> AgentMessage {
+        AgentMessage::Assistant {
+            content: vec![ContentBlock::ToolCall {
+                id: id.to_string(),
+                name: name.to_string(),
+                arguments: serde_json::json!({}),
+                thought_signature: None,
+            }],
+            api: "openai".into(),
+            provider: "openrouter".into(),
+            model: "m".into(),
+            usage: Usage::default(),
+            stop_reason: None,
+            error_message: None,
+            timestamp: 2,
+        }
+    }
+
+    fn tool_result(id: &str, text: &str, is_error: bool) -> AgentMessage {
+        AgentMessage::ToolResult {
+            tool_call_id: id.to_string(),
+            tool_name: "read".into(),
+            content: vec![ContentBlock::text(text)],
+            details: serde_json::Value::Null,
+            is_error,
+            timestamp: 3,
+        }
+    }
+
+    /// Happy path: a tool_result is joined onto the matching ToolUse block,
+    /// and ToolResult is not emitted as a standalone history entry.
+    #[test]
+    fn tool_result_joins_onto_tool_use() {
+        let messages = vec![
+            user_text("run it"),
+            assistant_with_tool_call("t1", "read"),
+            tool_result("t1", "file contents", false),
+        ];
+        let out = messages_to_session_messages(&messages);
+        assert_eq!(out.len(), 2, "user + assistant only; tool_result joined");
+        let assistant = &out[1];
+        assert_eq!(assistant.blocks.len(), 1);
+        match &assistant.blocks[0] {
+            HistoryBlock::ToolUse {
+                result, is_error, ..
+            } => {
+                assert_eq!(result.as_deref(), Some("file contents"));
+                assert!(!*is_error);
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    /// Failure path: an errored tool_result surfaces `is_error=true`.
+    #[test]
+    fn errored_tool_result_marks_error() {
+        let messages = vec![
+            assistant_with_tool_call("t2", "read"),
+            tool_result("t2", "boom", true),
+        ];
+        let out = messages_to_session_messages(&messages);
+        let block = &out[0].blocks[0];
+        match block {
+            HistoryBlock::ToolUse {
+                is_error, result, ..
+            } => {
+                assert!(*is_error);
+                assert_eq!(result.as_deref(), Some("boom"));
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    /// Edge case: a ToolUse whose result is missing (in-flight / not yet
+    /// recorded) still renders, with no result and `is_error=false`.
+    #[test]
+    fn tool_use_without_result_renders_empty() {
+        let messages = vec![assistant_with_tool_call("t3", "read")];
+        let out = messages_to_session_messages(&messages);
+        match &out[0].blocks[0] {
+            HistoryBlock::ToolUse {
+                result, is_error, ..
+            } => {
+                assert!(result.is_none());
+                assert!(!*is_error);
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
 }

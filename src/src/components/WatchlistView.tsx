@@ -42,19 +42,24 @@ export default function WatchlistView() {
   const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
 
   // ── Real-time quotes via streams — single SSE for all symbols ──
-  const quotesRef = useRef<Map<string, QuoteData>>(new Map())
+  const [quotesMap, setQuotesMap] = useState<Map<string, QuoteData>>(new Map())
   const [quoteTick, setQuoteTick] = useState(0)
 
   useEffect(() => {
     if (items.length === 0) return
-    quotesRef.current = new Map()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuotesMap(new Map())
     const codes = items.map((item) => item.code)
     return subscribeRealtimeBatch(codes, (code, data: any) => {
-      quotesRef.current.set(code, {
+      setQuotesMap((prev) => {
+        const next = new Map(prev)
+        next.set(code, {
         last_px: data.last_px,
         px_change_rate: data.px_change_rate,
         market_value: data.market_value,
         circulation_value: data.circulation_value,
+        })
+        return next
       })
       setQuoteTick((n) => n + 1)
     })
@@ -87,31 +92,34 @@ export default function WatchlistView() {
 
   // ── Add-stock search ──
   const isTauri = "__TAURI_INTERNALS__" in window
-  const handleAddSearch = useCallback(async (q: string) => {
-    setAddQuery(q)
-    if (!q.trim()) {
-      setAddResults([])
-      return
-    }
-    setAddSearching(true)
-    try {
-      if (isTauri) {
-        const { invoke } = await import("@tauri-apps/api/core")
-        const data = await invoke("api_search_stocks", { q: q.trim() })
-        setAddResults(data as { code: string; name: string }[])
-      } else {
-        const res = await fetch(`/api/search-stocks?q=${encodeURIComponent(q.trim())}`)
-        if (res.ok) {
-          const data = await res.json()
-          setAddResults(data)
-        }
+  const handleAddSearch = useCallback(
+    async (q: string) => {
+      setAddQuery(q)
+      if (!q.trim()) {
+        setAddResults([])
+        return
       }
-    } catch {
-      // ignore
-    } finally {
-      setAddSearching(false)
-    }
-  }, [isTauri])
+      setAddSearching(true)
+      try {
+        if (isTauri) {
+          const { invoke } = await import("@tauri-apps/api/core")
+          const data = await invoke("api_search_stocks", { q: q.trim() })
+          setAddResults(data as { code: string; name: string }[])
+        } else {
+          const res = await fetch(`/api/search-stocks?q=${encodeURIComponent(q.trim())}`)
+          if (res.ok) {
+            const data = await res.json()
+            setAddResults(data)
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        setAddSearching(false)
+      }
+    },
+    [isTauri]
+  )
 
   const handleAdd = useCallback(
     (code: string, name: string) => {
@@ -127,7 +135,7 @@ export default function WatchlistView() {
   const richList = useMemo((): RichStock[] => {
     return items.map((item, i) => ({
       ...item,
-      quote: quotesRef.current.get(item.code),
+      quote: quotesMap.get(item.code),
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, quoteTick])
@@ -165,7 +173,7 @@ export default function WatchlistView() {
   }, [richList, sortField, sortDir, localSearch])
 
   // ── Sort icon ──
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const renderSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown className="ml-0.5 inline size-2.5 opacity-40" />
     return sortDir === "asc" ? (
       <ArrowUp className="ml-0.5 inline size-2.5" />
@@ -217,7 +225,7 @@ export default function WatchlistView() {
 
           {/* ── Add-stock search ── */}
           {showAdd && (
-            <div className="border-hairline mb-4 rounded-card border bg-white/[0.02] p-3">
+            <div className="border-hairline rounded-card mb-4 border bg-white/2 p-3">
               <div className="relative">
                 <Search className="text-ink-muted absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                 <Input
@@ -229,14 +237,16 @@ export default function WatchlistView() {
                 />
               </div>
               {addSearching && (
-                <div className="text-caption text-ink-muted py-4 text-center text-xs">搜索中...</div>
+                <div className="text-caption text-ink-muted py-4 text-center text-xs">
+                  搜索中...
+                </div>
               )}
               {addResults.length > 0 && (
                 <div className="mt-2 max-h-60 space-y-1 overflow-y-auto">
                   {addResults.map((r) => (
                     <div
                       key={r.code}
-                      className="rounded-card hover:bg-bg-hover flex cursor-pointer items-center justify-between px-3 py-2 transition-colors"
+                      className="hover:bg-bg-hover rounded-card flex cursor-pointer items-center justify-between px-3 py-2 transition-colors"
                       onClick={() => handleAdd(r.code, r.name)}
                     >
                       <div className="flex items-baseline gap-2">
@@ -257,7 +267,10 @@ export default function WatchlistView() {
           {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="rounded-card border-hairline bg-bg h-14 animate-pulse border" />
+                <div
+                  key={i}
+                  className="bg-bg border-hairline rounded-card h-14 animate-pulse border"
+                />
               ))}
             </div>
           ) : sorted.length === 0 ? (
@@ -272,31 +285,31 @@ export default function WatchlistView() {
             <div className="space-y-2">
               {/* Column headers — clickable sort */}
               {!showAdd && (
-                <div className="text-caption flex items-center gap-4 px-3 py-1.5 text-[11px] tracking-wide uppercase text-white/40">
+                <div className="text-caption flex items-center gap-4 px-3 py-1.5 text-[11px] tracking-wide text-white/40 uppercase">
                   <span className="flex-1">名称 / 代码</span>
                   <button
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("price")}
                   >
-                    最新价 <SortIcon field="price" />
+                    最新价 {renderSortIcon("price")}
                   </button>
                   <button
                     className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("change")}
                   >
-                    涨幅 <SortIcon field="change" />
+                    涨幅 {renderSortIcon("change")}
                   </button>
                   <button
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("market_value")}
                   >
-                    总市值 <SortIcon field="market_value" />
+                    总市值 {renderSortIcon("market_value")}
                   </button>
                   <button
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("circulation_value")}
                   >
-                    流通市值 <SortIcon field="circulation_value" />
+                    流通市值 {renderSortIcon("circulation_value")}
                   </button>
                   <span className="w-6" />
                 </div>
@@ -318,7 +331,7 @@ export default function WatchlistView() {
 
       {/* KlineDrawer overlay */}
       {klineStock && (
-        <div className="border-hairline w-[500px] flex-shrink-0 border-l overflow-y-auto bg-bg-surface">
+        <div className="bg-bg-surface border-hairline w-[500px] shrink-0 overflow-y-auto border-l">
           <KlineDrawer
             symbol={klineStock.symbol}
             name={klineStock.name}
@@ -350,12 +363,14 @@ function StockRow({
 
   return (
     <div
-      className="rounded-card border-hairline bg-bg hover:border-ai/30 flex cursor-pointer items-center gap-4 border p-3 transition-colors"
+      className="bg-bg border-hairline hover:border-ai/30 rounded-card flex cursor-pointer items-center gap-4 border p-3 transition-colors"
       onClick={() => onSelect({ symbol: code, name })}
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="truncate text-sm font-semibold text-white">{name}</span>
-        <span className="text-caption text-ink-muted font-mono">{code.replace(/^[a-z]+/i, "")}</span>
+        <span className="text-caption text-ink-muted font-mono">
+          {code.replace(/^[a-z]+/i, "")}
+        </span>
       </div>
 
       {loaded ? (
@@ -388,7 +403,7 @@ function StockRow({
       )}
 
       <button
-        className="text-ink-muted hover:text-down w-6 flex-shrink-0 p-1 text-right transition-colors"
+        className="hover:text-down text-ink-muted w-6 shrink-0 p-1 text-right transition-colors"
         onClick={(e) => {
           e.stopPropagation()
           onDelete()

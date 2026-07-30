@@ -65,17 +65,6 @@ pub enum Commands {
         #[arg(long)]
         skip_network: bool,
     },
-    /// 启动 AI 对话终端界面
-    Chat,
-    /// 手动触发一次所有角色的每日决策并推送通知
-    Decision {
-        /// 仅输出到终端，不推送通知
-        #[arg(long)]
-        dry_run: bool,
-        /// 仅对指定角色执行决策（可多次使用）
-        #[arg(long)]
-        role: Option<String>,
-    },
     /// 技能管理（安装/列出/卸载）
     Skills {
         #[command(subcommand)]
@@ -112,13 +101,13 @@ pub enum ToolsAction {
 pub enum McpAction {
     /// 列出 MCP 服务端所有已注册工具
     List {
-        /// MCP 端点，默认 http://localhost:8081/mcp
+        /// MCP 端点，默认 <http://localhost:8081/mcp>
         #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
     /// 检查 MCP 服务器连通性
     Status {
-        /// MCP 端点，默认 http://localhost:8081/mcp
+        /// MCP 端点，默认 <http://localhost:8081/mcp>
         #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
@@ -129,7 +118,7 @@ pub enum McpAction {
         /// JSON 参数（可选）
         #[arg(default_value = "{}")]
         args: String,
-        /// MCP 端点，默认 http://localhost:8081/mcp
+        /// MCP 端点，默认 <http://localhost:8081/mcp>
         #[arg(long, default_value = "http://localhost:8081/mcp")]
         endpoint: String,
     },
@@ -169,15 +158,15 @@ pub enum ConfigSetter {
     Provider { value: String },
     /// 修改 LLM model
     Model { value: String },
-    /// 修改 social notify_channel
+    /// 修改 social `notify_channel`
     NotifyChannel { value: String },
-    /// 修改 Telegram bot_token
+    /// 修改 Telegram `bot_token`
     TelegramToken { value: String },
-    /// 修改 Telegram chat_id
+    /// 修改 Telegram `chat_id`
     TelegramChatId { value: String },
-    /// 修改 Discord bot_token
+    /// 修改 Discord `bot_token`
     DiscordToken { value: String },
-    /// 修改 Discord channel_id
+    /// 修改 Discord `channel_id`
     DiscordChannelId { value: String },
 }
 

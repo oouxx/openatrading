@@ -23,7 +23,7 @@ export default function StrongStocksTab() {
   const openKline = useRightPanelStore((s) => s.openKline)
 
   return (
-    <div className="rounded-card border-hairline bg-bg-surface overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-card overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <span className="text-caption-strong text-ink-muted font-mono tracking-wider uppercase">
           涨停股 · {limitUpStocks.length}

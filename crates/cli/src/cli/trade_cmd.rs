@@ -29,7 +29,7 @@ pub fn cmd_trade_add(role: &str, symbol: &str, price: f64, shares: i64) -> Resul
         created_at: String::new(),
         updated_at: String::new(),
     };
-    let id = tm.add_position(pos)?;
+    let id = tm.add_position(&pos)?;
     println!("已添加持仓 #{id}: {symbol} @ {price} x {shares}股");
     Ok(())
 }
@@ -50,7 +50,7 @@ pub fn cmd_trade_list(role: Option<&str>) -> Result<()> {
                 let pnl = match p.current_price {
                     Some(cp) if cp > 0.0 => {
                         format!("{:+.1}%", (cp - p.cost_price) / p.cost_price * 100.0)
-                    },
+                    }
                     _ => "N/A".to_string(),
                 };
                 println!(
@@ -60,7 +60,8 @@ pub fn cmd_trade_list(role: Option<&str>) -> Result<()> {
                     p.symbol,
                     p.stock_name,
                     p.cost_price,
-                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    p.current_price
+                        .map_or_else(|| "N/A".to_string(), |v| v.to_string()),
                     pnl,
                     p.shares,
                 );

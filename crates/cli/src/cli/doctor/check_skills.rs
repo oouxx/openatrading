@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct SkillsCheck;
 
@@ -23,8 +23,7 @@ impl Check for SkillsCheck {
     }
 
     async fn check(&self, _ctx: &CheckContext) -> CheckResult {
-        let registry = openatrading_core::skills::SkillRegistry::from_disk();
-        let skills = registry.skills();
+        let skills = openatrading_core::skills::list_skills();
 
         if skills.is_empty() {
             return CheckResult {
