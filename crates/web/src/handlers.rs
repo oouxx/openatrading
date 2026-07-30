@@ -960,20 +960,19 @@ pub async fn get_session_messages_data(
     _state: &Arc<AppState>,
     id: &str,
 ) -> Result<serde_json::Value, String> {
-    use openatrading_core::log;
     use crate::chat;
+    use openatrading_core::log;
 
     // File parsing is synchronous; offload it so we don't stall the executor.
     let id = id.to_string();
-    let messages = match tokio::task::spawn_blocking(move || chat::read_messages_from_disk(&id))
-        .await
-    {
-        Ok(m) => m,
-        Err(join_err) => {
-            log::error!("get_session_messages_data: read task failed: {join_err}");
-            Vec::new()
-        }
-    };
+    let messages =
+        match tokio::task::spawn_blocking(move || chat::read_messages_from_disk(&id)).await {
+            Ok(m) => m,
+            Err(join_err) => {
+                log::error!("get_session_messages_data: read task failed: {join_err}");
+                Vec::new()
+            }
+        };
     let session_messages = chat::messages_to_session_messages(&messages);
     Ok(serde_json::to_value(session_messages).unwrap_or_default())
 }

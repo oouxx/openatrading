@@ -34,6 +34,10 @@ interface ConnectionState {
   reconnectCount: number
   reconnectTimer: ReturnType<typeof setTimeout> | null
   readyResolve: (() => void) | null
+  /** Highest event `seq` received from the server. 0 = cold start (no dedup).
+   *  Persisted across reconnects (the same `conn` is reused) so the WS URL
+   *  carries `lastSeq` on reconnect and the server replays the gap. */
+  lastSeq: number
 }
 
 function createConnectionState(): ConnectionState {
@@ -44,6 +48,7 @@ function createConnectionState(): ConnectionState {
     reconnectCount: 0,
     reconnectTimer: null,
     readyResolve: null,
+    lastSeq: 0,
   }
 }
 
@@ -96,7 +101,8 @@ export function useMultiAgentWebSocket(
   function connectSession(sid: string, conn: ConnectionState) {
     if (!mountedRef.current) return
 
-    const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sid}`
+    const lastSeqParam = conn.lastSeq > 0 ? `&lastSeq=${conn.lastSeq}` : ""
+    const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sid}${lastSeqParam}`
     conn.readyState = ReadyState.CONNECTING
 
     const ws = new WebSocket(url)
@@ -108,10 +114,12 @@ export function useMultiAgentWebSocket(
       conn.reconnectCount = 0
       conn.readyResolve?.()
       conn.readyResolve = null
-      // Load history messages from REST API when the WebSocket connects.
-      // This ensures the turn list is populated with past messages before
-      // any live events arrive via the WebSocket.
-      fetchHistory(sid, conn)
+      // Cold start (lastSeq===0): load full history via REST, then accept all
+      // live events (dedup off). Reconnect (lastSeq>0): the server replays
+      // the gap from its ring buffer, so skip fetchHistory and dedup by seq.
+      if (conn.lastSeq === 0) {
+        fetchHistory(sid, conn)
+      }
     }
 
     ws.onclose = () => {
@@ -142,6 +150,27 @@ export function useMultiAgentWebSocket(
       if (!mountedRef.current || ws !== conn.ws) return
       try {
         const parsed = JSON.parse(event.data) as Record<string, unknown>
+        // Resync signal: gap too large to replay — reset and reload full
+        // history. Advance lastSeq past this signal and bail.
+        if (
+          parsed.kind === "session" &&
+          parsed.type === "resync_required"
+        ) {
+          conn.turns = []
+          optionsRef.current.onTurnsUpdate?.(sid, [])
+          fetchHistory(sid, conn)
+          const seq = Number(parsed.seq)
+          if (Number.isFinite(seq) && seq > 0) conn.lastSeq = seq
+          return
+        }
+        // Dedup by seq: drop events already seen (overlap of replay + live,
+        // or a duplicate after reconnect). seq=0 (out-of-band, e.g. session
+        // create-failure) is always accepted — it bypasses dedup.
+        const seq = Number(parsed.seq)
+        if (Number.isFinite(seq) && seq > 0) {
+          if (seq <= conn.lastSeq) return
+          conn.lastSeq = seq
+        }
         const prev = conn.turns
         const { turns: newTurns, terminal } = applyEvent(prev, parsed as TranscriptEvent)
         conn.turns = newTurns

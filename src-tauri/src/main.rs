@@ -417,16 +417,18 @@ async fn send_prompt(
     // This creates the session if needed and sets up the event forward task.
     ensure_session_tauri(&session_id, &state, &app).await?;
 
+    // The event_state assigns seq + retains the event in the ring (kept
+    // consistent with the WebSocket path). Desktop doesn't reconnect so dedup
+    // isn't needed, but routing through emit keeps a single serialization path.
+    let event_state = state.get_event_state(&session_id).await;
+
     // Slash commands need `&mut AgentSession` (set_model / set_session_name).
     if let Some((cmd_name, cmd_args)) =
         pi_coding_agent::core::slash_commands::parse_slash_command(&text)
     {
         let notice = run_slash_tauri(&session_id, &state, cmd_name, cmd_args).await;
-        let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
-            schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
-            event: openatrading_web::agent_ws::TranscriptEvent::Session(notice),
-        })
-        .unwrap_or_default();
+        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(notice));
+        let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
         let _ = app.emit("agent-event", payload);
         return Ok(());
@@ -452,15 +454,15 @@ async fn send_prompt(
         // Surface the error to the frontend as a Notice event, mirroring the
         // WebSocket path (which emits via the session event channel). The
         // `send_prompt` invoke resolves Ok so the frontend renders the error
-        // through the same event stream as everything else.
-        let notice = openatrading_web::agent_ws::TranscriptEvent::Session(
-            openatrading_web::agent_ws::SessionEventPayload::Notice { text: e, is_error: true },
-        );
-        let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
-            schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
-            event: notice,
-        })
-        .unwrap_or_default();
+        // through the same event stream as everything else. Route through
+        // event_state.emit for consistent seq/serialization.
+        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(
+            openatrading_web::agent_ws::SessionEventPayload::Notice {
+                text: e,
+                is_error: true,
+            },
+        ));
+        let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
         let _ = app.emit("agent-event", payload);
     }
@@ -502,22 +504,23 @@ async fn ensure_session_tauri(
     state: &Arc<AppState>,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
-    let session_with_events =
-        openatrading_web::chat_session::ensure_session_with_events(&state.ctx.pool, session_id)
-            .await?;
+    let event_state = state.get_event_state(session_id).await;
+    let session_with_events = openatrading_web::chat_session::ensure_session_with_events(
+        &state.ctx.pool,
+        session_id,
+        &event_state,
+    )
+    .await?;
 
     let mut rx = session_with_events.rx;
     let app_handle = app.clone();
     let sid = session_id.to_string();
 
+    // rx yields already-serialized EventEnvelope JSON strings (with seq).
     let join_handle = tokio::spawn(async move {
         loop {
-            let Some(event) = rx.recv().await else { break };
-            let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
-                schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
-                event,
-            })
-            .unwrap_or_default();
+            let Some(json) = rx.recv().await else { break };
+            let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
             let payload = serde_json::json!({ "session_id": sid, "event": event_value });
             let _ = app_handle.emit("agent-event", payload);
         }
@@ -776,6 +779,7 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
+        event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     tauri::Builder::default()

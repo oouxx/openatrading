@@ -134,13 +134,13 @@ use pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle;
 use pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::agent_ws::{setup_event_channel, TranscriptEvent};
+use crate::agent_ws::{setup_event_channel, SessionEventState};
 
 /// Result of ensuring a session with events.
 pub struct SessionWithEvents {
     pub runtime: Arc<Mutex<AgentSessionRuntime>>,
-    pub tx: mpsc::Sender<TranscriptEvent>,
-    pub rx: mpsc::Receiver<TranscriptEvent>,
+    pub tx: mpsc::Sender<String>,
+    pub rx: mpsc::Receiver<String>,
     pub _subscription_handle: SessionEventUnsubscribeHandle,
 }
 
@@ -153,6 +153,7 @@ pub struct SessionWithEvents {
 pub async fn ensure_session_with_events(
     pool: &openatrading_core::llm::SessionPool,
     session_id: &str,
+    event_state: &Arc<SessionEventState>,
 ) -> Result<SessionWithEvents, String> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
@@ -173,7 +174,7 @@ pub async fn ensure_session_with_events(
 
     let (tx, rx, _subscription_handle) = {
         let rt = runtime.lock().await;
-        setup_event_channel(rt.session()).await
+        setup_event_channel(rt.session(), event_state).await
     };
 
     Ok(SessionWithEvents {

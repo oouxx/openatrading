@@ -469,7 +469,9 @@ pub enum HistoryBlock {
 ///
 /// `SessionManager::open` and file parsing are synchronous, so the work is
 /// offloaded to `spawn_blocking` to avoid stalling the async executor.
-pub(crate) fn read_messages_from_disk(session_id: &str) -> Vec<openatrading_core::llm::AgentMessage> {
+pub(crate) fn read_messages_from_disk(
+    session_id: &str,
+) -> Vec<openatrading_core::llm::AgentMessage> {
     use openatrading_core::llm::AgentMessage;
     use pi_coding_agent::core::session_manager::{SessionEntry, SessionManager};
 
@@ -555,8 +557,7 @@ pub(crate) fn messages_to_session_messages(
                         arguments,
                         ..
                     } => {
-                        let (result, is_error) =
-                            tool_results.get(id).cloned().unwrap_or_default();
+                        let (result, is_error) = tool_results.get(id).cloned().unwrap_or_default();
                         blocks.push(HistoryBlock::ToolUse {
                             id: id.clone(),
                             name: name.clone(),
@@ -836,7 +837,9 @@ mod tests {
         let assistant = &out[1];
         assert_eq!(assistant.blocks.len(), 1);
         match &assistant.blocks[0] {
-            HistoryBlock::ToolUse { result, is_error, .. } => {
+            HistoryBlock::ToolUse {
+                result, is_error, ..
+            } => {
                 assert_eq!(result.as_deref(), Some("file contents"));
                 assert!(!*is_error);
             }
@@ -854,7 +857,9 @@ mod tests {
         let out = messages_to_session_messages(&messages);
         let block = &out[0].blocks[0];
         match block {
-            HistoryBlock::ToolUse { is_error, result, .. } => {
+            HistoryBlock::ToolUse {
+                is_error, result, ..
+            } => {
                 assert!(*is_error);
                 assert_eq!(result.as_deref(), Some("boom"));
             }
@@ -869,7 +874,9 @@ mod tests {
         let messages = vec![assistant_with_tool_call("t3", "read")];
         let out = messages_to_session_messages(&messages);
         match &out[0].blocks[0] {
-            HistoryBlock::ToolUse { result, is_error, .. } => {
+            HistoryBlock::ToolUse {
+                result, is_error, ..
+            } => {
                 assert!(result.is_none());
                 assert!(!*is_error);
             }

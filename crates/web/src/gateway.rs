@@ -49,6 +49,7 @@ impl Gateway {
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
+            event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });
 
         // Seed config roles first, then discover disk roles (config wins)
