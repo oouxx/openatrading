@@ -110,8 +110,9 @@ _bump-set:
 	$(call _set_version,$(VERSION))
 
 define _set_version
-	sed -i '' '/^\[workspace\.package\]/,/^\[/{ s/^version = "[0-9][^"]*"/version = "$(1)"/; }' Cargo.toml
-	@echo "✓ version $(1)"
+	new_ver="$(1)"; \
+	sed -i '' '/^\[workspace\.package\]/,/^\[/{ s/^version = "[0-9][^"]*"/version = "'"$$new_ver"'"/; }' Cargo.toml; \
+	echo "✓ version $$new_ver"
 endef
 
 _release:
