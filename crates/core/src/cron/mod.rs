@@ -331,8 +331,6 @@ async fn run_decision_for_role(
         user_message.push_str(crate::prompts::AGGRESSIVE_MODE_USER_PROMPT);
     }
 
-    let _system = crate::skills::SkillRegistry::build_role_prompt(role);
-
     // ── Build make_decision tool ──
     // The LLM calls this tool with structured DecisionOutput params.
     // The execute function captures the structured data into shared state

@@ -3,34 +3,25 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fetchJson } from "@/stores/data"
 
 interface SkillEntry {
   name: string
   description: string
-  license?: string | null
-  compatibility?: string | null
-  metadata: Record<string, string>
-  allowed_tools?: string | null
   file_path: string
-  content: string
   base_dir: string
   disable_model_invocation: boolean
+  /** "user" | "project" | "temporary" */
   scope: string
-}
-
-interface ToolItem {
-  name: string
-  description: string
+  /** Markdown body after frontmatter. */
+  content: string
 }
 
 type EditorTab = "manifest" | "content"
 
 export default function SkillEditor() {
   const [skills, setSkills] = useState<SkillEntry[]>([])
-  const [tools, setTools] = useState<ToolItem[]>([])
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<EditorTab>("manifest")
   const [saving, setSaving] = useState(false)
@@ -39,9 +30,7 @@ export default function SkillEditor() {
   const [editName, setEditName] = useState("")
   const [editDesc, setEditDesc] = useState("")
   const [editContent, setEditContent] = useState("")
-  const [editLicense, setEditLicense] = useState("")
-  const [editCompat, setEditCompat] = useState("")
-  const [editAllowedTools, setEditAllowedTools] = useState("")
+  const [editDisable, setEditDisable] = useState(false)
   const [isNew, setIsNew] = useState(false)
 
   const loadSkills = async () => {
@@ -53,21 +42,11 @@ export default function SkillEditor() {
     }
   }
 
-  const loadTools = async () => {
-    try {
-      const data = await fetchJson<ToolItem[]>("/api/tools")
-      setTools(data)
-    } catch {
-      setTools([])
-    }
-  }
-
   // Mount-time initialization — data must be fetched before user interacts
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     loadSkills()
-    loadTools()
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
@@ -78,9 +57,7 @@ export default function SkillEditor() {
     setEditName(s.name)
     setEditDesc(s.description)
     setEditContent(s.content || "")
-    setEditLicense(s.license || "")
-    setEditCompat(s.compatibility || "")
-    setEditAllowedTools(s.allowed_tools || "")
+    setEditDisable(!!s.disable_model_invocation)
     setActiveTab("manifest")
   }
 
@@ -90,9 +67,7 @@ export default function SkillEditor() {
     setEditName("")
     setEditDesc("")
     setEditContent("")
-    setEditLicense("")
-    setEditCompat("")
-    setEditAllowedTools("")
+    setEditDisable(false)
     setActiveTab("manifest")
   }
 
@@ -106,10 +81,7 @@ export default function SkillEditor() {
           name: editName.trim(),
           description: editDesc.trim(),
           content: editContent,
-          license: editLicense.trim() || null,
-          compatibility: editCompat.trim() || null,
-          "allowed-tools": editAllowedTools.trim() || null,
-          metadata: {},
+          "disable-model-invocation": editDisable,
         }),
       })
       await loadSkills()
@@ -182,10 +154,12 @@ export default function SkillEditor() {
                     <span className="truncate text-xs font-medium">{sk.name}</span>
                     <span
                       className={`rounded-full px-1.5 py-[1px] text-[9px] ${
-                        sk.scope === "project" ? "bg-ai/10 text-ai" : "bg-white/5 text-white/40"
+                        sk.scope === "project"
+                          ? "bg-ai/10 text-ai"
+                          : "bg-white/5 text-white/40"
                       }`}
                     >
-                      {sk.scope === "project" ? "项目" : "用户"}
+                      {sk.scope === "project" ? "项目" : sk.scope === "temporary" ? "临时" : "用户"}
                     </span>
                   </div>
                   <div className="text-ink-muted mt-0.5 truncate text-[10px]">{sk.description}</div>
@@ -280,81 +254,15 @@ export default function SkillEditor() {
                             placeholder="简要描述技能的功能..."
                           />
                         </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card size="sm" className="border-hairline mt-3 border ring-0">
-                      <CardHeader>
-                        <CardTitle className="text-xs font-medium">元数据</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-ink-muted mb-1 block text-xs">license</label>
-                            <Input
-                              value={editLicense}
-                              onChange={(e) => setEditLicense(e.target.value)}
-                              className="h-7 font-mono text-xs"
-                              placeholder="可选"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-ink-muted mb-1 block text-xs">
-                              compatibility
-                            </label>
-                            <Input
-                              value={editCompat}
-                              onChange={(e) => setEditCompat(e.target.value)}
-                              className="h-7 font-mono text-xs"
-                              placeholder="可选"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card size="sm" className="border-hairline mt-3 border ring-0">
-                      <CardHeader>
-                        <CardTitle className="text-xs font-medium">工具权限</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div>
-                          <label className="text-ink-muted mb-1 block text-xs">allowed-tools</label>
-                          <Input
-                            value={editAllowedTools}
-                            onChange={(e) => setEditAllowedTools(e.target.value)}
-                            className="h-7 font-mono text-xs"
-                            placeholder="tool1 tool2 (空格分隔)"
+                        <label className="text-ink-muted flex cursor-pointer items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={editDisable}
+                            onChange={(e) => setEditDisable(e.target.checked)}
+                            className="size-3.5"
                           />
-                        </div>
-                        {tools.length > 0 && (
-                          <div>
-                            <label className="text-ink-muted mb-1 block text-xs">
-                              可用工具 ({tools.length})
-                            </label>
-                            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-white/5 p-2">
-                              {tools.map((tool) => (
-                                <label
-                                  key={tool.name}
-                                  className="text-ink-muted flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-white/5 hover:text-white"
-                                >
-                                  <Checkbox
-                                    checked={editAllowedTools.split(/\s+/).includes(tool.name)}
-                                    onCheckedChange={(checked) => {
-                                      const current = editAllowedTools.split(/\s+/).filter(Boolean)
-                                      const updated = checked
-                                        ? [...current, tool.name]
-                                        : current.filter((t) => t !== tool.name)
-                                      setEditAllowedTools(updated.join(" "))
-                                    }}
-                                  />
-                                  <span className="font-mono">{tool.name}</span>
-                                  <span className="text-ink-muted">— {tool.description}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                          disable-model-invocation（禁止模型自动调用，仅 /skill 显式触发）
+                        </label>
                       </CardContent>
                     </Card>
                   </ScrollArea>

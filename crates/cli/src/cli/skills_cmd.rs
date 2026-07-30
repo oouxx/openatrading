@@ -1,60 +1,62 @@
 use anyhow::Result;
-use openatrading_core::skills::{SkillEntry, SkillRegistry};
+use openatrading_core::skills::{install_skill, list_skills, uninstall_skill, SkillRequest};
 
 pub fn cmd_skills_list() -> Result<()> {
-    let reg = SkillRegistry::from_disk();
-    let skills = reg.skills();
+    let skills = list_skills();
     if skills.is_empty() {
         eprintln!("暂无已安装的技能");
         return Ok(());
     }
     println!("已安装的技能 ({}):\n", skills.len());
     for skill in skills {
-        let scope = match skill.scope {
-            openatrading_core::skills::SkillScope::Project => " [project]",
-            openatrading_core::skills::SkillScope::User => "",
+        let scope = match openatrading_core::skills::skill_scope(&skill) {
+            "project" => " [project]",
+            "temporary" => " [temp]",
+            _ => "",
         };
         println!("  {:<30} {}{}", skill.name, skill.description, scope);
-        if let Some(compat) = &skill.compatibility {
-            println!("  {:>30} 兼容性: {}", "", compat);
-        }
-        if !skill.list_resources().is_empty() {
-            println!("  {:>30} 资源: {}", "", skill.list_resources().join(", "));
-        }
     }
     Ok(())
+}
+
+/// Parse raw skill markdown into a `SkillRequest`, using `name` as override.
+fn parse_raw(name: &str, raw: &str) -> Result<SkillRequest> {
+    let (description, content) = match openatrading_core::utils::parse_yaml_frontmatter(raw) {
+        Some((matter, body)) => {
+            // best-effort description extraction from frontmatter
+            let desc = matter
+                .lines()
+                .find_map(|l| l.strip_prefix("description:").map(|s| s.trim().to_string()))
+                .unwrap_or_default();
+            (desc, body.trim().to_string())
+        }
+        None => (String::new(), raw.trim().to_string()),
+    };
+    Ok(SkillRequest {
+        name: name.to_string(),
+        description,
+        content,
+        disable_model_invocation: false,
+    })
 }
 
 /// Resolve a skill source argument. Tries:
 /// 1. File path (if the path exists)
 /// 2. Raw content (anything else)
-pub fn resolve_skill_source(name: &str, source: &str) -> Result<SkillEntry> {
-    // Try file path
+pub fn resolve_skill_source(name: &str, source: &str) -> Result<SkillRequest> {
     let path = std::path::Path::new(source);
     if path.exists() && path.is_file() {
         let raw = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("读取文件失败 {source}: {e}"))?;
-        return SkillRegistry::parse_skill_from_md(&raw)
-            .map(|mut s| {
-                s.name = name.to_string();
-                s
-            })
-            .ok_or_else(|| anyhow::anyhow!("文件内容为空: {source}"));
+        return parse_raw(name, &raw);
     }
-
-    // Treat as raw content
-    SkillRegistry::parse_skill_from_md(source)
-        .map(|mut s| {
-            s.name = name.to_string();
-            s
-        })
-        .ok_or_else(|| anyhow::anyhow!("内容为空"))
+    parse_raw(name, source)
 }
 
 pub fn cmd_skills_install(name: &str, source: &str) -> Result<()> {
-    let skill = resolve_skill_source(name, source)?;
-    let path = SkillRegistry::install_skill(&skill)?;
-    eprintln!("✅ 技能已安装: {} ({})", skill.name, path.display());
+    let req = resolve_skill_source(name, source)?;
+    let path = install_skill(&req)?;
+    eprintln!("✅ 技能已安装: {} ({})", req.name, path.display());
     Ok(())
 }
 
@@ -66,25 +68,14 @@ pub async fn cmd_skills_install_url(name: &str, url: &str) -> Result<()> {
         .text()
         .await
         .map_err(|e| anyhow::anyhow!("读取响应失败: {e}"))?;
-
-    let skill = SkillRegistry::parse_skill_from_md(&raw)
-        .map(|mut s| {
-            s.name = name.to_string();
-            s
-        })
-        .ok_or_else(|| anyhow::anyhow!("URL 内容为空: {url}"))?;
-
-    let path = SkillRegistry::install_skill(&skill)?;
-    eprintln!("✅ 技能已安装: {} ({})", skill.name, path.display());
+    let req = parse_raw(name, &raw)?;
+    let path = install_skill(&req)?;
+    eprintln!("✅ 技能已安装: {} ({})", req.name, path.display());
     Ok(())
 }
 
 pub fn cmd_skills_uninstall(name: &str) -> Result<()> {
-    let dir = SkillRegistry::install_dir().join(name);
-    if !dir.exists() {
-        anyhow::bail!("技能未安装: {name}");
-    }
-    std::fs::remove_dir_all(&dir)?;
+    uninstall_skill(name).map_err(|e| anyhow::anyhow!("技能未安装或删除失败: {e}"))?;
     eprintln!("✅ 技能已卸载: {name}");
     Ok(())
 }
