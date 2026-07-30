@@ -12,8 +12,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     all_tools.extend(mcp.discover().0);
 
     // ── Group by installed skills ───────────────────────
-    let reg = openatrading_core::skills::SkillRegistry::from_disk();
-    let skills = reg.skills().to_vec();
+    let skills = openatrading_core::skills::list_skill_entries();
 
     let mut out = String::new();
     out.push_str("# 工具参考文档\n\n本文档列出 LLM 可用的所有工具，按已安装技能分组。\n\n---\n\n");

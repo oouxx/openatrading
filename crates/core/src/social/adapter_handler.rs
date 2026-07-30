@@ -144,7 +144,6 @@ async fn handle_ask(
         .reply(event, &format!("🤔 {} 正在思考…", role.display_name))
         .await;
 
-    let _system = crate::skills::SkillRegistry::build_role_prompt(role);
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()

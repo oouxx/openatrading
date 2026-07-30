@@ -474,8 +474,6 @@ impl TelegramBot {
         }
         user_msg.push_str(&format!("\n\nuser: {question}"));
 
-        let _system = crate::skills::SkillRegistry::build_role_prompt(role);
-
         let cwd = std::env::current_dir()
             .unwrap_or_default()
             .to_string_lossy()

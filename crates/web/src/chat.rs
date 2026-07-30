@@ -10,7 +10,6 @@ use std::sync::Arc;
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
 use openatrading_core::skills::SkillEntry;
-use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
 
 use crate::web::OverviewResponse;
@@ -61,8 +60,7 @@ pub struct ToolResponse {
 }
 
 pub async fn get_skills(State(_state): State<Arc<AppState>>) -> Json<Vec<SkillEntry>> {
-    let skills = openatrading_core::skills::SkillRegistry::from_disk();
-    Json(skills.skills().to_vec())
+    Json(openatrading_core::skills::list_skill_entries())
 }
 
 pub async fn get_tools(State(state): State<Arc<AppState>>) -> Json<Vec<ToolResponse>> {
@@ -91,8 +89,7 @@ pub async fn save_skill(
         )
             .into_response();
     }
-    let entry = req.into_skill_entry();
-    if let Err(e) = SkillRegistry::install_skill(&entry) {
+    if let Err(e) = openatrading_core::skills::install_skill(&req) {
         openatrading_core::log::error!("failed to save skill: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -100,12 +97,9 @@ pub async fn save_skill(
         )
             .into_response();
     }
-    let skills = SkillRegistry::from_disk();
-    let saved = skills
-        .skills()
-        .iter()
-        .find(|s| s.name == entry.name)
-        .cloned();
+    let saved = openatrading_core::skills::list_skill_entries()
+        .into_iter()
+        .find(|s| s.name == req.name);
     (StatusCode::OK, Json(saved)).into_response()
 }
 
@@ -114,7 +108,7 @@ pub async fn delete_skill(
     State(_state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    match SkillRegistry::uninstall_skill(&name) {
+    match openatrading_core::skills::uninstall_skill(&name) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             openatrading_core::log::error!("failed to delete skill '{name}': {e}");
@@ -134,10 +128,6 @@ pub async fn get_ai_roles(
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
-
-pub fn build_system_prompt(strategy_text: &str) -> String {
-    openatrading_core::skills::SkillRegistry::build_chat_prompt(strategy_text)
 }
 
 pub fn build_user_message(
