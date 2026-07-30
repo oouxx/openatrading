@@ -78,7 +78,10 @@ pub fn current_market_phase() -> MarketPhase {
 }
 
 pub fn is_trading_hours() -> bool {
-    matches!(current_market_phase(), MarketPhase::MorningOpen | MarketPhase::AfternoonOpen)
+    matches!(
+        current_market_phase(),
+        MarketPhase::MorningOpen | MarketPhase::AfternoonOpen
+    )
 }
 
 fn next_open_timestamp() -> i64 {

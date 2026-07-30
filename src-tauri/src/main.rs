@@ -748,16 +748,16 @@ fn main() {
 
     let (provider, model) = load_llm_config_from_toml();
 
-    let app_ctx = tokio::runtime::Runtime::new().unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}")).block_on(
-        openatrading_core::context::AppContext::build(
+    let app_ctx = tokio::runtime::Runtime::new()
+        .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
+        .block_on(openatrading_core::context::AppContext::build(
             provider.as_deref(),
             model.as_deref(),
             &[],
             gateway.memory.clone(),
             gateway.trade.clone(),
             Arc::new(openatrading_core::social::NoopChannel),
-        ),
-    );
+        ));
 
     let app_state = Arc::new(AppState {
         ctx: app_ctx,

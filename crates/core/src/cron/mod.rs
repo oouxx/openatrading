@@ -587,8 +587,8 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
         return Ok(());
     }
 
-    let beijing_tz = chrono::FixedOffset::east_opt(8 * 3600)
-        .unwrap_or_else(|| panic!("invalid UTC+8 offset"));
+    let beijing_tz =
+        chrono::FixedOffset::east_opt(8 * 3600).unwrap_or_else(|| panic!("invalid UTC+8 offset"));
     for item in &important {
         let title = item.title.as_deref().unwrap_or("");
         let brief = item.brief.as_deref().unwrap_or("");
