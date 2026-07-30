@@ -431,9 +431,14 @@ pub async fn create_session(
 
 /// GET /api/ai/sessions — list all saved sessions
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
-    let infos = pi_coding_agent::core::session_manager::SessionManager::list_all(Some(
-        &state.ctx.session_dir,
-    ))
+    use std::path::Path;
+
+    let dir = Path::new(&state.ctx.session_dir);
+    let infos = pi_coding_agent::core::session_manager::list_sessions_concurrent(
+        dir,
+        None,  // no progress callback
+        None,  // default concurrency
+    )
     .await;
 
     let mut sessions = Vec::with_capacity(infos.len());
@@ -443,11 +448,9 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde
         } else {
             "idle"
         };
-        // SessionInfo now implements Serialize — convert to JSON and add status.
         let mut val = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
         if let Some(obj) = val.as_object_mut() {
             obj.insert("status".to_string(), serde_json::json!(status));
-            // Remove internal field not needed by the frontend.
             obj.remove("all_messages_text");
         }
         sessions.push(val);
