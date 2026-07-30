@@ -8,7 +8,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::llm::runtime::find_session_file_by_id;
+use super::runtime::find_session_file_by_id;
 
 /// Default maximum number of sessions in the pool.
 ///
