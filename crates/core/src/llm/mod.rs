@@ -1,50 +1,27 @@
-// Re-exports from openatrading-agent (the canonical agent crate).
-// Core's business-specific agent code lives in the sibling modules below.
-pub mod cwd;
-pub mod factory;
-pub mod gui_event;
-pub mod mcp;
-pub mod pool;
-pub mod runtime;
+//! LLM / agent glue re-exported for the openatrading layers.
+//!
+//! The pure pi-coding-agent session lifecycle (pool, factory, session-file
+//! lookup) lives in [`openatrading_agent::session`]; this module re-exports it
+//! alongside the MCP infrastructure and the domain-specific tool registry.
+//!
+//! Domain tools that couple to core's types (`TradeManager`, `MemoryStore`)
+//! stay in [`tools`] — they cannot move to the agent crate without creating a
+//! circular `agent → core` dependency.
+
 pub mod tools;
-pub mod types;
-pub mod ui;
-pub use types::*;
 
-pub use openatrading_agent::llm::{
-    StreamFn, StreamFnOptions, StreamResult, ToolCallFunction, ToolCallItem, ToolCallMessage,
-    ToolChatChoice, ToolChatResponse,
-};
+// ── Session lifecycle (from the agent crate) ───────────────────────────────
+pub use openatrading_agent::session::{create_factory, find_session_file_by_id, SessionPool};
 
-pub use openatrading_agent::mcp_server::{serve_http, serve_stdio, MarketToolsServer};
+// ── MCP infrastructure (from the agent crate) ─────────────────────────────
+pub use openatrading_agent::mcp_server::{serve_http, serve_stdio};
 pub use openatrading_agent::mcp_tools::{
     McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
 };
-pub use openatrading_agent::tools::{empty_schema, text_result, to_box_err, tool, ExecuteFn};
 
-pub use openatrading_agent::agent::{Agent, AgentOptions};
+// ── pi-rs types ────────────────────────────────────────────────────────────
 pub use openatrading_agent::pi_ai_types;
-pub use openatrading_agent::types::{
-    AfterToolCallContext, AfterToolCallResult, AgentContext, AgentEvent, AgentMessage, AgentState,
-    AgentTool, AgentToolCall, AgentToolResult, BeforeToolCallContext, BeforeToolCallResult,
-    ConvertToLlmFn, DynTool, QueueMode, ShouldStopAfterTurnContext,
-};
+pub use openatrading_agent::types::{AgentMessage, DynTool};
 
-// Re-export the pool and factory
-pub use self::factory::create_factory;
-pub use self::pool::SessionPool;
-
-// Session file lookup utility
-pub use self::runtime::find_session_file_by_id;
-
-// Business-specific tool registry (stays in core, references market tools)
-pub use self::tools::ToolRegistry;
-
-// build_tools is kept in core because it references ToolRegistry
-pub use self::tools::build_tools;
-
-// Extension → DynTool bridge
-pub use self::tools::extension_tools_as_dyn;
-
-// Per-role ToolDefinition helpers (for custom_tools in AgentRuntime)
-pub use self::tools::{create_historical_context_tool_def, create_positions_tool_def};
+// ── Domain tool registry (stays in core) ──────────────────────────────────
+pub use self::tools::{build_tools, ToolRegistry};

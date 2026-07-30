@@ -1,129 +1,18 @@
+//! Domain-specific tool registry for the openatrading agent.
+//!
+//! Holds the MCP + extension tool bridge. Per-role domain tool factories
+//! (`create_positions_tool`, `create_historical_context_tool`) were removed:
+//! they had no callers after the pi-rs session migration; re-wire from
+//! `openatrading_core::llm::tools` if per-role position/history tools are
+//! needed again (recoverable from git history).
+
 use std::sync::Arc;
 
 use openatrading_agent::mcp_tools::{McpHandle, McpRegistry, ToolConfig};
 use openatrading_agent::pi_ai_types::ContentBlock;
-use openatrading_agent::tools::{empty_schema, text_result, to_box_err, tool};
+use openatrading_agent::tools::{to_box_err, tool, ExecuteFn};
 use openatrading_agent::types::{AgentToolResult, DynTool};
-use pi_extension_api::{ExtensionRegistry, ToolCallOutput, ToolDefinition, ToolExecuteFn};
-
-use crate::memory::sqlite::MemoryStore;
-use crate::trade::sqlite::TradeManager;
-
-// ─── 持仓 & 记忆（per-role 注入）─────────────────────────
-
-/// Create a tool that queries current positions for a given role.
-pub fn create_positions_tool(trade: Arc<TradeManager>, role_name: String) -> Arc<DynTool> {
-    tool(
-        "get_current_positions",
-        "查询当前角色的持仓列表。返回股票代码、名称、成本价、持仓数量、\
-        当前价格、浮动盈亏、买入理由、持仓占比等。\
-        用法：做决策前先查持仓，避免重复买入已持仓股票，\
-        根据持仓盈亏决定是否止盈/止损。",
-        empty_schema(),
-        Arc::new(move |_id, _args, _signal, _progress| {
-            let trade = trade.clone();
-            let role_name = role_name.clone();
-            Box::pin(async move {
-                let positions = trade.format_positions(&role_name).map_err(to_box_err)?;
-                Ok(text_result(&positions))
-            })
-        }),
-    )
-}
-
-/// Create a tool that queries historical context data from memory.
-pub fn create_historical_context_tool(memory: Arc<MemoryStore>) -> Arc<DynTool> {
-    tool(
-        "get_historical_context",
-        "查询近N日市场历史快照数据（默认5天）。包含每日市场概览、\
-        涨停数据、板块异动等历史记录。\
-        用法：对比历史同期数据判断趋势变化——\
-        今日温度 vs 近5日均温 = 情绪方向；连续缩量涨停 = 加速赶顶。",
-        serde_json::json!({"type":"object","properties":{"days":{"type":"integer","description":"查询天数，默认5","default":5}},"required":[]}),
-        Arc::new(move |_id, args, _signal, _progress| {
-            let memory = memory.clone();
-            Box::pin(async move {
-                let days: u32 = args
-                    .get("days")
-                    .and_then(serde_json::Value::as_u64)
-                    .and_then(|v| u32::try_from(v).ok())
-                    .unwrap_or(5);
-                let ctx = memory
-                    .get_historical_context(days)
-                    .unwrap_or_else(|_| "暂无历史数据".to_string());
-                Ok(text_result(&ctx))
-            })
-        }),
-    )
-}
-
-// ─── ToolDefinition variants (for custom_tools in AgentRuntime) ──────────
-
-/// Create a `ToolDefinition` for querying current positions.
-pub fn create_positions_tool_def(trade: Arc<TradeManager>, role_name: String) -> ToolDefinition {
-    let execute: ToolExecuteFn = Arc::new(move |_id, _args, _signal| {
-        let trade = trade.clone();
-        let role_name = role_name.clone();
-        Box::pin(async move {
-            let positions = trade
-                .format_positions(&role_name)
-                .map_err(|e| e.to_string())?;
-            Ok(ToolCallOutput {
-                content: vec![serde_json::Value::String(positions)],
-                details: None,
-                is_error: false,
-                terminate: None,
-            })
-        })
-    });
-
-    ToolDefinition {
-        name: "get_current_positions".to_string(),
-        label: None,
-        description: "查询当前角色的持仓列表。返回股票代码、名称、成本价、持仓数量、当前价格、浮动盈亏、买入理由、持仓占比等。用法：做决策前先查持仓，避免重复买入已持仓股票，根据持仓盈亏决定是否止盈/止损。".to_string(),
-        prompt_snippet: None,
-        prompt_guidelines: None,
-        parameters: Some(empty_schema()),
-        render_shell: None,
-        execution_mode: None,
-        execute: Some(execute),
-    }
-}
-
-/// Create a `ToolDefinition` for querying historical context.
-pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefinition {
-    let execute: ToolExecuteFn = Arc::new(move |_id, args, _signal| {
-        let memory = memory.clone();
-        Box::pin(async move {
-            let days: u32 = args
-                .get("days")
-                .and_then(serde_json::Value::as_u64)
-                .and_then(|v| u32::try_from(v).ok())
-                .unwrap_or(5);
-            let ctx = memory
-                .get_historical_context(days)
-                .unwrap_or_else(|_| "暂无历史数据".to_string());
-            Ok(ToolCallOutput {
-                content: vec![serde_json::Value::String(ctx)],
-                details: None,
-                is_error: false,
-                terminate: None,
-            })
-        })
-    });
-
-    ToolDefinition {
-        name: "get_historical_context".to_string(),
-        label: None,
-        description: "查询近N日市场历史快照数据（默认5天）。包含每日市场概览、涨停数据、板块异动等历史记录。用法：对比历史同期数据判断趋势变化——今日温度 vs 近5日均温 = 情绪方向；连续缩量涨停 = 加速赶顶。".to_string(),
-        prompt_snippet: None,
-        prompt_guidelines: None,
-        parameters: Some(serde_json::json!({"type":"object","properties":{"days":{"type":"integer","description":"查询天数，默认5","default":5}},"required":[]})),
-        render_shell: None,
-        execution_mode: None,
-        execute: Some(execute),
-    }
-}
+use pi_extension_api::ExtensionRegistry;
 
 // ============================================================================
 // Extension → DynTool bridge
@@ -132,8 +21,9 @@ pub fn create_historical_context_tool_def(memory: Arc<MemoryStore>) -> ToolDefin
 /// Convert extension `RegisteredTool`s into `DynTool` objects.
 ///
 /// Each extension tool's `execute` callback is wrapped to translate between
-/// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent result).
-pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
+/// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent
+/// result).
+fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
         .iter()
@@ -144,32 +34,31 @@ pub fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>>
             let description = rt.definition.description.clone();
             let parameters_schema = rt.definition.parameters.clone().unwrap_or_default();
 
-            let execute_fn: openatrading_agent::tools::ExecuteFn =
-                Arc::new(move |id, args, signal, _progress| {
-                    let execute = execute.clone();
-                    let name_for_err = name_for_err.clone();
-                    Box::pin(async move {
-                        let output = execute(id, args, signal).await.map_err(|e| {
-                            to_box_err(format!("extension tool '{name_for_err}': {e}"))
-                        })?;
+            let execute_fn: ExecuteFn = Arc::new(move |id, args, signal, _progress| {
+                let execute = execute.clone();
+                let name_for_err = name_for_err.clone();
+                Box::pin(async move {
+                    let output = execute(id, args, signal)
+                        .await
+                        .map_err(|e| to_box_err(format!("extension tool '{name_for_err}': {e}")))?;
 
-                        let content: Vec<ContentBlock> = output
-                            .content
-                            .into_iter()
-                            .filter_map(|v| {
-                                v.as_str()
-                                    .map(|s| ContentBlock::text(s.to_string()))
-                                    .or_else(|| Some(ContentBlock::text(v.to_string())))
-                            })
-                            .collect();
-
-                        Ok(AgentToolResult {
-                            content,
-                            details: serde_json::Value::Null,
-                            terminate: output.terminate,
+                    let content: Vec<ContentBlock> = output
+                        .content
+                        .into_iter()
+                        .filter_map(|v| {
+                            v.as_str()
+                                .map(|s| ContentBlock::text(s.to_string()))
+                                .or_else(|| Some(ContentBlock::text(v.to_string())))
                         })
+                        .collect();
+
+                    Ok(AgentToolResult {
+                        content,
+                        details: serde_json::Value::Null,
+                        terminate: output.terminate,
                     })
-                });
+                })
+            });
 
             Some(tool(&name, &description, parameters_schema, execute_fn))
         })
