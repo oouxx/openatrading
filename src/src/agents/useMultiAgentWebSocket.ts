@@ -75,7 +75,7 @@ export function useMultiAgentWebSocket(
   }, [options])
 
   // Track previous sessionIds to detect actual changes.
-  const prevSessionIdsRef = useRef<string[]>(sessionIds)
+  const prevSessionIdsRef = useRef<string[]>([])
 
   function teardownConnection(_sid: string, conn: ConnectionState) {
     if (conn.ws) {

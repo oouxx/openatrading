@@ -4,9 +4,10 @@ use pi_coding_agent::core::agent_session_runtime::{
     CreateAgentSessionRuntimeParams,
 };
 use pi_coding_agent::core::session_manager::{NewSessionOptions, SessionManager};
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 use super::runtime::find_session_file_by_id;
 
@@ -27,6 +28,15 @@ const DEFAULT_POOL_CAPACITY: usize = 128;
 pub struct SessionPool {
     /// Active sessions with LRU eviction, keyed by session ID.
     sessions: Mutex<LruCache<String, Arc<Mutex<AgentSessionRuntime>>>>,
+    /// Per-session abort signal used to interrupt a running prompt.
+    ///
+    /// `prompt()` holds the runtime mutex for the whole streaming turn (the
+    /// borrowed `&AgentSession` lives for the turn), so an interrupt that
+    /// tries to `rt.lock().await` would deadlock. Instead the prompt worker
+    /// races `prompt()` against `notify.notified()` and calls `abort()` on
+    /// the session from within the lock it already holds, while the
+    /// interrupt path only signals this `Notify` — no runtime lock needed.
+    abort_signals: Mutex<HashMap<String, Arc<Notify>>>,
     /// Factory for creating new `AgentSessionRuntime` instances.
     factory: CreateAgentSessionRuntimeFactory,
 }
@@ -39,6 +49,7 @@ impl SessionPool {
                 #[allow(clippy::unwrap_used)]
                 NonZeroUsize::new(DEFAULT_POOL_CAPACITY).unwrap(),
             )),
+            abort_signals: Mutex::new(HashMap::new()),
             factory,
         }
     }
@@ -88,7 +99,7 @@ impl SessionPool {
         .await;
 
         let runtime = Arc::new(Mutex::new(runtime));
-        self.sessions.lock().await.put(session_id.clone(), runtime);
+        self.evict_on_put(session_id.clone(), runtime).await;
         Ok(session_id)
     }
 
@@ -151,7 +162,7 @@ impl SessionPool {
         .map_err(|e| format!("Failed to import session: {e}"))?;
 
         let runtime = Arc::new(Mutex::new(runtime));
-        self.sessions.lock().await.put(sid, runtime);
+        self.evict_on_put(sid, runtime).await;
         Ok(())
     }
 
@@ -197,6 +208,16 @@ impl SessionPool {
     ///
     /// `prompt()` on `AgentSession` is `!Send` (holds `std::sync::MutexGuard`
     /// across `.await`), so we isolate it via `spawn_blocking`.
+    ///
+    /// The prompt holds the runtime mutex for the *entire* streaming turn (the
+    /// borrowed `&AgentSession` lives until `prompt()` resolves), so an
+    /// interrupt that tries to acquire the same lock would deadlock — the stop
+    /// button would be ineffective for the whole stream. To make interrupt
+    /// responsive we race `prompt()` against the per-session abort [`Notify`]:
+    /// when [`SessionPool::signal_abort`] fires, we call `session().abort()`
+    /// from *within* the lock we already hold (cancelling the run's token) and
+    /// then await the prompt to completion so pi-rs emits the terminal
+    /// `AgentEnd` event the frontend needs to exit the streaming state.
     pub async fn prompt_with_opts(
         &self,
         session_id: &str,
@@ -210,12 +231,31 @@ impl SessionPool {
             .get(session_id)
             .ok_or_else(|| "Session not found".to_string())?
             .clone();
+        let abort_notify = self.abort_signal(session_id).await;
         let text = text.to_string();
         tokio::task::spawn_blocking(move || {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
                 let rt = session.lock().await;
-                rt.session().prompt(&text, Some(opts)).await;
+                let s = rt.session();
+                let prompt_fut = s.prompt(&text, Some(opts));
+                tokio::pin!(prompt_fut);
+                let abort = abort_notify.notified();
+                tokio::pin!(abort);
+                tokio::select! {
+                    // Normal completion — turn finished on its own.
+                    _ = &mut prompt_fut => {}
+                    // Interrupt — cancel the run, then let the prompt observe
+                    // the cancellation and finish (so the terminal AgentEnd
+                    // event is emitted). `s` is a shared `&` ref, so
+                    // reborrowing it here is safe even though `prompt_fut`
+                    // holds another shared borrow (it is dropped by select
+                    // before this handler runs).
+                    _ = &mut abort => {
+                        s.abort().await;
+                        (&mut prompt_fut).await;
+                    }
+                }
             });
         })
         .await
@@ -259,6 +299,7 @@ impl SessionPool {
     /// Close and remove a session.
     pub async fn close_session(&self, session_id: &str) {
         self.sessions.lock().await.pop(session_id);
+        self.abort_signals.lock().await.remove(session_id);
     }
 
     /// List all active session IDs.
@@ -274,6 +315,48 @@ impl SessionPool {
     /// Check if a session exists in the pool.
     pub async fn has_session(&self, session_id: &str) -> bool {
         self.sessions.lock().await.contains(session_id)
+    }
+
+    /// Get (or lazily create) the per-session abort signal used by
+    /// [`Self::prompt_with_opts`] to race the running prompt.
+    pub async fn abort_signal(&self, session_id: &str) -> Arc<Notify> {
+        let mut signals = self.abort_signals.lock().await;
+        signals
+            .entry(session_id.to_string())
+            .or_insert_with(|| Arc::new(Notify::new()))
+            .clone()
+    }
+
+    /// Signal an in-flight prompt for `session_id` to abort.
+    ///
+    /// Returns `true` if a prompt worker is (or was) registered to listen,
+    /// `false` if the session has no abort signal (not in the pool / idle).
+    /// This does **not** acquire the runtime mutex, so it never deadlocks
+    /// with the running prompt — the prompt worker observes the signal and
+    /// calls `session().abort()` from within its own lock.
+    pub async fn signal_abort(&self, session_id: &str) -> bool {
+        let Some(notify) = self.abort_signals.lock().await.get(session_id).cloned() else {
+            return false;
+        };
+        notify.notify_one();
+        true
+    }
+
+    /// Insert a session into the LRU cache, dropping the abort signal of any
+    /// *different* session evicted by the LRU policy so the signal map stays
+    /// bounded. Uses `push` (rather than `put`) so the evicted entry is
+    /// returned; when the key already exists `push` returns that same key's old
+    /// value, which is not an eviction and must not be cleaned up here.
+    async fn evict_on_put(&self, id: String, runtime: Arc<Mutex<AgentSessionRuntime>>) {
+        // Keep a copy of the id so we can distinguish a real LRU eviction
+        // (different key) from an in-place replacement of the same key.
+        let inserted_id = id.clone();
+        let evicted = self.sessions.lock().await.push(id, runtime);
+        if let Some((evicted_id, _)) =
+            evicted.filter(|(k, _)| k.as_str() != inserted_id.as_str())
+        {
+            self.abort_signals.lock().await.remove(&evicted_id);
+        }
     }
 
     /// Check whether a session is currently streaming a response.
