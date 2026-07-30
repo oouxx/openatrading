@@ -40,15 +40,6 @@ interface AiCopilotProps {
 
 const isTauri = "__TAURI_INTERNALS__" in window
 
-// ── Empty-state starter prompts (clickable chips) ──────────────────────
-const SUGGESTIONS = [
-  "今天大盘怎么看？",
-  "最近涨停板有哪些？",
-  "分析一下贵州茅台",
-  "最近资金面情况如何？",
-  "板块轮动有什么方向？",
-]
-
 
 export default function AiCopilot({
   activeThreadId,
@@ -376,6 +367,55 @@ export default function AiCopilot({
     setShowJumpBottom(!atBottom && el.scrollHeight > el.clientHeight)
   }, [])
 
+  // ── Input field (shared by the centered new-session hero and the docked
+  //    bottom bar) so the textarea keeps one identity per layout branch.
+  const renderInputField = () => (
+    <div className="relative flex-1">
+      <Textarea
+        ref={textareaRef}
+        className="bg-bg-surface border-hairline focus:border-ai/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-3.5 pr-14 text-sm text-white shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
+        placeholder="有什么可以帮你？"
+        rows={1}
+        value={input}
+        onChange={onInputChange}
+        onKeyDown={onInputKeyDown}
+      />
+      {showSlash && (
+        <div className="absolute bottom-full left-0 right-0 mb-1">
+          <SlashCommandMenu
+            commands={commands}
+            onSelect={(cmd) => {
+              setInput(`/${cmd.name} `)
+              setShowSlash(false)
+              textareaRef.current?.focus()
+            }}
+          />
+        </div>
+      )}
+      {isStreamingActive ? (
+        <Button
+          size="icon"
+          variant="destructive"
+          className="absolute bottom-2 right-2 size-9 rounded-xl"
+          onClick={stop}
+          aria-label="停止生成"
+        >
+          <Square className="size-4" fill="currentColor" />
+        </Button>
+      ) : (
+        <Button
+          size="icon"
+          className="absolute bottom-2 right-2 size-9 rounded-xl"
+          onClick={() => send()}
+          disabled={!input.trim()}
+          aria-label="发送"
+        >
+          <Send className="size-4" />
+        </Button>
+      )}
+    </div>
+  )
+
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col">
@@ -450,6 +490,14 @@ export default function AiCopilot({
           name={stockTabs.find((t) => t.id === activeStockTab)?.name ?? activeStockTab}
           onClose={() => setActiveStockTab(null)}
         />
+      ) : isEmpty ? (
+        // ── Centered new-session hero (Claude / ChatGPT style) ──────────
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+          <div className="w-full max-w-3xl">
+            <h2 className="mb-6 text-center text-2xl font-semibold text-white">AI 行情助手</h2>
+            {renderInputField()}
+          </div>
+        </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
@@ -457,78 +505,56 @@ export default function AiCopilot({
             onScroll={onContainerScroll}
             className="flex flex-1 flex-col overflow-y-auto py-5"
           >
-            {isEmpty ? (
-              <div className="flex flex-1 items-center justify-center px-6">
-                <div className="max-w-[520px] text-center">
-                  <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
-                  <p className="text-ink-muted mb-6 text-sm/relaxed">
-                    覆盖上证、深证、北交所全市场数据。支持大盘研判、板块轮动、个股分析、资金面跟踪及策略问答。
-                  </p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {SUGGESTIONS.map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => send(q)}
-                        className="border-hairline hover:border-ai/50 hover:text-ai text-ink-muted rounded-full border px-3 py-1.5 text-xs transition-colors"
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6">
+              {currentTurns.map((turn, idx) => {
+                const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
+                const isFirst = idx === 0
+
+                return (
+                  <div key={turn.id}>
+                    {/* ── Turn divider (between turns) ──────────── */}
+                    {turn.role === "assistant" && !isFirst && (
+                      <TurnDivider isError={turn.isError} />
+                    )}
+
+                    <div
+                      className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
+                    >
+                      <span
+                        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                          turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
+                        }`}
                       >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6">
-                {currentTurns.map((turn, idx) => {
-                  const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
-                  const isFirst = idx === 0
-
-                  return (
-                    <div key={turn.id}>
-                      {/* ── Turn divider (between turns) ──────────── */}
-                      {turn.role === "assistant" && !isFirst && (
-                        <TurnDivider isError={turn.isError} />
-                      )}
-
+                        {turn.role === "user" ? "U" : "AI"}
+                      </span>
                       <div
-                        className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
+                        className={`min-w-0 flex-1 text-sm leading-relaxed ${
+                          turn.role === "user" ? "flex items-center" : ""
+                        }`}
                       >
-                        <span
-                          className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                            turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
-                          }`}
-                        >
-                          {turn.role === "user" ? "U" : "AI"}
-                        </span>
-                        <div
-                          className={`min-w-0 flex-1 text-sm leading-relaxed ${
-                            turn.role === "user" ? "flex items-center" : ""
-                          }`}
-                        >
-                          {turn.role === "user" ? (
-                            <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
-                          ) : (
-                            <TurnRenderer
-                              sessionId={activeThreadId}
-                              turn={turn}
-                              isStreaming={isLastAi && streaming}
-                              respondToPermission={
-                                isTauri
-                                  ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
-                                  : (id: string, approved: boolean) => wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
-                              }
-                            />
-                          )}
-                        </div>
+                        {turn.role === "user" ? (
+                          <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
+                        ) : (
+                          <TurnRenderer
+                            sessionId={activeThreadId}
+                            turn={turn}
+                            isStreaming={isLastAi && streaming}
+                            respondToPermission={
+                              isTauri
+                                ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
+                                : (id: string, approved: boolean) => wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
+                            }
+                          />
+                        )}
                       </div>
                     </div>
-                  )
-                })}
+                  </div>
+                )
+              })}
 
-                {/* ── Agent status bar (follows the latest content) ──── */}
-                <AgentStatusBar phase={agentPhase} />
-              </div>
-            )}
+              {/* ── Agent status bar (follows the latest content) ──── */}
+              <AgentStatusBar phase={agentPhase} />
+            </div>
           </div>
 
           {/* ── Jump to latest ──────────────────────────────────────────── */}
@@ -546,53 +572,10 @@ export default function AiCopilot({
             </button>
           )}
 
-          {/* ── Input area ─────────────────────────────────────────────── */}
+          {/* ── Input area (docked) ───────────────────────────────────── */}
           <div className="border-hairline shrink-0 border-t px-6 py-3">
             <div className="mx-auto flex max-w-3xl items-end gap-2">
-              <div className="relative flex-1">
-                <Textarea
-                  ref={textareaRef}
-                  className="bg-bg border-hairline focus:border-ai min-h-[44px] w-full resize-none rounded-xl border px-4 py-3 pr-12 text-sm text-white outline-none transition-colors placeholder:text-gray-500"
-                  placeholder="输入消息..."
-                  rows={1}
-                  value={input}
-                  onChange={onInputChange}
-                  onKeyDown={onInputKeyDown}
-                />
-                {showSlash && (
-                  <div className="absolute bottom-full left-0 right-0 mb-1">
-                    <SlashCommandMenu
-                      commands={commands}
-                      onSelect={(cmd) => {
-                        setInput(`/${cmd.name} `)
-                        setShowSlash(false)
-                        textareaRef.current?.focus()
-                      }}
-                    />
-                  </div>
-                )}
-                {isStreamingActive ? (
-                  <Button
-                    size="icon"
-                    variant="destructive"
-                    className="absolute bottom-1.5 right-1.5 size-8 rounded-lg"
-                    onClick={stop}
-                    aria-label="停止生成"
-                  >
-                    <Square className="size-4" fill="currentColor" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="icon"
-                    className="absolute bottom-1.5 right-1.5 size-8 rounded-lg"
-                    onClick={() => send()}
-                    disabled={!input.trim()}
-                    aria-label="发送"
-                  >
-                    <Send className="size-4" />
-                  </Button>
-                )}
-              </div>
+              {renderInputField()}
             </div>
           </div>
         </div>
