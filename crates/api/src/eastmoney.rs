@@ -523,11 +523,11 @@ mod tests {
     #[test]
     fn test_fmt_date_valid() {
         assert_eq!(
-            LhbClient::fmt_date("20_240_115").unwrap_or_else(|_| panic!("test failed")),
+            LhbClient::fmt_date("20240115").unwrap_or_else(|_| panic!("test failed")),
             "2024-01-15"
         );
         assert_eq!(
-            LhbClient::fmt_date("20_230_101").unwrap_or_else(|_| panic!("test failed")),
+            LhbClient::fmt_date("20230101").unwrap_or_else(|_| panic!("test failed")),
             "2023-01-01"
         );
     }
@@ -589,7 +589,7 @@ mod tests {
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
-            .block_on(client.lhb_stock_seat("123", "20_240_115", SeatFlag::Buy));
+            .block_on(client.lhb_stock_seat("123", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
@@ -599,7 +599,7 @@ mod tests {
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
-            .block_on(client.lhb_stock_seat("1_234_567", "20_240_115", SeatFlag::Buy));
+            .block_on(client.lhb_stock_seat("1_234_567", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
@@ -609,7 +609,7 @@ mod tests {
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
-            .block_on(client.lhb_stock_seat("", "20_240_115", SeatFlag::Buy));
+            .block_on(client.lhb_stock_seat("", "20240115", SeatFlag::Buy));
         assert!(matches!(result, Err(LhbError::InvalidSymbol(_))));
     }
 
@@ -618,7 +618,7 @@ mod tests {
     async fn integration_lhb_stock_seat_valid_symbol() {
         let client = LhbClient::new();
         let result = client
-            .lhb_stock_seat("000001", "20_240_115", SeatFlag::Buy)
+            .lhb_stock_seat("000001", "20240115", SeatFlag::Buy)
             .await;
         assert!(!matches!(result, Err(LhbError::InvalidSymbol(_))));
     }

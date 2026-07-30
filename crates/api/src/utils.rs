@@ -336,22 +336,13 @@ mod tests {
 
     #[test]
     fn test_error_messages() {
-        let err = to_yahoo_symbol("abc").map_err(|e| e.to_string());
-        assert!(err
-            .as_ref()
-            .unwrap_or_else(|_| panic!("expected Err"))
-            .contains("不含任何数字"));
+        let err = to_yahoo_symbol("abc").unwrap_err();
+        assert!(err.to_string().contains("不含任何数字"));
 
-        let err = to_yahoo_symbol("700000").map_err(|e| e.to_string());
-        assert!(err
-            .as_ref()
-            .unwrap_or_else(|_| panic!("expected Err"))
-            .contains("无法推断交易所"));
+        let err = to_yahoo_symbol("700000").unwrap_err();
+        assert!(err.to_string().contains("无法推断交易所"));
 
-        let err = to_yahoo_symbol("1_234_567").map_err(|e| e.to_string());
-        assert!(err
-            .as_ref()
-            .unwrap_or_else(|_| panic!("expected Err"))
-            .contains("超过6位"));
+        let err = to_yahoo_symbol("1_234_567").unwrap_err();
+        assert!(err.to_string().contains("超过6位"));
     }
 }
