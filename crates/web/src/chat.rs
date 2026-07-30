@@ -443,18 +443,14 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde
         } else {
             "idle"
         };
-        sessions.push(serde_json::json!({
-            "id": info.id,
-            "name": info.name,
-            "created": info.created.to_rfc3339(),
-            "modified": info.modified.to_rfc3339(),
-            "message_count": info.message_count,
-            "status": status,
-            "path": info.path.to_string_lossy(),
-            "cwd": info.cwd,
-            "first_message": info.first_message,
-            "parent_session_path": info.parent_session_path,
-        }));
+        // SessionInfo now implements Serialize — convert to JSON and add status.
+        let mut val = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("status".to_string(), serde_json::json!(status));
+            // Remove internal field not needed by the frontend.
+            obj.remove("all_messages_text");
+        }
+        sessions.push(val);
     }
 
     Json(sessions)
