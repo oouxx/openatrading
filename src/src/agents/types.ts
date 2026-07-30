@@ -130,7 +130,16 @@ export interface ToolResultPayload {
 /** Structured content block returned in history messages (finding #10). */
 export type HistoryBlock =
   | { type: "thinking"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use"
+      id: string
+      name: string
+      input: unknown
+      /** Tool result text, joined from the persisted `toolResult` message. */
+      result?: string
+      /** Whether the tool result reported an error. */
+      is_error?: boolean
+    }
   | { type: "text"; text: string }
 
 export interface HistoryMessage {
