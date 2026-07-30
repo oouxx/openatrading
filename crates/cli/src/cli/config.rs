@@ -414,13 +414,11 @@ pub fn cmd_init() -> Result<()> {
         include_str!("../../../../config.example.toml"),
     )?;
 
-    // Create skills dir with default zarili strategy
-    let skills_dir = atrading.join("skills");
-    std::fs::create_dir_all(&skills_dir)?;
+    // Create roles dir for trading-account labels
+    std::fs::create_dir_all(atrading.join("roles"))?;
 
     eprintln!("✅ 已初始化 {}", atrading.display());
     eprintln!("   配置文件: {}", atrading.join("config.toml").display());
-
-    eprintln!("   (可运行 `openatrading skills install` 查看更多可安装技能)");
+    eprintln!("   (可运行 `openatrading skills install` 安装 pi-rs 技能)");
     Ok(())
 }

@@ -183,30 +183,21 @@ pub fn create_notification_sender(
 }
 
 pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
-    let skills_dir = openatrading_core::roles::default_skills_dir();
     let mut roles: Vec<RoleEntry> = Vec::new();
 
     // Config-toml roles: mark as readonly
     for entry in &app_config.roles {
-        let skill_path = skills_dir.join(&entry.name).join("SKILL.md");
-        if let Ok(raw) = std::fs::read_to_string(&skill_path) {
-            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
-            if !body.is_empty() {
-                let display_name = fm
-                    .get("description")
-                    .cloned()
-                    .unwrap_or_else(|| entry.name.clone());
-                if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.name) {
-                    existing.readonly = entry.readonly;
-                } else {
-                    roles.push(RoleEntry {
-                        name: entry.name.clone(),
-                        display_name,
-                        strategy: body.clone(),
-                        readonly: entry.readonly,
-                    });
-                }
-            }
+        if let Some(existing) = roles.iter_mut().find(|r| r.name == entry.name) {
+            existing.readonly = entry.readonly;
+        } else {
+            roles.push(RoleEntry {
+                name: entry.name.clone(),
+                display_name: entry
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| entry.name.clone()),
+                readonly: entry.readonly,
+            });
         }
     }
 
@@ -219,7 +210,9 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
     }
 
     if roles.is_empty() {
-        openatrading_core::log::warn!("警告: skills/ 目录中未发现任何角色");
+        openatrading_core::log::warn!(
+            "警告: 未发现任何角色，可在角色管理或 config.toml [[roles]] 中添加"
+        );
     }
 
     roles

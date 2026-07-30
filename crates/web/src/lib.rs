@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use axum::{
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, patch, post},
     Router,
 };
 use openatrading_core::log::Level;
@@ -102,7 +102,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/roles/:name/positions", get(web::get_role_positions))
         .route("/api/roles/:name/logs", get(web::get_role_logs))
         .route("/api/roles", post(web::create_role))
-        .route("/api/roles/:name/strategy", put(web::update_role_strategy))
         .route("/api/roles/:name", delete(web::delete_role))
         .route("/api/roles/:name/reset", post(web::reset_role))
         .route(

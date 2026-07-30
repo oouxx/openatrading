@@ -31,10 +31,10 @@ async-trait = "0.1"
 schemars = { version = "0.8", features = ["derive"] }
 gray_matter = "0.3"
 axum = "0.7"
-serde_yaml = "0.9"
 teloxide = { version = "0.15", optional = true }
 tauri = { version = "2", optional = true }
 thiserror = "2"
+toml = "0.8"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 lru = { workspace = true }
@@ -45,7 +45,6 @@ tauri = ["dep:tauri"]
 web = []
 
 [dev-dependencies]
-toml = "0.8"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync"] }
 tempfile = "3"
 
