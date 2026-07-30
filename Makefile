@@ -96,8 +96,6 @@ deploy-web:
 
 # ─── Release ──────────────────────────────────────────
 
-VERSION_FILES := Cargo.toml src-tauri/tauri.conf.json
-
 version:
 	@echo "Current: $$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
 
@@ -135,13 +133,11 @@ _bump-set:
 	$(call _set_version,$(VERSION))
 
 define _set_version
-	for f in $(VERSION_FILES); do \
-		if [ "$$f" = "src-tauri/tauri.conf.json" ]; then \
-			sed -i '' "s/\"version\": \"[0-9][^\"]*\"/\"version\": \"$(1)\"/" $$f; \
-		else \
-			sed -i '' "s/^version = \"[0-9][^\"]*\"/version = \"$(1)\"/" $$f; \
-		fi; \
-	done
+	# Update workspace version in Cargo.toml (single source of truth)
+	sed -i '' '/^\[workspace\.package\]/,/^\[/{ s/^version = "[0-9][^"]*"/version = "$(1)"/; }' Cargo.toml
+	# Sync tauri.conf.json from workspace version
+	sed -i '' 's/"version": "[0-9][^"]*"/"version": "$(1)"/' src-tauri/tauri.conf.json
+	@echo "✓ version $(1) written to Cargo.toml and src-tauri/tauri.conf.json"
 endef
 
 _release:
@@ -154,6 +150,7 @@ _release:
 	git tag "$$tag"; \
 	git push origin main --tags; \
 	echo "✅ 已推送 $$tag，等待 GitHub Actions 构建"
+
 
 # ─── Release Tauri (local build + gh upload) ─────────
 
