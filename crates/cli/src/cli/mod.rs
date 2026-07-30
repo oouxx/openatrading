@@ -36,7 +36,7 @@ use openatrading_core::cron::run_decision;
 use openatrading_core::social::{NoopChannel, NotificationSender, StdoutChannel};
 use openatrading_web::gateway::Gateway;
 
-/// Initialize a file-based tracing subscriber for the `chat` TUI.
+/// Entry point for the `openatrading` CLI.
 pub async fn run() -> Result<()> {
     dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
@@ -56,12 +56,6 @@ pub async fn run() -> Result<()> {
     }) = cli.command
     {
         return cmd_doctor(json, fix, skip_network).await;
-    }
-
-    // Handle `chat` subcommand — temporarily disabled (TUI under refactor)
-    if matches!(cli.command, Some(Commands::Chat)) {
-        tracing::info!("chat subcommand is disabled during refactoring");
-        return Ok(());
     }
 
     // Handle `init` subcommand
