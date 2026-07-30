@@ -444,10 +444,10 @@ export default function AiCopilot({
           <div
             ref={msgContainerRef}
             onScroll={onContainerScroll}
-            className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5"
+            className="flex flex-1 flex-col overflow-y-auto py-5"
           >
             {isEmpty ? (
-              <div className="flex flex-1 items-center justify-center">
+              <div className="flex flex-1 items-center justify-center px-6">
                 <div className="max-w-[520px] text-center">
                   <h2 className="mb-2 text-2xl font-medium text-white">AI 行情助手 · A 股专版</h2>
                   <p className="text-ink-muted mb-6 text-sm/relaxed">
@@ -467,7 +467,7 @@ export default function AiCopilot({
                 </div>
               </div>
             ) : (
-              <>
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6">
                 {/* ── Agent status bar ─────────────────────────────── */}
                 <AgentStatusBar phase={agentPhase} />
 
@@ -516,7 +516,7 @@ export default function AiCopilot({
                     </div>
                   )
                 })}
-              </>
+              </div>
             )}
           </div>
 
@@ -536,7 +536,7 @@ export default function AiCopilot({
           )}
 
           {/* ── Input area ─────────────────────────────────────────────── */}
-          <div className="border-hairline shrink-0 border-t px-4 py-3">
+          <div className="border-hairline shrink-0 border-t px-6 py-3">
             <div className="mx-auto flex max-w-3xl items-end gap-2">
               <div className="relative flex-1">
                 <Textarea
