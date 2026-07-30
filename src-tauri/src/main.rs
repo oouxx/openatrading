@@ -434,20 +434,36 @@ async fn send_prompt(
 
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up by ensure_session_tauri.
-    let streaming_behavior = if state.ctx.pool.is_stream(&session_id).await {
-        Some("followUp".to_string())
-    } else {
-        None
-    };
+    //
+    // pi-rs `prompt()` checks `is_streaming()` internally and uses
+    // `streaming_behavior` only to choose steer vs followUp. We pass a fixed
+    // policy (followUp = queue as a new turn when streaming) and let pi-rs
+    // decide, avoiding a racy `is_stream()` TOCTOU check on our side.
     let opts = pi_coding_agent::core::agent_session::PromptOptions {
-        streaming_behavior,
+        streaming_behavior: Some("followUp".to_string()),
         ..Default::default()
     };
-    state
+    if let Err(e) = state
         .ctx
         .pool
         .prompt_with_opts(&session_id, &text, opts)
-        .await?;
+        .await
+    {
+        // Surface the error to the frontend as a Notice event, mirroring the
+        // WebSocket path (which emits via the session event channel). The
+        // `send_prompt` invoke resolves Ok so the frontend renders the error
+        // through the same event stream as everything else.
+        let notice = openatrading_web::agent_ws::TranscriptEvent::Session(
+            openatrading_web::agent_ws::SessionEventPayload::Notice { text: e, is_error: true },
+        );
+        let event_value = serde_json::to_value(openatrading_web::agent_ws::EventEnvelope {
+            schema_version: openatrading_web::agent_ws::SCHEMA_VERSION,
+            event: notice,
+        })
+        .unwrap_or_default();
+        let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
+        let _ = app.emit("agent-event", payload);
+    }
     Ok(())
 }
 

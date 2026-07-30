@@ -165,8 +165,6 @@ pub enum SessionEventPayload {
         tool_name: String,
         tool_input: serde_json::Value,
     },
-    /// Resync signal for reconnection (§9.1).
-    ResyncRequired,
     /// Catch-all for variants not explicitly mapped.
     Other,
 }
@@ -182,7 +180,6 @@ pub struct ToolResultPayload {
 /// Truncation limit for tool result content in event stream (§15).
 const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
 
-/// Ring buffer capacity: events retained per session for reconnection replay (§9.1).
 /// Convert a tool result text into a preview payload, truncating if too long.
 fn to_tool_result_payload(content: &str) -> ToolResultPayload {
     let len = content.chars().count();
@@ -437,6 +434,7 @@ enum ClientCommand {
 pub async fn setup_event_channel(
     session: &AgentSession,
 ) -> (
+    mpsc::Sender<TranscriptEvent>,
     mpsc::Receiver<TranscriptEvent>,
     pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle,
 ) {
@@ -458,7 +456,7 @@ pub async fn setup_event_channel(
         "ws: event channel ready (cap=256) for session {}",
         session.get_session_id()
     );
-    (rx, handle)
+    (tx, rx, handle)
 }
 
 // ── WS handler ────────────────────────────────────────────────────────────────────────────
@@ -494,18 +492,26 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
         Ok(s) => s,
         Err(e) => {
             log::error!("ws: failed to ensure session {session_id}: {e}");
-            let notice = format!(
-                r#"{{"kind":"session","type":"notice","text":"failed to create session: {e}","is_error":true}}"#
-            );
-            let _ = socket.send(Message::Text(notice)).await;
+            let event = TranscriptEvent::Session(SessionEventPayload::Notice {
+                text: format!("failed to create session: {e}"),
+                is_error: true,
+            });
+            let Ok(json) = serde_json::to_string(&EventEnvelope {
+                schema_version: SCHEMA_VERSION,
+                event,
+            }) else {
+                return;
+            };
+            let _ = socket.send(Message::Text(json)).await;
             return;
         }
     };
 
     let mut rx = session.rx;
+    let tx = session.tx;
     log::info!("ws: session {session_id} connected — entering event loop");
 
-    forward_events(&mut socket, &mut rx, &state, &session_id).await;
+    forward_events(&mut socket, &mut rx, &state, &session_id, tx).await;
 
     log::info!("ws: session {session_id} disconnected");
 }
@@ -517,6 +523,7 @@ async fn forward_events(
     rx: &mut mpsc::Receiver<TranscriptEvent>,
     state: &Arc<AppState>,
     session_id: &str,
+    tx: mpsc::Sender<TranscriptEvent>,
 ) {
     use openatrading_core::log;
 
@@ -539,19 +546,35 @@ async fn forward_events(
                             Ok(ClientCommand::Prompt { text }) => {
                                 let pool = state.ctx.pool.clone();
                                 let sid = session_id.to_string();
-                                tokio::spawn(async move {
+                                let prompt_tx = tx.clone();
+                                let worker = tokio::spawn(async move {
                                     log::info!("ws: agent turn started for {sid}");
-                                    let streaming_behavior = if pool.is_stream(&sid).await {
-                                        Some("followUp".to_string())
-                                    } else {
-                                        None
-                                    };
+                                    // pi-rs `prompt()` checks `is_streaming()` internally and
+                                    // uses `streaming_behavior` only to choose steer vs followUp.
+                                    // We pass a fixed policy (followUp = queue as a new turn) and
+                                    // let pi-rs decide whether a stream is in progress, avoiding
+                                    // a racy `is_stream()` TOCTOU check on our side.
                                     let opts = PromptOptions {
-                                        streaming_behavior,
+                                        streaming_behavior: Some("followUp".to_string()),
                                         ..Default::default()
                                     };
-                                    let _ = pool.prompt_with_opts(&sid, &text, opts).await;
+                                    if let Err(e) = pool.prompt_with_opts(&sid, &text, opts).await {
+                                        log::warn!("ws: prompt failed for {sid}: {e}");
+                                        let _ = prompt_tx
+                                            .send(TranscriptEvent::Session(
+                                                SessionEventPayload::Notice { text: e, is_error: true },
+                                            ))
+                                            .await;
+                                    }
                                     log::info!("ws: agent turn completed for {sid}");
+                                });
+                                // Observe the spawned task so a panic is never silently
+                                // swallowed (project rule: no fire-and-forget JoinHandles).
+                                let watch_sid = session_id.to_string();
+                                tokio::spawn(async move {
+                                    if let Err(e) = worker.await {
+                                        log::error!("ws: prompt task panicked for {watch_sid}: {e}");
+                                    }
                                 });
                             }
                             Ok(ClientCommand::Interrupt) => {

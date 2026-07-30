@@ -139,6 +139,7 @@ use crate::agent_ws::{setup_event_channel, TranscriptEvent};
 /// Result of ensuring a session with events.
 pub struct SessionWithEvents {
     pub runtime: Arc<Mutex<AgentSessionRuntime>>,
+    pub tx: mpsc::Sender<TranscriptEvent>,
     pub rx: mpsc::Receiver<TranscriptEvent>,
     pub _subscription_handle: SessionEventUnsubscribeHandle,
 }
@@ -170,13 +171,14 @@ pub async fn ensure_session_with_events(
         }
     };
 
-    let (rx, _subscription_handle) = {
+    let (tx, rx, _subscription_handle) = {
         let rt = runtime.lock().await;
         setup_event_channel(rt.session()).await
     };
 
     Ok(SessionWithEvents {
         runtime,
+        tx,
         rx,
         _subscription_handle,
     })
