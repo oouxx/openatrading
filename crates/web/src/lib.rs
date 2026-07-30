@@ -3,9 +3,9 @@ pub mod cache;
 pub mod chat;
 pub mod chat_session;
 pub mod gateway;
-pub mod web;
-pub mod mcp;
 pub mod handlers;
+pub mod mcp;
+pub mod web;
 
 use cache::AppCache;
 use std::sync::Arc;
@@ -48,10 +48,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/overview", get(web::get_overview))
         .route("/api/search-stocks", get(web::search_stocks))
-        .route(
-            "/api/sentiment-history",
-            get(web::get_sentiment_history),
-        )
+        .route("/api/sentiment-history", get(web::get_sentiment_history))
         .route("/api/limit-up", get(web::get_limit_up))
         .route("/api/limit-down", get(web::get_limit_down))
         .route("/api/plate-abnormal", get(web::get_plate_abnormal))
@@ -61,10 +58,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/kline/:symbol", get(web::get_kline))
         .route("/api/realtime/stream", get(web::get_realtime_stream))
         .route("/api/realtime/:symbol", get(web::get_realtime))
-        .route(
-            "/api/yesterday-limit-up",
-            get(web::get_yesterday_limit_up),
-        )
+        .route("/api/yesterday-limit-up", get(web::get_yesterday_limit_up))
         .route("/api/super-stock", get(web::get_super_stock))
         .route("/api/index-quotes", get(web::get_index_quotes))
         .route("/api/telegraph", get(web::get_telegraph_all))
@@ -83,16 +77,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(web::get_plates_by_any_stock),
         )
         .route("/api/roles", get(web::get_roles))
-        .route(
-            "/api/roles/:name/positions",
-            get(web::get_role_positions),
-        )
+        .route("/api/roles/:name/positions", get(web::get_role_positions))
         .route("/api/roles/:name/logs", get(web::get_role_logs))
         .route("/api/roles", post(web::create_role))
-        .route(
-            "/api/roles/:name/strategy",
-            put(web::update_role_strategy),
-        )
+        .route("/api/roles/:name/strategy", put(web::update_role_strategy))
         .route("/api/roles/:name", delete(web::delete_role))
         .route("/api/roles/:name/reset", post(web::reset_role))
         .route(

@@ -457,7 +457,12 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
 
     log::info!("ws: upgrade accepted session_id={session_id}");
 
-    let session = match crate::chat_session::ensure_session_with_events(&state.ctx.pool, &session_id).await {
+    let session = match crate::chat_session::ensure_session_with_events(
+        &state.ctx.pool,
+        &session_id,
+    )
+    .await
+    {
         Ok(s) => s,
         Err(e) => {
             log::error!("ws: failed to ensure session {session_id}: {e}");

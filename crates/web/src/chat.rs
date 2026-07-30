@@ -48,7 +48,9 @@ pub struct AiRoleItem {
 }
 
 pub async fn get_ai_commands() -> Json<Vec<CommandSpec>> {
-    let data = crate::handlers::get_ai_commands_data().await.unwrap_or_default();
+    let data = crate::handlers::get_ai_commands_data()
+        .await
+        .unwrap_or_default();
     Json(serde_json::from_value(data).unwrap_or_default())
 }
 
@@ -412,7 +414,9 @@ pub async fn create_session(
 
 /// GET /api/ai/sessions — list all saved sessions
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
-    let data = crate::handlers::list_sessions_data(&state).await.unwrap_or_default();
+    let data = crate::handlers::list_sessions_data(&state)
+        .await
+        .unwrap_or_default();
     Json(serde_json::from_value(data).unwrap_or_default())
 }
 
@@ -471,7 +475,9 @@ pub async fn get_session_messages(
         .filter_map(|msg| {
             let (role, content_blocks, timestamp) = match msg {
                 AgentMessage::User { content, timestamp } => ("user", content, *timestamp),
-                AgentMessage::Assistant { content, timestamp, .. } => ("assistant", content, *timestamp),
+                AgentMessage::Assistant {
+                    content, timestamp, ..
+                } => ("assistant", content, *timestamp),
                 _ => return None,
             };
 
@@ -486,9 +492,16 @@ pub async fn get_session_messages(
                         blocks.push(HistoryBlock::Text { text: text.clone() });
                     }
                     ContentBlock::Thinking { thinking, .. } => {
-                        blocks.push(HistoryBlock::Thinking { text: thinking.clone() });
+                        blocks.push(HistoryBlock::Thinking {
+                            text: thinking.clone(),
+                        });
                     }
-                    ContentBlock::ToolCall { id, name, arguments, .. } => {
+                    ContentBlock::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                        ..
+                    } => {
                         blocks.push(HistoryBlock::ToolUse {
                             id: id.clone(),
                             name: name.clone(),
@@ -671,12 +684,8 @@ pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value
     use std::path::Path;
 
     let dir = Path::new(&state.ctx.session_dir);
-    let infos = pi_coding_agent::core::session_manager::list_sessions_concurrent(
-        dir,
-        None,
-        None,
-    )
-    .await;
+    let infos =
+        pi_coding_agent::core::session_manager::list_sessions_concurrent(dir, None, None).await;
 
     let mut sessions = Vec::with_capacity(infos.len());
     for info in infos {
