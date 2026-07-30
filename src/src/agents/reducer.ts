@@ -561,7 +561,8 @@ function historyBlockToTranscriptBlock(
           typeof block.input === "string"
             ? block.input
             : JSON.stringify(block.input ?? ""),
-        status: "done",
+        status: block.is_error ? "error" : "done",
+        result: block.result,
       }
     default:
       return null

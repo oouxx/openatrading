@@ -164,6 +164,11 @@ export function useMultiAgentWebSocket(
       if (!res.ok) return
       const msgs: HistoryMessage[] = await res.json()
       if (!msgs || msgs.length === 0) return
+      // Never overwrite a turn list that has an in-progress (streaming) turn —
+      // live data always takes precedence over a stale history snapshot.
+      // This matters when switching to a session that is still streaming in
+      // the background: the live turns are authoritative until the turn ends.
+      if (conn.turns.some((t) => t.status === "in_progress")) return
       const turns = historyToTurns(msgs)
       conn.turns = turns
       // Only notify if the connection is still alive and hasn't been

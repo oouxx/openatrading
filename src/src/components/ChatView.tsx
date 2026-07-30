@@ -44,7 +44,6 @@ export default function AiCopilot({
   activeThreadId,
   onActiveThreadChange,
   onReload,
-  sessions,
 }: AiCopilotProps) {
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
@@ -122,15 +121,17 @@ export default function AiCopilot({
   }, [])
 
   // ── WebSocket transport (Web) — multi-session ────────────────────────
-  // Collect all session IDs that need live connections.
-  // Include both persisted sessions and the active thread (which may be a
-  // newly created session not yet persisted). This ensures the WebSocket
-  // connection is established for the active session immediately.
+  // Only open a live WebSocket for sessions that actually need one: the active
+  // session and any session currently streaming in the background. Opening a
+  // socket for every persisted session forced the backend to materialize every
+  // session into the pool (LRU pollution) and fetched history for all of them
+  // on connect. Idle sessions don't need a live socket — their history is
+  // loaded on demand when the user switches to them.
   const allSessionIds = !isTauri
     ? [...new Set([
-        ...(sessions ?? []).map((s) => s.id).filter(Boolean),
         ...(activeThreadId ? [activeThreadId] : []),
-      ])]
+        ...(streamThreadId ? [streamThreadId] : []),
+      ])].filter(Boolean)
     : []
 
   const wsAgent = useMultiAgentWebSocket(allSessionIds, {
