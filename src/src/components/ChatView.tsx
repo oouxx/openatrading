@@ -204,15 +204,9 @@ export default function AiCopilot({
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
       }
-      transport.onTerminal = () => {
-        setStreaming(false)
-        streamThreadRef.current = null
-        setStreamThreadId(null)
-        onReload?.()
-      }
       await transport.start()
     },
-    [scrollDown, onReload],
+    [scrollDown],
   )
 
   // ── Send ──────────────────────────────────────────────────────────────
