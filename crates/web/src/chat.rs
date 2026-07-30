@@ -444,6 +444,13 @@ pub enum HistoryBlock {
         id: String,
         name: String,
         input: serde_json::Value,
+        /// Tool result text, attached when the corresponding `toolResult` message
+        /// is present in the session history (joined by `tool_call_id`).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        result: Option<String>,
+        /// Whether the tool result reported an error.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
     },
     Text {
         text: String,
@@ -470,6 +477,34 @@ pub async fn get_session_messages(
     let rt = runtime.lock().await;
     let messages = rt.session().get_messages().await;
 
+    // Join tool results onto the assistant turn that issued the call.
+    // `AgentMessage::ToolResult` is a separate message keyed by `tool_call_id`;
+    // attach its text + error flag to the matching `ToolUse` block so the
+    // frontend can render the result on the tool-call card in history.
+    use std::collections::HashMap;
+    let tool_results: HashMap<String, (String, bool)> = messages
+        .iter()
+        .filter_map(|msg| match msg {
+            AgentMessage::ToolResult {
+                tool_call_id,
+                content,
+                is_error,
+                ..
+            } => {
+                let text = content
+                    .iter()
+                    .filter_map(|b| match b {
+                        ContentBlock::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Some((tool_call_id.clone(), (text, *is_error)))
+            }
+            _ => None,
+        })
+        .collect();
+
     let session_messages: Vec<SessionMessage> = messages
         .iter()
         .filter_map(|msg| {
@@ -478,6 +513,8 @@ pub async fn get_session_messages(
                 AgentMessage::Assistant {
                     content, timestamp, ..
                 } => ("assistant", content, *timestamp),
+                // ToolResult messages are joined onto ToolUse blocks above,
+                // not emitted as standalone history entries.
                 _ => return None,
             };
 
@@ -502,10 +539,14 @@ pub async fn get_session_messages(
                         arguments,
                         ..
                     } => {
+                        let (result, is_error) =
+                            tool_results.get(id).cloned().unwrap_or_default();
                         blocks.push(HistoryBlock::ToolUse {
                             id: id.clone(),
                             name: name.clone(),
                             input: arguments.clone(),
+                            result: (!result.is_empty()).then_some(result),
+                            is_error,
                         });
                     }
                     ContentBlock::Image { .. } => {}
