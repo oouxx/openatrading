@@ -129,3 +129,56 @@ pub fn resolve_chat_config(input: ChatConfigInput<'_>) -> ChatConfig {
         tools,
     }
 }
+
+use pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime;
+use pi_coding_agent::core::agent_session::AgentSession;
+use pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle;
+use tokio::sync::{Mutex, mpsc};
+
+use crate::agent_ws::{setup_event_channel, TranscriptEvent};
+
+/// Result of ensuring a session with events.
+pub struct SessionWithEvents {
+    pub runtime: Arc<Mutex<AgentSessionRuntime>>,
+    pub rx: mpsc::Receiver<TranscriptEvent>,
+    pub _subscription_handle: SessionEventUnsubscribeHandle,
+}
+
+/// Ensure a session exists (resume from disk or create new) and set up its
+/// event channel.
+///
+/// Returns the runtime reference and the event receiver. This is the shared
+/// session lifecycle logic used by both the WebSocket handler and the Tauri
+/// IPC layer.
+pub async fn ensure_session_with_events(
+    pool: &openatrading_core::llm::SessionPool,
+    session_id: &str,
+) -> Result<SessionWithEvents, String> {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let runtime = match pool.get_or_resume(session_id).await {
+        Ok(rt) => rt,
+        Err(_) => {
+            pool.create_session_with_id(&cwd, Some(session_id))
+                .await
+                .map_err(|e| format!("failed to create session: {e}"))?;
+            pool.get_session(session_id)
+                .await
+                .ok_or_else(|| "session created but not found in pool".to_string())?
+        }
+    };
+
+    let (rx, _subscription_handle) = {
+        let rt = runtime.lock().await;
+        setup_event_channel(rt.session()).await
+    };
+
+    Ok(SessionWithEvents {
+        runtime,
+        rx,
+        _subscription_handle,
+    })
+}

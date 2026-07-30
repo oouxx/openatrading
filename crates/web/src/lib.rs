@@ -3,8 +3,9 @@ pub mod cache;
 pub mod chat;
 pub mod chat_session;
 pub mod gateway;
-pub mod handlers;
+pub mod web;
 pub mod mcp;
+pub mod handlers;
 
 use cache::AppCache;
 use std::sync::Arc;
@@ -45,31 +46,31 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .try_init();
 
     Router::new()
-        .route("/api/overview", get(handlers::get_overview))
-        .route("/api/search-stocks", get(handlers::search_stocks))
+        .route("/api/overview", get(web::get_overview))
+        .route("/api/search-stocks", get(web::search_stocks))
         .route(
             "/api/sentiment-history",
-            get(handlers::get_sentiment_history),
+            get(web::get_sentiment_history),
         )
-        .route("/api/limit-up", get(handlers::get_limit_up))
-        .route("/api/limit-down", get(handlers::get_limit_down))
-        .route("/api/plate-abnormal", get(handlers::get_plate_abnormal))
-        .route("/api/field-items", get(handlers::get_field_items))
-        .route("/api/timeline", get(handlers::get_timeline))
-        .route("/api/kline/stream", get(handlers::get_kline_stream))
-        .route("/api/kline/:symbol", get(handlers::get_kline))
-        .route("/api/realtime/stream", get(handlers::get_realtime_stream))
-        .route("/api/realtime/:symbol", get(handlers::get_realtime))
+        .route("/api/limit-up", get(web::get_limit_up))
+        .route("/api/limit-down", get(web::get_limit_down))
+        .route("/api/plate-abnormal", get(web::get_plate_abnormal))
+        .route("/api/field-items", get(web::get_field_items))
+        .route("/api/timeline", get(web::get_timeline))
+        .route("/api/kline/stream", get(web::get_kline_stream))
+        .route("/api/kline/:symbol", get(web::get_kline))
+        .route("/api/realtime/stream", get(web::get_realtime_stream))
+        .route("/api/realtime/:symbol", get(web::get_realtime))
         .route(
             "/api/yesterday-limit-up",
-            get(handlers::get_yesterday_limit_up),
+            get(web::get_yesterday_limit_up),
         )
-        .route("/api/super-stock", get(handlers::get_super_stock))
-        .route("/api/index-quotes", get(handlers::get_index_quotes))
-        .route("/api/telegraph", get(handlers::get_telegraph_all))
-        .route("/api/telegraph/:category", get(handlers::get_telegraph))
-        .route("/api/dapan-abnormal", get(handlers::get_dapan_abnormal))
-        .route("/api/market-trend/:symbol", get(handlers::get_market_trend))
+        .route("/api/super-stock", get(web::get_super_stock))
+        .route("/api/index-quotes", get(web::get_index_quotes))
+        .route("/api/telegraph", get(web::get_telegraph_all))
+        .route("/api/telegraph/:category", get(web::get_telegraph))
+        .route("/api/dapan-abnormal", get(web::get_dapan_abnormal))
+        .route("/api/market-trend/:symbol", get(web::get_market_trend))
         .route("/api/ai/sessions/ws", get(agent_ws::ws_handler))
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
@@ -79,37 +80,37 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/tools", get(chat::get_tools))
         .route(
             "/api/plates-by-any-stock/:symbol",
-            get(handlers::get_plates_by_any_stock),
+            get(web::get_plates_by_any_stock),
         )
-        .route("/api/roles", get(handlers::get_roles))
+        .route("/api/roles", get(web::get_roles))
         .route(
             "/api/roles/:name/positions",
-            get(handlers::get_role_positions),
+            get(web::get_role_positions),
         )
-        .route("/api/roles/:name/logs", get(handlers::get_role_logs))
-        .route("/api/roles", post(handlers::create_role))
+        .route("/api/roles/:name/logs", get(web::get_role_logs))
+        .route("/api/roles", post(web::create_role))
         .route(
             "/api/roles/:name/strategy",
-            put(handlers::update_role_strategy),
+            put(web::update_role_strategy),
         )
-        .route("/api/roles/:name", delete(handlers::delete_role))
-        .route("/api/roles/:name/reset", post(handlers::reset_role))
+        .route("/api/roles/:name", delete(web::delete_role))
+        .route("/api/roles/:name/reset", post(web::reset_role))
         .route(
             "/api/roles/:name/pnl-history",
-            get(handlers::get_role_pnl_history),
+            get(web::get_role_pnl_history),
         )
-        .route("/api/roles/:name/history", get(handlers::get_role_history))
-        .route("/api/replay/events", get(handlers::get_replay_events))
-        .route("/api/replay/index", get(handlers::get_replay_index))
-        .route("/api/replay/news", get(handlers::get_replay_news))
-        .route("/api/replay/snapshots", get(handlers::get_replay_snapshots))
+        .route("/api/roles/:name/history", get(web::get_role_history))
+        .route("/api/replay/events", get(web::get_replay_events))
+        .route("/api/replay/index", get(web::get_replay_index))
+        .route("/api/replay/news", get(web::get_replay_news))
+        .route("/api/replay/snapshots", get(web::get_replay_snapshots))
         .route(
             "/api/dragon-tiger/detail",
-            get(handlers::get_dragon_tiger_detail),
+            get(web::get_dragon_tiger_detail),
         )
         .route(
             "/api/dragon-tiger/stock-seat",
-            get(handlers::get_dragon_tiger_stock_seat),
+            get(web::get_dragon_tiger_stock_seat),
         )
         .route("/api/ai/sessions", get(chat::list_sessions))
         .route(
@@ -126,9 +127,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/mcp/servers", post(mcp::add_handler))
         .route("/api/mcp/servers/:name", delete(mcp::delete_handler))
         .route("/api/mcp/servers/:name/toggle", get(mcp::toggle_handler))
-        .route("/api/watchlist", get(handlers::get_watchlist))
-        .route("/api/watchlist", post(handlers::add_watchlist))
-        .route("/api/watchlist/:code", delete(handlers::delete_watchlist))
+        .route("/api/watchlist", get(web::get_watchlist))
+        .route("/api/watchlist", post(web::add_watchlist))
+        .route("/api/watchlist/:code", delete(web::delete_watchlist))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

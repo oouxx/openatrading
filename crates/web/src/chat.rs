@@ -13,7 +13,7 @@ use openatrading_core::skills::SkillEntry;
 use openatrading_core::skills::SkillRegistry;
 use openatrading_core::skills::SkillRequest;
 
-use crate::handlers::OverviewResponse;
+use crate::web::OverviewResponse;
 use crate::AppState;
 
 /// Find a session JSONL file by session ID.
@@ -21,7 +21,7 @@ use crate::AppState;
 /// Session files are named `{timestamp}_{id}.jsonl`, so we cannot construct
 /// the path from the ID alone. This scans the session directory for a file
 /// whose name ends with `_{id}.jsonl`.
-fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
+pub fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
     let dir = pi_coding_agent::config::get_sessions_dir();
     let suffix = format!("_{id}.jsonl");
     let direct = dir.join(format!("{id}.jsonl"));
@@ -48,20 +48,8 @@ pub struct AiRoleItem {
 }
 
 pub async fn get_ai_commands() -> Json<Vec<CommandSpec>> {
-    // Commands are provided by pi-coding-agent's built-in slash commands.
-    // Tools and skills are managed internally by pi-coding-agent at session
-    // creation time and are not listed here.
-    let commands: Vec<CommandSpec> =
-        pi_coding_agent::core::slash_commands::builtin_slash_commands()
-            .iter()
-            .map(|cmd| CommandSpec {
-                name: cmd.name.clone(),
-                description: cmd.description.clone(),
-                command_type: CommandType::Slash,
-            })
-            .collect();
-
-    Json(commands)
+    let data = crate::handlers::get_ai_commands_data().await.unwrap_or_default();
+    Json(serde_json::from_value(data).unwrap_or_default())
 }
 
 #[derive(Serialize)]
@@ -140,17 +128,10 @@ pub async fn delete_skill(
 pub async fn get_ai_roles(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let roles: Vec<AiRoleItem> = {
-        let roles_guard = state.roles.read().await;
-        roles_guard
-            .iter()
-            .map(|r| AiRoleItem {
-                name: r.name.clone(),
-                display_name: r.display_name.clone(),
-            })
-            .collect()
-    };
-    Ok(Json(roles))
+    crate::handlers::get_ai_roles_data(&state)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub fn build_system_prompt(strategy_text: &str) -> String {
@@ -431,32 +412,8 @@ pub async fn create_session(
 
 /// GET /api/ai/sessions — list all saved sessions
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> Json<Vec<serde_json::Value>> {
-    use std::path::Path;
-
-    let dir = Path::new(&state.ctx.session_dir);
-    let infos = pi_coding_agent::core::session_manager::list_sessions_concurrent(
-        dir,
-        None,  // no progress callback
-        None,  // default concurrency
-    )
-    .await;
-
-    let mut sessions = Vec::with_capacity(infos.len());
-    for info in infos {
-        let status = if state.ctx.pool.is_stream(&info.id).await {
-            "running"
-        } else {
-            "idle"
-        };
-        let mut val = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
-        if let Some(obj) = val.as_object_mut() {
-            obj.insert("status".to_string(), serde_json::json!(status));
-            obj.remove("all_messages_text");
-        }
-        sessions.push(val);
-    }
-
-    Json(sessions)
+    let data = crate::handlers::list_sessions_data(&state).await.unwrap_or_default();
+    Json(serde_json::from_value(data).unwrap_or_default())
 }
 
 #[derive(Serialize)]
@@ -563,22 +520,9 @@ pub async fn delete_session(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> StatusCode {
-    // Remove the live facade from the shared pool so the agent stops.
-    state.ctx.pool.close_session(&id).await;
-
-    let Some(path) = find_session_file(&id) else {
-        return StatusCode::NOT_FOUND;
-    };
-    if path.exists() {
-        match std::fs::remove_file(&path) {
-            Ok(()) => StatusCode::NO_CONTENT,
-            Err(e) => {
-                openatrading_core::log::error!("delete_session: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
-        }
-    } else {
-        StatusCode::NOT_FOUND
+    match crate::handlers::delete_session_data(&state, &id).await {
+        Ok(_) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::NOT_FOUND,
     }
 }
 
@@ -706,4 +650,48 @@ pub async fn get_tool_result(
     }
 
     Err(axum::http::StatusCode::NOT_FOUND)
+}
+
+// ── Inner functions for Tauri compatibility ─────────────────────────────
+
+/// Inner version of `get_ai_commands` that returns `Vec<CommandSpec>`.
+pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
+    pi_coding_agent::core::slash_commands::builtin_slash_commands()
+        .iter()
+        .map(|cmd| CommandSpec {
+            name: cmd.name.clone(),
+            description: cmd.description.clone(),
+            command_type: CommandType::Slash,
+        })
+        .collect()
+}
+
+/// Inner version of `list_sessions` that returns `Vec<serde_json::Value>`.
+pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value> {
+    use std::path::Path;
+
+    let dir = Path::new(&state.ctx.session_dir);
+    let infos = pi_coding_agent::core::session_manager::list_sessions_concurrent(
+        dir,
+        None,
+        None,
+    )
+    .await;
+
+    let mut sessions = Vec::with_capacity(infos.len());
+    for info in infos {
+        let status = if state.ctx.pool.is_stream(&info.id).await {
+            "running"
+        } else {
+            "idle"
+        };
+        let mut val = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("status".to_string(), serde_json::json!(status));
+            obj.remove("all_messages_text");
+        }
+        sessions.push(val);
+    }
+
+    sessions
 }
