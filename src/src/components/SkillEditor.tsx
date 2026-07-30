@@ -65,8 +65,10 @@ export default function SkillEditor() {
   // Mount-time initialization — data must be fetched before user interacts
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadSkills()
     loadTools()
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   const selectSkill = (idx: number) => {

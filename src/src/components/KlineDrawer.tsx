@@ -55,13 +55,10 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     setCrosshair(info)
   }, [])
 
-  // Set pending crosshair listener in render phase so KlineChart can pick it up
-  // immediately on remount (handles HMR where KlineChart remounts but this effect
-  // doesn't re-run because deps haven't changed)
-  ;(KlineChart as any).__pendingCrosshairListener = setChartCrosshair
-
   // Wire crosshair listener from KlineChart (re-wire on klineData change since chart is recreated)
   useEffect(() => {
+    // Set pending crosshair listener so KlineChart can pick it up on remount
+    ;(KlineChart as any).__pendingCrosshairListener = setChartCrosshair
     ;(KlineChart as any).setCrosshairListener?.(setChartCrosshair)
   }, [setChartCrosshair, klineData])
 
@@ -71,8 +68,10 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
   // Subscribe to kline SSE stream
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setKlineData([])
     crosshairRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCrosshair(null)
     return subscribeKline(xgSymbol, period, 256, (data: any) => {
       if (data.candles) {

@@ -60,6 +60,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^15.0.0",
+    "jiti": "^2.7.0",
     "postcss": "^8.5.14",
     "prettier": "^3.8.5",
     "prettier-plugin-tailwindcss": "^0.8.0",
