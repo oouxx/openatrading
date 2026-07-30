@@ -5,27 +5,58 @@ use pi_coding_agent::pi_ai_types::Model;
 use pi_extension_api::ToolDefinition;
 use std::sync::Arc;
 
+/// Options for [`create_factory`].
+///
+/// Bundling these into a struct keeps `create_factory` to a single parameter
+/// (per the project's ≤3-params rule) while still allowing per-session trading
+/// state to be threaded through.
+pub struct FactoryOptions {
+    /// pi-rs agent directory (`$PI_RS_HOME/agent`).
+    pub agent_dir: String,
+    /// Override the model resolved from settings; `None` = use settings.
+    pub model: Option<Model>,
+    /// Restrict the tool set to these names; `None` = all tools.
+    pub tools: Option<Vec<String>>,
+    /// Extra custom tool definitions to register.
+    pub custom_tools: Option<Vec<ToolDefinition>>,
+    /// Paper-trading state. `Some` registers the paper-trading tools
+    /// (positions / historical context / decision sink) on every session;
+    /// `None` yields a market-data-only session.
+    pub trading: Option<openatrading_extension::TradingContext>,
+}
+
+impl FactoryOptions {
+    /// Market-data-only options (no paper-trading tools).
+    pub fn market_only(agent_dir: impl Into<String>) -> Self {
+        Self {
+            agent_dir: agent_dir.into(),
+            model: None,
+            tools: None,
+            custom_tools: None,
+            trading: None,
+        }
+    }
+}
+
 /// Create a factory closure that produces `AgentSessionRuntime` instances.
 ///
-/// The factory captures configuration (agent_dir, model, tools, custom_tools)
-/// once and reuses it for every session, avoiding repeated setup.
-///
-/// The extension registry is created fresh for each session via
-/// `openatrading_extension::create_registry()` since `ExtensionRegistry`
-/// does not implement `Clone` and cannot be shared across sessions.
-pub fn create_factory(
-    agent_dir: &str,
-    model: Option<Model>,
-    tools: Option<Vec<String>>,
-    custom_tools: Option<Vec<ToolDefinition>>,
-) -> CreateAgentSessionRuntimeFactory {
-    let agent_dir = agent_dir.to_string();
+/// The factory captures configuration once and reuses it for every session,
+/// avoiding repeated setup. The extension registry is created fresh for each
+/// session via `openatrading_extension::create_registry()` since
+/// `ExtensionRegistry` does not implement `Clone`.
+pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory {
+    let agent_dir = opts.agent_dir;
+    let model = opts.model;
+    let tools = opts.tools;
+    let custom_tools = opts.custom_tools;
+    let trading = opts.trading;
 
     Arc::new(move |params: CreateAgentSessionRuntimeParams| {
         let agent_dir = agent_dir.clone();
         let model = model.clone();
         let tools = tools.clone();
         let custom_tools = custom_tools.clone();
+        let trading = trading.clone();
 
         Box::pin(async move {
             // Ensure API providers are registered before any LLM calls
@@ -55,7 +86,7 @@ pub fn create_factory(
             });
 
             // Create a fresh extension registry for each session.
-            let ext_registry = openatrading_extension::create_registry();
+            let ext_registry = openatrading_extension::create_registry(trading.clone());
 
             let (session, services, result) =
                 create_agent_session_from_services(CreateAgentSessionFromServicesOptions {

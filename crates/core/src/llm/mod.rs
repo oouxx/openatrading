@@ -11,7 +11,9 @@
 pub mod tools;
 
 // ── Session lifecycle (from the agent crate) ───────────────────────────────
-pub use openatrading_agent::session::{create_factory, find_session_file_by_id, SessionPool};
+pub use openatrading_agent::session::{
+    create_factory, find_session_file_by_id, FactoryOptions, SessionPool,
+};
 
 // ── MCP infrastructure (from the agent crate) ─────────────────────────────
 pub use openatrading_agent::mcp_server::{serve_http, serve_stdio};

@@ -14,6 +14,6 @@ pub mod factory;
 pub mod pool;
 pub mod runtime;
 
-pub use factory::create_factory;
+pub use factory::{create_factory, FactoryOptions};
 pub use pool::SessionPool;
 pub use runtime::find_session_file_by_id;

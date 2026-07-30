@@ -4,11 +4,14 @@ use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
 use crate::llm::{
-    build_tools, create_factory, DynTool, McpServerConfig, SessionPool, ToolConfig, ToolRegistry,
+    build_tools, create_factory, DynTool, FactoryOptions, McpServerConfig, SessionPool, ToolConfig,
+    ToolRegistry,
 };
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
+use crate::trade::PaperExecutor;
+use openatrading_extension::{MemoryReader, PositionReader, TradingContext};
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -36,15 +39,31 @@ impl AppContext {
             .to_string_lossy()
             .to_string();
 
-        let factory = create_factory(&agent_dir, None, None, None);
-        let pool = Arc::new(SessionPool::new(factory));
-
         let api = ApiClient::new();
+
+        // Paper-account trading state shared by every session created from
+        // this factory. A single `paper` account is the only decision sink;
+        // role CRUD is retained for future strategy↔account isolation.
+        let trading = TradingContext {
+            role: "paper".to_string(),
+            positions: trade.clone() as Arc<dyn PositionReader>,
+            memory: memory.clone() as Arc<dyn MemoryReader>,
+            sink: Arc::new(PaperExecutor::new(trade.clone(), api.clone())),
+        };
+
+        let factory = create_factory(FactoryOptions {
+            agent_dir,
+            model: None,
+            tools: None,
+            custom_tools: None,
+            trading: Some(trading),
+        });
+        let pool = Arc::new(SessionPool::new(factory));
         let tool_cfg = ToolConfig {
             mcp_servers: mcp_servers.to_vec(),
         };
         let mut registry = build_tools(&tool_cfg).await;
-        let ext_registry = openatrading_extension::create_registry();
+        let ext_registry = openatrading_extension::create_registry(None);
         registry.set_extension_tools(&ext_registry);
         let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
         let session_dir = pi_coding_agent::config::get_sessions_dir()

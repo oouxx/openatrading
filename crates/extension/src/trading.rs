@@ -23,15 +23,23 @@ use openatrading_api::sina::SinaQuoteClient;
 use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
 /// Market data extension providing A-share trading tools.
-pub struct MarketDataExtension;
+///
+/// When `trading` is `Some`, the paper-trading tools
+/// (`get_current_positions`, `get_historical_context`,
+/// `submit_trading_decision`) are registered alongside the market-data tools;
+/// when `None`, only market-data tools are available.
+pub struct MarketDataExtension {
+    trading: Option<super::TradingContext>,
+}
 
 impl MarketDataExtension {
-    pub const fn new() -> Self {
-        Self
+    /// Create a new extension. Pass `Some(ctx)` to enable paper-trading tools.
+    pub fn new(trading: Option<super::TradingContext>) -> Self {
+        Self { trading }
     }
 
-    /// Build the full list of tool definitions this extension provides.
-    fn tool_definitions() -> Vec<ToolDefinition> {
+    /// Market-data tool definitions (always registered).
+    fn market_definitions() -> Vec<ToolDefinition> {
         vec![
             limit_up_tool(),
             limit_down_tool(),
@@ -52,8 +60,16 @@ impl MarketDataExtension {
             lhb_detail_tool(),
             lhb_combined_tool(),
             lhb_active_yyb_tool(),
-            submit_trading_decision_tool(),
         ]
+    }
+
+    /// Paper-trading read-tool definitions (registered only when `trading` is `Some`).
+    ///
+    /// `submit_trading_decision` is registered separately (it terminates the
+    /// agent loop); the two read-only tools here let the agent inspect the
+    /// current paper-account positions and historical memory context.
+    fn paper_definitions() -> Vec<ToolDefinition> {
+        vec![get_current_positions_tool(), get_historical_context_tool()]
     }
 
     /// Dispatch a tool call to the matching handler.
@@ -61,6 +77,26 @@ impl MarketDataExtension {
     /// Returns `Some(output)` when `tool_name` is handled by this extension,
     /// `None` otherwise (so other extensions / built-ins can handle it).
     async fn dispatch(&self, tool_name: &str, params: Value) -> Option<ToolCallOutput> {
+        // ── Paper-trading tools (only when trading state is attached) ──
+        if let Some(trading) = &self.trading {
+            match tool_name {
+                "get_current_positions" => {
+                    let res = trading.positions.format_positions(&trading.role).await;
+                    return Some(text_output(res, /*terminate*/ false));
+                }
+                "get_historical_context" => {
+                    let days = params.get("days").and_then(|v| v.as_u64()).unwrap_or(7) as u32;
+                    let res = trading.memory.get_historical_context(days).await;
+                    return Some(text_output(res, /*terminate*/ false));
+                }
+                "submit_trading_decision" => {
+                    let res = trading.sink.submit(&trading.role, params).await;
+                    return Some(text_output(res, /*terminate*/ true));
+                }
+                _ => {}
+            }
+        }
+
         let result: Result<serde_json::Value, String> = match tool_name {
             "get_limit_up" => {
                 call(|| async { XuanguBaoClient::new().fetch_limit_up().await }).await
@@ -204,16 +240,6 @@ impl MarketDataExtension {
                 })
                 .await
             }
-            "submit_trading_decision" => {
-                // The tool does nothing except receive structured data;
-                // terminate: true stops the agent loop immediately.
-                return Some(ToolCallOutput {
-                    content: vec![json!({ "type": "text", "text": "决策已接收" })],
-                    details: None,
-                    is_error: false,
-                    terminate: Some(true),
-                });
-            }
             _ => return None,
         };
 
@@ -241,7 +267,7 @@ impl MarketDataExtension {
 
 impl Default for MarketDataExtension {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -252,7 +278,17 @@ impl HookHandler for MarketDataExtension {
     }
 
     fn register_tools(&self, registry: &mut ToolRegistry) {
-        for def in Self::tool_definitions() {
+        for def in Self::market_definitions() {
+            registry.register(&def.name.clone(), def);
+        }
+        if self.trading.is_some() {
+            for def in Self::paper_definitions() {
+                registry.register(&def.name.clone(), def);
+            }
+            // submit_trading_decision is always registered so the agent can
+            // propose decisions; execution is a no-op without a sink, but a
+            // registry without trading never reaches this branch.
+            let def = submit_trading_decision_tool();
             registry.register(&def.name.clone(), def);
         }
     }
@@ -596,6 +632,53 @@ fn str_schema(params: &[(&str, &str)]) -> Value {
         "properties": properties,
         "required": required,
     })
+}
+
+// ─── Paper-trading tool helpers ───────────────────────────────────────────
+
+/// Build a `ToolCallOutput` from a `Result<String, String>`.
+///
+/// `terminate` controls whether the agent loop stops after this tool (the
+/// decision submission tool terminates, the read-only tools do not).
+fn text_output(res: Result<String, String>, terminate: bool) -> ToolCallOutput {
+    let (text, is_error) = match res {
+        Ok(t) => (t, false),
+        Err(e) => (e, true),
+    };
+    ToolCallOutput {
+        content: vec![json!({ "type": "text", "text": text })],
+        details: None,
+        is_error,
+        terminate: if terminate { Some(true) } else { None },
+    }
+}
+
+fn get_current_positions_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_current_positions".into(),
+        label: Some("查看持仓".into()),
+        description: "查看当前 paper 模拟账户的持仓明细（股票代码、名称、持仓股数、            成本价、当前价、仓位占比、止损/目标价等）。用于在分析或决策前了解当前仓位。"
+            .into(),
+        parameters: Some(empty_schema()),
+        ..Default::default()
+    }
+}
+
+fn get_historical_context_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_historical_context".into(),
+        label: Some("历史复盘上下文".into()),
+        description: "读取最近 N 天的市场记忆/复盘上下文（默认 7 天），用于结合历史走势            和过往记录进行行情复盘与策略推演。"
+            .into(),
+        parameters: Some(json!({
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "回溯天数，默认 7"}
+            },
+            "required": []
+        })),
+        ..Default::default()
+    }
 }
 
 // ─── Decision tool ────────────────────────────────────────────────────────

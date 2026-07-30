@@ -88,8 +88,10 @@ pub struct ClosedPosition {
 
 pub mod broker;
 pub mod paper;
+pub mod paper_executor;
 pub mod sqlite;
 
 pub use broker::execute_buy;
 pub use broker::execute_sell;
+pub use paper_executor::PaperExecutor;
 pub use sqlite::TradeManager;
