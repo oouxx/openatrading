@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 
 use crate::api::xuangubao::MarketOverview;
 use crate::context::AppContext;
-use crate::cron::run_decision;
 use crate::RoleEntry;
 
 const MAX_HISTORY_MESSAGES: usize = 40;
@@ -94,10 +93,6 @@ impl TelegramBot {
                     {
                         "command": "new",
                         "description": "开始新对话，清空当前会话历史"
-                    },
-                    {
-                        "command": "decision",
-                        "description": "手动触发每日决策，可选指定角色: /decision [role_name ...]"
                     }
                 ]
             }))
@@ -344,85 +339,6 @@ impl TelegramBot {
                     }
                 }
             }
-            "/decision" => {
-                let filtered_roles: Vec<RoleEntry> = if args.is_empty() {
-                    self.roles.clone()
-                } else {
-                    let names: Vec<&str> = args.split_whitespace().collect();
-                    let matched: Vec<RoleEntry> = self
-                        .roles
-                        .iter()
-                        .filter(|r| names.contains(&r.name.as_str()))
-                        .cloned()
-                        .collect();
-                    if matched.is_empty() {
-                        let available: Vec<String> =
-                            self.roles.iter().map(|r| r.name.clone()).collect();
-                        self.send_message(&format!(
-                            "❌ 未找到角色: {}\n可用角色: {}",
-                            args,
-                            available.join(", ")
-                        ))
-                        .await?;
-                        return Ok(());
-                    }
-                    matched
-                };
-
-                let role_names: Vec<&str> =
-                    filtered_roles.iter().map(|r| r.name.as_str()).collect();
-                let msg_id = self
-                    .send_message(&format!(
-                        "📋 正在执行决策: {}，请稍候...",
-                        role_names.join(", ")
-                    ))
-                    .await?;
-
-                struct DecisionNotifier {
-                    client: reqwest::Client,
-                    bot_token: String,
-                    chat_id: String,
-                }
-
-                #[async_trait::async_trait]
-                impl crate::social::NotificationSender for DecisionNotifier {
-                    async fn send_text(&self, text: &str) -> anyhow::Result<()> {
-                        let url =
-                            format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
-                        let resp = self
-                            .client
-                            .post(&url)
-                            .json(&serde_json::json!({
-                                "chat_id": self.chat_id,
-                                "text": text,
-                            }))
-                            .send()
-                            .await?;
-                        if !resp.status().is_success() {
-                            let body = resp.text().await.unwrap_or_default();
-                            anyhow::bail!("telegram sendMessage failed: {body}");
-                        }
-                        Ok(())
-                    }
-                }
-
-                let mut decision_ctx = self.ctx.clone();
-                decision_ctx.social = Arc::new(DecisionNotifier {
-                    client: self.client.clone(),
-                    bot_token: self.bot_token.clone(),
-                    chat_id: self.chat_id.clone(),
-                });
-                match run_decision(&decision_ctx, &filtered_roles).await {
-                    Ok(()) => {
-                        self.edit_message(msg_id, "✅ 决策已完成，结果已逐条推送")
-                            .await?;
-                    }
-                    Err(e) => {
-                        self.edit_message(msg_id, &format!("❌ 决策执行失败: {e}"))
-                            .await?;
-                    }
-                }
-            }
             "/start" | "/help" => {
                 let role_list: Vec<String> = self
                     .roles
@@ -433,8 +349,7 @@ impl TelegramBot {
                     "🤖 *OpenATrading Bot*\n\n\
                      *命令列表:*\n\
                      /ask role\\_name question — 向指定角色提问（开始新会话）\n\
-                     /new — 清空对话历史，开始新会话\n\
-                     /decision — 手动触发每日决策（可选: /decision role\\_name ...）\n\n\
+                     /new — 清空对话历史，开始新会话\n\n\
                      *多轮对话:*\n\
                      首次使用 /ask 指定角色后，直接发送消息即可继续对话\n\n\
                      *可用角色:*\n{}",

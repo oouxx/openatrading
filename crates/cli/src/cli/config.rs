@@ -84,8 +84,6 @@ pub struct CronTomlConfig {
     pub enabled: bool,
     #[serde(default = "default_collection_schedule")]
     pub collection_schedule: String,
-    #[serde(default = "default_decision_schedule")]
-    pub decision_schedule: String,
     #[serde(default = "default_news_schedule")]
     pub news_schedule: String,
 }
@@ -102,9 +100,6 @@ fn substitute_env(content: &str) -> String {
 
 fn default_collection_schedule() -> String {
     "0 0 18 * * 1-5".to_string()
-}
-fn default_decision_schedule() -> String {
-    "0 */30 9-15 * * 1-5".to_string()
 }
 fn default_news_schedule() -> String {
     "0 */5 9-15 * * 1-5".to_string()

@@ -266,13 +266,11 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             || CronConfig {
                 enabled: true,
                 collection_schedule: "0 0 18 * * 1-5".to_string(),
-                decision_schedule: "0 */30 9-15 * * 1-5".to_string(),
                 news_schedule: "0 */5 9-15 * * 1-5".to_string(),
             },
             |c| CronConfig {
                 enabled: c.enabled,
                 collection_schedule: c.collection_schedule.clone(),
-                decision_schedule: c.decision_schedule.clone(),
                 news_schedule: c.news_schedule.clone(),
             },
         );
@@ -288,9 +286,8 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             )
             .await,
         );
-        let cron_roles = roles.clone();
         handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg, cron_roles).await {
+            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg).await {
                 openatrading_core::log::error!("cron error: {e}");
             }
         }));

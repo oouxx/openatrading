@@ -111,7 +111,6 @@ db_path = "data.db"
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5 *"
-decision_schedule = "0 */30 9-15 * * 1-5 *"
 
 [social]
 notify_channel = "telegram"

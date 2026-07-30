@@ -32,7 +32,6 @@ web_bind = "0.0.0.0:8080"
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5"
-decision_schedule = "0 */30 9-15 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── LLM 配置 ────────────────────────────────────────────────
