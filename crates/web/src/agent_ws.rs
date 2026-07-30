@@ -12,7 +12,7 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
-use openatrading_core::llm::pi_ai_types::ContentBlock;
+use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
 use openatrading_core::llm::AgentMessage;
 use pi_coding_agent::core::agent_session::{AgentSession, PromptOptions};
 use pi_coding_agent::core::agent_session::{AgentSessionEvent, AgentSessionEventListener};
@@ -202,6 +202,35 @@ fn to_tool_result_payload(content: &str) -> ToolResultPayload {
     }
 }
 
+/// Extract a human-readable error from an assistant [`AgentMessage::MessageEnd`].
+///
+/// The core `MessageEnd` event is a fieldless passthrough on the wire, so a
+/// failed turn (builder error, 429, timeout, …) would otherwise render as a
+/// silent empty turn. When the assistant message carries an error we surface
+/// it as a `Notice { is_error: true }` instead, which the frontend already
+/// renders as an error system-notice block and marks the turn terminal.
+fn message_end_payload(message: &AgentMessage) -> SessionEventPayload {
+    if let AgentMessage::Assistant {
+        stop_reason,
+        error_message,
+        ..
+    } = message
+    {
+        let errored = matches!(stop_reason, Some(StopReason::Error))
+            || error_message.is_some();
+        if errored {
+            let text = error_message
+                .clone()
+                .unwrap_or_else(|| "助手响应失败，未返回任何内容".to_string());
+            return SessionEventPayload::Notice {
+                text,
+                is_error: true,
+            };
+        }
+    }
+    SessionEventPayload::MessageEnd
+}
+
 /// Convert an [`AgentSessionEvent`] into the serializable payload.
 pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
     match event {
@@ -268,7 +297,7 @@ pub fn convert_session_event(event: AgentSessionEvent) -> SessionEventPayload {
             assistant_message_event: serde_json::to_value(assistant_message_event)
                 .unwrap_or_default(),
         },
-        AgentSessionEvent::MessageEnd { .. } => SessionEventPayload::MessageEnd,
+        AgentSessionEvent::MessageEnd { message } => message_end_payload(&message),
         AgentSessionEvent::ToolExecutionStart {
             tool_call_id,
             tool_name,
@@ -325,7 +354,7 @@ pub fn convert_agent_event(event: AgentEvent) -> SessionEventPayload {
             assistant_message_event: serde_json::to_value(assistant_message_event)
                 .unwrap_or_default(),
         },
-        AgentEvent::MessageEnd { .. } => SessionEventPayload::MessageEnd,
+        AgentEvent::MessageEnd { message } => message_end_payload(&message),
         AgentEvent::ToolExecutionStart {
             tool_call_id,
             tool_name,
@@ -553,5 +582,81 @@ async fn forward_events(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openatrading_core::llm::pi_ai_types::{StopReason, Usage};
+
+    /// Builds an assistant [`AgentMessage`] with the given stop reason / error.
+    fn assistant(stop_reason: Option<StopReason>, error: Option<&str>) -> AgentMessage {
+        AgentMessage::Assistant {
+            content: vec![],
+            api: "openai".to_string(),
+            provider: "openrouter".to_string(),
+            model: "m".to_string(),
+            usage: Usage::default(),
+            stop_reason,
+            error_message: error.map(str::to_string),
+            timestamp: 0,
+        }
+    }
+
+    #[test]
+    fn message_end_error_surfaces_as_notice() {
+        // builder error / 429 / timeout → stop_reason Error + error_message.
+        let msg = assistant(Some(StopReason::Error), Some("builder error"));
+        match message_end_payload(&msg) {
+            SessionEventPayload::Notice { text, is_error } => {
+                assert!(is_error, "error notice must set is_error=true");
+                assert_eq!(text, "builder error");
+            }
+            other => panic!("expected Notice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn message_end_error_message_alone_also_surfaces() {
+        // Some providers set error_message without stop_reason == Error.
+        let msg = assistant(Some(StopReason::Stop), Some("rate limited"));
+        assert!(matches!(
+            message_end_payload(&msg),
+            SessionEventPayload::Notice { is_error: true, .. }
+        ));
+    }
+
+    #[test]
+    fn message_end_normal_passes_through() {
+        // A successful turn (content streamed, no error) must still emit MessageEnd
+        // so the happy path is unchanged.
+        let msg = assistant(Some(StopReason::Stop), None);
+        assert!(matches!(
+            message_end_payload(&msg),
+            SessionEventPayload::MessageEnd
+        ));
+    }
+
+    #[test]
+    fn message_end_aborted_without_error_passes_through() {
+        // An aborted turn is an interruption, not a surfaced error — leave as MessageEnd.
+        let msg = assistant(Some(StopReason::Aborted), None);
+        assert!(matches!(
+            message_end_payload(&msg),
+            SessionEventPayload::MessageEnd
+        ));
+    }
+
+    #[test]
+    fn message_end_error_serializes_as_notice() {
+        // Wire shape: the frontend reducer keys on `type: "notice"` + `is_error`.
+        let msg = assistant(Some(StopReason::Error), Some("oops"));
+        let payload = message_end_payload(&msg);
+        let json = serde_json::to_string(&payload)
+            .unwrap_or_else(|e| panic!("serialize notice payload: {e}"));
+        assert!(json.contains(r#""type":"notice""#), "json={json}");
+        assert!(json.contains(r#""is_error":true"#), "json={json}");
+        assert!(json.contains(r#""text":"oops""#), "json={json}");
     }
 }
