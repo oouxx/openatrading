@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
 
-use openatrading_core::llm::{create_factory, SessionPool};
+use openatrading_core::llm::{create_factory, FactoryOptions, SessionPool};
 use pi_coding_agent::pi_agent_core::agent::PromptInput;
 use pi_coding_agent::pi_agent_core::types::AgentMessage;
 use pi_coding_agent::pi_ai_types::ContentBlock;
@@ -27,7 +27,7 @@ async fn test_create_agent_session_with_extension() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
+    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -66,7 +66,7 @@ async fn test_trading_tools_exec() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
+    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -181,7 +181,7 @@ async fn test_bash_tool_exec() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
+    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -441,7 +441,7 @@ async fn test_multi_turn_conversation() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let pool = SessionPool::new(create_factory(&agent_dir, None, None, None));
+    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()

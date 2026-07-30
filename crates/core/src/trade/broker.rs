@@ -1,19 +1,24 @@
-use crate::context::AppContext;
+use crate::api::Client as ApiClient;
 use crate::roles::pnl::INITIAL_CAPITAL;
 use crate::roles::prompt::TradeInstruction;
 use crate::trade::paper::PaperBroker;
+use crate::trade::sqlite::TradeManager;
 use crate::trade::Position;
 use anyhow::Result;
 
+/// Execute a buy instruction on the paper account.
+///
+/// Fetches the realtime price, applies slippage/fees via [`PaperBroker`],
+/// validates position limits, and persists the new position.
 pub async fn execute_buy(
-    ctx: &AppContext,
+    trade: &TradeManager,
+    api: &ApiClient,
     role_name: &str,
     instr: &TradeInstruction,
 ) -> Result<()> {
     let broker = PaperBroker::default();
 
-    let quote = ctx
-        .api
+    let quote = api
         .xuangubao
         .fetch_realtime(instr.symbol.as_str())
         .await
@@ -27,7 +32,7 @@ pub async fn execute_buy(
     let exec_price = broker.buy_price(last_price);
     let shares = PaperBroker::round_shares(instr.shares);
 
-    let current_positions = ctx.trade.list_positions(role_name)?;
+    let current_positions = trade.list_positions(role_name)?;
     let total_position_value: f64 = current_positions
         .iter()
         .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
@@ -74,7 +79,7 @@ pub async fn execute_buy(
         updated_at: String::new(),
     };
 
-    let position_id = ctx.trade.add_position(&pos)?;
+    let position_id = trade.add_position(&pos)?;
     crate::log::info!(
         "[cron] BUY {} {} {}shares @ {:.2} (last={:.2}) — {} (position_id={})",
         instr.symbol,
@@ -90,12 +95,13 @@ pub async fn execute_buy(
 }
 
 pub async fn execute_sell(
-    ctx: &AppContext,
+    trade: &TradeManager,
+    api: &ApiClient,
     role_name: &str,
     instr: &TradeInstruction,
 ) -> Result<()> {
     let broker = PaperBroker::default();
-    let positions = ctx.trade.list_positions(role_name)?;
+    let positions = trade.list_positions(role_name)?;
 
     let matching: Vec<&Position> = positions
         .iter()
@@ -106,13 +112,12 @@ pub async fn execute_sell(
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     for pos in matching {
-        let last_price = match ctx.api.xuangubao.fetch_realtime(pos.symbol.as_str()).await {
+        let last_price = match api.xuangubao.fetch_realtime(pos.symbol.as_str()).await {
             Ok(quote) if quote.last_px > 0.0 => quote.last_px,
             _ => pos.current_price.unwrap_or(pos.cost_price),
         };
         let exec_price = broker.sell_price(last_price);
-        ctx.trade
-            .close_position(pos.id, exec_price, &instr.reason)?;
+        trade.close_position(pos.id, exec_price, &instr.reason)?;
         crate::log::info!(
             "[cron] SELL {} {} (id={}) @ {:.2} (last={:.2}) — {}",
             pos.symbol,
