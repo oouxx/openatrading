@@ -27,9 +27,7 @@ use tokio::task::JoinHandle;
 /// A fetcher maps the current symbol set to a JSON payload string (the batch
 /// result that gets broadcast). Boxed so the hub stays non-generic.
 pub type FetchFn = Arc<
-    dyn Fn(&[String]) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
-        + Send
-        + Sync,
+    dyn Fn(&[String]) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>> + Send + Sync,
 >;
 
 /// Configuration for a single shared stream. `key` dedups producers; the same
