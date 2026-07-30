@@ -5,8 +5,9 @@
 // kind — they only call `onEvent` / `sendPrompt` / `interrupt`.
 //
 // ## Web path
-// The Web path uses `useAgentWebSocket` (React hook wrapping native WebSocket)
-// instead of a class-based transport. See `useAgentWebSocket.ts`.
+// The Web path uses the `useMultiAgentWebSocket` React hook (wrapping native
+// WebSocket per session) instead of a class-based transport.
+// See `useMultiAgentWebSocket.ts`.
 //
 // ## Tauri path (desktop)
 // `TauriTransport` uses Tauri IPC (`invoke` / `listen`) to communicate with the
