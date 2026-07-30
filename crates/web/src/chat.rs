@@ -293,6 +293,53 @@ pub async fn handle_slash_command(
         _ => Err(format!("Unknown slash command: /{cmd_name}")),
     }
 }
+
+/// Session-level slash commands handled locally (they mutate AgentSession
+/// state, which pi-rs `prompt()` does not do). `/skill:` is intentionally
+/// absent — it flows through to pi-rs `prompt()`, which expands it itself.
+const SESSION_SLASH_COMMANDS: &[&str] = &["model", "name", "compact", "session", "help", "?"];
+
+/// If `text` is a session-level slash command we handle locally, return its
+/// `(name, args)`. Returns `None` for `/skill:`, unknown commands, and non-slash
+/// input so they reach pi-rs `prompt()` (skill expansion / normal turn).
+pub fn parse_session_slash_command(text: &str) -> Option<(String, String)> {
+    let (cmd, args) = pi_coding_agent::core::slash_commands::parse_slash_command(text)?;
+    if SESSION_SLASH_COMMANDS.contains(&cmd) {
+        Some((cmd.to_string(), args.to_string()))
+    } else {
+        None
+    }
+}
+
+/// Run a session-level slash command against the pooled session, returning a
+/// `Notice` payload. Shared by the WebSocket and Tauri paths.
+pub async fn run_session_slash_command(
+    pool: &openatrading_core::llm::SessionPool,
+    session_id: &str,
+    cmd_name: &str,
+    cmd_args: &str,
+) -> crate::agent_ws::SessionEventPayload {
+    if let Some(rt) = pool.get_session(session_id).await {
+        let mut rt = rt.lock().await;
+        let session = rt.session_mut();
+        match handle_slash_command(cmd_name, cmd_args, session).await {
+            Ok(text) => crate::agent_ws::SessionEventPayload::Notice {
+                text,
+                is_error: false,
+            },
+            Err(e) => crate::agent_ws::SessionEventPayload::Notice {
+                text: format!("[Slash Error] {e}"),
+                is_error: true,
+            },
+        }
+    } else {
+        crate::agent_ws::SessionEventPayload::Notice {
+            text: "session not found".to_string(),
+            is_error: true,
+        }
+    }
+}
+
 // ── Session listing (pi-coding-agent JSONL sessions) ────────────────────
 
 /// Request body for `POST /api/ai/sessions`.
@@ -735,14 +782,32 @@ pub async fn get_tool_result(
 
 /// Inner version of `get_ai_commands` that returns `Vec<CommandSpec>`.
 pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
-    pi_coding_agent::core::slash_commands::builtin_slash_commands()
-        .iter()
-        .map(|cmd| CommandSpec {
-            name: cmd.name.clone(),
-            description: cmd.description.clone(),
-            command_type: CommandType::Slash,
-        })
-        .collect()
+    // Only expose the session-level slash commands this GUI actually handles
+    // (model/compact/name/session/help). The rest of pi-rs's builtins
+    // (quit/login/trust/export/import/share/...) are CLI/TUI-only and have
+    // no meaning here. `/skill:` is not a builtin — it's expanded by pi-rs
+    // `prompt()`, so we surface loaded skills below as invokable commands.
+    let mut specs: Vec<CommandSpec> =
+        pi_coding_agent::core::slash_commands::builtin_slash_commands()
+            .iter()
+            .filter(|cmd| SESSION_SLASH_COMMANDS.contains(&cmd.name.as_str()))
+            .map(|cmd| CommandSpec {
+                name: cmd.name.clone(),
+                description: cmd.description.clone(),
+                command_type: CommandType::Slash,
+            })
+            .collect();
+
+    // Skills are invoked via `/skill:<name>`; pi-rs expands them in prompt().
+    for skill in openatrading_core::skills::list_skills() {
+        specs.push(CommandSpec {
+            name: format!("skill:{}", skill.name),
+            description: skill.description,
+            command_type: CommandType::Skill,
+        });
+    }
+
+    specs
 }
 
 /// Inner version of `list_sessions` that returns `Vec<serde_json::Value>`.

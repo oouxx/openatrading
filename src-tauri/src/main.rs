@@ -396,11 +396,18 @@ async fn send_prompt(
     // isn't needed, but routing through emit keeps a single serialization path.
     let event_state = state.get_event_state(&session_id).await;
 
-    // Slash commands need `&mut AgentSession` (set_model / set_session_name).
-    if let Some((cmd_name, cmd_args)) =
-        pi_coding_agent::core::slash_commands::parse_slash_command(&text)
-    {
-        let notice = run_slash_tauri(&session_id, &state, cmd_name, cmd_args).await;
+    // Session-level slash commands (model/compact/name/session/help) need
+    // `&mut AgentSession` and are handled locally — pi-rs `prompt()` won't
+    // execute them. `/skill:` and unknown commands fall through to pi-rs,
+    // which expands `/skill:name` itself.
+    if let Some((cmd_name, cmd_args)) = openatrading_web::chat::parse_session_slash_command(&text) {
+        let notice = openatrading_web::chat::run_session_slash_command(
+            &state.ctx.pool,
+            &session_id,
+            &cmd_name,
+            &cmd_args,
+        )
+        .await;
         let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(notice));
         let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
@@ -505,36 +512,6 @@ async fn ensure_session_tauri(
         }
     });
     Ok(())
-}
-
-/// Run a slash command on a session, emitting a `Notice` payload.
-async fn run_slash_tauri(
-    session_id: &str,
-    state: &Arc<AppState>,
-    cmd_name: &str,
-    cmd_args: &str,
-) -> openatrading_web::agent_ws::SessionEventPayload {
-    use openatrading_web::agent_ws::SessionEventPayload;
-
-    if let Some(rt) = state.ctx.pool.get_session(session_id).await {
-        let mut rt = rt.lock().await;
-        let session = rt.session_mut();
-        match openatrading_web::chat::handle_slash_command(cmd_name, cmd_args, session).await {
-            Ok(text) => SessionEventPayload::Notice {
-                text,
-                is_error: false,
-            },
-            Err(e) => SessionEventPayload::Notice {
-                text: format!("[Slash Error] {e}"),
-                is_error: true,
-            },
-        }
-    } else {
-        SessionEventPayload::Notice {
-            text: "session not found".to_string(),
-            is_error: true,
-        }
-    }
 }
 
 #[tauri::command]
