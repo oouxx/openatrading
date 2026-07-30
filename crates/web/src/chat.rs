@@ -495,106 +495,69 @@ pub enum HistoryBlock {
 /// Returns an empty list if the session file does not exist or cannot be read.
 pub async fn get_session_messages(
     axum::extract::Path(id): axum::extract::Path<String>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SessionMessage>>, StatusCode> {
-    let Some(path) = find_session_file(&id) else {
-        return Ok(Json(Vec::new()));
+    use openatrading_core::llm::pi_ai_types::ContentBlock;
+    use openatrading_core::llm::AgentMessage;
+
+    // Get or resume the session from the pool.
+    let runtime = match state.ctx.pool.get_or_resume(&id).await {
+        Ok(rt) => rt,
+        Err(_) => return Ok(Json(Vec::new())),
     };
 
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        return Ok(Json(Vec::new()));
-    };
+    let rt = runtime.lock().await;
+    let messages = rt.session().get_messages().await;
 
-    let mut messages: Vec<SessionMessage> = Vec::new();
-    for line in content.lines().skip(1) {
-        // skip header line
-        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
-                continue;
-            }
-            let ts = entry
-                .get("timestamp")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let Some(msg) = entry.get("message") else {
-                continue;
-            };
-            let role = msg
-                .get("role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let Some(blocks_arr) = msg.get("content").and_then(|v| v.as_array()) else {
-                continue;
+    let session_messages: Vec<SessionMessage> = messages
+        .iter()
+        .filter_map(|msg| {
+            let (role, content_blocks, timestamp) = match msg {
+                AgentMessage::User { content, timestamp } => ("user", content, *timestamp),
+                AgentMessage::Assistant { content, timestamp, .. } => ("assistant", content, *timestamp),
+                _ => return None,
             };
 
-            let text_content: String = blocks_arr
-                .iter()
-                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
+            // Extract plain text and structured blocks from content blocks.
+            let mut text_parts: Vec<String> = Vec::new();
+            let mut blocks: Vec<HistoryBlock> = Vec::new();
 
-            // Build structured blocks for assistant turns so the frontend can
-            // render thinking + tool calls when loading history (finding #10).
-            let blocks: Vec<HistoryBlock> = if role == "assistant" {
-                blocks_arr
-                    .iter()
-                    .filter_map(|b| {
-                        let ty = b.get("type").and_then(|v| v.as_str())?;
-                        match ty {
-                            "thinking" => b.get("text").and_then(|t| t.as_str()).map(|text| {
-                                HistoryBlock::Thinking {
-                                    text: text.to_string(),
-                                }
-                            }),
-                            "tool_use" | "toolCall" => {
-                                let id = b
-                                    .get("id")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let name = b
-                                    .get("name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let input =
-                                    b.get("input").cloned().unwrap_or(serde_json::Value::Null);
-                                Some(HistoryBlock::ToolUse { id, name, input })
-                            }
-                            "text" => b.get("text").and_then(|t| t.as_str()).map(|text| {
-                                HistoryBlock::Text {
-                                    text: text.to_string(),
-                                }
-                            }),
-                            _ => None,
-                        }
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-            // Only return user and assistant messages. Keep assistant tool-call-only
-            // turns (no text) when they carry structured blocks so history shows
-            // the tool calls; filter out empty turns entirely.
-            if role == "user" || role == "assistant" {
-                if text_content.is_empty() && blocks.is_empty() {
-                    continue;
+            for block in content_blocks {
+                match block {
+                    ContentBlock::Text { text, .. } => {
+                        text_parts.push(text.clone());
+                        blocks.push(HistoryBlock::Text { text: text.clone() });
+                    }
+                    ContentBlock::Thinking { thinking, .. } => {
+                        blocks.push(HistoryBlock::Thinking { text: thinking.clone() });
+                    }
+                    ContentBlock::ToolCall { id, name, arguments, .. } => {
+                        blocks.push(HistoryBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: arguments.clone(),
+                        });
+                    }
+                    ContentBlock::Image { .. } => {}
                 }
-                messages.push(SessionMessage {
-                    role,
-                    content: text_content,
-                    created_at: ts,
-                    blocks,
-                });
             }
-        }
-    }
 
-    Ok(Json(messages))
+            let content = text_parts.join("\n");
+            if content.is_empty() && blocks.is_empty() {
+                return None;
+            }
+
+            Some(SessionMessage {
+                role: role.to_string(),
+                content,
+                created_at: timestamp.to_string(),
+                blocks,
+            })
+        })
+        .collect();
+
+    Ok(Json(session_messages))
 }
-
 /// DELETE /api/ai/sessions/:id — delete a saved session
 pub async fn delete_session(
     State(state): State<Arc<AppState>>,
