@@ -183,6 +183,15 @@ export default function AiCopilot({
     sendPromptRef.current = (text: string) => wsAgent.sendPrompt(activeThreadId ?? "", text)
   }, [wsAgent.sendPrompt, activeThreadId])
 
+  // Load history messages when switching to a different session.
+  // The WebSocket onopen only loads history once per connection, so
+  // switching to an already-connected session needs an explicit fetch.
+  useEffect(() => {
+    if (activeThreadId && !isTauri) {
+      wsAgent.loadHistory(activeThreadId)
+    }
+  }, [activeThreadId, wsAgent.loadHistory])
+
   // ── Tauri transport ──────────────────────────────────────────────────
   const startTauriTransport = useCallback(
     async (threadId: string) => {

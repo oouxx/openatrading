@@ -300,11 +300,21 @@ export function useMultiAgentWebSocket(
     return connectionsRef.current.get(sid)?.readyState === ReadyState.OPEN
   }, [])
 
+  /** Explicitly load history messages for a session from the REST API.
+   *  Useful when switching to an already-connected session whose history
+   *  was loaded only once during WebSocket onopen. */
+  const loadHistory = useCallback(async (sid: string): Promise<void> => {
+    const conn = connectionsRef.current.get(sid)
+    if (!conn) return
+    await fetchHistory(sid, conn)
+  }, [])
+
   return {
     sendPrompt,
     interrupt,
     respondToPermission,
     getTurns,
     isReady,
+    loadHistory,
   }
 }
