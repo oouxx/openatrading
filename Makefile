@@ -1,6 +1,6 @@
 include .env
 export
-.PHONY: build run run-web watch-web test test-tui fmt lint check run-frontend run-tauri build-tauri build-downloads deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version chat decision run-mcp-http run-mcp-stdio release-tauri-local
+.PHONY: build run run-web watch-web test  fmt lint check run-frontend run-tauri  deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version release-tauri-local
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -9,54 +9,36 @@ build:
 
 run:
 	cargo run -p openatrading-cli
+
 doctor:
 	cargo run -p openatrading-cli -- doctor
+
 watch-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 	cargo watch -x "run -p openatrading-cli -- gateway run"
+
 run-web:
 	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+	@echo $(PI_RS_HOME)
 	cargo run -p openatrading-cli -- gateway run
+
 run-frontend:
 	cd src && bun run dev
-
-chat:
-	cargo run -p openatrading-cli -- chat
-
-decision:
-	cargo run -p openatrading-cli -- decision
-
-decision-dry-run:
-	cargo run -p openatrading-cli -- decision --dry-run
 
 run-tauri:
 	cd src-tauri && cargo tauri dev
 
-build-tauri:
-	cd src-tauri && cargo tauri build
-
-# ─── MCP Server ──────────────────────────────────────
-
-run-mcp-http:
-	@lsof -ti:8082 | xargs kill -9 2>/dev/null || true
-	cargo run -p openatrading-cli -- mcp serve
-
-run-mcp-stdio:
-	cargo run -p openatrading-cli -- mcp serve --transport stdio
 
 # ─── Quality ──────────────────────────────────────────
 
 test:
-	cargo test -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui
-
-test-tui:
-	cargo test -p openatrading-tui
+	cargo test -p openatrading-core -p openatrading-api
 
 fmt:
 	cargo fmt --all
 
 lint:
-	cargo clippy -p openatrading-api -p openatrading-core -p openatrading-cli -p openatrading-channels -p openatrading-provider -p openatrading-web -p openatrading-tui -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 check: fmt lint test
 	@echo "✅ All checks passed"
@@ -90,8 +72,6 @@ deploy-web:
 	@bash deploy.sh web
 
 # ─── Release ──────────────────────────────────────────
-
-VERSION_FILES := Cargo.toml src-tauri/tauri.conf.json
 
 version:
 	@echo "Current: $$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *\"\(.*\)\"/\1/')"
@@ -130,13 +110,9 @@ _bump-set:
 	$(call _set_version,$(VERSION))
 
 define _set_version
-	for f in $(VERSION_FILES); do \
-		if [ "$$f" = "src-tauri/tauri.conf.json" ]; then \
-			sed -i '' "s/\"version\": \"[0-9][^\"]*\"/\"version\": \"$(1)\"/" $$f; \
-		else \
-			sed -i '' "s/^version = \"[0-9][^\"]*\"/version = \"$(1)\"/" $$f; \
-		fi; \
-	done
+	new_ver="$(1)"; \
+	sed -i '' '/^\[workspace\.package\]/,/^\[/{ s/^version = "[0-9][^"]*"/version = "'"$$new_ver"'"/; }' Cargo.toml; \
+	echo "✓ version $$new_ver"
 endef
 
 _release:
@@ -149,6 +125,7 @@ _release:
 	git tag "$$tag"; \
 	git push origin main --tags; \
 	echo "✅ 已推送 $$tag，等待 GitHub Actions 构建"
+
 
 # ─── Release Tauri (local build + gh upload) ─────────
 
@@ -181,20 +158,15 @@ help:
 	@echo ""
 	@echo "Debug:"
 	@echo "  build          dev build"
-	@echo "  run            CLI test run"
-	@echo "  chat           CLI AI chat TUI"
-	@echo "  decision       手动触发一次所有角色的每日决策"
-	@echo "  decision-dry-run 决策 dry-run 模式（仅输出到终端）"
-	@echo "  run-web        Web server"
-	@echo "  run-mcp-http   MCP server (HTTP, :8082)"
-	@echo "  run-mcp-stdio  MCP server (stdio)"
+	@echo "  run            CLI run"
+	@echo "  doctor         CLI doctor check"
+	@echo "  run-web        Web server (gateway)"
+	@echo "  watch-web      Web server with auto-reload"
 	@echo "  run-frontend   Vue dev server"
-	@echo "  dev-tauri      Tauri desktop dev"
-	@echo "  build-tauri    Tauri desktop build"
+	@echo "  run-tauri      Tauri desktop dev"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test (all crates)"
-	@echo "  test-tui       cargo test (tui only)"
 	@echo "  fmt            cargo fmt"
 	@echo "  lint           cargo clippy"
 	@echo "  check          fmt + lint + test"
@@ -217,3 +189,5 @@ help:
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"
+	@echo "  install        安装到 /usr/local/bin"
+	@echo "  uninstall      从 /usr/local/bin 卸载"

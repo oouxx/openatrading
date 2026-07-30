@@ -75,6 +75,18 @@ export default defineConfig([
   },
 
   // ----------------------------
+  // Node.js scripts (.mjs)
+  // ----------------------------
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
+  // ----------------------------
   // Prettier（必须最后）
   // ----------------------------
   prettier,

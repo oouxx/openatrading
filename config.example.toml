@@ -1,6 +1,12 @@
 # ── OpenATrading 配置 ──────────────────────────────────
 # 优先级：项目根 config.toml > 项目根/.atrading/config.toml > ~/.atrading/config.toml
-# 角色由 .atrading/skills/ 下的 SKILL.md 自动发现，无需在配置中声明
+# 角色（role）= 交易账号标签（name + display_name），用于按策略分区持仓/交易日志。
+# 在 角色管理 UI 或 ~/.atrading/roles/{name}.toml 中创建可编辑角色；
+# 在此处用 [[roles]] 声明的角色为只读（readonly），无法通过 UI 删除。示例：
+# [[roles]]
+# name = "zarili"
+# display_name = "扎哩哩"
+# readonly = true
 # 复制为 config.toml 后修改
 
 # ── MCP 服务器 ────────────────────────────────────────────
@@ -26,7 +32,6 @@ web_bind = "0.0.0.0:8080"
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5"
-decision_schedule = "0 */30 9-15 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── LLM 配置 ────────────────────────────────────────────────

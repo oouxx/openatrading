@@ -4,18 +4,17 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use openatrading_core::chat::ChatThreadStore;
 use openatrading_core::context::AppContext;
 use openatrading_core::memory::sqlite::MemoryStore;
 use openatrading_core::trade::sqlite::TradeManager;
 
 use crate::cache;
+use crate::market_stream;
 use crate::{self as web, AppState, RoleEntry};
 
 pub struct Gateway {
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
-    pub chat_threads: Arc<ChatThreadStore>,
 }
 
 pub struct GatewayConfig {
@@ -26,6 +25,10 @@ pub struct GatewayConfig {
 }
 
 impl Gateway {
+    /// Initialize the gateway with a database path.
+    ///
+    /// # Errors
+    /// Returns an error if the database cannot be opened or the parent directory cannot be created.
     pub fn init(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -34,21 +37,21 @@ impl Gateway {
         }
         let memory = Arc::new(MemoryStore::open(db_path)?);
         let trade = Arc::new(TradeManager::open(db_path)?);
-        let chat_threads = Arc::new(ChatThreadStore::open(db_path)?);
-        Ok(Gateway {
-            memory,
-            trade,
-            chat_threads,
-        })
+        Ok(Self { memory, trade })
     }
 
+    /// Start the web API server.
+    ///
+    /// # Errors
+    /// Returns an error if the server cannot bind to the address or fails to serve.
     pub async fn start(self, config: GatewayConfig, ctx: AppContext) -> Result<()> {
         let state = Arc::new(AppState {
             ctx,
-            chat_threads: self.chat_threads.clone(),
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
+            market_hub: market_stream::MarketStreamHub::new(),
+            event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });
 
         // Seed config roles first, then discover disk roles (config wins)

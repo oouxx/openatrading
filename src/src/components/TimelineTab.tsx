@@ -72,7 +72,7 @@ export default function TimelineTab() {
               <span className="text-caption font-mono text-white/40">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
-            <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
+            <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card text-caption border text-center text-white/40">
               {dapanError.message}
             </div>
           ) : (
@@ -90,15 +90,15 @@ export default function TimelineTab() {
                   {dapanList.map((item: any, idx: number) => (
                     <div
                       key={item.id || idx}
-                      className="rounded-card border-hairline-dark bg-surface-dark hover:bg-bg-hover flex items-start gap-3 border px-4 py-3 transition-colors"
+                      className="bg-surface-dark border-hairline-dark hover:bg-bg-hover rounded-card flex items-start gap-3 border px-4 py-3 transition-colors"
                     >
-                      <span className="text-caption mt-0.5 flex-shrink-0">
+                      <span className="text-caption mt-0.5 shrink-0">
                         {typeEmoji(item.bk_yi_dong_type)}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-body-strong text-white">{item.title}</span>
-                          <span className="text-caption rounded-badge bg-ai/15 text-ai px-2 py-0.5 font-mono">
+                          <span className="bg-ai/15 rounded-badge text-ai text-caption px-2 py-0.5 font-mono">
                             {item.bkj_info?.name || "-"}
                           </span>
                           <span className="text-caption font-mono text-white/40">
@@ -137,23 +137,21 @@ export default function TimelineTab() {
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
-                      <h3 className="text-caption-strong text-ai mb-4 px-2 font-mono">
+                      <h3 className="text-ai text-caption-strong mb-4 px-2 font-mono">
                         {day.date}
                       </h3>
                       <div className="space-y-3">
                         {day.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="rounded-card border-hairline-dark bg-surface-dark flex items-start gap-3 border px-4 py-3"
+                            className="bg-surface-dark border-hairline-dark rounded-card flex items-start gap-3 border px-4 py-3"
                           >
-                            <span className="text-caption mt-0.5 flex-shrink-0">
-                              {item.grade_emoji}
-                            </span>
+                            <span className="text-caption mt-0.5 shrink-0">{item.grade_emoji}</span>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-body-strong text-white">{item.title}</span>
                                 {item.tags && (
-                                  <span className="text-caption rounded-badge bg-white/10 px-2 py-0.5 font-mono text-white/40">
+                                  <span className="rounded-badge text-caption bg-white/10 px-2 py-0.5 font-mono text-white/40">
                                     {item.tags}
                                   </span>
                                 )}

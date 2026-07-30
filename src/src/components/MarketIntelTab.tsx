@@ -77,7 +77,7 @@ export default function MarketIntelTab() {
           ) : (
             <>
               {/* 热门股票 */}
-              <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark mb-6 border">
+              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
                 <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
                   热门股票
                 </h3>
@@ -86,12 +86,12 @@ export default function MarketIntelTab() {
                     {hotStocks.map((s, idx) => (
                       <div
                         key={s[0]}
-                        className="rounded-card flex items-center gap-3 px-2 py-1.5 transition-colors hover:bg-white/[0.04]"
+                        className="rounded-card flex items-center gap-3 px-2 py-1.5 transition-colors hover:bg-white/4"
                       >
                         <span className="text-caption w-6 font-mono text-white/40">#{idx + 1}</span>
                         <span className="text-caption font-mono text-white">{s[0]}</span>
                         <span className="text-caption text-white/60">{s[1]}</span>
-                        <span className="text-caption rounded-badge bg-ai/15 text-ai ml-auto px-2 py-0.5 font-mono">
+                        <span className="bg-ai/15 rounded-badge text-ai text-caption ml-auto px-2 py-0.5 font-mono">
                           {s[2]}次
                         </span>
                       </div>
@@ -103,7 +103,7 @@ export default function MarketIntelTab() {
               </div>
 
               {/* 热门文章 */}
-              <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark mb-6 border">
+              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
                 <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
                   热门文章 · {hotArticles.length}篇
                 </h3>
@@ -112,7 +112,7 @@ export default function MarketIntelTab() {
                     {hotArticles.map((a, idx) => (
                       <div
                         key={a.article_id}
-                        className="p-card-inner rounded-card border-hairline-dark cursor-pointer border bg-white/[0.04] transition-colors"
+                        className="border-hairline-dark p-card-inner rounded-card cursor-pointer border bg-white/4 transition-colors"
                         onClick={() =>
                           setExpandedId(expandedId === a.article_id ? null : a.article_id)
                         }
@@ -138,7 +138,7 @@ export default function MarketIntelTab() {
                               <span>👍 {a.like_count}</span>
                               <span>💬 {a.comment_count}</span>
                               <span>🔄 {a.forward_count}</span>
-                              <span className="text-caption rounded-badge bg-ai/15 text-ai px-1 py-0.5 font-mono">
+                              <span className="bg-ai/15 rounded-badge text-ai text-caption px-1 py-0.5 font-mono">
                                 {a.heat_score}热度
                               </span>
                             </div>
@@ -161,7 +161,7 @@ export default function MarketIntelTab() {
                             <a
                               href={`https://www.jiuyangongshe.com/a/${a.article_id}`}
                               target="_blank"
-                              className="text-caption text-ai mt-2 inline-block hover:underline"
+                              className="text-ai text-caption mt-2 inline-block hover:underline"
                               rel="noreferrer"
                             >
                               📎 查看原文
@@ -184,7 +184,7 @@ export default function MarketIntelTab() {
         <div className="py-1 text-center">
           {/* 淘股吧推荐 */}
           {taogubaArticles.length > 0 && (
-            <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark mb-6 border">
+            <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
               <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
                 淘股吧推荐 · {taogubaArticles.length}篇
               </h3>
@@ -192,7 +192,7 @@ export default function MarketIntelTab() {
                 {taogubaArticles.map((a, idx) => (
                   <div
                     key={`${a.topic_id}-${idx}`}
-                    className="p-card-inner rounded-card border-hairline-dark cursor-pointer border bg-white/[0.04] transition-colors"
+                    className="border-hairline-dark p-card-inner rounded-card cursor-pointer border bg-white/4 transition-colors"
                     onClick={() =>
                       setExpandedTgbId(expandedTgbId === a.topic_id ? null : a.topic_id)
                     }
@@ -232,7 +232,7 @@ export default function MarketIntelTab() {
                         <a
                           href={`https://www.tgb.cn/article/${a.new_topic_id}`}
                           target="_blank"
-                          className="text-caption text-ai mt-2 inline-block hover:underline"
+                          className="text-ai text-caption mt-2 inline-block hover:underline"
                           rel="noreferrer"
                         >
                           📎 查看原文

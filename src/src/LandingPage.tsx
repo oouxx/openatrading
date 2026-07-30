@@ -66,7 +66,7 @@ export default function LandingPage() {
         >
           AI 自动交易<span className="text-ai">策略引擎</span>
         </h1>
-        <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-lg leading-relaxed">
+        <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-lg/relaxed">
           每个角色运行独立策略，AI 自动决策并执行交易。在 Telegram 中与角色对话、查看持仓、调整参数
           — 所有盈亏实时追踪。
         </p>
@@ -80,7 +80,7 @@ export default function LandingPage() {
           ].map((node, i) => (
             <span key={node.label} className="flex items-center gap-4">
               {i > 0 && <span className="text-ai text-lg font-bold">→</span>}
-              <span className="border-hairline bg-bg-surface flex items-center gap-2 rounded-xl border px-5 py-3.5 font-medium">
+              <span className="bg-bg-surface border-hairline flex items-center gap-2 rounded-xl border px-5 py-3.5 font-medium">
                 <span className="text-xl">{node.icon}</span>
                 {node.label}
               </span>
@@ -103,7 +103,7 @@ export default function LandingPage() {
           </Link>
           <a
             href="#install"
-            className="border-hairline text-ink hover:border-ai hover:text-ai inline-flex items-center gap-2 rounded-[10px] border px-6 py-2.5 text-sm font-medium transition-colors"
+            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-[10px] border px-6 py-2.5 text-sm font-medium transition-colors"
           >
             📦 下载安装
           </a>
@@ -118,7 +118,7 @@ export default function LandingPage() {
             <Link
               key={f.title}
               to={f.to}
-              className="border-hairline bg-bg-surface overflow-hidden rounded-[14px] border transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              className="bg-bg-surface border-hairline overflow-hidden rounded-[14px] border transition-all hover:-translate-y-0.5 hover:shadow-lg"
             >
               <div className="px-[18px] py-[22px]">
                 <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
@@ -200,11 +200,11 @@ export default function LandingPage() {
         </h2>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {/* Desktop */}
-          <div className="border-hairline bg-bg-surface rounded-[14px] border px-6 py-7">
+          <div className="bg-bg-surface border-hairline rounded-[14px] border px-6 py-7">
             <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
               🖥️ 桌面端
             </h4>
-            <p className="text-ink-muted mb-5 text-xs leading-relaxed">
+            <p className="text-ink-muted mb-5 text-xs/relaxed">
               支持 macOS / Windows / Linux
               三大平台，原生桌面体验，内置行情数据引擎。从官网下载对应安装包。
             </p>
@@ -217,7 +217,7 @@ export default function LandingPage() {
                 <a
                   key={d.label}
                   href={dl(d.platform, d.arch)}
-                  className="border-hairline bg-ink-dim hover:border-ai hover:text-ai inline-flex items-center gap-1.5 rounded-lg border px-[18px] py-2 text-xs font-medium text-white transition-colors"
+                  className="bg-ink-dim border-hairline hover:border-ai hover:text-ai inline-flex items-center gap-1.5 rounded-lg border px-[18px] py-2 text-xs font-medium text-white transition-colors"
                 >
                   <span className="text-lg">{d.icon}</span>
                   {d.label}
@@ -233,11 +233,11 @@ export default function LandingPage() {
           </div>
 
           {/* CLI */}
-          <div className="border-hairline bg-bg-surface rounded-[14px] border px-6 py-7">
+          <div className="bg-bg-surface border-hairline rounded-[14px] border px-6 py-7">
             <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
               ⌨️ CLI 命令行
             </h4>
-            <p className="text-ink-muted mb-5 text-xs leading-relaxed">
+            <p className="text-ink-muted mb-5 text-xs/relaxed">
               适用于 Linux/macOS 环境，支持嵌入量化策略 pipeline、定时任务及 CI/CD 流程。
             </p>
             <CopyCodeBlock
@@ -285,12 +285,12 @@ openatrading gateway run`}
 function CopyCodeBlock({ text }: { text: string }) {
   return (
     <div
-      className="border-hairline relative overflow-x-auto rounded-[10px] border p-[14px_18px] font-mono text-xs leading-relaxed whitespace-pre-wrap text-white"
+      className="border-hairline relative overflow-x-auto rounded-[10px] border p-[14px_18px] font-mono text-xs/relaxed whitespace-pre-wrap text-white"
       style={{ background: "var(--color-tag-bg, rgba(255,255,255,0.05))" }}
     >
       <button
         onClick={() => navigator.clipboard.writeText(text)}
-        className="border-hairline bg-bg-surface text-ink-muted hover:border-ai hover:text-ai absolute top-2.5 right-3 cursor-pointer rounded-md border px-2.5 py-1 text-[11px] transition-colors"
+        className="bg-bg-surface border-hairline hover:border-ai hover:text-ai text-ink-muted absolute top-2.5 right-3 cursor-pointer rounded-md border px-2.5 py-1 text-[11px] transition-colors"
       >
         复制
       </button>

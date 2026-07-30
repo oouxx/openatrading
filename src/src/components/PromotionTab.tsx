@@ -194,7 +194,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (error) {
     return (
-      <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
+      <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card text-caption border text-center text-white/40">
         {error}
       </div>
     )
@@ -202,7 +202,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (ladder.length === 0 && firstBoard.length === 0) {
     return (
-      <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark border text-center text-white/40">
+      <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card text-caption border text-center text-white/40">
         今日无涨停数据
       </div>
     )
@@ -212,7 +212,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     <div>
       {/* 昨日数据缺失提示 */}
       {!hasYesterdayData && (
-        <div className="p-card-inner text-caption rounded-card border-hairline-dark bg-surface-dark mb-8 border text-center text-white/40">
+        <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card text-caption mb-8 border text-center text-white/40">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
@@ -247,7 +247,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             </span>
           </div>
 
-          <div className="p-card-inner rounded-card border-hairline-dark bg-surface-dark border">
+          <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card border">
             {ladder.map((row) => (
               <div key={row.yesterdayDays} className="mb-3 last:mb-0">
                 <div
@@ -257,7 +257,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                   }
                 >
                   <span
-                    className="text-caption rounded-badge bg-white/10 px-2 py-0.5 text-white/60"
+                    className="rounded-badge text-caption bg-white/10 px-2 py-0.5 text-white/60"
                     style={{ minWidth: 56, textAlign: "center" }}
                   >
                     昨{row.yesterdayDays}板
@@ -267,7 +267,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                   </span>
                   <span className="text-white/40">→</span>
                   <span
-                    className="text-caption rounded-badge px-2 py-0.5"
+                    className="rounded-badge text-caption px-2 py-0.5"
                     style={{ minWidth: 56, textAlign: "center" }}
                   >
                     今{row.yesterdayDays + 1}板
@@ -362,7 +362,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             <h3 className="text-display-md text-white">首板新进</h3>
             <span className="text-caption text-white/40">共 {firstBoard.length} 只</span>
           </div>
-          <div className="rounded-card border-hairline-dark bg-surface-dark overflow-hidden border">
+          <div className="bg-surface-dark border-hairline-dark rounded-card overflow-hidden border">
             <table className="data-table">
               <thead>
                 <tr>

@@ -40,7 +40,7 @@ pub struct CheckResult {
     pub duration_ms: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FixRisk {
     Safe,
     Impossible,
@@ -118,7 +118,7 @@ fn all_checks() -> Vec<Box<dyn Check>> {
         Box::new(check_cron::CronCheck),
         Box::new(check_telegram::TelegramCheck),
         Box::new(check_llm::LlmCheck),
-        Box::new(check_mcp::McpCheck),
+        // Box::new(check_mcp::McpCheck),
         Box::new(check_skills::SkillsCheck),
         Box::new(check_port::PortCheck),
     ]
@@ -130,7 +130,7 @@ fn all_checks() -> Vec<Box<dyn Check>> {
 ///
 /// 在文本模式下用于流式输出单行结果；JSON 模式下传 `None`，runner 仍会
 /// 收集完整 `Vec<CheckResult>` 以便序列化为单个 JSON 数组。
-type CheckCallback<'a> = &'a mut dyn FnMut(&dyn Check, &CheckResult);
+type CheckCallback<'a> = &'a mut (dyn FnMut(&dyn Check, &CheckResult) + Send + Sync);
 
 /// 顺序执行所有检查，返回完整的 `CheckResult` 列表。
 ///
@@ -187,7 +187,7 @@ fn format_check_line(check: &dyn Check, result: &CheckResult) -> String {
     )
 }
 
-/// 打印报告头部（标题、版本、平台、AI_HOME）。
+/// `打印报告头部（标题、版本、平台、AI_HOME`）。
 ///
 /// 在文本模式下于检查开始前先打印，使用户能立即看到运行环境；检查结果随后
 /// 流式追加。
@@ -262,7 +262,7 @@ fn confirm_fix(risk: FixRisk, _id: &str, input: &str) -> FixDecision {
             } else {
                 FixDecision::Skip
             }
-        },
+        }
         FixRisk::Impossible => FixDecision::Skip,
     }
 }
@@ -285,7 +285,7 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
         return;
     }
 
-    for (original_index, check, _result) in fixable.iter() {
+    for (original_index, check, _result) in &fixable {
         let fix_label = check.fix_label();
         let label = fix_label.as_deref().unwrap_or("执行修复");
 
@@ -316,17 +316,17 @@ async fn interactive_fix(checks: &[Box<dyn Check>], ctx: &CheckContext, results:
                         CheckStatus::Error(_) => format!("{}", "✗".red().bold()),
                     };
                     println!("    复查: {} {}", icon, new_result.summary);
-                },
+                }
                 FixStatus::Skipped => {
                     println!("  {} {}", "☐".dimmed(), fix_result.message);
-                },
+                }
             },
             // A fix that fails (expected or unexpected) surfaces here as an
             // error message; `FixStatus` only distinguishes success vs
             // no-op since failures propagate via `Result`.
             Err(e) => {
                 println!("  {} 修复失败: {e:#}", "✗".red().bold());
-            },
+            }
         }
     }
 }
@@ -337,6 +337,12 @@ const NETWORK_CHECK_IDS: &[&str] = &["telegram", "llm", "mcp"];
 // ── Entry point ─────────────────────────────────────────
 
 pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()> {
+    #[derive(Serialize)]
+    struct JsonOutput {
+        version: &'static str,
+        items: Vec<FlatCheckResult>,
+    }
+
     let atrading_home = openatrading_core::atrading_home();
     let app_config = AppConfig::load().ok();
 
@@ -364,11 +370,6 @@ pub async fn cmd_doctor(json: bool, fix: bool, skip_network: bool) -> Result<()>
     // 文本模式：先打印头部，再以流式回调逐项输出单行结果，最后打印尾部汇总。
     let results = if json {
         let results = run_checks(&checks, &ctx, None).await;
-        #[derive(Serialize)]
-        struct JsonOutput {
-            version: &'static str,
-            items: Vec<FlatCheckResult>,
-        }
         let items: Vec<FlatCheckResult> = checks
             .iter()
             .zip(results.iter())

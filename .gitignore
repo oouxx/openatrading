@@ -28,15 +28,11 @@ deploy-ali.sh
 # cert
 certs/
 
-
-.playwright-mcp
-.superpowers
-
-.atrading/
-
 # claude
 .claude/worktrees/
-.codegraph/daemon.pid
 .mcp.json
 .tokensave
+
 .pi-rs
+.codegraph/
+.atrading

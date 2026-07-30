@@ -1,12 +1,16 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// A role declared in `config.toml` `[[roles]]`. Readonly roles cannot be
+/// edited or deleted via the API.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoleConfig {
     pub name: String,
+    /// Human-readable label shown in the UI. Falls back to `name` when absent.
+    #[serde(default)]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub readonly: bool,
 }
@@ -14,60 +18,47 @@ pub struct RoleConfig {
 pub mod pnl;
 pub mod prompt;
 
-/// Path to the skills directory (`{atrading_home}/skills/`).
-pub fn default_skills_dir() -> PathBuf {
-    crate::atrading_home().join("skills")
+/// Path to the roles directory (`{atrading_home}/roles/`).
+///
+/// Roles are pure trading-account labels (name + display_name); the AI persona
+/// they used to carry is now handled by pi-rs skills under `$PI_RS_HOME/agent/skills`.
+pub fn default_roles_dir() -> PathBuf {
+    crate::atrading_home().join("roles")
 }
 
-/// Parse YAML frontmatter from `---\n...\n---` delimited content.
-pub fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
-    match crate::utils::parse_yaml_frontmatter(content) {
-        Some((matter, body)) => {
-            let map: HashMap<String, String> = serde_yaml::from_str(&matter).unwrap_or_default();
-            (map, body)
-        },
-        None => (HashMap::new(), content.trim().to_string()),
-    }
+/// On-disk role file: a single `display_name` field. Filename stem = role name.
+#[derive(Debug, Clone, Deserialize)]
+struct RoleFile {
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
-/// Load all SKILL.md entries from `~/.atrading/skills/` as RoleEntry.
+/// Load all editable roles from `~/.atrading/roles/*.toml`.
 pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
-    let dir = default_skills_dir();
+    let dir = default_roles_dir();
     let mut roles = Vec::new();
 
-    let entries = match fs::read_dir(&dir) {
-        Ok(d) => d,
-        Err(_) => return roles,
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return roles;
     };
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
             continue;
         }
-        let name = match path.file_name() {
-            Some(n) => n.to_string_lossy().to_string(),
-            None => continue,
-        };
-        let skill_path = path.join("SKILL.md");
-        let raw = match fs::read_to_string(&skill_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let (fm, body) = parse_frontmatter(&raw);
-        if body.is_empty() {
+        let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
-        }
-        let display_name = fm
-            .get("description")
-            .cloned()
-            .or_else(|| fm.get("name").cloned())
-            .unwrap_or_else(|| name.clone());
+        };
+        let display_name = fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| toml::from_str::<RoleFile>(&raw).ok())
+            .and_then(|f| f.display_name)
+            .unwrap_or_else(|| name.to_string());
 
         roles.push(crate::RoleEntry {
-            name,
+            name: name.to_string(),
             display_name,
-            strategy: body.to_string(),
             readonly: false,
         });
     }
@@ -82,23 +73,31 @@ fn validate_role_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Save a role strategy as `~/.atrading/skills/{name}/SKILL.md`.
-pub fn save_role_strategy(name: &str, strategy: &str) -> Result<()> {
+#[derive(Debug, Clone, Serialize)]
+struct RoleFileOut {
+    display_name: String,
+}
+
+/// Persist a role as `~/.atrading/roles/{name}.toml`.
+pub fn save_role(name: &str, display_name: &str) -> Result<()> {
     validate_role_name(name)?;
-    let dir = default_skills_dir().join(name);
+    let dir = default_roles_dir();
     fs::create_dir_all(&dir).with_context(|| format!("创建目录失败: {}", dir.display()))?;
-    let content = format!("---\nname: {name}\ndescription: {name}\n---\n\n{strategy}");
-    fs::write(dir.join("SKILL.md"), &content)
-        .with_context(|| format!("写入策略失败: {}/SKILL.md", name))?;
+    let content = toml::to_string(&RoleFileOut {
+        display_name: display_name.to_string(),
+    })
+    .context("序列化角色失败")?;
+    let path = dir.join(format!("{name}.toml"));
+    fs::write(&path, content).with_context(|| format!("写入角色失败: {}", path.display()))?;
     Ok(())
 }
 
-/// Delete a role directory from `~/.atrading/skills/{name}/`.
-pub fn delete_role_dir(name: &str) -> Result<()> {
+/// Delete a role file `~/.atrading/roles/{name}.toml`.
+pub fn delete_role(name: &str) -> Result<()> {
     validate_role_name(name)?;
-    let dir = default_skills_dir().join(name);
-    if dir.exists() {
-        fs::remove_dir_all(&dir).with_context(|| format!("删除角色目录失败: {}", dir.display()))?;
+    let path = default_roles_dir().join(format!("{name}.toml"));
+    if path.exists() {
+        fs::remove_file(&path).with_context(|| format!("删除角色失败: {}", path.display()))?;
     }
     Ok(())
 }

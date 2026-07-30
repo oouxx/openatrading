@@ -1,10 +1,8 @@
+// clippy fixes for tauri
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use openatrading_core::commands::CommandType;
-use openatrading_core::llm::{
-    assistant_event_to_stream_events, AgentEvent, AgentMessage, StreamEvent,
-};
+
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
 use std::sync::Arc;
@@ -34,37 +32,28 @@ fn build_roles() -> Vec<RoleEntry> {
             #[derive(serde::Deserialize)]
             struct RoleItem {
                 name: String,
-                display_name: String,
+                #[serde(default)]
+                display_name: Option<String>,
             }
             if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
-                let skills_dir = openatrading_core::roles::default_skills_dir();
                 for rc in parsed.roles {
                     if !roles.iter().any(|r| r.name == rc.name) {
-                        let role_path = skills_dir.join(&rc.name).join("SKILL.md");
-                        if let Ok(raw) = std::fs::read_to_string(&role_path) {
-                            let (fm, body) = openatrading_core::roles::parse_frontmatter(&raw);
-                            if !body.is_empty() {
-                                roles.push(RoleEntry {
-                                    name: rc.name,
-                                    display_name: fm
-                                        .get("description")
-                                        .cloned()
-                                        .unwrap_or(rc.display_name),
-                                    strategy: body.to_string(),
-                                    readonly: true,
-                                });
-                            }
-                        }
+                        let display_name = rc.display_name.unwrap_or_else(|| rc.name.clone());
+                        roles.push(RoleEntry {
+                            name: rc.name,
+                            display_name,
+                            readonly: true,
+                        });
                     }
                 }
             }
         }
     }
 
-    // Discover roles from disk (editable)
+    // Discover editable roles from disk
     roles.extend(openatrading_core::roles::list_roles_from_disk());
     if roles.is_empty() {
-        eprintln!("[tauri] 警告: skills/ 目录中未发现任何角色");
+        eprintln!("[tauri] 警告: 未发现任何角色，可在角色管理或 config.toml [[roles]] 中添加");
     }
     roles
 }
@@ -86,497 +75,148 @@ async fn api_post(
     dispatch_post(&path, &body, &state).await
 }
 
+#[tauri::command]
+async fn api_patch(
+    path: String,
+    body: serde_json::Value,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    dispatch_patch(&path, &body, &state).await
+}
+
 async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    // Delegate to tauri_handlers for all known paths
     match path {
-        "/api/overview" => {
-            let client = XuanguBaoClient::new();
-            let overview = client
-                .fetch_market_overview()
-                .await
-                .map_err(|e| format!("{e}"))?;
-            let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
-            let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
-                "高"
-            } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
-                "中"
-            } else {
-                "低"
-            };
-            let decision_summary = format!(
-                "风险等级：{}；上涨{}家，下跌{}家，涨停{}只，跌停{}只",
-                risk_level,
-                overview.rise_count,
-                overview.fall_count,
-                overview.limit_up_count,
-                overview.limit_down_count,
-            );
-            Ok(serde_json::json!({
-                "date": openatrading_core::utils::time::beijing_now().format("%Y-%m-%d %H:%M").to_string(),
-                "rise_count": overview.rise_count,
-                "fall_count": overview.fall_count,
-                "limit_up_count": overview.limit_up_count,
-                "limit_down_count": overview.limit_down_count,
-                "bomb_rate": overview.bomb_rate,
-                "risk_level": risk_level,
-                "decision_summary": decision_summary,
-                "market_temperature": overview.market_temperature,
-                "yesterday_limit_up_avg_pcp": overview.yesterday_limit_up_avg_pcp,
-            }))
-        },
-        "/api/limit-up" => {
-            let client = XuanguBaoClient::new();
-            let data = client.fetch_limit_up().await.map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/limit-down" => {
-            let client = XuanguBaoClient::new();
-            let data = client
-                .fetch_limit_down()
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/super-stock" => {
-            let client = XuanguBaoClient::new();
-            let data = client
-                .fetch_super_stock()
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+        "/api/overview" => openatrading_web::handlers::get_overview_data(state).await,
+        "/api/limit-up" => openatrading_web::handlers::get_limit_up_data(state).await,
+        "/api/limit-down" => openatrading_web::handlers::get_limit_down_data(state).await,
+        "/api/super-stock" => openatrading_web::handlers::get_super_stock_data(state).await,
         "/api/yesterday-limit-up" => {
-            let client = XuanguBaoClient::new();
-            let data = client
-                .fetch_yesterday_limit_up()
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/index-quotes" => {
-            let client = XuanguBaoClient::new();
-            let data = client
-                .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/dapan-abnormal" => {
-            let data = state
-                .ctx
-                .api
-                .xuangubao
-                .fetch_dapan_abnormal()
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/timeline" => {
-            if std::env::var("JIUYAN_PHONE").is_err() {
-                return Ok(serde_json::json!([]));
-            }
-            let month = openatrading_core::utils::time::beijing_now()
-                .format("%Y-%m")
-                .to_string();
-            let data = state
-                .ctx
-                .api
-                .jiuyan
-                .fetch_timeline(&month)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/sentiment" => {
-            if std::env::var("JIUYAN_PHONE").is_err() {
-                return Err("JIUYAN_PHONE not set".into());
-            }
-            let data = openatrading_core::agents::sentiment::analyze_sentiment(&state.ctx.api)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
+            openatrading_web::handlers::get_yesterday_limit_up_data(state).await
+        }
+        "/api/index-quotes" => openatrading_web::handlers::get_index_quotes_data(state).await,
+        "/api/dapan-abnormal" => openatrading_web::handlers::get_dapan_abnormal_data(state).await,
+        "/api/timeline" => openatrading_web::handlers::get_timeline_data(state).await,
         "/api/telegraph" => {
-            let data = state
-                .ctx
-                .api
-                .cls
-                .fetch_telegraph("", None, 20)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/dragon-tiger/combined" => {
-            let date = XuanguBaoClient::last_n_trading_days(1)
+            openatrading_web::handlers::get_telegraph_all_data(state, None, None).await
+        }
+        "/api/ai/roles" => openatrading_web::handlers::get_ai_roles_data(state).await,
+        "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
+        "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
+        "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
+        "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
+        "/api/replay/snapshots" => openatrading_web::handlers::get_replay_snapshots_data().await,
+        "/api/replay/index" => openatrading_web::handlers::get_replay_index_data().await,
+        "/api/sentiment-history" => {
+            openatrading_web::handlers::get_sentiment_history_data(state).await
+        }
+        _ => dispatch_get_fallback(path, state).await,
+    }
+}
+
+async fn dispatch_get_fallback(
+    path: &str,
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
+    // Paths with query parameters or path parameters
+    if let Some(rest) = path.strip_prefix("/api/kline/") {
+        let parts: Vec<&str> = rest.split('?').collect();
+        let symbol = parts[0];
+        let period = extract_query(path, "period").unwrap_or_else(|| "day".into());
+        let count: u32 = extract_query(path, "count")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(256);
+        return openatrading_web::handlers::get_kline_data(state, symbol, &period, count).await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/realtime/") {
+        let symbol = rest.split('?').next().unwrap_or("");
+        return openatrading_web::handlers::get_realtime_data(state, symbol).await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/telegraph/") {
+        let category = rest.split('?').next().unwrap_or("");
+        return openatrading_web::handlers::get_telegraph_data(state, category).await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/market-trend/") {
+        let symbol = rest.split('?').next().unwrap_or("");
+        return openatrading_web::handlers::get_market_trend_data(state, symbol).await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/plates-by-any-stock/") {
+        let symbol = rest.split('?').next().unwrap_or("");
+        return openatrading_web::handlers::get_plates_by_any_stock_data(state, symbol).await;
+    }
+    if path.strip_prefix("/api/replay/events").is_some() {
+        let min_pcp: f64 = extract_query(path, "min_pcp")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.03);
+        return openatrading_web::handlers::get_replay_events_data(min_pcp).await;
+    }
+    if path.strip_prefix("/api/replay/news").is_some() {
+        let tailmark = extract_query(path, "tailmark").and_then(|s| s.parse().ok());
+        let msg_id_mark = extract_query(path, "msgIdMark");
+        return openatrading_web::handlers::get_replay_news_data(tailmark, msg_id_mark).await;
+    }
+    if path.strip_prefix("/api/search-stocks").is_some() {
+        let q = extract_query(path, "q").unwrap_or_default();
+        return openatrading_web::handlers::search_stocks_data(&q).await;
+    }
+    if path.strip_prefix("/api/field-items").is_some() {
+        let date = extract_query(path, "date");
+        return openatrading_web::handlers::get_field_items_data(state, date, None).await;
+    }
+    if path.strip_prefix("/api/plate-abnormal").is_some() {
+        let date = extract_query(path, "count").unwrap_or_else(|| {
+            openatrading_core::api::utils::last_n_trading_days(1)
                 .first()
                 .cloned()
-                .unwrap_or_default();
-            let data = state
-                .ctx
-                .api
-                .eastmoney
-                .lhb_combined(&date, &date)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        "/api/ai/roles" => {
-            let roles_guard = state.roles.read().await;
-            let list: Vec<serde_json::Value> = roles_guard
-                .iter()
-                .map(|r| serde_json::json!({"name": r.name, "display_name": r.display_name}))
-                .collect();
-            Ok(serde_json::json!(list))
-        },
-        "/api/ai/commands" => {
-            let registry = state.ctx.tool_registry.load();
-            let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            let mut commands: Vec<serde_json::Value> = Vec::new();
-            for t in registry.all_tools() {
-                commands.push(serde_json::json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "command_type": "tool",
-                }));
-            }
-            for s in skills.skills() {
-                commands.push(serde_json::json!({
-                    "name": s.name,
-                    "description": s.description,
-                    "command_type": "skill",
-                }));
-            }
-            for p in pipelines.commands() {
-                commands.push(serde_json::json!({
-                    "name": p.name,
-                    "description": p.description,
-                    "command_type": "pipeline",
-                }));
-            }
-            Ok(serde_json::json!(commands))
-        },
-        "/api/ai/threads" => {
-            let threads = state
-                .chat_threads
-                .list_threads()
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(threads).unwrap_or_default())
-        },
-        "/api/roles" => {
-            let roles_guard = state.roles.read().await;
-            Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
-        },
-        "/api/watchlist" => {
-            #[derive(serde::Serialize, serde::Deserialize)]
-            struct WsItem {
-                code: String,
-                name: String,
-                added_at: String,
-            }
-            fn path_buf() -> std::path::PathBuf {
-                openatrading_core::atrading_home().join("watchlist.json")
-            }
-            fn load() -> Vec<WsItem> {
-                let p = path_buf();
-                if !p.exists() {
-                    return vec![];
-                }
-                std::fs::read_to_string(&p)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-                    .unwrap_or_default()
-            }
-            Ok(serde_json::to_value(load()).unwrap_or_default())
-        },
-        "/api/replay/snapshots" => {
-            let client = XuanguBaoClient::new();
-            let events = client
-                .fetch_all_day_events(0.03)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-            Ok(serde_json::to_value(snapshots).unwrap_or_default())
-        },
-        "/api/replay/index" => {
-            use openatrading_core::api::xuangubao::fetch_index_trends;
-            let client = XuanguBaoClient::new();
-            let data = fetch_index_trends(&client)
-                .await
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(data).unwrap_or_default())
-        },
-        _ => {
-            if path.strip_prefix("/api/replay/events").is_some() {
-                let min_pcp: f64 = extract_query(path, "min_pcp")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0.03);
-                let client = XuanguBaoClient::new();
-                let all_events = client
-                    .fetch_all_day_events(min_pcp)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
-                    .iter()
-                    .map(openatrading_core::api::xuangubao::ReplayEvent::from)
-                    .collect();
-                let date = XuanguBaoClient::last_n_trading_days(1)
-                    .first()
-                    .cloned()
-                    .unwrap_or_default();
-                let page = openatrading_core::api::xuangubao::ReplayPage {
-                    date,
-                    market_phase: String::new(),
-                    events,
-                    next_cursor: None,
-                };
-                return Ok(serde_json::to_value(page).unwrap_or_default());
-            }
-            if path.strip_prefix("/api/replay/news").is_some() {
-                let client = XuanguBaoClient::new();
-                let tailmark = extract_query(path, "tailmark").and_then(|s| s.parse().ok());
-                let msg_id_mark = extract_query(path, "msgIdMark");
-                let (items, next_tail, next_msg) = client
-                    .fetch_news_stream(tailmark, msg_id_mark.as_deref())
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::json!({
-                    "items": items,
-                    "tailmark": next_tail,
-                    "msgIdMark": next_msg,
-                }));
-            }
-            if path.strip_prefix("/api/search-stocks").is_some() {
-                let q = extract_query(path, "q").unwrap_or_default();
-                if q.is_empty() {
-                    return Err("missing q".to_string());
-                }
-                use openatrading_core::api::eastmoney::LhbClient;
-                let client = LhbClient::new();
-                let items = client.search_stocks(&q).await.map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(items).unwrap_or_default());
-            }
-            if path.strip_prefix("/api/field-items").is_some() {
-                let date = extract_query(path, "date").unwrap_or_else(|| {
-                    openatrading_core::utils::time::beijing_now()
-                        .format("%Y-%m-%d")
-                        .to_string()
-                });
-                if std::env::var("JIUYAN_PHONE").is_err() {
-                    return Ok(serde_json::json!([]));
-                }
-                let data = state
-                    .ctx
-                    .api
-                    .jiuyan
-                    .fetch_field(&date, 1)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if path.strip_prefix("/api/plate-abnormal").is_some() {
-                let count: i32 = extract_query(path, "count")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(30);
-                let client = XuanguBaoClient::new();
-                let data = client
-                    .fetch_plate_abnormal(count)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if path.strip_prefix("/api/sentiment-history").is_some() {
-                let client = XuanguBaoClient::new();
-                let trading_days = XuanguBaoClient::last_n_trading_days(10);
-                let mut days = Vec::new();
-                for date in &trading_days {
-                    if let Ok(Some(d)) = client.fetch_market_overview_for_date(date).await {
-                        let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-                        days.push(serde_json::json!({
-                            "date": d.date,
-                            "sentiment": (d.market_temperature * 10.0).round() / 10.0,
-                            "limit_up_count": d.limit_up_count,
-                            "bomb_rate": (d.bomb_rate * 100.0).round() / 100.0,
-                            "rise_ratio": (rise_ratio * 100.0).round() / 100.0,
-                        }));
-                    }
-                }
-                days.reverse();
-                return Ok(serde_json::json!(days));
-            }
-            if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
-                let dates = openatrading_core::api::utils::last_n_trading_days(3);
-                let raw = state
-                    .ctx
-                    .api
-                    .eastmoney
-                    .lhb_detail(
-                        dates.last().map(|s| s.as_str()).unwrap_or(""),
-                        dates.first().map(|s| s.as_str()).unwrap_or(""),
-                    )
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                // Merge same-stock entries
-                use std::collections::HashMap;
-                let mut merged: HashMap<
-                    (String, String),
-                    openatrading_core::api::eastmoney::LhbDetail,
-                > = HashMap::new();
-                for item in raw {
-                    let key = (item.code.clone(), item.trade_date.clone());
-                    match merged.get_mut(&key) {
-                        Some(existing) => {
-                            existing.billboard_net_amt = existing
-                                .billboard_net_amt
-                                .zip(item.billboard_net_amt)
-                                .map(|(a, b)| a + b);
-                            existing.billboard_buy_amt = existing
-                                .billboard_buy_amt
-                                .zip(item.billboard_buy_amt)
-                                .map(|(a, b)| a + b);
-                            existing.billboard_sell_amt = existing
-                                .billboard_sell_amt
-                                .zip(item.billboard_sell_amt)
-                                .map(|(a, b)| a + b);
-                            existing.billboard_deal_amt = existing
-                                .billboard_deal_amt
-                                .zip(item.billboard_deal_amt)
-                                .map(|(a, b)| a + b);
-                            if let Some(ref exp) = item.explanation {
-                                if !exp.is_empty() {
-                                    let prefix = existing.explanation.as_deref().unwrap_or("");
-                                    let sep = if prefix.is_empty() { "" } else { "; " };
-                                    existing.explanation = Some(format!("{prefix}{sep}{exp}"));
-                                }
-                            }
-                        },
-                        None => {
-                            merged.insert(key, item);
-                        },
-                    }
-                }
-                let merged_all: Vec<_> = merged.into_values().collect();
-                let total = merged_all.len();
-                let total_net_amt: f64 =
-                    merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
-                let net_buy_count = merged_all
-                    .iter()
-                    .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
-                    .count();
-                let net_sell_count = merged_all
-                    .iter()
-                    .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
-                    .count();
-                let page: usize = extract_query(path, "page")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(1);
-                let page_size: usize = extract_query(path, "page_size")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(20);
-                let start = page.saturating_sub(1) * page_size;
-                let data: Vec<_> = merged_all.into_iter().skip(start).take(page_size).collect();
-                return Ok(serde_json::json!({
-                    "data": data, "total": total, "page": page, "page_size": page_size,
-                    "total_net_amt": total_net_amt, "net_buy_count": net_buy_count, "net_sell_count": net_sell_count,
-                }));
-            }
-            if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
-                let code = extract_query(path, "code").unwrap_or_default();
-                let date = extract_query(path, "date").unwrap_or_default();
-                let flag = extract_query(path, "flag").unwrap_or_default();
-                let seat_flag = match flag.as_str() {
-                    "buy" => openatrading_core::api::eastmoney::SeatFlag::Buy,
-                    "sell" => openatrading_core::api::eastmoney::SeatFlag::Sell,
-                    _ => return Err("flag must be 'buy' or 'sell'".to_string()),
-                };
-                let seats = state
-                    .ctx
-                    .api
-                    .eastmoney
-                    .lhb_stock_seat(&code, &date, seat_flag)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(seats).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/kline/") {
-                let parts: Vec<&str> = rest.split('?').collect();
-                let symbol = parts[0];
-                let period_str = extract_query(path, "period").unwrap_or_else(|| "day".into());
-                let count: u32 = extract_query(path, "count")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(256);
-                let period = match period_str.as_str() {
-                    "week" => KlinePeriod::Week,
-                    "month" => KlinePeriod::Month,
-                    "minute" => KlinePeriod::Minute,
-                    _ => KlinePeriod::Day,
-                };
-                let client = XuanguBaoClient::new();
-                let data = client
-                    .fetch_kline(symbol, period, count)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/realtime/") {
-                let symbol = rest.split('?').next().unwrap_or("");
-                let client = XuanguBaoClient::new();
-                let data = client
-                    .fetch_realtime(symbol)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/telegraph/") {
-                let category = rest.split('?').next().unwrap_or("");
-                let data = state
-                    .ctx
-                    .api
-                    .cls
-                    .fetch_telegraph(category, None, 20)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/market-trend/") {
-                let symbol = rest.split('?').next().unwrap_or("");
-                let data = state
-                    .ctx
-                    .api
-                    .xuangubao
-                    .fetch_market_trend(symbol)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/plates-by-any-stock/") {
-                let symbol = rest.split('?').next().unwrap_or("");
-                let data = state
-                    .ctx
-                    .api
-                    .xuangubao
-                    .plates_by_any_stock(symbol)
-                    .await
-                    .map_err(|e| format!("{e}"))?;
-                return Ok(serde_json::to_value(data).unwrap_or_default());
-            }
-            if let Some(rest) = path.strip_prefix("/api/roles/") {
-                return dispatch_roles_get(rest, state).await;
-            }
-            if let Some(rest) = path.strip_prefix("/api/ai/threads/") {
-                if let Some(msg_path) = rest.strip_suffix("/messages") {
-                    let id: i64 = msg_path
-                        .parse()
-                        .map_err(|_| "invalid thread id".to_string())?;
-                    let messages = state
-                        .chat_threads
-                        .get_messages(id)
-                        .map_err(|e| format!("{e}"))?;
-                    return Ok(serde_json::to_value(messages).unwrap_or_default());
-                }
-            }
-            Err(format!("unknown path: {path}"))
-        },
+                .unwrap_or_default()
+        });
+        return openatrading_web::handlers::get_plate_abnormal_data(state, Some(date)).await;
     }
+    if path.strip_prefix("/api/sentiment-history").is_some() {
+        return openatrading_web::handlers::get_sentiment_history_data(state).await;
+    }
+    if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
+        let page: usize = extract_query(path, "page")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let page_size: usize = extract_query(path, "page_size")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
+        return openatrading_web::handlers::get_dragon_tiger_detail_data(state, page, page_size)
+            .await;
+    }
+    if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
+        let code = extract_query(path, "code").unwrap_or_default();
+        let date = extract_query(path, "date").unwrap_or_default();
+        let flag = extract_query(path, "flag").unwrap_or_default();
+        return openatrading_web::handlers::get_dragon_tiger_stock_seat_data(
+            state, &code, &date, &flag,
+        )
+        .await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/ai/sessions/") {
+        if let Some(msg_id) = rest.strip_suffix("/messages") {
+            return openatrading_web::handlers::get_session_messages_data(state, msg_id).await;
+        }
+    }
+    if let Some(rest) = path.strip_prefix("/api/roles/") {
+        return dispatch_roles_get(rest, state).await;
+    }
+    if path.strip_prefix("/api/dragon-tiger/combined").is_some() {
+        let date = XuanguBaoClient::last_n_trading_days(1)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        let data = state
+            .ctx
+            .api
+            .eastmoney
+            .lhb_combined(&date, &date)
+            .await
+            .map_err(|e| format!("{e}"))?;
+        return Ok(serde_json::to_value(data).unwrap_or_default());
+    }
+    Err(format!("unknown path: {path}"))
 }
 
 async fn dispatch_roles_get(
@@ -590,75 +230,20 @@ async fn dispatch_roles_get(
     let name = parts[0];
     let action = parts[1].split('?').next().unwrap_or("");
     match action {
-        "positions" => {
-            let positions = state
-                .ctx
-                .trade
-                .list_positions(name)
-                .map_err(|e| format!("{e}"))?;
-            let result: Vec<serde_json::Value> = positions
-                .iter()
-                .map(|p| {
-                    serde_json::json!({
-                        "id": p.id, "symbol": p.symbol, "stock_name": p.stock_name,
-                        "cost_price": p.cost_price, "current_price": p.current_price.unwrap_or(0.0),
-                        "shares": p.shares, "entry_reason": p.entry_reason, "entry_date": p.entry_date,
-                    })
-                })
-                .collect();
-            Ok(serde_json::json!(result))
-        },
-        "logs" => {
-            let logs = state
-                .ctx
-                .trade
-                .get_trade_logs_by_role(name, 20)
-                .map_err(|e| format!("{e}"))?;
-            let result: Vec<serde_json::Value> = logs
-                .iter()
-                .map(|l| {
-                    let date: String = l.created_at.chars().take(10).collect();
-                    serde_json::json!({
-                        "date": date, "action": l.action, "symbol": l.symbol,
-                        "price": l.price, "shares": l.shares, "reason": l.reason,
-                    })
-                })
-                .collect();
-            Ok(serde_json::json!(result))
-        },
+        "positions" => openatrading_web::handlers::get_role_positions_data(state, name).await,
+        "logs" => openatrading_web::handlers::get_role_logs_data(state, name).await,
         "pnl-history" => {
             let days: usize = extract_query(rest, "days")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30);
-            let all_logs = state
-                .ctx
-                .trade
-                .get_all_trade_logs_by_role(name)
-                .map_err(|e| format!("{e}"))?;
-            let positions = state.ctx.trade.list_positions(name).unwrap_or_default();
-            let current_value: f64 = positions
-                .iter()
-                .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
-                .sum();
-            let mut points =
-                openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
-            if days > 0 {
-                let cutoff = points.len().saturating_sub(days);
-                points = points.into_iter().skip(cutoff).collect();
-            }
-            Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
-        },
+            openatrading_web::handlers::get_role_pnl_history_data(state, name, days).await
+        }
         "history" => {
             let limit: usize = extract_query(rest, "limit")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(100);
-            let positions = state
-                .ctx
-                .trade
-                .get_closed_positions(name, limit)
-                .map_err(|e| format!("{e}"))?;
-            Ok(serde_json::to_value(positions).unwrap_or_default())
-        },
+            openatrading_web::handlers::get_role_history_data(state, name, limit).await
+        }
         _ => Err(format!("unknown roles action: {action}")),
     }
 }
@@ -669,25 +254,12 @@ async fn dispatch_post(
     state: &Arc<AppState>,
 ) -> Result<serde_json::Value, String> {
     match path {
-        "/api/ai/threads" => {
-            let title = body
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("新对话");
-            let id = state
-                .chat_threads
-                .create_thread(title)
-                .map_err(|e| format!("{e}"))?;
-            let threads = state
-                .chat_threads
-                .list_threads()
-                .map_err(|e| format!("{e}"))?;
-            let thread = threads
-                .into_iter()
-                .find(|t| t.id == id)
-                .ok_or("thread not found")?;
-            Ok(serde_json::to_value(thread).unwrap_or_default())
-        },
+        "/api/ai/sessions" => {
+            let name = body.get("name").and_then(|v| v.as_str());
+            let session_id = body.get("session_id").and_then(|v| v.as_str());
+            let message = body.get("message").and_then(|v| v.as_str()).unwrap_or("");
+            openatrading_web::handlers::create_session_data(state, name, session_id, message).await
+        }
         "/api/roles" => {
             let name = body
                 .get("name")
@@ -700,222 +272,63 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let strategy = body
-                .get("strategy")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            openatrading_core::roles::save_role_strategy(&name, &strategy)
-                .map_err(|e| format!("{e}"))?;
-            let mut roles = state.roles.write().await;
-            if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
-                existing.display_name = display_name;
-                existing.strategy = strategy;
-            } else {
-                roles.push(RoleEntry {
-                    name,
-                    display_name,
-                    strategy,
-                    readonly: false,
-                });
-            }
-            Ok(serde_json::json!({"ok": true}))
-        },
+            openatrading_web::handlers::create_role_data(state, &name, &display_name).await
+        }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
                 let name = parts[0];
                 if parts.len() < 2 {
                     // DELETE /api/roles/{name} — no action suffix → delete
-                    state
-                        .ctx
-                        .trade
-                        .delete_positions_by_role(name)
-                        .map_err(|e| format!("{e}"))?;
-                    state
-                        .ctx
-                        .trade
-                        .delete_trade_logs_by_role(name)
-                        .map_err(|e| format!("{e}"))?;
-                    openatrading_core::roles::delete_role_dir(name).map_err(|e| format!("{e}"))?;
-                    let mut roles = state.roles.write().await;
-                    roles.retain(|r| r.name != name);
-                    return Ok(serde_json::json!({"ok": true}));
+                    return openatrading_web::handlers::delete_role_data(state, name).await;
                 }
                 let action = parts[1];
                 match action {
-                    "strategy" => {
-                        let strategy = body
-                            .get("strategy")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        openatrading_core::roles::save_role_strategy(name, &strategy)
-                            .map_err(|e| format!("{e}"))?;
-                        let mut roles = state.roles.write().await;
-                        if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
-                            entry.strategy = strategy;
-                        }
-                        Ok(serde_json::json!({"ok": true}))
-                    },
-                    "reset" => {
-                        state
-                            .ctx
-                            .trade
-                            .delete_trade_logs_by_role(name)
-                            .map_err(|e| format!("{e}"))?;
-                        state
-                            .ctx
-                            .trade
-                            .delete_positions_by_role(name)
-                            .map_err(|e| format!("{e}"))?;
-                        Ok(serde_json::json!({"ok": true}))
-                    },
-                    "delete" => {
-                        state
-                            .ctx
-                            .trade
-                            .delete_positions_by_role(name)
-                            .map_err(|e| format!("{e}"))?;
-                        state
-                            .ctx
-                            .trade
-                            .delete_trade_logs_by_role(name)
-                            .map_err(|e| format!("{e}"))?;
-                        openatrading_core::roles::delete_role_dir(name)
-                            .map_err(|e| format!("{e}"))?;
-                        let mut roles = state.roles.write().await;
-                        roles.retain(|r| r.name != name);
-                        Ok(serde_json::json!({"ok": true}))
-                    },
+                    "reset" => openatrading_web::handlers::reset_role_data(state, name).await,
+                    "delete" => openatrading_web::handlers::delete_role_data(state, name).await,
                     _ => Err(format!("unknown roles action: {action}")),
                 }
-            } else if let Some(rest) = path.strip_prefix("/api/ai/threads/") {
-                // PUT /api/ai/threads/:id (rename) or POST /api/ai/threads/:id/messages (save message)
-                if let Some(msg_path) = rest.strip_suffix("/messages") {
-                    let id: i64 = msg_path
-                        .parse()
-                        .map_err(|_| "invalid thread id".to_string())?;
-                    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
-                    let content = body.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                    let msg_id = state
-                        .chat_threads
-                        .save_message(id, role, content)
-                        .map_err(|e| format!("{e}"))?;
-                    let messages = state
-                        .chat_threads
-                        .get_messages(id)
-                        .map_err(|e| format!("{e}"))?;
-                    let msg = messages
-                        .into_iter()
-                        .find(|m| m.id == msg_id)
-                        .ok_or("message not found")?;
-                    Ok(serde_json::to_value(msg).unwrap_or_default())
-                } else {
-                    // PUT /api/ai/threads/:id (rename) or DELETE /api/ai/threads/:id
-                    let id: i64 = rest.parse().map_err(|_| "invalid thread id".to_string())?;
-                    if body
-                        .get("title")
-                        .and_then(|v| v.as_str())
-                        .map(|s| !s.is_empty())
-                        .unwrap_or(false)
-                    {
-                        // Rename (PUT)
-                        let title = body.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                        state
-                            .chat_threads
-                            .rename_thread(id, title)
-                            .map_err(|e| format!("{e}"))?;
-                        let threads = state
-                            .chat_threads
-                            .list_threads()
-                            .map_err(|e| format!("{e}"))?;
-                        let thread = threads
-                            .into_iter()
-                            .find(|t| t.id == id)
-                            .ok_or("thread not found")?;
-                        Ok(serde_json::to_value(thread).unwrap_or_default())
-                    } else {
-                        // Delete (DELETE)
-                        state
-                            .chat_threads
-                            .delete_thread(id)
-                            .map_err(|e| format!("{e}"))?;
-                        Ok(serde_json::json!({"ok": true}))
-                    }
-                }
-            } else if path.starts_with("/api/watchlist") {
-                #[derive(serde::Serialize, serde::Deserialize)]
-                struct WsItem {
-                    code: String,
-                    name: String,
-                    added_at: String,
-                }
-                fn wl_path() -> std::path::PathBuf {
-                    openatrading_core::atrading_home().join("watchlist.json")
-                }
-                fn wl_load() -> Vec<WsItem> {
-                    let p = wl_path();
-                    if !p.exists() {
-                        return vec![];
-                    }
-                    std::fs::read_to_string(&p)
-                        .ok()
-                        .and_then(|s| serde_json::from_str(&s).ok())
-                        .unwrap_or_default()
-                }
-                fn wl_save(items: &[WsItem]) -> Result<(), String> {
-                    let p = wl_path();
-                    if let Some(parent) = p.parent() {
-                        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                    }
-                    std::fs::write(
-                        &p,
-                        serde_json::to_string_pretty(items).map_err(|e| e.to_string())?,
-                    )
-                    .map_err(|e| e.to_string())
-                }
-
-                if let Some(code) = path.strip_prefix("/api/watchlist/") {
-                    // DELETE /api/watchlist/CODE
-                    let code = url_decode(code);
-                    let mut items = wl_load();
-                    let before = items.len();
-                    items.retain(|i| i.code != code);
-                    if items.len() == before {
-                        return Err(format!("not found: {code}"));
-                    }
-                    wl_save(&items).map_err(|e| e.to_string())?;
-                    Ok(serde_json::to_value(items).unwrap_or_default())
-                } else {
-                    // POST /api/watchlist
-                    let code = body
-                        .get("code")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| "missing code".to_string())?
-                        .to_string();
-                    let name = body
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| "missing name".to_string())?
-                        .to_string();
-                    let mut items = wl_load();
-                    if items.iter().any(|i| i.code == code) {
-                        return Err("already exists".to_string());
-                    }
-                    items.push(WsItem {
-                        code,
-                        name,
-                        added_at: chrono::Utc::now().to_rfc3339(),
-                    });
-                    wl_save(&items).map_err(|e| e.to_string())?;
-                    Ok(serde_json::to_value(items).unwrap_or_default())
-                }
+            } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
+                openatrading_web::handlers::delete_session_data(state, sid).await
+            } else if let Some(code) = path.strip_prefix("/api/watchlist/") {
+                // DELETE /api/watchlist/CODE
+                let code = url_decode(code);
+                openatrading_web::handlers::delete_watchlist_data(&code).await
+            } else if path == "/api/watchlist" {
+                // POST /api/watchlist
+                let code = body
+                    .get("code")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "missing code".to_string())?
+                    .to_string();
+                let name = body
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "missing name".to_string())?
+                    .to_string();
+                openatrading_web::handlers::add_watchlist_data(&code, &name).await
             } else {
                 Err(format!("unknown path: {path}"))
             }
-        },
+        }
     }
+}
+
+async fn dispatch_patch(
+    path: &str,
+    body: &serde_json::Value,
+    _state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
+    // PATCH /api/ai/sessions/:id — rename session
+    if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
+        let name = body
+            .get("name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "missing name".to_string())?;
+        return openatrading_web::handlers::rename_session_data(sid, name).await;
+    }
+    Err(format!("unknown patch path: {path}"))
 }
 
 fn url_decode(s: &str) -> String {
@@ -968,289 +381,137 @@ fn extract_query(path: &str, key: &str) -> Option<String> {
 }
 
 #[tauri::command]
-async fn api_chat_stream(
-    body: serde_json::Value,
-    channel: tauri::ipc::Channel<String>,
+async fn send_prompt(
+    session_id: String,
+    text: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    eprintln!("[chat_stream] start, body={}", body);
+    // Ensure the session exists before handling any command.
+    // This creates the session if needed and sets up the event forward task.
+    ensure_session_tauri(&session_id, &state, &app).await?;
 
-    let api = state.ctx.api.clone();
-    let roles = state.roles.clone();
-    let tools_registry = &state.ctx.tool_registry;
+    // The event_state assigns seq + retains the event in the ring (kept
+    // consistent with the WebSocket path). Desktop doesn't reconnect so dedup
+    // isn't needed, but routing through emit keeps a single serialization path.
+    let event_state = state.get_event_state(&session_id).await;
 
-    let role_name = body.get("role").and_then(|v| v.as_str()).unwrap_or("");
-    eprintln!("[chat_stream] role={role_name}");
+    // Session-level slash commands (model/compact/name/session/help) need
+    // `&mut AgentSession` and are handled locally — pi-rs `prompt()` won't
+    // execute them. `/skill:` and unknown commands fall through to pi-rs,
+    // which expands `/skill:name` itself.
+    if let Some((cmd_name, cmd_args)) = openatrading_web::chat::parse_session_slash_command(&text) {
+        let notice = openatrading_web::chat::run_session_slash_command(
+            &state.ctx.pool,
+            &session_id,
+            &cmd_name,
+            &cmd_args,
+        )
+        .await;
+        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(notice));
+        let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+        let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
+        let _ = app.emit("agent-event", payload);
+        return Ok(());
+    }
 
-    eprintln!("[chat_stream] fetching overview...");
-    let overview = openatrading_web::chat::fetch_overview_data(&api)
+    // Normal prompt — forward to the agent. Events flow via the background
+    // forward task set up by ensure_session_tauri.
+    //
+    // pi-rs `prompt()` checks `is_streaming()` internally and uses
+    // `streaming_behavior` only to choose steer vs followUp. We pass a fixed
+    // policy (followUp = queue as a new turn when streaming) and let pi-rs
+    // decide, avoiding a racy `is_stream()` TOCTOU check on our side.
+    let opts = pi_coding_agent::core::agent_session::PromptOptions {
+        streaming_behavior: Some("followUp".to_string()),
+        ..Default::default()
+    };
+    if let Err(e) = state
+        .ctx
+        .pool
+        .prompt_with_opts(&session_id, &text, opts)
         .await
-        .map_err(|e| {
-            eprintln!("[chat_stream] overview error: {e}");
-            format!("overview error: {e}")
-        })?;
-    eprintln!("[chat_stream] overview ok");
+    {
+        // Surface the error to the frontend as a Notice event, mirroring the
+        // WebSocket path (which emits via the session event channel). The
+        // `send_prompt` invoke resolves Ok so the frontend renders the error
+        // through the same event stream as everything else. Route through
+        // event_state.emit for consistent seq/serialization.
+        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(
+            openatrading_web::agent_ws::SessionEventPayload::Notice {
+                text: e,
+                is_error: true,
+            },
+        ));
+        let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+        let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
+        let _ = app.emit("agent-event", payload);
+    }
+    Ok(())
+}
 
-    let field_items = openatrading_web::chat::fetch_field_json(&api).await;
-    let super_stocks = openatrading_web::chat::fetch_super_stock_json(&api).await;
-    eprintln!(
-        "[chat_stream] field_items={}, super_stocks={}",
-        field_items.is_some(),
-        super_stocks.is_some()
-    );
+#[tauri::command]
+async fn interrupt_session(
+    session_id: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    // Signal the in-flight prompt via the per-session Notify rather than
+    // locking the runtime mutex (held for the whole stream — would deadlock
+    // the interrupt). See `SessionPool::prompt_with_opts`.
+    state.ctx.pool.signal_abort(&session_id).await;
+    Ok(())
+}
 
-    let roles_guard = roles.read().await;
-    let default_strategy = openatrading_core::prompts::DEFAULT_CHAT_SYSTEM_PROMPT;
+#[tauri::command]
+async fn respond_permission(session_id: String, id: String, approved: bool) -> Result<(), String> {
+    eprintln!("permission response received but not yet wired: session={session_id}, id={id}, approved={approved}");
+    Ok(())
+}
 
-    let command_type_str = body
-        .get("command_type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let command_name = body
-        .get("command_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+// ── Named timing constants (finding #17) ────────────────────────────────────
+/// Polling interval for realtime/kline streaming channels pushed to the
+/// frontend via Tauri IPC.
+const STREAM_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+/// Delay before restarting the app so the IPC response reaches the frontend.
+const APP_RESTART_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
-    let effective_command_type = match command_type_str {
-        "tool" => Some(CommandType::Tool),
-        "skill" => Some(CommandType::Skill),
-        "pipeline" => Some(CommandType::Pipeline),
-        _ => None,
-    };
+/// Ensure a session runtime exists in the pool, setting up a background forward
+/// task that pumps `TranscriptEvent`s to the frontend via `app.emit`.
+///
+/// Uses the shared `ensure_session_with_events` logic (same as the WebSocket
+/// path) so that session creation, resumption, and event channel setup are
+/// consistent between Tauri and Web.
+async fn ensure_session_tauri(
+    session_id: &str,
+    state: &Arc<AppState>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let event_state = state.get_event_state(session_id).await;
+    let session_with_events = openatrading_web::chat_session::ensure_session_with_events(
+        &state.ctx.pool,
+        session_id,
+        &event_state,
+    )
+    .await?;
 
-    let (system_prompt, tools) = match &effective_command_type {
-        Some(CommandType::Tool) => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            let sp = openatrading_web::chat::build_system_prompt(strategy_text);
-            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| t.name == command_name)
-                .cloned()
-                .collect();
-            (sp, filtered)
-        },
-        Some(CommandType::Skill) => {
-            let skills = openatrading_core::skills::SkillRegistry::from_disk();
-            let prompt = skills
-                .skills()
-                .iter()
-                .find(|s| s.name == command_name)
-                .map(|s| s.content.as_str())
-                .unwrap_or(default_strategy);
-            (
-                openatrading_web::chat::build_system_prompt(prompt),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-        Some(CommandType::Pipeline) => {
-            let pipelines = openatrading_core::pipelines::PipelineRegistry::from_disk();
-            let spec = pipelines.find(command_name);
-            let prompt = spec
-                .as_ref()
-                .map(|s| s.prompt.as_str())
-                .unwrap_or(default_strategy);
-            let allowed = spec.map(|s| s.tools.clone()).unwrap_or_default();
-            let filtered: Vec<std::sync::Arc<openatrading_core::llm::DynTool>> = tools_registry
-                .load()
-                .all_tools()
-                .iter()
-                .filter(|t| allowed.contains(&t.name) || t.name == "submit_trading_decision")
-                .cloned()
-                .collect();
-            (
-                openatrading_web::chat::build_system_prompt(prompt),
-                filtered,
-            )
-        },
-        None => {
-            let strategy_text = roles_guard
-                .iter()
-                .find(|r| r.name == role_name)
-                .map(|r| r.strategy.as_str())
-                .unwrap_or(default_strategy);
-            (
-                openatrading_web::chat::build_system_prompt(strategy_text),
-                tools_registry.load().all_tools().to_vec(),
-            )
-        },
-    };
+    let mut rx = session_with_events.rx;
+    let app_handle = app.clone();
+    let sid = session_id.to_string();
 
-    let agent = Arc::new(state.ctx.llm.create_agent(tools, &system_prompt));
-
-    let user_message = openatrading_web::chat::build_user_message(
-        &overview,
-        field_items.as_deref(),
-        super_stocks.as_deref(),
-    );
-    eprintln!(
-        "[chat_stream] system_prompt len={}, user_message len={}",
-        system_prompt.len(),
-        user_message.len()
-    );
-
-    use openatrading_core::llm::pi_ai_types::{ContentBlock, StopReason};
-
-    let mut pi_messages: Vec<AgentMessage> = Vec::new();
-    // Data context as first user message
-    pi_messages.push(AgentMessage::User {
-        content: vec![ContentBlock::Text {
-            text: user_message,
-            text_signature: None,
-        }],
-        timestamp: 0,
-    });
-    // Assistant ack
-    pi_messages.push(AgentMessage::Assistant {
-        content: vec![ContentBlock::Text {
-            text: "已收到市场数据，请提问。".into(),
-            text_signature: None,
-        }],
-        api: String::new(),
-        provider: String::new(),
-        model: String::new(),
-        usage: Default::default(),
-        stop_reason: Some(StopReason::Stop),
-        error_message: None,
-        timestamp: 0,
-    });
-
-    // History
-    if let Some(history) = body.get("history").and_then(|h| h.as_array()) {
-        eprintln!("[chat_stream] history len={}", history.len());
-        for msg in history {
-            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
-            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            match role {
-                "user" => {
-                    pi_messages.push(AgentMessage::User {
-                        content: vec![ContentBlock::Text {
-                            text: content.to_string(),
-                            text_signature: None,
-                        }],
-                        timestamp: 0,
-                    });
-                },
-                "assistant" => {
-                    pi_messages.push(AgentMessage::Assistant {
-                        content: vec![ContentBlock::Text {
-                            text: content.to_string(),
-                            text_signature: None,
-                        }],
-                        api: String::new(),
-                        provider: String::new(),
-                        model: String::new(),
-                        usage: Default::default(),
-                        stop_reason: Some(StopReason::Stop),
-                        error_message: None,
-                        timestamp: 0,
-                    });
-                },
-                _ => {},
-            }
+    // rx yields already-serialized EventEnvelope JSON strings (with seq).
+    let join_handle = tokio::spawn(async move {
+        loop {
+            let Some(json) = rx.recv().await else { break };
+            let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+            let payload = serde_json::json!({ "session_id": sid, "event": event_value });
+            let _ = app_handle.emit("agent-event", payload);
         }
-    }
-
-    // Current user message
-    if let Some(message) = body.get("message").and_then(|m| m.as_str()) {
-        eprintln!("[chat_stream] user message: {message}");
-        pi_messages.push(AgentMessage::User {
-            content: vec![ContentBlock::Text {
-                text: message.to_string(),
-                text_signature: None,
-            }],
-            timestamp: 0,
-        });
-    }
-
-    eprintln!("[chat_stream] creating agent and subscribing to events");
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
-
-    let listener = Arc::new(
-        move |event: AgentEvent, _signal: Option<tokio::sync::watch::Receiver<bool>>| {
-            let tx = tx.clone();
-            Box::pin(async move {
-                let _ = tx.send(event);
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        },
-    );
-
-    let handle = agent.subscribe(listener).await;
-
-    let agent_clone = Arc::clone(&agent);
+    });
     tokio::spawn(async move {
-        let _ = agent_clone.process(pi_messages).await;
-        drop(handle);
-    });
-
-    eprintln!("[chat_stream] reading events from channel");
-
-    let mut text_count = 0u32;
-    loop {
-        match rx.recv().await {
-            Some(AgentEvent::MessageUpdate {
-                assistant_message_event,
-                ..
-            }) => {
-                let stream_events = assistant_event_to_stream_events(&assistant_message_event);
-                for se in stream_events {
-                    match se {
-                        StreamEvent::Text(t) => {
-                            text_count += 1;
-                            if text_count <= 3 || text_count.is_multiple_of(20) {
-                                eprintln!(
-                                    "[chat_stream] text #{text_count}: {:?}",
-                                    &t[..t.len().min(80)]
-                                );
-                            }
-                            channel
-                                .send(format!("\x00TEXT\x00{}", t.replace('\n', "\\n")))
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        StreamEvent::ReasoningText(t) => {
-                            channel
-                                .send(format!("\x00THINKING\x00{}", t.replace('\n', "\\n")))
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        StreamEvent::ToolCallStart(tc) => {
-                            let data = serde_json::to_string(&serde_json::json!({
-                                "id": tc.id,
-                                "name": tc.function_name,
-                                "args": tc.arguments,
-                            }))
-                            .unwrap_or_default();
-                            channel
-                                .send(format!("\x00TOOL_CALL\x00{data}"))
-                                .map_err(|e| format!("channel error: {e}"))?;
-                        },
-                        StreamEvent::Error(e) => {
-                            channel
-                                .send(format!("[ERROR] {e}"))
-                                .map_err(|f| format!("channel error: {f}"))?;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            Some(AgentEvent::AgentEnd { .. }) => {
-                eprintln!("[chat_stream] AgentEnd, done");
-                break;
-            },
-            Some(_) => {},
-            None => {
-                eprintln!("[chat_stream] channel closed unexpectedly");
-                break;
-            },
+        if let Err(e) = join_handle.await {
+            eprintln!("[agent-forward] forward task panicked: {e}");
         }
-    }
-
-    eprintln!("[chat_stream] done, total text chunks={text_count}");
+    });
     Ok(())
 }
 
@@ -1274,16 +535,16 @@ async fn api_realtime_stream(
                 channel
                     .send(json)
                     .map_err(|e| format!("channel error: {e}"))?;
-            },
+            }
             Err(e) => {
                 let msg = e.to_string();
                 eprintln!("[realtime-stream] {:?}: {msg}", symbols);
                 channel
                     .send(format!(r#"{{"error":"{msg}"}}"#))
                     .map_err(|f| format!("channel error: {f}"))?;
-            },
+            }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
     }
 }
 
@@ -1294,7 +555,6 @@ async fn api_kline_stream(
     count: u32,
     channel: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
-    use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
     let kline_period = match period.as_str() {
         "week" => KlinePeriod::Week,
         "month" => KlinePeriod::Month,
@@ -1309,60 +569,16 @@ async fn api_kline_stream(
                 channel
                     .send(json)
                     .map_err(|e| format!("channel error: {e}"))?;
-            },
+            }
             Err(e) => {
                 eprintln!("[kline-stream] {symbol}: {e}");
                 channel
                     .send(format!(r#"{{"error":"{e}"}}"#))
                     .map_err(|f| format!("channel error: {f}"))?;
-            },
+            }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
     }
-}
-
-#[tauri::command]
-async fn api_replay_analyze(
-    channel: tauri::ipc::Channel<String>,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<(), String> {
-    let llm = state.ctx.llm.clone();
-
-    let client = XuanguBaoClient::new();
-    let events = client
-        .fetch_all_day_events(0.03)
-        .await
-        .map_err(|e| format!("fetch error: {e}"))?;
-    let date = XuanguBaoClient::last_n_trading_days(1)
-        .first()
-        .cloned()
-        .unwrap_or_default();
-    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-    let prompt = openatrading_core::api::xuangubao::build_analysis_prompt(&date, &snapshots);
-
-    let mut llm_stream = llm
-        .chat_stream(&prompt)
-        .await
-        .map_err(|e| format!("llm error: {e}"))?;
-
-    use futures_util::StreamExt;
-    while let Some(chunk) = llm_stream.next().await {
-        match chunk {
-            Ok(text) if !text.is_empty() => {
-                channel
-                    .send(text)
-                    .map_err(|e| format!("channel error: {e}"))?;
-            },
-            Err(e) => {
-                channel
-                    .send(format!("[ERROR] {e}"))
-                    .map_err(|e| format!("channel error: {e}"))?;
-                break;
-            },
-            _ => {},
-        }
-    }
-    Ok(())
 }
 
 fn load_llm_config_from_toml() -> (Option<String>, Option<String>) {
@@ -1481,40 +697,42 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     // Spawn a brief delay so the IPC response can reach the frontend
     let h = app_handle.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(APP_RESTART_DELAY).await;
         h.restart();
     });
     Ok(())
 }
 
+#[allow(clippy::disallowed_methods)]
 fn main() {
     load_env();
 
     let db_path = openatrading_core::atrading_home().join("data.db");
 
-    let gateway = Gateway::init(&db_path).expect("failed to init gateway");
+    let gateway = Gateway::init(&db_path).unwrap_or_else(|e| panic!("failed to init gateway: {e}"));
 
     let roles = build_roles();
 
     let (provider, model) = load_llm_config_from_toml();
 
-    let app_ctx = tokio::runtime::Runtime::new().unwrap().block_on(
-        openatrading_core::context::AppContext::build(
+    let app_ctx = tokio::runtime::Runtime::new()
+        .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
+        .block_on(openatrading_core::context::AppContext::build(
             provider.as_deref(),
             model.as_deref(),
             &[],
             gateway.memory.clone(),
             gateway.trade.clone(),
             Arc::new(openatrading_core::social::NoopChannel),
-        ),
-    );
+        ));
 
     let app_state = Arc::new(AppState {
         ctx: app_ctx,
-        chat_threads: gateway.chat_threads.clone(),
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
+        market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
+        event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     tauri::Builder::default()
@@ -1522,15 +740,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             api_fetch,
             api_post,
-            api_chat_stream,
+            api_patch,
+            send_prompt,
+            interrupt_session,
+            respond_permission,
             api_realtime_stream,
             api_kline_stream,
-            api_replay_analyze,
             api_search_stocks,
             get_config,
             update_config,
             restart_app
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| panic!("error while running tauri application: {e}"));
 }

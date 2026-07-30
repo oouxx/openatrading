@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct PortCheck;
 
@@ -12,7 +12,7 @@ fn check_port(addr: &str) -> Result<(), String> {
             // Dropping the listener releases the bind immediately
             drop(l);
             Ok(())
-        },
+        }
         Err(e) => Err(format!("地址 {addr} 被占用: {e}")),
     }
 }
@@ -43,33 +43,31 @@ impl Check for PortCheck {
         let mut errors = 0usize;
 
         // Check web_bind port
-        let web_bind = ctx
-            .app_config
-            .as_ref()
-            .map(|c| c.service.web_bind.clone())
-            .unwrap_or_else(|| "0.0.0.0:8080".to_string());
+        let web_bind = ctx.app_config.as_ref().map_or_else(
+            || "0.0.0.0:8080".to_string(),
+            |c| c.service.web_bind.clone(),
+        );
 
         match check_port(&web_bind) {
-            Ok(()) => details.push(format!("web: {}  ✓", web_bind)),
+            Ok(()) => details.push(format!("web: {web_bind}  ✓")),
             Err(e) => {
-                details.push(format!("web: {}  ✗ ({})", web_bind, e));
+                details.push(format!("web: {web_bind}  ✗ ({e})"));
                 errors += 1;
-            },
+            }
         }
 
         // Check mcp_server bind port
         let mcp_bind = ctx
             .app_config
             .as_ref()
-            .map(|c| c.mcp_server.bind.clone())
-            .unwrap_or_else(|| "0.0.0.0:8082".to_string());
+            .map_or_else(|| "0.0.0.0:8082".to_string(), |c| c.mcp_server.bind.clone());
 
         match check_port(&mcp_bind) {
-            Ok(()) => details.push(format!("mcp: {}  ✓", mcp_bind)),
+            Ok(()) => details.push(format!("mcp: {mcp_bind}  ✓")),
             Err(e) => {
-                details.push(format!("mcp: {}  ✗ ({})", mcp_bind, e));
+                details.push(format!("mcp: {mcp_bind}  ✗ ({e})"));
                 errors += 1;
-            },
+            }
         }
 
         if errors == 0 {

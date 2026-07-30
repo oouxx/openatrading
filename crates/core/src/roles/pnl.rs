@@ -35,8 +35,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
     // Track open positions: position_id -> (symbol, shares, entry_price)
     // Each position is tracked independently so same-symbol positions with
     // different cost bases don't get blended.
-    let mut holdings: std::collections::HashMap<i64, (String, i64, f64)> =
-        std::collections::HashMap::new();
+    let mut holdings: ahash::AHashMap<i64, (String, i64, f64)> = ahash::AHashMap::new();
 
     for log in logs {
         match log.action {
@@ -47,7 +46,7 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                     log.position_id,
                     (log.symbol.to_string(), log.shares, log.price),
                 );
-            },
+            }
             TradeAction::Close => {
                 let proceeds = log.price * log.shares as f64;
                 cash += proceeds;
@@ -55,8 +54,8 @@ pub fn compute_pnl_history(logs: &[TradeLogEntry], current_positions_value: f64)
                 // Each Close refers to the same position_id as its Open,
                 // so we remove the correct cost basis.
                 holdings.remove(&log.position_id);
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         // Mark-to-market: use entry price as proxy for open positions.

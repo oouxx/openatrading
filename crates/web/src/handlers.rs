@@ -1,90 +1,58 @@
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::{
-        sse::{Event, KeepAlive},
-        IntoResponse, Sse,
-    },
-    Json,
-};
-use futures::stream::{self, Stream};
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::mpsc;
+//! Tauri-compatible handler wrappers.
+//!
+//! Each function takes `&Arc<AppState>` and returns `Result<serde_json::Value, String>`,
+//! making them callable from both axum route handlers and Tauri IPC commands.
+//! The axum handlers in `handlers.rs` and `chat.rs` are thin wrappers around these.
 
-use openatrading_core::api::eastmoney::{LhbClient, LhbDetail, SeatFlag};
-use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use openatrading_core::api::Client as ApiClient;
-use openatrading_core::{agents::sentiment::analyze_sentiment, api::utils::last_n_trading_days};
+use std::sync::Arc;
 
 use crate::cache::{self, CachePolicy};
-use crate::{AppState, RoleEntry};
-use openatrading_core::roles::pnl::compute_pnl_history;
+use crate::AppState;
 
-// ── Response types ────────────────────────────────────
+// ── Cache helper ──────────────────────────────────────────────────────────
 
-#[derive(Serialize)]
-pub struct OverviewResponse {
-    pub date: String,
-    pub rise_count: u32,
-    pub fall_count: u32,
-    pub limit_up_count: u32,
-    pub limit_down_count: u32,
-    pub bomb_rate: f64,
-    pub risk_level: String,
-    pub decision_summary: String,
-    pub market_temperature: f64,
-    pub yesterday_limit_up_avg_pcp: f64,
+/// Tauri-compatible version of `cache::get_or_fetch_json` that returns
+/// `Result<serde_json::Value, String>` instead of `Result<Json<...>, StatusCode>`.
+async fn get_or_fetch_json_tauri<F, Fut, T>(
+    cache: &crate::cache::AppCache,
+    key: &str,
+    policy: CachePolicy,
+    fetch: F,
+) -> Result<serde_json::Value, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+    T: serde::Serialize,
+{
+    if let Some(cached) = cache::get(cache, key) {
+        return Ok(serde_json::from_str(&cached).unwrap_or_default());
+    }
+
+    let value = fetch().await?;
+    let json_string = serde_json::to_string(&value).unwrap_or_default();
+    let json_value: serde_json::Value = serde_json::from_str(&json_string).unwrap_or_default();
+    cache::set(cache, key, &json_string, policy);
+    Ok(json_value)
 }
 
-#[derive(Serialize)]
-pub struct SentimentHistoryDay {
-    pub date: String,
-    pub sentiment: f64,
-    pub limit_up_count: u32,
-    pub bomb_rate: f64,
-    pub rise_ratio: f64,
-}
-
-// ── Role CRUD types ────────────────────────────────────
-
-#[derive(Deserialize)]
-pub struct CreateRoleRequest {
-    pub name: String,
-    pub display_name: String,
-    pub strategy: String,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateStrategyRequest {
-    pub strategy: String,
-}
-
-#[derive(Serialize)]
-pub struct PnlHistoryResponse {
-    pub points: Vec<openatrading_core::roles::pnl::PnlPoint>,
-    pub initial_capital: f64,
-}
-
-// ── Handlers ──────────────────────────────────────────
+// ── Market data handlers ─────────────────────────────────────────────────
 
 /// GET /api/overview — market overview + risk level + decision summary
-pub async fn get_overview(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_overview_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
         "overview",
         CachePolicy::overview(),
         || async {
             let client = XuanguBaoClient::new();
-            let overview = client.fetch_market_overview().await.map_err(|e| {
-                openatrading_core::log::error!("overview error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let overview = client
+                .fetch_market_overview()
+                .await
+                .map_err(|e| format!("overview error: {e}"))?;
 
-            let ratio = overview.rise_count as f64 / overview.fall_count.max(1) as f64;
+            let ratio = f64::from(overview.rise_count) / f64::from(overview.fall_count.max(1));
             let risk_level = if ratio < 0.8 && overview.bomb_rate > 0.3 {
                 "高"
             } else if ratio < 1.2 || overview.bomb_rate > 0.2 {
@@ -102,7 +70,7 @@ pub async fn get_overview(
                 overview.limit_down_count,
             );
 
-            let resp = OverviewResponse {
+            let resp = crate::web::OverviewResponse {
                 date: openatrading_core::utils::time::beijing_now()
                     .format("%Y-%m-%d %H:%M")
                     .to_string(),
@@ -123,62 +91,17 @@ pub async fn get_overview(
     .await
 }
 
-/// GET /api/sentiment-history
-pub async fn get_sentiment_history(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
-        &state.cache,
-        "sentiment_history",
-        CachePolicy::daily(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let trading_days = XuanguBaoClient::last_n_trading_days(10);
-
-            let mut days: Vec<SentimentHistoryDay> = Vec::with_capacity(trading_days.len());
-
-            for date in &trading_days {
-                match client.fetch_market_overview_for_date(date).await {
-                    Ok(Some(d)) => {
-                        let rise_ratio = d.rise_count as f64 / d.fall_count.max(1) as f64;
-                        days.push(SentimentHistoryDay {
-                            date: d.date,
-                            sentiment: (d.market_temperature * 10.0).round() / 10.0,
-                            limit_up_count: d.limit_up_count,
-                            bomb_rate: (d.bomb_rate * 100.0).round() / 100.0,
-                            rise_ratio: (rise_ratio * 100.0).round() / 100.0,
-                        });
-                    },
-                    Ok(None) => {
-                        openatrading_core::log::error!("sentiment_history: no data for {date}");
-                    },
-                    Err(e) => {
-                        openatrading_core::log::error!("sentiment_history error for {date}: {e}");
-                    },
-                }
-            }
-
-            days.reverse();
-            Ok(days)
-        },
-    )
-    .await
-}
-
 /// GET /api/limit-up
-pub async fn get_limit_up(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_limit_up_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
         "limit_up",
-        CachePolicy::snapshot(),
+        CachePolicy::realtime(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = client.fetch_limit_up().await.map_err(|e| {
-                openatrading_core::log::error!("limit_up error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let data = client.fetch_limit_up().await.map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -186,381 +109,16 @@ pub async fn get_limit_up(
 }
 
 /// GET /api/limit-down
-pub async fn get_limit_down(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_limit_down_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
         "limit_down",
-        CachePolicy::snapshot(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = client.fetch_limit_down().await.map_err(|e| {
-                openatrading_core::log::error!("limit_down error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/plate-abnormal?count=30
-#[derive(serde::Deserialize)]
-pub struct PlateAbnormalQuery {
-    #[serde(default = "default_plate_count")]
-    count: i32,
-}
-fn default_plate_count() -> i32 {
-    30
-}
-
-pub async fn get_plate_abnormal(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<PlateAbnormalQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("plate_abnormal_{}", q.count);
-    cache::get_or_fetch_json(
-        &state.cache,
-        &cache_key,
-        CachePolicy::snapshot(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = client.fetch_plate_abnormal(q.count).await.map_err(|e| {
-                openatrading_core::log::error!("plate_abnormal error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/field-items?date=YYYY-MM-DD
-#[derive(serde::Deserialize)]
-pub struct FieldItemsQuery {
-    date: Option<String>,
-}
-
-pub async fn get_field_items(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<FieldItemsQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(serde_json::json!([])));
-    }
-    let date = q.date.unwrap_or_else(|| {
-        openatrading_core::utils::time::beijing_now()
-            .format("%Y-%m-%d")
-            .to_string()
-    });
-    let cache_key = format!("field_items_{}", date);
-    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
-        let client = ApiClient::new();
-        let data = client.jiuyan.fetch_field(&date, 1).await.map_err(|e| {
-            openatrading_core::log::error!("field_items error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-        Ok(data)
-    })
-    .await
-}
-
-/// GET /api/timeline
-pub async fn get_timeline(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(serde_json::json!([])));
-    }
-    let month = openatrading_core::utils::time::beijing_now()
-        .format("%Y-%m")
-        .to_string();
-    let cache_key = format!("timeline_{}", month);
-    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
-        let client = ApiClient::new();
-        let data = client.jiuyan.fetch_timeline(&month).await.map_err(|e| {
-            openatrading_core::log::error!("timeline error: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-        Ok(data)
-    })
-    .await
-}
-
-/// GET /api/sentiment
-pub async fn get_sentiment(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    cache::get_or_fetch_json(
-        &state.cache,
-        "sentiment",
-        CachePolicy::snapshot(),
-        || async {
-            let client = ApiClient::new();
-            let data = analyze_sentiment(&client).await.map_err(|e| {
-                openatrading_core::log::error!("sentiment error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/kline/stream — SSE, every 3s, comma-separated symbols
-#[derive(serde::Deserialize)]
-pub struct KlineStreamQuery {
-    #[serde(default = "default_kline_period")]
-    period: String,
-    #[serde(default = "default_kline_count")]
-    count: u32,
-    /// Comma-separated stock symbols
-    symbols: String,
-}
-
-pub async fn get_kline_stream(
-    State(_state): State<Arc<AppState>>,
-    Query(q): Query<KlineStreamQuery>,
-) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    let period = match q.period.as_str() {
-        "week" => KlinePeriod::Week,
-        "month" => KlinePeriod::Month,
-        "minute" => KlinePeriod::Minute,
-        _ => KlinePeriod::Day,
-    };
-    let count = q.count;
-    let symbols: Vec<String> = q
-        .symbols
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let client = XuanguBaoClient::new();
-
-    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
-    tokio::spawn(async move {
-        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
-        let json = match client.fetch_kline_batch(&symbols, period, count).await {
-            Ok(data) => match serde_json::to_string(&data) {
-                Ok(s) => s,
-                Err(e) => {
-                    openatrading_core::log::error!(
-                        "[kline-stream] initial serialize failed {:?}: {e}",
-                        symbols
-                    );
-                    return;
-                },
-            },
-            Err(e) => {
-                openatrading_core::log::warn!("[kline-stream] initial fetch {:?}: {e}", symbols);
-                serde_json::json!({ "error": e.to_string() }).to_string()
-            },
-        };
-        if tx.send(Ok(Event::default().data(json))).await.is_err() {
-            return;
-        }
-
-        loop {
-            let is_trading = cache::is_trading_hours();
-            let delay = if is_trading {
-                Duration::from_secs(3)
-            } else {
-                Duration::from_secs(30)
-            };
-
-            tokio::select! {
-                _ = tx.closed() => break,
-                _ = tokio::time::sleep(delay) => {},
-            }
-
-            if is_trading {
-                openatrading_core::log::info!("[kline-stream] kline streaming {:?}", symbols);
-                let json = match client.fetch_kline_batch(&symbols, period, count).await {
-                    Ok(data) => match serde_json::to_string(&data) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            openatrading_core::log::error!(
-                                "[kline-stream] serialize failed {:?}: {e}",
-                                symbols
-                            );
-                            continue;
-                        },
-                    },
-                    Err(e) => {
-                        openatrading_core::log::warn!("[kline-stream] {:?}: {e}", symbols);
-                        serde_json::json!({ "error": e.to_string() }).to_string()
-                    },
-                };
-                if tx.send(Ok(Event::default().data(json))).await.is_err() {
-                    break;
-                }
-            }
-        }
-    });
-
-    let stream = stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    });
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
-}
-
-/// GET /api/kline/:symbol
-#[derive(serde::Deserialize)]
-pub struct KlineQuery {
-    #[serde(default = "default_kline_period")]
-    period: String,
-    #[serde(default = "default_kline_count")]
-    count: u32,
-}
-fn default_kline_period() -> String {
-    "day".into()
-}
-fn default_kline_count() -> u32 {
-    256
-}
-
-pub async fn get_kline(
-    State(state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
-    Query(q): Query<KlineQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let period = match q.period.as_str() {
-        "week" => KlinePeriod::Week,
-        "month" => KlinePeriod::Month,
-        "minute" => KlinePeriod::Minute,
-        _ => KlinePeriod::Day,
-    };
-    let cache_key = format!("kline_{}_{}_{}", symbol, q.period, q.count);
-    cache::get_or_fetch_json(&state.cache, &cache_key, CachePolicy::daily(), || async {
-        let client = XuanguBaoClient::new();
-        let data = client
-            .fetch_kline(&symbol, period, q.count)
-            .await
-            .map_err(|e| {
-                openatrading_core::log::error!("kline error: {}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-        Ok(data)
-    })
-    .await
-}
-
-/// GET /api/realtime/:symbol — single shot
-pub async fn get_realtime(
-    State(state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("realtime_{}", symbol);
-    cache::get_or_fetch_json(
-        &state.cache,
-        &cache_key,
         CachePolicy::realtime(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = client.fetch_realtime(&symbol).await.map_err(|e| {
-                let msg = e.to_string();
-                openatrading_core::log::warn!("realtime unavailable for {symbol}: {msg}");
-                if msg.contains("not found") {
-                    StatusCode::NOT_FOUND
-                } else {
-                    StatusCode::SERVICE_UNAVAILABLE
-                }
-            })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/realtime/stream — SSE, every 3s, comma-separated symbols
-#[derive(serde::Deserialize)]
-pub struct RealtimeStreamQuery {
-    /// Comma-separated stock symbols
-    symbols: String,
-}
-
-pub async fn get_realtime_stream(
-    State(_state): State<Arc<AppState>>,
-    Query(q): Query<RealtimeStreamQuery>,
-) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    let symbols: Vec<String> = q
-        .symbols
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let client = XuanguBaoClient::new();
-
-    let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(16);
-    tokio::spawn(async move {
-        // 连接时立即拉取一次初始数据（即使非交易时间），确保前端能展示
-        let json = match client.fetch_realtime_batch(&symbols).await {
-            Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-            Err(e) => {
-                openatrading_core::log::warn!("[realtime-stream] initial fetch {:?}: {e}", symbols);
-                serde_json::json!({ "error": e.to_string() }).to_string()
-            },
-        };
-        if tx.send(Ok(Event::default().data(json))).await.is_err() {
-            return;
-        }
-
-        loop {
-            let is_trading = cache::is_trading_hours();
-            let delay = if is_trading {
-                Duration::from_secs(3)
-            } else {
-                Duration::from_secs(30)
-            };
-
-            tokio::select! {
-                _ = tx.closed() => break,
-                _ = tokio::time::sleep(delay) => {},
-            }
-
-            if is_trading {
-                openatrading_core::log::info!("[realtime-stream] realtime streaming {:?}", symbols);
-                let json = match client.fetch_realtime_batch(&symbols).await {
-                    Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-                    Err(e) => {
-                        openatrading_core::log::warn!("[realtime-stream] {:?}: {e}", symbols);
-                        serde_json::json!({ "error": e.to_string() }).to_string()
-                    },
-                };
-                if tx.send(Ok(Event::default().data(json))).await.is_err() {
-                    break;
-                }
-            }
-            // 非交易时间：不拉取、不发事件；keep-alive 保持连接，前端保留最后一笔数据。
-        }
-    });
-
-    let stream = stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    });
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(1))))
-}
-
-/// GET /api/yesterday-limit-up
-pub async fn get_yesterday_limit_up(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
-        &state.cache,
-        "yesterday_limit_up",
-        CachePolicy::snapshot(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = client.fetch_yesterday_limit_up().await.map_err(|e| {
-                openatrading_core::log::error!("yesterday_limit_up error: {:#}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let data = client.fetch_limit_down().await.map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -568,19 +126,41 @@ pub async fn get_yesterday_limit_up(
 }
 
 /// GET /api/super-stock
-pub async fn get_super_stock(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_super_stock_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
         "super_stock",
-        CachePolicy::snapshot(),
+        CachePolicy::realtime(),
         || async {
             let client = XuanguBaoClient::new();
-            let data = client.fetch_super_stock().await.map_err(|e| {
-                openatrading_core::log::error!("super_stock error: {:#}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let data = client
+                .fetch_super_stock()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/yesterday-limit-up
+pub async fn get_yesterday_limit_up_data(
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        "yesterday_limit_up",
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client
+                .fetch_yesterday_limit_up()
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -588,10 +168,10 @@ pub async fn get_super_stock(
 }
 
 /// GET /api/index-quotes
-pub async fn get_index_quotes(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_index_quotes_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
         "index_quotes",
         CachePolicy::realtime(),
@@ -600,89 +180,7 @@ pub async fn get_index_quotes(
             let data = client
                 .fetch_market_real(&["000001.SS", "399001.SZ", "399006.SZ"])
                 .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("index_quotes error: {}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/telegraph — all categories
-///
-/// Query params:
-/// - `last_time`: cursor for pagination (omit for initial load)
-/// - `count`: items per page (default 20)
-pub async fn get_telegraph_all(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let last_time = params.get("last_time").and_then(|v| v.parse::<i64>().ok());
-    let count: u32 = params
-        .get("count")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(20);
-
-    if let Some(lt) = last_time {
-        // 分页模式：不缓存，调 roll API
-        let client = ApiClient::new();
-        let data = client
-            .cls
-            .fetch_telegraph("cls", Some(lt), count)
-            .await
-            .map_err(|e| {
-                openatrading_core::log::error!("[telegraph] fetch page failed: {e}");
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-        return Ok(Json(serde_json::to_value(data).unwrap_or_default()));
-    }
-
-    cache::get_or_fetch_json(
-        &state.cache,
-        "telegraph_all",
-        CachePolicy::telegraph(),
-        || async {
-            let client = ApiClient::new();
-            let data = client
-                .cls
-                .fetch_telegraph("", None, count)
-                .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("[telegraph] fetch failed: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/telegraph/:category
-pub async fn get_telegraph(
-    State(state): State<Arc<AppState>>,
-    Path(category): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("telegraph_{}", category);
-    cache::get_or_fetch_json(
-        &state.cache,
-        &cache_key,
-        CachePolicy::telegraph(),
-        || async {
-            let client = ApiClient::new();
-            let data = client
-                .cls
-                .fetch_telegraph(&category, None, 20)
-                .await
-                .map_err(|e| {
-                    openatrading_core::log::error!(
-                        "[telegraph/{}] fetch failed: {:#}",
-                        category,
-                        e
-                    );
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -690,19 +188,206 @@ pub async fn get_telegraph(
 }
 
 /// GET /api/dapan-abnormal
-pub async fn get_dapan_abnormal(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
+pub async fn get_dapan_abnormal_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    get_or_fetch_json_tauri(
         &state.cache,
         "dapan_abnormal",
-        CachePolicy::snapshot(),
+        CachePolicy::realtime(),
+        || async {
+            let data = state
+                .ctx
+                .api
+                .xuangubao
+                .fetch_dapan_abnormal()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/timeline
+pub async fn get_timeline_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    if std::env::var("JIUYAN_PHONE").is_err() {
+        return Ok(serde_json::json!([]));
+    }
+    let month = openatrading_core::utils::time::beijing_now()
+        .format("%Y-%m")
+        .to_string();
+    let data = state
+        .ctx
+        .api
+        .jiuyan
+        .fetch_timeline(&month)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(data).unwrap_or_default())
+}
+
+/// GET /api/telegraph
+pub async fn get_telegraph_all_data(
+    state: &Arc<AppState>,
+    last_time: Option<i64>,
+    count: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let count = count.unwrap_or(20);
+
+    if let Some(lt) = last_time {
+        // Pagination mode: bypass cache, call roll API
+        let data = state
+            .ctx
+            .api
+            .cls
+            .fetch_telegraph("cls", Some(lt), count)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(serde_json::to_value(data).unwrap_or_default());
+    }
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        "telegraph_all",
+        CachePolicy::telegraph(),
+        || async {
+            let data = state
+                .ctx
+                .api
+                .cls
+                .fetch_telegraph("", None, count)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/ai/roles
+pub async fn get_ai_roles_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    let roles = state.roles.read().await;
+    let result: Vec<serde_json::Value> = roles
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "name": r.name,
+                "display_name": r.display_name,
+                "readonly": r.readonly,
+            })
+        })
+        .collect();
+    Ok(serde_json::to_value(result).unwrap_or_default())
+}
+
+/// GET /api/ai/commands
+pub async fn get_ai_commands_data() -> Result<serde_json::Value, String> {
+    let commands = crate::chat::get_ai_commands_inner().await;
+    Ok(serde_json::to_value(commands).unwrap_or_default())
+}
+
+/// GET /api/ai/sessions
+pub async fn list_sessions_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    let sessions = crate::chat::list_sessions_inner(state).await;
+    Ok(serde_json::to_value(sessions).unwrap_or_default())
+}
+
+/// GET /api/sentiment-history
+pub async fn get_sentiment_history_data(
+    state: &Arc<AppState>,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        "sentiment_history",
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let trading_days = XuanguBaoClient::last_n_trading_days(10);
+            let mut days: Vec<serde_json::Value> = Vec::with_capacity(trading_days.len());
+            for date in &trading_days {
+                match client.fetch_market_overview_for_date(date).await {
+                    Ok(Some(d)) => {
+                        let rise_ratio = f64::from(d.rise_count) / f64::from(d.fall_count.max(1));
+                        days.push(serde_json::json!({
+                            "date": d.date,
+                            "sentiment": (d.market_temperature * 10.0).round() / 10.0,
+                            "limit_up_count": d.limit_up_count,
+                            "bomb_rate": (d.bomb_rate * 100.0).round() / 100.0,
+                            "rise_ratio": (rise_ratio * 100.0).round() / 100.0,
+                        }));
+                    }
+                    Ok(None) => {
+                        openatrading_core::log::error!("sentiment_history: no data for {date}");
+                    }
+                    Err(e) => {
+                        openatrading_core::log::error!("sentiment_history error for {date}: {e}");
+                    }
+                }
+            }
+            days.reverse();
+            Ok(days)
+        },
+    )
+    .await
+}
+
+/// GET /api/plate-abnormal
+pub async fn get_plate_abnormal_data(
+    state: &Arc<AppState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    let date = date.unwrap_or_else(|| {
+        openatrading_core::api::utils::last_n_trading_days(1)
+            .first()
+            .cloned()
+            .unwrap_or_default()
+    });
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &format!("plate_abnormal_{date}"),
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client
+                .fetch_plate_abnormal_str(&date)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/field-items
+pub async fn get_field_items_data(
+    state: &Arc<AppState>,
+    date: Option<String>,
+    field_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::Client as ApiClient;
+
+    let date = date.unwrap_or_else(|| {
+        openatrading_core::utils::time::beijing_now()
+            .format("%Y-%m-%d")
+            .to_string()
+    });
+    let _field_type = field_type.unwrap_or_else(|| "涨停板".to_string());
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &format!("field_items_{date}"),
+        CachePolicy::realtime(),
         || async {
             let client = ApiClient::new();
-            let data = client.xuangubao.fetch_dapan_abnormal().await.map_err(|e| {
-                openatrading_core::log::error!("dapan_abnormal error: {:#}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
+            let data = client
+                .jiuyan
+                .fetch_field(&date, 1)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
@@ -710,564 +395,313 @@ pub async fn get_dapan_abnormal(
 }
 
 /// GET /api/market-trend/:symbol
-pub async fn get_market_trend(
-    State(state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("market_trend_{}", symbol);
-    cache::get_or_fetch_json(
+pub async fn get_market_trend_data(
+    state: &Arc<AppState>,
+    symbol: &str,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
-        &cache_key,
+        &format!("market_trend_{symbol}"),
         CachePolicy::realtime(),
         || async {
-            let client = ApiClient::new();
+            let client = XuanguBaoClient::new();
             let data = client
-                .xuangubao
-                .fetch_market_trend(&symbol)
+                .fetch_market_trend(symbol)
                 .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("market_trend error: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
+                .map_err(|e| e.to_string())?;
             Ok(data)
         },
     )
     .await
 }
 
-pub async fn get_plates_by_any_stock(
-    State(state): State<Arc<AppState>>,
-    Path(symbol): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cache_key = format!("plates_{}", symbol);
-    cache::get_or_fetch_json(
+/// GET /api/plates-by-any-stock/:symbol
+pub async fn get_plates_by_any_stock_data(
+    state: &Arc<AppState>,
+    symbol: &str,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    get_or_fetch_json_tauri(
         &state.cache,
-        &cache_key,
-        CachePolicy::snapshot(),
+        &format!("plates_by_any_stock_{symbol}"),
+        CachePolicy::realtime(),
         || async {
-            let plates = state
-                .ctx
-                .api
-                .xuangubao
-                .plates_by_any_stock(&symbol)
+            let client = XuanguBaoClient::new();
+            let data = client
+                .plates_by_any_stock(symbol)
                 .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("get_plates_by_any_stock: error: {}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(plates)
+                .map_err(|e| e.to_string())?;
+            Ok(data)
         },
     )
     .await
 }
 
+// ── Kline ─────────────────────────────────────────────────────────────────
+
+/// GET /api/kline/:symbol
+pub async fn get_kline_data(
+    state: &Arc<AppState>,
+    symbol: &str,
+    period: &str,
+    count: u32,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+
+    let kline_period = match period {
+        "week" => KlinePeriod::Week,
+        "month" => KlinePeriod::Month,
+        "minute" => KlinePeriod::Minute,
+        _ => KlinePeriod::Day,
+    };
+    let cache_key = format!("kline_{symbol}_{period}_{count}");
+    get_or_fetch_json_tauri(&state.cache, &cache_key, CachePolicy::daily(), || async {
+        let client = XuanguBaoClient::new();
+        let data = client
+            .fetch_kline(symbol, kline_period, count)
+            .await
+            .map_err(|e| format!("kline error: {e}"))?;
+        Ok(data)
+    })
+    .await
+}
+
+/// GET /api/realtime/:symbol
+pub async fn get_realtime_data(
+    state: &Arc<AppState>,
+    symbol: &str,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+
+    let cache_key = format!("realtime_{symbol}");
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &cache_key,
+        CachePolicy::realtime(),
+        || async {
+            let client = XuanguBaoClient::new();
+            let data = client
+                .fetch_realtime(symbol)
+                .await
+                .map_err(|e| format!("realtime error: {e}"))?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/telegraph/:category
+pub async fn get_telegraph_data(
+    state: &Arc<AppState>,
+    category: &str,
+) -> Result<serde_json::Value, String> {
+    let cache_key = format!("telegraph_{category}");
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &cache_key,
+        CachePolicy::telegraph(),
+        || async {
+            let data = state
+                .ctx
+                .api
+                .cls
+                .fetch_telegraph(category, None, 20)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(data)
+        },
+    )
+    .await
+}
+
+// ── Roles ─────────────────────────────────────────────────────────────────
+
 /// GET /api/roles
-pub async fn get_roles(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let roles = state.roles.read().await;
-    Ok(Json(roles.clone()))
+pub async fn get_roles_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
+    let roles_guard = state.roles.read().await;
+    Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
 }
 
 /// GET /api/roles/:name/positions
-pub async fn get_role_positions(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let positions = state.ctx.trade.list_positions(&name).map_err(|e| {
-        openatrading_core::log::error!("get_role_positions error: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+pub async fn get_role_positions_data(
+    state: &Arc<AppState>,
+    name: &str,
+) -> Result<serde_json::Value, String> {
+    let positions = state
+        .ctx
+        .trade
+        .list_positions(name)
+        .map_err(|e| e.to_string())?;
     let result: Vec<serde_json::Value> = positions
         .iter()
         .map(|p| {
             serde_json::json!({
-                "id": p.id,
-                "symbol": p.symbol,
-                "stock_name": p.stock_name,
-                "cost_price": p.cost_price,
-                "current_price": p.current_price.unwrap_or(0.0),
-                "shares": p.shares,
-                "entry_reason": p.entry_reason,
-                "entry_date": p.entry_date,
+                "id": p.id, "symbol": p.symbol, "stock_name": p.stock_name,
+                "cost_price": p.cost_price, "current_price": p.current_price.unwrap_or(0.0),
+                "shares": p.shares, "entry_reason": p.entry_reason, "entry_date": p.entry_date,
             })
         })
         .collect();
-    Ok(Json(result))
+    Ok(serde_json::json!(result))
 }
 
 /// GET /api/roles/:name/logs
-pub async fn get_role_logs(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
+pub async fn get_role_logs_data(
+    state: &Arc<AppState>,
+    name: &str,
+) -> Result<serde_json::Value, String> {
     let logs = state
         .ctx
         .trade
-        .get_trade_logs_by_role(&name, 20)
-        .map_err(|e| {
-            openatrading_core::log::error!("get_role_logs error: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .get_trade_logs_by_role(name, 20)
+        .map_err(|e| e.to_string())?;
     let result: Vec<serde_json::Value> = logs
         .iter()
         .map(|l| {
             let date: String = l.created_at.chars().take(10).collect();
             serde_json::json!({
-                "date": date,
-                "action": l.action,
-                "symbol": l.symbol,
-                "price": l.price,
-                "shares": l.shares,
-                "reason": l.reason,
+                "date": date, "action": l.action, "symbol": l.symbol,
+                "price": l.price, "shares": l.shares, "reason": l.reason,
             })
         })
         .collect();
-    Ok(Json(result))
+    Ok(serde_json::json!(result))
 }
 
-// ── Role CRUD handlers ─────────────────────────────────
-
-/// POST /api/roles — create a new role
-pub async fn create_role(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<CreateRoleRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
-    openatrading_core::roles::save_role_strategy(&body.name, &body.strategy).map_err(|e| {
-        openatrading_core::log::error!("create_role error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    {
-        let mut roles = state.roles.write().await;
-        if let Some(existing) = roles.iter_mut().find(|r| r.name == body.name) {
-            existing.display_name = body.display_name.clone();
-            existing.strategy = body.strategy.clone();
-        } else {
-            roles.push(RoleEntry {
-                name: body.name.clone(),
-                display_name: body.display_name.clone(),
-                strategy: body.strategy.clone(),
-                readonly: false,
-            });
-        }
-    }
-    Ok(Json(serde_json::json!({"ok": true})))
-}
-
-/// PUT /api/roles/:name/strategy — update role strategy
-pub async fn update_role_strategy(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-    Json(body): Json<UpdateStrategyRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
-    // Reject edits on config-toml readonly roles
-    {
-        let roles = state.roles.read().await;
-        if let Some(role) = roles.iter().find(|r| r.name == name) {
-            if role.readonly {
-                return Err(StatusCode::FORBIDDEN);
-            }
-        }
-    }
-    openatrading_core::roles::save_role_strategy(&name, &body.strategy).map_err(|e| {
-        openatrading_core::log::error!("update_role_strategy error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    {
-        let mut roles = state.roles.write().await;
-        if let Some(entry) = roles.iter_mut().find(|r| r.name == name) {
-            entry.strategy = body.strategy.clone();
-        }
-    }
-    Ok(Json(serde_json::json!({"ok": true})))
-}
-
-/// DELETE /api/roles/:name — delete role and all its data
-pub async fn delete_role(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    // Reject deletion of config-toml readonly roles
-    {
-        let roles = state.roles.read().await;
-        if let Some(role) = roles.iter().find(|r| r.name == name) {
-            if role.readonly {
-                return Err(StatusCode::FORBIDDEN);
-            }
-        }
-    }
-    state.ctx.trade.delete_positions_by_role(&name).ok();
-    state.ctx.trade.delete_trade_logs_by_role(&name).ok();
-    openatrading_core::roles::delete_role_dir(&name).ok();
-    {
-        let mut roles = state.roles.write().await;
-        roles.retain(|r| r.name != name);
-    }
-    Ok(Json(serde_json::json!({"ok": true})))
-}
-
-/// POST /api/roles/:name/reset — reset account to 1,000,000
-pub async fn reset_role(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    state
-        .ctx
-        .trade
-        .delete_trade_logs_by_role(&name)
-        .map_err(|e| {
-            openatrading_core::log::error!("reset_role error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    state
-        .ctx
-        .trade
-        .delete_positions_by_role(&name)
-        .map_err(|e| {
-            openatrading_core::log::error!("reset_role error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(serde_json::json!({"ok": true})))
-}
-
-/// GET /api/roles/:name/pnl-history?days=30 — P&L curve data
-pub async fn get_role_pnl_history(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let days: usize = params
-        .get("days")
-        .and_then(|d| d.parse().ok())
-        .unwrap_or(30);
+/// GET /api/roles/:name/pnl-history
+pub async fn get_role_pnl_history_data(
+    state: &Arc<AppState>,
+    name: &str,
+    days: usize,
+) -> Result<serde_json::Value, String> {
     let all_logs = state
         .ctx
         .trade
-        .get_all_trade_logs_by_role(&name)
-        .map_err(|e| {
-            openatrading_core::log::error!("get_role_pnl_history error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Calculate current positions value
-    let positions = state.ctx.trade.list_positions(&name).unwrap_or_default();
+        .get_all_trade_logs_by_role(name)
+        .map_err(|e| e.to_string())?;
+    let positions = state.ctx.trade.list_positions(name).unwrap_or_default();
     let current_value: f64 = positions
         .iter()
         .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
         .sum();
-
-    let mut points = compute_pnl_history(&all_logs, current_value);
-    // days=0 means return all points
+    let mut points = openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
     if days > 0 {
         let cutoff = points.len().saturating_sub(days);
         points = points.into_iter().skip(cutoff).collect();
     }
-
-    Ok(Json(PnlHistoryResponse {
-        points,
-        initial_capital: 1_000_000.0,
-    }))
+    Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
 }
 
-/// GET /api/roles/:name/history — closed positions history
-pub async fn get_role_history(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let limit: usize = params
-        .get("limit")
-        .and_then(|d| d.parse().ok())
-        .unwrap_or(100);
+/// GET /api/roles/:name/history
+pub async fn get_role_history_data(
+    state: &Arc<AppState>,
+    name: &str,
+    limit: usize,
+) -> Result<serde_json::Value, String> {
     let positions = state
         .ctx
         .trade
-        .get_closed_positions(&name, limit)
-        .map_err(|e| {
-            openatrading_core::log::error!("get_role_history error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(positions))
+        .get_closed_positions(name, limit)
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(positions).unwrap_or_default())
 }
 
-// ── Replay handlers ────────────────────────────────────
+// ── Replay ────────────────────────────────────────────────────────────────
 
-/// GET /api/replay/events — fetch all events for latest trading day
-pub async fn get_replay_events(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let min_pcp: f64 = params
-        .get("min_pcp")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.03);
-    cache::get_or_fetch_json(
-        &state.cache,
-        "replay_events",
-        CachePolicy::replay(),
-        || async move {
-            let client = XuanguBaoClient::new();
-            let all_events = client.fetch_all_day_events(min_pcp).await.map_err(|e| {
-                openatrading_core::log::error!("[replay] events error: {:#}", e);
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            let events: Vec<openatrading_core::api::xuangubao::ReplayEvent> = all_events
-                .iter()
-                .map(openatrading_core::api::xuangubao::ReplayEvent::from)
-                .collect();
-            let date = XuanguBaoClient::last_n_trading_days(1)
-                .first()
-                .cloned()
-                .unwrap_or_default();
-            let page = openatrading_core::api::xuangubao::ReplayPage {
-                date,
-                market_phase: String::new(),
-                events,
-                next_cursor: None,
-            };
-            Ok(page)
-        },
-    )
-    .await
-}
-
-/// GET /api/replay/index — three-index trend data
-pub async fn get_replay_index(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
-        &state.cache,
-        "replay_index",
-        CachePolicy::replay(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let data = openatrading_core::api::xuangubao::fetch_index_trends(&client)
-                .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("[replay] index trend error: {e}");
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
-/// GET /api/replay/news — cursor-paginated 7×24 news
-/// ?tailmark=N&msgIdMark=S → older page; no params → latest page
-#[derive(serde::Deserialize)]
-pub struct ReplayNewsQuery {
-    tailmark: Option<i64>,
-    #[serde(rename = "msgIdMark")]
-    msg_id_mark: Option<String>,
-}
-
-pub async fn get_replay_news(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<ReplayNewsQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let has_pagination = q.tailmark.is_some() || q.msg_id_mark.is_some();
-
-    if !has_pagination {
-        let cached = cache::get_or_fetch(
-            &state.cache,
-            "replay_news",
-            CachePolicy::replay(),
-            || async {
-                let client = XuanguBaoClient::new();
-                let (items, next_tail, next_msg) =
-                    client.fetch_news_stream(None, None).await.map_err(|e| {
-                        openatrading_core::log::error!("[replay] news error: {e}");
-                        StatusCode::SERVICE_UNAVAILABLE
-                    })?;
-                let resp = serde_json::json!({
-                    "items": items,
-                    "tailmark": next_tail,
-                    "msgIdMark": next_msg,
-                });
-                Ok(resp.to_string())
-            },
-        )
-        .await?;
-        return Ok(Json(
-            serde_json::from_str::<serde_json::Value>(&cached).unwrap_or_default(),
-        ));
-    }
-
+/// GET /api/replay/snapshots
+pub async fn get_replay_snapshots_data() -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
     let client = XuanguBaoClient::new();
-    let (items, next_tail, next_msg) = client
-        .fetch_news_stream(q.tailmark, q.msg_id_mark.as_deref())
+    let events = client
+        .fetch_all_day_events(0.03)
         .await
-        .map_err(|e| {
-            openatrading_core::log::error!("[replay] news error: {e}");
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-    Ok(Json(serde_json::json!({
-        "items": items,
-        "tailmark": next_tail,
-        "msgIdMark": next_msg,
-    })))
+        .map_err(|e| e.to_string())?;
+    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
+    Ok(serde_json::to_value(snapshots).unwrap_or_default())
 }
 
-/// GET /api/replay/snapshots — 5-min bucketed emotion snapshots
-pub async fn get_replay_snapshots(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    cache::get_or_fetch_json(
-        &state.cache,
-        "replay_snapshots",
-        CachePolicy::replay(),
-        || async {
-            let client = XuanguBaoClient::new();
-            let events = client.fetch_all_day_events(0.03).await.map_err(|e| {
-                openatrading_core::log::error!("[replay] snapshots fetch error: {e}");
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-            let snaps = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-            Ok(snaps)
-        },
-    )
-    .await
+/// GET /api/replay/index
+pub async fn get_replay_index_data() -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::{fetch_index_trends, XuanguBaoClient};
+    let client = XuanguBaoClient::new();
+    let data = fetch_index_trends(&client)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(data).unwrap_or_default())
 }
 
-/// POST /api/replay/analyze — fetch data upfront, build into prompt, single SSE request.
-pub async fn ai_replay_analyze(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    openatrading_core::log::info!("[replay] POST /api/replay/analyze start");
-    let llm = state.ctx.llm.clone();
-
+/// GET /api/replay/events
+pub async fn get_replay_events_data(min_pcp: f64) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::{ReplayEvent, XuanguBaoClient};
+    let client = XuanguBaoClient::new();
+    let all_events = client
+        .fetch_all_day_events(min_pcp)
+        .await
+        .map_err(|e| e.to_string())?;
+    let events: Vec<ReplayEvent> = all_events.iter().map(ReplayEvent::from).collect();
     let date = XuanguBaoClient::last_n_trading_days(1)
         .first()
         .cloned()
         .unwrap_or_default();
-
-    // Fetch snapshot data upfront
-    let client = XuanguBaoClient::new();
-    let events = client.fetch_all_day_events(0.03).await.map_err(|e| {
-        openatrading_core::log::error!("[replay] analyze fetch error: {e}");
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-    let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
-
-    // Build a compact data table for the prompt
-    let mut data_table = String::from("时间    情绪 多  空  主线板块(前3)\n");
-    for s in snapshots.iter().step_by(2) {
-        let tops: Vec<String> = s
-            .top_plates
-            .iter()
-            .take(3)
-            .map(|p| format!("{}({:.1}%)", p.plate_name, p.pcp * 100.0))
-            .collect();
-        data_table.push_str(&format!(
-            "{}  {:.0}   {:>3} {:>3}  {}\n",
-            s.time_label,
-            s.emotion_score,
-            s.bull_count,
-            s.bear_count,
-            tops.join(" ")
-        ));
-    }
-
-    let system_prompt =
-        openatrading_core::prompts::build_replay_analysis_prompt(&date, &data_table);
-
-    let messages = serde_json::json!([
-        {"role": "user", "content": system_prompt}
-    ]);
-
-    let mut llm_stream = llm
-        .chat_stream_with_messages(&serde_json::to_string(&messages).unwrap_or_default())
-        .await
-        .map_err(|e| {
-            openatrading_core::log::error!("[replay] analyze llm error: {e}");
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
-
-    use futures::StreamExt;
-    let stream = async_stream::stream! {
-        let mut chunk_count = 0u32;
-        while let Some(chunk) = llm_stream.next().await {
-            match chunk {
-                Ok(text) => {
-                    if !text.is_empty() {
-                        chunk_count += 1;
-                        yield Ok::<_, std::convert::Infallible>(
-                            axum::response::sse::Event::default().data(text)
-                        );
-                    }
-                }
-                Err(e) => {
-                    yield Ok(axum::response::sse::Event::default().data(format!("[ERROR] {e}")));
-                    openatrading_core::log::error!("[replay] analyze stream error after {chunk_count} chunks: {e}");
-                    break;
-                }
-            }
-        }
-        openatrading_core::log::error!("[replay] analyze stream done: {chunk_count} chunks sent");
-        yield Ok(axum::response::sse::Event::default().data("[DONE]"));
+    let page = openatrading_core::api::xuangubao::ReplayPage {
+        date,
+        market_phase: String::new(),
+        events,
+        next_cursor: None,
     };
-
-    Ok(axum::response::Sse::new(stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(std::time::Duration::from_secs(15))
-            .text("keepalive"),
-    ))
+    Ok(serde_json::to_value(page).unwrap_or_default())
 }
 
-/// GET /api/dragon-tiger/detail?page=1&page_size=20
-#[derive(Deserialize)]
-pub struct DragonTigerDetailQuery {
-    #[serde(default = "default_page")]
-    pub page: usize,
-    #[serde(default = "default_page_size")]
-    pub page_size: usize,
+/// GET /api/replay/news
+pub async fn get_replay_news_data(
+    tailmark: Option<i64>,
+    msg_id_mark: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::xuangubao::XuanguBaoClient;
+    let client = XuanguBaoClient::new();
+    let (items, next_tail, next_msg) = client
+        .fetch_news_stream(tailmark, msg_id_mark.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "items": items,
+        "tailmark": next_tail,
+        "msgIdMark": next_msg,
+    }))
 }
 
-fn default_page() -> usize {
-    1
-}
-fn default_page_size() -> usize {
-    20
-}
+// ── Dragon Tiger ─────────────────────────────────────────────────────────
 
-pub async fn get_dragon_tiger_detail(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<DragonTigerDetailQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
-        &state.cache,
-        "dragon_tiger_detail",
-        CachePolicy::daily(),
-        || async {
-            let dates = last_n_trading_days(3);
-            let data = state
-                .ctx
-                .api
-                .eastmoney
-                .lhb_detail(
-                    dates.last().unwrap().as_str(),
-                    dates.first().unwrap().as_str(),
-                )
-                .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("[dragon-tiger] detail fetch error: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
-        },
-    )
-    .await?;
-    let all: Vec<LhbDetail> = serde_json::from_str(&cached).unwrap_or_default();
+/// GET /api/dragon-tiger/detail
+pub async fn get_dragon_tiger_detail_data(
+    state: &Arc<AppState>,
+    page: usize,
+    page_size: usize,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::utils::last_n_trading_days;
+    use std::collections::HashMap;
 
-    // Merge same-stock entries with multiple billboard reasons
-    let mut merged: std::collections::HashMap<(String, String), LhbDetail> =
-        std::collections::HashMap::new();
-    for item in all {
+    let dates = last_n_trading_days(3);
+    let raw = state
+        .ctx
+        .api
+        .eastmoney
+        .lhb_detail(
+            dates.last().map(|s| s.as_str()).unwrap_or(""),
+            dates.first().map(|s| s.as_str()).unwrap_or(""),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut merged: HashMap<(String, String), openatrading_core::api::eastmoney::LhbDetail> =
+        HashMap::new();
+    for item in raw {
         let key = (item.code.clone(), item.trade_date.clone());
         match merged.get_mut(&key) {
             Some(existing) => {
-                // Sum monetary fields
                 existing.billboard_net_amt = existing
                     .billboard_net_amt
                     .zip(item.billboard_net_amt)
@@ -1284,7 +718,6 @@ pub async fn get_dragon_tiger_detail(
                     .billboard_deal_amt
                     .zip(item.billboard_deal_amt)
                     .map(|(a, b)| a + b);
-                // Append explanation
                 if let Some(ref exp) = item.explanation {
                     if !exp.is_empty() {
                         let prefix = existing.explanation.as_deref().unwrap_or("");
@@ -1292,14 +725,13 @@ pub async fn get_dragon_tiger_detail(
                         existing.explanation = Some(format!("{prefix}{sep}{exp}"));
                     }
                 }
-            },
+            }
             None => {
                 merged.insert(key, item);
-            },
+            }
         }
     }
-    let merged_all: Vec<LhbDetail> = merged.into_values().collect();
-
+    let merged_all: Vec<_> = merged.into_values().collect();
     let total = merged_all.len();
     let total_net_amt: f64 = merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
     let net_buy_count = merged_all
@@ -1310,95 +742,57 @@ pub async fn get_dragon_tiger_detail(
         .iter()
         .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
         .count();
-    let start = (query.page.saturating_sub(1)) * query.page_size;
-    let data: Vec<LhbDetail> = merged_all
-        .into_iter()
-        .skip(start)
-        .take(query.page_size)
-        .collect();
-    Ok(Json(serde_json::json!({
-        "data": data,
-        "total": total,
-        "page": query.page,
-        "page_size": query.page_size,
-        "total_net_amt": total_net_amt,
-        "net_buy_count": net_buy_count,
-        "net_sell_count": net_sell_count,
-    })))
+    let start = page.saturating_sub(1) * page_size;
+    let data: Vec<_> = merged_all.into_iter().skip(start).take(page_size).collect();
+    Ok(serde_json::json!({
+        "data": data, "total": total, "page": page, "page_size": page_size,
+        "total_net_amt": total_net_amt, "net_buy_count": net_buy_count, "net_sell_count": net_sell_count,
+    }))
 }
 
-/// GET /api/dragon-tiger/stock-seat?code=000001&date=20240101&flag=buy
-#[derive(Deserialize)]
-pub struct StockSeatQuery {
-    pub code: String,
-    pub date: String,
-    pub flag: String,
-}
-
-pub async fn get_dragon_tiger_stock_seat(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<StockSeatQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let flag = match query.flag.as_str() {
+/// GET /api/dragon-tiger/stock-seat
+pub async fn get_dragon_tiger_stock_seat_data(
+    state: &Arc<AppState>,
+    code: &str,
+    date: &str,
+    flag: &str,
+) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::eastmoney::SeatFlag;
+    let seat_flag = match flag {
         "buy" => SeatFlag::Buy,
         "sell" => SeatFlag::Sell,
-        _ => return Err(StatusCode::BAD_REQUEST),
+        _ => return Err("flag must be 'buy' or 'sell'".to_string()),
     };
-    let data = state
+    let seats = state
         .ctx
         .api
         .eastmoney
-        .lhb_stock_seat(&query.code, &query.date, flag)
+        .lhb_stock_seat(code, date, seat_flag)
         .await
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    Ok(Json(data))
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(seats).unwrap_or_default())
 }
 
-/// GET /api/search-stocks?q=keyword — search stocks by name or code
-pub async fn search_stocks(
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> impl IntoResponse {
-    let q = params
-        .get("q")
-        .map(|s| s.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
+// ── Search ────────────────────────────────────────────────────────────────
+
+/// GET /api/search-stocks?q=keyword
+pub async fn search_stocks_data(q: &str) -> Result<serde_json::Value, String> {
+    use openatrading_core::api::eastmoney::LhbClient;
     if q.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "missing q"})),
-        )
-            .into_response();
+        return Err("missing q".to_string());
     }
     let client = LhbClient::new();
-    match client.search_stocks(&q).await {
-        Ok(items) => (StatusCode::OK, Json(items)).into_response(),
-        Err(e) => {
-            openatrading_core::log::error!("search_stocks: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "search failed"})),
-            )
-                .into_response()
-        },
-    }
+    let items = client.search_stocks(q).await.map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(items).unwrap_or_default())
 }
 
-// ── Watchlist ─────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WatchlistItem {
-    pub code: String,
-    pub name: String,
-    pub added_at: String,
-}
+// ── Watchlist ────────────────────────────────────────────────────────────
 
 fn watchlist_path() -> std::path::PathBuf {
     openatrading_core::atrading_home().join("watchlist.json")
 }
 
-fn load_watchlist() -> Vec<WatchlistItem> {
+fn load_watchlist() -> Vec<serde_json::Value> {
     let path = watchlist_path();
     if !path.exists() {
         return Vec::new();
@@ -1409,7 +803,7 @@ fn load_watchlist() -> Vec<WatchlistItem> {
         .unwrap_or_default()
 }
 
-fn save_watchlist(items: &[WatchlistItem]) -> Result<(), String> {
+fn save_watchlist(items: &[serde_json::Value]) -> Result<(), String> {
     let path = watchlist_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -1422,86 +816,283 @@ fn save_watchlist(items: &[WatchlistItem]) -> Result<(), String> {
 }
 
 /// GET /api/watchlist
-pub async fn get_watchlist() -> impl IntoResponse {
+pub async fn get_watchlist_data() -> Result<serde_json::Value, String> {
     let items = load_watchlist();
-    (StatusCode::OK, Json(items)).into_response()
+    Ok(serde_json::to_value(items).unwrap_or_default())
 }
 
 /// POST /api/watchlist
-pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let code = match body.get("code").and_then(|v| v.as_str()) {
-        Some(c) => c.to_string(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "missing code"})),
-            )
-                .into_response()
-        },
-    };
-    let name = match body.get("name").and_then(|v| v.as_str()) {
-        Some(n) => n.to_string(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "missing name"})),
-            )
-                .into_response()
-        },
-    };
-
+pub async fn add_watchlist_data(code: &str, name: &str) -> Result<serde_json::Value, String> {
     let mut items = load_watchlist();
-    // 去重
-    if items.iter().any(|i| i.code == code) {
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": "already exists"})),
-        )
-            .into_response();
+    if items
+        .iter()
+        .any(|i| i.get("code").and_then(|v| v.as_str()) == Some(code))
+    {
+        return Err("already exists".to_string());
     }
-
     let now = chrono::Utc::now().to_rfc3339();
-    items.push(WatchlistItem {
-        code,
-        name,
-        added_at: now,
-    });
-
-    match save_watchlist(&items) {
-        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!(items))).into_response(),
-        Err(e) => {
-            openatrading_core::log::error!("save_watchlist: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "save failed"})),
-            )
-                .into_response()
-        },
-    }
+    items.push(serde_json::json!({
+        "code": code,
+        "name": name,
+        "added_at": now,
+    }));
+    save_watchlist(&items)?;
+    Ok(serde_json::to_value(items).unwrap_or_default())
 }
 
 /// DELETE /api/watchlist/:code
-pub async fn delete_watchlist(Path(code): Path<String>) -> impl IntoResponse {
+pub async fn delete_watchlist_data(code: &str) -> Result<serde_json::Value, String> {
     let mut items = load_watchlist();
     let before = items.len();
-    items.retain(|i| i.code != code);
+    items.retain(|i| i.get("code").and_then(|v| v.as_str()) != Some(code));
     if items.len() == before {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "not found"})),
-        )
-            .into_response();
+        return Err(format!("not found: {code}"));
+    }
+    save_watchlist(&items)?;
+    Ok(serde_json::to_value(items).unwrap_or_default())
+}
+
+// ── Role CRUD ────────────────────────────────────────────────────────────
+
+/// POST /api/roles — create a new role
+pub async fn create_role_data(
+    state: &Arc<AppState>,
+    name: &str,
+    display_name: &str,
+) -> Result<serde_json::Value, String> {
+    openatrading_core::roles::save_role(name, display_name).map_err(|e| e.to_string())?;
+    {
+        let mut roles = state.roles.write().await;
+        if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
+            existing.display_name = display_name.to_string();
+        } else {
+            roles.push(crate::RoleEntry {
+                name: name.to_string(),
+                display_name: display_name.to_string(),
+                readonly: false,
+            });
+        }
+    }
+    Ok(serde_json::json!({"ok": true}))
+}
+
+/// DELETE /api/roles/:name — delete role and all its data
+pub async fn delete_role_data(
+    state: &Arc<AppState>,
+    name: &str,
+) -> Result<serde_json::Value, String> {
+    // Reject deletion of config-toml readonly roles
+    {
+        let roles = state.roles.read().await;
+        if let Some(role) = roles.iter().find(|r| r.name == name) {
+            if role.readonly {
+                return Err("readonly role".to_string());
+            }
+        }
+    }
+    state.ctx.trade.delete_positions_by_role(name).ok();
+    state.ctx.trade.delete_trade_logs_by_role(name).ok();
+    openatrading_core::roles::delete_role(name).ok();
+    {
+        let mut roles = state.roles.write().await;
+        roles.retain(|r| r.name != name);
+    }
+    Ok(serde_json::json!({"ok": true}))
+}
+
+/// POST /api/roles/:name/reset — reset account to 1,000,000
+pub async fn reset_role_data(
+    state: &Arc<AppState>,
+    name: &str,
+) -> Result<serde_json::Value, String> {
+    state
+        .ctx
+        .trade
+        .delete_trade_logs_by_role(name)
+        .map_err(|e| e.to_string())?;
+    state
+        .ctx
+        .trade
+        .delete_positions_by_role(name)
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({"ok": true}))
+}
+
+// ── Session CRUD ─────────────────────────────────────────────────────────
+
+/// GET /api/ai/sessions/:id/messages — read messages from a session.
+///
+/// Thin Tauri-side wrapper that delegates to the shared history reader
+/// (`chat::read_messages_from_disk` + `chat::messages_to_session_messages`),
+/// so the web and Tauri paths produce identical history shapes and neither
+/// materializes an `AgentSessionRuntime` in the LRU pool just to read past
+/// messages. Tool results are joined onto their `ToolUse` block here too.
+pub async fn get_session_messages_data(
+    _state: &Arc<AppState>,
+    id: &str,
+) -> Result<serde_json::Value, String> {
+    use crate::chat;
+    use openatrading_core::log;
+
+    // File parsing is synchronous; offload it so we don't stall the executor.
+    let id = id.to_string();
+    let messages =
+        match tokio::task::spawn_blocking(move || chat::read_messages_from_disk(&id)).await {
+            Ok(m) => m,
+            Err(join_err) => {
+                log::error!("get_session_messages_data: read task failed: {join_err}");
+                Vec::new()
+            }
+        };
+    let session_messages = chat::messages_to_session_messages(&messages);
+    Ok(serde_json::to_value(session_messages).unwrap_or_default())
+}
+
+/// POST /api/ai/sessions — create a new session
+pub async fn create_session_data(
+    state: &Arc<AppState>,
+    _name: Option<&str>,
+    session_id: Option<&str>,
+    _message: &str,
+) -> Result<serde_json::Value, String> {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let sid = state
+        .ctx
+        .pool
+        .create_session_with_id(&cwd, session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Get session metadata from the runtime
+    let runtime = state.ctx.pool.get_session(&sid).await;
+    let (session_file, session_name) = if let Some(rt) = runtime {
+        let rt = rt.lock().await;
+        let session = rt.session();
+        let mgr = session.get_session_manager();
+        let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
+        let sname = mgr.get_session_name();
+        drop(mgr);
+
+        // Force-write the session file to disk so list_sessions can find it
+        if let Some(ref path) = sfile {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let mut lines: Vec<String> = Vec::new();
+            if let Some(hdr) = session.get_session_manager().get_header() {
+                if let Ok(json) = serde_json::to_string(hdr) {
+                    lines.push(json);
+                }
+            }
+            for entry in session.get_session_manager().get_entries() {
+                if let Ok(json) = serde_json::to_string(entry) {
+                    lines.push(json);
+                }
+            }
+            if !lines.is_empty() {
+                let _ = std::fs::write(path, lines.join("\n") + "\n");
+            }
+        }
+        (sfile, sname)
+    } else {
+        (None, None)
+    };
+
+    Ok(serde_json::json!({
+        "success": true,
+        "id": sid,
+        "name": session_name,
+        "path": session_file.map(|p| p.to_string_lossy().to_string()),
+        "message_count": 0,
+    }))
+}
+
+/// DELETE /api/ai/sessions/:id — delete a saved session
+pub async fn delete_session_data(
+    state: &Arc<AppState>,
+    id: &str,
+) -> Result<serde_json::Value, String> {
+    // Remove the live facade from the shared pool so the agent stops.
+    state.ctx.pool.close_session(id).await;
+
+    let path = crate::chat::find_session_file(id).ok_or_else(|| "not found".to_string())?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({"ok": true}))
+    } else {
+        Err("not found".to_string())
+    }
+}
+
+/// PATCH /api/ai/sessions/:id — rename a session
+pub async fn rename_session_data(id: &str, new_name: &str) -> Result<serde_json::Value, String> {
+    let path = crate::chat::find_session_file(id).ok_or_else(|| "not found".to_string())?;
+    if !path.exists() {
+        return Err("not found".to_string());
     }
 
-    match save_watchlist(&items) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!(items))).into_response(),
-        Err(e) => {
-            openatrading_core::log::error!("save_watchlist: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "save failed"})),
-            )
-                .into_response()
-        },
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return Err("empty session file".to_string());
     }
+
+    let mut header: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(lines[0]).map_err(|e| e.to_string())?;
+    header.insert(
+        "name".to_string(),
+        serde_json::Value::String(new_name.to_string()),
+    );
+
+    let new_header = serde_json::to_string(&header).map_err(|e| e.to_string())?;
+    lines[0] = &new_header;
+
+    std::fs::write(&path, lines.join("\n")).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({"ok": true}))
+}
+
+/// GET /api/ai/sessions/:id/tool-results/:tool_call_id — fetch full tool result content
+pub async fn get_tool_result_data(
+    session_id: &str,
+    tool_call_id: &str,
+) -> Result<serde_json::Value, String> {
+    let path = crate::chat::find_session_file(session_id).ok_or_else(|| "not found".to_string())?;
+    let content = std::fs::read_to_string(&path).map_err(|_| "not found".to_string())?;
+
+    for line in content.lines().skip(1) {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            if let Some(msg) = entry.get("message") {
+                if msg.get("role").and_then(|v| v.as_str()) != Some("toolResult") {
+                    continue;
+                }
+                if msg.get("tool_call_id").and_then(|v| v.as_str()) != Some(tool_call_id) {
+                    continue;
+                }
+                let text: String = msg
+                    .get("content")
+                    .and_then(|v| v.as_array())
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default();
+                return Ok(serde_json::json!({
+                    "tool_call_id": tool_call_id,
+                    "content": text,
+                }));
+            }
+        }
+    }
+
+    Err("not found".to_string())
 }

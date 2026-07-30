@@ -21,6 +21,17 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
       }
       return invoke("api_post", { path, body }) as Promise<T>
     }
+    if (init?.method === "PATCH") {
+      let body: Record<string, unknown> = {}
+      if (init.body) {
+        try {
+          body = JSON.parse(String(init.body))
+        } catch {
+          /* use empty */
+        }
+      }
+      return invoke("api_patch", { path, body }) as Promise<T>
+    }
     return invoke("api_fetch", { path }) as Promise<T>
   }
   const base = getApiBaseUrl()
@@ -35,127 +46,6 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   return resp.json()
 }
 
-export interface ChatStreamCallbacks {
-  onText: (text: string) => void
-  onReasoning?: (text: string) => void
-  onToolCall?: (tool: { id: string; name: string; args: string }) => void
-  onDone: () => void
-  onError: (err: string) => void
-}
-
-export async function apiChatStream(
-  body: {
-    message: string
-    role: string
-    history: Array<{ role: string; content: string }>
-    command_name?: string
-    command_type?: string
-  },
-  callbacks: ChatStreamCallbacks
-): Promise<void> {
-  if (isTauri) {
-    const { invoke, Channel } = await import("@tauri-apps/api/core")
-    const channel = new Channel<string>()
-    let chunkCount = 0
-    channel.onmessage = (text) => {
-      chunkCount++
-      if (chunkCount <= 3 || chunkCount % 20 === 0) {
-        console.log(`[chat_stream] chunk #${chunkCount}:`, text.slice(0, 80))
-      }
-      // Parse \x00TEXT\x00 / \x00THINKING\x00 / \x00TOOL_CALL\x00 markers from Tauri path
-      if (text.startsWith("\x00THINKING\x00")) {
-        callbacks.onReasoning?.(text.slice(11).replace(/\\n/g, "\n"))
-      } else if (text.startsWith("\x00TEXT\x00")) {
-        callbacks.onText(text.slice(6).replace(/\\n/g, "\n"))
-      } else if (text.startsWith("\x00TOOL_CALL\x00")) {
-        try {
-          const tc = JSON.parse(text.slice(12))
-          callbacks.onToolCall?.({ id: tc.id, name: tc.name, args: tc.args })
-        } catch { /* ignore parse errors */ }
-      } else {
-        callbacks.onText(text)
-      }
-    }
-    console.log("[chat_stream] invoking api_chat_stream, body=", body)
-    try {
-      await invoke("api_chat_stream", { body, channel })
-      console.log(`[chat_stream] invoke resolved, total chunks=${chunkCount}`)
-      callbacks.onDone()
-    } catch (e: unknown) {
-      console.error("[chat_stream] invoke rejected:", e)
-      callbacks.onError(String(e))
-    }
-    return
-  }
-  const base = getApiBaseUrl()
-  const resp = await fetch(`${base}/api/ai/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  if (!resp.ok) {
-    callbacks.onError(`HTTP ${resp.status}`)
-    return
-  }
-  const reader = resp.body?.getReader()
-  if (!reader) {
-    callbacks.onError("无法读取响应流")
-    return
-  }
-  const decoder = new TextDecoder()
-  let buffer = ""
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() || ""
-
-    let currentEvent = ""
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim()
-      } else if (line.startsWith("data: ")) {
-        const data = line.slice(6)
-        if (data === "[DONE]") {
-          callbacks.onDone()
-          return
-        } else if (data.startsWith("[ERROR]")) {
-          // 非致命错误（如 finish_reason 缺失），内容已流出，只记录日志不中断对话
-          console.warn("[chat_stream]", data)
-        } else {
-          const decoded = data.replace(/\\n/g, "\n")
-          if (currentEvent === "thinking") {
-            callbacks.onReasoning?.(decoded)
-          } else if (currentEvent === "tool-call") {
-            try {
-              callbacks.onToolCall?.(JSON.parse(data))
-            } catch {
-              /* ignore parse errors */
-            }
-          } else if (
-            currentEvent === "tool-delta" ||
-            currentEvent === "tool-exec-start" ||
-            currentEvent === "tool-exec-end"
-          ) {
-            // tool call internals — not displayed
-          } else if (currentEvent === "tool-end") {
-            // ignore legacy tool-end event
-          } else {
-            callbacks.onText(decoded)
-          }
-        }
-      } else if (line.trim() === "") {
-        // SSE blank line resets event type
-        currentEvent = ""
-      }
-    }
-  }
-
-  // 防止 reader 正常结束但没收到 [DONE] 的情况
-  callbacks.onDone()
-}
 
 // ── Types ──────────────────────────────────────────────
 
@@ -220,7 +110,6 @@ export interface FieldPlate {
 export interface RoleEntry {
   name: string
   display_name: string
-  strategy: string
   readonly?: boolean
 }
 

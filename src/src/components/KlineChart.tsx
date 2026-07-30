@@ -599,10 +599,12 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     }
   }, [clearPriceLines])
 
-  // Expose crosshair ref + listener for KlineDrawer
-  ;(KlineChart as any).__crosshairRef = onCrosshairRef
-  ;(KlineChart as any).setCrosshairListener = setCrosshairListener
-  ;(KlineChart as any).chartRef = chartRef
+  // Expose crosshair ref + listener for KlineDrawer (in effect to avoid modifying during render)
+  useEffect(() => {
+    ;(KlineChart as any).__crosshairRef = onCrosshairRef
+    ;(KlineChart as any).setCrosshairListener = setCrosshairListener
+    ;(KlineChart as any).chartRef = chartRef
+  }, [onCrosshairRef, setCrosshairListener, chartRef])
 
   // Auto-restore external crosshair listener on mount (handles HMR remount)
   useEffect(() => {

@@ -3,7 +3,7 @@ use std::process::Command;
 
 const DL_SERVER: &str = "https://trading.example.com";
 
-fn asset_name() -> Option<&'static str> {
+const fn asset_name() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         return Some("openatrading-x86_64-unknown-linux-gnu");
@@ -18,9 +18,14 @@ fn asset_name() -> Option<&'static str> {
     }
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        return Some("openatrading-aarch64-apple-darwin");
+        Some("openatrading-aarch64-apple-darwin")
     }
-    #[allow(unreachable_code)]
+    #[cfg(not(any(
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "aarch64"),
+        all(target_os = "macos", target_arch = "x86_64"),
+        all(target_os = "macos", target_arch = "aarch64"),
+    )))]
     None
 }
 

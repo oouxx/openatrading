@@ -8,5 +8,5 @@
 /// log::error!("something broke: {e}");
 /// ```
 ///
-/// 后续如需切换日志后端（如 log crate + env_logger），只需改此一处。
+/// 后续如需切换日志后端（如 log crate + `env_logger），只需改此一处`。
 pub use tracing::{debug, error, info, trace, warn, Level};

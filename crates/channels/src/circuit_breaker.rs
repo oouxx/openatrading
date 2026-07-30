@@ -50,49 +50,73 @@ impl CircuitBreaker {
     }
 
     /// 检查当前是否允许请求通过。
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn is_allowed(&self) -> bool {
         let state = self.inner.state.load(Ordering::Acquire);
         match state {
-            STATE_CLOSED => true,
-            STATE_HALF_OPEN => true,
+            STATE_CLOSED | STATE_HALF_OPEN => true,
             STATE_OPEN => {
-                let opened = self.inner.opened_at.lock().unwrap();
-                if let Some(at) = *opened {
-                    if at.elapsed() >= self.inner.reset_timeout {
-                        self.inner
-                            .state
-                            .compare_exchange(
-                                STATE_OPEN,
-                                STATE_HALF_OPEN,
-                                Ordering::AcqRel,
-                                Ordering::Acquire,
-                            )
-                            .ok();
-                        return true;
-                    }
+                let is_expired = {
+                    let opened = self
+                        .inner
+                        .opened_at
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    opened.is_some_and(|at| at.elapsed() >= self.inner.reset_timeout)
+                };
+                if is_expired {
+                    self.inner
+                        .state
+                        .compare_exchange(
+                            STATE_OPEN,
+                            STATE_HALF_OPEN,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .ok();
+                    return true;
                 }
                 false
-            },
+            }
             _ => false,
         }
     }
 
     /// 记录一次成功——回到 Closed，重置失败计数。
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn record_success(&self) {
         self.inner.failures.store(0, Ordering::Release);
         let old = self.inner.state.swap(STATE_CLOSED, Ordering::AcqRel);
         if old == STATE_OPEN {
-            *self.inner.opened_at.lock().unwrap() = None;
+            *self
+                .inner
+                .opened_at
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         }
     }
 
     /// 记录一次失败——达到阈值则切到 Open。
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn record_failure(&self) {
         let prev = self.inner.failures.fetch_add(1, Ordering::AcqRel);
         if prev + 1 >= self.inner.threshold {
             let old = self.inner.state.swap(STATE_OPEN, Ordering::AcqRel);
             if old != STATE_OPEN {
-                *self.inner.opened_at.lock().unwrap() = Some(Instant::now());
+                *self
+                    .inner
+                    .opened_at
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Instant::now());
             }
         }
     }
@@ -113,10 +137,18 @@ impl CircuitBreaker {
     }
 
     /// 重置为初始状态。
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn reset(&self) {
         self.inner.failures.store(0, Ordering::Release);
         self.inner.state.store(STATE_CLOSED, Ordering::Release);
-        *self.inner.opened_at.lock().unwrap() = None;
+        *self
+            .inner
+            .opened_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 }
 

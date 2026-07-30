@@ -46,7 +46,8 @@ fn main() {
 
     // Watch git HEAD and tags so version updates on checkout / new tag.
     // CARGO_MANIFEST_DIR is set by Cargo; .git lives at the workspace root.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| panic!("CARGO_MANIFEST_DIR must be set by Cargo"));
     let manifest_path = std::path::Path::new(&manifest_dir);
     let git_dir = std::fs::canonicalize(manifest_path.join("../../.git"))
         .unwrap_or_else(|_| manifest_path.join("../../.git"));

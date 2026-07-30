@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use std::str::FromStr;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct CronCheck;
 
 /// Validate a cron expression as 6-field format.
-/// The `cron` crate's Schedule::from_str parses both 6-field and 7-field;
+/// The `cron` crate's `Schedule::from_str` parses both 6-field and 7-field;
 /// we explicitly reject 7-field by counting tokens.
 fn validate_cron(expr: &str) -> Result<(), String> {
     let field_count = expr.split_whitespace().count();
@@ -36,24 +36,26 @@ impl Check for CronCheck {
     }
 
     async fn check(&self, ctx: &CheckContext) -> CheckResult {
-        match &ctx.app_config {
-            Some(cfg) => match &cfg.cron {
+        ctx.app_config.as_ref().map_or_else(
+            || CheckResult {
+                status: CheckStatus::Error("无法加载配置".into()),
+                summary: "无法加载配置".into(),
+                details: vec![],
+                duration_ms: 0,
+            },
+            |cfg| match &cfg.cron {
                 Some(c) if c.enabled => {
                     let mut details = Vec::new();
-                    let schedules = [
-                        ("采集", &c.collection_schedule),
-                        ("决策", &c.decision_schedule),
-                        ("新闻", &c.news_schedule),
-                    ];
+                    let schedules = [("采集", &c.collection_schedule), ("新闻", &c.news_schedule)];
                     let mut errors = 0usize;
 
                     for (name, expr) in &schedules {
                         match validate_cron(expr) {
-                            Ok(()) => details.push(format!("{}: {} ✓", name, expr)),
+                            Ok(()) => details.push(format!("{name}: {expr} ✓")),
                             Err(e) => {
-                                details.push(format!("{}: {} ✗ ({})", name, expr, e));
+                                details.push(format!("{name}: {expr} ✗ ({e})"));
                                 errors += 1;
-                            },
+                            }
                         }
                     }
 
@@ -66,13 +68,13 @@ impl Check for CronCheck {
                         }
                     } else {
                         CheckResult {
-                            status: CheckStatus::Error(format!("{} 个表达式无效", errors)),
+                            status: CheckStatus::Error(format!("{errors} 个表达式无效")),
                             summary: "定时任务调度表达式校验失败".into(),
                             details,
                             duration_ms: 0,
                         }
                     }
-                },
+                }
                 _ => CheckResult {
                     status: CheckStatus::Warn("cron 未启用".into()),
                     summary: "定时任务调度未启用".into(),
@@ -80,13 +82,7 @@ impl Check for CronCheck {
                     duration_ms: 0,
                 },
             },
-            None => CheckResult {
-                status: CheckStatus::Error("无法加载配置".into()),
-                summary: "无法加载配置".into(),
-                details: vec![],
-                duration_ms: 0,
-            },
-        }
+        )
     }
 
     async fn fix(&self, ctx: &CheckContext) -> Result<FixResult> {
@@ -103,7 +99,6 @@ impl Check for CronCheck {
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5"
-decision_schedule = "0 */30 9-15 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 "#;
         std::fs::write(&config_path, content + cron_section)?;

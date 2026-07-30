@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct SqliteCheck;
 
@@ -9,8 +9,7 @@ fn resolve_db_path(ctx: &CheckContext) -> PathBuf {
     let db_name = ctx
         .app_config
         .as_ref()
-        .map(|c| c.service.db_path.as_str())
-        .unwrap_or("data.db");
+        .map_or("data.db", |c| c.service.db_path.as_str());
     let p = PathBuf::from(db_name);
     if p.is_relative() {
         ctx.atrading_home.join(db_name)

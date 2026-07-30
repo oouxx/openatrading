@@ -164,7 +164,7 @@ export default function ReplayView() {
   return (
     <div className="flex h-full flex-col">
       {/* Control Bar */}
-      <div className="border-hairline bg-bg-surface sticky top-0 z-15 flex flex-shrink-0 flex-wrap items-center gap-2.5 border-b px-5 py-2">
+      <div className="bg-bg-surface border-hairline sticky top-0 z-15 flex shrink-0 flex-wrap items-center gap-2.5 border-b px-5 py-2">
         {/* 方向 */}
         {[
           { f: "all" as const, label: "全部" },
@@ -233,7 +233,7 @@ export default function ReplayView() {
       {/* Chart Area */}
       <div
         ref={chartRef}
-        className="border-hairline bg-bg-surface relative flex-shrink-0 cursor-crosshair border-b"
+        className="bg-bg-surface border-hairline relative shrink-0 cursor-crosshair border-b"
         style={{ height: 260 }}
       >
         <PulseChart
@@ -267,7 +267,7 @@ export default function ReplayView() {
         />
         {tooltip && (
           <div
-            className="border-hairline bg-bg-surface pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-[11px] whitespace-nowrap text-white shadow-lg"
+            className="bg-bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-[11px] whitespace-nowrap text-white shadow-lg"
             style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}
           >
             <span dangerouslySetInnerHTML={{ __html: tooltip.html }} />
@@ -292,9 +292,7 @@ export default function ReplayView() {
                 jumpToEvent(e.id)
               }}
             >
-              <span
-                className={`size-2 flex-shrink-0 rounded-full ${isGood ? "bg-up" : "bg-down"}`}
-              />
+              <span className={`size-2 shrink-0 rounded-full ${isGood ? "bg-up" : "bg-down"}`} />
               <span className="text-ink-muted min-w-[42px] font-mono text-[11px]">
                 {minToTime(e.minute)}
               </span>
@@ -302,7 +300,7 @@ export default function ReplayView() {
                 {e.plateName}
               </span>
               <span
-                className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isGood ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isGood ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}
               >
                 {isGood ? "利好" : "利空"}
               </span>

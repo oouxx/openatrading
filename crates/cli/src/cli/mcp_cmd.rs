@@ -7,8 +7,7 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
     use tokio::sync::watch;
 
     let registry = ToolRegistry::new();
-    let mut tools = registry.market_tools().to_vec();
-    tools.push(registry.meta_skill_tool().clone());
+    let tools = registry.all_tools();
     let (tx, rx) = watch::channel(false);
 
     let signal_task = tokio::spawn(async move {
@@ -24,11 +23,11 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("invalid bind {bind}: {e}"))?;
             openatrading_core::log::info!("[mcp] http server starting on http://{bind}/mcp");
             serve_http(tools, bind, rx).await
-        },
+        }
         McpTransport::Stdio => {
             openatrading_core::log::info!("[mcp] stdio server starting");
             serve_stdio(tools, rx).await
-        },
+        }
     };
 
     signal_task.abort();
@@ -59,7 +58,7 @@ pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
         let desc = tool["description"].as_str().unwrap_or("");
         let input_schema = &tool["inputSchema"];
         let props = input_schema["properties"].as_object();
-        let prop_count = props.map(|p| p.len()).unwrap_or(0);
+        let prop_count = props.map_or(0, serde_json::Map::len);
 
         println!("  {}. {:<30} {}", i + 1, name, desc);
         if prop_count > 0 {
@@ -72,7 +71,7 @@ pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
                         .join(", ")
                 })
                 .unwrap_or_default();
-            println!("     参数({}) {}", prop_count, required);
+            println!("     参数({prop_count}) {required}");
         }
         println!();
     }
@@ -86,13 +85,13 @@ pub async fn cmd_mcp_status(endpoint: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     match client.list_tools().await {
         Ok(tools) => {
-            let count = tools.as_array().map(|a| a.len()).unwrap_or(0);
-            println!("✅ MCP 服务器可达 ({})", endpoint);
+            let count = tools.as_array().map_or(0, std::vec::Vec::len);
+            println!("✅ MCP 服务器可达 ({endpoint})");
             println!("   已注册工具: {count}");
-        },
+        }
         Err(e) => {
-            anyhow::bail!("❌ MCP 服务器不可达 ({}): {e}", endpoint);
-        },
+            anyhow::bail!("❌ MCP 服务器不可达 ({endpoint}): {e}");
+        }
     }
     Ok(())
 }

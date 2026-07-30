@@ -84,13 +84,11 @@ pub struct CronTomlConfig {
     pub enabled: bool,
     #[serde(default = "default_collection_schedule")]
     pub collection_schedule: String,
-    #[serde(default = "default_decision_schedule")]
-    pub decision_schedule: String,
     #[serde(default = "default_news_schedule")]
     pub news_schedule: String,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -102,9 +100,6 @@ fn substitute_env(content: &str) -> String {
 
 fn default_collection_schedule() -> String {
     "0 0 18 * * 1-5".to_string()
-}
-fn default_decision_schedule() -> String {
-    "0 */30 9-15 * * 1-5".to_string()
 }
 fn default_news_schedule() -> String {
     "0 */5 9-15 * * 1-5".to_string()
@@ -172,7 +167,7 @@ impl AppConfig {
         let home = openatrading_core::atrading_home();
         openatrading_core::log::info!(?home, "Loading config from home");
 
-        let mut merged = AppConfig {
+        let mut merged = Self {
             default_role: None,
             roles: Vec::new(),
             mcp_servers: Vec::new(),
@@ -200,14 +195,14 @@ impl AppConfig {
         Ok(merged)
     }
 
-    fn load_from(config_path: &Path) -> Option<AppConfig> {
+    fn load_from(config_path: &Path) -> Option<Self> {
         let content = match std::fs::read_to_string(config_path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
             Err(e) => {
                 eprintln!("跳过 {}: {e}", config_path.display());
                 return None;
-            },
+            }
         };
         let content = substitute_env(&content);
         let raw: RawConfig = match toml::from_str(&content) {
@@ -215,13 +210,13 @@ impl AppConfig {
             Err(e) => {
                 eprintln!("跳过 {} (解析错误): {e}", config_path.display());
                 return None;
-            },
+            }
         };
-        Some(AppConfig {
+        Some(Self {
             default_role: raw.default_role,
             roles: raw.roles,
             mcp_servers: raw.mcp_servers,
-            service: raw.service.unwrap_or(ServiceConfig {
+            service: raw.service.unwrap_or_else(|| ServiceConfig {
                 db_path: default_db_path(),
                 web_bind: default_web_bind(),
             }),
@@ -235,7 +230,7 @@ impl AppConfig {
         })
     }
 
-    fn merge(&mut self, other: AppConfig) {
+    fn merge(&mut self, other: Self) {
         if other.default_role.is_some() {
             self.default_role = other.default_role;
         }
@@ -298,7 +293,7 @@ impl AppConfig {
             args: Vec<String>,
             /// Environment variables (for stdio).
             #[serde(default)]
-            env: std::collections::HashMap<String, String>,
+            env: ahash::AHashMap<String, String>,
         }
         fn default_transport_type() -> String {
             "streamable-http".to_string()
@@ -306,20 +301,19 @@ impl AppConfig {
         fn default_url() -> String {
             "http://localhost:8081/mcp".to_string()
         }
-        fn default_enabled() -> bool {
+        const fn default_enabled() -> bool {
             true
         }
 
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => return,
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return;
         };
         let parsed: McpJson = match serde_json::from_str(&content) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("跳过 {} (解析错误): {e}", path.display());
                 return;
-            },
+            }
         };
 
         for (name, entry) in parsed.mcp_servers {
@@ -375,7 +369,7 @@ impl AppConfig {
     }
     /// Write one key under `section` to config.toml.
     /// `section` is a dotted path, e.g. "llm" or "social.telegram".
-    /// Uses toml_edit for round-trip preserving comments and section style.
+    /// Uses `toml_edit` for round-trip preserving comments and section style.
     pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
         let path = Self::config_path();
         let content = std::fs::read_to_string(&path).unwrap_or_default();
@@ -415,13 +409,11 @@ pub fn cmd_init() -> Result<()> {
         include_str!("../../../../config.example.toml"),
     )?;
 
-    // Create skills dir with default zarili strategy
-    let skills_dir = atrading.join("skills");
-    std::fs::create_dir_all(&skills_dir)?;
+    // Create roles dir for trading-account labels
+    std::fs::create_dir_all(atrading.join("roles"))?;
 
     eprintln!("✅ 已初始化 {}", atrading.display());
     eprintln!("   配置文件: {}", atrading.join("config.toml").display());
-
-    eprintln!("   (可运行 `openatrading skills install` 查看更多可安装技能)");
+    eprintln!("   (可运行 `openatrading skills install` 安装 pi-rs 技能)");
     Ok(())
 }

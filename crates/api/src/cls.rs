@@ -61,11 +61,15 @@ pub struct TelegramInfo {
 // }
 
 impl ClsClient {
+    /// Create a new `ClsClient`.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built (should never happen).
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"));
         Self { client }
     }
 }
@@ -80,19 +84,24 @@ impl ClsClient {
     /// Fetch telegraph with cursor-based pagination.
     /// Pass `category=""` for all, or e.g. "red", "watch".
     /// Cursor-based: pass `last_time` (oldest item's ctime) to get next page.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_telegraph(
         &self,
         category: &str,
         last_time: Option<i64>,
         count: u32,
     ) -> Result<Vec<TelegramInfo>> {
-        let api_url = if !category.is_empty() {
-            format!("{}/v1/roll/get_roll_list", ROOT_URL)
+        let api_url = if category.is_empty() {
+            format!("{ROOT_URL}/api/cache")
         } else {
-            format!("{}/api/cache", ROOT_URL)
+            format!("{ROOT_URL}/v1/roll/get_roll_list")
         };
         let mut params = BTreeMap::new();
-        if !category.is_empty() {
+        if category.is_empty() {
+            params.insert("name".to_string(), "telegraph".to_string());
+        } else {
             params.insert("category".to_string(), category.to_string());
             params.insert("hasFirstVipArticle".to_string(), "1".to_string());
             params.insert("rn".to_string(), count.to_string());
@@ -100,11 +109,9 @@ impl ClsClient {
             if let Some(lt) = last_time {
                 params.insert("last_time".to_string(), lt.to_string());
             }
-        } else {
-            params.insert("name".to_string(), "telegraph".to_string());
         }
         let querystr = get_search_params(params);
-        let url = format!("{}?{}", api_url, querystr);
+        let url = format!("{api_url}?{querystr}");
         tracing::debug!(%url, "cls::telegraph GET");
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
@@ -119,18 +126,30 @@ impl ClsClient {
     }
 
     /// Shortcut for LLM tool: fetch latest telegraph without pagination
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_telegraph_latest(&self, category: &str) -> Result<Vec<TelegramInfo>> {
         self.fetch_telegraph(category, None, 50).await
     }
 
     /// Fetch all telegraph items for the current trading day via cursor pagination.
     /// Stops when reaching items before today 00:00 or empty page.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
+    ///
+    /// # Panics
+    /// Panics if the UTC+8 offset is invalid (should never happen).
     pub async fn fetch_telegraph_allday(&self, category: &str) -> Result<Vec<TelegramInfo>> {
         let today_start = chrono::Utc::now()
-            .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
+            .with_timezone(
+                &chrono::FixedOffset::east_opt(8 * 3600)
+                    .unwrap_or_else(|| panic!("8*3600 is a valid offset")),
+            )
             .date_naive()
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .unwrap_or_else(|| panic!("0,0,0 is a valid time"))
             .and_utc()
             .timestamp();
 
@@ -189,13 +208,13 @@ fn get_search_params(more_params: BTreeMap<String, String>) -> String {
     sha1.update(query_string.as_bytes());
     let sha1_result = sha1.finalize();
 
-    let sha1_hex = format!("{:x}", sha1_result);
+    let sha1_hex = format!("{sha1_result:x}");
 
     // MD5(SHA1(...))
     let sign = format!("{:x}", md5::compute(sha1_hex));
 
     // 拼接 sign
-    let final_query = format!("{}&sign={}", query_string, sign);
+    let final_query = format!("{query_string}&sign={sign}");
 
     final_query
 }
@@ -203,7 +222,10 @@ fn get_search_params(more_params: BTreeMap<String, String>) -> String {
 #[tokio::test(flavor = "current_thread")]
 async fn test_fetch_telegraph() {
     let client = ClsClient::new();
-    let items = client.fetch_telegraph("", None, 20).await.unwrap();
+    let items = client
+        .fetch_telegraph("", None, 20)
+        .await
+        .unwrap_or_else(|e| panic!("test fetch failed: {e}"));
     println!("fetched {} telegraph items", items.len());
     assert!(
         !items.is_empty(),

@@ -79,7 +79,7 @@ export default function SentimentHistory() {
   }, [chartData])
 
   return (
-    <div className="rounded-card border-hairline bg-bg-surface p-card-inner">
+    <div className="bg-bg-surface border-hairline p-card-inner rounded-card">
       <h3 className="text-caption-strong text-ink-muted mb-4 tracking-wider uppercase">
         情绪历史走势（近10日）
       </h3>

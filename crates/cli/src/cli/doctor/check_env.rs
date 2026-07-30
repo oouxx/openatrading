@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 pub struct EnvCheck;
 
@@ -39,7 +39,7 @@ impl Check for EnvCheck {
 
         for (var, desc) in REQUIRED_VARS {
             if std::env::var(var).ok().filter(|v| !v.is_empty()).is_none() {
-                details.push(format!("{} ({})", var, desc));
+                details.push(format!("{var} ({desc})"));
                 missing += 1;
             }
         }
@@ -53,7 +53,7 @@ impl Check for EnvCheck {
             }
         } else {
             CheckResult {
-                status: CheckStatus::Warn(format!("{} 个变量未设置", missing)),
+                status: CheckStatus::Warn(format!("{missing} 个变量未设置")),
                 summary: "部分环境变量缺失".into(),
                 details,
                 duration_ms: 0,
@@ -71,7 +71,7 @@ impl Check for EnvCheck {
         }
         let content = REQUIRED_VARS
             .iter()
-            .map(|(var, desc)| format!("# {}={}", desc, var))
+            .map(|(var, desc)| format!("# {desc}={var}"))
             .collect::<Vec<_>>()
             .join("\n");
         std::fs::write(&env_path, content)?;

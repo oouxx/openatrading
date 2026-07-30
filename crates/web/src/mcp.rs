@@ -11,18 +11,33 @@ use openatrading_core::llm::{self, McpServerConfig};
 use crate::AppState;
 
 /// GET /api/mcp/servers — list all MCP servers
+///
+/// # Panics
+/// Panics if the MCP server lock is poisoned.
 pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerConfig>> {
-    let guard = state.mcp_servers.lock().unwrap();
+    let guard = state
+        .mcp_servers
+        .lock()
+        .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
     Json(guard.clone())
 }
 
 /// POST /api/mcp/servers — add a new MCP server
+///
+/// # Errors
+/// Returns `409 Conflict` if a server with the same name already exists.
+///
+/// # Panics
+/// Panics if the MCP server lock is poisoned.
 pub async fn add_handler(
     State(state): State<Arc<AppState>>,
     Json(config): Json<McpServerConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     {
-        let mut guard = state.mcp_servers.lock().unwrap();
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         if guard.iter().any(|s| s.name == config.name) {
             return Err(StatusCode::CONFLICT);
         }
@@ -33,12 +48,21 @@ pub async fn add_handler(
 }
 
 /// DELETE /api/mcp/servers/:name — delete an MCP server
+///
+/// # Errors
+/// Returns `404 Not Found` if no server with the given name exists.
+///
+/// # Panics
+/// Panics if the MCP server lock is poisoned.
 pub async fn delete_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     {
-        let mut guard = state.mcp_servers.lock().unwrap();
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
         let before = guard.len();
         guard.retain(|s| s.name != name);
         if guard.len() == before {
@@ -50,24 +74,38 @@ pub async fn delete_handler(
 }
 
 /// POST /api/mcp/servers/:name/toggle — toggle an MCP server's enabled state
+///
+/// # Errors
+/// Returns `404 Not Found` if no server with the given name exists.
+///
+/// # Panics
+/// Panics if the MCP server lock is poisoned.
 pub async fn toggle_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    {
-        let mut guard = state.mcp_servers.lock().unwrap();
-        let srv = guard
-            .iter_mut()
-            .find(|s| s.name == name)
-            .ok_or(StatusCode::NOT_FOUND)?;
-        srv.enabled = !srv.enabled;
-    }
+    let found = {
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        guard.iter_mut().find(|s| s.name == name).map(|s| {
+            s.enabled = !s.enabled;
+        })
+    };
+    found.ok_or(StatusCode::NOT_FOUND)?;
     load_servers_and_reload(&state).await;
     Ok((StatusCode::NO_CONTENT, ""))
 }
 
 async fn load_servers_and_reload(state: &Arc<AppState>) {
-    let servers = state.mcp_servers.lock().unwrap().clone();
+    let servers = {
+        let guard = state
+            .mcp_servers
+            .lock()
+            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+        guard.clone()
+    };
     reload_and_persist(state, &servers).await;
 }
 
@@ -75,7 +113,9 @@ async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) 
     let cfg = llm::ToolConfig {
         mcp_servers: servers.to_vec(),
     };
-    let new_registry = llm::build_tools(&cfg).await;
+    let mut new_registry = llm::build_tools(&cfg).await;
+    let ext_registry = openatrading_core::create_extension_registry(None);
+    new_registry.set_extension_tools(&ext_registry);
 
     state.ctx.tool_registry.store(Arc::new(new_registry));
 
@@ -88,7 +128,13 @@ async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) 
     }
     let map: std::collections::BTreeMap<_, _> = servers
         .iter()
-        .map(|s| (s.name.clone(), serde_json::to_value(s).unwrap()))
+        .map(|s| {
+            (
+                s.name.clone(),
+                serde_json::to_value(s)
+                    .unwrap_or_else(|e| panic!("MCP server config serialization failed: {e}")),
+            )
+        })
         .collect();
     let root = serde_json::json!({"mcpServers": map});
     if let Ok(c) = serde_json::to_string_pretty(&root) {

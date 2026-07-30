@@ -18,7 +18,7 @@ pub struct Credentials {
 
 // ─── action/field 响应结构 ────────────────────────────────────
 
-/// 异动详情（action_info 字段）
+/// `异动详情（action_info` 字段）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionInfo {
     /// 异动时间，如 "09:35:38"，可能为 null
@@ -221,8 +221,12 @@ impl Default for JiuYanSession {
 }
 
 impl JiuYanSession {
+    /// Fetch article detail by ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails.
     pub async fn fetch_article_detail(&self, article_id: &str) -> Result<Option<String>> {
-        let url = format!("https://www.jiuyangongshe.com/a/{}", article_id);
+        let url = format!("https://www.jiuyangongshe.com/a/{article_id}");
 
         let html = self
             .client
@@ -257,23 +261,23 @@ impl JiuYanSession {
                             b'"' => {
                                 content_bytes.push(b'"');
                                 i += 2;
-                            },
+                            }
                             b'\\' => {
                                 content_bytes.push(b'\\');
                                 i += 2;
-                            },
+                            }
                             b'n' => {
                                 content_bytes.push(b'\n');
                                 i += 2;
-                            },
+                            }
                             b'r' => {
                                 content_bytes.push(b'\r');
                                 i += 2;
-                            },
+                            }
                             b't' => {
                                 content_bytes.push(b'\t');
                                 i += 2;
-                            },
+                            }
                             b'u' if i + 5 < bytes.len() => {
                                 let hex = &html[i + 2..i + 6];
                                 if let Ok(code) = u32::from_str_radix(hex, 16) {
@@ -287,17 +291,17 @@ impl JiuYanSession {
                                     content_bytes.push(bytes[i]);
                                     i += 1;
                                 }
-                            },
+                            }
                             _ => {
                                 content_bytes.push(bytes[i]);
                                 i += 1;
-                            },
+                            }
                         },
                         b'"' => break,
                         _ => {
                             content_bytes.push(bytes[i]);
                             i += 1;
-                        },
+                        }
                     }
                 }
                 if let Ok(content_str) = String::from_utf8(content_bytes) {
@@ -309,6 +313,10 @@ impl JiuYanSession {
 
         Ok(None)
     }
+    /// Create a new `JiuYanSession`.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built or default headers are invalid (should never happen).
     pub fn new() -> Self {
         let builder = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36");
@@ -319,15 +327,31 @@ impl JiuYanSession {
                 let mut headers = reqwest::header::HeaderMap::new();
                 headers.insert(
                     "Accept",
-                    "application/json, text/plain, */*".parse().unwrap(),
+                    "application/json, text/plain, */*"
+                        .parse()
+                        .unwrap_or_else(|e| panic!("hardcoded header value is valid: {e}")),
                 );
-                headers.insert("Origin", "https://www.jiuyangongshe.com".parse().unwrap());
-                headers.insert("Referer", "https://www.jiuyangongshe.com/".parse().unwrap());
-                headers.insert("platform", "3".parse().unwrap());
+                headers.insert(
+                    "Origin",
+                    "https://www.jiuyangongshe.com"
+                        .parse()
+                        .unwrap_or_else(|e| panic!("hardcoded header value is valid: {e}")),
+                );
+                headers.insert(
+                    "Referer",
+                    "https://www.jiuyangongshe.com/"
+                        .parse()
+                        .unwrap_or_else(|e| panic!("hardcoded header value is valid: {e}")),
+                );
+                headers.insert(
+                    "platform",
+                    "3".parse()
+                        .unwrap_or_else(|e| panic!("hardcoded header value is valid: {e}")),
+                );
                 headers
             })
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"));
 
         Self {
             inner: RwLock::new(InnerSession {
@@ -339,6 +363,9 @@ impl JiuYanSession {
     }
 
     /// 获取凭证，如果已登录且未过期则直接返回
+    ///
+    /// # Errors
+    /// Returns an error if login fails or environment variables are missing.
     pub async fn get_credentials(&self) -> Result<Credentials> {
         {
             let guard = self.inner.read().await;
@@ -350,6 +377,9 @@ impl JiuYanSession {
     }
 
     /// 执行登录
+    ///
+    /// # Errors
+    /// Returns an error if environment variables are missing or the login request fails.
     pub async fn login(&self) -> Result<Credentials> {
         let phone = std::env::var("JIUYAN_PHONE").context("JIUYAN_PHONE not set in .env")?;
         let password =
@@ -406,7 +436,7 @@ impl JiuYanSession {
                         .refreshing
                         .store(false, Ordering::SeqCst);
                     return Err(e.into());
-                },
+                }
             },
             Err(e) => {
                 self.inner
@@ -415,7 +445,7 @@ impl JiuYanSession {
                     .refreshing
                     .store(false, Ordering::SeqCst);
                 return Err(e.into());
-            },
+            }
         };
 
         if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
@@ -429,20 +459,19 @@ impl JiuYanSession {
             }
         }
 
-        let session_token = match resp["data"]["sessionToken"].as_str() {
-            Some(s) => s.to_string(),
-            None => {
-                self.inner
-                    .write()
-                    .await
-                    .refreshing
-                    .store(false, Ordering::SeqCst);
-                anyhow::bail!("登录成功但未返回 sessionToken");
-            },
+        let session_token = if let Some(s) = resp["data"]["sessionToken"].as_str() {
+            s.to_string()
+        } else {
+            self.inner
+                .write()
+                .await
+                .refreshing
+                .store(false, Ordering::SeqCst);
+            anyhow::bail!("登录成功但未返回 sessionToken");
         };
 
         // 将 sessionToken 写入 Cookie 格式
-        let cookie = format!("SESSION={}", session_token);
+        let cookie = format!("SESSION={session_token}");
 
         let creds = Credentials {
             token: session_token.clone(),
@@ -464,6 +493,9 @@ impl JiuYanSession {
     }
 
     /// 强制刷新 token
+    ///
+    /// # Errors
+    /// Returns an error if login fails.
     pub async fn refresh(&self) -> Result<Credentials> {
         {
             let mut guard = self.inner.write().await;
@@ -473,6 +505,9 @@ impl JiuYanSession {
     }
 
     /// 发起 GET 请求，MD5 签名 + Session Cookie 认证
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
         let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
@@ -490,14 +525,17 @@ impl JiuYanSession {
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
-        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
+        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {json_str}"))
     }
 
     /// 发起 POST 请求，MD5 签名 + Session Cookie 认证
-    pub async fn post<T: for<'de> Deserialize<'de>>(
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
+    pub async fn post<T: for<'de> Deserialize<'de>, B: Serialize + Send + Sync>(
         &self,
         path: &str,
-        body: &impl Serialize,
+        body: &B,
     ) -> Result<T> {
         let creds = self.get_credentials().await?;
         let url = format!("{BASE_URL}{path}");
@@ -516,10 +554,13 @@ impl JiuYanSession {
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
-        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {}", json_str))
+        serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {json_str}"))
     }
 
     /// 获取韭研公社异动数据（action/field 接口）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_field(&self, date: &str, pc: u32) -> Result<FieldData> {
         #[derive(Serialize)]
         struct FieldReq {
@@ -544,19 +585,26 @@ impl JiuYanSession {
                 );
             }
         }
-        let data: FieldData = serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
-            .context("解析 action/field 数据失败")?;
+        let field_data: FieldData =
+            serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
+                .context("解析 action/field 数据失败")?;
 
-        Ok(data)
+        Ok(field_data)
     }
 
-    /// fetch_field with String pc — for LLM tool use
+    /// `fetch_field` with String pc — for LLM tool use
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_field_str(&self, date: &str, pc: &str) -> Result<FieldData> {
         let n: u32 = pc.parse().unwrap_or(1);
         self.fetch_field(date, n).await
     }
 
     /// 获取时间线数据（timeline/list 接口）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_timeline(&self, year_month: &str) -> Result<TimelineData> {
         #[derive(Serialize)]
         struct TimelineReq {
@@ -587,6 +635,9 @@ impl JiuYanSession {
     }
 
     /// 获取社群文章数据（article/community 接口）
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_community(&self, query: CommunityQuery) -> Result<CommunityData> {
         #[derive(Serialize)]
         struct CommunityReq {

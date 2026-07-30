@@ -19,9 +19,7 @@ function formatTurnover(range: number): string {
 /** 判断 action_info 是否有任何可展示内容 */
 function hasActionInfo(ai: ActionInfo | undefined): ai is ActionInfo {
   if (!ai) return false
-  return Boolean(
-    ai.num || ai.time || ai.price || ai.day || ai.edition || ai.shares_range
-  )
+  return Boolean(ai.num || ai.time || ai.price || ai.day || ai.edition || ai.shares_range)
 }
 
 export default function PlateTab() {
@@ -48,7 +46,7 @@ function PlateCard({
   const isOpen = expanded === plate.name
 
   return (
-    <div className="rounded-card border-hairline bg-bg-surface overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-card overflow-hidden border">
       <div
         className="hover:bg-bg-hover flex cursor-pointer items-center justify-between px-4 py-3 transition-colors"
         onClick={() => setExpanded(isOpen ? null : plate.name)}
@@ -88,7 +86,7 @@ function StockCard({
 
   return (
     <div
-      className="rounded-card border-hairline bg-bg hover:border-ai/30 cursor-pointer border transition-colors"
+      className="bg-bg border-hairline hover:border-ai/30 rounded-card cursor-pointer border transition-colors"
       onClick={() => onOpenKline(item.code, item.name)}
     >
       <div className="flex items-center justify-between p-2">
@@ -98,26 +96,25 @@ function StockCard({
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-1">
-          {ai?.num && <span className="text-caption text-ai font-semibold">{ai.num}</span>}
+        <div className="flex shrink-0 items-center gap-1">
+          {ai?.num && <span className="text-ai text-caption font-semibold">{ai.num}</span>}
         </div>
       </div>
-      {ai &&
-        (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
-          <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
-            {ai.time && <span className="text-ink-muted">{ai.time}</span>}
-            {ai.price !== undefined && (
-              <span className="text-ink-muted">
-                价格 <span className="text-white">{formatPrice(ai.price)}</span>
-              </span>
-            )}
-            {ai.shares_range !== undefined && (
-              <span className="text-ink-muted">
-                涨幅 <span className="text-up">{formatTurnover(ai.shares_range)}</span>
-              </span>
-            )}
-          </div>
-        )}
+      {ai && (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
+        <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
+          {ai.time && <span className="text-ink-muted">{ai.time}</span>}
+          {ai.price !== undefined && (
+            <span className="text-ink-muted">
+              价格 <span className="text-white">{formatPrice(ai.price)}</span>
+            </span>
+          )}
+          {ai.shares_range !== undefined && (
+            <span className="text-ink-muted">
+              涨幅 <span className="text-up">{formatTurnover(ai.shares_range)}</span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

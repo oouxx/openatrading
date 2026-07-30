@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
-use super::*;
+use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
 
 /// Network timeout for the Telegram API probe.
 ///
@@ -39,7 +39,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
         let tg = match tg {
@@ -51,31 +51,25 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
 
-        let token = match tg.bot_token.as_ref().filter(|t| !t.is_empty()) {
-            Some(t) => t,
-            None => {
-                return CheckResult {
-                    status: CheckStatus::Error("未配置".into()),
-                    summary: "bot_token 未设置".into(),
-                    details: vec![],
-                    duration_ms: 0,
-                }
-            },
+        let Some(token) = tg.bot_token.as_ref().filter(|t| !t.is_empty()) else {
+            return CheckResult {
+                status: CheckStatus::Error("未配置".into()),
+                summary: "bot_token 未设置".into(),
+                details: vec![],
+                duration_ms: 0,
+            };
         };
 
-        let chat_id = match tg.chat_id.as_ref().filter(|c| !c.is_empty()) {
-            Some(c) => c,
-            None => {
-                return CheckResult {
-                    status: CheckStatus::Error("未配置".into()),
-                    summary: "chat_id 未设置".into(),
-                    details: vec![],
-                    duration_ms: 0,
-                }
-            },
+        let Some(chat_id) = tg.chat_id.as_ref().filter(|c| !c.is_empty()) else {
+            return CheckResult {
+                status: CheckStatus::Error("未配置".into()),
+                summary: "chat_id 未设置".into(),
+                details: vec![],
+                duration_ms: 0,
+            };
         };
 
         let client = match reqwest::Client::builder().timeout(NETWORK_TIMEOUT).build() {
@@ -87,7 +81,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
         };
         let send_url = format!("https://api.telegram.org/bot{token}/sendMessage");
         match client
@@ -120,7 +114,7 @@ impl Check for TelegramCheck {
                     details: vec![],
                     duration_ms: 0,
                 }
-            },
+            }
             Ok(resp) => {
                 let body = resp.text().await.unwrap_or_default();
                 CheckResult {
@@ -129,7 +123,7 @@ impl Check for TelegramCheck {
                     details: vec![body],
                     duration_ms: 0,
                 }
-            },
+            }
             Err(e) => {
                 let is_timeout = e.is_timeout();
                 CheckResult {
@@ -142,7 +136,7 @@ impl Check for TelegramCheck {
                     details: vec![format!("{e}")],
                     duration_ms: 0,
                 }
-            },
+            }
         }
     }
 

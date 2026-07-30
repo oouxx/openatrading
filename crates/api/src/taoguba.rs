@@ -6,28 +6,32 @@ use std::path::Path;
 
 // 淘股吧推荐 API 响应结构体
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendResponse {
     dto: TgbRecommendDto,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendDto {
     list: Vec<TgbRecommendItem>,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct TgbRecommendItem {
-    topicID: i64,
+    #[serde(rename = "topicID")]
+    topic_id: i64,
     subject: Option<String>,
-    subinfo: Option<String>,
-    userName: Option<String>,
-    totalViewNum: Option<i64>,
-    totalReplyNum: Option<i64>,
-    dateTime: Option<i64>,
-    newTopicID: Option<String>,
+    #[serde(rename = "subinfo")]
+    sub_info: Option<String>,
+    #[serde(rename = "userName")]
+    user_name: Option<String>,
+    #[serde(rename = "totalViewNum")]
+    total_view_num: Option<i64>,
+    #[serde(rename = "totalReplyNum")]
+    total_reply_num: Option<i64>,
+    #[serde(rename = "dateTime")]
+    date_time: Option<i64>,
+    #[serde(rename = "newTopicID")]
+    new_topic_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,22 +78,30 @@ pub struct TgbClient {
 }
 
 impl TgbClient {
+    /// Create a new `TgbClient`.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built (should never happen).
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"));
         Self {
             client,
             cookie: None,
         }
     }
 
+    /// Create a new `TgbClient` with a cookie.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built (should never happen).
     pub fn with_cookie(cookie: String) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"));
         Self {
             client,
             cookie: Some(cookie),
@@ -104,8 +116,12 @@ impl Default for TgbClient {
 }
 
 impl TgbClient {
+    /// Fetch all posts by a user.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the HTML cannot be parsed.
     pub async fn fetch_user_posts(&self, user_id: &str) -> Result<(Vec<TgbPost>, String)> {
-        let url = format!("{}/blog/{}", BASE_URL, user_id);
+        let url = format!("{BASE_URL}/blog/{user_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -114,14 +130,15 @@ impl TgbClient {
 
         let html = request.send().await?.text().await?;
 
-        let (posts, username) = self.parse_posts_html(&html)?;
+        let (posts, username) = Self::parse_posts_html(&html);
         Ok((posts, username))
     }
 
-    fn parse_posts_html(&self, html: &str) -> Result<(Vec<TgbPost>, String)> {
+    fn parse_posts_html(html: &str) -> (Vec<TgbPost>, String) {
         let document = Html::parse_document(html);
 
-        let title_selector = Selector::parse("title").unwrap();
+        let title_selector =
+            Selector::parse("title").unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
         let username = document
             .select(&title_selector)
             .next()
@@ -130,10 +147,14 @@ impl TgbClient {
         let username = username.trim_end_matches("_博客_淘股吧").to_string();
 
         // 遍历 .article_tittle 容器，其中包含 .tittle_data、.tittle_llhf、.tittle_fbshijian
-        let article_selector = Selector::parse(".article_tittle").unwrap();
-        let a_selector = Selector::parse(".tittle_data a").unwrap();
-        let stats_selector = Selector::parse(".tittle_llhf").unwrap();
-        let time_selector = Selector::parse(".tittle_fbshijian").unwrap();
+        let article_selector = Selector::parse(".article_tittle")
+            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
+        let a_selector = Selector::parse(".tittle_data a")
+            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
+        let stats_selector = Selector::parse(".tittle_llhf")
+            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
+        let time_selector = Selector::parse(".tittle_fbshijian")
+            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
 
         let posts: Vec<TgbPost> = document
             .select(&article_selector)
@@ -160,22 +181,29 @@ impl TgbClient {
 
                 Some(TgbPost {
                     id: id.to_string(),
-                    title: title.to_string(),
+                    title,
                     content: String::new(),
                     create_time: time,
                     view_count: views,
                     reply_count: replies,
                     like_count: 0,
-                    link: format!("{}/a/{}", BASE_URL, id),
+                    link: format!("{BASE_URL}/a/{id}"),
                 })
             })
             .collect();
 
-        Ok((posts, username))
+        (posts, username)
     }
 
+    /// Fetch post content by ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the HTML cannot be parsed.
+    ///
+    /// # Panics
+    /// Panics if hardcoded CSS selectors are invalid (should never happen).
     pub async fn fetch_post_content(&self, post_id: &str) -> Result<(String, String)> {
-        let url = format!("{}/a/{}", BASE_URL, post_id);
+        let url = format!("{BASE_URL}/a/{post_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -186,7 +214,10 @@ impl TgbClient {
 
         // 检测登录墙
         let has_login_wall = Html::parse_document(&html)
-            .select(&Selector::parse(".login-view-button").unwrap())
+            .select(
+                &Selector::parse(".login-view-button")
+                    .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+            )
             .next()
             .is_some();
 
@@ -194,12 +225,16 @@ impl TgbClient {
             // PC 端有登录墙时，回退到移动端获取完整内容
             self.fetch_mobile_post_content(post_id).await
         } else {
-            Self::extract_post_content(&html)
+            Ok(Self::extract_post_content(&html))
         }
     }
 
+    /// Fetch mobile post content by ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the HTML cannot be parsed.
     async fn fetch_mobile_post_content(&self, post_id: &str) -> Result<(String, String)> {
-        let url = format!("{}/a/{}", MOBILE_URL, post_id);
+        let url = format!("{MOBILE_URL}/a/{post_id}");
 
         let mut request = self.client.get(&url);
         if let Some(ref cookie) = self.cookie {
@@ -207,134 +242,168 @@ impl TgbClient {
         }
 
         let html = request.send().await?.text().await?;
-        Self::extract_mobile_post_content(&html)
+        Ok(Self::extract_mobile_post_content(&html))
     }
 
-    fn extract_mobile_post_content(html: &str) -> Result<(String, String)> {
+    fn extract_mobile_post_content(html: &str) -> (String, String) {
         let document = Html::parse_document(html);
 
         // 移动端内容在 .tzitem_text 中，无登录墙
         let content_el = document
-            .select(&Selector::parse(".tzitem_text").unwrap())
+            .select(
+                &Selector::parse(".tzitem_text")
+                    .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+            )
             .next()
             .or_else(|| {
                 document
-                    .select(&Selector::parse(".p_coten").unwrap())
+                    .select(
+                        &Selector::parse(".p_coten")
+                            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+                    )
                     .next()
             })
-            .or_else(|| document.select(&Selector::parse("#first").unwrap()).next())
             .or_else(|| {
                 document
-                    .select(&Selector::parse(".article-text").unwrap())
+                    .select(
+                        &Selector::parse("#first")
+                            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+                    )
+                    .next()
+            })
+            .or_else(|| {
+                document
+                    .select(
+                        &Selector::parse(".article-text")
+                            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+                    )
                     .next()
             });
 
-        let content = if let Some(el) = content_el {
+        let content = content_el.map_or_else(String::new, |el| {
             let mut inner = el.inner_html();
             // 处理懒加载图片
-            let src2_pattern = regex::Regex::new(r#"src2="([^"]*)""#).unwrap();
+            let src2_pattern = regex::Regex::new(r#"src2="([^"]*)""#)
+                .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
             inner = src2_pattern.replace_all(&inner, r#"src="$1""#).to_string();
             // 移除 data-original 不需要，html_to_markdown 会优先使用它
-            let video_img_pattern =
-                regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#).unwrap();
+            let video_img_pattern = regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#)
+                .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
             inner = video_img_pattern.replace_all(&inner, "").to_string();
             crate::utils::html_to_markdown(&inner)
-        } else {
-            String::new()
-        };
+        });
 
         // 提取发布时间：移动端时间在 JS 注释中，如 'postDate':'2025-08-24 21:26:39.0'
-        let time_re = regex::Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}").unwrap();
+        let time_re = regex::Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+            .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
         let pub_time = time_re
             .find(html)
             .map(|m| m.as_str().to_string())
             .unwrap_or_default();
 
-        Ok((content.trim().to_string(), pub_time))
+        (content.trim().to_string(), pub_time)
     }
 
-    fn extract_post_content(html: &str) -> Result<(String, String)> {
+    fn extract_post_content(html: &str) -> (String, String) {
         let document = Html::parse_document(html);
 
         // 提取正文元素
         let content_el = document
-            .select(&Selector::parse("#first").unwrap())
+            .select(
+                &Selector::parse("#first")
+                    .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+            )
             .next()
             .or_else(|| {
                 document
-                    .select(&Selector::parse(".article-text").unwrap())
+                    .select(
+                        &Selector::parse(".article-text")
+                            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+                    )
                     .next()
             })
             .or_else(|| {
                 document
-                    .select(&Selector::parse("div.p_coten").unwrap())
+                    .select(
+                        &Selector::parse("div.p_coten")
+                            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}")),
+                    )
                     .next()
             });
 
-        let content = if let Some(el) = content_el {
+        let content = content_el.map_or_else(String::new, |el| {
             // 先处理懒加载图片：将 src2 属性值赋给 src（参考 RSSHub）
             let mut inner = el.inner_html();
-            let src2_pattern = regex::Regex::new(r#"src2="([^"]*)""#).unwrap();
+            let src2_pattern = regex::Regex::new(r#"src2="([^"]*)""#)
+                .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
             inner = src2_pattern.replace_all(&inner, r#"src="$1""#).to_string();
-            let data_original_pattern = regex::Regex::new(r#"\s*data-original="[^"]*""#).unwrap();
+            let data_original_pattern = regex::Regex::new(r#"\s*data-original="[^"]*""#)
+                .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
             inner = data_original_pattern.replace_all(&inner, "").to_string();
-            let video_img_pattern =
-                regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#).unwrap();
+            let video_img_pattern = regex::Regex::new(r#"<[^>]*id="videoImg"[^>]*>.*?</[^>]+>"#)
+                .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
             inner = video_img_pattern.replace_all(&inner, "").to_string();
             // 将 HTML 转为 Markdown
             crate::utils::html_to_markdown(&inner)
-        } else {
-            String::new()
-        };
+        });
 
         // 无登录墙（有登录墙时已回退到移动端）
 
         // 提取发布时间：使用更精确的选择器（参考 RSSHub）
-        let time_selector = Selector::parse(".article-data > span:nth-child(2)").unwrap();
+        let time_selector = Selector::parse(".article-data > span:nth-child(2)")
+            .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
         let time = document
             .select(&time_selector)
             .next()
             .map(|el| el.text().collect::<String>())
             .unwrap_or_default();
 
-        let time_re = regex::Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}").unwrap();
-        let pub_time = if let Some(captures) = time_re.find(&time) {
-            captures.as_str().to_string()
-        } else {
-            let fallback_selector = Selector::parse(".article-data").unwrap();
-            let fallback_time = document
-                .select(&fallback_selector)
-                .next()
-                .map(|el| el.text().collect::<String>())
-                .unwrap_or_default();
-            if let Some(captures) = time_re.find(&fallback_time) {
-                captures.as_str().to_string()
-            } else {
-                fallback_time
-                    .replace("发布于", "")
-                    .replace(" ", "")
-                    .replace("\n", "")
-                    .trim()
-                    .to_string()
-            }
-        };
+        let time_re = regex::Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+            .unwrap_or_else(|e| panic!("hardcoded regex is valid: {e}"));
+        let pub_time = time_re.find(&time).map_or_else(
+            || {
+                let fallback_selector = Selector::parse(".article-data")
+                    .unwrap_or_else(|e| panic!("hardcoded selector is valid: {e}"));
+                let fallback_time = document
+                    .select(&fallback_selector)
+                    .next()
+                    .map(|el| el.text().collect::<String>())
+                    .unwrap_or_default();
+                time_re.find(&fallback_time).map_or_else(
+                    || {
+                        fallback_time
+                            .replace("发布于", "")
+                            .replace([' ', '\n'], "")
+                            .trim()
+                            .to_string()
+                    },
+                    |captures| captures.as_str().to_string(),
+                )
+            },
+            |captures| captures.as_str().to_string(),
+        );
 
-        Ok((content.trim().to_string(), pub_time))
+        (content.trim().to_string(), pub_time)
     }
 
+    /// Fetch recommend articles.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
+    /// Fetch recommend articles from taoguba.
+    ///
+    /// # Panics
+    /// Panics if the reqwest client cannot be built (should never happen).
     pub async fn fetch_recommend_articles(&self) -> Result<Vec<TaogubaRecommend>> {
         // 并行请求 3 页推荐数据
         async fn fetch_page(
             client: &reqwest::Client,
-            cookie: &Option<String>,
+            cookie: Option<&String>,
             page: i32,
         ) -> Result<Vec<TgbRecommendItem>> {
-            let url = format!(
-                "https://www.tgb.cn/newIndex/getNowRecommend?pageNo={}",
-                page
-            );
+            let url = format!("https://www.tgb.cn/newIndex/getNowRecommend?pageNo={page}");
             let mut request = client.get(&url);
-            if let Some(ref c) = cookie {
+            if let Some(c) = cookie {
                 request = request.header("Cookie", c.clone());
             }
             let resp: TgbRecommendResponse = request.send().await?.json().await?;
@@ -342,13 +411,13 @@ impl TgbClient {
         }
 
         let (p1, p2, p3) = tokio::join!(
-            fetch_page(&self.client, &self.cookie, 1),
-            fetch_page(&self.client, &self.cookie, 2),
-            fetch_page(&self.client, &self.cookie, 3),
+            fetch_page(&self.client, self.cookie.as_ref(), 1),
+            fetch_page(&self.client, self.cookie.as_ref(), 2),
+            fetch_page(&self.client, self.cookie.as_ref(), 3),
         );
 
         let mut items = Vec::new();
-        for result in [p1, p2, p3] {
+        for result in Into::<[_; 3]>::into((p1, p2, p3)) {
             match result {
                 Ok(list) => items.extend(list),
                 Err(e) => tracing::warn!(error = %e, "taoguba: 获取推荐页失败"),
@@ -359,26 +428,30 @@ impl TgbClient {
             .into_iter()
             .map(|item| {
                 let date_time = item
-                    .dateTime
+                    .date_time
                     .and_then(|ms| {
                         chrono::DateTime::from_timestamp(
                             ms / 1000,
-                            ((ms % 1000) * 1_000_000) as u32,
+                            u32::try_from((ms % 1000) * 1_000_000).unwrap_or_else(|e| {
+                                panic!("nanosecond value should fit in u32: {e}")
+                            }),
                         )
                     })
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .map(|dt: chrono::DateTime<chrono::Utc>| {
+                        dt.format("%Y-%m-%d %H:%M").to_string()
+                    })
                     .unwrap_or_default();
 
                 TaogubaRecommend {
-                    topic_id: item.topicID,
-                    new_topic_id: item.newTopicID.unwrap_or_default(),
+                    topic_id: item.topic_id,
+                    new_topic_id: item.new_topic_id.unwrap_or_default(),
                     subject: item.subject.unwrap_or_default(),
-                    subinfo: item.subinfo.clone().unwrap_or_default(),
-                    user_name: item.userName.unwrap_or_default(),
-                    view_count: item.totalViewNum.unwrap_or(0),
-                    reply_count: item.totalReplyNum.unwrap_or(0),
+                    subinfo: item.sub_info.clone().unwrap_or_default(),
+                    user_name: item.user_name.unwrap_or_default(),
+                    view_count: item.total_view_num.unwrap_or(0),
+                    reply_count: item.total_reply_num.unwrap_or(0),
                     date_time,
-                    content: item.subinfo.unwrap_or_default(),
+                    content: item.sub_info.unwrap_or_default(),
                 }
             })
             .collect();
@@ -401,7 +474,13 @@ fn parse_stats(text: &str) -> (i32, i32) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+/// Save all posts of a user to markdown files.
+///
+/// # Errors
+/// Returns an error if the HTTP request fails, the directory cannot be created,
+/// or the markdown files cannot be written.
 pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str) -> Result<()> {
+    use std::fmt::Write;
     tracing::info!(%user_id, "taoguba: 获取用户帖子");
 
     let (posts, username) = client.fetch_user_posts(user_id).await?;
@@ -446,7 +525,7 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             Err(e) => {
                 tracing::warn!(error = %e, post_id = %post.id, "taoguba: 获取帖子内容失败");
                 (String::new(), String::new())
-            },
+            }
         };
 
         let date = if create_time.is_empty() {
@@ -461,25 +540,24 @@ pub async fn save_user_posts(client: &TgbClient, user_id: &str, output_dir: &str
             post.title, date, post.view_count, post.reply_count, content
         );
         fs::write(user_dir.join(filename), md)?;
-
-        index.push_str(&format!("{}. [{}]({})\n", i + 1, post.title, post.link));
+        let _ = writeln!(index, "{}. [{}]({})", i + 1, post.title, post.link);
     }
 
     fs::write(user_dir.join("index.md"), &index)?;
 
-    let user_md = format!(
-        r#"# 用户信息
+    let user_md_str = format!(
+        r"# 用户信息
 
 - UserID: {}
 - 用户名: {}
 - 帖子数: {}
 
->"#,
+>",
         user_id,
         username,
         posts.len(),
     );
-    fs::write(user_dir.join("user.md"), user_md)?;
+    fs::write(user_dir.join("user.md"), &user_md_str)?;
 
     tracing::info!(
         %user_id,

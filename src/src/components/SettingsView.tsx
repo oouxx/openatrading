@@ -88,6 +88,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadServers()
     if (isTauri) {
       ;(async () => {
@@ -108,9 +109,15 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     } else {
       // ponytail: load social settings from localStorage (written by setConfig)
       const keys = [
-        "notify_channel", "notify_on_collect", "notify_on_decision",
-        "notify_on_trade", "notify_on_news", "telegram_bot_token",
-        "telegram_chat_id", "discord_bot_token", "discord_channel_id",
+        "notify_channel",
+        "notify_on_collect",
+        "notify_on_decision",
+        "notify_on_trade",
+        "notify_on_news",
+        "telegram_bot_token",
+        "telegram_chat_id",
+        "discord_bot_token",
+        "discord_channel_id",
       ] as const
       const stored: Record<string, string | boolean> = {}
       for (const key of keys) {
@@ -128,7 +135,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       {activeTab === "appearance" && (
         <section>
           <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">外观</h2>
-          <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+          <div className="bg-bg-surface border-hairline rounded-lg border p-4">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm text-white">主题</span>
@@ -160,7 +167,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               LLM 配置
             </h2>
-            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
                 <label className="text-ink-muted mb-1 block text-xs">API Key</label>
                 <Input
@@ -185,7 +192,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                       await invoke("update_config", { section: "llm", key: "provider", value: v })
                     }
                   }}
-                  className="border-hairline bg-bg-tertiary text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
+                  className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
                 >
                   <option value="openrouter">OpenRouter</option>
                   <option value="anthropic">Anthropic</option>
@@ -216,7 +223,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               数据源
             </h2>
-            <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+            <div className="bg-bg-surface border-hairline rounded-lg border p-4">
               <label className="text-ink-muted mb-1 block text-xs">API 地址</label>
               <Input
                 value={apiUrl}
@@ -234,7 +241,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
                 操作
               </h2>
-              <div className="border-hairline bg-bg-surface rounded-lg border p-4">
+              <div className="bg-bg-surface border-hairline rounded-lg border p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm text-white">重启客户端</span>
@@ -266,7 +273,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               通知渠道
             </h2>
-            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
                 <label className="text-ink-muted mb-1 block text-xs">默认通知渠道</label>
                 <select
@@ -276,7 +283,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     setSocial((s) => ({ ...s, notify_channel: v }))
                     if (isTauri) await setConfig("social", "notify_channel", v)
                   }}
-                  className="border-hairline bg-bg-tertiary text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
+                  className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
                 >
                   <option value="telegram">Telegram</option>
                   <option value="discord">Discord</option>
@@ -313,7 +320,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               Telegram
             </h2>
-            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
                 <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
                 <Input
@@ -348,7 +355,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               Discord
             </h2>
-            <div className="border-hairline bg-bg-surface space-y-3 rounded-lg border p-4">
+            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
                 <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
                 <Input
@@ -429,7 +436,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           {/* ── 已配置列表 ── */}
           <div className="space-y-2">
             {servers.length === 0 && !showNewForm && (
-              <div className="border-hairline bg-bg-surface rounded-lg border p-8 text-center">
+              <div className="bg-bg-surface border-hairline rounded-lg border p-8 text-center">
                 <p className="text-ink-muted text-xs">
                   暂无 MCP 服务器配置，点击右上角「+ 添加」开始
                 </p>
@@ -463,7 +470,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       {activeTab === "about" && (
         <section>
           <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">关于</h2>
-          <div className="border-hairline bg-bg-surface divide-y rounded-lg border">
+          <div className="bg-bg-surface border-hairline divide-y rounded-lg border">
             {[
               ["应用名称", "OpenATrading"],
               ["版本", "0.12.0"],
@@ -511,7 +518,7 @@ function McpServerForm({
   const isStdio = server.transport.type === "stdio"
 
   return (
-    <div className="border-hairline bg-bg-surface mb-4 space-y-4 rounded-lg border p-4">
+    <div className="bg-bg-surface border-hairline mb-4 space-y-4 rounded-lg border p-4">
       {/* 名称 */}
       <div>
         <label className="text-ink-muted mb-1 block text-xs">名称</label>
@@ -622,7 +629,7 @@ function McpServerForm({
                     // hideKey 模式：edited → 裸值；untouched → "arg_i=VALUE"，切掉前缀
                     return idx === -1 ? e : e.slice(idx + 1)
                   })
-                  .filter(Boolean),
+                  .filter(Boolean)
               )
             }
             keyPlaceholder="序号"
@@ -699,10 +706,8 @@ function McpServerCard({
   }
 
   return (
-    <div className="border-hairline bg-bg-surface flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10">
-      <span
-        className={`size-1.5 flex-shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`}
-      />
+    <div className="bg-bg-surface border-hairline flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10">
+      <span className={`size-1.5 shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm text-white">{s.name}</span>
@@ -712,15 +717,15 @@ function McpServerCard({
         </div>
         <p className="text-ink-muted truncate font-mono text-[11px]">{transportSummary()}</p>
       </div>
-      <div className="flex flex-shrink-0 gap-1">
+      <div className="flex shrink-0 gap-1">
         <button
-          className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white"
+          className="hover:bg-bg-hover text-ink-muted rounded px-2 py-1 text-[10px] transition-colors hover:text-white"
           onClick={onEdit}
         >
           编辑
         </button>
         <button
-          className="text-ink-muted hover:bg-bg-hover rounded px-2 py-1 text-[10px] transition-colors hover:text-white disabled:opacity-40"
+          className="hover:bg-bg-hover text-ink-muted rounded px-2 py-1 text-[10px] transition-colors hover:text-white disabled:opacity-40"
           disabled={toggling}
           onClick={async () => {
             setToggling(true)
@@ -734,7 +739,7 @@ function McpServerCard({
           {s.enabled ? "停用" : "启用"}
         </button>
         <button
-          className="text-ink-muted hover:bg-bg-hover hover:text-down rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-40"
+          className="hover:bg-bg-hover hover:text-down text-ink-muted rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-40"
           disabled={deleting}
           onClick={async () => {
             setDeleting(true)
@@ -768,8 +773,7 @@ function KeyValueList({
 }) {
   const entries = items.length > 0 ? items : [""]
   // Normalize: store as "key=value" strings
-  const normalize = (list: string[]) =>
-    hideKey ? list : list.filter((e) => e.trim())
+  const normalize = (list: string[]) => (hideKey ? list : list.filter((e) => e.trim()))
 
   return (
     <div className="space-y-1.5">
@@ -803,7 +807,7 @@ function KeyValueList({
             />
             <button
               type="button"
-              className="text-ink-muted hover:text-down shrink-0 self-center px-1 text-xs"
+              className="hover:text-down text-ink-muted shrink-0 self-center px-1 text-xs"
               onClick={() => onChange(normalize(entries.filter((_, j) => j !== i)))}
             >
               ✕
@@ -821,4 +825,3 @@ function KeyValueList({
     </div>
   )
 }
-

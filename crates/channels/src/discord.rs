@@ -55,7 +55,7 @@ impl DiscordChannel {
         let status = resp.status();
         if status.is_client_error() || status.is_server_error() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("discord bot returned {}: {}", status, body);
+            anyhow::bail!("discord bot returned {status}: {body}");
         }
         Ok(())
     }
@@ -93,14 +93,12 @@ mod op {
     pub const HEARTBEAT: u8 = 1;
     pub const IDENTIFY: u8 = 2;
     pub const HELLO: u8 = 10;
-    pub const HEARTBEAT_ACK: u8 = 11;
 }
 
 /// Gateway 下行帧
 #[derive(Deserialize)]
 struct GatewayPayload {
     op: u8,
-    #[allow(dead_code)]
     s: Option<i64>,
     t: Option<String>,
     d: serde_json::Value,
@@ -112,15 +110,13 @@ struct HelloData {
     heartbeat_interval: u64,
 }
 
-/// MESSAGE_CREATE 事件数据
+/// `MESSAGE_CREATE` 事件数据
 #[derive(Deserialize)]
 struct MessageCreateData {
     id: String,
     channel_id: String,
     author: MessageAuthor,
     content: String,
-    #[allow(dead_code)]
-    guild_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -168,7 +164,7 @@ impl MessageAdapter for DiscordAdapter {
                     tracing::error!("[discord-adapter] connect failed: {e}, retry in 5s");
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                },
+                }
             };
             tracing::info!("[discord-adapter] connected to gateway");
 
@@ -176,22 +172,18 @@ impl MessageAdapter for DiscordAdapter {
             let write = Arc::new(Mutex::new(write));
 
             // 2. 等待 Hello
-            let hello = match read.next().await {
-                Some(Ok(msg)) => msg,
-                _ => {
-                    tracing::error!("[discord-adapter] no hello, retry in 5s");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                },
+            let Some(Ok(hello)) = read.next().await else {
+                tracing::error!("[discord-adapter] no hello, retry in 5s");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
             };
 
-            let data: serde_json::Value = match hello {
-                Message::Text(t) => serde_json::from_str(&t).unwrap_or_default(),
-                _ => {
-                    tracing::error!("[discord-adapter] unexpected hello message type");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                },
+            let data: serde_json::Value = if let Message::Text(t) = hello {
+                serde_json::from_str(&t).unwrap_or_default()
+            } else {
+                tracing::error!("[discord-adapter] unexpected hello message type");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
             };
 
             let hello_payload: GatewayPayload = serde_json::from_value(data)
@@ -226,7 +218,10 @@ impl MessageAdapter for DiscordAdapter {
 
             ws_send(
                 &write,
-                Message::Text(serde_json::to_string(&identify).unwrap()),
+                Message::Text(
+                    serde_json::to_string(&identify)
+                        .unwrap_or_else(|e| panic!("identify serialization failed: {e}")),
+                ),
             )
             .await;
 
@@ -252,14 +247,19 @@ impl MessageAdapter for DiscordAdapter {
                     });
                     ws_send(
                         &write,
-                        Message::Text(serde_json::to_string(&heartbeat).unwrap()),
+                        Message::Text(
+                            serde_json::to_string(&heartbeat)
+                                .unwrap_or_else(|e| panic!("heartbeat serialization failed: {e}")),
+                        ),
                     )
                     .await;
                 }
 
                 // 读取消息（带超时让心跳检查能跑）
                 let msg = tokio::time::timeout(
-                    std::time::Duration::from_millis(heartbeat_interval.as_millis() as u64 / 3),
+                    std::time::Duration::from_millis(
+                        u64::try_from(heartbeat_interval.as_millis()).unwrap_or(u64::MAX) / 3,
+                    ),
                     read.next(),
                 )
                 .await;
@@ -269,19 +269,18 @@ impl MessageAdapter for DiscordAdapter {
                     Ok(Some(Ok(Message::Ping(data)))) => {
                         ws_send(&write, Message::Pong(data)).await;
                         continue;
-                    },
+                    }
                     Ok(Some(Ok(Message::Close(_)))) => {
                         tracing::info!("[discord-adapter] connection closed");
                         break;
-                    },
+                    }
                     Ok(Some(Err(e))) => {
                         tracing::error!("[discord-adapter] ws error: {e}");
                         break;
-                    },
+                    }
                     Ok(None) => {
                         break;
-                    },
-                    Err(_) => continue, // timeout, 继续循环
+                    }
                     _ => continue,
                 };
 
@@ -290,7 +289,7 @@ impl MessageAdapter for DiscordAdapter {
                     Err(e) => {
                         tracing::error!("[discord-adapter] parse payload error: {e}");
                         continue;
-                    },
+                    }
                 };
 
                 match payload.op {
@@ -333,7 +332,7 @@ impl MessageAdapter for DiscordAdapter {
                                         return Ok(());
                                     }
                                 }
-                            },
+                            }
                             Some("READY") => {
                                 if let Some(url) =
                                     payload.d.get("resume_gateway_url").and_then(|v| v.as_str())
@@ -341,15 +340,14 @@ impl MessageAdapter for DiscordAdapter {
                                     gateway_url = url.to_string();
                                 }
                                 tracing::info!("[discord-adapter] ready");
-                            },
+                            }
                             Some("RECONNECT") => {
                                 tracing::info!("[discord-adapter] reconnect requested");
                                 break;
-                            },
-                            _ => {},
+                            }
+                            _ => {}
                         }
-                    },
-                    op::HEARTBEAT_ACK => {},
+                    }
                     op::HEARTBEAT => {
                         let heartbeat = serde_json::json!({
                             "op": op::HEARTBEAT,
@@ -357,11 +355,15 @@ impl MessageAdapter for DiscordAdapter {
                         });
                         ws_send(
                             &write,
-                            Message::Text(serde_json::to_string(&heartbeat).unwrap()),
+                            Message::Text(
+                                serde_json::to_string(&heartbeat).unwrap_or_else(|e| {
+                                    panic!("heartbeat serialization failed: {e}")
+                                }),
+                            ),
                         )
                         .await;
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
 

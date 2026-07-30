@@ -62,6 +62,10 @@ impl AdapterRuntime {
     /// 1. 更新/创建会话
     /// 2. 检查断路器状态
     /// 3. 返回 `MessageEvent` 供后续处理
+    ///
+    /// # Errors
+    ///
+    /// Returns `AdapterError::CircuitOpen` if the circuit breaker is open.
     pub async fn on_message(&self, event: MessageEvent) -> Result<MessageEvent, AdapterError> {
         // 1. 检查断路器
         if !self.circuit_breaker.is_allowed() {

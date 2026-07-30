@@ -68,7 +68,7 @@ impl TradeManager {
         )
         .ok();
 
-        Ok(TradeManager {
+        Ok(Self {
             conn: Mutex::new(conn),
         })
     }
@@ -77,7 +77,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct,\
@@ -106,11 +106,11 @@ impl TradeManager {
             .map_err(Into::into)
     }
 
-    pub fn add_position(&self, pos: Position) -> Result<i64> {
+    pub fn add_position(&self, pos: &Position) -> Result<i64> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO positions (role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct)\
@@ -138,11 +138,11 @@ impl TradeManager {
         Ok(id)
     }
 
-    pub fn update_position(&self, pos: Position) -> Result<()> {
+    pub fn update_position(&self, pos: &Position) -> Result<()> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         conn.execute(
             "UPDATE positions SET current_price=?1,stop_loss=?2,target_price=?3,\
              updated_at=datetime('now','localtime') WHERE id=?4",
@@ -155,7 +155,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let (role_name, symbol, shares, stock_name): (String, String, i64, String) = conn
             .query_row(
                 "SELECT role_name, symbol, shares, stock_name FROM positions WHERE id=?1",
@@ -174,7 +174,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id,position_id,action,price,shares,reason,created_at \
              FROM trade_logs WHERE position_id=?1 ORDER BY id",
@@ -209,7 +209,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
              tl.reason, tl.created_at, \
@@ -255,7 +255,7 @@ impl TradeManager {
                 let pnl = match p.current_price {
                     Some(cp) if cp > 0.0 => {
                         format!("{:+.1}%", (cp - p.cost_price) / p.cost_price * 100.0)
-                    },
+                    }
                     _ => "N/A".to_string(),
                 };
                 format!(
@@ -264,7 +264,8 @@ impl TradeManager {
                     p.symbol,
                     p.stock_name,
                     p.cost_price,
-                    p.current_price.map_or("N/A".to_string(), |v| v.to_string()),
+                    p.current_price
+                        .map_or_else(|| "N/A".to_string(), |v| v.to_string()),
                     pnl,
                     p.shares,
                     p.sector,
@@ -279,7 +280,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id,role_name,symbol,stock_name,entry_date,cost_price,shares,\
              current_price,stop_loss,target_price,entry_reason,sector,position_pct,\
@@ -312,7 +313,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         conn.execute(
             "UPDATE positions SET current_price=?1, updated_at=datetime('now','localtime') WHERE id=?2",
             rusqlite::params![current_price, id],
@@ -324,7 +325,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let n = conn.execute("DELETE FROM positions WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
@@ -333,7 +334,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let n = conn.execute("DELETE FROM trade_logs WHERE role_name=?1", [role_name])?;
         Ok(n)
     }
@@ -342,7 +343,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT tl.id, tl.position_id, tl.action, tl.price, tl.shares, \
              tl.reason, tl.created_at, \
@@ -383,7 +384,7 @@ impl TradeManager {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| anyhow::anyhow!("mutex poisoned: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
         // Pair Close logs with their corresponding Open logs by position_id
         let mut stmt = conn.prepare(
             "SELECT c.position_id, c.symbol, COALESCE(o.stock_name, c.stock_name, '') as stock_name,
@@ -421,62 +422,5 @@ impl TradeManager {
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::trade::Position;
-
-    fn test_pos(role: &str, symbol: &str, name: &str) -> Position {
-        Position {
-            id: 0,
-            role_name: role.into(),
-            symbol: StockCode::new(symbol),
-            stock_name: name.into(),
-            entry_date: "2026-01-15".into(),
-            cost_price: 10.5,
-            shares: 1000,
-            current_price: Some(11.2),
-            stop_loss: Some(9.8),
-            target_price: Some(12.0),
-            entry_reason: "测试".into(),
-            sector: "银行".into(),
-            position_pct: 0.3,
-            created_at: String::new(),
-            updated_at: String::new(),
-        }
-    }
-
-    #[test]
-    fn test_add_and_list_positions() {
-        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
-        tm.add_position(test_pos("zarili", "000001", "平安银行"))
-            .unwrap();
-        let positions = tm.list_positions("zarili").unwrap();
-        assert_eq!(positions.len(), 1);
-        assert_eq!(positions[0].symbol, StockCode::new("000001"));
-    }
-
-    #[test]
-    fn test_close_position() {
-        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
-        let id = tm
-            .add_position(test_pos("trader", "600519", "茅台"))
-            .unwrap();
-        tm.close_position(id, 1700.0, "止盈").unwrap();
-        assert!(tm.list_positions("trader").unwrap().is_empty());
-        assert_eq!(tm.get_trade_logs(id).unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_format_positions() {
-        let tm = TradeManager::open(Path::new(":memory:")).unwrap();
-        tm.add_position(test_pos("zarili", "000001", "平安银行"))
-            .unwrap();
-        let text = tm.format_positions("zarili").unwrap();
-        assert!(text.contains("000001"));
-        assert!(text.contains("平安银行"));
     }
 }

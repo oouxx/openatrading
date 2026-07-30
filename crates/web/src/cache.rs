@@ -7,9 +7,13 @@ pub type AppCache = Cache<String, CachedEntry>;
 
 // ── A-share market hours constants ──────────────────────────
 // Safety: these are compile-time-known valid clock times (HMS).
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
 const MORNING_OPEN: NaiveTime = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
 const MORNING_CLOSE: NaiveTime = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
 const AFTERNOON_OPEN: NaiveTime = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+#[allow(clippy::unwrap_used, clippy::incompatible_msrv)]
 const AFTERNOON_CLOSE: NaiveTime = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -38,14 +42,14 @@ pub enum MarketPhase {
 }
 
 impl MarketPhase {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            MarketPhase::PreOpen => "preopen",
-            MarketPhase::MorningOpen => "morningopen",
-            MarketPhase::MorningBreak => "morningbreak",
-            MarketPhase::AfternoonOpen => "afternoonopen",
-            MarketPhase::Closed => "closed",
-            MarketPhase::Weekend => "weekend",
+            Self::PreOpen => "preopen",
+            Self::MorningOpen => "morningopen",
+            Self::MorningBreak => "morningbreak",
+            Self::AfternoonOpen => "afternoonopen",
+            Self::Closed => "closed",
+            Self::Weekend => "weekend",
         }
     }
 }
@@ -88,11 +92,11 @@ fn next_open_timestamp() -> i64 {
         MarketPhase::PreOpen => {
             let secs = (MORNING_OPEN - time).num_seconds();
             now.timestamp() + secs
-        },
+        }
         MarketPhase::MorningBreak => {
             let secs = (AFTERNOON_OPEN - time).num_seconds();
             now.timestamp() + secs
-        },
+        }
         MarketPhase::Closed | MarketPhase::Weekend => {
             // Find the next trading day (skip weekends)
             let mut days_ahead = 1i64;
@@ -108,7 +112,7 @@ fn next_open_timestamp() -> i64 {
                 }
                 days_ahead += 1;
             }
-        },
+        }
         MarketPhase::MorningOpen | MarketPhase::AfternoonOpen => 0,
     }
 }
@@ -124,60 +128,61 @@ pub enum CachePolicy {
 impl CachePolicy {
     pub fn overview() -> Self {
         if is_trading_hours() {
-            CachePolicy::TradingTtl(Duration::from_secs(30))
+            Self::TradingTtl(Duration::from_secs(30))
         } else {
-            CachePolicy::NonTradingUntilOpen
+            Self::NonTradingUntilOpen
         }
     }
 
     pub fn realtime() -> Self {
         if is_trading_hours() {
-            CachePolicy::TradingTtl(Duration::from_secs(10))
+            Self::TradingTtl(Duration::from_secs(10))
         } else {
-            CachePolicy::NonTradingUntilOpen
+            Self::NonTradingUntilOpen
         }
     }
 
     pub fn snapshot() -> Self {
         if is_trading_hours() {
-            CachePolicy::TradingTtl(Duration::from_secs(60))
+            Self::TradingTtl(Duration::from_secs(60))
         } else {
-            CachePolicy::NonTradingUntilOpen
+            Self::NonTradingUntilOpen
         }
     }
 
-    pub fn daily() -> Self {
-        CachePolicy::Always(Duration::from_secs(3600 * 6))
+    pub const fn daily() -> Self {
+        Self::Always(Duration::from_secs(3600 * 6))
     }
 
     /// Replay data: cache after close until next open; no cache during trading.
     pub fn replay() -> Self {
         if is_trading_hours() {
-            CachePolicy::Never
+            Self::Never
         } else {
-            CachePolicy::TradingTtl(Duration::from_secs(60))
+            Self::TradingTtl(Duration::from_secs(60))
         }
     }
 
-    pub fn never() -> Self {
-        CachePolicy::Never
+    pub const fn never() -> Self {
+        Self::Never
     }
 
     pub fn telegraph() -> Self {
         if is_trading_hours() {
-            CachePolicy::TradingTtl(Duration::from_secs(30))
+            Self::TradingTtl(Duration::from_secs(30))
         } else {
-            CachePolicy::Always(Duration::from_secs(300))
+            Self::Always(Duration::from_secs(300))
         }
     }
 
     fn compute_expires_at(&self) -> Option<i64> {
         let now = openatrading_core::utils::time::beijing_now().timestamp();
         match self {
-            CachePolicy::Never => None,
-            CachePolicy::Always(ttl) => Some(now + ttl.as_secs() as i64),
-            CachePolicy::TradingTtl(ttl) => Some(now + ttl.as_secs() as i64),
-            CachePolicy::NonTradingUntilOpen => {
+            Self::Never => None,
+            Self::Always(ttl) | Self::TradingTtl(ttl) => {
+                Some(now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX))
+            }
+            Self::NonTradingUntilOpen => {
                 let ts = next_open_timestamp();
                 if ts > now {
                     Some(ts)
@@ -185,7 +190,7 @@ impl CachePolicy {
                     // Fallback: short TTL if we can't compute the next open
                     Some(now + 60)
                 }
-            },
+            }
         }
     }
 }
@@ -217,6 +222,10 @@ pub fn set(cache: &AppCache, key: &str, value: &str, policy: CachePolicy) {
 
 use axum::{http::StatusCode, Json};
 
+/// Fetch a value from cache or call `fetch` to populate it.
+///
+/// # Errors
+/// Returns `StatusCode` if the fetch function fails.
 pub async fn get_or_fetch<F, Fut>(
     cache: &AppCache,
     key: &str,
@@ -236,8 +245,13 @@ where
     Ok(value)
 }
 
-/// Like `get_or_fetch` but works with any Serialize type and returns `Json<Value>` directly,
-/// eliminating the to_string → from_str round-trip in every handler.
+/// Fetch a JSON value from cache or call `fetch` to populate it.
+///
+/// Unlike `get_or_fetch`, this works with any Serialize type and returns
+/// `Json<Value>` directly, eliminating the `to_string` → `from_str` round-trip.
+///
+/// # Errors
+/// Returns `StatusCode` if the fetch function fails.
 pub async fn get_or_fetch_json<F, Fut, T>(
     cache: &AppCache,
     key: &str,

@@ -59,7 +59,7 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
                 {item.title}
               </p>
               {item.aiNote && (
-                <p className="text-caption text-ai/80 mt-1 leading-relaxed">→ {item.aiNote}</p>
+                <p className="text-ai/80 text-caption mt-1 leading-relaxed">→ {item.aiNote}</p>
               )}
             </div>
           </div>
@@ -101,7 +101,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   if (variant === "tab") {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="text-caption mb-6 flex flex-shrink-0 items-center gap-3">
+        <div className="text-caption mb-6 flex shrink-0 items-center gap-3">
           <span className="text-white/60">
             <b className="text-white">{filteredNews.length}</b> 条资讯
             {source === "all" && (
@@ -113,7 +113,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="text-caption rounded-input border-hairline bg-bg text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-bg border-hairline rounded-input text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
           >
             <option value="all">全部来源</option>
             <option value="cls">财联社</option>
@@ -122,7 +122,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         </div>
 
         {error && (
-          <div className="flex-shrink-0 py-12 text-center">
+          <div className="shrink-0 py-12 text-center">
             <p className="text-caption text-up mb-3">资讯加载失败</p>
             <button
               onClick={() => refetch()}
@@ -133,13 +133,13 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto flex flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {error ? null : filteredNews.length > 0 ? (
             <>
               {filteredNews.map((item) => (
                 <div
                   key={item.id}
-                  className="group rounded-card border-hairline-dark bg-surface-dark hover:bg-bg-hover mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
+                  className="bg-surface-dark border-hairline-dark group hover:bg-bg-hover rounded-card mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
                 >
                   <span className="text-caption mt-0.5 shrink-0">
                     {item.severity === "major" ? "🔴" : "⚪"}
@@ -150,7 +150,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
                       {item.title}
                     </p>
                     {item.aiNote && (
-                      <p className="text-caption text-ai/70 mt-1 text-xs leading-relaxed">
+                      <p className="text-ai/70 text-caption mt-1 text-xs/relaxed">
                         → {item.aiNote}
                       </p>
                     )}
@@ -174,7 +174,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-card border-hairline bg-bg-surface overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-card flex h-full min-h-0 flex-col overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-caption-strong text-ink-muted font-mono tracking-wider uppercase">
@@ -183,7 +183,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="text-caption rounded-input border-hairline bg-bg text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-bg border-hairline rounded-input text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
           >
             <option value="all">全部</option>
             <option value="cls">财联社</option>
@@ -192,7 +192,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         </div>
         <span className="text-caption text-ink-muted font-mono">{filteredNews.length} 条</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto max-h-full">
+      <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
         {isLoading && !allItems.length ? (
           <div className="text-caption text-ink-muted py-8 text-center">加载中...</div>
         ) : error && !allItems.length ? (
