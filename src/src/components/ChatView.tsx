@@ -277,7 +277,7 @@ export default function AiCopilot({
       debounceRef.current = setTimeout(async () => {
         setSearchLoading(true)
         try {
-          const data = await fetchJson<any>(`/api/stocks/search?q=${encodeURIComponent(q)}`)
+          const data = await fetchJson<any>(`/api/search-stocks?q=${encodeURIComponent(q)}`)
           setSearchResults(data?.results ?? data ?? [])
           setShowDropdown(true)
         } catch {
