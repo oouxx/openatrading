@@ -457,61 +457,38 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
 
     log::info!("ws: upgrade accepted session_id={session_id}");
 
-    // Retrieve the live runtime from the SessionPool (HIT) or resume from disk (MISS).
-    // If neither exists, create a new session with the given ID.
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let runtime = match state.ctx.pool.get_or_resume(&session_id).await {
-        Ok(rt) => {
-            log::info!("ws: runtime ready for {session_id} (resumed)");
-            rt
-        }
-        Err(_) => {
-            log::info!("ws: session {session_id} not found, creating new");
-            match state
-                .ctx
-                .pool
-                .create_session_with_id(&cwd, Some(&session_id))
-                .await
-            {
-                Ok(_) => match state.ctx.pool.get_session(&session_id).await {
-                    Some(rt) => {
-                        log::info!("ws: new session created: {session_id}");
-                        rt
-                    }
-                    None => {
-                        log::error!("ws: created session {session_id} but not found in pool");
-                        let notice = r#"{"kind":"session","type":"notice","text":"failed to create session","is_error":true}"#.to_string();
-                        let _ = socket.send(Message::Text(notice)).await;
-                        return;
-                    }
-                },
-                Err(e) => {
-                    log::error!("ws: failed to create session {session_id}: {e}");
-                    let notice = format!(
-                        r#"{{"kind":"session","type":"notice","text":"failed to create session: {e}","is_error":true}}"#
-                    );
-                    let _ = socket.send(Message::Text(notice)).await;
-                    return;
-                }
-            }
+    let session = match crate::chat_session::ensure_session_with_events(&state.ctx.pool, &session_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("ws: failed to ensure session {session_id}: {e}");
+            let notice = format!(
+                r#"{{"kind":"session","type":"notice","text":"failed to create session: {e}","is_error":true}}"#
+            );
+            let _ = socket.send(Message::Text(notice)).await;
+            return;
         }
     };
 
-    let (mut rx, _subscription_handle) = {
-        let rt = runtime.lock().await;
-        setup_event_channel(rt.session()).await
-    };
-    log::info!("ws: event channel subscribed for {session_id}");
-
+    let mut rx = session.rx;
     log::info!("ws: session {session_id} connected — entering event loop");
 
-    // Event loop: forward events to WebSocket, handle client prompts, detect disconnect.
+    forward_events(&mut socket, &mut rx, &state, &session_id).await;
+
+    log::info!("ws: session {session_id} disconnected");
+}
+
+/// Forward events from the session event channel to the WebSocket, and handle
+/// client messages (prompts, pings, close).
+async fn forward_events(
+    socket: &mut WebSocket,
+    rx: &mut mpsc::Receiver<TranscriptEvent>,
+    state: &Arc<AppState>,
+    session_id: &str,
+) {
+    use openatrading_core::log;
+
     loop {
         tokio::select! {
-            // All events share a single channel with backpressure.
             Some(event) = rx.recv() => {
                 let label = event.kind_label();
                 let Ok(json) = serde_json::to_string(&EventEnvelope { schema_version: SCHEMA_VERSION, event }) else { continue };
@@ -521,14 +498,13 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
                     break;
                 }
             }
-            // Client messages: handle Prompt, respond to Ping, break on close/error
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         if let Ok(ClientCommand::Prompt { text }) = serde_json::from_str::<ClientCommand>(&text) {
                             let pool = state.ctx.pool.clone();
-                            let sid = session_id.clone();
+                            let sid = session_id.to_string();
                             tokio::spawn(async move {
                                 log::info!("ws: agent turn started for {sid}");
                                 let streaming_behavior = if pool.is_stream(&sid).await {
@@ -558,6 +534,4 @@ async fn handle_session(mut socket: WebSocket, state: Arc<AppState>, session_id:
             }
         }
     }
-
-    log::info!("ws: session {session_id} disconnected");
 }

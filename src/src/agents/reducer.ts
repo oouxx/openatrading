@@ -135,9 +135,12 @@ function appendToolCallDelta(turns: TranscriptTurn[], delta: string): Transcript
   }
   if (idx >= 0 && blocks[idx].type === "tool_call") {
     const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
-    const nextBlocks = blocks.slice()
-    nextBlocks[idx] = { ...tc, input: tc.input + delta, status: "streaming" }
-    return replaceLast(turns, { ...last, blocks: nextBlocks })
+    // Only append to streaming/running blocks; skip completed ones
+    if (tc.status === "streaming" || tc.status === "running") {
+      const nextBlocks = blocks.slice()
+      nextBlocks[idx] = { ...tc, input: tc.input + delta, status: "streaming" }
+      return replaceLast(turns, { ...last, blocks: nextBlocks })
+    }
   }
   return replaceLast(turns, {
     ...last,
@@ -322,6 +325,17 @@ function addToolCall(
     const tc = blocks[existing] as Extract<TranscriptBlock, { type: "tool_call" }>
     const nextBlocks = blocks.slice()
     nextBlocks[existing] = { ...tc, name: name || tc.name, input: input || tc.input, status: "running" }
+    return replaceLast(turns, { ...last, blocks: nextBlocks })
+  }
+  // Not found by id — look for a placeholder block created by appendToolCallDelta
+  // (which uses newBlockId() and has an empty name). Update it with the real id.
+  const placeholder = blocks.findIndex(
+    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name,
+  )
+  if (placeholder >= 0) {
+    const tc = blocks[placeholder] as Extract<TranscriptBlock, { type: "tool_call" }>
+    const nextBlocks = blocks.slice()
+    nextBlocks[placeholder] = { ...tc, id, name, input: input || tc.input, status: "running" }
     return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   return replaceLast(turns, {
