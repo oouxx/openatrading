@@ -336,13 +336,19 @@ mod tests {
 
     #[test]
     fn test_error_messages() {
-        let err = to_yahoo_symbol("abc").unwrap_err();
-        assert!(err.to_string().contains("不含任何数字"));
+        match to_yahoo_symbol("abc") {
+            Err(e) => assert!(e.to_string().contains("不含任何数字")),
+            Ok(v) => panic!("expected Err, got Ok({v})"),
+        }
 
-        let err = to_yahoo_symbol("700000").unwrap_err();
-        assert!(err.to_string().contains("无法推断交易所"));
+        match to_yahoo_symbol("700000") {
+            Err(e) => assert!(e.to_string().contains("无法推断交易所")),
+            Ok(v) => panic!("expected Err, got Ok({v})"),
+        }
 
-        let err = to_yahoo_symbol("1_234_567").unwrap_err();
-        assert!(err.to_string().contains("超过6位"));
+        match to_yahoo_symbol("1_234_567") {
+            Err(e) => assert!(e.to_string().contains("超过6位")),
+            Ok(v) => panic!("expected Err, got Ok({v})"),
+        }
     }
 }

@@ -424,5 +424,3 @@ impl TradeManager {
             .map_err(Into::into)
     }
 }
-
-
