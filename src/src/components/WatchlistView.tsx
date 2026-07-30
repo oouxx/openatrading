@@ -42,19 +42,24 @@ export default function WatchlistView() {
   const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
 
   // ── Real-time quotes via streams — single SSE for all symbols ──
-  const quotesRef = useRef<Map<string, QuoteData>>(new Map())
+  const [quotesMap, setQuotesMap] = useState<Map<string, QuoteData>>(new Map())
   const [quoteTick, setQuoteTick] = useState(0)
 
   useEffect(() => {
     if (items.length === 0) return
-    quotesRef.current = new Map()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuotesMap(new Map())
     const codes = items.map((item) => item.code)
     return subscribeRealtimeBatch(codes, (code, data: any) => {
-      quotesRef.current.set(code, {
+      setQuotesMap((prev) => {
+        const next = new Map(prev)
+        next.set(code, {
         last_px: data.last_px,
         px_change_rate: data.px_change_rate,
         market_value: data.market_value,
         circulation_value: data.circulation_value,
+        })
+        return next
       })
       setQuoteTick((n) => n + 1)
     })
@@ -130,7 +135,7 @@ export default function WatchlistView() {
   const richList = useMemo((): RichStock[] => {
     return items.map((item, i) => ({
       ...item,
-      quote: quotesRef.current.get(item.code),
+      quote: quotesMap.get(item.code),
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, quoteTick])
@@ -168,7 +173,7 @@ export default function WatchlistView() {
   }, [richList, sortField, sortDir, localSearch])
 
   // ── Sort icon ──
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const renderSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown className="ml-0.5 inline size-2.5 opacity-40" />
     return sortDir === "asc" ? (
       <ArrowUp className="ml-0.5 inline size-2.5" />
@@ -286,7 +291,7 @@ export default function WatchlistView() {
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("price")}
                   >
-                    最新价 <SortIcon field="price" />
+                    最新价 {renderSortIcon("price")}
                   </button>
                   <button
                     className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
@@ -304,7 +309,7 @@ export default function WatchlistView() {
                     className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
                     onClick={() => toggleSort("circulation_value")}
                   >
-                    流通市值 <SortIcon field="circulation_value" />
+                    流通市值 {renderSortIcon("circulation_value")}
                   </button>
                   <span className="w-6" />
                 </div>

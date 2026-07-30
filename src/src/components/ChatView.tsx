@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, startTransition } from "react"
-import type { ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Search, Send } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
@@ -16,13 +15,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { fetchJson } from "@/stores/data"
 import { fetchCommands, type ChatSession } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
-import ChromeTabs from "@/components/ChromeLikeTabs"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { newTurnId } from "@/agents/reducer"
+import { applyEvent } from "@/agents/reducer"
 import type {
-  HistoryMessage,
   TranscriptBlock,
   TranscriptTurn,
 } from "@/agents/types"
@@ -57,16 +54,11 @@ export default function AiCopilot({
   const streamThreadRef = useRef<string | null>(null)
   const [streamThreadId, setStreamThreadId] = useState<string | null>(null)
   const transportRef = useRef<AgentTransport | null>(null)
-  // Ref to always have the latest sendPrompt from useAgentWebSocket hook
-  const sendPromptRef = useRef<((text: string) => Promise<void>) | null>(null)
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
   const openTab = useStockTabStore((s) => s.openTab)
   const closeTab = useStockTabStore((s) => s.closeTab)
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
-
-  // Agent lifecycle phase — derived from the latest turn's status.
-  const [agentPhase, setAgentPhase] = useState<AgentPhase>("idle")
 
   // Keep a ref mirror so async transport callbacks read the latest turns.
   const threadTurnsRef = useRef<Map<string, TranscriptTurn[]>>(threadTurns)
@@ -74,29 +66,19 @@ export default function AiCopilot({
     threadTurnsRef.current = threadTurns
   }, [threadTurns])
 
-  // Derive agent phase from turns
-  useEffect(() => {
+  // Agent lifecycle phase — derived from the latest turn's status.
+  const agentPhase = useMemo<AgentPhase>(() => {
     const turns = activeThreadId ? threadTurns.get(activeThreadId) : undefined
-    if (!turns || turns.length === 0) {
-      setAgentPhase("idle")
-      return
-    }
+    if (!turns || turns.length === 0) return "idle"
     const lastTurn = turns[turns.length - 1]
-    if (lastTurn.isError) {
-      setAgentPhase("error")
-    } else if (lastTurn.status === "in_progress") {
-      // Check if any tool is running or streaming
+    if (lastTurn.isError) return "error"
+    if (lastTurn.status === "in_progress") {
       const hasRunningTool = lastTurn.blocks.some(
         (b) => b.type === "tool_call" && (b.status === "running" || b.status === "streaming")
       )
-      if (hasRunningTool) {
-        setAgentPhase("processing")
-      } else {
-        setAgentPhase("starting")
-      }
-    } else {
-      setAgentPhase("settled")
+      return hasRunningTool ? "processing" : "starting"
     }
+    return "settled"
   }, [threadTurns, activeThreadId])
 
   // Stock search
@@ -109,7 +91,6 @@ export default function AiCopilot({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const prevInputRef = useRef("")
 
   const SCROLL_THRESHOLD = 60
 
@@ -177,12 +158,6 @@ export default function AiCopilot({
     ),
   })
 
-  // Keep a ref to the latest sendPrompt so the running send() closure
-  // always uses the current hook instance (fixes race when creating a new session).
-  useEffect(() => {
-    sendPromptRef.current = (text: string) => wsAgent.sendPrompt(activeThreadId ?? "", text)
-  }, [wsAgent.sendPrompt, activeThreadId])
-
   // Load history messages when switching to a different session.
   // The WebSocket onopen only loads history once per connection, so
   // switching to an already-connected session needs an explicit fetch.
@@ -199,12 +174,14 @@ export default function AiCopilot({
       transportRef.current?.dispose()
       const transport = new TauriTransport(threadId)
       transportRef.current = transport
-      transport.onTurnsUpdate = (turns: TranscriptTurn[]) => {
-        threadTurnsRef.current.set(threadId, turns)
+      transport.onEvent((event) => {
+        const currentTurns = threadTurnsRef.current.get(threadId) ?? []
+        const newTurns = applyEvent(currentTurns, event)
+        threadTurnsRef.current.set(threadId, newTurns)
         setThreadTurns(new Map(threadTurnsRef.current))
         scrollDown()
-      }
-      await transport.start()
+      })
+      await transport.ready()
     },
     [scrollDown],
   )
@@ -237,7 +214,7 @@ export default function AiCopilot({
       transportRef.current?.sendPrompt(text)
     } else {
       // Use wsAgent directly with the resolved sessionId so we don't
-      // depend on sendPromptRef being updated after onActiveThreadChange.
+      // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
       await wsAgent.sendPrompt(sessionId, text)
     }
   }, [input, activeThreadId, onActiveThreadChange, startTauriTransport, wsAgent.sendPrompt])

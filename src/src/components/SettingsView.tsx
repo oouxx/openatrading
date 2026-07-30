@@ -88,6 +88,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadServers()
     if (isTauri) {
       ;(async () => {
