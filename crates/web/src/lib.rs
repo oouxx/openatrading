@@ -5,6 +5,7 @@ pub mod chat_session;
 pub mod gateway;
 pub mod handlers;
 pub mod mcp;
+pub mod market_stream;
 pub mod web;
 
 use cache::AppCache;
@@ -31,6 +32,9 @@ pub struct AppState {
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
     pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
     pub cache: Arc<AppCache>,
+    /// Shared multiplexer for market SSE streams (kline/realtime). One upstream
+    /// poll per symbol set, fanned out to every SSE connection.
+    pub market_hub: Arc<market_stream::MarketStreamHub>,
     /// Per-session [`SessionEventState`] (monotonic `seq` + ring buffer).
     /// Persists across WebSocket reconnects for the same session so the
     /// `lastSeq` handshake can resume the gap.

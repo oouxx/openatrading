@@ -9,6 +9,7 @@ use openatrading_core::memory::sqlite::MemoryStore;
 use openatrading_core::trade::sqlite::TradeManager;
 
 use crate::cache;
+use crate::market_stream;
 use crate::{self as web, AppState, RoleEntry};
 
 pub struct Gateway {
@@ -49,6 +50,7 @@ impl Gateway {
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
+            market_hub: market_stream::MarketStreamHub::new(),
             event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         });
 

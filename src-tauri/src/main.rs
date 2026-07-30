@@ -731,6 +731,7 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
+        market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
         event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
