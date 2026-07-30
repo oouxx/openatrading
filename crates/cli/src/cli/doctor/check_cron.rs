@@ -46,11 +46,7 @@ impl Check for CronCheck {
             |cfg| match &cfg.cron {
                 Some(c) if c.enabled => {
                     let mut details = Vec::new();
-                    let schedules = [
-                        ("采集", &c.collection_schedule),
-                        ("决策", &c.decision_schedule),
-                        ("新闻", &c.news_schedule),
-                    ];
+                    let schedules = [("采集", &c.collection_schedule), ("新闻", &c.news_schedule)];
                     let mut errors = 0usize;
 
                     for (name, expr) in &schedules {
@@ -103,7 +99,6 @@ impl Check for CronCheck {
 [cron]
 enabled = true
 collection_schedule = "0 0 18 * * 1-5"
-decision_schedule = "0 */30 9-15 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 "#;
         std::fs::write(&config_path, content + cron_section)?;

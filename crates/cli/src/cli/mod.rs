@@ -13,10 +13,9 @@ pub mod update;
 use anyhow::Result;
 use app::Cli;
 use clap::Parser;
-use std::sync::Arc;
 
 use crate::cli::app::{Commands, GatewayAction, McpAction, SkillAction, ToolsAction, TradeAction};
-use crate::cli::config::{cmd_init, AppConfig};
+use crate::cli::config::cmd_init;
 use crate::cli::config_cmd::cmd_config;
 use crate::cli::doctor::cmd_doctor;
 use crate::cli::gateway_cmd::{
@@ -31,10 +30,6 @@ use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
-use openatrading_core::context::AppContext;
-use openatrading_core::cron::run_decision;
-use openatrading_core::social::{NoopChannel, NotificationSender, StdoutChannel};
-use openatrading_web::gateway::Gateway;
 
 /// Entry point for the `openatrading` CLI.
 pub async fn run() -> Result<()> {
@@ -160,66 +155,6 @@ pub async fn run() -> Result<()> {
     // Handle `config` subcommand
     if let Some(Commands::Config { action }) = cli.command {
         return cmd_config(action);
-    }
-
-    // Load config
-    let app_config = AppConfig::load()?;
-
-    // Handle `decision` subcommand
-    if let Some(Commands::Decision { dry_run, role }) = cli.command {
-        return cmd_decision(&app_config, dry_run, role.as_deref()).await;
-    }
-
-    Ok(())
-}
-
-async fn cmd_decision(
-    app_config: &AppConfig,
-    dry_run: bool,
-    role_filter: Option<&str>,
-) -> Result<()> {
-    let db_path = openatrading_core::atrading_home().join(&app_config.service.db_path);
-    let gateway = Gateway::init(&db_path)?;
-
-    let roles = crate::cli::gateway_cmd::build_roles(app_config);
-    let filtered_roles: Vec<_> = if let Some(name) = role_filter {
-        roles.into_iter().filter(|r| r.name == name).collect()
-    } else {
-        roles
-    };
-
-    if filtered_roles.is_empty() {
-        if let Some(name) = role_filter {
-            eprintln!("❌ 未找到角色: {name}");
-        } else {
-            eprintln!("❌ 没有可用角色，请先配置 [[roles]]");
-        }
-        return Ok(());
-    }
-
-    let social: Arc<dyn NotificationSender> = if dry_run {
-        eprintln!("📋 dry-run 模式，仅输出到终端\n");
-        Arc::new(StdoutChannel)
-    } else if let Some(sc) = &app_config.social {
-        crate::cli::gateway_cmd::create_notification_sender(sc)
-    } else {
-        eprintln!("⚠️ 未配置社交平台通知，仅输出到终端\n");
-        Arc::new(NoopChannel)
-    };
-
-    let ctx = AppContext::build(
-        app_config.llm.provider.as_deref(),
-        app_config.llm.model.as_deref(),
-        &app_config.mcp_servers,
-        gateway.memory.clone(),
-        gateway.trade.clone(),
-        social,
-    )
-    .await;
-    run_decision(&ctx, &filtered_roles).await?;
-
-    if !dry_run {
-        eprintln!("✅ 决策完成，通知已推送");
     }
 
     Ok(())

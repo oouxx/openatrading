@@ -65,15 +65,6 @@ pub enum Commands {
         #[arg(long)]
         skip_network: bool,
     },
-    /// 手动触发一次所有角色的每日决策并推送通知
-    Decision {
-        /// 仅输出到终端，不推送通知
-        #[arg(long)]
-        dry_run: bool,
-        /// 仅对指定角色执行决策（可多次使用）
-        #[arg(long)]
-        role: Option<String>,
-    },
     /// 技能管理（安装/列出/卸载）
     Skills {
         #[command(subcommand)]
