@@ -715,6 +715,38 @@ async fn forward_events(
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         match serde_json::from_str::<ClientCommand>(&text) {
                             Ok(ClientCommand::Prompt { text }) => {
+                                // Session-level slash commands (model/compact/name/session/help)
+                                // are handled locally — pi-rs `prompt()` won't execute them.
+                                // `/skill:` and unknown `/` commands fall through to pi-rs,
+                                // which expands `/skill:name` itself.
+                                if let Some((cmd_name, cmd_args)) =
+                                    crate::chat::parse_session_slash_command(&text)
+                                {
+                                    let pool = state.ctx.pool.clone();
+                                    let sid = session_id.to_string();
+                                    let notice_tx = tx.clone();
+                                    let notice_state = Arc::clone(event_state);
+                                    let slash_worker = tokio::spawn(async move {
+                                        let notice = crate::chat::run_session_slash_command(
+                                            &pool, &sid, &cmd_name, &cmd_args,
+                                        )
+                                        .await;
+                                        let json =
+                                            notice_state.emit(TranscriptEvent::Session(notice));
+                                        let _ = notice_tx.send(json).await;
+                                    });
+                                    // Observe the spawned task so a panic is never silently
+                                    // swallowed (project rule: no fire-and-forget JoinHandles).
+                                    let watch_sid = session_id.to_string();
+                                    tokio::spawn(async move {
+                                        if let Err(e) = slash_worker.await {
+                                            log::error!(
+                                                "ws: slash task panicked for {watch_sid}: {e}"
+                                            );
+                                        }
+                                    });
+                                    continue;
+                                }
                                 let pool = state.ctx.pool.clone();
                                 let sid = session_id.to_string();
                                 let prompt_tx = tx.clone();
