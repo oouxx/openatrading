@@ -10,7 +10,6 @@ pub struct AppConfig {
     pub service: ServiceConfig,
     pub cron: Option<CronTomlConfig>,
     pub social: Option<SocialConfig>,
-    pub llm: LlmTomlConfig,
     pub mcp_server: McpServerTomlConfig,
 }
 
@@ -35,14 +34,6 @@ fn default_mcp_bind() -> String {
     "0.0.0.0:8082".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct LlmTomlConfig {
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct RawConfig {
     default_role: Option<String>,
@@ -56,8 +47,6 @@ struct RawConfig {
     cron: Option<CronTomlConfig>,
     #[serde(default)]
     social: Option<SocialConfig>,
-    #[serde(default)]
-    llm: Option<LlmTomlConfig>,
     #[serde(default)]
     mcp_server: Option<McpServerTomlConfig>,
 }
@@ -177,10 +166,6 @@ impl AppConfig {
             },
             cron: None,
             social: None,
-            llm: LlmTomlConfig {
-                provider: None,
-                model: None,
-            },
             mcp_server: McpServerTomlConfig::default(),
         };
 
@@ -222,10 +207,6 @@ impl AppConfig {
             }),
             cron: raw.cron,
             social: raw.social,
-            llm: raw.llm.unwrap_or(LlmTomlConfig {
-                provider: None,
-                model: None,
-            }),
             mcp_server: raw.mcp_server.unwrap_or_default(),
         })
     }
@@ -240,12 +221,6 @@ impl AppConfig {
         }
         if other.social.is_some() {
             self.social = other.social;
-        }
-        if other.llm.provider.is_some() {
-            self.llm.provider = other.llm.provider;
-        }
-        if other.llm.model.is_some() {
-            self.llm.model = other.llm.model;
         }
         for entry in other.roles {
             self.roles.retain(|e| e.name != entry.name);
@@ -345,16 +320,6 @@ impl AppConfig {
 
     pub fn config_path() -> PathBuf {
         openatrading_core::atrading_home().join("config.toml")
-    }
-
-    /// Read LLM provider from config.
-    pub fn llm_provider(&self) -> Option<&str> {
-        self.llm.provider.as_deref()
-    }
-
-    /// Read LLM model from config.
-    pub fn llm_model(&self) -> Option<&str> {
-        self.llm.model.as_deref()
     }
 
     /// Read LLM provider from config.

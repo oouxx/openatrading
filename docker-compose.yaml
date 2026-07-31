@@ -11,6 +11,10 @@ services:
     environment:
       - RUST_BACKTRACE=1
       - TZ=Asia/Shanghai
+      # pi-rs agent dir must point at the mounted volume so settings.json /
+      # auth.json / sessions / skills persist on the host. Overrides any
+      # PI_RS_HOME brought in via env_file (.env) which is relative for local dev.
+      - PI_RS_HOME=/root/.atrading
     volumes:
       - ~/.atrading:/root/.atrading
     restart: unless-stopped

@@ -7,12 +7,6 @@ pub fn cmd_config(action: ConfigAction) -> Result<()> {
 
     match action {
         ConfigAction::Show => {
-            if let Some(p) = cfg.llm_provider() {
-                println!("llm.provider = {p:?}");
-            }
-            if let Some(m) = cfg.llm_model() {
-                println!("llm.model = {m:?}");
-            }
             if let Some(ch) = cfg.social_notify_channel() {
                 println!("social.notify_channel = {ch:?}");
             }
@@ -33,10 +27,6 @@ pub fn cmd_config(action: ConfigAction) -> Result<()> {
                 }
             }
         }
-        ConfigAction::Llm => {
-            println!("provider = {:?}", cfg.llm_provider());
-            println!("model    = {:?}", cfg.llm_model());
-        }
         ConfigAction::Social => {
             println!("notify_channel     = {:?}", cfg.social_notify_channel());
             if let Some(tg) = cfg.social_telegram() {
@@ -55,14 +45,6 @@ pub fn cmd_config(action: ConfigAction) -> Result<()> {
 
 fn cmd_set(_cfg: AppConfig, action: ConfigSetter) -> Result<()> {
     match action {
-        ConfigSetter::Provider { value } => {
-            AppConfig::set_value("llm", "provider", &value)?;
-            println!("✅ llm.provider = {value:?}");
-        }
-        ConfigSetter::Model { value } => {
-            AppConfig::set_value("llm", "model", &value)?;
-            println!("✅ llm.model = {value:?}");
-        }
         ConfigSetter::NotifyChannel { value } => {
             AppConfig::set_value("social", "notify_channel", &value)?;
             println!("✅ social.notify_channel = {value:?}");

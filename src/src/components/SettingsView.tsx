@@ -44,12 +44,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
 
-  const apiKey = useSettingsStore((s) => s.apiKey)
-  const setApiKey = useSettingsStore((s) => s.setApiKey)
-  const provider = useSettingsStore((s) => s.provider)
-  const setProvider = useSettingsStore((s) => s.setProvider)
-  const model = useSettingsStore((s) => s.model)
-  const setModel = useSettingsStore((s) => s.setModel)
   const apiUrl = useSettingsStore((s) => s.apiUrl)
   const setApiUrl = useSettingsStore((s) => s.setApiUrl)
   const [restarting, setRestarting] = useState(false)
@@ -97,10 +91,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           const cfg = (await invoke("get_config")) as any
           if (cfg?.social) {
             setSocial((s) => ({ ...s, ...cfg.social }))
-          }
-          if (cfg?.llm) {
-            if (cfg.llm.provider) setProvider(cfg.llm.provider)
-            if (cfg.llm.model) setModel(cfg.llm.model)
           }
         } catch {
           /* ignore */
@@ -163,62 +153,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
       {activeTab === "agent" && (
         <>
-          <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
-              LLM 配置
-            </h2>
-            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
-              <div>
-                <label className="text-ink-muted mb-1 block text-xs">API Key</label>
-                <Input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value)
-                  }}
-                  placeholder="sk-..."
-                  className="font-mono text-xs"
-                />
-              </div>
-              <div>
-                <label className="text-ink-muted mb-1 block text-xs">Provider</label>
-                <select
-                  value={provider}
-                  onChange={async (e) => {
-                    const v = e.target.value
-                    setProvider(v)
-                    if (isTauri) {
-                      const { invoke } = await import("@tauri-apps/api/core")
-                      await invoke("update_config", { section: "llm", key: "provider", value: v })
-                    }
-                  }}
-                  className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
-                >
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-ink-muted mb-1 block text-xs">默认模型</label>
-                <Input
-                  value={model}
-                  onChange={async (e) => {
-                    const v = e.target.value
-                    setModel(v)
-                    if (isTauri) {
-                      const { invoke } = await import("@tauri-apps/api/core")
-                      await invoke("update_config", { section: "llm", key: "model", value: v })
-                    }
-                  }}
-                  placeholder="claude-sonnet-4-6"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </div>
-          </section>
-
           <section>
             <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
               数据源
