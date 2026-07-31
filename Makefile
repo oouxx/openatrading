@@ -1,6 +1,6 @@
-include .env
+-include .env
 export
-.PHONY: build run run-web watch-web test  fmt lint check run-frontend run-tauri  deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version release-tauri-local
+.PHONY: build run run-web watch-web test fmt lint check run-frontend run-tauri deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version build-tauri release-tauri-local
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -123,11 +123,15 @@ _release:
 	cargo generate-lockfile && \
 	git add -A && git commit -m "release $$tag"; \
 	git tag "$$tag"; \
-	git push origin main --tags; \
-	echo "✅ 已推送 $$tag，等待 GitHub Actions 构建"
+	BRANCH=$$(git branch --show-current); \
+	git push origin "$$BRANCH" --tags; \
+	echo "✅ 已推送 $$tag 到 $$BRANCH，等待 GitHub Actions 构建"
 
 
 # ─── Release Tauri (local build + gh upload) ─────────
+
+build-tauri:
+	cd src-tauri && cargo tauri build
 
 release-tauri-local: build-tauri
 	@if ! which gh >/dev/null 2>&1; then echo "❌ 需要 gh CLI（brew install gh）"; exit 1; fi
