@@ -18,26 +18,17 @@ fn main() {
                     }
                 })
                 .unwrap_or_else(|| {
-                    // Last resort: read version from Cargo.toml (for Docker builds
-                    // where no git history is available).
-                    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok();
-                    let version_from_toml = manifest_dir
-                        .and_then(|dir| {
-                            std::fs::read_to_string(std::path::Path::new(&dir).join("Cargo.toml"))
-                                .ok()
-                        })
-                        .and_then(|s| {
-                            s.lines()
-                                .find(|l| l.starts_with("version"))
-                                .and_then(|l| l.split('=').nth(1))
-                                .map(|v| format!("v{}", v.trim().trim_matches('"')))
-                        });
-                    // 最终兜底：git 不可用且 Cargo.toml 也读不到时（例如源码被
-                    // 裁剪到非标准布局的极端容器构建），编译期必须有一个字符串值。
-                    // v0.0.0-dev 明确标识"无法确定版本"，而非伪造一个正常版本号，
-                    // 调用方（doctor 报告、--version）会原样显示它，用户可感知降级。
-                    // build script 无法返回 Err（会导致整个构建失败），故此处显式降级。
-                    version_from_toml.unwrap_or_else(|| "v0.0.0-dev".to_string())
+                    // Fallback for Docker builds with no git history: Cargo always
+                    // sets CARGO_PKG_VERSION (resolved from `version.workspace = true`
+                    // to the workspace package version), so prefer it over parsing
+                    // Cargo.toml by hand.
+                    std::env::var("CARGO_PKG_VERSION")
+                        .ok()
+                        .map(|v| format!("v{}", v))
+                        // 最终兜底：极端容器构建里 CARGO_PKG_VERSION 也读不到时，
+                        // v0.0.0-dev 明确标识"无法确定版本"，而非伪造正常版本号；
+                        // build script 不能返回 Err（会让整个构建失败），故显式降级。
+                        .unwrap_or_else(|| "v0.0.0-dev".to_string())
                 })
         });
 
