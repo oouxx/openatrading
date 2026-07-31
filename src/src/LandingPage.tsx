@@ -18,38 +18,36 @@ function dl(platform: string, arch: string): string {
 
 const features = [
   {
-    to: "/roles",
-    title: "角色策略管理",
+    title: "AI 行情对话",
     badge: "核心",
-    desc: "每个角色独立运行 AI 交易策略 — 趋势跟踪、网格交易、套利… 一键新增/删除/编辑角色，AI 自动执行并展示盈亏曲线。",
-    tags: ["📝 策略编辑", "🤖 AI 执行", "📊 盈亏曲线"],
+    desc: "与 AI 流式对话复盘 A 股：大盘研判、北向资金、个股分析、板块轮动，Markdown 报告实时渲染。",
+    tags: ["💬 流式对话", "📈 个股分析", "📝 复盘报告"],
   },
   {
-    to: "/copilot",
-    title: "AI 行情问答",
-    badge: "A 股专版",
-    desc: "流式 Markdown 输出，大盘研判、北向资金、个股分析与板块轮动。支持自然语言交互。",
-    tags: ["🤖 流式对话", "📈 实时行情", "📝 分析报告"],
+    title: "策略 Skill 推演",
+    badge: "模拟盘",
+    desc: "用 Skill 编写交易策略，AI 按策略在模拟盘推演交易。手动触发、纸面账户隔离，新增/编辑 Skill 后新建会话即生效。",
+    tags: ["🧩 Skill 编辑", "🤖 策略推演", "💹 模拟盘"],
   },
   {
-    to: "/replay",
-    title: "行情回放 & 短线精灵",
-    desc: "板块信号时间轴回放，涨速/涨幅实时排名，利好利空事件标注。逐分钟复盘全天行情。",
-    tags: ["⏪ 时间轴", "⚡ 异动标注", "📋 事件日志"],
+    title: "自选行情",
+    desc: "实时行情与自选股管理，分时 / 日K / 周K / 月K，量比与涨速一览，一键关注跟踪。",
+    tags: ["📊 实时行情", "⭐ 自选股", "📈 K 线"],
   },
   {
-    to: "/trading",
-    title: "涨停晋级分析",
-    desc: "昨今对比晋级追踪，个股概况（市值/量比/涨停原因），分时 & 日K/周K/月K 图表。",
-    tags: ["🔥 连板追踪", "📈 晋级率", "📊 K 线"],
-  },
-  {
-    to: "/dragon-tiger",
     title: "龙虎榜分析",
-    badge: "新增",
-    badgeColor: "#oklch(55%_0.16_55)",
-    desc: "机构/游资动向透视，营业部买卖明细，净买入排行，上榜原因归类。跟踪主力资金足迹。",
+    desc: "机构 / 游资动向透视，营业部买卖明细，净买入排行，上榜原因归类，跟踪主力资金足迹。",
     tags: ["🐉 龙虎榜", "🏦 营业部", "💰 净买入"],
+  },
+  {
+    title: "涨停晋级 & 板块异动",
+    desc: "昨今对比连板晋级追踪，板块异动时间轴，涨速 / 涨幅实时排名，逐分钟捕捉盘口变化。",
+    tags: ["🔥 连板追踪", "🧭 板块异动", "⏱️ 实时排名"],
+  },
+  {
+    title: "行情回放",
+    desc: "逐分钟复盘全天行情，异动信号时间轴回放，利好 / 利空事件标注，离线也能完整复盘。",
+    tags: ["⏪ 时间轴", "⚡ 异动标注", "📋 事件日志"],
   },
 ]
 
@@ -64,19 +62,19 @@ export default function LandingPage() {
           className="mb-4 leading-tight font-medium text-white"
           style={{ fontSize: "clamp(2.2rem, 5vw, 3.8rem)" }}
         >
-          AI 自动交易<span className="text-ai">策略引擎</span>
+          AI<span className="text-ai">行情助手</span>
         </h1>
         <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-lg/relaxed">
-          每个角色运行独立策略，AI 自动决策并执行交易。在 Telegram 中与角色对话、查看持仓、调整参数
-          — 所有盈亏实时追踪。
+          通过对话复盘 A 股行情，用 Skill 推演交易策略并在模拟盘验证 ——
+          全程手动触发，纸面账户隔离，盈亏实时追踪。
         </p>
 
         <div className="text-ink-muted mb-10 flex flex-wrap items-center justify-center gap-4 text-sm">
           {[
-            { icon: "📝", label: "角色策略" },
-            { icon: "🧠", label: "AI 决策" },
-            { icon: "📈", label: "自动交易" },
-            { icon: "📊", label: "盈亏展示" },
+            { icon: "💬", label: "行情对话" },
+            { icon: "🧩", label: "策略推演" },
+            { icon: "💹", label: "模拟盘" },
+            { icon: "📊", label: "复盘追踪" },
           ].map((node, i) => (
             <span key={node.label} className="flex items-center gap-4">
               {i > 0 && <span className="text-ai text-lg font-bold">→</span>}
@@ -95,12 +93,6 @@ export default function LandingPage() {
           >
             开始使用 →
           </Link>
-          <Link
-            to="/roles"
-            className="bg-ai inline-flex items-center gap-2 rounded-[10px] px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            管理角色策略 →
-          </Link>
           <a
             href="#install"
             className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-[10px] border px-6 py-2.5 text-sm font-medium transition-colors"
@@ -117,28 +109,21 @@ export default function LandingPage() {
           {features.map((f) => (
             <Link
               key={f.title}
-              to={f.to}
+              to="/app"
               className="bg-bg-surface border-hairline overflow-hidden rounded-[14px] border transition-all hover:-translate-y-0.5 hover:shadow-lg"
             >
               <div className="px-[18px] py-[22px]">
                 <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
                   {f.title}
-                  {f.badge === "核心" && (
-                    <span className="bg-ai inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white">
-                      核心
-                    </span>
-                  )}
-                  {f.badge === "A 股专版" && (
-                    <span className="bg-ai inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white">
-                      A 股专版
-                    </span>
-                  )}
-                  {f.badge === "新增" && (
+                  {f.badge && (
                     <span
                       className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
-                      style={{ background: "oklch(55% 0.16 55)" }}
+                      style={{
+                        background:
+                          f.badge === "核心" ? "var(--color-ai, oklch(62% 0.19 250))" : "oklch(55% 0.16 145)",
+                      }}
                     >
-                      新增
+                      {f.badge}
                     </span>
                   )}
                 </h4>
@@ -158,27 +143,27 @@ export default function LandingPage() {
             </Link>
           ))}
 
-          {/* Telegram Bot card — design special styling */}
+          {/* Multi-entry card (Web + Telegram) — same chat, different entry */}
           <div
             className="bg-bg-surface overflow-hidden rounded-[14px] transition-all hover:-translate-y-0.5 hover:shadow-lg"
             style={{ border: "1px solid oklch(55% 0.14 240 / 0.4)" }}
           >
             <div className="px-[18px] py-[22px]">
               <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
-                Telegram Bot 交互
+                多端入口
                 <span
                   className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
                   style={{ background: "oklch(55% 0.14 240)" }}
                 >
-                  Beta
+                  Web + Telegram
                 </span>
               </h4>
               <p className="text-ink-muted mb-2.5 text-[0.8rem] leading-relaxed">
-                在 Telegram 中与你的交易角色直接对话 —
-                查看持仓盈亏、接收交易信号、调整策略参数，所有操作实时同步。
+                Web 与 Telegram 共享同一套对话能力 ——
+                随时随地复盘行情、查看自选，数据实时同步，无自动交易、全程手动触发。
               </p>
               <div className="flex flex-wrap gap-2">
-                {["💬 对话交互", "📲 实时推送", "⚙️ 参数调整"].map((t) => (
+                {["🌐 Web", "✈️ Telegram", "🔄 实时同步"].map((t) => (
                   <span
                     key={t}
                     className="rounded-badge text-ink-muted px-2.5 py-[3px] text-[11px]"
@@ -212,7 +197,7 @@ export default function LandingPage() {
               {[
                 { icon: "🍎", label: "macOS .dmg", platform: "macos", arch: "x86_64" },
                 { icon: "🪟", label: "Windows .exe", platform: "windows", arch: "x86_64" },
-                { icon: "🐧", label: "Linux .AppImage", platform: "linux", arch: "x86_64" },
+                { icon: "🐧", label: "Linux .deb", platform: "linux", arch: "x86_64" },
               ].map((d) => (
                 <a
                   key={d.label}
@@ -238,7 +223,7 @@ export default function LandingPage() {
               ⌨️ CLI 命令行
             </h4>
             <p className="text-ink-muted mb-5 text-xs/relaxed">
-              适用于 Linux/macOS 环境，支持嵌入量化策略 pipeline、定时任务及 CI/CD 流程。
+              适用于 Linux/macOS 环境，可启动 Gateway 服务、跑行情数据 pipeline 与定时新闻推送。
             </p>
             <CopyCodeBlock
               text={`# 下载 CLI 二进制
@@ -272,11 +257,11 @@ openatrading gateway run`}
           <a href="#" className="text-ai">
             API 参考
           </a>
-          <a href="#" className="text-ai">
+          <a href="#install" className="text-ai">
             下载
           </a>
         </div>
-        openatrading · AI 自动交易策略引擎
+        openatrading · AI 行情助手
       </footer>
     </div>
   )
