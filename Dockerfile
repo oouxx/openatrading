@@ -9,22 +9,20 @@ COPY crates/api/Cargo.toml crates/api/
 COPY crates/core/Cargo.toml crates/core/
 COPY crates/cli/Cargo.toml  crates/cli/
 COPY crates/channels/Cargo.toml crates/channels/
-COPY crates/provider/Cargo.toml crates/provider/
 COPY crates/web/Cargo.toml crates/web/
 COPY crates/agent/Cargo.toml crates/agent/
-COPY crates/tui/Cargo.toml crates/tui/
+COPY crates/extension/Cargo.toml crates/extension/
 COPY src-tauri/Cargo.toml src-tauri/
 
 # 为所有 workspace member 创建 dummy src，让 cargo metadata 能解析
-RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src crates/provider/src crates/web/src crates/agent/src crates/tui/src src-tauri/src && \
+RUN mkdir -p crates/api/src crates/core/src crates/cli/src crates/channels/src crates/web/src crates/agent/src crates/extension/src src-tauri/src && \
     echo '' > crates/api/src/lib.rs && \
     echo '' > crates/core/src/lib.rs && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
     echo '' > crates/channels/src/lib.rs && \
-    echo '' > crates/provider/src/lib.rs && \
     echo '' > crates/web/src/lib.rs && \
     echo '' > crates/agent/src/lib.rs && \
-    echo '' > crates/tui/src/lib.rs && \
+    echo '' > crates/extension/src/lib.rs && \
     echo 'fn main() {}' > src-tauri/src/main.rs
 
 RUN cargo chef prepare --recipe-path recipe.json
@@ -57,6 +55,9 @@ COPY Cargo.toml Cargo.lock ./
 # so it must exist in the build context alongside the source.
 COPY config.example.toml ./
 COPY crates/ crates/
+# src-tauri is a workspace member; its manifest must be present for workspace
+# resolution, but we never build it here (only openatrading-cli).
+COPY src-tauri/Cargo.toml src-tauri/
 
 RUN cargo build --release -p openatrading-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
