@@ -141,8 +141,6 @@ pub enum McpTransport {
 pub enum ConfigAction {
     /// 查看所有配置
     Show,
-    /// 查看 LLM 配置
-    Llm,
     /// 查看 Social 通知配置
     Social,
     /// 修改配置项
@@ -154,10 +152,6 @@ pub enum ConfigAction {
 
 #[derive(Subcommand)]
 pub enum ConfigSetter {
-    /// 修改 LLM provider
-    Provider { value: String },
-    /// 修改 LLM model
-    Model { value: String },
     /// 修改 social `notify_channel`
     NotifyChannel { value: String },
     /// 修改 Telegram `bot_token`

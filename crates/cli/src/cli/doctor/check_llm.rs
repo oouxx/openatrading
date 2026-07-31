@@ -37,7 +37,7 @@ impl Check for LlmCheck {
     async fn fix(&self, _ctx: &CheckContext) -> Result<FixResult> {
         Ok(FixResult {
             status: FixStatus::Skipped,
-            message: "请检查 LLM_API_KEY 环境变量或 [llm] 配置段".into(),
+            message: "请在 ~/.pi-rs/agent/settings.json (或 $PI_RS_HOME/agent/settings.json) 配置 defaultProvider/defaultModel，并在 auth.json 设置 API Key".into(),
         })
     }
 }

@@ -28,8 +28,6 @@ pub struct AppContext {
 
 impl AppContext {
     pub async fn build(
-        _provider: Option<&str>,
-        _model: Option<&str>,
         mcp_servers: &[McpServerConfig],
         memory: Arc<MemoryStore>,
         trade: Arc<TradeManager>,
