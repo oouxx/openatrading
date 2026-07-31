@@ -2,9 +2,26 @@ import { useSettingsStore } from "@/stores/settingsStore"
 
 const isTauri = "__TAURI_INTERNALS__" in window
 
+/**
+ * A stored apiUrl pointing at localhost/127.0.0.1 is only valid when the page
+ * itself is served from localhost (local dev). On a deployed site it is a stale
+ * value left over from local dev and must NOT override the baked/default base —
+ * otherwise the browser tries ws://localhost:8080 and http://localhost:8080
+ * and every API call (REST, SSE, WebSocket) fails. Drop it in that case so we
+ * fall back to the same-origin / __API_BASE_URL__ default.
+ */
+function resolveStoredApiUrl(): string {
+  const stored = useSettingsStore.getState().apiUrl
+  if (!stored) return ""
+  const localhostRe = /^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i
+  const storedIsLocal = localhostRe.test(stored)
+  const pageIsLocal = typeof window !== "undefined" && localhostRe.test(window.location.origin)
+  return storedIsLocal && !pageIsLocal ? "" : stored
+}
+
 export function getApiBaseUrl(): string {
   if (isTauri) return ""
-  return useSettingsStore.getState().apiUrl || __API_BASE_URL__
+  return resolveStoredApiUrl() || __API_BASE_URL__
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

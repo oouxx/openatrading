@@ -581,16 +581,6 @@ async fn api_kline_stream(
     }
 }
 
-fn load_llm_config_from_toml() -> (Option<String>, Option<String>) {
-    match openatrading_cli::cli::config::AppConfig::load() {
-        Ok(cfg) => (
-            cfg.llm_provider().map(String::from),
-            cfg.llm_model().map(String::from),
-        ),
-        Err(_) => (None, None),
-    }
-}
-
 #[tauri::command]
 async fn get_config() -> Result<serde_json::Value, String> {
     let cfg = openatrading_cli::cli::config::AppConfig::load()
@@ -659,12 +649,7 @@ async fn get_config() -> Result<serde_json::Value, String> {
         })
         .unwrap_or(serde_json::Value::Null);
 
-    let llm = serde_json::json!({
-        "provider": cfg.llm.provider,
-        "model": cfg.llm.model,
-    });
-
-    Ok(serde_json::json!({ "llm": llm, "social": social }))
+    Ok(serde_json::json!({ "social": social }))
 }
 
 #[tauri::command]
@@ -713,13 +698,9 @@ fn main() {
 
     let roles = build_roles();
 
-    let (provider, model) = load_llm_config_from_toml();
-
     let app_ctx = tokio::runtime::Runtime::new()
         .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
         .block_on(openatrading_core::context::AppContext::build(
-            provider.as_deref(),
-            model.as_deref(),
             &[],
             gateway.memory.clone(),
             gateway.trade.clone(),

@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
 
-SERVICE="${1:-gateway}"
+SERVICE="${1:-all}"
 SERVER="root@107.172.238.76"
 REMOTE_DIR="/root/openatrading"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
   echo "Usage: ./deploy.sh [gateway|web|all]"
-  echo "  gateway     Build & deploy gateway (default)"
-  echo "  web         Build & deploy frontend only"
-  echo "  all         Build & deploy everything"
+  echo "  gateway     Build & deploy gateway container only"
+  echo "  web         Build & deploy frontend container only"
+  echo "  all         Build & deploy everything (default)"
   exit 1
 }
 
@@ -29,12 +29,12 @@ set -a
 source .env
 set +a
 
-echo "=== Deploying: $SERVICE → $SERVER ==="
+# Default deploy branch is main; override with DEPLOY_BRANCH=<branch>.
+BRANCH="${DEPLOY_BRANCH:-main}"
+
+echo "=== Deploying: $SERVICE → $SERVER (branch: $BRANCH) ==="
 
 REPO_URL="git@github.com:oouxx/openatrading.git"
-BRANCH="${DEPLOY_BRANCH:-$(git branch --show-current)}"
-
-echo "=== Deploying branch: $BRANCH ==="
 
 clone_or_pull() {
   echo ""
@@ -52,124 +52,64 @@ clone_or_pull() {
       echo '✅ git clone done'
     fi
   "
-  # Upload .env separately (not in git)
+  # Upload .env separately (not in git); also mirror to ~/.atrading for host-side tooling.
   echo "=== [env] Uploading .env ==="
   scp $SSH_OPTS .env "$SERVER:$REMOTE_DIR/.env"
   ssh $SSH_OPTS "$SERVER" "mkdir -p /root/.atrading && cp $REMOTE_DIR/.env /root/.atrading/.env"
-  echo "✅ .env also copied to /root/.atrading/"
+  echo '✅ .env uploaded (and copied to /root/.atrading/)'
 }
 
-# ─── Build CLI + pull Tauri → downloads/ ────────────────
 
-build_downloads() {
+sync_agent_config() {
   echo ""
-  echo "=== [downloads] Docker cross-compile CLI + Tauri ==="
-  ssh $SSH_OPTS "$SERVER" "
-    set -e
-    cd $REMOTE_DIR
-    mkdir -p downloads
+  echo "=== [agent] Syncing pi-rs agent config → /root/.atrading/agent ==="
+  ssh $SSH_OPTS "$SERVER" "mkdir -p /root/.atrading/agent/skills"
 
-    # ── CLI: Docker cross-compile x86_64 ──────────────
-    echo '🔨 Docker build CLI (x86_64-unknown-linux-gnu)...'
-    docker build -f Dockerfile --platform linux/amd64 -t openatrading-cli-amd64 .
-    docker run --rm --entrypoint cp -v \$PWD/downloads:/out openatrading-cli-amd64 /usr/local/bin/openatrading /out/openatrading-x86_64-unknown-linux-gnu
-    echo '✅ CLI x86_64 done'
+  # settings.json — model / provider config
+  if [ -f .atrading/agent/settings.json ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/settings.json "$SERVER:/root/.atrading/agent/settings.json"
+    echo '✅ settings.json synced'
+  else
+    echo '⚠ .atrading/agent/settings.json not found locally, skipped'
+  fi
 
-    # ── CLI: Docker cross-compile aarch64 ─────────────
-    echo '🔨 Docker build CLI (aarch64-unknown-linux-gnu)...'
-    docker build -f Dockerfile --platform linux/arm64 -t openatrading-cli-arm64 . 2>/dev/null && \
-      docker run --rm --entrypoint cp -v \$PWD/downloads:/out openatrading-cli-arm64 /usr/local/bin/openatrading /out/openatrading-aarch64-unknown-linux-gnu && \
-      echo '✅ CLI aarch64 done' || echo '⚠ CLI aarch64 skipped (need qemu or arm64 host)'
+  # AGENTS.md — agent instructions
+  if [ -f .atrading/agent/AGENTS.md ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/AGENTS.md "$SERVER:/root/.atrading/agent/AGENTS.md"
+    echo '✅ AGENTS.md synced'
+  else
+    echo '⚠ .atrading/agent/AGENTS.md not found locally, skipped'
+  fi
 
-    echo '✅ downloads ready'
-    ls -lh downloads/
-  "
+  # models.json — optional model registry override
+  if [ -f .atrading/agent/models.json ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/models.json "$SERVER:/root/.atrading/agent/models.json"
+    echo '✅ models.json synced'
+  fi
+
+  # skills/ — recursive mirror (--delete prunes server-side skills removed locally)
+  if [ -d .atrading/agent/skills ]; then
+    rsync -az --delete -e "ssh $SSH_OPTS" .atrading/agent/skills/ "$SERVER:/root/.atrading/agent/skills/"
+    echo '✅ skills/ synced'
+  else
+    echo '⚠ .atrading/agent/skills/ not found locally, skipped'
+  fi
 }
 
-# ─── Update system CLI binary ───────────────────────────
-
-update_system_cli() {
+deploy_compose() {
   echo ""
-  echo "=== [cli] Updating system-installed CLI ==="
-  ssh $SSH_OPTS "$SERVER" "
-    set -e
-    cd $REMOTE_DIR
-
-    # Detect server arch
-    SERVER_ARCH=\$(uname -m)
-    case \"\$SERVER_ARCH\" in
-      x86_64)  SRC='downloads/openatrading-x86_64-unknown-linux-gnu' ;;
-      aarch64) SRC='downloads/openatrading-aarch64-unknown-linux-gnu' ;;
-      arm64)   SRC='downloads/openatrading-aarch64-unknown-linux-gnu' ;;
-      *) echo '❌ Unknown arch: \$SERVER_ARCH'; exit 1 ;;
-    esac
-
-    # Stop gateway first (binary is running)
-    NEED_RESTART=false
-    if systemctl --user is-active openatrading 2>/dev/null; then
-      echo '⏸  Stopping gateway...'
-      systemctl --user stop openatrading
-      NEED_RESTART=true
-    fi
-
-    if [ -f \"\$SRC\" ]; then
-      cp \"\$SRC\" /usr/local/bin/openatrading
-      chmod +x /usr/local/bin/openatrading
-      echo \"✅ CLI updated: /usr/local/bin/openatrading (\$SERVER_ARCH)\"
-      /usr/local/bin/openatrading --version 2>/dev/null || true
-    else
-      echo \"⚠ \$SRC not found, skipping CLI update\"
-    fi
-
-    if \$NEED_RESTART; then
-      echo '🔄 Restarting gateway...'
-      systemctl --user restart openatrading
-      echo '✅ Gateway restarted'
-      sleep 1
-      systemctl --user status openatrading --no-pager 2>/dev/null || true
-    fi
-  "
+  echo "=== [compose] Building & starting: $SERVICE ==="
+  case "$SERVICE" in
+    gateway) ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build gateway" ;;
+    web)     ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build frontend" ;;
+    all)     ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build" ;;
+  esac
+  echo "✅ compose done ($SERVICE)"
 }
-
-# ─── Gateway ─────────────────────────────────────────────
-
-deploy_gateway() {
-  echo ""
-  echo "=== [gateway] Deploying gateway ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build gateway"
-}
-
-# ─── Web ─────────────────────────────────────────────────
-
-deploy_web() {
-  echo ""
-  echo "=== [web] Deploying frontend ==="
-  ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build frontend"
-}
-
-# ─── Execute ────────────────────────────────────────────
 
 clone_or_pull
-build_downloads
-
-# Update system CLI and restart gateway (always, for gateway/all)
-case "$SERVICE" in
-  gateway|all)
-    update_system_cli
-    ;;
-esac
-
-case "$SERVICE" in
-  gateway)
-    deploy_gateway
-    ;;
-  web)
-    deploy_web
-    ;;
-  all)
-    ssh $SSH_OPTS "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build"
-    ;;
-esac
+sync_agent_config
+deploy_compose
 
 echo ""
-echo "=== Deploy complete ($SERVICE) ==="
+echo "=== Deploy complete ($SERVICE, branch $BRANCH) ==="

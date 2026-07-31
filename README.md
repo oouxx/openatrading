@@ -94,12 +94,9 @@ docker compose up -d
 ## Configuration
 
 配置文件位于 `~/.atrading/config.toml`（可通过 `$OPENATRADING_HOME` 环境变量自定义路径）。
+LLM 模型/Provider 配置已移交 pi-rs，在 `$PI_RS_HOME/agent/settings.json` 中设置 `defaultProvider` / `defaultModel`。
 
 ```toml
-[llm]
-provider = "openrouter"
-model = "openrouter/free"
-
 [[mcp_servers]]
 name = "akshare"
 transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
