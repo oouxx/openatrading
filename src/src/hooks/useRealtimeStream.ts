@@ -1,10 +1,6 @@
-import { useSettingsStore } from "@/stores/settingsStore"
+import { getApiBaseUrl } from "@/stores/data"
 
 const isTauri = "__TAURI_INTERNALS__" in window
-
-function getApiBase(): string {
-  return useSettingsStore.getState().apiUrl || __API_BASE_URL__
-}
 
 /**
  * Try to match a raw symbol (e.g. "000001") against a batch-response map
@@ -72,7 +68,7 @@ export function subscribeRealtime(
 
   // Web: EventSource
   const es = new EventSource(
-    `${getApiBase()}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`
+    `${getApiBaseUrl()}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`
   )
   es.onmessage = (e) => {
     const parsed = safeParse(e.data, "realtime")
@@ -143,7 +139,7 @@ export function subscribeRealtimeBatch(
 
   // Web: EventSource
   const es = new EventSource(
-    `${getApiBase()}/api/realtime/stream?symbols=${encodeURIComponent(code)}`
+    `${getApiBaseUrl()}/api/realtime/stream?symbols=${encodeURIComponent(code)}`
   )
   es.onmessage = (e) => {
     const parsed = safeParse(e.data, "realtime-batch")
@@ -171,7 +167,7 @@ function sseStream(
   onData: (data: unknown) => void,
   onError?: (err: string) => void
 ): () => void {
-  const es = new EventSource(`${getApiBase()}${urlPath}`)
+  const es = new EventSource(`${getApiBaseUrl()}${urlPath}`)
 
   es.onmessage = (e) => {
     const data = safeParse(e.data, urlPath)
