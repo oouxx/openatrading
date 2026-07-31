@@ -34,11 +34,6 @@ enabled = true
 collection_schedule = "0 0 18 * * 1-5"
 news_schedule = "0 */5 9-15 * * 1-5"
 
-# ── LLM 配置 ────────────────────────────────────────────────
-[llm]
-provider = "openrouter"
-model = "openrouter/free"
-
 # ── 社交平台通知 ──────────────────────────────────────────
 [social]
 notify_channel = "telegram"

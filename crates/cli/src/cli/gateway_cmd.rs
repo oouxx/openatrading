@@ -276,15 +276,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         );
 
         let cron_ctx = Arc::new(
-            AppContext::build(
-                app_config.llm.provider.as_deref(),
-                app_config.llm.model.as_deref(),
-                &cron_mcp,
-                memory.clone(),
-                trade.clone(),
-                social.clone(),
-            )
-            .await,
+            AppContext::build(&cron_mcp, memory.clone(), trade.clone(), social.clone()).await,
         );
         handles.push(tokio::spawn(async move {
             if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg).await {
@@ -298,15 +290,8 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         // Clone out the bind string before the spawn: `app_config` is still
         // borrowed below for the MCP server bind and telegram sections.
         let web_bind = app_config.service.web_bind.clone();
-        let web_ctx = AppContext::build(
-            app_config.llm.provider.as_deref(),
-            app_config.llm.model.as_deref(),
-            &web_mcp,
-            memory.clone(),
-            trade.clone(),
-            social.clone(),
-        )
-        .await;
+        let web_ctx =
+            AppContext::build(&web_mcp, memory.clone(), trade.clone(), social.clone()).await;
         let gh = tokio::spawn(async move {
             if let Err(e) = gateway
                 .start(
@@ -383,15 +368,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
 
     if !adapters.is_empty() {
         let adapter_ctx = Arc::new(
-            AppContext::build(
-                app_config.llm.provider.as_deref(),
-                app_config.llm.model.as_deref(),
-                &mcp_servers,
-                memory.clone(),
-                trade.clone(),
-                social.clone(),
-            )
-            .await,
+            AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone()).await,
         );
         let (rx, adapter_refs, adapter_handles) = launch_adapters(adapters, 1024);
         handles.extend(adapter_handles);
