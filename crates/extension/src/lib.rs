@@ -19,7 +19,7 @@ pub mod trading;
 
 pub use state::{DecisionSink, MemoryReader, PositionReader, TradingContext};
 
-use pi_extension_api::ExtensionRegistry;
+use pi_extension_api::{create_synthetic_source_info, ExtensionRegistry};
 
 /// Create an `ExtensionRegistry` with all openatrading extensions + pi-rs built-ins.
 ///
@@ -27,7 +27,10 @@ use pi_extension_api::ExtensionRegistry;
 /// market-data-only registry.
 pub fn create_registry(trading: Option<TradingContext>) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
-    registry.register(Box::new(trading::MarketDataExtension::new(trading)));
+    registry.register(
+        Box::new(trading::MarketDataExtension::new(trading)),
+        create_synthetic_source_info("/tmp/test".into(), "market".into(), None, None, None),
+    );
     // registry.register(Box::new(pi_extensions::goal::GoalExtension::new()));
     registry
 }

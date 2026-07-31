@@ -1,4 +1,4 @@
-include .env
+include ./.atrading/.env
 export
 .PHONY: build run run-web watch-web test  fmt lint check run-frontend run-tauri  deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version release-tauri-local
 
