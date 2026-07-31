@@ -59,6 +59,35 @@ clone_or_pull() {
   echo '✅ .env uploaded (and copied to /root/.atrading/)'
 }
 
+
+sync_agent_config() {
+  echo ""
+  echo "=== [agent] Syncing pi-rs agent config → /root/.atrading/agent ==="
+  ssh $SSH_OPTS "$SERVER" "mkdir -p /root/.atrading/agent/skills"
+
+  # settings.json — model / provider config
+  if [ -f .atrading/agent/settings.json ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/settings.json "$SERVER:/root/.atrading/agent/settings.json"
+    echo '✅ settings.json synced'
+  else
+    echo '⚠ .atrading/agent/settings.json not found locally, skipped'
+  fi
+
+  # models.json — optional model registry override
+  if [ -f .atrading/agent/models.json ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/models.json "$SERVER:/root/.atrading/agent/models.json"
+    echo '✅ models.json synced'
+  fi
+
+  # skills/ — recursive mirror (--delete prunes server-side skills removed locally)
+  if [ -d .atrading/agent/skills ]; then
+    rsync -az --delete -e "ssh $SSH_OPTS" .atrading/agent/skills/ "$SERVER:/root/.atrading/agent/skills/"
+    echo '✅ skills/ synced'
+  else
+    echo '⚠ .atrading/agent/skills/ not found locally, skipped'
+  fi
+}
+
 deploy_compose() {
   echo ""
   echo "=== [compose] Building & starting: $SERVICE ==="
@@ -71,6 +100,7 @@ deploy_compose() {
 }
 
 clone_or_pull
+sync_agent_config
 deploy_compose
 
 echo ""
