@@ -73,6 +73,14 @@ sync_agent_config() {
     echo '⚠ .atrading/agent/settings.json not found locally, skipped'
   fi
 
+  # AGENTS.md — agent instructions
+  if [ -f .atrading/agent/AGENTS.md ]; then
+    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/AGENTS.md "$SERVER:/root/.atrading/agent/AGENTS.md"
+    echo '✅ AGENTS.md synced'
+  else
+    echo '⚠ .atrading/agent/AGENTS.md not found locally, skipped'
+  fi
+
   # models.json — optional model registry override
   if [ -f .atrading/agent/models.json ]; then
     rsync -az -e "ssh $SSH_OPTS" .atrading/agent/models.json "$SERVER:/root/.atrading/agent/models.json"
