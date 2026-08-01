@@ -98,6 +98,10 @@ fn default_news_schedule() -> String {
 }
 
 impl AppConfig {
+    /// 三层作用域配置合并:
+    /// 1. 内置默认值（struct defaults）
+    /// 2. 用户配置: {atrading_home}/config.toml
+    /// 3. 项目配置: cwd/.openatrading.toml（覆盖用户配置）
     pub fn load() -> Result<Self> {
         let home = openatrading_core::atrading_home();
         openatrading_core::log::info!(?home, "Loading config from home");
@@ -118,6 +122,21 @@ impl AppConfig {
         // Load config from {atrading_home}/config.toml
         if let Some(cfg) = Self::load_from(&home.join("config.toml")) {
             merged.merge(cfg);
+        }
+
+        // Layer 3: Project-level config from cwd/.openatrading.toml
+        if let Ok(cwd) = std::env::current_dir() {
+            let project_cfg_path = cwd.join(".openatrading.toml");
+            if project_cfg_path.exists() {
+                openatrading_core::log::info!(
+                    "Loading project config from {}",
+                    project_cfg_path.display()
+                );
+                if let Some(cfg) = Self::load_from(&project_cfg_path) {
+                    merged.merge(cfg);
+                }
+                validate_config(&project_cfg_path);
+            }
         }
 
         // Load .mcp.json MCP server configs
