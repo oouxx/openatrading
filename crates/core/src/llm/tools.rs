@@ -1,14 +1,15 @@
-//! Domain-specific tool registry for the openatrading agent.
+//! AppContext 级工具列表，供社交适配器 `/tools` 与 Web `/api/tools` 展示。
 //!
-//! Holds the MCP + extension tool bridge. Per-role domain tool factories
-//! (`create_positions_tool`, `create_historical_context_tool`) were removed:
-//! they had no callers after the pi-rs session migration; re-wire from
-//! `openatrading_core::llm::tools` if per-role position/history tools are
-//! needed again (recoverable from git history).
+//! 注意：agent 会话内真正的工具派发走的是 per-session 的 `ExtensionRegistry`
+//! （见 `openatrading_agent::session::factory`）。本模块只维护一个轻量列表
+//! `ToolRegistry`：扩展工具（行情/交易）的 DynTool 视图 + MCP 客户端工具名。
+//!
+//! 市场扩展工具用 `handle_tool_call` 而非 `ToolDefinition::execute`，故
+//! `extension_tools_as_dyn` 对它们产出为空（与旧实现行为一致）；MCP 客户端
+//! 工具名由 `AppContext` 经 `discover_mcp` 发现后注入，用于 `/mcp` 展示。
 
 use std::sync::Arc;
 
-use openatrading_agent::mcp_tools::{McpHandle, McpRegistry, ToolConfig};
 use openatrading_agent::pi_ai_types::ContentBlock;
 use openatrading_agent::tools::{to_box_err, tool, ExecuteFn};
 use openatrading_agent::types::{AgentToolResult, DynTool};
@@ -18,11 +19,10 @@ use pi_extension_api::ExtensionRegistry;
 // Extension → DynTool bridge
 // ============================================================================
 
-/// Convert extension `RegisteredTool`s into `DynTool` objects.
+/// 将扩展 `RegisteredTool` 中带 `execute` 回调的工具转为 `DynTool`。
 ///
-/// Each extension tool's `execute` callback is wrapped to translate between
-/// `ToolCallOutput` (extension result) and `AgentToolResult<Value>` (agent
-/// result).
+/// 用 `handle_tool_call` 派发的扩展工具（如行情工具）没有 `execute` 回调，
+/// 不会被此处转换——这是已知行为，与旧实现一致。
 fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
     registry
         .tools()
@@ -66,18 +66,16 @@ fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
 }
 
 // ============================================================================
-// ToolRegistry — MCP + extension tools
+// ToolRegistry — extension tool list + MCP tool names
 // ============================================================================
 
-/// Registry for MCP-discovered and extension-provided tools.
+/// AppContext 级工具列表。
 ///
-/// Market data tools, `submit_trading_decision`, etc. are provided by
-/// `MarketDataExtension` via the `ExtensionRegistry`. MCP tools are
-/// discovered at runtime.
+/// `extension` 为扩展工具的 DynTool 视图（行情/交易），`mcp_names` 为已发现
+/// 外部 MCP server 暴露的工具名，用于 `/mcp` 展示。
 pub struct ToolRegistry {
-    mcp: Vec<Arc<DynTool>>,
     extension: Vec<Arc<DynTool>>,
-    mcp_handle: Option<McpHandle>,
+    mcp_names: Vec<String>,
 }
 
 impl Default for ToolRegistry {
@@ -89,57 +87,33 @@ impl Default for ToolRegistry {
 impl ToolRegistry {
     pub const fn new() -> Self {
         Self {
-            mcp_handle: None,
-            mcp: Vec::new(),
             extension: Vec::new(),
+            mcp_names: Vec::new(),
         }
     }
 
-    /// Register an MCP tool.
-    pub fn add_mcp(&mut self, tool: Arc<DynTool>) {
-        self.mcp.push(tool);
-    }
-
-    /// Load extension tools from an `ExtensionRegistry`.
+    /// 从 `ExtensionRegistry` 载入扩展工具（DynTool 视图）。
     pub fn set_extension_tools(&mut self, ext_registry: &ExtensionRegistry) {
         self.extension = extension_tools_as_dyn(ext_registry);
     }
 
-    /// Keep stdio MCP handle alive so subprocess transports don't close.
-    pub fn set_mcp_handle(&mut self, handle: Option<McpHandle>) {
-        self.mcp_handle = handle;
+    /// 设置已发现的 MCP 客户端工具名。
+    pub fn set_mcp_names(&mut self, names: Vec<String>) {
+        self.mcp_names = names;
     }
 
-    pub fn mcp_tools(&self) -> &[Arc<DynTool>] {
-        &self.mcp
-    }
-
-    /// Extension-provided tools (market data, decision, etc.).
+    /// 扩展工具（行情/交易等）。
     pub fn extension_tools(&self) -> &[Arc<DynTool>] {
         &self.extension
     }
 
-    /// All tools (MCP + extension).
+    /// 所有工具（当前即扩展工具）。
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
-        self.mcp
-            .iter()
-            .chain(self.extension.iter())
-            .cloned()
-            .collect()
+        self.extension.to_vec()
     }
-}
 
-// ============================================================================
-// build_tools — create ToolRegistry with MCP tools
-// ============================================================================
-
-pub async fn build_tools(config: &ToolConfig) -> ToolRegistry {
-    let mut registry = ToolRegistry::new();
-    let mcp = McpRegistry::from_config(&config.mcp_servers);
-    let (tools, handle) = mcp.discover();
-    for t in tools {
-        registry.add_mcp(t);
+    /// 已发现的 MCP 客户端工具名。
+    pub fn mcp_tools(&self) -> Vec<String> {
+        self.mcp_names.clone()
     }
-    registry.set_mcp_handle(handle);
-    registry
 }

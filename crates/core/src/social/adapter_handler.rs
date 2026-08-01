@@ -84,7 +84,7 @@ pub async fn run_adapter_handler(
                     if tools.is_empty() {
                         adapter.reply(&event, "暂无 MCP 服务").await.ok();
                     } else {
-                        let names: Vec<_> = tools.iter().map(|t| format!("- {}", t.name)).collect();
+                        let names: Vec<_> = tools.iter().map(|t| format!("- {t}")).collect();
                         let msg = format!("MCP 服务:\n{}", names.join("\n"));
                         adapter.reply(&event, &msg).await.ok();
                     }

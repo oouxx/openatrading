@@ -1,17 +1,53 @@
 use std::fmt::Write;
-use std::sync::Arc;
 
-use openatrading_core::llm::DynTool;
+/// 单个工具的展示信息（来自扩展注册表或远端 MCP server）。
+struct ToolView {
+    name: String,
+    description: String,
+    params: String,
+}
 
 pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
-    // ── Collect all tools ─────────────────────────────
-    let mut all_tools: Vec<Arc<DynTool>> =
-        openatrading_core::llm::tools::ToolRegistry::new().all_tools();
+    // ── 收集工具：扩展注册表（行情/交易）+ 远端 MCP server ────────────────
+    let mut views: Vec<ToolView> = Vec::new();
 
-    let mcp = openatrading_core::llm::McpRegistry::single(endpoint);
-    all_tools.extend(mcp.discover().0);
+    let registry = openatrading_core::llm::create_registry(
+        openatrading_core::llm::RegistryOptions::market_only(),
+    );
+    for rt in registry.tools() {
+        views.push(ToolView {
+            name: rt.definition.name.clone(),
+            description: rt.definition.description.clone(),
+            params: format_params(rt.definition.parameters.as_ref()),
+        });
+    }
 
-    // ── Group by installed skills ───────────────────────
+    // 远端 MCP server 工具（失败不阻断本地工具文档生成）
+    if let Ok(client) = openatrading_core::llm::McpClient::connect(endpoint).await {
+        if let Ok(tools) = client.list_tools().await {
+            if let Some(arr) = tools.as_array() {
+                for t in arr {
+                    let name = t
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    let desc = t
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    views.push(ToolView {
+                        name,
+                        description: desc,
+                        params: format_params(t.get("inputSchema")),
+                    });
+                }
+            }
+        }
+    }
+
+    // ── 按已安装技能分组 ───────────────────────────────────────────────
     let skills = openatrading_core::skills::list_skill_entries();
 
     let mut out = String::new();
@@ -24,14 +60,12 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
         out.push_str("| 工具 | 说明 | 参数 |\n|------|------|------|\n");
 
         let mut count = 0;
-        for tool in &all_tools {
+        for tool in &views {
             if skill.content.contains(&tool.name) {
                 let _ = writeln!(
                     out,
                     "| `{}` | {} | {} |",
-                    tool.name,
-                    tool.description,
-                    format_params(&tool.parameters_schema)
+                    tool.name, tool.description, tool.params
                 );
                 used_names.insert(tool.name.clone());
                 count += 1;
@@ -43,8 +77,8 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
         out.push('\n');
     }
 
-    // ── 未分组的工具 ───────────────────────────────────
-    let ungrouped: Vec<&Arc<DynTool>> = all_tools
+    // ── 未分组的工具 ───────────────────────────────────────────────────
+    let ungrouped: Vec<&ToolView> = views
         .iter()
         .filter(|t| !used_names.contains(&t.name))
         .collect();
@@ -56,9 +90,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
                 &mut out,
                 format_args!(
                     "| `{}` | {} | {} |\n",
-                    tool.name,
-                    tool.description,
-                    format_params(&tool.parameters_schema)
+                    tool.name, tool.description, tool.params
                 ),
             );
         }
@@ -70,15 +102,18 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn format_params(schema: &serde_json::Value) -> String {
-    let Some(props) = schema.get("properties").and_then(|p| p.as_object()) else {
+fn format_params(schema: Option<&serde_json::Value>) -> String {
+    let Some(props) = schema
+        .and_then(|s| s.get("properties"))
+        .and_then(|p| p.as_object())
+    else {
         return "无".to_string();
     };
     if props.is_empty() {
         return "无".to_string();
     }
     let required: std::collections::HashSet<&str> = schema
-        .get("required")
+        .and_then(|s| s.get("required"))
         .and_then(|r| r.as_array())
         .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
