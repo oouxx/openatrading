@@ -1048,6 +1048,46 @@ impl LhbClient {
             .collect();
         Ok(reports)
     }
+
+    /// 获取研报详情（PDF 链接 + 摘要）。
+    ///
+    /// `info_code` 研报 infoCode（个股研报）或 encodeUrl（非个股研报）。
+    /// `category` 研报分类，用于构造详情页 URL。
+    pub async fn report_detail(
+        &self,
+        info_code: &str,
+        category: ReportCategory,
+    ) -> Result<ReportDetail, LhbError> {
+        let url = if category == ReportCategory::Stock {
+            format!("https://data.eastmoney.com/report/info/{}.html", info_code)
+        } else {
+            let link_type = match category {
+                ReportCategory::BrokerReport => "zw_brokerreport",
+                ReportCategory::Industry => "zw_industry",
+                ReportCategory::MacroResearch => "zw_macresearch",
+                ReportCategory::StrategyReport => "zw_strategy",
+                _ => "zw_strategy",
+            };
+            format!(
+                "https://data.eastmoney.com/report/{}/{}.jshtml?encodeUrl={}",
+                link_type, info_code, info_code
+            )
+        };
+
+        let resp = self.client.get(&url).send().await?;
+        let html = resp.text().await?;
+
+        let pdf_url = extract_pdf_url(&html);
+        let description = extract_description(&html, category == ReportCategory::Stock);
+
+        Ok(ReportDetail {
+            title: String::new(),
+            pdf_url,
+            description,
+            org_name: String::new(),
+            publish_date: String::new(),
+        })
+    }
 }
 
 /// 从东方财富页面 HTML 中提取 initdata JSON。
@@ -1056,4 +1096,53 @@ fn extract_initdata(html: &str) -> Option<Vec<serde_json::Value>> {
     let cap = re.captures(html)?;
     let parsed: serde_json::Value = serde_json::from_str(&cap[1]).ok()?;
     parsed.get("data")?.as_array().cloned()
+}
+
+/// 从研报详情页 HTML 中提取 PDF 链接。
+fn extract_pdf_url(html: &str) -> Option<String> {
+    // 个股研报: #ContentBody .rightlab href
+    let re = regex::Regex::new(r#"(?i)class="rightlab"[^>]*href="([^"]+)""#).ok()?;
+    if let Some(cap) = re.captures(html) {
+        let url = cap[1].to_string();
+        if url.starts_with("http") || url.starts_with("/") {
+            return Some(if url.starts_with("http") {
+                url
+            } else {
+                format!("https://data.eastmoney.com{url}")
+            });
+        }
+    }
+    // 非个股研报: .pdf-link href
+    let re = regex::Regex::new(r#"(?i)class="pdf-link"[^>]*href="([^"]+)""#).ok()?;
+    if let Some(cap) = re.captures(html) {
+        let url = cap[1].to_string();
+        return Some(if url.starts_with("http") {
+            url
+        } else {
+            format!("https://data.eastmoney.com{url}")
+        });
+    }
+    None
+}
+
+/// 从研报详情页 HTML 中提取描述/正文。
+fn extract_description(html: &str, is_stock: bool) -> String {
+    if is_stock {
+        // 个股研报: .newsContent
+        let re = regex::Regex::new(r#"(?i)class="newsContent"[^>]*>(.*?)</div>"#).ok();
+        if let Some(re) = re {
+            if let Some(cap) = re.captures(html) {
+                return cap[1].to_string();
+            }
+        }
+    } else {
+        // 非个股研报: .ctx-content
+        let re = regex::Regex::new(r#"(?i)class="ctx-content"[^>]*>(.*?)</div>"#).ok();
+        if let Some(re) = re {
+            if let Some(cap) = re.captures(html) {
+                return cap[1].to_string();
+            }
+        }
+    }
+    String::new()
 }

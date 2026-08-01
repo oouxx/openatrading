@@ -62,6 +62,7 @@ impl MarketDataExtension {
             lhb_active_yyb_tool(),
             reports_tool(),
             stock_reports_tool(),
+            report_detail_tool(),
         ]
     }
 
@@ -274,6 +275,18 @@ impl MarketDataExtension {
                     .and_then(serde_json::Value::as_u64)
                     .unwrap_or(20) as u32;
                 call(|| async move { LhbClient::new().stock_reports(page, size).await }).await
+            }
+            "get_report_detail" => {
+                let info_code = str_arg(&params, "info_code");
+                let category = str_arg(&params, "category");
+                let cat = match category.as_str() {
+                    "macresearch" => ReportCategory::MacroResearch,
+                    "brokerreport" => ReportCategory::BrokerReport,
+                    "industry" => ReportCategory::Industry,
+                    "stock" => ReportCategory::Stock,
+                    _ => ReportCategory::StrategyReport,
+                };
+                call(|| async move { LhbClient::new().report_detail(&info_code, cat).await }).await
             }
             _ => return None,
         };
@@ -656,6 +669,29 @@ fn stock_reports_tool() -> ToolDefinition {
                 }
             },
             "required": []
+        })),
+        ..Default::default()
+    }
+}
+
+fn report_detail_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_report_detail".into(),
+        label: Some("研报详情".into()),
+        description: "获取东方财富研报详情，包括 PDF 下载链接和正文摘要。            需要提供 info_code（从 get_reports/get_stock_reports 返回的 encodeUrl 或 infoCode）            和 category（研报分类）。".into(),
+        parameters: Some(json!({
+            "type": "object",
+            "properties": {
+                "info_code": {
+                    "type": "string",
+                    "description": "研报 infoCode（个股研报）或 encodeUrl（非个股研报）"
+                },
+                "category": {
+                    "type": "string",
+                    "description": "研报分类：strategyreport/macresearch/brokerreport/industry/stock"
+                }
+            },
+            "required": ["info_code", "category"]
         })),
         ..Default::default()
     }
