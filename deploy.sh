@@ -66,12 +66,12 @@ sync_agent_config() {
   ssh $SSH_OPTS "$SERVER" "mkdir -p /root/.atrading/agent/skills"
 
   # settings.json — model / provider config
-  if [ -f .atrading/agent/settings.json ]; then
-    rsync -az -e "ssh $SSH_OPTS" .atrading/agent/settings.json "$SERVER:/root/.atrading/agent/settings.json"
-    echo '✅ settings.json synced'
-  else
-    echo '⚠ .atrading/agent/settings.json not found locally, skipped'
-  fi
+  # if [ -f .atrading/agent/settings.json ]; then
+  #   rsync -az -e "ssh $SSH_OPTS" .atrading/agent/settings.json "$SERVER:/root/.atrading/agent/settings.json"
+  #   echo '✅ settings.json synced'
+  # else
+  #   echo '⚠ .atrading/agent/settings.json not found locally, skipped'
+  # fi
 
   # AGENTS.md — agent instructions
   if [ -f .atrading/agent/AGENTS.md ]; then
