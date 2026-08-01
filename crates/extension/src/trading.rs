@@ -17,7 +17,7 @@ use pi_extension_api::{
 use serde_json::{json, Value};
 
 use openatrading_api::cls::ClsClient;
-use openatrading_api::eastmoney::LhbClient;
+use openatrading_api::eastmoney::{LhbClient, ReportCategory};
 use openatrading_api::jiuyangongshe::{CommunityQuery, JiuYanSession};
 use openatrading_api::sina::SinaQuoteClient;
 use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
@@ -60,6 +60,8 @@ impl MarketDataExtension {
             lhb_detail_tool(),
             lhb_combined_tool(),
             lhb_active_yyb_tool(),
+            reports_tool(),
+            stock_reports_tool(),
         ]
     }
 
@@ -242,6 +244,36 @@ impl MarketDataExtension {
                         .await
                 })
                 .await
+            }
+            "get_reports" => {
+                let category = str_arg(&params, "category");
+                let page = params
+                    .get("page")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(1) as u32;
+                let size = params
+                    .get("size")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(20) as u32;
+                let cat = match category.as_str() {
+                    "macresearch" => ReportCategory::MacroResearch,
+                    "brokerreport" => ReportCategory::BrokerReport,
+                    "industry" => ReportCategory::Industry,
+                    "stock" => ReportCategory::Stock,
+                    _ => ReportCategory::StrategyReport,
+                };
+                call(|| async move { LhbClient::new().reports(cat, page, size).await }).await
+            }
+            "get_stock_reports" => {
+                let page = params
+                    .get("page")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(1) as u32;
+                let size = params
+                    .get("size")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(20) as u32;
+                call(|| async move { LhbClient::new().stock_reports(page, size).await }).await
             }
             _ => return None,
         };
@@ -570,6 +602,61 @@ fn lhb_combined_tool() -> ToolDefinition {
             ("start_date", "起始日期，如 20260615"),
             ("end_date", "结束日期，如 20260615"),
         ])),
+        ..Default::default()
+    }
+}
+
+fn reports_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_reports".into(),
+        label: Some("研究报告".into()),
+        description: "获取东方财富研究报告列表。支持分类：strategyreport(策略报告)、macresearch(宏观研究)、            brokerreport(券商晨报)、industry(行业研报)、stock(个股研报)。            返回报告标题、作者、机构、发布日期等。".into(),
+        parameters: Some(json!({
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "研报分类：strategyreport/macresearch/brokerreport/industry/stock",
+                    "default": "strategyreport"
+                },
+                "page": {
+                    "type": "integer",
+                    "description": "页码，从1开始",
+                    "default": 1
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "每页条数",
+                    "default": 20
+                }
+            },
+            "required": []
+        })),
+        ..Default::default()
+    }
+}
+
+fn stock_reports_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_stock_reports".into(),
+        label: Some("个股研报".into()),
+        description: "获取东方财富个股研报列表（含盈利预测）。返回股票名称、代码、机构、评级、            盈利预测(EPS/PE)、评级变动等。用法：分析机构对特定个股的观点变化，            结合盈利预测判断业绩趋势。".into(),
+        parameters: Some(json!({
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer",
+                    "description": "页码，从1开始",
+                    "default": 1
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "每页条数",
+                    "default": 20
+                }
+            },
+            "required": []
+        })),
         ..Default::default()
     }
 }
