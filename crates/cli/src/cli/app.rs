@@ -46,11 +46,6 @@ pub enum Commands {
         #[arg(long)]
         check: bool,
     },
-    /// 持仓管理
-    Trade {
-        #[command(subcommand)]
-        action: TradeAction,
-    },
     /// 卸载 openatrading（服务、配置、二进制）
     Uninstall,
     /// 诊断当前服务状态
@@ -220,31 +215,5 @@ pub enum GatewayAction {
         /// 不启动 MCP server（默认随 gateway 启动）
         #[arg(long)]
         no_mcp: bool,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum TradeAction {
-    /// 添加持仓
-    Add {
-        #[arg(long)]
-        role: String,
-        #[arg(long)]
-        symbol: String,
-        #[arg(long)]
-        price: f64,
-        #[arg(long)]
-        shares: i64,
-    },
-    /// 列出持仓
-    List {
-        #[arg(long)]
-        role: Option<String>,
-    },
-    /// 平仓
-    Close {
-        id: i64,
-        #[arg(long)]
-        price: f64,
     },
 }
