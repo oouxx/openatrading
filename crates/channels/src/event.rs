@@ -8,7 +8,6 @@ pub enum Platform {
     Discord,
     Slack,
     Lark,
-    Whatsapp,
 }
 
 impl fmt::Display for Platform {
@@ -18,7 +17,6 @@ impl fmt::Display for Platform {
             Self::Discord => write!(f, "discord"),
             Self::Slack => write!(f, "slack"),
             Self::Lark => write!(f, "lark"),
-            Self::Whatsapp => write!(f, "whatsapp"),
         }
     }
 }

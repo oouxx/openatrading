@@ -1,6 +1,18 @@
+//! 断路器——保护对外部平台的请求不被重复失败的调用打垮。
+//!
+//! 包含：
+//! - [`CircuitBreaker`]：底层熔断器（状态机）
+//! - [`CircuitBreakerChannel`]：包装任意 `Channel` 的装饰器
+
+use crate::event::{AdapterError, MessageEvent};
+use crate::Channel;
+use async_trait::async_trait;
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
+
+// ── CircuitBreaker（底层熔断器） ──────────────────────────────
 
 /// 断路器状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,10 +62,6 @@ impl CircuitBreaker {
     }
 
     /// 检查当前是否允许请求通过。
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex is poisoned.
     pub fn is_allowed(&self) -> bool {
         let state = self.inner.state.load(Ordering::Acquire);
         match state {
@@ -86,10 +94,6 @@ impl CircuitBreaker {
     }
 
     /// 记录一次成功——回到 Closed，重置失败计数。
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex is poisoned.
     pub fn record_success(&self) {
         self.inner.failures.store(0, Ordering::Release);
         let old = self.inner.state.swap(STATE_CLOSED, Ordering::AcqRel);
@@ -103,10 +107,6 @@ impl CircuitBreaker {
     }
 
     /// 记录一次失败——达到阈值则切到 Open。
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex is poisoned.
     pub fn record_failure(&self) {
         let prev = self.inner.failures.fetch_add(1, Ordering::AcqRel);
         if prev + 1 >= self.inner.threshold {
@@ -137,10 +137,6 @@ impl CircuitBreaker {
     }
 
     /// 重置为初始状态。
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex is poisoned.
     pub fn reset(&self) {
         self.inner.failures.store(0, Ordering::Release);
         self.inner.state.store(STATE_CLOSED, Ordering::Release);
@@ -164,6 +160,77 @@ impl Default for CircuitBreaker {
     /// 默认：连续 5 次失败熔断 30 秒。
     fn default() -> Self {
         Self::new(5, std::time::Duration::from_secs(30))
+    }
+}
+
+// ── CircuitBreakerChannel（装饰器） ───────────────────────────
+
+/// 断路器装饰器——包装任意 `Channel`，在连续失败时熔断。
+///
+/// 用法：
+/// ```ignore
+/// let ch = CircuitBreakerChannel::new(inner_channel, CircuitBreaker::default());
+/// ```
+pub struct CircuitBreakerChannel {
+    inner: Arc<dyn Channel>,
+    breaker: CircuitBreaker,
+}
+
+impl CircuitBreakerChannel {
+    pub fn new(inner: Arc<dyn Channel>, breaker: CircuitBreaker) -> Self {
+        Self { inner, breaker }
+    }
+
+    /// 访问底层熔断器（用于监控）。
+    pub fn breaker(&self) -> &CircuitBreaker {
+        &self.breaker
+    }
+}
+
+#[async_trait]
+impl Channel for CircuitBreakerChannel {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    async fn listen(
+        &self,
+        sender: tokio::sync::mpsc::Sender<MessageEvent>,
+        cancel: CancellationToken,
+    ) -> Result<(), AdapterError> {
+        self.inner.listen(sender, cancel).await
+    }
+
+    async fn reply(&self, event: &MessageEvent, text: &str) -> Result<(), AdapterError> {
+        if !self.breaker.is_allowed() {
+            return Err(AdapterError::CircuitOpen);
+        }
+        match self.inner.reply(event, text).await {
+            Ok(v) => {
+                self.breaker.record_success();
+                Ok(v)
+            }
+            Err(e) => {
+                self.breaker.record_failure();
+                Err(e)
+            }
+        }
+    }
+
+    async fn send_text(&self, channel_id: &str, text: &str) -> Result<(), AdapterError> {
+        if !self.breaker.is_allowed() {
+            return Err(AdapterError::CircuitOpen);
+        }
+        match self.inner.send_text(channel_id, text).await {
+            Ok(v) => {
+                self.breaker.record_success();
+                Ok(v)
+            }
+            Err(e) => {
+                self.breaker.record_failure();
+                Err(e)
+            }
+        }
     }
 }
 

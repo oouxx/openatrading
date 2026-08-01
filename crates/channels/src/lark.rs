@@ -1,9 +1,17 @@
+//! Lark（飞书）通道实现。
+//!
+//! 包含：
+//! - [`LarkChannel`]：单向通知发送（`NotificationSender`）
+//! - [`LarkAdapter`]：双向通道（`Channel`）
+
+use crate::event::{AdapterError, MessageEvent};
+use crate::{Channel, NotificationSender};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::sync::RwLock;
-
-use crate::NotificationSender;
+use tokio_util::sync::CancellationToken;
 
 const LARK_API_BASE: &str = "https://open.feishu.cn/open-apis";
 const LARK_MAX_CONTENT_LEN: usize = 28000;
@@ -137,6 +145,44 @@ impl NotificationSender for LarkChannel {
             self.send_chunk(chunk).await?;
         }
         Ok(())
+    }
+}
+
+/// Lark 双向通道（当前仅支持推送，监听待实现）。
+pub struct LarkAdapter {
+    inner: LarkChannel,
+}
+
+impl LarkAdapter {
+    pub fn new(app_id: String, app_secret: String, receive_id: String) -> Self {
+        Self {
+            inner: LarkChannel::new(app_id, app_secret, receive_id),
+        }
+    }
+}
+
+#[async_trait]
+impl Channel for LarkAdapter {
+    fn name(&self) -> &'static str {
+        "lark"
+    }
+
+    async fn listen(
+        &self,
+        _sender: mpsc::Sender<MessageEvent>,
+        _cancel: CancellationToken,
+    ) -> Result<(), AdapterError> {
+        // Lark 需要公网 Webhook endpoint + 事件订阅，当前未实现。
+        tracing::warn!("[lark] listen not implemented (requires Event callback endpoint)");
+        futures_util::future::pending::<()>().await;
+        Ok(())
+    }
+
+    async fn reply(&self, _event: &MessageEvent, text: &str) -> Result<(), AdapterError> {
+        self.inner
+            .send_text(text)
+            .await
+            .map_err(|e| AdapterError::SendFailed(e.to_string()))
     }
 }
 

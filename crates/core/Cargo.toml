@@ -35,10 +35,16 @@ tauri = { version = "2", optional = true }
 toml = "0.8"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
+
 [features]
+default = ["channel-telegram", "channel-discord", "channel-slack", "channel-lark"]
 telegram = ["dep:teloxide"]
 tauri = ["dep:tauri"]
 web = []
+channel-telegram = ["openatrading-channels/channel-telegram"]
+channel-discord = ["openatrading-channels/channel-discord"]
+channel-slack = ["openatrading-channels/channel-slack"]
+channel-lark = ["openatrading-channels/channel-lark"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync"] }

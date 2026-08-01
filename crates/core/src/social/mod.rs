@@ -4,10 +4,21 @@ use std::sync::Arc;
 
 // Re-export everything from channels crate
 pub use openatrading_channels as channels;
+pub use openatrading_channels::circuit_breaker::{CircuitBreaker, CircuitBreakerChannel};
+pub use openatrading_channels::listing;
+pub use openatrading_channels::paced_channel::PacedChannel;
+pub use openatrading_channels::Channel;
+
+// Platform channels (NotificationSender)
+#[cfg(feature = "channel-discord")]
 pub use openatrading_channels::discord::DiscordChannel;
+#[cfg(feature = "channel-lark")]
 pub use openatrading_channels::lark::LarkChannel;
+#[cfg(feature = "channel-slack")]
 pub use openatrading_channels::slack::SlackChannel;
+#[cfg(feature = "channel-telegram")]
 pub use openatrading_channels::telegram::TelegramChannel;
+
 pub use openatrading_channels::{NoopChannel, NotificationSender, StdoutChannel};
 
 // ── FilteredSender ────────────────────────────────────

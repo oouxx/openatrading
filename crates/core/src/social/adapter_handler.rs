@@ -2,22 +2,20 @@ use crate::context::AppContext;
 use crate::RoleEntry;
 use ahash::AHashMap as HashMap;
 use anyhow::Result;
-use openatrading_channels::adapter::MessageAdapter;
 use openatrading_channels::event::{MessageEvent, Platform};
+use openatrading_channels::Channel;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// 消息处理运行时——接收适配器事件，调用 Agent，回复。
 pub async fn run_adapter_handler(
     mut rx: mpsc::Receiver<MessageEvent>,
-    adapters: Vec<Arc<dyn MessageAdapter>>,
+    adapters: Vec<Arc<dyn Channel>>,
     roles: Vec<RoleEntry>,
     ctx: AppContext,
 ) -> Result<()> {
-    let adapter_map: HashMap<&'static str, Arc<dyn MessageAdapter>> = adapters
-        .into_iter()
-        .map(|a| (a.platform_name(), a))
-        .collect();
+    let adapter_map: HashMap<&'static str, Arc<dyn Channel>> =
+        adapters.into_iter().map(|a| (a.name(), a)).collect();
 
     while let Some(event) = rx.recv().await {
         let platform_name = match event.platform {
@@ -25,7 +23,6 @@ pub async fn run_adapter_handler(
             Platform::Discord => "discord",
             Platform::Slack => "slack",
             Platform::Lark => "lark",
-            Platform::Whatsapp => "whatsapp",
         };
 
         let Some(adapter) = adapter_map.get(platform_name) else {
@@ -75,7 +72,6 @@ pub async fn run_adapter_handler(
                     }
                 }
                 "model" => {
-                    // TODO 实现这个slash command
                     let msg = format!("当前模型: {:?}", "");
                     adapter.reply(&event, &msg).await.ok();
                 }
@@ -114,7 +110,7 @@ pub async fn run_adapter_handler(
 }
 
 async fn handle_ask(
-    adapter: &Arc<dyn MessageAdapter>,
+    adapter: &Arc<dyn Channel>,
     event: &MessageEvent,
     args: &str,
     roles: &[RoleEntry],

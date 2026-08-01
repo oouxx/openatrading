@@ -1,13 +1,20 @@
-use crate::adapter::MessageAdapter;
+//! Telegram 通道实现。
+//!
+//! 包含：
+//! - [`TelegramChannel`]：单向通知发送（`NotificationSender`）
+//! - [`TelegramAdapter`]：双向通道（`Channel`），通过 long polling 接收消息
+
 use crate::event::{AdapterError, MessageEvent, Platform};
-use crate::NotificationSender;
+use crate::{Channel, NotificationSender};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
-/// 单向通知发送（用于系统推送）。
+// ── 单向通知发送 ──────────────────────────────────────────────
+
 pub struct TelegramChannel {
     bot_token: String,
     chat_id: String,
@@ -49,12 +56,12 @@ impl NotificationSender for TelegramChannel {
     }
 }
 
-/// Telegram 适配器——通过 long polling 接收消息并转发为统一事件。
+// ── 双向通道 ──────────────────────────────────────────────────
+
 pub struct TelegramAdapter {
     bot_token: String,
     allowed_chat_id: String,
     client: reqwest::Client,
-    stop_signal: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Deserialize)]
@@ -106,11 +113,9 @@ impl TelegramAdapter {
             bot_token,
             allowed_chat_id,
             client: reqwest::Client::new(),
-            stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
-    /// 发送文本到指定 `chat_id`。
     async fn send_text_to(&self, chat_id: &str, text: &str) -> Result<i64, AdapterError> {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", self.bot_token);
         let stripped = text.replace(['*', '_'], "");
@@ -141,18 +146,21 @@ impl TelegramAdapter {
 }
 
 #[async_trait]
-impl MessageAdapter for TelegramAdapter {
-    fn platform_name(&self) -> &'static str {
+impl Channel for TelegramAdapter {
+    fn name(&self) -> &'static str {
         "telegram"
     }
 
-    async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError> {
+    async fn listen(
+        &self,
+        sender: mpsc::Sender<MessageEvent>,
+        cancel: CancellationToken,
+    ) -> Result<(), AdapterError> {
         let bot_token = self.bot_token.clone();
         let allowed_chat_id = self.allowed_chat_id.clone();
         let client = self.client.clone();
-        let stop_signal = self.stop_signal.clone();
 
-        tracing::info!("[telegram-adapter] polling started");
+        tracing::info!("[telegram] polling started");
 
         // 注册命令列表
         let cmd_url = format!("https://api.telegram.org/bot{bot_token}/setMyCommands");
@@ -172,102 +180,82 @@ impl MessageAdapter for TelegramAdapter {
         let mut offset: i64 = 0;
 
         loop {
-            // 检查是否应停止
-            if stop_signal.load(std::sync::atomic::Ordering::Acquire) {
-                tracing::info!("[telegram-adapter] polling stopped");
-                break;
-            }
-
-            let url = format!(
-                "https://api.telegram.org/bot{bot_token}/getUpdates?offset={offset}&timeout=30"
-            );
-
-            let resp = match client.get(&url).send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::error!("[telegram-adapter] getUpdates error: {e}");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    tracing::info!("[telegram] polling cancelled");
+                    break;
                 }
-            };
-
-            let text = match resp.text().await {
-                Ok(t) => t,
-                Err(e) => {
-                    tracing::error!("[telegram-adapter] read body error: {e}");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
-            };
-
-            let body: GetUpdatesResponse = match serde_json::from_str(&text) {
-                Ok(b) => b,
-                Err(e) => {
-                    tracing::error!(
-                        "[telegram-adapter] parse error: {e}, body: {}",
-                        &text[..text.len().min(500)]
+                result = async {
+                    let url = format!(
+                        "https://api.telegram.org/bot{bot_token}/getUpdates?offset={offset}&timeout=30"
                     );
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
-            };
 
-            if !body.ok {
-                let desc = body.description.as_deref().unwrap_or("unknown");
-                let code = body.error_code.map(|c| c.to_string()).unwrap_or_default();
-                tracing::error!("[telegram-adapter] getUpdates error {code}: {desc}");
-                let delay = if body.error_code == Some(409) { 30 } else { 5 };
-                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-                continue;
-            }
+                    let resp = client.get(&url).send().await.map_err(|e| {
+                        tracing::error!("[telegram] getUpdates error: {e}");
+                    }).ok()?;
 
-            if let Some(updates) = body.result {
-                for update in updates {
-                    offset = update.update_id + 1;
+                    let text = resp.text().await.map_err(|e| {
+                        tracing::error!("[telegram] read body error: {e}");
+                    }).ok()?;
 
-                    if let Some(msg) = update.message {
-                        if let Some(text) = msg.text {
-                            let chat_id = msg.chat.id.to_string();
-                            if chat_id != allowed_chat_id {
-                                continue;
-                            }
+                    let body: GetUpdatesResponse = serde_json::from_str(&text).map_err(|e| {
+                        tracing::error!("[telegram] parse error: {e}, body: {}", &text[..text.len().min(500)]);
+                    }).ok()?;
 
-                            let user_name = msg
-                                .from
-                                .as_ref()
-                                .and_then(|u| u.username.clone().or_else(|| u.first_name.clone()));
+                    if !body.ok {
+                        let desc = body.description.as_deref().unwrap_or("unknown");
+                        let code = body.error_code.map(|c| c.to_string()).unwrap_or_default();
+                        tracing::error!("[telegram] getUpdates error {code}: {desc}");
+                        return None::<()>;
+                    }
 
-                            let event = MessageEvent {
-                                platform: Platform::Telegram,
-                                channel_id: chat_id,
-                                user_id: msg
-                                    .from
-                                    .as_ref()
-                                    .map(|u| u.id.to_string())
-                                    .unwrap_or_default(),
-                                user_name,
-                                text,
-                                message_id: msg.message_id.to_string(),
-                                raw: serde_json::Value::Null,
-                            };
+                    if let Some(updates) = body.result {
+                        for update in updates {
+                            offset = update.update_id + 1;
 
-                            if sender.send(event).await.is_err() {
-                                tracing::error!("[telegram-adapter] receiver dropped, stopping");
-                                break;
+                            if let Some(msg) = update.message {
+                                if let Some(text) = msg.text {
+                                    let chat_id = msg.chat.id.to_string();
+                                    if chat_id != allowed_chat_id {
+                                        continue;
+                                    }
+
+                                    let user_name = msg
+                                        .from
+                                        .as_ref()
+                                        .and_then(|u| u.username.clone().or_else(|| u.first_name.clone()));
+
+                                    let event = MessageEvent {
+                                        platform: Platform::Telegram,
+                                        channel_id: chat_id,
+                                        user_id: msg
+                                            .from
+                                            .as_ref()
+                                            .map(|u| u.id.to_string())
+                                            .unwrap_or_default(),
+                                        user_name,
+                                        text,
+                                        message_id: msg.message_id.to_string(),
+                                        raw: serde_json::Value::Null,
+                                    };
+
+                                    if sender.send(event).await.is_err() {
+                                        tracing::error!("[telegram] receiver dropped, stopping");
+                                        return None::<()>;
+                                    }
+                                }
                             }
                         }
+                    }
+                    Some(())
+                } => {
+                    if result.is_none() {
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
                 }
             }
         }
 
-        Ok(())
-    }
-
-    async fn stop(&self) -> Result<(), AdapterError> {
-        self.stop_signal
-            .store(true, std::sync::atomic::Ordering::Release);
-        tracing::info!("[telegram-adapter] stop signal sent");
         Ok(())
     }
 
