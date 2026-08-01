@@ -10,11 +10,15 @@ struct ToolView {
 pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     // ── 收集工具：扩展注册表（行情/交易）+ 远端 MCP server ────────────────
     let mut views: Vec<ToolView> = Vec::new();
+    // 工具名去重集合：本地工具先入，远端 MCP 工具按名去重，
+    // 避免远端就是本服务自身（默认 endpoint 指向 gateway）时重复列出。
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     let registry = openatrading_core::llm::create_registry(
         openatrading_core::llm::RegistryOptions::market_only(),
     );
     for rt in registry.tools() {
+        seen.insert(rt.definition.name.clone());
         views.push(ToolView {
             name: rt.definition.name.clone(),
             description: rt.definition.description.clone(),
@@ -32,6 +36,10 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("?")
                         .to_string();
+                    // 与本地/已收录工具同名则跳过，保证每个工具名只出现一次。
+                    if !seen.insert(name.clone()) {
+                        continue;
+                    }
                     let desc = t
                         .get("description")
                         .and_then(|v| v.as_str())
