@@ -69,7 +69,10 @@ impl MarketDataExtension {
     /// agent loop); the two read-only tools here let the agent inspect the
     /// current paper-account positions and historical memory context.
     fn paper_definitions() -> Vec<ToolDefinition> {
-        vec![get_current_positions_tool(), get_historical_context_tool()]
+        vec![
+            get_current_positions_tool(),
+            // get_historical_context_tool()
+        ]
     }
 
     /// Dispatch a tool call to the matching handler.
@@ -664,6 +667,7 @@ fn get_current_positions_tool() -> ToolDefinition {
     }
 }
 
+#[allow(dead_code)]
 fn get_historical_context_tool() -> ToolDefinition {
     ToolDefinition {
         name: "get_historical_context".into(),
