@@ -913,3 +913,147 @@ mod tests {
         );
     }
 }
+
+// ─── 研究报告 ────────────────────────────────────────────────────────────────
+
+/// 研报分类
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReportCategory {
+    /// 策略报告
+    StrategyReport,
+    /// 宏观研究
+    MacroResearch,
+    /// 券商晨报
+    BrokerReport,
+    /// 行业研报
+    Industry,
+    /// 个股研报
+    Stock,
+}
+
+impl ReportCategory {
+    fn path_segment(self) -> &'static str {
+        match self {
+            Self::StrategyReport => "strategyreport",
+            Self::MacroResearch => "macresearch",
+            Self::BrokerReport => "brokerreport",
+            Self::Industry => "industry",
+            Self::Stock => "stock",
+        }
+    }
+
+    #[allow(dead_code)]
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::StrategyReport => "策略报告",
+            Self::MacroResearch => "宏观研究",
+            Self::BrokerReport => "券商晨报",
+            Self::Industry => "行业研报",
+            Self::Stock => "个股研报",
+        }
+    }
+}
+
+/// 研报列表条目（非个股研报）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportItem {
+    pub id: i64,
+    pub title: String,
+    pub author: Vec<String>,
+    pub org_name: String,
+    pub org_short_name: String,
+    pub publish_date: String,
+    pub encode_url: String,
+    pub researcher: String,
+    pub industry_name: String,
+}
+
+/// 个股研报条目（含盈利预测）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockReportItem {
+    pub title: String,
+    pub stock_name: String,
+    pub stock_code: String,
+    pub org_name: String,
+    pub org_short_name: String,
+    pub publish_date: String,
+    pub info_code: String,
+    pub predict_this_year_eps: Option<String>,
+    pub predict_this_year_pe: Option<String>,
+    pub predict_next_year_eps: Option<String>,
+    pub predict_next_year_pe: Option<String>,
+    pub em_rating_name: String,
+    pub rating_change: Option<String>,
+    pub industry_name: String,
+    pub researcher: String,
+    pub attach_pages: Option<i64>,
+}
+
+/// 研报详情（PDF 链接 + 摘要）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportDetail {
+    pub title: String,
+    pub pdf_url: Option<String>,
+    pub description: String,
+    pub org_name: String,
+    pub publish_date: String,
+}
+
+impl LhbClient {
+    /// 获取研报列表。
+    ///
+    /// `category` 研报分类，`page` 页码（从 1 开始），`size` 每页条数。
+    pub async fn reports(
+        &self,
+        category: ReportCategory,
+        _page: u32,
+        _size: u32,
+    ) -> Result<Vec<serde_json::Value>, LhbError> {
+        let url = format!(
+            "https://data.eastmoney.com/report/{}",
+            category.path_segment()
+        );
+        let resp = self.client.get(&url).send().await?;
+        let html = resp.text().await?;
+
+        let data = extract_initdata(&html).ok_or(LhbError::EmptyResult)?;
+        Ok(data)
+    }
+
+    /// 获取个股研报列表（含盈利预测）。
+    pub async fn stock_reports(
+        &self,
+        _page: u32,
+        _size: u32,
+    ) -> Result<Vec<StockReportItem>, LhbError> {
+        let items = self.reports(ReportCategory::Stock, _page, _size).await?;
+        let reports: Vec<StockReportItem> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        Ok(reports)
+    }
+
+    /// 获取非个股研报列表。
+    pub async fn non_stock_reports(
+        &self,
+        category: ReportCategory,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<ReportItem>, LhbError> {
+        let items = self.reports(category, page, size).await?;
+        let reports: Vec<ReportItem> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        Ok(reports)
+    }
+}
+
+/// 从东方财富页面 HTML 中提取 initdata JSON。
+fn extract_initdata(html: &str) -> Option<Vec<serde_json::Value>> {
+    let re = regex::Regex::new(r"initdata\s*=\s*\{.*?\};").ok()?;
+    let cap = re.captures(html)?;
+    let parsed: serde_json::Value = serde_json::from_str(&cap[1]).ok()?;
+    parsed.get("data")?.as_array().cloned()
+}
