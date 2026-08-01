@@ -98,10 +98,10 @@ fn default_news_schedule() -> String {
 }
 
 impl AppConfig {
-    /// 三层作用域配置合并:
+    /// 三层作用域配置合并（类似 Claude 的 ~/.claude/ + .claude/ 模式）:
     /// 1. 内置默认值（struct defaults）
     /// 2. 用户配置: {atrading_home}/config.toml
-    /// 3. 项目配置: cwd/.openatrading.toml（覆盖用户配置）
+    /// 3. 项目配置: cwd/.atrading/config.toml（覆盖用户配置，类似 Claude 的 .claude/）
     pub fn load() -> Result<Self> {
         let home = openatrading_core::atrading_home();
         openatrading_core::log::info!(?home, "Loading config from home");
@@ -124,9 +124,9 @@ impl AppConfig {
             merged.merge(cfg);
         }
 
-        // Layer 3: Project-level config from cwd/.openatrading.toml
+        // Layer 3: Project-level config from cwd/.atrading/config.toml
         if let Ok(cwd) = std::env::current_dir() {
-            let project_cfg_path = cwd.join(".openatrading.toml");
+            let project_cfg_path = cwd.join(".atrading").join("config.toml");
             if project_cfg_path.exists() {
                 openatrading_core::log::info!(
                     "Loading project config from {}",
@@ -136,6 +136,18 @@ impl AppConfig {
                     merged.merge(cfg);
                 }
                 validate_config(&project_cfg_path);
+            }
+        }
+
+        // Project-level .mcp.json (cwd/.atrading/.mcp.json)
+        if let Ok(cwd) = std::env::current_dir() {
+            let project_mcp = cwd.join(".atrading").join(".mcp.json");
+            if project_mcp.exists() {
+                openatrading_core::log::info!(
+                    "Loading project MCP config from {}",
+                    project_mcp.display()
+                );
+                Self::load_mcp_json(&project_mcp, &mut merged.mcp_servers);
             }
         }
 
