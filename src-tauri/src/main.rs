@@ -504,11 +504,16 @@ async fn ensure_session_tauri(
     .await?;
 
     let mut rx = session_with_events.rx;
+    // 必须把 subscription_handle 移入 spawn 任务，否则 ensure_session_tauri
+    // 返回时 UnsubscribeOnDrop::drop 会立即取消订阅，rx 永远收不到事件。
+    let _subscription_handle = session_with_events.subscription_handle;
     let app_handle = app.clone();
     let sid = session_id.to_string();
 
     // rx yields already-serialized EventEnvelope JSON strings (with seq).
     let join_handle = tokio::spawn(async move {
+        // 持有 subscription_handle，确保事件监听器在任务生命周期内保持活跃
+        let _keep_alive = _subscription_handle;
         loop {
             let Some(json) = rx.recv().await else { break };
             let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
