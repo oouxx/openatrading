@@ -133,9 +133,9 @@ dependencies = [
 
 [[package]]
 name = "ar_archive_writer"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4087686b4b0a3427190bae57a1d9a478dbb2d40c5dc1bd6e2b6d797913bdd348"
+checksum = "73cd58deff2140a0a8eae87e417bd01db68a33e148aa93d1e8cd837e55e312b6"
 dependencies = [
  "object",
 ]
@@ -581,9 +581,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.4"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+checksum = "301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -591,9 +591,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.2"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f09628afdcc538b57f3c6341e9c8e9970f18e4a481690a64974d7023bd33548b"
+checksum = "94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078"
 dependencies = [
  "anstream",
  "anstyle",
@@ -3003,9 +3003,9 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.37.3"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
 dependencies = [
  "memchr",
 ]
@@ -3024,7 +3024,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openatrading-agent"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3045,7 +3045,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3085,7 +3085,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3113,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3146,7 +3146,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-extension"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3165,7 +3165,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -3184,7 +3184,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "anyhow",
  "arc-swap",
