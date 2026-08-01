@@ -8,7 +8,6 @@ pub mod mcp_cmd;
 pub mod service_cmd;
 pub mod skills_cmd;
 pub mod tools_cmd;
-pub mod trade_cmd;
 pub mod uninstall_cmd;
 pub mod update;
 
@@ -17,7 +16,7 @@ use app::Cli;
 use clap::Parser;
 
 use crate::cli::app::{
-    ChannelsAction, Commands, GatewayAction, McpAction, SkillAction, ToolsAction, TradeAction,
+    ChannelsAction, Commands, GatewayAction, McpAction, SkillAction, ToolsAction,
 };
 use crate::cli::channels_cmd::cmd_channels_list;
 use crate::cli::config::cmd_init;
@@ -33,7 +32,6 @@ use crate::cli::skills_cmd::{
     cmd_skills_install, cmd_skills_install_url, cmd_skills_list, cmd_skills_uninstall,
 };
 use crate::cli::tools_cmd::cmd_tools_doc;
-use crate::cli::trade_cmd::{cmd_trade_add, cmd_trade_close, cmd_trade_list};
 use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
 
@@ -87,17 +85,6 @@ pub async fn run() -> Result<()> {
             }
             Ok(())
         }
-
-        Some(Commands::Trade { action }) => match action {
-            TradeAction::Add {
-                role,
-                symbol,
-                price,
-                shares,
-            } => cmd_trade_add(&role, &symbol, price, shares),
-            TradeAction::List { role } => cmd_trade_list(role.as_deref()),
-            TradeAction::Close { id, price } => cmd_trade_close(id, price),
-        },
 
         Some(Commands::Skills { action }) => match action {
             SkillAction::List => cmd_skills_list(),
