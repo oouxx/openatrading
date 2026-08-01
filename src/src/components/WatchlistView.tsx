@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/env"
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Star, Plus, Trash2, X, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import {
@@ -91,7 +92,6 @@ export default function WatchlistView() {
   )
 
   // ── Add-stock search ──
-  import { isTauri } from "@/lib/env"
   const handleAddSearch = useCallback(
     async (q: string) => {
       setAddQuery(q)
