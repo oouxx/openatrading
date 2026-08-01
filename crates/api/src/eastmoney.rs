@@ -1052,7 +1052,7 @@ impl LhbClient {
 
 /// 从东方财富页面 HTML 中提取 initdata JSON。
 fn extract_initdata(html: &str) -> Option<Vec<serde_json::Value>> {
-    let re = regex::Regex::new(r"initdata\s*=\s*\{.*?\};").ok()?;
+    let re = regex::Regex::new(r"initdata\s*=\s*(\{.*?\});").ok()?;
     let cap = re.captures(html)?;
     let parsed: serde_json::Value = serde_json::from_str(&cap[1]).ok()?;
     parsed.get("data")?.as_array().cloned()
