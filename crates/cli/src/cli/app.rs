@@ -85,6 +85,17 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// 通道管理（列出/检查）
+    Channels {
+        #[command(subcommand)]
+        action: ChannelsAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ChannelsAction {
+    /// 列出所有通道的编译状态
+    List,
 }
 
 #[derive(Subcommand)]
