@@ -6,8 +6,7 @@ import { useSettingsStore } from "@/stores/settingsStore"
 import { fetchJson } from "@/stores/data"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
-const isTauri = "__TAURI_INTERNALS__" in window
-
+import { isTauri } from "@/lib/env"
 async function setConfig(section: string, key: string, value: string) {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core")

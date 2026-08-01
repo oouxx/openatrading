@@ -1,10 +1,8 @@
-// src/App.tsx
+import { isTauri } from "@/lib/env"
 import { Routes, Route, Navigate } from "react-router-dom"
 import { AppModeProvider } from "@/contexts/AppModeContext"
 import AppShell from "@/components/AppShell"
 import LandingPage from "./LandingPage"
-
-const isTauri = "__TAURI_INTERNALS__" in window
 
 export default function App() {
   return (

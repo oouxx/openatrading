@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from "@/stores/data"
 
-const isTauri = "__TAURI_INTERNALS__" in window
+import { isTauri } from "@/lib/env"
 
 /**
  * Try to match a raw symbol (e.g. "000001") against a batch-response map

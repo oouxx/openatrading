@@ -38,8 +38,7 @@ interface AiCopilotProps {
   sessions?: ChatSession[]
 }
 
-const isTauri = "__TAURI_INTERNALS__" in window
-
+import { isTauri } from "@/lib/env"
 
 export default function AiCopilot({
   activeThreadId,

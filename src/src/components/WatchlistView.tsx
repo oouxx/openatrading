@@ -91,7 +91,7 @@ export default function WatchlistView() {
   )
 
   // ── Add-stock search ──
-  const isTauri = "__TAURI_INTERNALS__" in window
+  import { isTauri } from "@/lib/env"
   const handleAddSearch = useCallback(
     async (q: string) => {
       setAddQuery(q)

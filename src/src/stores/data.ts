@@ -1,7 +1,6 @@
 import { useSettingsStore } from "@/stores/settingsStore"
 
-const isTauri = "__TAURI_INTERNALS__" in window
-
+import { isTauri } from "@/lib/env"
 /**
  * A stored apiUrl pointing at localhost/127.0.0.1 is only valid when the page
  * itself is served from localhost (local dev). On a deployed site it is a stale
