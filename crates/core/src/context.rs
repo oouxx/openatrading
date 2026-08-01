@@ -4,7 +4,7 @@ use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
 use crate::llm::{
-    build_tools, create_factory, DynTool, FactoryOptions, McpServerConfig, SessionPool, ToolConfig,
+    create_factory, discover_mcp, DynTool, FactoryOptions, McpServerConfig, SessionPool,
     ToolRegistry,
 };
 use crate::memory::sqlite::MemoryStore;
@@ -49,20 +49,26 @@ impl AppContext {
             sink: Arc::new(PaperExecutor::new(trade.clone(), api.clone())),
         };
 
+        let discovered = discover_mcp(mcp_servers).await;
+        let mcp_names: Vec<String> = discovered
+            .iter()
+            .flat_map(|s| s.specs.iter().map(|t| t.name.clone()))
+            .collect();
         let factory = create_factory(FactoryOptions {
             agent_dir,
             model: None,
             tools: None,
             custom_tools: None,
             trading: Some(trading),
+            mcp: Some(discovered),
         });
         let pool = Arc::new(SessionPool::new(factory));
-        let tool_cfg = ToolConfig {
-            mcp_servers: mcp_servers.to_vec(),
-        };
-        let mut registry = build_tools(&tool_cfg).await;
-        let ext_registry = openatrading_extension::create_registry(None);
+        let mut registry = ToolRegistry::new();
+        let ext_registry = openatrading_extension::create_registry(
+            openatrading_extension::RegistryOptions::market_only(),
+        );
         registry.set_extension_tools(&ext_registry);
+        registry.set_mcp_names(mcp_names);
         let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
@@ -78,13 +84,13 @@ impl AppContext {
         }
     }
 
-    /// Get all tools (extension + MCP).
+    /// Get all extension tools.
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.tool_registry.load().all_tools()
     }
 
-    /// Get only MCP tools.
-    pub fn mcp_tools(&self) -> Vec<Arc<DynTool>> {
-        self.tool_registry.load().mcp_tools().to_vec()
+    /// Get discovered MCP tool names.
+    pub fn mcp_tools(&self) -> Vec<String> {
+        self.tool_registry.load().mcp_tools()
     }
 }

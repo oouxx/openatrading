@@ -1,13 +1,13 @@
 use anyhow::Result;
+use std::sync::Arc;
 
 use crate::cli::app::McpTransport;
 
 pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
-    use openatrading_core::llm::{serve_http, serve_stdio, ToolRegistry};
+    use openatrading_core::llm::{create_registry, serve_http, serve_stdio, RegistryOptions};
     use tokio::sync::watch;
 
-    let registry = ToolRegistry::new();
-    let tools = registry.all_tools();
+    let registry = Arc::new(create_registry(RegistryOptions::market_only()));
     let (tx, rx) = watch::channel(false);
 
     let signal_task = tokio::spawn(async move {
@@ -22,11 +22,11 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
                 .parse()
                 .map_err(|e| anyhow::anyhow!("invalid bind {bind}: {e}"))?;
             openatrading_core::log::info!("[mcp] http server starting on http://{bind}/mcp");
-            serve_http(tools, bind, rx).await
+            serve_http(registry, bind, rx).await
         }
         McpTransport::Stdio => {
             openatrading_core::log::info!("[mcp] stdio server starting");
-            serve_stdio(tools, rx).await
+            serve_stdio(registry, rx).await
         }
     };
 

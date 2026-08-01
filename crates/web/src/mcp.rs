@@ -110,12 +110,17 @@ async fn load_servers_and_reload(state: &Arc<AppState>) {
 }
 
 async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) {
-    let cfg = llm::ToolConfig {
-        mcp_servers: servers.to_vec(),
-    };
-    let mut new_registry = llm::build_tools(&cfg).await;
-    let ext_registry = openatrading_core::create_extension_registry(None);
+    let discovered = llm::discover_mcp(servers).await;
+    let mcp_names: Vec<String> = discovered
+        .iter()
+        .flat_map(|s| s.specs.iter().map(|t| t.name.clone()))
+        .collect();
+    let mut new_registry = llm::ToolRegistry::new();
+    let ext_registry = openatrading_core::create_extension_registry(
+        openatrading_core::llm::RegistryOptions::market_only(),
+    );
     new_registry.set_extension_tools(&ext_registry);
+    new_registry.set_mcp_names(mcp_names);
 
     state.ctx.tool_registry.store(Arc::new(new_registry));
 

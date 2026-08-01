@@ -2,7 +2,8 @@
 //!
 //! The pure pi-coding-agent session lifecycle (pool, factory, session-file
 //! lookup) lives in [`openatrading_agent::session`]; this module re-exports it
-//! alongside the MCP infrastructure and the domain-specific tool registry.
+//! alongside the MCP infrastructure (now provided by
+//! `openatrading-extension::mcp`) and the domain-specific tool registry.
 //!
 //! Domain tools that couple to core's types (`TradeManager`, `MemoryStore`)
 //! stay in [`tools`] — they cannot move to the agent crate without creating a
@@ -15,15 +16,20 @@ pub use openatrading_agent::session::{
     create_factory, find_session_file_by_id, FactoryOptions, SessionPool,
 };
 
-// ── MCP infrastructure (from the agent crate) ─────────────────────────────
-pub use openatrading_agent::mcp_server::{serve_http, serve_stdio};
-pub use openatrading_agent::mcp_tools::{
-    McpClient, McpRegistry, McpServerConfig, McpTransportConfig, ToolConfig,
+// ── MCP infrastructure (from the extension crate) ──────────────────────────
+// pi-rs v1.80.2 的 `mcp` feature 为占位符，MCP 协议由 openatrading-extension
+// 基于 HookHandler 自实现并在此再导出，保持 `core::llm` 公开名稳定。
+pub use openatrading_extension::mcp::{
+    discover_mcp, serve_http, serve_stdio, DiscoveredServer, McpClient, McpError, McpExtension,
+    McpServerConfig, McpServerHandler, McpTransportConfig, RemoteToolSpec,
 };
+
+// ── Extension registry builder ─────────────────────────────────────────────
+pub use openatrading_extension::{create_registry, RegistryOptions};
 
 // ── pi-rs types ────────────────────────────────────────────────────────────
 pub use openatrading_agent::pi_ai_types;
 pub use openatrading_agent::types::{AgentMessage, DynTool};
 
 // ── Domain tool registry (stays in core) ──────────────────────────────────
-pub use self::tools::{build_tools, ToolRegistry};
+pub use self::tools::ToolRegistry;

@@ -6,13 +6,30 @@ license.workspace = true
 
 [dependencies]
 pi-extension-api = { workspace = true }
-pi-extensions = {workspace= true }
+pi-extensions = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 tracing = "0.1"
 openatrading-api = { path = "../api" }
 
+# MCP 协议支持（client + server）。pi-rs v1.80.2 的 `mcp` feature 仅为占位符
+# （声明了 rmcp 依赖但无实现代码），故在此基于 pi-extension-api 的 HookHandler
+# 接口自实现桥接；待 pi-rs 上游落地 `mcp` feature 并经 pi-coding-agent 转发后
+# 可迁移回 pi-rs。
+rmcp = { version = "3.1", features = [
+    "client",
+    "server",
+    "transport-streamable-http-client-reqwest",
+    "transport-streamable-http-server",
+    "transport-io",
+    "transport-child-process",
+] }
+axum = "0.7"
+tokio = { workspace = true, features = ["net", "process", "rt", "sync", "macros", "io-util", "signal", "time"] }
+ahash = { workspace = true }
+thiserror = "2"
+anyhow = { workspace = true }
 
 [lints]
 workspace = true
