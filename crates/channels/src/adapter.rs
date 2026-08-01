@@ -1,135 +1,59 @@
-use crate::circuit_breaker::CircuitBreaker;
-use crate::event::{AdapterError, MessageEvent};
-use crate::session::SessionManager;
-use async_trait::async_trait;
+#![allow(clippy::type_complexity)]
+//! 通道适配器运行时——管理适配器生命周期、消息流合并。
+
+use crate::event::MessageEvent;
+use crate::Channel;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
-/// 平台适配器——统一多平台消息接入的抽象层。
+/// 便捷函数：从多个 Channel 创建统一的消息流。
 ///
-/// 每个平台（Telegram／Discord／Slack 等）实现此 trait，
-/// 通过 `start()` 启动监听，将收到的消息转为 `MessageEvent`
-/// 并通过 `sender` 送入 Agent 执行链路。
-#[async_trait]
-pub trait MessageAdapter: Send + Sync {
-    /// 平台名称（用于日志／监控）。
-    fn platform_name(&self) -> &'static str;
-
-    /// 启动监听，通过 `sender` 将收到的统一事件送入上层。
-    async fn start(&self, sender: mpsc::Sender<MessageEvent>) -> Result<(), AdapterError>;
-
-    /// 优雅关闭。
-    async fn stop(&self) -> Result<(), AdapterError>;
-
-    /// 回复消息（平台相关）。
-    async fn reply(&self, event: &MessageEvent, text: &str) -> Result<(), AdapterError>;
-}
-
-/// 适配器运行时——负责管理适配器生命周期、会话、断路保护。
-///
-/// 这是 `BaseAdapter` 的 Rust 等价物：
-/// - 持有 `SessionManager` 统一管理所有平台会话
-/// - 持有 `CircuitBreaker` 保护每个平台不被打垮
-/// - 通过 `on_message` 统一入口将事件送入上游
-#[derive(Clone)]
-pub struct AdapterRuntime {
-    /// 会话守卫
-    pub sessions: SessionManager,
-    /// 断路保护
-    pub circuit_breaker: CircuitBreaker,
-}
-
-impl AdapterRuntime {
-    /// 创建带默认配置的新运行时。
-    pub fn new() -> Self {
-        Self {
-            sessions: SessionManager::new(),
-            circuit_breaker: CircuitBreaker::default(),
-        }
-    }
-
-    /// 创建带自定义断路器的新运行时。
-    pub fn with_circuit_breaker(cb: CircuitBreaker) -> Self {
-        Self {
-            sessions: SessionManager::new(),
-            circuit_breaker: cb,
-        }
-    }
-
-    /// 统一消息入口——调用前应已通过 `Sender` 收到 `MessageEvent`。
-    ///
-    /// 此方法：
-    /// 1. 更新/创建会话
-    /// 2. 检查断路器状态
-    /// 3. 返回 `MessageEvent` 供后续处理
-    ///
-    /// # Errors
-    ///
-    /// Returns `AdapterError::CircuitOpen` if the circuit breaker is open.
-    pub async fn on_message(&self, event: MessageEvent) -> Result<MessageEvent, AdapterError> {
-        // 1. 检查断路器
-        if !self.circuit_breaker.is_allowed() {
-            return Err(AdapterError::CircuitOpen);
-        }
-
-        // 2. 更新会话
-        self.sessions
-            .upsert(
-                event.platform,
-                event.user_id.clone(),
-                event.channel_id.clone(),
-                event.user_name.clone(),
-            )
-            .await;
-
-        // 3. 记录成功（断路器计数重置）
-        self.circuit_breaker.record_success();
-
-        Ok(event)
-    }
-
-    /// 标记处理成功（重置断路器失败计数）。
-    pub fn record_success(&self) {
-        self.circuit_breaker.record_success();
-    }
-
-    /// 标记处理失败（递增断路器失败计数）。
-    pub fn record_failure(&self) {
-        self.circuit_breaker.record_failure();
-    }
-}
-
-impl Default for AdapterRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// 便捷函数：从多个适配器创建统一的消息流。
-///
-/// 启动所有适配器，每个适配器的输出都路由到同一个 `Receiver`。
-/// 返回 `(接收端, 适配器列表, JoinHandle 列表)`。
-/// 适配器列表可用于之后调用 `reply()` 回复消息。
-pub fn launch_adapters(adapters: Vec<Arc<dyn MessageAdapter>>, buffer: usize) -> AdapterStream {
+/// 启动所有通道的监听，每个通道的输出都路由到同一个 `Receiver`。
+/// 返回 `(接收端, 通道列表, JoinHandle 列表, 取消令牌)`。
+pub fn launch_channels(channels: Vec<Arc<dyn Channel>>, buffer: usize) -> ChannelStream {
     let (tx, rx) = mpsc::channel(buffer);
-    let mut handles = Vec::with_capacity(adapters.len());
+    let cancel = CancellationToken::new();
+    let mut handles = Vec::with_capacity(channels.len());
 
-    for adapter in &adapters {
+    for ch in &channels {
         let tx = tx.clone();
-        let a = Arc::clone(adapter);
+        let c = Arc::clone(ch);
+        let token = cancel.child_token();
         handles.push(tokio::spawn(async move {
-            if let Err(e) = a.start(tx).await {
-                tracing::error!("[adapter] {} start failed: {e}", a.platform_name());
+            if let Err(e) = c.listen(tx, token).await {
+                tracing::error!("[channel] {} listen failed: {e}", c.name());
             }
         }));
     }
 
-    (rx, adapters, handles)
+    (rx, channels, handles, cancel)
 }
 
-/// `launch_adapters` 的返回类型：消息接收端、适配器列表、各适配器任务句柄。
-pub type AdapterStream = (
+/// `launch_channels` 的返回类型。
+pub type ChannelStream = (
     mpsc::Receiver<MessageEvent>,
-    Vec<Arc<dyn MessageAdapter>>,
+    Vec<Arc<dyn Channel>>,
     Vec<tokio::task::JoinHandle<()>>,
+    CancellationToken,
 );
+
+/// 向后兼容的 `launch_adapters`。
+#[deprecated(note = "use launch_channels instead")]
+pub fn launch_adapters(
+    adapters: Vec<Arc<dyn Channel>>,
+    buffer: usize,
+) -> (
+    mpsc::Receiver<MessageEvent>,
+    Vec<Arc<dyn Channel>>,
+    Vec<tokio::task::JoinHandle<()>>,
+) {
+    let (rx, channels, handles, _cancel) = launch_channels(adapters, buffer);
+    (rx, channels, handles)
+}
+
+/// 向后兼容的 `MessageAdapter` trait 别名。
+#[deprecated(note = "use Channel trait directly")]
+pub trait MessageAdapter: Channel {}
+#[allow(deprecated)]
+impl<T: Channel + ?Sized> MessageAdapter for T {}

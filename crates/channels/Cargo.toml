@@ -16,7 +16,14 @@ ahash = "0.8"
 tracing = "0.1"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+tokio-util = "0.7"
 
+[features]
+default = ["channel-telegram", "channel-discord", "channel-slack", "channel-lark"]
+channel-telegram = []
+channel-discord = []
+channel-slack = []
+channel-lark = []
 
 [lints]
 workspace = true

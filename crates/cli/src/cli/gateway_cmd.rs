@@ -8,9 +8,10 @@ use service_manager::{
 };
 
 use crate::cli::config::{AppConfig, DiscordConfig, LarkConfig, SlackConfig, TelegramConfig};
-use openatrading_core::channels::adapter::{launch_adapters, MessageAdapter};
+use openatrading_core::channels::adapter::launch_channels;
 use openatrading_core::channels::discord::DiscordAdapter;
 use openatrading_core::channels::telegram::TelegramAdapter;
+use openatrading_core::channels::Channel;
 use openatrading_core::social::FilteredSender;
 use openatrading_core::social::NotificationSender;
 use openatrading_core::social::{
@@ -334,7 +335,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     }
 
     // ── 平台适配器 ─────────────────────────────────
-    let mut adapters: Vec<Arc<dyn MessageAdapter>> = Vec::new();
+    let mut adapters: Vec<Arc<dyn Channel>> = Vec::new();
 
     if let Some(sc) = &app_config.social {
         if let Some(tg) = &sc.telegram {
@@ -352,7 +353,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         }
 
         if let Some(dc) = &sc.discord {
-            if dc.enabled && !adapters.iter().any(|a| a.platform_name() == "discord") {
+            if dc.enabled && !adapters.iter().any(|a| a.name() == "discord") {
                 if let Some(token) = &dc.bot_token {
                     if !token.is_empty() {
                         let mut da = DiscordAdapter::new(token.clone());
@@ -371,7 +372,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let adapter_ctx = Arc::new(
             AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone()).await,
         );
-        let (rx, adapter_refs, adapter_handles) = launch_adapters(adapters, 1024);
+        let (rx, adapter_refs, adapter_handles, _cancel) = launch_channels(adapters, 1024);
         handles.extend(adapter_handles);
 
         let handler_roles = roles.clone();
