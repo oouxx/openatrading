@@ -10,13 +10,22 @@ use tauri::Emitter;
 use tokio::sync::RwLock;
 
 fn load_env() {
-    let env_path = openatrading_core::atrading_home().join(".env");
-    if env_path.exists() {
-        dotenvy::from_path(&env_path).ok();
-        eprintln!("[env] loaded {}", env_path.display());
+    // Layer 2: 全局 .env
+    let global_env = openatrading_core::atrading_home().join(".env");
+    if global_env.exists() {
+        dotenvy::from_path(&global_env).ok();
+        eprintln!("[env] loaded {}", global_env.display());
+    }
+
+    // Layer 3: 项目 .env（覆盖全局）
+    if let Ok(cwd) = std::env::current_dir() {
+        let project_env = cwd.join(".atrading").join(".env");
+        if project_env.exists() {
+            dotenvy::from_path(&project_env).ok();
+            eprintln!("[env] loaded {}", project_env.display());
+        }
     }
 }
-
 fn build_roles() -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
 

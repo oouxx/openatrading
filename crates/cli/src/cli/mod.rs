@@ -37,14 +37,18 @@ use crate::cli::update::{cmd_update, cmd_update_check};
 
 /// Entry point for the `openatrading` CLI.
 pub async fn run() -> Result<()> {
+    // Layer 2: 全局 .env
     dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
-    let cli = Cli::parse();
-
-    if cli.version {
-        println!("openatrading {}", env!("GIT_VERSION"));
-        return Ok(());
+    // Layer 3: 项目 .env（覆盖全局）
+    if let Ok(cwd) = std::env::current_dir() {
+        let project_env = cwd.join(".atrading").join(".env");
+        if project_env.exists() {
+            dotenvy::from_path(&project_env).ok();
+        }
     }
+
+    let cli = Cli::parse();
 
     match cli.command {
         Some(Commands::Doctor {
