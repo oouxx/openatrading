@@ -70,5 +70,54 @@ impl NotificationSender for FilteredSender {
     }
 }
 
+// ── 适配器工厂 ──────────────────────────────────────
+
+/// 从 Social 配置构建平台适配器列表。
+///
+/// 将适配器构造逻辑从 CLI 移到 core，便于复用和测试。
+pub fn build_adapters(social: &Option<crate::config::SocialConfig>) -> Vec<Arc<dyn Channel>> {
+    use openatrading_channels::discord::DiscordAdapter;
+    use openatrading_channels::telegram::TelegramAdapter;
+
+    let mut adapters: Vec<Arc<dyn Channel>> = Vec::new();
+
+    let Some(sc) = social else {
+        return adapters;
+    };
+
+    #[cfg(feature = "channel-telegram")]
+    if let Some(tg) = &sc.telegram {
+        if tg.enabled && tg.bot_polling {
+            if let (Some(token), Some(chat_id)) = (&tg.bot_token, &tg.chat_id) {
+                if !token.is_empty() && !chat_id.is_empty() {
+                    adapters.push(Arc::new(TelegramAdapter::new(
+                        token.clone(),
+                        chat_id.clone(),
+                    )));
+                    crate::log::info!("telegram adapter: enabled");
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "channel-discord")]
+    if let Some(dc) = &sc.discord {
+        if dc.enabled && !adapters.iter().any(|a| a.name() == "discord") {
+            if let Some(token) = &dc.bot_token {
+                if !token.is_empty() {
+                    let mut da = DiscordAdapter::new(token.clone());
+                    if let Some(ch) = &dc.channel_id {
+                        da = da.with_channel(ch);
+                    }
+                    adapters.push(Arc::new(da));
+                    crate::log::info!("discord adapter: enabled");
+                }
+            }
+        }
+    }
+
+    adapters
+}
+
 pub mod adapter_handler;
 pub mod telegram_bot;

@@ -1,4 +1,7 @@
 use anyhow::Result;
+pub use openatrading_core::config::{
+    DiscordConfig, LarkConfig, SlackConfig, SocialConfig, TelegramConfig,
+};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -94,63 +97,6 @@ fn default_news_schedule() -> String {
     "0 */5 9-15 * * 1-5".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct SocialConfig {
-    #[serde(default)]
-    pub notify_channel: Option<String>,
-    #[serde(default)]
-    pub telegram: Option<TelegramConfig>,
-    #[serde(default)]
-    pub discord: Option<DiscordConfig>,
-    #[serde(default)]
-    pub slack: Option<SlackConfig>,
-    #[serde(default)]
-    pub lark: Option<LarkConfig>,
-    #[serde(default = "default_true")]
-    pub notify_on_collect: bool,
-    #[serde(default = "default_true")]
-    pub notify_on_decision: bool,
-    #[serde(default = "default_true")]
-    pub notify_on_trade: bool,
-    #[serde(default = "default_true")]
-    pub notify_on_news: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct TelegramConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    #[serde(default = "default_true")]
-    pub bot_polling: bool,
-    pub bot_token: Option<String>,
-    pub chat_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct DiscordConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    pub bot_token: Option<String>,
-    pub channel_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct SlackConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    pub bot_token: Option<String>,
-    pub channel: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LarkConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    pub app_id: Option<String>,
-    pub app_secret: Option<String>,
-    pub receive_id: Option<String>,
-}
-
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let home = openatrading_core::atrading_home();
@@ -176,6 +122,9 @@ impl AppConfig {
 
         // Load .mcp.json MCP server configs
         Self::load_mcp_json(&home.join(".mcp.json"), &mut merged.mcp_servers);
+
+        // 配置校验：检查未知字段
+        validate_config(&home.join("config.toml"));
 
         Ok(merged)
     }
@@ -381,4 +330,38 @@ pub fn cmd_init() -> Result<()> {
     eprintln!("   配置文件: {}", atrading.join("config.toml").display());
     eprintln!("   (可运行 `openatrading skills install` 安装 pi-rs 技能)");
     Ok(())
+}
+
+/// 校验配置文件中是否有未知字段。
+pub fn validate_config(path: &Path) {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let parsed: Result<toml::Value, _> = content.parse();
+    let Ok(table) = parsed else { return };
+    let Some(table) = table.as_table() else {
+        return;
+    };
+
+    let known: std::collections::HashSet<&str> = [
+        "default_role",
+        "roles",
+        "mcp_servers",
+        "service",
+        "cron",
+        "social",
+        "mcp_server",
+    ]
+    .into();
+
+    for key in table.keys() {
+        if !known.contains(key.as_str()) {
+            eprintln!(
+                "⚠ 配置文件中存在未知字段: {key}\n   {}\n   请检查拼写或删除该字段",
+                path.display()
+            );
+        }
+    }
 }
