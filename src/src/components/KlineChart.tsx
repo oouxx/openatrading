@@ -564,6 +564,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
           from: -limitPct,
           to: limitPct,
         })
+      }
     } else {
       // Kline chart (day/week/month)
       initKlineChart()
