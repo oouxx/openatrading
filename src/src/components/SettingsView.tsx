@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/stores/ui"
@@ -12,7 +12,21 @@ async function setConfig(section: string, key: string, value: string) {
     const { invoke } = await import("@tauri-apps/api/core")
     await invoke("update_config", { section, key, value })
   }
-  localStorage.setItem(`openatrading-${key}`, value)
+  // localStorage key 包含 section 信息避免冲突（social.telegram + bot_token → telegram_bot_token）
+  const lsKey = section.includes(".") ? `${section.split(".").pop()}_${key}` : key
+  localStorage.setItem(`openatrading-${lsKey}`, value)
+}
+
+interface SocialConfig {
+  notify_channel: string
+  notify_on_collect: boolean
+  notify_on_decision: boolean
+  notify_on_trade: boolean
+  notify_on_news: boolean
+  telegram_bot_token: string
+  telegram_chat_id: string
+  discord_bot_token: string
+  discord_channel_id: string
 }
 
 interface McpServerConfig {
@@ -47,7 +61,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const setApiUrl = useSettingsStore((s) => s.setApiUrl)
   const [restarting, setRestarting] = useState(false)
   // Social notification state
-  const [social, setSocial] = useState({
+  const [social, setSocial] = useState<SocialConfig>({
     notify_channel: "telegram",
     notify_on_collect: true,
     notify_on_decision: true,
@@ -69,25 +83,25 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     transport: { type: "streamable-http", url: "" },
   })
 
-  const loadServers = async () => {
+  const loadServers = useCallback(async () => {
     try {
       const data = await fetchJson<McpServerConfig[]>("/api/mcp/servers")
       setServers(data)
     } catch {
       // MCP API may not be available
     }
-  }
+  }, [])
 
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+    /* eslint-disable react-hooks/set-state-in-effect -- 初始化加载，不在 React 数据流内 */
     loadServers()
     if (isTauri) {
       ;(async () => {
         const { invoke } = await import("@tauri-apps/api/core")
         try {
-          const cfg = (await invoke("get_config")) as any
+          const cfg = (await invoke("get_config")) as { social?: Partial<SocialConfig> }
           if (cfg?.social) {
             setSocial((s) => ({ ...s, ...cfg.social }))
           }
@@ -117,7 +131,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       }
       if (Object.keys(stored).length > 0) setSocial((s) => ({ ...s, ...stored }))
     }
-  }, [])
+  }, [loadServers])
 
   return (
     <div className="flex h-full flex-1 flex-col gap-5 overflow-y-auto p-6">
@@ -187,8 +201,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     disabled={restarting}
                     onClick={async () => {
                       setRestarting(true)
-                      const { invoke } = await import("@tauri-apps/api/core")
-                      await invoke("restart_app")
+                      try {
+                        const { invoke } = await import("@tauri-apps/api/core")
+                        await invoke("restart_app")
+                      } catch (e) {
+                        console.error("重启失败", e)
+                        setRestarting(false)
+                      }
                     }}
                   >
                     {restarting ? "重启中…" : "重启"}
@@ -214,7 +233,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, notify_channel: v }))
-                    if (isTauri) await setConfig("social", "notify_channel", v)
+                    await setConfig("social", "notify_channel", v)
                   }}
                   className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
                 >
@@ -233,7 +252,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                       onChange={async (e) => {
                         const v = e.target.checked
                         setSocial((s) => ({ ...s, [`notify_on_${k}`]: v }))
-                        if (isTauri) await setConfig("social", `notify_on_${k}`, String(v))
+                        await setConfig("social", `notify_on_${k}`, String(v))
                       }}
                     />
                     {k === "collect"
@@ -262,7 +281,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, telegram_bot_token: v }))
-                    if (isTauri) await setConfig("social.telegram", "bot_token", v)
+                    await setConfig("social.telegram", "bot_token", v)
                   }}
                   placeholder="123456:ABC-DEF1234gh..."
                   className="font-mono text-xs"
@@ -275,7 +294,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, telegram_chat_id: v }))
-                    if (isTauri) await setConfig("social.telegram", "chat_id", v)
+                    await setConfig("social.telegram", "chat_id", v)
                   }}
                   placeholder="-1001234567890"
                   className="font-mono text-xs"
@@ -297,7 +316,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, discord_bot_token: v }))
-                    if (isTauri) await setConfig("social.discord", "bot_token", v)
+                    await setConfig("social.discord", "bot_token", v)
                   }}
                   placeholder="MTE4..."
                   className="font-mono text-xs"
@@ -310,7 +329,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, discord_channel_id: v }))
-                    if (isTauri) await setConfig("social.discord", "channel_id", v)
+                    await setConfig("social.discord", "channel_id", v)
                   }}
                   placeholder="123456789012345678"
                   className="font-mono text-xs"
@@ -706,7 +725,7 @@ function KeyValueList({
 }) {
   const entries = items.length > 0 ? items : [""]
   // Normalize: store as "key=value" strings
-  const normalize = (list: string[]) => (hideKey ? list : list.filter((e) => e.trim()))
+  const normalize = (list: string[]) => list.filter((e) => e.trim())
 
   return (
     <div className="space-y-1.5">
@@ -715,7 +734,7 @@ function KeyValueList({
         const key = eqIdx > 0 ? entry.slice(0, eqIdx) : ""
         const val = eqIdx > 0 ? entry.slice(eqIdx + 1) : entry
         return (
-          <div key={i} className="flex gap-1.5">
+          <div key={`${i}-${entry}`} className="flex gap-1.5">
             {!hideKey && (
               <Input
                 value={key}
