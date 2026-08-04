@@ -1,7 +1,7 @@
 // src/contexts/AppModeContext.tsx
-import { createContext, useContext, useState, type ReactNode } from "react"
-
-export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles"
+import { createContext, useContext, type ReactNode } from "react"
+import { useUiStore } from "@/stores/ui"
+import type { AppMode } from "@/stores/ui"
 
 interface AppModeContextType {
   mode: AppMode
@@ -11,7 +11,8 @@ interface AppModeContextType {
 const AppModeContext = createContext<AppModeContextType | null>(null)
 
 export function AppModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<AppMode>("chat")
+  const mode = useUiStore((s) => s.mode)
+  const setMode = useUiStore((s) => s.setMode)
   return <AppModeContext.Provider value={{ mode, setMode }}>{children}</AppModeContext.Provider>
 }
 

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useCallback } from "react"
 import { useAppMode } from "@/contexts/AppModeContext"
 import AiCopilot from "@/components/ChatView"
 import ErrorBoundary from "@/components/ErrorBoundary"
@@ -6,6 +6,7 @@ import ConversationSidebar from "./ConversationSidebar"
 import { useThreads } from "@/hooks/useChatThreads"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useThreadStore } from "@/stores/threadStore"
+import { useUiStore } from "@/stores/ui"
 import RightPanel from "./RightPanel"
 import SkillEditor from "./SkillEditor"
 import RoleView from "@/components/RoleView"
@@ -18,7 +19,8 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 
 export default function AppShell() {
   const { mode, setMode } = useAppMode()
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance")
+  const settingsTab = useUiStore((s) => s.settingsTab)
+  const setSettingsTab = useUiStore((s) => s.setSettingsTab)
   const activeThreadId = useThreadStore((s) => s.activeThreadId)
   const setActiveThreadId = useThreadStore((s) => s.setActiveThreadId)
   const { sessions, deleteSession, reload } = useThreads()
