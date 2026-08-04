@@ -832,6 +832,16 @@ pub async fn add_watchlist(Json(body): Json<serde_json::Value>) -> impl IntoResp
     }
 }
 
+/// GET /api/about — application version info
+pub async fn get_about() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "app_name": "OpenATrading",
+        "version": env!("CARGO_PKG_VERSION"),
+        "git_version": option_env!("GIT_COMMIT_SHORT").unwrap_or("unknown"),
+        "engine": format!("pi-rs {}", option_env!("PI_RS_VERSION").unwrap_or("unknown")),
+    }))
+}
+
 /// DELETE /api/watchlist/:code
 pub async fn delete_watchlist(Path(code): Path<String>) -> impl IntoResponse {
     match crate::handlers::delete_watchlist_data(&code).await {

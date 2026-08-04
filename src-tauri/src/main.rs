@@ -114,6 +114,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
         "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
+        "/api/about" => Ok(openatrading_web::web::get_about().await.0),
         "/api/replay/snapshots" => openatrading_web::handlers::get_replay_snapshots_data().await,
         "/api/replay/index" => openatrading_web::handlers::get_replay_index_data().await,
         "/api/sentiment-history" => {

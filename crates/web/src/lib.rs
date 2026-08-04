@@ -143,6 +143,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/watchlist", get(web::get_watchlist))
         .route("/api/watchlist", post(web::add_watchlist))
         .route("/api/watchlist/:code", delete(web::delete_watchlist))
+        .route("/api/about", get(web::get_about))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
