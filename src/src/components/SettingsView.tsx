@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/stores/ui"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { fetchJson } from "@/stores/data"
+import { McpServerForm } from "./McpServerForm"
+import { McpServerCard } from "./McpServerCard"
+import type { McpServerConfig } from "../types/mcp"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
 import { isTauri } from "@/lib/env"
@@ -29,29 +32,7 @@ interface SocialConfig {
   discord_channel_id: string
 }
 
-interface McpServerConfig {
-  name: string
-  transport: McpTransportConfig
-  enabled: boolean
-}
-
-interface McpTransportConfig {
-  type: "streamable-http" | "stdio" | "sse"
-  url?: string
-  auth_token?: string
-  post_url?: string
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-}
-
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
-
-const TRANSPORT_OPTIONS = [
-  { value: "streamable-http" as const, label: "HTTP (Streamable)" },
-  { value: "stdio" as const, label: "STDIO" },
-  { value: "sse" as const, label: "SSE" },
-]
 
 export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) {
   const theme = useUiStore((s) => s.theme)
@@ -76,6 +57,8 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
   const [editingOriginalName, setEditingOriginalName] = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
+  // About info
+  const [aboutInfo, setAboutInfo] = useState<Record<string, string> | null>(null)
 
   const newServerTemplate = (): McpServerConfig => ({
     name: "",
@@ -92,11 +75,21 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     }
   }, [])
 
+  const loadAbout = useCallback(async () => {
+    try {
+      const data = await fetchJson<Record<string, string>>("/api/about")
+      setAboutInfo(data)
+    } catch {
+      // API may not be available
+    }
+  }, [])
+
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- 初始化加载，不在 React 数据流内 */
     loadServers()
+    loadAbout()
     if (isTauri) {
       ;(async () => {
         const { invoke } = await import("@tauri-apps/api/core")
@@ -175,10 +168,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <Input
                 value={apiUrl}
                 onChange={(e) => {
-                  setApiUrl(e.target.value)
+                  const v = e.target.value
+                  setApiUrl(v)
+                  setConfig("agent", "api-url", v)
                 }}
-                placeholder="http://localhost:8080"
-                className="font-mono text-xs"
               />
             </div>
           </section>
@@ -233,14 +226,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, notify_channel: v }))
-                    await setConfig("social", "notify_channel", v)
+                    try { await setConfig("social", "notify_channel", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none"
                 >
                   <option value="telegram">Telegram</option>
                   <option value="discord">Discord</option>
-                  <option value="slack">Slack</option>
-                  <option value="lark">飞书 (Lark)</option>
                 </select>
               </div>
               <div className="flex flex-wrap gap-4">
@@ -252,7 +243,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                       onChange={async (e) => {
                         const v = e.target.checked
                         setSocial((s) => ({ ...s, [`notify_on_${k}`]: v }))
-                        await setConfig("social", `notify_on_${k}`, String(v))
+                        try { await setConfig("social", `notify_on_${k}`, String(v)) } catch (err) { console.error("保存配置失败", err) }
                       }}
                     />
                     {k === "collect"
@@ -281,7 +272,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, telegram_bot_token: v }))
-                    await setConfig("social.telegram", "bot_token", v)
+                    try { await setConfig("social.telegram", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456:ABC-DEF1234gh..."
                   className="font-mono text-xs"
@@ -294,7 +285,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, telegram_chat_id: v }))
-                    await setConfig("social.telegram", "chat_id", v)
+                    try { await setConfig("social.telegram", "chat_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="-1001234567890"
                   className="font-mono text-xs"
@@ -316,7 +307,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, discord_bot_token: v }))
-                    await setConfig("social.discord", "bot_token", v)
+                    try { await setConfig("social.discord", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="MTE4..."
                   className="font-mono text-xs"
@@ -329,7 +320,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   onChange={async (e) => {
                     const v = e.target.value
                     setSocial((s) => ({ ...s, discord_channel_id: v }))
-                    await setConfig("social.discord", "channel_id", v)
+                    try { await setConfig("social.discord", "channel_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456789012345678"
                   className="font-mono text-xs"
@@ -362,6 +353,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           {/* ── 编辑/新建表单 ── */}
           {editingServer && showNewForm && (
             <McpServerForm
+              key={editingOriginalName ?? "new"}
               server={editingServer}
               onChange={setEditingServer}
               onCancel={() => {
@@ -423,357 +415,30 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         <section>
           <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">关于</h2>
           <div className="bg-bg-surface border-hairline divide-y rounded-lg border">
-            {[
-              ["应用名称", "OpenATrading"],
-              ["版本", "0.12.0"],
-              ["构建日期", "2026.06"],
-              ["引擎", "pi-rs v1.78.0"],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between px-4 py-2 text-xs">
-                <span className="text-ink-muted">{label}</span>
-                <span className="font-mono text-[11px] text-white">{value}</span>
-              </div>
-            ))}
+            {aboutInfo
+              ? [
+                  ["应用名称", aboutInfo.app_name],
+                  ["版本", aboutInfo.version],
+                  ["Git 版本", aboutInfo.git_version],
+                  ["引擎", aboutInfo.engine],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between px-4 py-2 text-xs">
+                    <span className="text-ink-muted">{label}</span>
+                    <span className="font-mono text-[11px] text-white">{value}</span>
+                  </div>
+                ))
+              : [
+                  ["应用名称", "OpenATrading"],
+                  ["版本", "加载中…"],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between px-4 py-2 text-xs">
+                    <span className="text-ink-muted">{label}</span>
+                    <span className="font-mono text-[11px] text-white">{value}</span>
+                  </div>
+                ))}
           </div>
         </section>
       )}
-    </div>
-  )
-}
-
-/* ── MCP Server 编辑表单 ── */
-function McpServerForm({
-  server,
-  onChange,
-  onCancel,
-  onSave,
-}: {
-  server: McpServerConfig
-  onChange: (s: McpServerConfig) => void
-  onCancel: () => void
-  onSave: () => Promise<void>
-}) {
-  const [saving, setSaving] = useState(false)
-
-  const updateTransport = (patch: Partial<McpTransportConfig>) => {
-    onChange({ ...server, transport: { ...server.transport, ...patch } })
-  }
-
-  const setArgs = (args: string[]) => {
-    updateTransport({ args })
-  }
-
-  const setEnv = (env: Record<string, string>) => {
-    updateTransport({ env })
-  }
-
-  const isStdio = server.transport.type === "stdio"
-
-  return (
-    <div className="bg-bg-surface border-hairline mb-4 space-y-4 rounded-lg border p-4">
-      {/* 名称 */}
-      <div>
-        <label className="text-ink-muted mb-1 block text-xs">名称</label>
-        <Input
-          value={server.name}
-          onChange={(e) => onChange({ ...server, name: e.target.value })}
-          placeholder="例如: 文件系统"
-          className="text-xs"
-        />
-      </div>
-
-      {/* 通信方式 */}
-      <div>
-        <label className="text-ink-muted mb-1 block text-xs">通信方式</label>
-        <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
-          {TRANSPORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() =>
-                onChange({
-                  ...server,
-                  transport:
-                    opt.value === "streamable-http"
-                      ? { type: "streamable-http", url: "", auth_token: undefined }
-                      : opt.value === "sse"
-                        ? { type: "sse", url: "", post_url: undefined }
-                        : { type: "stdio", command: "", args: [], env: {} },
-                })
-              }
-              className={`flex-1 px-3 py-1.5 text-xs transition-colors ${
-                server.transport.type === opt.value
-                  ? "bg-ai text-white"
-                  : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-white"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* URL / 命令 */}
-      {isStdio ? (
-        <div>
-          <label className="text-ink-muted mb-1 block text-xs">命令</label>
-          <Input
-            value={server.transport.command ?? ""}
-            onChange={(e) => updateTransport({ command: e.target.value })}
-            placeholder="npx"
-            className="font-mono text-xs"
-          />
-        </div>
-      ) : (
-        <div>
-          <label className="text-ink-muted mb-1 block text-xs">
-            URL {server.transport.type === "sse" && "(SSE Endpoint)"}
-          </label>
-          <Input
-            value={server.transport.url ?? ""}
-            onChange={(e) => updateTransport({ url: e.target.value })}
-            placeholder={
-              server.transport.type === "streamable-http"
-                ? "http://localhost:8081/mcp"
-                : "http://localhost:8081/sse"
-            }
-            className="font-mono text-xs"
-          />
-          {server.transport.type === "sse" && (
-            <div className="mt-2">
-              <label className="text-ink-muted mb-1 block text-xs">POST URL (可选)</label>
-              <Input
-                value={server.transport.post_url ?? ""}
-                onChange={(e) => updateTransport({ post_url: e.target.value || undefined })}
-                placeholder="留空则自动推断"
-                className="font-mono text-xs"
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Auth Token (仅 HTTP) */}
-      {!isStdio && (
-        <div>
-          <label className="text-ink-muted mb-1 block text-xs">Auth Token (可选)</label>
-          <Input
-            type="password"
-            value={server.transport.auth_token ?? ""}
-            onChange={(e) => updateTransport({ auth_token: e.target.value || undefined })}
-            placeholder="Bearer token..."
-            className="font-mono text-xs"
-          />
-        </div>
-      )}
-
-      {/* 参数列表 (仅 STDIO) */}
-      {isStdio && (
-        <div>
-          <label className="text-ink-muted mb-1 block text-xs">参数</label>
-          <KeyValueList
-            items={(server.transport.args ?? []).map((v, i) => `arg_${i}=${v}`)}
-            onChange={(entries) =>
-              setArgs(
-                entries
-                  .map((e) => {
-                    const idx = e.indexOf("=")
-                    // hideKey 模式：edited → 裸值；untouched → "arg_i=VALUE"，切掉前缀
-                    return idx === -1 ? e : e.slice(idx + 1)
-                  })
-                  .filter(Boolean)
-              )
-            }
-            keyPlaceholder="序号"
-            valuePlaceholder="--port"
-            hideKey
-          />
-        </div>
-      )}
-
-      {/* 环境变量 (仅 STDIO) */}
-      {isStdio && (
-        <div>
-          <label className="text-ink-muted mb-1 block text-xs">环境变量</label>
-          <KeyValueList
-            items={Object.entries(server.transport.env ?? {}).map(([k, v]) => `${k}=${v}`)}
-            onChange={(entries) => {
-              const env: Record<string, string> = {}
-              for (const e of entries) {
-                const idx = e.indexOf("=")
-                if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1)
-              }
-              setEnv(env)
-            }}
-            keyPlaceholder="KEY"
-            valuePlaceholder="VALUE"
-          />
-        </div>
-      )}
-
-      {/* 操作按钮 */}
-      <div className="flex justify-end gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={onCancel}>
-          取消
-        </Button>
-        <Button
-          size="sm"
-          disabled={saving || !server.name}
-          onClick={async () => {
-            setSaving(true)
-            try {
-              await onSave()
-            } finally {
-              setSaving(false)
-            }
-          }}
-        >
-          {saving ? "保存中…" : "保存"}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-/* ── MCP Server 卡片 ── */
-function McpServerCard({
-  server: s,
-  onToggle,
-  onDelete,
-  onEdit,
-}: {
-  server: McpServerConfig
-  onToggle: () => Promise<void>
-  onDelete: () => Promise<void>
-  onEdit: () => void
-}) {
-  const [toggling, setToggling] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-
-  const transportSummary = () => {
-    if (s.transport.type === "stdio") {
-      return `${s.transport.command ?? ""} ${(s.transport.args ?? []).join(" ")}`.trim()
-    }
-    return s.transport.url ?? ""
-  }
-
-  return (
-    <div className="bg-bg-surface border-hairline flex items-center gap-3 rounded-lg border p-3 transition-colors hover:border-white/10">
-      <span className={`size-1.5 shrink-0 rounded-full ${s.enabled ? "bg-up" : "bg-ink-muted"}`} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-white">{s.name}</span>
-          <span className="text-ink-muted rounded border border-white/10 px-1.5 py-0.5 text-[10px]">
-            {s.transport.type}
-          </span>
-        </div>
-        <p className="text-ink-muted truncate font-mono text-[11px]">{transportSummary()}</p>
-      </div>
-      <div className="flex shrink-0 gap-1">
-        <button
-          className="hover:bg-bg-hover text-ink-muted rounded px-2 py-1 text-[10px] transition-colors hover:text-white"
-          onClick={onEdit}
-        >
-          编辑
-        </button>
-        <button
-          className="hover:bg-bg-hover text-ink-muted rounded px-2 py-1 text-[10px] transition-colors hover:text-white disabled:opacity-40"
-          disabled={toggling}
-          onClick={async () => {
-            setToggling(true)
-            try {
-              await onToggle()
-            } finally {
-              setToggling(false)
-            }
-          }}
-        >
-          {s.enabled ? "停用" : "启用"}
-        </button>
-        <button
-          className="hover:bg-bg-hover hover:text-down text-ink-muted rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-40"
-          disabled={deleting}
-          onClick={async () => {
-            setDeleting(true)
-            try {
-              await onDelete()
-            } finally {
-              setDeleting(false)
-            }
-          }}
-        >
-          删除
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* ── 键值对列表编辑器（通用） ── */
-function KeyValueList({
-  items,
-  onChange,
-  keyPlaceholder,
-  valuePlaceholder,
-  hideKey,
-}: {
-  items: string[]
-  onChange: (entries: string[]) => void
-  keyPlaceholder?: string
-  valuePlaceholder?: string
-  hideKey?: boolean
-}) {
-  const entries = items.length > 0 ? items : [""]
-  // Normalize: store as "key=value" strings
-  const normalize = (list: string[]) => list.filter((e) => e.trim())
-
-  return (
-    <div className="space-y-1.5">
-      {entries.map((entry, i) => {
-        const eqIdx = entry.indexOf("=")
-        const key = eqIdx > 0 ? entry.slice(0, eqIdx) : ""
-        const val = eqIdx > 0 ? entry.slice(eqIdx + 1) : entry
-        return (
-          <div key={`${i}-${entry}`} className="flex gap-1.5">
-            {!hideKey && (
-              <Input
-                value={key}
-                onChange={(e) => {
-                  const next = [...entries]
-                  next[i] = `${e.target.value}=${val}`
-                  onChange(normalize(next))
-                }}
-                placeholder={keyPlaceholder ?? "KEY"}
-                className="w-28 font-mono text-xs"
-              />
-            )}
-            <Input
-              value={val}
-              onChange={(e) => {
-                const next = [...entries]
-                next[i] = hideKey ? e.target.value : `${key}=${e.target.value}`
-                onChange(normalize(next))
-              }}
-              placeholder={valuePlaceholder ?? "VALUE"}
-              className="flex-1 font-mono text-xs"
-            />
-            <button
-              type="button"
-              className="hover:text-down text-ink-muted shrink-0 self-center px-1 text-xs"
-              onClick={() => onChange(normalize(entries.filter((_, j) => j !== i)))}
-            >
-              ✕
-            </button>
-          </div>
-        )
-      })}
-      <button
-        type="button"
-        className="text-ink-muted text-xs hover:text-white"
-        onClick={() => onChange(normalize([...entries, ""]))}
-      >
-        + 添加
-      </button>
     </div>
   )
 }
