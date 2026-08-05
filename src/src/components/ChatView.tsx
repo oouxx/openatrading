@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Search, Send, Square, ArrowDown, Copy, Check } from "lucide-react"
+import { Search, Square, ArrowDown, Copy, Check } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import ToolCallBlock from "@/components/chat/ToolCallBlock"
@@ -372,7 +372,9 @@ export default function AiCopilot({
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className="bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] w-full resize-none rounded-lg border px-4 py-4 pr-14 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3"
+        className={`bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3 ${
+          isStreamingActive ? "pr-14" : "pr-4"
+        }`}
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -391,7 +393,7 @@ export default function AiCopilot({
           />
         </div>
       )}
-      {isStreamingActive ? (
+      {isStreamingActive && (
         <Button
           size="icon"
           variant="destructive"
@@ -400,16 +402,6 @@ export default function AiCopilot({
           aria-label="停止生成"
         >
           <Square className="size-4" fill="currentColor" />
-        </Button>
-      ) : (
-        <Button
-          size="icon"
-          className="absolute bottom-2 right-2 size-9 rounded-lg"
-          onClick={() => send()}
-          disabled={!input.trim()}
-          aria-label="发送"
-        >
-          <Send className="size-4" />
         </Button>
       )}
     </div>

@@ -1,83 +1,83 @@
 /* theme.css — Design Token，唯一主题来源 + shadcn CSS 变量 */
 
-/* ── Light Mode ── */
+/* ── Light Mode — Claude 风格：暖奶油底 + 暖灰文字 + 珊瑚橙品牌 ── */
 :root {
   /* Raw RGB 三元组 — 给 Canvas / inline style 用，不做为 @theme 依赖 */
-  --color-bg-rgb: 250 250 245;
+  --color-bg-rgb: 250 249 245;
   --color-surface-rgb: 255 255 255;
-  --color-surface-hover-rgb: 245 245 240;
-  --color-fg-rgb: 45 45 42;
-  --color-muted-rgb: 107 107 102;
+  --color-surface-hover-rgb: 239 237 232;
+  --color-fg-rgb: 31 30 29;
+  --color-muted-rgb: 110 108 102;
   --color-border-rgb: 0 0 0;
-  --color-accent-rgb: 60 80 180;
-  --color-accent-hover-rgb: 50 70 170;
+  --color-accent-rgb: 217 119 87;
+  --color-accent-hover-rgb: 201 100 66;
   --color-up-rgb: 186 43 36;
   --color-down-rgb: 22 108 80;
   --color-tag-bg: rgba(0, 0, 0, 0.04);
   --color-header-bg: #ffffff;
 
   /* shadcn CSS 变量（OKLCH 分空格格式），供 shadcn/tailwind.css preset 解析 */
-  --background: 0.97 0 0;
-  --foreground: 0.2 0 0;
+  --background: 0.9818 0.0054 95.1;
+  --foreground: 0.2357 0.0024 67.7;
   --card: 1 0 0;
-  --card-foreground: 0.2 0 0;
+  --card-foreground: 0.2357 0.0024 67.7;
   --popover: 1 0 0;
-  --popover-foreground: 0.2 0 0;
-  --primary: 0.55 0.12 260;
+  --popover-foreground: 0.2357 0.0024 67.7;
+  --primary: 0.6724 0.1308 38.8;
   --primary-foreground: 0.985 0 0;
-  --secondary: 0.97 0 0;
-  --secondary-foreground: 0.2 0 0;
-  --muted: 0.97 0 0;
-  --muted-foreground: 0.55 0 0;
-  --accent: 0.97 0 0;
-  --accent-foreground: 0.2 0 0;
+  --secondary: 0.9818 0.0054 95.1;
+  --secondary-foreground: 0.2357 0.0024 67.7;
+  --muted: 0.9818 0.0054 95.1;
+  --muted-foreground: 0.5312 0.0095 91.6;
+  --accent: 0.9818 0.0054 95.1;
+  --accent-foreground: 0.2357 0.0024 67.7;
   --destructive: 0.577 0.245 27.325;
-  --border: 0.2 0 0 / 0.12;
-  --input: 0.2 0 0 / 0.15;
-  --ring: 0.55 0.12 260;
+  --border: 0.35 0.008 85 / 0.12;
+  --input: 0.35 0.008 85 / 0.15;
+  --ring: 0.6724 0.1308 38.8;
   --radius: 0.5rem;
-  --sidebar: 0.97 0 0;
-  --sidebar-foreground: 0.2 0 0;
-  --sidebar-primary: 0.55 0.12 260;
+  --sidebar: 0.9818 0.0054 95.1;
+  --sidebar-foreground: 0.2357 0.0024 67.7;
+  --sidebar-primary: 0.6724 0.1308 38.8;
   --sidebar-primary-foreground: 0.985 0 0;
-  --sidebar-accent: 0.97 0 0;
-  --sidebar-accent-foreground: 0.2 0 0;
+  --sidebar-accent: 0.9818 0.0054 95.1;
+  --sidebar-accent-foreground: 0.2357 0.0024 67.7;
   --sidebar-border: 0 0 0 / 0;
-  --sidebar-ring: 0.55 0.12 260;
+  --sidebar-ring: 0.6724 0.1308 38.8;
 }
 
 @theme {
-  /* ── 语义色板 — 前景层级 ── */
-  --color-primary:   oklch(0.2 0 0);       /* 主文字 */
-  --color-secondary: oklch(0.5 0 0);      /* 次要文字 */
-  --color-tertiary:  oklch(0.65 0 0);      /* 辅助信息 */
-  --color-disabled:  oklch(0.75 0 0);     /* 禁用状态 */
+  /* ── 语义色板 — 前景层级（暖灰） ── */
+  --color-primary:   oklch(0.2357 0.0024 67.7);   /* 主文字 — 暖近黑 */
+  --color-secondary: oklch(0.5312 0.0095 91.6);   /* 次要文字 — 暖中灰 */
+  --color-tertiary:  oklch(0.7124 0.0119 89.8);   /* 辅助信息 — 暖浅灰 */
+  --color-disabled:  oklch(0.8205 0.0115 89.7);   /* 禁用状态 */
 
-  /* ── 语义色板 — 背景层级 ── */
-  --color-base:     oklch(0.97 0 0);      /* 最深背景 */
-  --color-surface:  oklch(1 0 0);         /* 卡片表面 */
-  --color-hover:    oklch(0.95 0 0);      /* 悬停状态 */
-  --color-elevated: oklch(0.93 0 0);      /* 弹窗/下拉 */
+  /* ── 语义色板 — 背景层级（暖奶油） ── */
+  --color-base:     oklch(0.9818 0.0054 95.1);    /* 最深背景 #FAF9F5 */
+  --color-surface:  oklch(1 0 0);                 /* 卡片表面 */
+  --color-hover:    oklch(0.9463 0.007 88.6);     /* 悬停状态 */
+  --color-elevated: oklch(0.9703 0.007 88.6);     /* 弹窗/下拉 */
 
-  /* ── 语义色板 — 边框层级 ── */
-  --color-border: oklch(0.2 0 0 / 0.12);  /* 默认边框 */
-  --color-input: oklch(0.2 0 0 / 0.15);
-  --color-ring: oklch(0.55 0.12 260);
-  --color-hairline: oklch(0.2 0 0 / 0.06);       /* 极淡分割线 */
-  --color-hairline-dark: oklch(0.2 0 0 / 0.04);
+  /* ── 语义色板 — 边框层级（暖灰） ── */
+  --color-border: oklch(0.35 0.008 85 / 0.12);    /* 默认边框 */
+  --color-input: oklch(0.35 0.008 85 / 0.15);
+  --color-ring: oklch(0.6724 0.1308 38.8);
+  --color-hairline: oklch(0.35 0.008 85 / 0.06);  /* 极淡分割线 */
+  --color-hairline-dark: oklch(0.35 0.008 85 / 0.04);
 
-  /* ── 品牌色 — 冷静蓝紫，金融定位 ── */
-  --color-brand:       oklch(0.55 0.12 260);
-  --color-brand-hover: oklch(0.5 0.12 260);
+  /* ── 品牌色 — Claude 风格暖珊瑚 #D97757 ── */
+  --color-brand:       oklch(0.6724 0.1308 38.8);
+  --color-brand-hover: oklch(0.6171 0.1375 39.0);
   --color-brand-foreground: oklch(0.985 0 0);
-  --color-brand-muted: oklch(0.55 0.12 260 / 0.15);
+  --color-brand-muted: oklch(0.6724 0.1308 38.8 / 0.15);
 
   /* shadcn accent alias */
-  --color-accent: oklch(0.55 0.12 260);
-  --color-accent-hover: oklch(0.5 0.12 260);
+  --color-accent: oklch(0.6724 0.1308 38.8);
+  --color-accent-hover: oklch(0.6171 0.1375 39.0);
   --color-accent-foreground: oklch(0.985 0 0);
 
-  /* ── 交易语义色 ── */
+  /* ── 交易语义色（市场规则，不随品牌变更） ── */
   --color-up:   oklch(0.48 0.18 30);      /* 涨 — 暖红 */
   --color-up-bg: oklch(0.48 0.18 30 / 0.12);
   --color-down: oklch(0.55 0.12 160);     /* 跌 — 冷绿 */
@@ -91,27 +91,27 @@
   --color-danger-bg: oklch(0.55 0.18 25 / 0.12);
   --color-warning: oklch(0.7 0.15 65);       /* 警告 — 琥珀 */
   --color-warning-bg: oklch(0.7 0.15 65 / 0.12);
-  --color-info: oklch(0.55 0.12 260);        /* 信息 — 同 brand */
-  --color-info-bg: oklch(0.55 0.12 260 / 0.12);
+  --color-info: oklch(0.6724 0.1308 38.8);   /* 信息 — 同 brand */
+  --color-info-bg: oklch(0.6724 0.1308 38.8 / 0.12);
 
   /* Legacy aliases (过渡，逐步迁移) */
-  --color-foreground: oklch(0.2 0 0);
-  --color-muted: oklch(0.5 0 0);
-  --color-surface-hover: oklch(0.95 0 0);
-  --color-bg: oklch(0.97 0 0);
+  --color-foreground: oklch(0.2357 0.0024 67.7);
+  --color-muted: oklch(0.5312 0.0095 91.6);
+  --color-surface-hover: oklch(0.9463 0.007 88.6);
+  --color-bg: oklch(0.9818 0.0054 95.1);
   --color-bg-surface: oklch(1 0 0);
-  --color-bg-hover: oklch(0.95 0 0);
-  --color-bg-tertiary: oklch(0.93 0 0);
-  --color-white: oklch(0.2 0 0);
-  --color-black: oklch(0.97 0 0);
-  --color-canvas: oklch(0.97 0 0);
-  --color-ink: oklch(0.2 0 0);
-  --color-ink-muted: oklch(0.5 0 0);
-  --color-ink-dim: oklch(0.2 0 0 / 0.06);
-  --color-ai: oklch(0.55 0.12 260);
-  --color-ai-hover: oklch(0.5 0.12 260);
-  --color-ai-muted: oklch(0.55 0.12 260 / 0.15);
-  --color-ai-focus: oklch(0.5 0.12 260);
+  --color-bg-hover: oklch(0.9463 0.007 88.6);
+  --color-bg-tertiary: oklch(0.9703 0.007 88.6);
+  --color-white: oklch(0.2357 0.0024 67.7);
+  --color-black: oklch(0.9818 0.0054 95.1);
+  --color-canvas: oklch(0.9818 0.0054 95.1);
+  --color-ink: oklch(0.2357 0.0024 67.7);
+  --color-ink-muted: oklch(0.5312 0.0095 91.6);
+  --color-ink-dim: oklch(0.2357 0.0024 67.7 / 0.06);
+  --color-ai: oklch(0.6724 0.1308 38.8);
+  --color-ai-hover: oklch(0.6171 0.1375 39.0);
+  --color-ai-muted: oklch(0.6724 0.1308 38.8 / 0.15);
+  --color-ai-focus: oklch(0.6171 0.1375 39.0);
 
   /* ── 字体系统 — 单一字族 + 清晰 weight/size 层级 ── */
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -130,11 +130,11 @@
   --radius-md: 6px;     /* 按钮、卡片、容器 */
   --radius-lg: 8px;     /* 弹窗、大卡片、特色容器 */
 
-  /* ── 深度与质感 — ring shadow 系统 ── */
+  /* ── 深度与质感 — ring shadow 系统（暖调） ── */
   --shadow-none: none;
-  --shadow-card: 0 0 0 1px oklch(0.2 0 0 / 0.08);
-  --shadow-modal: 0 0 0 1px oklch(0.2 0 0 / 0.14), 0 4px 16px rgba(0, 0, 0, 0.15);
-  --shadow-tooltip: 0 0 0 1px oklch(0.2 0 0 / 0.14), 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 0 0 1px oklch(0.3 0.01 75 / 0.08);
+  --shadow-modal: 0 0 0 1px oklch(0.3 0.01 75 / 0.14), 0 4px 16px rgba(70, 60, 45, 0.15);
+  --shadow-tooltip: 0 0 0 1px oklch(0.3 0.01 75 / 0.14), 0 8px 24px rgba(70, 60, 45, 0.2);
 
   /* ── 布局宽度 token ── */
   --width-sidebar: 260px;
@@ -151,73 +151,73 @@
   --shadow-terminal-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* ── Dark Mode ── */
+/* ── Dark Mode — Claude 风格：暖深灰底 + 暖白文字 + 浅珊瑚 ── */
 .dark,
 [data-theme="dark"] {
-  --color-bg-rgb: 13 13 26;
-  --color-surface-rgb: 17 17 36;
-  --color-surface-hover-rgb: 26 26 53;
-  --color-fg-rgb: 232 232 237;
-  --color-muted-rgb: 136 135 128;
+  --color-bg-rgb: 38 38 36;
+  --color-surface-rgb: 48 48 46;
+  --color-surface-hover-rgb: 58 58 55;
+  --color-fg-rgb: 232 230 225;
+  --color-muted-rgb: 165 162 154;
   --color-border-rgb: 255 255 255;
-  --color-accent-rgb: 127 119 221;
-  --color-accent-hover-rgb: 153 144 240;
+  --color-accent-rgb: 224 138 110;
+  --color-accent-hover-rgb: 234 155 130;
   --color-up-rgb: 255 92 92;
   --color-down-rgb: 29 158 117;
-  --color-tag-bg: rgba(255, 255, 255, 0.05);
-  --color-header-bg: #000000;
+  --color-tag-bg: rgba(255, 255, 255, 0.06);
+  --color-header-bg: #262624;
 
   /* shadcn dark */
-  --background: 0.072 0.011 288;
-  --foreground: 0.92 0.004 285;
-  --card: 0.072 0.011 288;
-  --card-foreground: 0.92 0.004 285;
-  --popover: 0.072 0.011 288;
-  --popover-foreground: 0.92 0.004 285;
-  --primary: 0.55 0.12 260;
+  --background: 0.2679 0.0036 106.6;
+  --foreground: 0.9251 0.0071 88.6;
+  --card: 0.3085 0.0035 106.6;
+  --card-foreground: 0.9251 0.0071 88.6;
+  --popover: 0.3085 0.0035 106.6;
+  --popover-foreground: 0.9251 0.0071 88.6;
+  --primary: 0.717 0.1131 38.8;
   --primary-foreground: 0.985 0 0;
-  --secondary: 0.107 0.016 288;
-  --secondary-foreground: 0.92 0.004 285;
-  --muted: 0.107 0.016 288;
-  --muted-foreground: 0.56 0.008 90;
-  --accent: 0.107 0.016 288;
-  --accent-foreground: 0.92 0.004 285;
+  --secondary: 0.3474 0.0051 106.7;
+  --secondary-foreground: 0.9251 0.0071 88.6;
+  --muted: 0.3474 0.0051 106.7;
+  --muted-foreground: 0.7124 0.0119 89.8;
+  --accent: 0.3474 0.0051 106.7;
+  --accent-foreground: 0.9251 0.0071 88.6;
   --destructive: 0.58 0.22 25;
-  --border: 0.92 0 0 / 0.12;
-  --input: 0.92 0 0 / 0.15;
-  --ring: 0.55 0.12 260;
-  --sidebar: 0.072 0.011 288;
-  --sidebar-foreground: 0.92 0.004 285;
-  --sidebar-primary: 0.55 0.12 260;
+  --border: 0.9 0.008 85 / 0.12;
+  --input: 0.9 0.008 85 / 0.15;
+  --ring: 0.717 0.1131 38.8;
+  --sidebar: 0.2679 0.0036 106.6;
+  --sidebar-foreground: 0.9251 0.0071 88.6;
+  --sidebar-primary: 0.717 0.1131 38.8;
   --sidebar-primary-foreground: 0.985 0 0;
-  --sidebar-accent: 0.107 0.016 288;
-  --sidebar-accent-foreground: 0.92 0.004 285;
+  --sidebar-accent: 0.3474 0.0051 106.7;
+  --sidebar-accent-foreground: 0.9251 0.0071 88.6;
   --sidebar-border: 0.92 0 0 / 0;
-  --sidebar-ring: 0.55 0.12 260;
+  --sidebar-ring: 0.717 0.1131 38.8;
 
   /* @theme 颜色变量覆盖 */
-  --color-primary:   oklch(0.92 0.004 285);
-  --color-secondary: oklch(0.65 0.008 270);
-  --color-tertiary:  oklch(0.45 0.006 270);
-  --color-disabled:  oklch(0.3 0.004 270);
+  --color-primary:   oklch(0.9251 0.0071 88.6);
+  --color-secondary: oklch(0.7124 0.0119 89.8);
+  --color-tertiary:  oklch(0.6406 0.0109 87.5);
+  --color-disabled:  oklch(0.5207 0.0096 91.6);
 
-  --color-base:     oklch(0.06 0.008 270);
-  --color-surface:  oklch(0.09 0.01 270);
-  --color-hover:    oklch(0.13 0.012 270);
-  --color-elevated: oklch(0.15 0.014 270);
+  --color-base:     oklch(0.2679 0.0036 106.6);
+  --color-surface:  oklch(0.3085 0.0035 106.6);
+  --color-hover:    oklch(0.3474 0.0051 106.7);
+  --color-elevated: oklch(0.3743 0.005 106.6);
 
-  --color-border: oklch(0.92 0 0 / 0.12);
-  --color-input: oklch(0.92 0 0 / 0.15);
-  --color-hairline: oklch(0.92 0 0 / 0.06);
-  --color-hairline-dark: oklch(0.92 0 0 / 0.04);
-  --color-ring: oklch(0.55 0.12 260);
+  --color-border: oklch(0.9 0.008 85 / 0.12);
+  --color-input: oklch(0.9 0.008 85 / 0.15);
+  --color-hairline: oklch(0.9 0.008 85 / 0.06);
+  --color-hairline-dark: oklch(0.9 0.008 85 / 0.04);
+  --color-ring: oklch(0.717 0.1131 38.8);
 
-  --color-brand: oklch(0.55 0.12 260);
-  --color-brand-hover: oklch(0.59 0.12 260);
+  --color-brand: oklch(0.717 0.1131 38.8);
+  --color-brand-hover: oklch(0.7622 0.1018 38.3);
   --color-brand-foreground: oklch(0.985 0 0);
-  --color-brand-muted: oklch(0.55 0.12 260 / 0.15);
-  --color-accent: oklch(0.55 0.12 260);
-  --color-accent-hover: oklch(0.59 0.12 260);
+  --color-brand-muted: oklch(0.717 0.1131 38.8 / 0.15);
+  --color-accent: oklch(0.717 0.1131 38.8);
+  --color-accent-hover: oklch(0.7622 0.1018 38.3);
   --color-accent-foreground: oklch(0.985 0 0);
 
   --color-up: oklch(0.65 0.18 30);
@@ -236,25 +236,25 @@
   --color-danger-bg: oklch(0.65 0.18 25 / 0.12);
   --color-warning: oklch(0.75 0.15 65);
   --color-warning-bg: oklch(0.75 0.15 65 / 0.12);
-  --color-info: oklch(0.55 0.12 260);
-  --color-info-bg: oklch(0.55 0.12 260 / 0.12);
+  --color-info: oklch(0.717 0.1131 38.8);
+  --color-info-bg: oklch(0.717 0.1131 38.8 / 0.12);
 
   /* Legacy aliases dark override */
-  --color-foreground: oklch(0.92 0.004 285);
-  --color-muted: oklch(0.65 0.008 270);
-  --color-surface-hover: oklch(0.13 0.012 270);
-  --color-bg: oklch(0.06 0.008 270);
-  --color-bg-surface: oklch(0.09 0.01 270);
-  --color-bg-hover: oklch(0.13 0.012 270);
-  --color-bg-tertiary: oklch(0.15 0.014 270);
-  --color-white: oklch(0.92 0.004 285);
-  --color-black: oklch(0.06 0.008 270);
-  --color-canvas: oklch(0.06 0.008 270);
-  --color-ink: oklch(0.92 0.004 285);
-  --color-ink-muted: oklch(0.65 0.008 270);
-  --color-ink-dim: oklch(0.92 0.004 285 / 0.06);
-  --color-ai: oklch(0.55 0.12 260);
-  --color-ai-hover: oklch(0.59 0.12 260);
-  --color-ai-muted: oklch(0.55 0.12 260 / 0.15);
-  --color-ai-focus: oklch(0.59 0.12 260);
+  --color-foreground: oklch(0.9251 0.0071 88.6);
+  --color-muted: oklch(0.7124 0.0119 89.8);
+  --color-surface-hover: oklch(0.3474 0.0051 106.7);
+  --color-bg: oklch(0.2679 0.0036 106.6);
+  --color-bg-surface: oklch(0.3085 0.0035 106.6);
+  --color-bg-hover: oklch(0.3474 0.0051 106.7);
+  --color-bg-tertiary: oklch(0.3743 0.005 106.6);
+  --color-white: oklch(0.9251 0.0071 88.6);
+  --color-black: oklch(0.2679 0.0036 106.6);
+  --color-canvas: oklch(0.2679 0.0036 106.6);
+  --color-ink: oklch(0.9251 0.0071 88.6);
+  --color-ink-muted: oklch(0.7124 0.0119 89.8);
+  --color-ink-dim: oklch(0.9251 0.0071 88.6 / 0.06);
+  --color-ai: oklch(0.717 0.1131 38.8);
+  --color-ai-hover: oklch(0.7622 0.1018 38.3);
+  --color-ai-muted: oklch(0.717 0.1131 38.8 / 0.15);
+  --color-ai-focus: oklch(0.7622 0.1018 38.3);
 }
