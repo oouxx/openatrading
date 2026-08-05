@@ -451,7 +451,13 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     const isIntraday = period === "minute"
       const isSingleDay = true
 
-    const filtered = isIntraday ? data.filter((c) => isTradingTime(c.time)) : data
+    const raw = isIntraday ? data.filter((c) => isTradingTime(c.time)) : data
+    // Deduplicate by time — lightweight-charts requires strictly ascending timestamps
+    const filtered = (() => {
+      const seen = new Map<number, typeof raw[number]>()
+      for (const c of raw) seen.set(c.time, c)
+      return [...seen.values()].sort((a, b) => a.time - b.time)
+    })()
 
     if (filtered.length === 0) return
 
@@ -529,10 +535,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         const firstTime = chartData[0]?.time as Time
         const lastTime = chartData[chartData.length - 1]?.time as Time
 
-        pctAnchor.setData([
-          { time: firstTime, value: -limitPct },
-          { time: lastTime, value: limitPct },
-        ])
+        const anchorData: { time: Time; value: number }[] = [{ time: firstTime, value: -limitPct }]
+        if (firstTime !== lastTime) anchorData.push({ time: lastTime, value: limitPct })
+        pctAnchor.setData(anchorData)
 
         clearPriceLines()
         priceLinesRef.current.push(
