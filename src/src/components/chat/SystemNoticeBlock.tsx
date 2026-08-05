@@ -44,7 +44,7 @@ function KindIcon({
       if (status === "error") return <XCircle className="size-3.5 text-red-500" />
       return <CheckCircle2 className="size-3.5 text-emerald-500" />
     case "turn":
-      return <ArrowRight className="text-ink-muted/30 size-3" />
+      return <ArrowRight className="text-secondary/30 size-3" />
     case "notice":
       if (status === "error") return <AlertTriangle className="size-3.5 text-red-500" />
       return <CheckCircle2 className="size-3.5 text-emerald-500" />
@@ -102,14 +102,14 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
         <div className="flex items-center gap-2 px-3 py-2">
           <KindIcon kind={kind} status={status} />
           <span
-            className={`font-mono text-caption font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-ink-muted/70"}`}
+            className={`font-mono text-caption font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-secondary/70"}`}
           >
             会话压缩
           </span>
           {isActive && (
             <span className="ml-auto flex items-center gap-2">
               <span className="size-1.5 animate-pulse rounded-full bg-blue-500/30" />
-              <span className="text-ink-muted/50 font-mono text-caption">压缩中…</span>
+              <span className="text-secondary/50 font-mono text-caption">压缩中…</span>
             </span>
           )}
           {failed && (
@@ -121,7 +121,7 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
         </div>
         {detail && !isActive && (
           <div className="border-hairline border-t px-3 py-2">
-            <p className="text-ink-muted/60 font-mono text-caption leading-relaxed">{detail}</p>
+            <p className="text-secondary/60 font-mono text-caption leading-relaxed">{detail}</p>
           </div>
         )}
       </div>
@@ -144,14 +144,14 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
             自动重试
           </span>
           {attempt != null && maxAttempts != null && (
-            <span className="text-ink-muted/60 font-mono text-caption">
+            <span className="text-secondary/60 font-mono text-caption">
               {attempt}/{maxAttempts}
             </span>
           )}
           {isActive && (
             <span className="ml-auto flex items-center gap-2">
               <Loader2 className="size-3 animate-spin text-amber-500" />
-              <span className="text-ink-muted/50 font-mono text-caption">重试中…</span>
+              <span className="text-secondary/50 font-mono text-caption">重试中…</span>
             </span>
           )}
           {status === "done" && (
@@ -164,10 +164,10 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
         {(detail || delayMs != null) && (
           <div className="border-hairline border-t px-3 py-2">
             {detail && (
-              <p className="text-ink-muted/60 font-mono text-caption leading-relaxed">{detail}</p>
+              <p className="text-secondary/60 font-mono text-caption leading-relaxed">{detail}</p>
             )}
             {delayMs != null && (
-              <p className="text-ink-muted/40 mt-0.5 font-mono text-caption">
+              <p className="text-secondary/40 mt-0.5 font-mono text-caption">
                 等待 {formatDelay(delayMs)}
               </p>
             )}
@@ -183,11 +183,11 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div className="flex items-center gap-2 px-0 py-0.5">
         <div className="border-hairline flex-1 border-t" />
         {detail && (
-          <span className="text-ink-muted/30 shrink-0 font-mono text-caption tracking-wider uppercase">
+          <span className="text-secondary/30 shrink-0 font-mono text-caption tracking-wider uppercase">
             {detail}
           </span>
         )}
-        <ArrowRight className="text-ink-muted/30 size-2.5 shrink-0" />
+        <ArrowRight className="text-secondary/30 size-2.5 shrink-0" />
       </div>
     )
   }
@@ -200,7 +200,7 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div className="flex items-center gap-2 px-3 py-2">
         <KindIcon kind={kind} status={status} />
         <span
-          className={`text-ink-muted/70 font-mono text-caption ${isError || status === "error" ? "text-red-500" : ""}`}
+          className={`text-secondary/70 font-mono text-caption ${isError || status === "error" ? "text-red-500" : ""}`}
         >
           {detail || "通知"}
         </span>

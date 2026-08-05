@@ -48,7 +48,7 @@ export function KeyValueList({
                   commit(next)
                 }}
                 placeholder={keyPlaceholder ?? "KEY"}
-                className="w-28 font-mono text-xs"
+                className="w-28 font-mono text-caption"
               />
             )}
             <Input
@@ -59,12 +59,12 @@ export function KeyValueList({
                 commit(next)
               }}
               placeholder={valuePlaceholder ?? "VALUE"}
-              className="flex-1 font-mono text-xs"
+              className="flex-1 font-mono text-caption"
             />
             {!isLast && (
               <button
                 type="button"
-                className="hover:text-down text-ink-muted shrink-0 self-center px-1 text-xs"
+                className="hover:text-down text-secondary shrink-0 self-center px-1 text-caption"
                 onClick={() => commit(display.filter((_, j) => j !== i))}
               >
                 ✕
@@ -75,7 +75,7 @@ export function KeyValueList({
       })}
       <button
         type="button"
-        className="text-ink-muted text-xs hover:text-foreground"
+        className="text-secondary text-caption hover:text-primary"
         onClick={() => setDisplay([...display, ""])}
       >
         + 添加

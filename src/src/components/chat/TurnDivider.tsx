@@ -27,7 +27,7 @@ export default function TurnDivider({ label, isError }: TurnDividerProps) {
       {label && (
         <span
           className={`shrink-0 font-mono text-caption tracking-wider uppercase ${
-            isError ? "text-red-500/40" : "text-ink-muted/30"
+            isError ? "text-red-500/40" : "text-secondary/30"
           }`}
         >
           {label}
@@ -35,7 +35,7 @@ export default function TurnDivider({ label, isError }: TurnDividerProps) {
       )}
       <ArrowRight
         className={`size-2.5 shrink-0 ${
-          isError ? "text-red-500/30" : "text-ink-muted/30"
+          isError ? "text-red-500/30" : "text-secondary/30"
         }`}
       />
     </div>

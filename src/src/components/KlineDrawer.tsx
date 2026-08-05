@@ -159,17 +159,17 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const _changeClass = up ? "text-up" : "text-down"
 
   return (
-    <div className="bg-bg h-full overflow-y-auto">
+    <div className="bg-base h-full overflow-y-auto">
       {/* Header */}
-      <div className="bg-bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
+      <div className="bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
         <button
           onClick={onClose}
-          className="text-ink-muted p-1 text-lg leading-none hover:text-foreground"
+          className="text-secondary p-1 text-lg leading-none hover:text-primary"
         >
           &times;
         </button>
-        <span className="text-xl font-bold text-foreground">{name}</span>
-        <span className="text-ink-muted font-mono text-xs">{symbol}</span>
+        <span className="text-h1 font-bold text-primary">{name}</span>
+        <span className="text-secondary font-mono text-caption">{symbol}</span>
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -179,18 +179,18 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
               addWatchlist.mutate({ code: symbol, name })
             }
           }}
-          className="ml-1 flex size-7 items-center justify-center rounded-full text-xs transition-colors hover:bg-white/10"
+          className="ml-1 flex size-7 items-center justify-center rounded-full text-caption transition-colors hover:bg-white/10"
           title={inWatchlist ? "取消自选" : "添加自选"}
         >
           <Star
-            className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-ink-muted"}`}
+            className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-secondary"}`}
           />
         </button>
         {quote && (
           <div className="ml-auto flex items-center gap-3">
-            <span className="font-mono text-heading font-bold">{quote.last_px?.toFixed(2)}</span>
+            <span className="font-mono text-h1 font-bold">{quote.last_px?.toFixed(2)}</span>
             <span
-              className={`rounded-lg px-3 py-1 font-mono text-sm font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
+              className={`rounded-lg px-3 py-1 font-mono text-body font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
             >
               {up ? "+" : ""}
               {quote.px_change_rate?.toFixed(2)}%
@@ -200,15 +200,15 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       </div>
 
       {/* Period selector */}
-      <div className="bg-bg-surface border-hairline flex gap-2 border-b px-6 py-3">
+      <div className="bg-surface border-hairline flex gap-2 border-b px-6 py-3">
         {periods.map((p) => (
           <button
             key={p.value}
             onClick={() => setPeriod(p.value)}
-            className={`rounded-full border px-4 py-1 text-xs transition-colors ${
+            className={`rounded-full border px-4 py-1 text-caption transition-colors ${
               period === p.value
-                ? "border-ai bg-ai text-foreground"
-                : "border-hairline bg-bg text-ink-muted hover:border-hairline-dark hover:text-foreground"
+                ? "border-brand bg-brand text-primary"
+                : "border-hairline bg-base text-secondary hover:border-hairline-dark hover:text-primary"
             }`}
           >
             {p.label}
@@ -218,23 +218,23 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Crosshair info bar */}
       {currCrosshair && (
-        <div className="bg-bg-surface border-hairline flex items-center justify-between border-b px-3 py-1 font-mono text-xs">
-          <span className="shrink-0 text-foreground">{currCrosshair.time}</span>
-          <div className="flex shrink-0 items-center gap-2 text-foreground/40">
+        <div className="bg-surface border-hairline flex items-center justify-between border-b px-3 py-1 font-mono text-caption">
+          <span className="shrink-0 text-primary">{currCrosshair.time}</span>
+          <div className="flex shrink-0 items-center gap-2 text-primary/40">
             <span>
-              开 <span className="text-foreground">{currCrosshair.open}</span>
+              开 <span className="text-primary">{currCrosshair.open}</span>
             </span>
             <span>
-              高 <span className="text-foreground">{currCrosshair.high}</span>
+              高 <span className="text-primary">{currCrosshair.high}</span>
             </span>
             <span>
-              低 <span className="text-foreground">{currCrosshair.low}</span>
+              低 <span className="text-primary">{currCrosshair.low}</span>
             </span>
             <span>
-              价 <span className="text-foreground">{currCrosshair.close}</span>
+              价 <span className="text-primary">{currCrosshair.close}</span>
             </span>
             <span>
-              量 <span className="text-foreground">{currCrosshair.volume}</span>
+              量 <span className="text-primary">{currCrosshair.volume}</span>
             </span>
             <span className={currCrosshair.changeNum >= 0 ? "text-up" : "text-down"}>
               {currCrosshair.change}
@@ -256,14 +256,14 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {/* Metrics */}
       {quote && (
         <div className="px-6 py-3">
-          <div className="grid grid-cols-4 gap-2 text-xs">
+          <div className="grid grid-cols-4 gap-2 text-caption">
             {metrics.map((m) => (
               <div
                 key={m.label}
-                className="bg-bg-surface border-hairline rounded-lg border p-2.5 text-center"
+                className="bg-surface border-hairline rounded-lg border p-2.5 text-center"
               >
-                <p className="text-ink-muted mb-1 text-caption tracking-wide uppercase">{m.label}</p>
-                <p className="font-mono text-xs text-foreground">{m.value}</p>
+                <p className="text-secondary mb-1 text-caption tracking-wide uppercase">{m.label}</p>
+                <p className="font-mono text-caption text-primary">{m.value}</p>
               </div>
             ))}
           </div>
@@ -273,25 +273,25 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {/* Plates */}
       {plateList.length > 0 && (
         <div className="border-hairline mt-2 border-t px-6 py-3">
-          <p className="text-ink-muted mb-2 text-xs">所属板块</p>
+          <p className="text-secondary mb-2 text-caption">所属板块</p>
           <div className="grid max-h-[200px] grid-cols-2 gap-2 overflow-y-auto">
             {plateList.map((p) => (
               <div
                 key={p.plate_id}
-                className="bg-bg-surface border-hairline rounded-lg cursor-pointer border p-2.5 transition-colors hover:border-white/20"
+                className="bg-surface border-hairline rounded-lg cursor-pointer border p-2.5 transition-colors hover:border-white/20"
                 onClick={() => p.reason && setDialogPlate(p)}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs font-medium text-foreground">{p.plate_name}</span>
+                  <span className="truncate text-caption font-medium text-primary">{p.plate_name}</span>
                   <span
-                    className={`shrink-0 font-mono text-xs ${p.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
+                    className={`shrink-0 font-mono text-caption ${p.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
                   >
                     {p.core_avg_pcp >= 0 ? "+" : ""}
                     {(p.core_avg_pcp * 100).toFixed(2)}%
                   </span>
                 </div>
                 {p.reason && (
-                  <p className="text-ink-muted mt-1 line-clamp-2 text-caption leading-relaxed">
+                  <p className="text-secondary mt-1 line-clamp-2 text-caption leading-relaxed">
                     {p.reason}
                   </p>
                 )}
@@ -304,9 +304,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {/* AI 异动解读 */}
       {expound && (
         <div className="border-hairline mt-2 border-t px-6 py-3">
-          <p className="text-ink-muted mb-2 text-xs">AI 异动解读</p>
-          <div className="bg-bg-surface border-hairline rounded-lg border p-3">
-            <p className="text-caption text-ink-muted leading-relaxed whitespace-pre-line">
+          <p className="text-secondary mb-2 text-caption">AI 异动解读</p>
+          <div className="bg-surface border-hairline rounded-lg border p-3">
+            <p className="text-caption text-secondary leading-relaxed whitespace-pre-line">
               {expound}
             </p>
           </div>
@@ -318,12 +318,12 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         <>
           <div className="fixed inset-0 z-60 bg-black/50" onClick={() => setDialogPlate(null)} />
           <div className="pointer-events-none fixed inset-0 z-61 flex items-center justify-center">
-            <div className="bg-bg-surface border-hairline rounded-lg pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-2xl">
+            <div className="bg-surface border-hairline rounded-lg pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-2xl">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-foreground">{dialogPlate.plate_name}</span>
+                  <span className="text-body font-bold text-primary">{dialogPlate.plate_name}</span>
                   <span
-                    className={`font-mono text-xs ${dialogPlate.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
+                    className={`font-mono text-caption ${dialogPlate.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
                   >
                     {dialogPlate.core_avg_pcp >= 0 ? "+" : ""}
                     {(dialogPlate.core_avg_pcp * 100).toFixed(2)}%
@@ -331,12 +331,12 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 </div>
                 <button
                   onClick={() => setDialogPlate(null)}
-                  className="text-ink-muted p-1 text-lg leading-none hover:text-foreground"
+                  className="text-secondary p-1 text-lg leading-none hover:text-primary"
                 >
                   &times;
                 </button>
               </div>
-              <p className="text-caption leading-relaxed text-foreground/70">{dialogPlate.reason}</p>
+              <p className="text-caption leading-relaxed text-primary/70">{dialogPlate.reason}</p>
             </div>
           </div>
         </>

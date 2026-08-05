@@ -139,11 +139,11 @@ export default function ReplayView() {
   if (isLoading) {
     return (
       <div
-        className="bg-bg flex min-h-screen items-center justify-center pt-11"
+        className="bg-base flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <div className="text-ink-muted flex items-center gap-3 text-xs">
-          <span className="bg-ai size-2 animate-pulse rounded-full" />
+        <div className="text-secondary flex items-center gap-3 text-caption">
+          <span className="bg-brand size-2 animate-pulse rounded-full" />
           加载回放数据...
         </div>
       </div>
@@ -152,10 +152,10 @@ export default function ReplayView() {
   if (error)
     return (
       <div
-        className="bg-bg flex min-h-screen items-center justify-center pt-11"
+        className="bg-base flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <p className="text-ink-muted text-xs">{error.message}</p>
+        <p className="text-secondary text-caption">{error.message}</p>
       </div>
     )
 
@@ -164,7 +164,7 @@ export default function ReplayView() {
   return (
     <div className="flex h-full flex-col">
       {/* Control Bar */}
-      <div className="bg-bg-surface border-hairline sticky top-0 z-15 flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-2">
+      <div className="bg-surface border-hairline sticky top-0 z-15 flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-2">
         {/* 方向 */}
         {[
           { f: "all" as const, label: "全部" },
@@ -180,11 +180,11 @@ export default function ReplayView() {
             className={`cursor-pointer rounded-2xl border px-4 py-1 text-caption font-medium transition-colors ${
               filter === f
                 ? f === "good"
-                  ? "border-up bg-up text-foreground"
+                  ? "border-up bg-up text-primary"
                   : f === "bad"
-                    ? "border-down bg-down text-foreground"
-                    : "border-ai bg-ai text-foreground"
-                : "border-hairline text-ink-muted hover:text-foreground"
+                    ? "border-down bg-down text-primary"
+                    : "border-brand bg-brand text-primary"
+                : "border-hairline text-secondary hover:text-primary"
             }`}
           >
             {label}
@@ -200,8 +200,8 @@ export default function ReplayView() {
               onClick={() => setEventTypeFilter(eventTypeFilter === t ? null : t)}
               className={`cursor-pointer rounded-2xl border px-3 py-1 text-caption font-medium transition-colors ${
                 eventTypeFilter === t
-                  ? "border-ai bg-ai text-foreground"
-                  : "border-hairline text-ink-muted hover:text-foreground"
+                  ? "border-brand bg-brand text-primary"
+                  : "border-hairline text-secondary hover:text-primary"
               }`}
             >
               {label}
@@ -210,30 +210,30 @@ export default function ReplayView() {
         })}
         <span className="bg-hairline mx-1 h-5 w-px" />
         {/* 振幅 */}
-        <span className="text-ink-muted text-caption">振幅≥</span>
+        <span className="text-secondary text-caption">振幅≥</span>
         <div className="flex gap-0.5">
           {[0, 1, 2, 3, 5].map((p) => (
             <button
               key={p}
               onClick={() => setMinPct(p)}
-              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-caption transition-colors ${minPct === p ? "bg-ai text-foreground" : "border-hairline text-ink-muted border hover:text-foreground"}`}
+              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-caption transition-colors ${minPct === p ? "bg-brand text-primary" : "border-hairline text-secondary border hover:text-primary"}`}
             >
               {p}%
             </button>
           ))}
         </div>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <span className="min-w-[46px] text-center font-mono text-sm font-semibold text-foreground">
+        <span className="min-w-[46px] text-center font-mono text-body font-semibold text-primary">
           {minToTime(currentMinute)}
         </span>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <span className="text-ink-muted ml-auto text-caption">{filtered.length} 个事件</span>
+        <span className="text-secondary ml-auto text-caption">{filtered.length} 个事件</span>
       </div>
 
       {/* Chart Area */}
       <div
         ref={chartRef}
-        className="bg-bg-surface border-hairline relative shrink-0 cursor-crosshair border-b"
+        className="bg-surface border-hairline relative shrink-0 cursor-crosshair border-b"
         style={{ height: 260 }}
       >
         <PulseChart
@@ -267,7 +267,7 @@ export default function ReplayView() {
         />
         {tooltip && (
           <div
-            className="bg-bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-caption whitespace-nowrap text-foreground shadow-lg"
+            className="bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-caption whitespace-nowrap text-primary shadow-lg"
             style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}
           >
             <span dangerouslySetInnerHTML={{ __html: tooltip.html }} />
@@ -284,19 +284,19 @@ export default function ReplayView() {
           return (
             <div
               key={e.id}
-              className={`bg-bg-surface mb-1 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-all ${
+              className={`bg-surface mb-1 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-all ${
                 past ? "opacity-100" : "opacity-40"
-              } ${now || selectedId === e.id ? "!border-ai !opacity-100 shadow-[0_0_0_2px_var(--color-accent)]" : "border-hairline"}`}
+              } ${now || selectedId === e.id ? "!border-brand !opacity-100 shadow-[0_0_0_2px_var(--color-accent)]" : "border-hairline"}`}
               onClick={() => {
                 setSelectedId(e.id)
                 jumpToEvent(e.id)
               }}
             >
               <span className={`size-2 shrink-0 rounded-full ${isGood ? "bg-up" : "bg-down"}`} />
-              <span className="text-ink-muted min-w-[42px] font-mono text-caption">
+              <span className="text-secondary min-w-[42px] font-mono text-caption">
                 {minToTime(e.minute)}
               </span>
-              <span className="w-[72px] truncate text-xs font-semibold text-foreground">
+              <span className="w-[72px] truncate text-caption font-semibold text-primary">
                 {e.plateName}
               </span>
               <span
@@ -310,7 +310,7 @@ export default function ReplayView() {
                 {e.pcp >= 0 ? "+" : "-"}
                 {(Math.abs(e.pcp) * 100).toFixed(2)}%
               </span>
-              <span className="text-ink-muted flex-1 truncate text-right text-caption">
+              <span className="text-secondary flex-1 truncate text-right text-caption">
                 {e.relatedStocks.map((s) => (
                   <span key={s.symbol}>
                     {s.name}

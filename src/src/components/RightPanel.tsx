@@ -88,7 +88,7 @@ export default function RightPanel() {
     <div className="relative flex h-full shrink-0">
       {!collapsed && <ResizableHandle onResize={handleResize} />}
       <div
-        className="bg-bg-surface border-hairline flex flex-col overflow-hidden border-l transition-[width] duration-150"
+        className="bg-surface border-hairline flex flex-col overflow-hidden border-l transition-[width] duration-150"
         style={{ width: collapsed ? 48 : width }}
       >
         <div className="border-hairline flex shrink-0 items-center gap-1 border-b p-2">
@@ -103,11 +103,11 @@ export default function RightPanel() {
           </Button>
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-xs font-medium text-foreground">
+              <span className="flex-1 truncate text-caption font-medium text-primary">
                 {TABS.find((t) => t.id === activeView)?.label}
               </span>
               <button
-                className="text-ink-muted ml-1 cursor-pointer hover:text-foreground"
+                className="text-secondary ml-1 cursor-pointer hover:text-primary"
                 onClick={() => setPopoutView(activeView)}
                 title="弹出到独立窗口"
               >
@@ -122,7 +122,7 @@ export default function RightPanel() {
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                className="data-[active=true]:text-ai hover:bg-bg-hover rounded-lg flex size-10 items-center justify-center text-caption transition-colors"
+                className="data-[active=true]:text-brand hover:bg-hover rounded-lg flex size-10 items-center justify-center text-caption transition-colors"
                 data-active={activeView === tab.id}
                 title={tab.label}
                 onClick={() => {
@@ -140,7 +140,7 @@ export default function RightPanel() {
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  className="data-[active=false]:text-ink-muted data-[active=true]:border-ai data-[active=true]:text-ai border-b-2 px-3 py-2 text-xs whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:hover:text-foreground"
+                  className="data-[active=false]:text-secondary data-[active=true]:border-brand data-[active=true]:text-brand border-b-2 px-3 py-2 text-caption whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:hover:text-primary"
                   data-active={activeView === tab.id}
                   onClick={() => setActiveView(tab.id)}
                 >
@@ -154,7 +154,7 @@ export default function RightPanel() {
 
               <AnimatePresence>
                 {klineTarget && (
-                  <div className="bg-bg-surface absolute inset-0 z-10 overflow-y-auto">
+                  <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
                     <KlineDrawer
                       symbol={klineTarget.symbol}
                       name={klineTarget.name}
@@ -180,7 +180,7 @@ export default function RightPanel() {
             }}
           >
             <motion.div
-              className="bg-bg-surface border-hairline relative flex flex-col rounded-lg border shadow-2xl"
+              className="bg-surface border-hairline relative flex flex-col rounded-lg border shadow-2xl"
               style={{
                 width: popoutSize.w,
                 height: popoutSize.h,
@@ -204,11 +204,11 @@ export default function RightPanel() {
                   dragControls.start(e)
                 }}
               >
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-body font-medium text-primary">
                   {TABS.find((t) => t.id === popoutView)?.label}
                 </span>
                 <button
-                  className="text-ink-muted cursor-pointer hover:text-foreground"
+                  className="text-secondary cursor-pointer hover:text-primary"
                   onClick={() => setPopoutView(null)}
                 >
                   <X className="size-4" />
@@ -260,7 +260,7 @@ export default function RightPanel() {
                 onMouseUp={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <svg viewBox="0 0 10 10" className="text-ink-muted size-4">
+                <svg viewBox="0 0 10 10" className="text-secondary size-4">
                   <path d="M10 0v10H0" stroke="currentColor" strokeWidth="1.5" fill="none" />
                 </svg>
               </div>

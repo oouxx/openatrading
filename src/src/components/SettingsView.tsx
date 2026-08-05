@@ -130,22 +130,22 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     <div className="readable-content flex h-full flex-1 flex-col gap-5 overflow-y-auto p-6">
       {activeTab === "appearance" && (
         <section>
-          <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">外观</h2>
-          <div className="bg-bg-surface border-hairline rounded-lg border p-4">
+          <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">外观</h2>
+          <div className="bg-surface border-hairline rounded-lg border p-4">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-sm text-foreground">主题</span>
-                <p className="text-ink-muted mt-0.5 text-caption">选择深色或浅色主题</p>
+                <span className="text-body text-primary">主题</span>
+                <p className="text-secondary mt-0.5 text-caption">选择深色或浅色主题</p>
               </div>
               <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
                 {(["dark", "light"] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTheme(t)}
-                    className={`px-3 py-2 text-xs transition-colors ${
+                    className={`px-3 py-2 text-caption transition-colors ${
                       theme === t
-                        ? "bg-ai text-foreground"
-                        : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-foreground"
+                        ? "bg-brand text-primary"
+                        : "text-secondary hover:bg-hover bg-transparent hover:text-primary"
                     }`}
                   >
                     {THEME_LABELS[t]}
@@ -160,11 +160,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       {activeTab === "agent" && (
         <>
           <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+            <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
               数据源
             </h2>
-            <div className="bg-bg-surface border-hairline rounded-lg border p-4">
-              <label className="text-ink-muted mb-1 block text-xs">API 地址</label>
+            <div className="bg-surface border-hairline rounded-lg border p-4">
+              <label className="text-secondary mb-1 block text-caption">API 地址</label>
               <Input
                 value={apiUrl}
                 onChange={(e) => {
@@ -178,14 +178,14 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
           {isTauri && (
             <section>
-              <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+              <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
                 操作
               </h2>
-              <div className="bg-bg-surface border-hairline rounded-lg border p-4">
+              <div className="bg-surface border-hairline rounded-lg border p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-sm text-foreground">重启客户端</span>
-                    <p className="text-ink-muted mt-0.5 text-caption">
+                    <span className="text-body text-primary">重启客户端</span>
+                    <p className="text-secondary mt-0.5 text-caption">
                       修改 Provider/Model 后重启生效
                     </p>
                   </div>
@@ -215,12 +215,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       {activeTab === "social" && (
         <div className="space-y-5">
           <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+            <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
               通知渠道
             </h2>
-            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
+            <div className="bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
-                <label className="text-ink-muted mb-1 block text-xs">默认通知渠道</label>
+                <label className="text-secondary mb-1 block text-caption">默认通知渠道</label>
                 <select
                   value={social.notify_channel}
                   onChange={async (e) => {
@@ -228,7 +228,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     setSocial((s) => ({ ...s, notify_channel: v }))
                     try { await setConfig("social", "notify_channel", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
-                  className="bg-bg-tertiary border-hairline text-ink w-full rounded-lg border px-3 py-2 font-mono text-xs focus:outline-none"
+                  className="bg-elevated border-hairline text-primary w-full rounded-lg border px-3 py-2 font-mono text-caption focus:outline-none"
                 >
                   <option value="telegram">Telegram</option>
                   <option value="discord">Discord</option>
@@ -236,7 +236,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               </div>
               <div className="flex flex-wrap gap-4">
                 {(["collect", "decision", "trade", "news"] as const).map((k) => (
-                  <label key={k} className="flex items-center gap-2 text-xs text-foreground">
+                  <label key={k} className="flex items-center gap-2 text-caption text-primary">
                     <input
                       type="checkbox"
                       checked={social[`notify_on_${k}` as keyof typeof social] as boolean}
@@ -260,12 +260,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           </section>
 
           <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+            <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
               Telegram
             </h2>
-            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
+            <div className="bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
-                <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
+                <label className="text-secondary mb-1 block text-caption">Bot Token</label>
                 <Input
                   type="password"
                   value={social.telegram_bot_token}
@@ -275,11 +275,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.telegram", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456:ABC-DEF1234gh..."
-                  className="font-mono text-xs"
+                  className="font-mono text-caption"
                 />
               </div>
               <div>
-                <label className="text-ink-muted mb-1 block text-xs">Chat ID</label>
+                <label className="text-secondary mb-1 block text-caption">Chat ID</label>
                 <Input
                   value={social.telegram_chat_id}
                   onChange={async (e) => {
@@ -288,19 +288,19 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.telegram", "chat_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="-1001234567890"
-                  className="font-mono text-xs"
+                  className="font-mono text-caption"
                 />
               </div>
             </div>
           </section>
 
           <section>
-            <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">
+            <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
               Discord
             </h2>
-            <div className="bg-bg-surface border-hairline space-y-3 rounded-lg border p-4">
+            <div className="bg-surface border-hairline space-y-3 rounded-lg border p-4">
               <div>
-                <label className="text-ink-muted mb-1 block text-xs">Bot Token</label>
+                <label className="text-secondary mb-1 block text-caption">Bot Token</label>
                 <Input
                   type="password"
                   value={social.discord_bot_token}
@@ -310,11 +310,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.discord", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="MTE4..."
-                  className="font-mono text-xs"
+                  className="font-mono text-caption"
                 />
               </div>
               <div>
-                <label className="text-ink-muted mb-1 block text-xs">Channel ID</label>
+                <label className="text-secondary mb-1 block text-caption">Channel ID</label>
                 <Input
                   value={social.discord_channel_id}
                   onChange={async (e) => {
@@ -323,7 +323,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.discord", "channel_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456789012345678"
-                  className="font-mono text-xs"
+                  className="font-mono text-caption"
                 />
               </div>
             </div>
@@ -334,7 +334,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       {activeTab === "mcp" && (
         <>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-ink-muted text-xs font-medium tracking-wider uppercase">
+            <h2 className="text-secondary text-caption font-medium tracking-wider uppercase">
               MCP 服务器 ({servers.length})
             </h2>
             <Button
@@ -380,8 +380,8 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           {/* ── 已配置列表 ── */}
           <div className="space-y-2">
             {servers.length === 0 && !showNewForm && (
-              <div className="bg-bg-surface border-hairline rounded-lg border p-8 text-center">
-                <p className="text-ink-muted text-xs">
+              <div className="bg-surface border-hairline rounded-lg border p-8 text-center">
+                <p className="text-secondary text-caption">
                   暂无 MCP 服务器配置，点击右上角「+ 添加」开始
                 </p>
               </div>
@@ -413,8 +413,8 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
       {activeTab === "about" && (
         <section>
-          <h2 className="text-ink-muted mb-3 text-xs font-medium tracking-wider uppercase">关于</h2>
-          <div className="bg-bg-surface border-hairline divide-y rounded-lg border">
+          <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">关于</h2>
+          <div className="bg-surface border-hairline divide-y rounded-lg border">
             {aboutInfo
               ? [
                   ["应用名称", aboutInfo.app_name],
@@ -422,18 +422,18 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   ["Git 版本", aboutInfo.git_version],
                   ["引擎", aboutInfo.engine],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between px-4 py-2 text-xs">
-                    <span className="text-ink-muted">{label}</span>
-                    <span className="font-mono text-caption text-foreground">{value}</span>
+                  <div key={label} className="flex justify-between px-4 py-2 text-caption">
+                    <span className="text-secondary">{label}</span>
+                    <span className="font-mono text-caption text-primary">{value}</span>
                   </div>
                 ))
               : [
                   ["应用名称", "OpenATrading"],
                   ["版本", "加载中…"],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between px-4 py-2 text-xs">
-                    <span className="text-ink-muted">{label}</span>
-                    <span className="font-mono text-caption text-foreground">{value}</span>
+                  <div key={label} className="flex justify-between px-4 py-2 text-caption">
+                    <span className="text-secondary">{label}</span>
+                    <span className="font-mono text-caption text-primary">{value}</span>
                   </div>
                 ))}
           </div>
