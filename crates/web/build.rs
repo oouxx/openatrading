@@ -44,8 +44,8 @@ fn main() {
             for (i, line) in lines.iter().enumerate() {
                 if line.trim() == "name = \"pi-coding-agent\"" {
                     // Look for source line in subsequent lines
-                    for j in i..lines.len().min(i + 10) {
-                        let l = lines[j].trim();
+                    for l in lines[i..].iter().take(10) {
+                        let l = l.trim();
                         if l.starts_with("source = \"git+") {
                             if let Some(tag_start) = l.find("tag=") {
                                 let tag_val = &l[tag_start + 4..];
