@@ -15,7 +15,7 @@ function resolveVar(name: string, fallback: string): string {
 export const chartColors = {
   up: () => resolveVar("--color-up", "#FF5C5C"),
   down: () => resolveVar("--color-down", "#1D9E75"),
-  brand: () => resolveVar("--color-brand", "#7F77DD"),
+  brand: () => resolveVar("--color-brand", "#D97757"),
   warning: () => resolveVar("--color-warning", "#F5A623"),
   primary: () => resolveVar("--color-primary", "#FFFFFF"),
   tertiary: () => resolveVar("--color-tertiary", "#888780"),
