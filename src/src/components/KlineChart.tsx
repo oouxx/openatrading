@@ -69,6 +69,57 @@ function buildTimeLabels(candles: KlineCandle[]): Map<number, string> {
   return map
 }
 
+/**
+ * Format an intraday timestamp for the time axis / crosshair label.
+ * Reused by both `tickMarkFormatter` (fixed axis ticks) and
+ * `localization.timeFormatter` (the floating crosshair label), so the
+ * crosshair label stays consistent with the custom time axis.
+ */
+function formatIntradayLabel(ts: number, labelMap: Map<number, string>): string {
+  // Prefer label from map (has date prefix for multi-day context)
+  const label = labelMap.get(ts)
+  if (label) return label
+  // Gap / whitespace point — only render if within trading hours
+  const d = new Date(ts * 1000)
+  const mins = d.getHours() * 60 + d.getMinutes()
+  if (!TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
+ * Build the full intraday time grid for the local trading day containing
+ * `refTime`: every trading minute 9:30–11:29 and 13:00–14:59 (240 points).
+ *
+ * The grid is pre-populated as whitespace on the chart so the time axis is
+ * drawn once for the whole session; stream data then fills values in place
+ * instead of re-creating the chart / re-fitting the axis on every tick.
+ *
+ * Minute convention matches `isTradingTime` (start-of-bar, excludes 11:30 and
+ * 15:00), so grid timestamps line up with the stream's `tick_at` values.
+ */
+function buildSessionGrid(refTime: number): number[] {
+  const d = new Date(refTime * 1000)
+  const y = d.getFullYear()
+  const mo = d.getMonth()
+  const da = d.getDate()
+  // [startH, startM, endH, endM] — end is exclusive, matching isTradingTime
+  const sessions: [number, number, number, number][] = [
+    [9, 30, 11, 30],
+    [13, 0, 15, 0],
+  ]
+  const grid: number[] = []
+  for (const [sh, sm, eh, em] of sessions) {
+    const end = Math.floor(new Date(y, mo, da, eh, em, 0).getTime() / 1000)
+    let t = Math.floor(new Date(y, mo, da, sh, sm, 0).getTime() / 1000)
+    while (t < end) {
+      grid.push(t)
+      t += 60
+    }
+  }
+  return grid
+}
+
 function formatVolume(v: number): string {
   if (!v) return "-"
   if (v > 1e8) return (v / 1e8).toFixed(2) + "亿"
@@ -123,6 +174,15 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const priceLinesRef = useRef<IPriceLine[]>([])
   const timeLabelMapRef = useRef<Map<number, string>>(new Map())
   const onCrosshairRef = useRef<((info: CrosshairInfo) => void) | null>(null)
+  // Mirrors of props read inside the long-lived crosshair handler / data fill,
+  // kept in refs so chart creation does not depend on `data`/`preclose`.
+  const dataRef = useRef<KlineCandle[]>(data)
+  const precloseRef = useRef<number | undefined>(preclose)
+  // Intraday full-session grid + bookkeeping for the pre-drawn axis.
+  const gridRef = useRef<number[]>([])
+  const gridDayRef = useRef<number>(-1)
+  const axisPinnedRef = useRef(false)
+  const precloseAppliedRef = useRef<number | null>(null)
 
   const clearPriceLines = useCallback(() => {
     for (const pl of priceLinesRef.current) {
@@ -169,18 +229,14 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         timeVisible: true,
         secondsVisible: false,
         borderColor: "rgba(255,255,255,0.06)",
-        tickMarkFormatter: (time: Time) => {
-          const ts = time as number
-          // Prefer label from map (has date prefix for multi-day)
-          const label = timeLabelMapRef.current.get(ts)
-          if (label) return label
-          // Gap point — check if within trading hours
-          const d = new Date(ts * 1000)
-          const mins = d.getHours() * 60 + d.getMinutes()
-          if (!TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)) return ""
-          const pad = (n: number) => String(n).padStart(2, "0")
-          return `${pad(d.getHours())}:${pad(d.getMinutes())}`
-        },
+        tickMarkFormatter: (time: Time) =>
+          formatIntradayLabel(time as number, timeLabelMapRef.current),
+      },
+      localization: {
+        // Crosshair vertical-line label on the time axis uses timeFormatter,
+        // not tickMarkFormatter — keep them consistent for the custom time axis.
+        timeFormatter: (time: Time) =>
+          formatIntradayLabel(time as number, timeLabelMapRef.current),
       },
       rightPriceScale: {
         borderVisible: false,
@@ -260,12 +316,12 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     chart.subscribeCrosshairMove((param) => {
       if (!param.point || param.time === undefined || param.seriesData.size === 0) return
       const ts = param.time as number
-      const c = data.find((d) => d.time === ts)
+      const c = dataRef.current.find((d) => d.time === ts)
       if (!c || !onCrosshairRef.current) return
-      const chgRate = preclose ? ((c.close - preclose) / preclose) * 100 : (c.change_rate ?? 0)
-      const label = timeLabelMapRef.current.get(ts) || ""
+      const pc = precloseRef.current
+      const chgRate = pc ? ((c.close - pc) / pc) * 100 : (c.change_rate ?? 0)
       onCrosshairRef.current({
-        time: label,
+        time: formatIntradayLabel(ts, timeLabelMapRef.current),
         open: c.open?.toFixed(2) || "-",
         high: c.high?.toFixed(2) || "-",
         low: c.low?.toFixed(2) || "-",
@@ -277,7 +333,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     chartRef.current = chart
-  }, [data, preclose])
+  }, [])
 
   const initKlineChart = useCallback(() => {
     if (!containerRef.current) return
@@ -307,6 +363,11 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         secondsVisible: false,
         borderColor: "rgba(255,255,255,0.06)",
         tickMarkFormatter: (time: Time) => formatTime(time as number, period),
+      },
+      localization: {
+        // Crosshair vertical-line label on the time axis uses timeFormatter,
+        // not tickMarkFormatter — keep them consistent with the custom axis.
+        timeFormatter: (time: Time) => formatTime(time as number, period),
       },
       rightPriceScale: {
         borderColor: "rgba(255,255,255,0.06)",
@@ -387,7 +448,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     chart.subscribeCrosshairMove((param) => {
       if (!param.point || param.time === undefined || param.seriesData.size === 0) return
       const ts = param.time as number
-      const c = data.find((d) => d.time === ts)
+      const c = dataRef.current.find((d) => d.time === ts)
       if (!c || !onCrosshairRef.current) return
       const chgRate = c.change_rate ?? 0
       onCrosshairRef.current({
@@ -403,13 +464,16 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     chartRef.current = chart
-  }, [data, period])
+  }, [period])
 
-  // Render chart when data/period changes
+  // Chart lifecycle: create the chart + series once per (period, symbol).
+  // Deliberately independent of `data` so streaming ticks don't re-create the
+  // chart or re-fit the axis — the intraday time axis is pre-drawn and stream
+  // data fills values in place (see the data-fill effect below).
   useEffect(() => {
-    if (!containerRef.current || data.length === 0) return
+    if (!containerRef.current) return
 
-    // Cleanup previous chart
+    // Reset per-(period, symbol) state for a fresh chart.
     clearPriceLines()
     chartRef.current?.remove()
     chartRef.current = null
@@ -424,121 +488,149 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     ma30SeriesRef.current = null
     seriesRefs.current = []
     timeLabelMapRef.current = new Map<number, string>()
+    gridRef.current = []
+    gridDayRef.current = -1
+    axisPinnedRef.current = false
+    precloseAppliedRef.current = null
 
-    // Insert whitespace data points between trading sessions so lightweight-charts
-    // doesn't connect across day boundaries or the midday lunch break.
-    // Place whitespace right after the last candle of the previous session,
-    // not at midnight, to avoid extra ticks on the time axis.
-    const insertSessionGaps = <T extends { time: number }>(
-      items: T[]
-    ): (T | { time: number })[] => {
-      const result: (T | { time: number })[] = []
-      for (let i = 0; i < items.length; i++) {
-        if (i > 0) {
-          const prevDay = Math.floor(items[i - 1].time / 86400)
-          const currDay = Math.floor(items[i].time / 86400)
-          const gap = items[i].time - items[i - 1].time
-          if (currDay !== prevDay || gap > 300) {
-            // Cross-day gap or midday lunch break (> 5 min)
-            result.push({ time: items[i - 1].time + 60 })
-          }
-        }
-        result.push(items[i])
-      }
-      return result
+    if (period === "minute") {
+      initIntradayChart()
+    } else {
+      initKlineChart()
     }
 
-    const isIntraday = period === "minute"
-      const isSingleDay = true
+    return () => {
+      clearPriceLines()
+      chartRef.current?.remove()
+      chartRef.current = null
+      candleSeriesRef.current = null
+      priceSeriesRef.current = null
+      avgPriceSeriesRef.current = null
+      pctAnchorSeriesRef.current = null
+      volumeSeriesRef.current = null
+      ma5SeriesRef.current = null
+      ma10SeriesRef.current = null
+      ma20SeriesRef.current = null
+      ma30SeriesRef.current = null
+      seriesRefs.current = []
+    }
+  }, [period, symbol, initIntradayChart, initKlineChart, clearPriceLines])
 
-    const raw = isIntraday ? data.filter((c) => isTradingTime(c.time)) : data
+  // Keep prop mirrors in sync for the long-lived crosshair handler (the chart
+  // is created once and must not depend on `data`/`preclose`).
+  useEffect(() => {
+    dataRef.current = data
+    precloseRef.current = preclose
+  }, [data, preclose])
+
+  // Data fill: intraday pre-draws the full-session grid and fills values as the
+  // stream arrives; kline applies a full snapshot each tick. Never re-creates
+  // the chart, so the time axis stays stable across stream ticks.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    if (data.length === 0) return
+
     // Deduplicate by time — lightweight-charts requires strictly ascending timestamps
-    const filtered = (() => {
-      const seen = new Map<number, typeof raw[number]>()
-      for (const c of raw) seen.set(c.time, c)
+    const deduped = (() => {
+      const seen = new Map<number, KlineCandle>()
+      for (const c of data) seen.set(c.time, c)
       return [...seen.values()].sort((a, b) => a.time - b.time)
     })()
+    if (deduped.length === 0) return
 
-    if (filtered.length === 0) return
-
-    if (isIntraday) {
-      // For single-day minute chart: only show today's data (same day as last candle)
-      let chartData = filtered
-      if (isSingleDay) {
-        const lastDay = Math.floor(filtered[filtered.length - 1].time / 86400)
-        chartData = filtered.filter((c) => Math.floor(c.time / 86400) === lastDay)
-      }
-
-      if (chartData.length === 0) return
-
-      timeLabelMapRef.current = buildTimeLabels(chartData)
-      initIntradayChart()
+    if (period === "minute") {
+      // ---- Intraday: pre-drawn full-session axis, fill on stream ----
       const price = priceSeriesRef.current
       const avgPrice = avgPriceSeriesRef.current
       const volume = volumeSeriesRef.current
       const pctAnchor = pctAnchorSeriesRef.current
-      if (!price || !avgPrice || !volume || !pctAnchor || !chartRef.current) return
+      if (!price || !avgPrice || !volume || !pctAnchor) return
 
-      // Price line — with session gaps for multi-day
-      const gapped = isSingleDay ? chartData : insertSessionGaps(chartData)
+      // Only trading-hour candles, single day = the last candle's day.
+      const trading = deduped.filter((c) => isTradingTime(c.time))
+      if (trading.length === 0) return
+      const lastDay = Math.floor(trading[trading.length - 1].time / 86400)
+      const dayCandles = trading.filter((c) => Math.floor(c.time / 86400) === lastDay)
+      const candleMap = new Map<number, KlineCandle>(dayCandles.map((c) => [c.time, c]))
+
+      // (Re)build the full-session grid when the trading day changes / first time.
+      if (gridDayRef.current !== lastDay) {
+        gridRef.current = buildSessionGrid(dayCandles[dayCandles.length - 1].time)
+        gridDayRef.current = lastDay
+        timeLabelMapRef.current = buildTimeLabels(
+          gridRef.current.map((t) => ({ time: t, close: 0 }))
+        )
+        axisPinnedRef.current = false
+        precloseAppliedRef.current = null
+      }
+      const grid = gridRef.current
+      if (grid.length === 0) return
+
+      // Price line over the full grid — whitespace where no candle has arrived.
       price.setData(
-        gapped.map((c) => {
-          if (!("close" in c)) return { time: c.time as Time, value: undefined as unknown as number }
-          return { time: c.time as Time, value: (c as KlineCandle).close }
+        grid.map((t) => {
+          const c = candleMap.get(t)
+          return { time: t as Time, value: c ? c.close : (undefined as unknown as number) }
         })
       )
 
-      // VWAP line — with session gaps, reset at day boundaries
+      // VWAP (cumulative), reset at day boundaries; whitespace for future minutes.
       let cumValue = 0
       let cumVolume = 0
       let prevDay = -1
-      const vwapData = gapped.map((c) => {
-        if (!("close" in c)) return { time: c.time as Time, value: undefined as unknown as number }
-        const kc = c as KlineCandle
-        const currDay = Math.floor(kc.time / 86400)
-        if (currDay !== prevDay) {
-          // Reset VWAP cumulative values at day boundary
-          cumValue = 0
-          cumVolume = 0
-          prevDay = currDay
-        }
-        cumValue += kc.close * (kc.volume || 0)
-        cumVolume += kc.volume || 0
-        return {
-          time: kc.time as Time,
-          value: cumVolume > 0 ? cumValue / cumVolume : kc.close,
-        }
-      })
-      avgPrice.setData(vwapData)
+      avgPrice.setData(
+        grid.map((t) => {
+          const c = candleMap.get(t)
+          if (!c) return { time: t as Time, value: undefined as unknown as number }
+          const currDay = Math.floor(c.time / 86400)
+          if (currDay !== prevDay) {
+            cumValue = 0
+            cumVolume = 0
+            prevDay = currDay
+          }
+          cumValue += c.close * (c.volume || 0)
+          cumVolume += c.volume || 0
+          return {
+            time: t as Time,
+            value: cumVolume > 0 ? cumValue / cumVolume : c.close,
+          }
+        })
+      )
 
-      // Intraday volume — with session gaps, color based on previous close
+      // Volume, colored vs previous close; whitespace for future minutes.
       let prevClose: number | null = null
       volume.setData(
-        gapped.map((c) => {
-          if (!("close" in c)) {
-            prevClose = null // reset at gap
-            return { time: c.time as Time, value: undefined as unknown as number }
-          }
-          const kc = c as KlineCandle
-          const isUp = prevClose !== null ? kc.close >= prevClose : kc.close >= (kc.open ?? kc.close)
-          prevClose = kc.close
+        grid.map((t) => {
+          const c = candleMap.get(t)
+          if (!c) return { time: t as Time, value: undefined as unknown as number }
+          const isUp = prevClose !== null ? c.close >= prevClose : c.close >= (c.open ?? c.close)
+          prevClose = c.close
           return {
-            time: kc.time as Time,
-            value: kc.volume || 0,
+            time: t as Time,
+            value: c.volume || 0,
             color: isUp ? "rgba(255,92,92,0.3)" : "rgba(29,158,117,0.3)",
           }
         })
       )
 
-      if (isSingleDay && preclose && preclose > 0 && chartRef.current && chartData.length > 0) {
-        const limitPct = getLimitPct(symbol)
-        const firstTime = chartData[0]?.time as Time
-        const lastTime = chartData[chartData.length - 1]?.time as Time
+      // pct anchor: two endpoints spanning the full grid (±涨跌停).
+      const limitPct = getLimitPct(symbol)
+      pctAnchor.setData([
+        { time: grid[0] as Time, value: -limitPct },
+        { time: grid[grid.length - 1] as Time, value: limitPct },
+      ])
 
-        const anchorData: { time: Time; value: number }[] = [{ time: firstTime, value: -limitPct }]
-        if (firstTime !== lastTime) anchorData.push({ time: lastTime, value: limitPct })
-        pctAnchor.setData(anchorData)
+      // Pin the time axis to the full session once per grid build so later
+      // stream ticks (which keep the same grid) don't shift it.
+      if (!axisPinnedRef.current) {
+        chart.timeScale().fitContent()
+        axisPinnedRef.current = true
+      }
 
+      // Preclose price lines + fixed ±涨跌停 price range — applied once when
+      // preclose becomes available (and re-applied if it changes).
+      if (preclose && preclose > 0 && precloseAppliedRef.current !== preclose) {
         clearPriceLines()
         priceLinesRef.current.push(
           price.createPriceLine({
@@ -558,30 +650,26 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
             axisLabelVisible: true,
           })
         )
-
-        chartRef.current.timeScale().fitContent()
-
         const prRange = preclose * (limitPct / 100)
-        chartRef.current.priceScale("left", 0).setAutoScale(false)
-        chartRef.current.priceScale("left", 0).setVisibleRange({
+        chart.priceScale("left", 0).setAutoScale(false)
+        chart.priceScale("left", 0).setVisibleRange({
           from: preclose - prRange,
           to: preclose + prRange,
         })
-        chartRef.current.priceScale("right", 0).setVisibleRange({
+        chart.priceScale("right", 0).setVisibleRange({
           from: -limitPct,
           to: limitPct,
         })
+        precloseAppliedRef.current = preclose
       }
     } else {
-      // Kline chart (day/week/month)
-      initKlineChart()
-
+      // ---- Kline (day/week/month): full snapshot each tick ----
       const candle = candleSeriesRef.current
       const volume = volumeSeriesRef.current
-      if (!candle || !volume || !chartRef.current) return
+      if (!candle || !volume) return
 
       candle.setData(
-        filtered.map((c) => ({
+        deduped.map((c) => ({
           time: c.time as Time,
           open: c.open ?? c.close,
           high: c.high ?? c.close,
@@ -589,9 +677,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
           close: c.close,
         }))
       )
-
       volume.setData(
-        filtered.map((c) => ({
+        deduped.map((c) => ({
           time: c.time as Time,
           value: c.volume || 0,
           color: c.close >= (c.open ?? c.close) ? "rgba(255,92,92,0.3)" : "rgba(29,158,117,0.3)",
@@ -599,47 +686,32 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       )
 
       // Moving averages (MA5, MA10, MA20, MA30)
-      const closes = filtered.map((c) => c.close)
-      const ma = (period: number, i: number) => {
-        if (i < period - 1) return null
+      const closes = deduped.map((c) => c.close)
+      const ma = (p: number, i: number) => {
+        if (i < p - 1) return null
         let sum = 0
-        for (let j = i - period + 1; j <= i; j++) sum += closes[j]
-        return sum / period
+        for (let j = i - p + 1; j <= i; j++) sum += closes[j]
+        return sum / p
       }
-      const maPeriods = [5, 10, 20, 30]
-      maPeriods.forEach((p, idx) => {
+      ;[5, 10, 20, 30].forEach((p, idx) => {
         const series = seriesRefs.current[idx]
         if (!series) return
-        const data = filtered
+        const maData = deduped
           .map((c, i) => {
             const v = ma(p, i)
             return v !== null ? { time: c.time as Time, value: v } : null
           })
           .filter(Boolean) as { time: Time; value: number }[]
-        if (data.length > 0) series.setData(data)
+        if (maData.length > 0) series.setData(maData)
       })
 
       clearPriceLines()
-
-      const visible = (() => {
-        if (period === "day") return 60
-        if (period === "week") return 60
-        return 36
-      })()
-      const to = filtered.length - 1
+      const visible = period === "day" ? 60 : period === "week" ? 60 : 36
+      const to = deduped.length - 1
       const from = Math.max(0, to - visible + 1)
-      chartRef.current.timeScale().setVisibleLogicalRange({ from, to })
+      chart.timeScale().setVisibleLogicalRange({ from, to })
     }
-  }, [data, period, preclose, symbol, initIntradayChart, initKlineChart, clearPriceLines])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearPriceLines()
-      chartRef.current?.remove()
-      chartRef.current = null
-    }
-  }, [clearPriceLines])
+  }, [data, period, symbol, preclose, clearPriceLines])
 
   // Expose crosshair ref + listener for KlineDrawer (in effect to avoid modifying during render)
   useEffect(() => {
