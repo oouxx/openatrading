@@ -65,11 +65,11 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
             return (
               <div
                 key={tc.id || i}
-                className="border-hairline overflow-hidden rounded-lg border bg-bg-hover/40 transition-all duration-200"
+                className="border-hairline overflow-hidden rounded-lg border bg-hover/40 transition-all duration-200"
               >
                 <div className="flex items-center gap-2 px-3 py-2">
                   <ToolIcon name={tc.name} />
-                  <span className="text-ink-muted font-mono text-caption font-medium">{tc.name}</span>
+                  <span className="text-secondary font-mono text-caption font-medium">{tc.name}</span>
                   <StatusBadge status={status} />
                 </div>
               </div>
@@ -88,23 +88,23 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
               className={`border-hairline overflow-hidden rounded-lg border transition-all duration-200 ${
                 status === "error"
                   ? "border-red-500/30 bg-red-500/5"
-                  : "bg-bg-hover/40"
+                  : "bg-hover/40"
               }`}
             >
               <button
-                className="hover:bg-bg-hover/70 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+                className="hover:bg-hover/70 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
                 onClick={() => toggleExpand(tc.id)}
               >
                 <ToolIcon name={tc.name} />
-                <span className="text-ink-muted font-mono text-caption font-medium">{tc.name}</span>
+                <span className="text-secondary font-mono text-caption font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
                 {/* Show result length in collapsed state */}
                 {hasResult && !isExpanded && (
-                  <span className="text-ink-muted/40 font-mono text-caption">
+                  <span className="text-secondary/40 font-mono text-caption">
                     {resultText.length} 字符
                   </span>
                 )}
-                <span className="text-ink-muted/50 ml-auto">
+                <span className="text-secondary/50 ml-auto">
                   {isExpanded ? (
                     <ChevronDown className="size-3" />
                   ) : (
@@ -149,7 +149,7 @@ function ToolIcon({ name }: { name: string }) {
   if (name.startsWith("bash") || name === "execute_command" || name === "run") {
     return <Terminal className="size-3.5 shrink-0 text-sky-500" />
   }
-  return <Wrench className="size-3.5 shrink-0 text-ink-muted" />
+  return <Wrench className="size-3.5 shrink-0 text-secondary" />
 }
 
 // ── Tool args content ─────────────────────────────────
@@ -162,7 +162,7 @@ function ToolArgsContent({ name, args }: { name: string; args: string }) {
   }
 
   return (
-    <pre className="text-ink-muted overflow-x-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
+    <pre className="text-secondary overflow-x-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
       {safeContent}
     </pre>
   )
@@ -212,7 +212,7 @@ function DiffContent({ content }: { content: string }) {
           let className = ""
           if (line.startsWith("+")) className = "text-emerald-500"
           else if (line.startsWith("-")) className = "text-red-500"
-          else if (line.startsWith("@")) className = "text-ink-muted/50"
+          else if (line.startsWith("@")) className = "text-secondary/50"
           return (
             <div key={i} className={className}>
               {line}
@@ -273,13 +273,13 @@ function ResultBlock({
 
   return (
     <div>
-      <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
+      <pre className="text-secondary max-h-96 overflow-y-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
         {displayText}
       </pre>
       {/* Server-side truncation: expand via API */}
       {isTruncated && !fullContent && (
         <button
-          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-caption transition-colors"
+          className="text-secondary/50 hover:text-secondary mt-1 font-mono text-caption transition-colors"
           onClick={expandFromServer}
           disabled={loading}
         >
@@ -291,7 +291,7 @@ function ResultBlock({
       {/* Client-side truncation: expand locally */}
       {isLong && !showFull && !isTruncated && (
         <button
-          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-caption transition-colors"
+          className="text-secondary/50 hover:text-secondary mt-1 font-mono text-caption transition-colors"
           onClick={() => setShowFull(true)}
         >
           展开全部（{content.length} 字符）
@@ -305,7 +305,7 @@ function StatusBadge({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "streaming":
       return (
-        <span className="text-ai flex items-center gap-1 text-caption">
+        <span className="text-brand flex items-center gap-1 text-caption">
           <Loader2 className="size-3 animate-spin" />
           调用中
         </span>
@@ -339,7 +339,7 @@ function StatusBadge({ status }: { status: ToolCall["status"] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-ink-muted/70 mb-1 font-mono text-caption font-medium">{title}</div>
+      <div className="text-secondary/70 mb-1 font-mono text-caption font-medium">{title}</div>
       {children}
     </div>
   )

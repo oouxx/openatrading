@@ -26,26 +26,26 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
   switch (phase) {
     case "idle":
       return {
-        icon: <Sparkles className="size-3 text-ink-muted/40" />,
+        icon: <Sparkles className="size-3 text-secondary/40" />,
         label: "等待输入",
-        color: "text-ink-muted/40",
+        color: "text-secondary/40",
         barColor: "bg-transparent",
         pulse: false,
       }
     case "starting":
       return {
-        icon: <Sparkles className="size-3.5 animate-pulse text-ai" />,
+        icon: <Sparkles className="size-3.5 animate-pulse text-brand" />,
         label: "开始处理",
-        color: "text-ai",
-        barColor: "bg-ai/40",
+        color: "text-brand",
+        barColor: "bg-brand/40",
         pulse: true,
       }
     case "processing":
       return {
-        icon: <Loader2 className="size-3.5 animate-spin text-ai" />,
+        icon: <Loader2 className="size-3.5 animate-spin text-brand" />,
         label: "处理中",
-        color: "text-ai",
-        barColor: "bg-ai/40",
+        color: "text-brand",
+        barColor: "bg-brand/40",
         pulse: true,
       }
     case "settled":
@@ -103,7 +103,7 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
 
       {/* Error message */}
       {phase === "error" && errorMessage && (
-        <span className="text-ink-muted/60 ml-1 truncate font-mono text-caption">{errorMessage}</span>
+        <span className="text-secondary/60 ml-1 truncate font-mono text-caption">{errorMessage}</span>
       )}
     </div>
   )

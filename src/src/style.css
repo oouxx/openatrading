@@ -2,7 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
-@import "@fontsource/dm-serif-display";
 @import "tw-shimmer";
 
 @import "./styles/theme.css";

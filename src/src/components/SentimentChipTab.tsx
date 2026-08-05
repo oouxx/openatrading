@@ -50,7 +50,7 @@ export default function SentimentChipTab() {
   const currentPhaseClass = useMemo(() => {
     const s = currentSentiment
     if (s >= 75) return "bg-up/15 text-up"
-    if (s >= 50) return "bg-ai/15 text-ai"
+    if (s >= 50) return "bg-brand/15 text-brand"
     return "bg-down/15 text-down"
   }, [currentSentiment])
 
@@ -69,7 +69,7 @@ export default function SentimentChipTab() {
     return b > 1 ? b : b * 100
   }, [overview])
 
-  const bombRateClass = bombRate > 30 ? "text-up" : bombRate > 20 ? "text-ai" : "text-down"
+  const bombRateClass = bombRate > 30 ? "text-up" : bombRate > 20 ? "text-brand" : "text-down"
 
   const riseRatio = useMemo(() => {
     const r = overview?.rise_count ?? 0
@@ -77,7 +77,7 @@ export default function SentimentChipTab() {
     const ratio = r / f
     return {
       display: ratio.toFixed(2),
-      class: ratio >= 2 ? "text-up" : ratio >= 1 ? "text-ai" : "text-down",
+      class: ratio >= 2 ? "text-up" : ratio >= 1 ? "text-brand" : "text-down",
     }
   }, [overview])
 
@@ -93,7 +93,7 @@ export default function SentimentChipTab() {
   const sentimentEvalClass = useMemo(() => {
     const s = currentSentiment
     if (s >= 75) return "text-up"
-    if (s >= 50) return "text-ai"
+    if (s >= 50) return "text-brand"
     return "text-down"
   }, [currentSentiment])
 
@@ -116,33 +116,33 @@ export default function SentimentChipTab() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption text-ink-muted mb-4 tracking-wider uppercase">
+          <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
             市场情绪周期判断
           </h3>
           {!history.length ? (
-            <div className="text-caption text-ink-muted py-8 text-center">加载中...</div>
+            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <span className="text-caption text-ink-muted">当前：</span>
+                <span className="text-caption text-secondary">当前：</span>
                 <span
                   className={`text-caption rounded-full px-3 py-1 font-mono ${currentPhaseClass}`}
                 >
                   {currentPhaseLabel}
                 </span>
               </div>
-              <div className="bg-bg h-2 overflow-hidden rounded-full">
+              <div className="bg-base h-2 overflow-hidden rounded-full">
                 <div
                   className="from-down to-up via-ai h-full rounded-full bg-linear-to-r"
                   style={{ width: currentSentimentPct + "%" }}
                 />
               </div>
-              <div className="text-caption text-ink-muted flex justify-between">
+              <div className="text-caption text-secondary flex justify-between">
                 <span>冷淡</span>
                 <span>正常</span>
                 <span>偏热</span>
               </div>
-              <p className="text-caption text-ink-muted mt-3">{phaseAdvice}</p>
+              <p className="text-caption text-secondary mt-3">{phaseAdvice}</p>
             </div>
           )}
         </motion.div>
@@ -154,36 +154,36 @@ export default function SentimentChipTab() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption text-ink-muted mb-4 tracking-wider uppercase">
+          <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
             市场筹码结构分析
           </h3>
           {!overview ? (
-            <div className="text-caption text-ink-muted py-8 text-center">加载中...</div>
+            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
           ) : (
             <div className="space-y-3">
               <div className="text-caption flex justify-between">
-                <span className="text-ink-muted">涨停家数</span>
+                <span className="text-secondary">涨停家数</span>
                 <span className="text-up font-mono">{overview.limit_up_count}</span>
               </div>
               <div className="text-caption flex justify-between">
-                <span className="text-ink-muted">跌停家数</span>
+                <span className="text-secondary">跌停家数</span>
                 <span className="text-down font-mono">{overview.limit_down_count}</span>
               </div>
               <div className="text-caption flex justify-between">
-                <span className="text-ink-muted">炸板率</span>
+                <span className="text-secondary">炸板率</span>
                 <span className={`font-mono ${bombRateClass}`}>{bombRate.toFixed(1)}%</span>
               </div>
               <div className="text-caption flex justify-between">
-                <span className="text-ink-muted">涨跌比</span>
+                <span className="text-secondary">涨跌比</span>
                 <span className={`font-mono ${riseRatio.class}`}>{riseRatio.display}</span>
               </div>
               <div className="border-hairline-dark mt-3 border-t pt-3">
                 <div className="text-caption flex justify-between">
-                  <span className="text-ink-muted">情绪评价</span>
+                  <span className="text-secondary">情绪评价</span>
                   <span className={`font-mono ${sentimentEvalClass}`}>{sentimentEval}</span>
                 </div>
                 <div className="text-caption mt-1 flex justify-between">
-                  <span className="text-ink-muted">风险提示</span>
+                  <span className="text-secondary">风险提示</span>
                   <span className="text-up font-mono">{riskHint}</span>
                 </div>
               </div>
@@ -201,12 +201,12 @@ export default function SentimentChipTab() {
         transition={{ duration: 0.4, delay: 0.15 }}
       >
         <div className="border-hairline-dark p-card-inner border-b">
-          <h3 className="text-caption text-ink-muted tracking-wider uppercase">
+          <h3 className="text-caption text-secondary tracking-wider uppercase">
             近{history.length}日情绪数据
           </h3>
         </div>
         {!history.length ? (
-          <div className="text-caption text-ink-muted py-8 text-center">暂无数据</div>
+          <div className="text-caption text-secondary py-8 text-center">暂无数据</div>
         ) : (
           <table className="data-table">
             <thead>
@@ -224,7 +224,7 @@ export default function SentimentChipTab() {
                 <tr key={row.date}>
                   <td className="font-mono">{row.date}</td>
                   <td
-                    className={`text-right font-mono ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-ai" : "text-down"}`}
+                    className={`text-right font-mono ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
                   >
                     {row.sentiment.toFixed(1)}
                   </td>

@@ -90,12 +90,12 @@ export default function ConversationSidebar({
         <SidebarGroup>
           <div className="px-3 py-2 group-data-[collapsible=icon]:hidden">
             <div className="relative">
-              <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+              <Search className="text-secondary absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input
                 placeholder="搜索会话..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs"
+                className="h-8 pl-8 text-caption"
               />
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function ConversationSidebar({
         <SidebarGroup className="min-h-0 flex-1">
           <SidebarMenu>
             {filteredThreads.length === 0 ? (
-              <div className="text-muted-foreground py-8 text-center text-xs group-data-[collapsible=icon]:hidden">
+              <div className="text-secondary py-8 text-center text-caption group-data-[collapsible=icon]:hidden">
                 {search.trim() ? "未找到匹配会话" : "暂无会话"}
               </div>
             ) : (
@@ -124,7 +124,7 @@ export default function ConversationSidebar({
                     <span className="flex-1 truncate">{t.name || t.first_message || t.id}</span>
                   </SidebarMenuButton>
                   <button
-                    className="hover:text-down text-ink-muted absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
+                    className="hover:text-down text-secondary absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/item:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDeleteThread(t.id)

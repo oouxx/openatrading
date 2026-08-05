@@ -22,21 +22,21 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       case "error":
         return <XCircle className="size-3.5 text-red-500" />
       default:
-        return <Loader2 className="text-muted-foreground size-3.5" />
+        return <Loader2 className="text-secondary size-3.5" />
     }
   }
 
   const argsStr = args ? (typeof args === "string" ? args : JSON.stringify(args, null, 2)) : ""
 
   return (
-    <div className="bg-bg-surface border-hairline my-2 overflow-hidden rounded-lg border text-xs">
+    <div className="bg-surface border-hairline my-2 overflow-hidden rounded-lg border text-caption">
       {/* Header */}
       <div className="border-border/50 flex items-center gap-2 border-b px-3 py-2">
-        <Terminal className="text-muted-foreground size-3.5" />
-        <span className="text-foreground font-medium">{name}</span>
+        <Terminal className="text-secondary size-3.5" />
+        <span className="text-primary font-medium">{name}</span>
         <div className="ml-auto flex items-center gap-2">
           {statusIcon()}
-          <span className="text-muted-foreground text-caption capitalize">
+          <span className="text-secondary text-caption capitalize">
             {status ?? "pending"}
           </span>
         </div>
@@ -46,14 +46,14 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       {argsStr && (
         <div className="border-border/50 border-b">
           <button
-            className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+            className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
             onClick={() => setShowArgs(!showArgs)}
           >
             {showArgs ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            <span className="text-muted-foreground font-mono text-caption">Arguments</span>
+            <span className="text-secondary font-mono text-caption">Arguments</span>
           </button>
           {showArgs && (
-            <pre className="bg-bg-hover text-muted-foreground overflow-x-auto px-3 py-2 font-mono text-caption leading-relaxed">
+            <pre className="bg-hover text-secondary overflow-x-auto px-3 py-2 font-mono text-caption leading-relaxed">
               {argsStr}
             </pre>
           )}
@@ -64,7 +64,7 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       {result && (
         <div>
           <button
-            className={`hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+            className={`hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
               isError ? "text-red-500" : ""
             }`}
             onClick={() => setShowResult(!showResult)}
@@ -76,7 +76,7 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
           </button>
           {showResult && (
             <pre className={`overflow-x-auto px-3 py-2 font-mono text-caption leading-relaxed ${
-              isError ? "bg-red-950/20 text-red-400" : "bg-bg-hover text-muted-foreground"
+              isError ? "bg-red-950/20 text-red-400" : "bg-hover text-secondary"
             }`}>
               {result}
             </pre>

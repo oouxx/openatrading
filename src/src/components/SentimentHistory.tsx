@@ -79,16 +79,16 @@ export default function SentimentHistory() {
   }, [chartData])
 
   return (
-    <div className="bg-bg-surface border-hairline p-card-inner rounded-lg">
-      <h3 className="text-caption text-ink-muted mb-4 tracking-wider uppercase">
+    <div className="bg-surface border-hairline p-card-inner rounded-lg">
+      <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
         情绪历史走势（近10日）
       </h3>
       {!chartData.length ? (
-        <div className="text-caption text-ink-muted py-8 text-center">暂无情绪历史数据</div>
+        <div className="text-caption text-secondary py-8 text-center">暂无情绪历史数据</div>
       ) : (
         <div ref={containerRef} style={{ height: 200 }} />
       )}
-      {interpretation && <p className="text-caption text-ink-muted mt-3">{interpretation}</p>}
+      {interpretation && <p className="text-caption text-secondary mt-3">{interpretation}</p>}
     </div>
   )
 }

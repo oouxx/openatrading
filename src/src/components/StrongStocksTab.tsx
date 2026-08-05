@@ -23,9 +23,9 @@ export default function StrongStocksTab() {
   const openKline = useRightPanelStore((s) => s.openKline)
 
   return (
-    <div className="bg-bg-surface border-hairline rounded-lg overflow-hidden border">
+    <div className="bg-surface border-hairline rounded-lg overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption text-ink-muted font-mono tracking-wider uppercase">
+        <span className="text-caption text-secondary font-mono tracking-wider uppercase">
           涨停股 · {limitUpStocks.length}
         </span>
       </div>
@@ -50,22 +50,22 @@ export default function StrongStocksTab() {
                 className="cursor-pointer"
                 onClick={() => openKline(s.symbol, s.stock_chi_name)}
               >
-                <td className="text-ink-muted">{s.symbol.replace(/\.[A-Z]+$/, "")}</td>
+                <td className="text-secondary">{s.symbol.replace(/\.[A-Z]+$/, "")}</td>
                 <td>
                   <MiniChartPreview symbol={s.symbol} name={s.stock_chi_name}>
-                    <span className="hover:text-ai text-foreground transition-colors">
+                    <span className="hover:text-brand text-primary transition-colors">
                       {s.stock_chi_name}
                     </span>
                   </MiniChartPreview>
                 </td>
                 <td className={pctClass(s.change_percent)}>{formatPct(s.change_percent)}</td>
-                <td className="text-ai font-semibold">
+                <td className="text-brand font-semibold">
                   {s.limit_up_days > 1 ? s.limit_up_days + "连板" : "-"}
                 </td>
                 <td>{s.break_limit_up_times || "-"}</td>
                 <td>{s.turnover_ratio?.toFixed(2) + "%" || "-"}</td>
                 <td>{formatCap(s.total_capital)}</td>
-                <td className="text-ink-muted max-w-[200px] truncate text-xs">
+                <td className="text-secondary max-w-[200px] truncate text-caption">
                   {s.surge_reason?.stock_reason || "-"}
                 </td>
               </tr>

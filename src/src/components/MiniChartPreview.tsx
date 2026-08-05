@@ -83,7 +83,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="bg-bg-surface border-hairline rounded-lg fixed z-60 border p-2"
+          className="bg-surface border-hairline rounded-lg fixed z-60 border p-2"
           style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
@@ -99,7 +99,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               openEnlarged()
             }}
           />
-          <p className="text-caption text-ink-muted mt-1 text-center font-mono">
+          <p className="text-caption text-secondary mt-1 text-center font-mono">
             {symbol} {name}
           </p>
         </div>
@@ -111,7 +111,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           onClick={() => setEnlarged(false)}
         >
           <div
-            className="bg-bg-surface border-hairline rounded-lg border p-4"
+            className="bg-surface border-hairline rounded-lg border p-4"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               const step = 0.5
@@ -124,7 +124,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               className="block rounded-md"
               alt=""
             />
-            <p className="text-caption text-ink-muted mt-2 text-center font-mono">
+            <p className="text-caption text-secondary mt-2 text-center font-mono">
               {symbol} {name} · {scale.toFixed(2)}x 滚轮缩放
             </p>
           </div>

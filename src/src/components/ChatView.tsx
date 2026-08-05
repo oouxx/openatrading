@@ -372,7 +372,7 @@ export default function AiCopilot({
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className="bg-bg-surface border-hairline focus:border-ai/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 pr-14 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
+        className="bg-surface border-hairline focus:border-brand/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 pr-14 text-body text-primary shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -423,29 +423,29 @@ export default function AiCopilot({
         <SidebarTrigger />
         <div className="flex flex-1 items-center gap-2">
           <div ref={searchContainerRef} className="relative flex-1">
-            <Search className="text-ink-muted absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+            <Search className="text-secondary absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="bg-bg border-hairline focus:border-ai w-full rounded-lg border py-2 pl-9 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-gray-500"
+              className="bg-base border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-gray-500"
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
             />
             {showDropdown && (
-              <div className="bg-bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg">
+              <div className="bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg">
                 {searchLoading ? (
-                  <div className="text-ink-muted px-3 py-2 text-xs">搜索中...</div>
+                  <div className="text-secondary px-3 py-2 text-caption">搜索中...</div>
                 ) : searchResults.length === 0 ? (
-                  <div className="text-ink-muted px-3 py-2 text-xs">未找到结果</div>
+                  <div className="text-secondary px-3 py-2 text-caption">未找到结果</div>
                 ) : (
                   searchResults.map((stock) => (
                     <button
                       key={stock.code}
-                      className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                      className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
                       onClick={() => selectStock(stock.code, stock.name)}
                     >
-                      <span className="text-ink-muted font-mono">{stock.code}</span>
-                      <span className="text-foreground">{stock.name}</span>
+                      <span className="text-secondary font-mono">{stock.code}</span>
+                      <span className="text-primary">{stock.name}</span>
                     </button>
                   ))
                 )}
@@ -460,8 +460,8 @@ export default function AiCopilot({
                   key={tab.id}
                   className={`rounded-md px-2 py-1 text-caption transition-colors ${
                     activeStockTab === tab.id
-                      ? "bg-ai/15 text-ai"
-                      : "text-ink-muted hover:bg-bg-hover"
+                      ? "bg-brand/15 text-brand"
+                      : "text-secondary hover:bg-hover"
                   }`}
                   onClick={() => setActiveStockTab(tab.id)}
                 >
@@ -493,7 +493,7 @@ export default function AiCopilot({
         // ── Centered new-session hero (Claude / ChatGPT style) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
           <div className="readable-content">
-            <h2 className="font-display mb-6 text-center text-display font-semibold text-foreground">AI 行情助手</h2>
+            <h2 className="mb-6 text-center text-hero font-semibold text-primary">AI 行情助手</h2>
             {renderInputField()}
           </div>
         </div>
@@ -521,18 +521,18 @@ export default function AiCopilot({
                     >
                       <span
                         className={`flex size-8 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${
-                          turn.role === "user" ? "bg-ai text-foreground" : "bg-bg-hover text-foreground"
+                          turn.role === "user" ? "bg-brand text-primary" : "bg-hover text-primary"
                         }`}
                       >
                         {turn.role === "user" ? "U" : "AI"}
                       </span>
                       <div
-                        className={`min-w-0 flex-1 text-sm leading-relaxed ${
+                        className={`min-w-0 flex-1 text-body leading-relaxed ${
                           turn.role === "user" ? "flex items-center" : ""
                         }`}
                       >
                         {turn.role === "user" ? (
-                          <p className="text-ink-muted">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
+                          <p className="text-secondary">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
                         ) : (
                           <TurnRenderer
                             sessionId={activeThreadId}
@@ -564,7 +564,7 @@ export default function AiCopilot({
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-bg-surface border-hairline hover:border-ai/40 hover:text-ai absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-ink-muted shadow-lg transition-colors"
+              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-lg transition-colors"
             >
               <ArrowDown className="size-3" />
               回到最新
@@ -594,15 +594,15 @@ function SlashCommandMenu({
 }) {
   if (commands.length === 0) return null
   return (
-    <div className="bg-bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-lg">
+    <div className="bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-lg">
       {commands.map((cmd) => (
         <button
           key={cmd.name}
-          className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+          className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
           onClick={() => onSelect(cmd)}
         >
-          <span className="font-mono text-ai">/{cmd.name}</span>
-          <span className="text-ink-muted">{cmd.description}</span>
+          <span className="font-mono text-brand">/{cmd.name}</span>
+          <span className="text-secondary">{cmd.description}</span>
         </button>
       ))}
     </div>
@@ -726,8 +726,8 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
         <span className="text-amber-500 text-caption font-medium">需要确认</span>
       </div>
       <div className="border-hairline border-t px-3 py-2">
-        <div className="text-ink-muted font-mono text-caption">{block.toolName}</div>
-        <pre className="text-ink-muted mt-1 overflow-x-auto font-mono text-caption whitespace-pre-wrap">
+        <div className="text-secondary font-mono text-caption">{block.toolName}</div>
+        <pre className="text-secondary mt-1 overflow-x-auto font-mono text-caption whitespace-pre-wrap">
           {JSON.stringify(block.toolInput, null, 2)}
         </pre>
       </div>
@@ -770,7 +770,7 @@ function TextSegment({ content, isStreaming }: TextSegmentProps) {
       {!isStreaming && content.trim() && (
         <button
           onClick={onCopy}
-          className="text-ink-muted/60 hover:text-ink absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
+          className="text-secondary/60 hover:text-primary absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
           aria-label="复制"
         >
           {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}

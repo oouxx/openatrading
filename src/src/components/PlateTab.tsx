@@ -46,20 +46,20 @@ function PlateCard({
   const isOpen = expanded === plate.name
 
   return (
-    <div className="bg-bg-surface border-hairline rounded-lg overflow-hidden border">
+    <div className="bg-surface border-hairline rounded-lg overflow-hidden border">
       <div
-        className="hover:bg-bg-hover flex cursor-pointer items-center justify-between px-4 py-3 transition-colors"
+        className="hover:bg-hover flex cursor-pointer items-center justify-between px-4 py-3 transition-colors"
         onClick={() => setExpanded(isOpen ? null : plate.name)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-foreground">{plate.name}</span>
-          <span className="text-caption text-ink-muted">{plate.count}只</span>
+          <span className="text-body font-semibold text-primary">{plate.name}</span>
+          <span className="text-caption text-secondary">{plate.count}只</span>
         </div>
-        <span className="text-caption text-ink-muted">{isOpen ? "▲" : "▼"}</span>
+        <span className="text-caption text-secondary">{isOpen ? "▲" : "▼"}</span>
       </div>
       {plate.reason && (
         <div className="px-4 pb-2">
-          <p className="text-caption text-ink-muted leading-relaxed">{plate.reason}</p>
+          <p className="text-caption text-secondary leading-relaxed">{plate.reason}</p>
         </div>
       )}
       {isOpen && plate.list.length > 0 && (
@@ -86,30 +86,30 @@ function StockCard({
 
   return (
     <div
-      className="bg-bg border-hairline hover:border-ai/30 rounded-lg cursor-pointer border transition-colors"
+      className="bg-base border-hairline hover:border-brand/30 rounded-lg cursor-pointer border transition-colors"
       onClick={() => onOpenKline(item.code, item.name)}
     >
       <div className="flex items-center justify-between p-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-xs font-semibold text-foreground">{item.name}</span>
-          <span className="text-caption text-ink-muted font-mono">
+          <span className="truncate text-caption font-semibold text-primary">{item.name}</span>
+          <span className="text-caption text-secondary font-mono">
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {ai?.num && <span className="text-ai text-caption font-semibold">{ai.num}</span>}
+          {ai?.num && <span className="text-brand text-caption font-semibold">{ai.num}</span>}
         </div>
       </div>
       {ai && (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
         <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
-          {ai.time && <span className="text-ink-muted">{ai.time}</span>}
+          {ai.time && <span className="text-secondary">{ai.time}</span>}
           {ai.price !== undefined && (
-            <span className="text-ink-muted">
-              价格 <span className="text-foreground">{formatPrice(ai.price)}</span>
+            <span className="text-secondary">
+              价格 <span className="text-primary">{formatPrice(ai.price)}</span>
             </span>
           )}
           {ai.shares_range !== undefined && (
-            <span className="text-ink-muted">
+            <span className="text-secondary">
               涨幅 <span className="text-up">{formatTurnover(ai.shares_range)}</span>
             </span>
           )}

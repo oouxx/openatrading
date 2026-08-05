@@ -35,16 +35,16 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
   const ratioColorClass = (() => {
     const r = overview.rise_count / Math.max(overview.fall_count, 1)
     if (r >= 2) return "text-up"
-    if (r >= 1) return "text-ai"
+    if (r >= 1) return "text-brand"
     return "text-down"
   })()
 
-  const bombColorClass = bombPct > 30 ? "text-up" : bombPct > 20 ? "text-ai" : "text-down"
+  const bombColorClass = bombPct > 30 ? "text-up" : bombPct > 20 ? "text-brand" : "text-down"
   const bombLabel = bombPct > 30 ? "偏高 注意" : bombPct > 20 ? "正常偏高" : "偏低 惜售"
 
   const prevLimitUpClass = (() => {
     const v = overview.yesterday_limit_up_avg_pcp
-    if (v == null || v === 0) return "text-ink-muted"
+    if (v == null || v === 0) return "text-secondary"
     return v > 0 ? "text-up" : "text-down"
   })()
 
@@ -66,7 +66,7 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
 
   const sentimentLabel = sentimentTemp >= 75 ? "偏热" : sentimentTemp >= 50 ? "正常" : "偏冷"
   const sentimentColorClass =
-    sentimentTemp >= 75 ? "text-up" : sentimentTemp >= 50 ? "text-ai" : "text-down"
+    sentimentTemp >= 75 ? "text-up" : sentimentTemp >= 50 ? "text-brand" : "text-down"
   const sentimentBorderClass =
     sentimentTemp >= 75 ? "border-l-up" : sentimentTemp >= 50 ? "border-l-ai" : "border-l-down"
 
@@ -122,28 +122,28 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
         {cards.map((card) => (
           <motion.div
             key={card.label}
-            className={`p-card-inner rounded-lg border-hairline bg-bg-surface border ${card.borderClass}`}
+            className={`p-card-inner rounded-lg border-hairline bg-surface border ${card.borderClass}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: card.delay }}
           >
-            <p className="text-caption text-ink-muted mb-2">{card.label}</p>
+            <p className="text-caption text-secondary mb-2">{card.label}</p>
             <p className={`font-mono font-semibold ${card.valueClass}`} style={{ fontSize: 22 }}>
               {card.value}
             </p>
-            <p className="text-caption text-ink-muted mt-1">{card.sub}</p>
+            <p className="text-caption text-secondary mt-1">{card.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {decisionSummary && (
-        <div className="bg-bg-surface border-hairline rounded-lg flex items-center gap-4 border px-5 py-4">
+        <div className="bg-surface border-hairline rounded-lg flex items-center gap-4 border px-5 py-4">
           <span
             className={`text-caption rounded-full px-3 py-1 font-mono ${riskBadgeClass}`}
           >
             {riskLevel}
           </span>
-          <span className="text-body text-ink-muted">{decisionSummary}</span>
+          <span className="text-body text-secondary">{decisionSummary}</span>
         </div>
       )}
     </div>
