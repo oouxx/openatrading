@@ -288,7 +288,7 @@ export default function ReplayView() {
               key={e.id}
               className={`bg-surface mb-1 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-all ${
                 past ? "opacity-100" : "opacity-40"
-              } ${now || selectedId === e.id ? "!border-brand !opacity-100 shadow-[0_0_0_2px_var(--color-accent)]" : "border-hairline"}`}
+              } ${now || selectedId === e.id ? "!border-brand !opacity-100 shadow-[0_0_0_2px_var(--color-brand)]" : "border-hairline"}`}
               onClick={() => {
                 setSelectedId(e.id)
                 jumpToEvent(e.id)
@@ -384,7 +384,7 @@ function PulseChart({
     ctx.clearRect(0, 0, W, H)
 
     // Grid lines
-    ctx.strokeStyle = "rgb(var(--color-fg-rgb) / 0.04)"
+    ctx.strokeStyle = "rgba(136, 135, 128, 0.04)"
     ctx.lineWidth = 1
     for (let i = 0; i <= 4; i++) {
       const y = pad.t + (ph * i) / 4
@@ -397,7 +397,7 @@ function PulseChart({
     }
 
     // Center axis (zero line)
-    ctx.strokeStyle = "rgb(var(--color-fg-rgb) / 0.1)"
+    ctx.strokeStyle = "rgba(136, 135, 128, 0.1)"
     ctx.lineWidth = 1.5
     ctx.beginPath()
     ctx.moveTo(pad.l, midY)

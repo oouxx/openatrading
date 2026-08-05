@@ -36,7 +36,7 @@ export default function SentimentHistory() {
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "var(--color-tertiary)",
+        textColor: chartColors.tertiary(),
         fontSize: 12,
       },
       grid: {
