@@ -152,7 +152,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "var(--color-tertiary)",
+        textColor: chartColors.tertiary(),
         fontSize: 12,
         panes: {
           enableResize: false,
@@ -289,7 +289,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "var(--color-tertiary)",
+        textColor: chartColors.tertiary(),
         fontSize: 12,
         panes: {
           enableResize: false,
