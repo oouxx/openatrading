@@ -1,6 +1,6 @@
 -include .env
 export
-.PHONY: build run run-web watch-web test fmt lint check run-frontend run-tauri deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version build-tauri release-tauri-local
+.PHONY: build run run-web watch-web test fmt lint check run-frontend run-tauri deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version build-tauri release-tauri-local release-brew
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -155,6 +155,9 @@ release-tauri-local: build-tauri
 	fi
 	@echo "✅ 已上传本机构建产物到 oouxx/homebrew-openatrading"
 
+release-brew: build-tauri
+	@bash release-brew.sh
+
 # ─── Help ────────────────────────────────────────────
 
 help:
@@ -185,6 +188,7 @@ help:
 	@echo ""
 	@echo "Release Tauri:"
 	@echo "  release-tauri-local  本地编译 Tauri 并 gh 上传到 GitHub Release"
+	@echo "  release-brew         本地编译 DMG + gh 上传 GitHub Release + 更新 brew cask"
 	@echo ""
 	@echo "Deploy:"
 	@echo "  deploy         deploy all (gateway + web)"
