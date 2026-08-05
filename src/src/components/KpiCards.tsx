@@ -122,7 +122,7 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
         {cards.map((card) => (
           <motion.div
             key={card.label}
-            className={`p-card-inner rounded-card border-hairline bg-bg-surface border ${card.borderClass}`}
+            className={`p-card-inner rounded-lg border-hairline bg-bg-surface border ${card.borderClass}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: card.delay }}
@@ -137,9 +137,9 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
       </div>
 
       {decisionSummary && (
-        <div className="bg-bg-surface border-hairline rounded-card flex items-center gap-4 border px-5 py-4">
+        <div className="bg-bg-surface border-hairline rounded-lg flex items-center gap-4 border px-5 py-4">
           <span
-            className={`text-caption-strong rounded-button px-3 py-1 font-mono ${riskBadgeClass}`}
+            className={`text-caption rounded-full px-3 py-1 font-mono ${riskBadgeClass}`}
           >
             {riskLevel}
           </span>

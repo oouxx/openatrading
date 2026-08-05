@@ -83,7 +83,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="bg-bg-surface border-hairline rounded-card fixed z-60 border p-2"
+          className="bg-bg-surface border-hairline rounded-lg fixed z-60 border p-2"
           style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
@@ -92,7 +92,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
             src={gifUrl}
             width={baseWidth}
             height={baseHeight}
-            className="block cursor-pointer rounded-[8px]"
+            className="block cursor-pointer rounded-md"
             alt=""
             onClick={(e) => {
               e.stopPropagation()
@@ -111,7 +111,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           onClick={() => setEnlarged(false)}
         >
           <div
-            className="bg-bg-surface border-hairline rounded-card border p-4"
+            className="bg-bg-surface border-hairline rounded-lg border p-4"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               const step = 0.5
@@ -121,7 +121,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
             <img
               src={gifUrl}
               style={{ width: baseWidth * scale + "px", height: baseHeight * scale + "px" }}
-              className="block rounded-[8px]"
+              className="block rounded-md"
               alt=""
             />
             <p className="text-caption text-ink-muted mt-2 text-center font-mono">

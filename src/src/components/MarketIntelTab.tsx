@@ -53,8 +53,8 @@ export default function MarketIntelTab() {
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
-            className={`text-caption rounded-button cursor-pointer px-4 py-1.5 font-mono transition-colors ${
-              activeSection === s.id ? "bg-ai/20 text-ai" : "text-ink-muted hover:text-white/80"
+            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-mono transition-colors ${
+              activeSection === s.id ? "bg-ai/20 text-ai" : "text-ink-muted hover:text-foreground/80"
             }`}
           >
             {s.label}
@@ -65,20 +65,20 @@ export default function MarketIntelTab() {
       {activeSection === "topics" && (
         <div>
           <div className="text-caption mb-8 flex items-center gap-3">
-            <span className="text-white/60">
+            <span className="text-foreground/60">
               热度趋势: <b className={trendColor}>{trendText}</b>
             </span>
           </div>
 
           {!hasData ? (
-            <div className="text-caption py-12 text-center text-white/40">
+            <div className="text-caption py-12 text-center text-foreground/40">
               暂无语情数据 — 需配置 JIUYAN_PHONE
             </div>
           ) : (
             <>
               {/* 热门股票 */}
-              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
-                <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
+              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg mb-6 border">
+                <h3 className="text-caption mb-4 tracking-wider text-foreground/40 uppercase">
                   热门股票
                 </h3>
                 {hotStocks.length ? (
@@ -86,25 +86,25 @@ export default function MarketIntelTab() {
                     {hotStocks.map((s, idx) => (
                       <div
                         key={s[0]}
-                        className="rounded-card flex items-center gap-3 px-2 py-1.5 transition-colors hover:bg-white/4"
+                        className="rounded-lg flex items-center gap-3 px-2 py-2 transition-colors hover:bg-white/4"
                       >
-                        <span className="text-caption w-6 font-mono text-white/40">#{idx + 1}</span>
-                        <span className="text-caption font-mono text-white">{s[0]}</span>
-                        <span className="text-caption text-white/60">{s[1]}</span>
-                        <span className="bg-ai/15 rounded-badge text-ai text-caption ml-auto px-2 py-0.5 font-mono">
+                        <span className="text-caption w-6 font-mono text-foreground/40">#{idx + 1}</span>
+                        <span className="text-caption font-mono text-foreground">{s[0]}</span>
+                        <span className="text-caption text-foreground/60">{s[1]}</span>
+                        <span className="bg-ai/15 rounded-sm text-ai text-caption ml-auto px-2 py-0.5 font-mono">
                           {s[2]}次
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-caption py-4 text-center text-white/40">今日暂无数据</div>
+                  <div className="text-caption py-4 text-center text-foreground/40">今日暂无数据</div>
                 )}
               </div>
 
               {/* 热门文章 */}
-              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
-                <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
+              <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg mb-6 border">
+                <h3 className="text-caption mb-4 tracking-wider text-foreground/40 uppercase">
                   热门文章 · {hotArticles.length}篇
                 </h3>
                 {hotArticles.length ? (
@@ -112,39 +112,39 @@ export default function MarketIntelTab() {
                     {hotArticles.map((a, idx) => (
                       <div
                         key={a.article_id}
-                        className="border-hairline-dark p-card-inner rounded-card cursor-pointer border bg-white/4 transition-colors"
+                        className="border-hairline-dark p-card-inner rounded-lg cursor-pointer border bg-white/4 transition-colors"
                         onClick={() =>
                           setExpandedId(expandedId === a.article_id ? null : a.article_id)
                         }
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="mb-1 flex items-center gap-1.5">
-                              <span className="text-caption shrink-0 font-mono text-white/40">
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="text-caption shrink-0 font-mono text-foreground/40">
                                 #{idx + 1}
                               </span>
                               <a
                                 href={`https://www.jiuyangongshe.com/a/${a.article_id}`}
                                 target="_blank"
-                                className="text-caption truncate font-medium text-white hover:underline"
+                                className="text-caption truncate font-medium text-foreground hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                                 rel="noreferrer"
                               >
                                 {a.title}
                               </a>
                             </div>
-                            <div className="text-caption flex items-center gap-3 text-white/40">
+                            <div className="text-caption flex items-center gap-3 text-foreground/40">
                               <span>{a.nickname}</span>
                               <span>👍 {a.like_count}</span>
                               <span>💬 {a.comment_count}</span>
                               <span>🔄 {a.forward_count}</span>
-                              <span className="bg-ai/15 rounded-badge text-ai text-caption px-1 py-0.5 font-mono">
+                              <span className="bg-ai/15 rounded-sm text-ai text-caption px-1 py-0.5 font-mono">
                                 {a.heat_score}热度
                               </span>
                             </div>
                           </div>
                           <span
-                            className="text-caption shrink-0 text-white/40 transition-transform"
+                            className="text-caption shrink-0 text-foreground/40 transition-transform"
                             style={{
                               transform: expandedId === a.article_id ? "rotate(180deg)" : "",
                             }}
@@ -155,7 +155,7 @@ export default function MarketIntelTab() {
                         {expandedId === a.article_id && (
                           <div className="border-hairline-dark mt-3 border-t pt-3">
                             <div
-                              className="text-caption leading-relaxed text-white/60"
+                              className="text-caption leading-relaxed text-foreground/60"
                               dangerouslySetInnerHTML={{ __html: a.content }}
                             />
                             <a
@@ -172,7 +172,7 @@ export default function MarketIntelTab() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-caption py-4 text-center text-white/40">今日暂无数据</div>
+                  <div className="text-caption py-4 text-center text-foreground/40">今日暂无数据</div>
                 )}
               </div>
             </>
@@ -184,30 +184,30 @@ export default function MarketIntelTab() {
         <div className="py-1 text-center">
           {/* 淘股吧推荐 */}
           {taogubaArticles.length > 0 && (
-            <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-card mb-6 border">
-              <h3 className="text-caption-strong mb-4 tracking-wider text-white/40 uppercase">
+            <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg mb-6 border">
+              <h3 className="text-caption mb-4 tracking-wider text-foreground/40 uppercase">
                 淘股吧推荐 · {taogubaArticles.length}篇
               </h3>
               <div className="space-y-2">
                 {taogubaArticles.map((a, idx) => (
                   <div
                     key={`${a.topic_id}-${idx}`}
-                    className="border-hairline-dark p-card-inner rounded-card cursor-pointer border bg-white/4 transition-colors"
+                    className="border-hairline-dark p-card-inner rounded-lg cursor-pointer border bg-white/4 transition-colors"
                     onClick={() =>
                       setExpandedTgbId(expandedTgbId === a.topic_id ? null : a.topic_id)
                     }
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center gap-1.5">
-                          <span className="text-caption shrink-0 font-mono text-white/40">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-caption shrink-0 font-mono text-foreground/40">
                             #{idx + 1}
                           </span>
-                          <span className="text-caption truncate font-medium text-white">
+                          <span className="text-caption truncate font-medium text-foreground">
                             {a.subject}
                           </span>
                         </div>
-                        <div className="text-caption flex items-center gap-3 text-white/40">
+                        <div className="text-caption flex items-center gap-3 text-foreground/40">
                           <span>{a.user_name}</span>
                           <span>👁️ {a.view_count}</span>
                           <span>💬 {a.reply_count}</span>
@@ -215,7 +215,7 @@ export default function MarketIntelTab() {
                         </div>
                       </div>
                       <span
-                        className="text-caption shrink-0 text-white/40 transition-transform"
+                        className="text-caption shrink-0 text-foreground/40 transition-transform"
                         style={{
                           transform: expandedTgbId === a.topic_id ? "rotate(180deg)" : "",
                         }}
@@ -226,7 +226,7 @@ export default function MarketIntelTab() {
                     {expandedTgbId === a.topic_id && (
                       <div className="border-hairline-dark mt-3 border-t pt-3">
                         <div
-                          className="text-caption leading-relaxed text-white/60"
+                          className="text-caption leading-relaxed text-foreground/60"
                           dangerouslySetInnerHTML={{ __html: a.content }}
                         />
                         <a

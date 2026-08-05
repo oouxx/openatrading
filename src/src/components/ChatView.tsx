@@ -372,7 +372,7 @@ export default function AiCopilot({
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className="bg-bg-surface border-hairline focus:border-ai/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-3.5 pr-14 text-sm text-white shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
+        className="bg-bg-surface border-hairline focus:border-ai/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 pr-14 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -395,7 +395,7 @@ export default function AiCopilot({
         <Button
           size="icon"
           variant="destructive"
-          className="absolute bottom-2 right-2 size-9 rounded-xl"
+          className="absolute bottom-2 right-2 size-9 rounded-lg"
           onClick={stop}
           aria-label="停止生成"
         >
@@ -404,7 +404,7 @@ export default function AiCopilot({
       ) : (
         <Button
           size="icon"
-          className="absolute bottom-2 right-2 size-9 rounded-xl"
+          className="absolute bottom-2 right-2 size-9 rounded-lg"
           onClick={() => send()}
           disabled={!input.trim()}
           aria-label="发送"
@@ -426,7 +426,7 @@ export default function AiCopilot({
             <Search className="text-ink-muted absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="bg-bg border-hairline focus:border-ai w-full rounded-lg border py-1.5 pl-9 pr-3 text-xs text-white outline-none transition-colors placeholder:text-gray-500"
+              className="bg-bg border-hairline focus:border-ai w-full rounded-lg border py-2 pl-9 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-gray-500"
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
@@ -441,11 +441,11 @@ export default function AiCopilot({
                   searchResults.map((stock) => (
                     <button
                       key={stock.code}
-                      className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors"
+                      className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
                       onClick={() => selectStock(stock.code, stock.name)}
                     >
                       <span className="text-ink-muted font-mono">{stock.code}</span>
-                      <span className="text-white">{stock.name}</span>
+                      <span className="text-foreground">{stock.name}</span>
                     </button>
                   ))
                 )}
@@ -458,7 +458,7 @@ export default function AiCopilot({
               {stockTabs.map((tab) => (
                 <button
                   key={tab.id}
-                  className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
+                  className={`rounded-md px-2 py-1 text-caption transition-colors ${
                     activeStockTab === tab.id
                       ? "bg-ai/15 text-ai"
                       : "text-ink-muted hover:bg-bg-hover"
@@ -467,7 +467,7 @@ export default function AiCopilot({
                 >
                   {tab.name}
                   <span
-                    className="ml-1.5 text-[10px] opacity-50 hover:opacity-100"
+                    className="ml-1.5 text-caption opacity-50 hover:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       closeTab(tab.id)
@@ -492,8 +492,8 @@ export default function AiCopilot({
       ) : isEmpty ? (
         // ── Centered new-session hero (Claude / ChatGPT style) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-          <div className="w-full max-w-3xl">
-            <h2 className="mb-6 text-center text-2xl font-semibold text-white">AI 行情助手</h2>
+          <div className="readable-content">
+            <h2 className="font-display mb-6 text-center text-display font-semibold text-foreground">AI 行情助手</h2>
             {renderInputField()}
           </div>
         </div>
@@ -504,7 +504,7 @@ export default function AiCopilot({
             onScroll={onContainerScroll}
             className="flex flex-1 flex-col overflow-y-auto py-5"
           >
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-6">
+            <div className="readable-content flex flex-col gap-5 px-6">
               {currentTurns.map((turn, idx) => {
                 const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
                 const isFirst = idx === 0
@@ -520,8 +520,8 @@ export default function AiCopilot({
                       className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
                     >
                       <span
-                        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                          turn.role === "user" ? "bg-ai text-white" : "bg-bg-hover text-white"
+                        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${
+                          turn.role === "user" ? "bg-ai text-foreground" : "bg-bg-hover text-foreground"
                         }`}
                       >
                         {turn.role === "user" ? "U" : "AI"}
@@ -564,7 +564,7 @@ export default function AiCopilot({
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-bg-surface border-hairline hover:border-ai/40 hover:text-ai absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] text-ink-muted shadow-lg transition-colors"
+              className="bg-bg-surface border-hairline hover:border-ai/40 hover:text-ai absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-ink-muted shadow-lg transition-colors"
             >
               <ArrowDown className="size-3" />
               回到最新
@@ -573,7 +573,7 @@ export default function AiCopilot({
 
           {/* ── Input area (docked) ───────────────────────────────────── */}
           <div className="border-hairline shrink-0 border-t px-6 py-3">
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
+            <div className="readable-content flex items-end gap-2">
               {renderInputField()}
             </div>
           </div>
@@ -594,7 +594,7 @@ function SlashCommandMenu({
 }) {
   if (commands.length === 0) return null
   return (
-    <div className="bg-bg-surface border-hairline rounded-card max-h-48 overflow-y-auto border shadow-lg">
+    <div className="bg-bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-lg">
       {commands.map((cmd) => (
         <button
           key={cmd.name}
@@ -723,23 +723,23 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
   return (
     <div className="border-amber-500/30 bg-amber-500/5 my-2 overflow-hidden rounded-lg border">
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-amber-500 text-[11px] font-medium">需要确认</span>
+        <span className="text-amber-500 text-caption font-medium">需要确认</span>
       </div>
       <div className="border-hairline border-t px-3 py-2">
-        <div className="text-ink-muted font-mono text-[10px]">{block.toolName}</div>
-        <pre className="text-ink-muted mt-1 overflow-x-auto font-mono text-[10px] whitespace-pre-wrap">
+        <div className="text-ink-muted font-mono text-caption">{block.toolName}</div>
+        <pre className="text-ink-muted mt-1 overflow-x-auto font-mono text-caption whitespace-pre-wrap">
           {JSON.stringify(block.toolInput, null, 2)}
         </pre>
       </div>
       <div className="border-hairline flex items-center justify-end gap-2 border-t px-3 py-2">
         <button
-          className="rounded-md bg-red-500/10 px-3 py-1 text-[11px] text-red-500 transition-colors hover:bg-red-500/20"
+          className="rounded-md bg-red-500/10 px-3 py-1 text-caption text-red-500 transition-colors hover:bg-red-500/20"
           onClick={handleReject}
         >
           拒绝
         </button>
         <button
-          className="rounded-md bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-500 transition-colors hover:bg-emerald-500/20"
+          className="rounded-md bg-emerald-500/10 px-3 py-1 text-caption text-emerald-500 transition-colors hover:bg-emerald-500/20"
           onClick={handleApprove}
         >
           允许
@@ -770,7 +770,7 @@ function TextSegment({ content, isStreaming }: TextSegmentProps) {
       {!isStreaming && content.trim() && (
         <button
           onClick={onCopy}
-          className="text-ink-muted/60 hover:text-ink absolute -top-2 right-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition-opacity group-hover/seg:opacity-100"
+          className="text-ink-muted/60 hover:text-ink absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
           aria-label="复制"
         >
           {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}

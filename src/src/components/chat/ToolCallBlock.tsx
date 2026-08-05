@@ -49,7 +49,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
   const isAutoExpanded = () => false
 
   return (
-    <div className="my-2 flex flex-col gap-1.5">
+    <div className="my-2 flex flex-col gap-2">
       {toolCalls
         .filter((tc) => tc.name)
         .map((tc, i) => {
@@ -69,7 +69,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
               >
                 <div className="flex items-center gap-2 px-3 py-2">
                   <ToolIcon name={tc.name} />
-                  <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
+                  <span className="text-ink-muted font-mono text-caption font-medium">{tc.name}</span>
                   <StatusBadge status={status} />
                 </div>
               </div>
@@ -96,11 +96,11 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 onClick={() => toggleExpand(tc.id)}
               >
                 <ToolIcon name={tc.name} />
-                <span className="text-ink-muted font-mono text-[11px] font-medium">{tc.name}</span>
+                <span className="text-ink-muted font-mono text-caption font-medium">{tc.name}</span>
                 <StatusBadge status={status} />
                 {/* Show result length in collapsed state */}
                 {hasResult && !isExpanded && (
-                  <span className="text-ink-muted/40 font-mono text-[10px]">
+                  <span className="text-ink-muted/40 font-mono text-caption">
                     {resultText.length} 字符
                   </span>
                 )}
@@ -162,7 +162,7 @@ function ToolArgsContent({ name, args }: { name: string; args: string }) {
   }
 
   return (
-    <pre className="text-ink-muted overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+    <pre className="text-ink-muted overflow-x-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
       {safeContent}
     </pre>
   )
@@ -207,7 +207,7 @@ function DiffContent({ content }: { content: string }) {
 
   if (diffResult.type === "diff") {
     return (
-      <pre className="overflow-x-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+      <pre className="overflow-x-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
         {safeContent.split("\n").map((line, i) => {
           let className = ""
           if (line.startsWith("+")) className = "text-emerald-500"
@@ -273,13 +273,13 @@ function ResultBlock({
 
   return (
     <div>
-      <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+      <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
         {displayText}
       </pre>
       {/* Server-side truncation: expand via API */}
       {isTruncated && !fullContent && (
         <button
-          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-caption transition-colors"
           onClick={expandFromServer}
           disabled={loading}
         >
@@ -291,7 +291,7 @@ function ResultBlock({
       {/* Client-side truncation: expand locally */}
       {isLong && !showFull && !isTruncated && (
         <button
-          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+          className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-caption transition-colors"
           onClick={() => setShowFull(true)}
         >
           展开全部（{content.length} 字符）
@@ -305,28 +305,28 @@ function StatusBadge({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "streaming":
       return (
-        <span className="text-ai flex items-center gap-1 text-[10px]">
+        <span className="text-ai flex items-center gap-1 text-caption">
           <Loader2 className="size-3 animate-spin" />
           调用中
         </span>
       )
     case "running":
       return (
-        <span className="flex items-center gap-1 text-[10px] text-amber-500">
+        <span className="flex items-center gap-1 text-caption text-amber-500">
           <RefreshCw className="size-3 animate-spin" />
           执行中
         </span>
       )
     case "success":
       return (
-        <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+        <span className="flex items-center gap-1 text-caption text-emerald-500">
           <Check className="size-3" />
           完成
         </span>
       )
     case "error":
       return (
-        <span className="flex items-center gap-1 text-[10px] text-red-500">
+        <span className="flex items-center gap-1 text-caption text-red-500">
           <XCircle className="size-3" />
           失败
         </span>
@@ -339,7 +339,7 @@ function StatusBadge({ status }: { status: ToolCall["status"] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-ink-muted/70 mb-1 font-mono text-[10px] font-medium">{title}</div>
+      <div className="text-ink-muted/70 mb-1 font-mono text-caption font-medium">{title}</div>
       {children}
     </div>
   )

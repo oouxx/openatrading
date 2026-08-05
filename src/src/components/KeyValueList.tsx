@@ -38,7 +38,7 @@ export function KeyValueList({
         const val = eqIdx > 0 ? entry.slice(eqIdx + 1) : entry
         const isLast = i === display.length - 1
         return (
-          <div key={i} className="flex gap-1.5">
+          <div key={i} className="flex gap-2">
             {!hideKey && (
               <Input
                 value={key}
@@ -75,7 +75,7 @@ export function KeyValueList({
       })}
       <button
         type="button"
-        className="text-ink-muted text-xs hover:text-white"
+        className="text-ink-muted text-xs hover:text-foreground"
         onClick={() => setDisplay([...display, ""])}
       >
         + 添加

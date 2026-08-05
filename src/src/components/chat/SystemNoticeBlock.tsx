@@ -99,29 +99,29 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div
         className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
       >
-        <div className="flex items-center gap-2 px-3 py-1.5">
+        <div className="flex items-center gap-2 px-3 py-2">
           <KindIcon kind={kind} status={status} />
           <span
-            className={`font-mono text-[11px] font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-ink-muted/70"}`}
+            className={`font-mono text-caption font-medium ${isActive ? "text-blue-500" : failed ? "text-red-500" : "text-ink-muted/70"}`}
           >
             会话压缩
           </span>
           {isActive && (
-            <span className="ml-auto flex items-center gap-1.5">
+            <span className="ml-auto flex items-center gap-2">
               <span className="size-1.5 animate-pulse rounded-full bg-blue-500/30" />
-              <span className="text-ink-muted/50 font-mono text-[10px]">压缩中…</span>
+              <span className="text-ink-muted/50 font-mono text-caption">压缩中…</span>
             </span>
           )}
           {failed && (
-            <span className="ml-auto font-mono text-[10px] text-red-500/70">压缩失败</span>
+            <span className="ml-auto font-mono text-caption text-red-500/70">压缩失败</span>
           )}
           {status === "done" && (
-            <span className="ml-auto font-mono text-[10px] text-blue-500/50">已完成</span>
+            <span className="ml-auto font-mono text-caption text-blue-500/50">已完成</span>
           )}
         </div>
         {detail && !isActive && (
-          <div className="border-hairline border-t px-3 py-1.5">
-            <p className="text-ink-muted/60 font-mono text-[10px] leading-relaxed">{detail}</p>
+          <div className="border-hairline border-t px-3 py-2">
+            <p className="text-ink-muted/60 font-mono text-caption leading-relaxed">{detail}</p>
           </div>
         )}
       </div>
@@ -136,38 +136,38 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div
         className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
       >
-        <div className="flex items-center gap-2 px-3 py-1.5">
+        <div className="flex items-center gap-2 px-3 py-2">
           <KindIcon kind={kind} status={status} />
           <span
-            className={`font-mono text-[11px] font-medium ${isActive ? "text-amber-500" : failed ? "text-red-500" : "text-emerald-500"}`}
+            className={`font-mono text-caption font-medium ${isActive ? "text-amber-500" : failed ? "text-red-500" : "text-emerald-500"}`}
           >
             自动重试
           </span>
           {attempt != null && maxAttempts != null && (
-            <span className="text-ink-muted/60 font-mono text-[10px]">
+            <span className="text-ink-muted/60 font-mono text-caption">
               {attempt}/{maxAttempts}
             </span>
           )}
           {isActive && (
-            <span className="ml-auto flex items-center gap-1.5">
+            <span className="ml-auto flex items-center gap-2">
               <Loader2 className="size-3 animate-spin text-amber-500" />
-              <span className="text-ink-muted/50 font-mono text-[10px]">重试中…</span>
+              <span className="text-ink-muted/50 font-mono text-caption">重试中…</span>
             </span>
           )}
           {status === "done" && (
-            <span className="ml-auto font-mono text-[10px] text-emerald-500/70">重试成功</span>
+            <span className="ml-auto font-mono text-caption text-emerald-500/70">重试成功</span>
           )}
           {failed && (
-            <span className="ml-auto font-mono text-[10px] text-red-500/70">已达上限</span>
+            <span className="ml-auto font-mono text-caption text-red-500/70">已达上限</span>
           )}
         </div>
         {(detail || delayMs != null) && (
-          <div className="border-hairline border-t px-3 py-1.5">
+          <div className="border-hairline border-t px-3 py-2">
             {detail && (
-              <p className="text-ink-muted/60 font-mono text-[10px] leading-relaxed">{detail}</p>
+              <p className="text-ink-muted/60 font-mono text-caption leading-relaxed">{detail}</p>
             )}
             {delayMs != null && (
-              <p className="text-ink-muted/40 mt-0.5 font-mono text-[10px]">
+              <p className="text-ink-muted/40 mt-0.5 font-mono text-caption">
                 等待 {formatDelay(delayMs)}
               </p>
             )}
@@ -183,7 +183,7 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div className="flex items-center gap-2 px-0 py-0.5">
         <div className="border-hairline flex-1 border-t" />
         {detail && (
-          <span className="text-ink-muted/30 shrink-0 font-mono text-[9px] tracking-wider uppercase">
+          <span className="text-ink-muted/30 shrink-0 font-mono text-caption tracking-wider uppercase">
             {detail}
           </span>
         )}
@@ -197,10 +197,10 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
     <div
       className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status, isError)}`}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <div className="flex items-center gap-2 px-3 py-2">
         <KindIcon kind={kind} status={status} />
         <span
-          className={`text-ink-muted/70 font-mono text-[11px] ${isError || status === "error" ? "text-red-500" : ""}`}
+          className={`text-ink-muted/70 font-mono text-caption ${isError || status === "error" ? "text-red-500" : ""}`}
         >
           {detail || "通知"}
         </span>

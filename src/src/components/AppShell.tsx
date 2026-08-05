@@ -76,7 +76,7 @@ export default function AppShell() {
                   />
                 </ErrorBoundary>
               </div>
-              <RightPanel />
+              <div className="hidden md:block"><RightPanel /></div>
             </div>
           ) : mode === "skill-editor" ? (
             <div className="flex h-full min-w-0 flex-1 flex-col">

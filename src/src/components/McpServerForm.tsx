@@ -69,10 +69,10 @@ export function McpServerForm({
                         : { type: "stdio", command: "", args: [], env: {} },
                 })
               }
-              className={`flex-1 px-3 py-1.5 text-xs transition-colors ${
+              className={`flex-1 px-3 py-2 text-xs transition-colors ${
                 server.transport.type === opt.value
-                  ? "bg-ai text-white"
-                  : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-white"
+                  ? "bg-ai text-foreground"
+                  : "text-ink-muted hover:bg-bg-hover bg-transparent hover:text-foreground"
               }`}
             >
               {opt.label}

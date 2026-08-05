@@ -46,13 +46,13 @@ function PlateCard({
   const isOpen = expanded === plate.name
 
   return (
-    <div className="bg-bg-surface border-hairline rounded-card overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-lg overflow-hidden border">
       <div
         className="hover:bg-bg-hover flex cursor-pointer items-center justify-between px-4 py-3 transition-colors"
         onClick={() => setExpanded(isOpen ? null : plate.name)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-white">{plate.name}</span>
+          <span className="text-sm font-semibold text-foreground">{plate.name}</span>
           <span className="text-caption text-ink-muted">{plate.count}只</span>
         </div>
         <span className="text-caption text-ink-muted">{isOpen ? "▲" : "▼"}</span>
@@ -86,12 +86,12 @@ function StockCard({
 
   return (
     <div
-      className="bg-bg border-hairline hover:border-ai/30 rounded-card cursor-pointer border transition-colors"
+      className="bg-bg border-hairline hover:border-ai/30 rounded-lg cursor-pointer border transition-colors"
       onClick={() => onOpenKline(item.code, item.name)}
     >
       <div className="flex items-center justify-between p-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-xs font-semibold text-white">{item.name}</span>
+          <span className="truncate text-xs font-semibold text-foreground">{item.name}</span>
           <span className="text-caption text-ink-muted font-mono">
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>
@@ -105,7 +105,7 @@ function StockCard({
           {ai.time && <span className="text-ink-muted">{ai.time}</span>}
           {ai.price !== undefined && (
             <span className="text-ink-muted">
-              价格 <span className="text-white">{formatPrice(ai.price)}</span>
+              价格 <span className="text-foreground">{formatPrice(ai.price)}</span>
             </span>
           )}
           {ai.shares_range !== undefined && (

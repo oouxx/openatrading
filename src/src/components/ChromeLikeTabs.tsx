@@ -23,10 +23,10 @@ export default function ChromeTabs({ tabs, activeTab, onSelect, onClose }: Chrom
           <div
             key={tab.id}
             onClick={() => onSelect(tab.id)}
-            className={`group border-hairline flex shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs whitespace-nowrap transition-colors select-none ${
+            className={`group border-hairline flex shrink-0 cursor-pointer items-center gap-2 border-r px-3 text-xs whitespace-nowrap transition-colors select-none ${
               isActive
-                ? "border-b-ai bg-bg border-b-2 text-white"
-                : "bg-bg-surface text-ink-muted hover:bg-bg-hover hover:text-white"
+                ? "border-b-ai bg-bg border-b-2 text-foreground"
+                : "bg-bg-surface text-ink-muted hover:bg-bg-hover hover:text-foreground"
             }`}
           >
             <span className="max-w-[120px] truncate">{tab.label}</span>
