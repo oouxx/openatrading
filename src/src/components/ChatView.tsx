@@ -92,7 +92,7 @@ export default function AiCopilot({
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const SCROLL_THRESHOLD = 60
+  const SCROLL_THRESHOLD = 60 // px — auto-scroll if user within this distance of bottom
 
   /** Scroll to bottom only if the user is already near the bottom (§6.2). */
   const scrollDown = useCallback(() => {
@@ -372,7 +372,7 @@ export default function AiCopilot({
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className="bg-surface border-hairline focus:border-brand/50 focus:ring-ai/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 pr-14 text-body text-primary shadow-sm outline-none transition-all placeholder:text-gray-500 focus:ring-3"
+        className="bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] w-full resize-none rounded-lg border px-4 py-4 pr-14 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3"
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -426,13 +426,13 @@ export default function AiCopilot({
             <Search className="text-secondary absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="bg-base border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-gray-500"
+              className="bg-base border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-tertiary"
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
             />
             {showDropdown && (
-              <div className="bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg">
+              <div className="bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-modal">
                 {searchLoading ? (
                   <div className="text-secondary px-3 py-2 text-caption">搜索中...</div>
                 ) : searchResults.length === 0 ? (
@@ -444,7 +444,7 @@ export default function AiCopilot({
                       className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
                       onClick={() => selectStock(stock.code, stock.name)}
                     >
-                      <span className="text-secondary font-mono">{stock.code}</span>
+                      <span className="text-secondary font-number">{stock.code}</span>
                       <span className="text-primary">{stock.name}</span>
                     </button>
                   ))
@@ -564,7 +564,7 @@ export default function AiCopilot({
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-lg transition-colors"
+              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-modal transition-colors"
             >
               <ArrowDown className="size-3" />
               回到最新
@@ -594,14 +594,14 @@ function SlashCommandMenu({
 }) {
   if (commands.length === 0) return null
   return (
-    <div className="bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-lg">
+    <div className="bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-modal">
       {commands.map((cmd) => (
         <button
           key={cmd.name}
           className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
           onClick={() => onSelect(cmd)}
         >
-          <span className="font-mono text-brand">/{cmd.name}</span>
+          <span className="font-number text-brand">/{cmd.name}</span>
           <span className="text-secondary">{cmd.description}</span>
         </button>
       ))}
@@ -721,25 +721,25 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
   if (resolved) return null
 
   return (
-    <div className="border-amber-500/30 bg-amber-500/5 my-2 overflow-hidden rounded-lg border">
+    <div className="border-warning/30 bg-warning/10 my-2 overflow-hidden rounded-lg border">
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-amber-500 text-caption font-medium">需要确认</span>
+        <span className="text-warning text-caption font-medium">需要确认</span>
       </div>
       <div className="border-hairline border-t px-3 py-2">
-        <div className="text-secondary font-mono text-caption">{block.toolName}</div>
-        <pre className="text-secondary mt-1 overflow-x-auto font-mono text-caption whitespace-pre-wrap">
+        <div className="text-secondary font-number text-caption">{block.toolName}</div>
+        <pre className="text-secondary mt-1 overflow-x-auto font-number text-caption whitespace-pre-wrap">
           {JSON.stringify(block.toolInput, null, 2)}
         </pre>
       </div>
       <div className="border-hairline flex items-center justify-end gap-2 border-t px-3 py-2">
         <button
-          className="rounded-md bg-red-500/10 px-3 py-1 text-caption text-red-500 transition-colors hover:bg-red-500/20"
+          className="rounded-md bg-danger/10 px-3 py-1 text-caption text-danger transition-colors hover:bg-danger/20"
           onClick={handleReject}
         >
           拒绝
         </button>
         <button
-          className="rounded-md bg-emerald-500/10 px-3 py-1 text-caption text-emerald-500 transition-colors hover:bg-emerald-500/20"
+          className="rounded-md bg-success/10 px-3 py-1 text-caption text-success transition-colors hover:bg-success/20"
           onClick={handleApprove}
         >
           允许
@@ -773,7 +773,7 @@ function TextSegment({ content, isStreaming }: TextSegmentProps) {
           className="text-secondary/60 hover:text-primary absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
           aria-label="复制"
         >
-          {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+          {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
           {copied ? "已复制" : "复制"}
         </button>
       )}

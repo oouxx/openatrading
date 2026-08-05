@@ -126,7 +126,7 @@ export default function SentimentChipTab() {
               <div className="flex items-center gap-3">
                 <span className="text-caption text-secondary">当前：</span>
                 <span
-                  className={`text-caption rounded-full px-3 py-1 font-mono ${currentPhaseClass}`}
+                  className={`text-caption rounded-full px-3 py-1 font-number ${currentPhaseClass}`}
                 >
                   {currentPhaseLabel}
                 </span>
@@ -163,28 +163,28 @@ export default function SentimentChipTab() {
             <div className="space-y-3">
               <div className="text-caption flex justify-between">
                 <span className="text-secondary">涨停家数</span>
-                <span className="text-up font-mono">{overview.limit_up_count}</span>
+                <span className="text-up font-number">{overview.limit_up_count}</span>
               </div>
               <div className="text-caption flex justify-between">
                 <span className="text-secondary">跌停家数</span>
-                <span className="text-down font-mono">{overview.limit_down_count}</span>
+                <span className="text-down font-number">{overview.limit_down_count}</span>
               </div>
               <div className="text-caption flex justify-between">
                 <span className="text-secondary">炸板率</span>
-                <span className={`font-mono ${bombRateClass}`}>{bombRate.toFixed(1)}%</span>
+                <span className={`font-number ${bombRateClass}`}>{bombRate.toFixed(1)}%</span>
               </div>
               <div className="text-caption flex justify-between">
                 <span className="text-secondary">涨跌比</span>
-                <span className={`font-mono ${riseRatio.class}`}>{riseRatio.display}</span>
+                <span className={`font-number ${riseRatio.class}`}>{riseRatio.display}</span>
               </div>
               <div className="border-hairline-dark mt-3 border-t pt-3">
                 <div className="text-caption flex justify-between">
                   <span className="text-secondary">情绪评价</span>
-                  <span className={`font-mono ${sentimentEvalClass}`}>{sentimentEval}</span>
+                  <span className={`font-number ${sentimentEvalClass}`}>{sentimentEval}</span>
                 </div>
                 <div className="text-caption mt-1 flex justify-between">
                   <span className="text-secondary">风险提示</span>
-                  <span className="text-up font-mono">{riskHint}</span>
+                  <span className="text-up font-number">{riskHint}</span>
                 </div>
               </div>
             </div>
@@ -222,15 +222,15 @@ export default function SentimentChipTab() {
             <tbody>
               {history.map((row) => (
                 <tr key={row.date}>
-                  <td className="font-mono">{row.date}</td>
+                  <td className="font-number">{row.date}</td>
                   <td
-                    className={`text-right font-mono ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
+                    className={`text-right font-number ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
                   >
                     {row.sentiment.toFixed(1)}
                   </td>
-                  <td className="text-right font-mono">{row.limit_up_count}</td>
-                  <td className="text-right font-mono">{row.bomb_rate.toFixed(1)}%</td>
-                  <td className="text-right font-mono">{row.rise_ratio.toFixed(2)}</td>
+                  <td className="text-right font-number">{row.limit_up_count}</td>
+                  <td className="text-right font-number">{row.bomb_rate.toFixed(1)}%</td>
+                  <td className="text-right font-number">{row.rise_ratio.toFixed(2)}</td>
                   <td>{getFeature(row)}</td>
                 </tr>
               ))}

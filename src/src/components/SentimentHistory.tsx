@@ -1,3 +1,5 @@
+import { chartColors } from "@/lib/chartColors"
+
 import { useRef, useEffect, useMemo } from "react"
 import { createChart, type IChartApi, type Time, LineSeries } from "lightweight-charts"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
@@ -34,8 +36,8 @@ export default function SentimentHistory() {
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "#888780",
-        fontSize: 10,
+        textColor: "var(--color-tertiary)",
+        fontSize: 12,
       },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.06)" },
@@ -50,7 +52,7 @@ export default function SentimentHistory() {
     })
 
     const series = chart.addSeries(LineSeries, {
-      color: "#7F77DD",
+      color: chartColors.brand(),
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
@@ -64,7 +66,7 @@ export default function SentimentHistory() {
     if (last) {
       series.createPriceLine({
         price: last.value,
-        color: "#7F77DD",
+        color: chartColors.brand(),
         lineStyle: 2 as const,
         lineWidth: 1,
         axisLabelVisible: true,

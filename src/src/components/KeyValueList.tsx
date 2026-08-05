@@ -48,7 +48,7 @@ export function KeyValueList({
                   commit(next)
                 }}
                 placeholder={keyPlaceholder ?? "KEY"}
-                className="w-28 font-mono text-caption"
+                className="w-28 font-number text-caption"
               />
             )}
             <Input
@@ -59,7 +59,7 @@ export function KeyValueList({
                 commit(next)
               }}
               placeholder={valuePlaceholder ?? "VALUE"}
-              className="flex-1 font-mono text-caption"
+              className="flex-1 font-number text-caption"
             />
             {!isLast && (
               <button

@@ -228,7 +228,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     setSocial((s) => ({ ...s, notify_channel: v }))
                     try { await setConfig("social", "notify_channel", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
-                  className="bg-elevated border-hairline text-primary w-full rounded-lg border px-3 py-2 font-mono text-caption focus:outline-none"
+                  className="bg-elevated border-hairline text-primary w-full rounded-lg border px-3 py-2 font-number text-caption focus:outline-none"
                 >
                   <option value="telegram">Telegram</option>
                   <option value="discord">Discord</option>
@@ -275,7 +275,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.telegram", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456:ABC-DEF1234gh..."
-                  className="font-mono text-caption"
+                  className="font-number text-caption"
                 />
               </div>
               <div>
@@ -288,7 +288,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.telegram", "chat_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="-1001234567890"
-                  className="font-mono text-caption"
+                  className="font-number text-caption"
                 />
               </div>
             </div>
@@ -310,7 +310,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.discord", "bot_token", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="MTE4..."
-                  className="font-mono text-caption"
+                  className="font-number text-caption"
                 />
               </div>
               <div>
@@ -323,7 +323,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     try { await setConfig("social.discord", "channel_id", v) } catch (err) { console.error("保存配置失败", err) }
                   }}
                   placeholder="123456789012345678"
-                  className="font-mono text-caption"
+                  className="font-number text-caption"
                 />
               </div>
             </div>
@@ -424,7 +424,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between px-4 py-2 text-caption">
                     <span className="text-secondary">{label}</span>
-                    <span className="font-mono text-caption text-primary">{value}</span>
+                    <span className="font-number text-caption text-primary">{value}</span>
                   </div>
                 ))
               : [
@@ -433,7 +433,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between px-4 py-2 text-caption">
                     <span className="text-secondary">{label}</span>
-                    <span className="font-mono text-caption text-primary">{value}</span>
+                    <span className="font-number text-caption text-primary">{value}</span>
                   </div>
                 ))}
           </div>

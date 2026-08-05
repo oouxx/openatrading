@@ -1,3 +1,5 @@
+import { chartColors } from "@/lib/chartColors"
+
 import { useRef, useEffect } from "react"
 import type { PnlPoint } from "@/stores/data"
 
@@ -39,7 +41,7 @@ export default function Sparkline({ points, width = 200, height = 32 }: Sparklin
     const getY = (v: number) => padY + plotH - ((v - min) / range) * plotH
 
     ctx.beginPath()
-    ctx.strokeStyle = values[values.length - 1] >= 0 ? "#FF5C5C" : "#1D9E75"
+    ctx.strokeStyle = values[values.length - 1] >= 0 ? chartColors.up() : chartColors.down()
     ctx.lineWidth = 1.5
     ctx.lineJoin = "round"
 

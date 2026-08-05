@@ -187,7 +187,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     return (
       <div className="flex items-center justify-center gap-3 py-16">
         <span className="bg-brand size-2 animate-pulse rounded-full" />
-        <span className="text-caption font-mono text-primary/40">加载晋级数据...</span>
+        <span className="text-caption font-number text-primary/40">加载晋级数据...</span>
       </div>
     )
   }
@@ -251,7 +251,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             {ladder.map((row) => (
               <div key={row.yesterdayDays} className="mb-3 last:mb-0">
                 <div
-                  className="text-caption flex cursor-pointer items-center gap-3 font-mono"
+                  className="text-caption flex cursor-pointer items-center gap-3 font-number"
                   onClick={() =>
                     setSelectedBoard(selectedBoard === row.yesterdayDays ? null : row.yesterdayDays)
                   }
@@ -306,7 +306,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                         {row.details.map((s) => (
                           <tr key={s.symbol}>
                             <td
-                              className="text-brand cursor-pointer font-mono hover:underline"
+                              className="text-brand cursor-pointer font-number hover:underline"
                               onClick={() => handleOpenKline(s.symbol, s.name)}
                             >
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
@@ -318,7 +318,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                                 {s.name}
                               </MiniChartPreview>
                             </td>
-                            <td className="font-mono">
+                            <td className="font-number">
                               <span
                                 className={s.status === "promoted" ? "text-up" : "text-primary/40"}
                               >
@@ -326,15 +326,15 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                                 {s.status === "promoted" ? s.todayDays + "板" : "断板"}
                               </span>
                             </td>
-                            <td className="text-right font-mono">
+                            <td className="text-right font-number">
                               {s.turnover ? (s.turnover * 100).toFixed(2) + "%" : "-"}
                             </td>
-                            <td className="text-right font-mono">
+                            <td className="text-right font-number">
                               {(s.capital / 1e8).toFixed(1)}亿
                             </td>
                             <td>
                               <span
-                                className={`text-caption rounded-sm px-2 py-0.5 font-mono ${
+                                className={`text-caption rounded-sm px-2 py-0.5 font-number ${
                                   s.status === "promoted"
                                     ? "bg-up/15 text-up"
                                     : "bg-white/10 text-primary/40"
@@ -379,7 +379,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                 {firstBoard.map((s) => (
                   <tr key={s.symbol}>
                     <td
-                      className="text-brand cursor-pointer font-mono hover:underline"
+                      className="text-brand cursor-pointer font-number hover:underline"
                       onClick={() => handleOpenKline(s.symbol, s.name)}
                     >
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
@@ -392,13 +392,13 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                       </MiniChartPreview>
                     </td>
                     <td>
-                      <span className="font-mono text-primary/40">{s.price}</span>
+                      <span className="font-number text-primary/40">{s.price}</span>
                     </td>
-                    <td className="text-up text-right font-mono">
+                    <td className="text-up text-right font-number">
                       +{(s.changePercent * 100).toFixed(2)}%
                     </td>
-                    <td className="text-right font-mono">{(s.turnover * 100).toFixed(2)}%</td>
-                    <td className="text-right font-mono">{(s.capital / 1e8).toFixed(1)}亿</td>
+                    <td className="text-right font-number">{(s.turnover * 100).toFixed(2)}%</td>
+                    <td className="text-right font-number">{(s.capital / 1e8).toFixed(1)}亿</td>
                     <td className="text-caption text-primary/40">{s.reason || "-"}</td>
                   </tr>
                 ))}

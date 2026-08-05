@@ -169,7 +169,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           &times;
         </button>
         <span className="text-h1 font-bold text-primary">{name}</span>
-        <span className="text-secondary font-mono text-caption">{symbol}</span>
+        <span className="text-secondary font-number text-caption">{symbol}</span>
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -188,9 +188,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         </button>
         {quote && (
           <div className="ml-auto flex items-center gap-3">
-            <span className="font-mono text-h1 font-bold">{quote.last_px?.toFixed(2)}</span>
+            <span className="font-number text-h1 font-bold">{quote.last_px?.toFixed(2)}</span>
             <span
-              className={`rounded-lg px-3 py-1 font-mono text-body font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
+              className={`rounded-lg px-3 py-1 font-number text-body font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
             >
               {up ? "+" : ""}
               {quote.px_change_rate?.toFixed(2)}%
@@ -218,7 +218,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Crosshair info bar */}
       {currCrosshair && (
-        <div className="bg-surface border-hairline flex items-center justify-between border-b px-3 py-1 font-mono text-caption">
+        <div className="bg-surface border-hairline flex items-center justify-between border-b px-3 py-1 font-number text-caption">
           <span className="shrink-0 text-primary">{currCrosshair.time}</span>
           <div className="flex shrink-0 items-center gap-2 text-primary/40">
             <span>
@@ -263,7 +263,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 className="bg-surface border-hairline rounded-lg border p-2.5 text-center"
               >
                 <p className="text-secondary mb-1 text-caption tracking-wide uppercase">{m.label}</p>
-                <p className="font-mono text-caption text-primary">{m.value}</p>
+                <p className="font-number text-caption text-primary">{m.value}</p>
               </div>
             ))}
           </div>
@@ -284,7 +284,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-caption font-medium text-primary">{p.plate_name}</span>
                   <span
-                    className={`shrink-0 font-mono text-caption ${p.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
+                    className={`shrink-0 font-number text-caption ${p.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
                   >
                     {p.core_avg_pcp >= 0 ? "+" : ""}
                     {(p.core_avg_pcp * 100).toFixed(2)}%
@@ -318,12 +318,12 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         <>
           <div className="fixed inset-0 z-60 bg-black/50" onClick={() => setDialogPlate(null)} />
           <div className="pointer-events-none fixed inset-0 z-61 flex items-center justify-center">
-            <div className="bg-surface border-hairline rounded-lg pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-2xl">
+            <div className="bg-surface border-hairline rounded-lg pointer-events-auto w-[420px] max-w-[90vw] border p-5 shadow-modal">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-body font-bold text-primary">{dialogPlate.plate_name}</span>
                   <span
-                    className={`font-mono text-caption ${dialogPlate.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
+                    className={`font-number text-caption ${dialogPlate.core_avg_pcp >= 0 ? "text-up" : "text-down"}`}
                   >
                     {dialogPlate.core_avg_pcp >= 0 ? "+" : ""}
                     {(dialogPlate.core_avg_pcp * 100).toFixed(2)}%

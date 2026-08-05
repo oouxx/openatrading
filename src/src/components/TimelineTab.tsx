@@ -55,7 +55,7 @@ export default function TimelineTab() {
           <button
             key={v.id}
             onClick={() => setActiveSubView(v.id)}
-            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-mono transition-colors ${
+            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-number transition-colors ${
               activeSubView === v.id ? "bg-brand/20 text-brand" : "text-secondary hover:text-primary/80"
             }`}
           >
@@ -69,7 +69,7 @@ export default function TimelineTab() {
           {dapanLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
               <span className="bg-brand size-2 animate-pulse rounded-full" />
-              <span className="text-caption font-mono text-primary/40">加载大盘异动...</span>
+              <span className="text-caption font-number text-primary/40">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
             <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg text-caption border text-center text-primary/40">
@@ -98,10 +98,10 @@ export default function TimelineTab() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-h2 text-primary">{item.title}</span>
-                          <span className="bg-brand/15 rounded-sm text-brand text-caption px-2 py-0.5 font-mono">
+                          <span className="bg-brand/15 rounded-sm text-brand text-caption px-2 py-0.5 font-number">
                             {item.bkj_info?.name || "-"}
                           </span>
-                          <span className="text-caption font-mono text-primary/40">
+                          <span className="text-caption font-number text-primary/40">
                             {formatTs(item.created_at)}
                           </span>
                         </div>
@@ -120,7 +120,7 @@ export default function TimelineTab() {
           {timelineLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
               <span className="bg-brand size-2 animate-pulse rounded-full" />
-              <span className="text-caption font-mono text-primary/40">加载时间线数据...</span>
+              <span className="text-caption font-number text-primary/40">加载时间线数据...</span>
             </div>
           ) : (
             <>
@@ -137,7 +137,7 @@ export default function TimelineTab() {
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
-                      <h3 className="text-brand text-caption mb-4 px-2 font-mono">
+                      <h3 className="text-brand text-caption mb-4 px-2 font-number">
                         {day.date}
                       </h3>
                       <div className="space-y-3">
@@ -151,7 +151,7 @@ export default function TimelineTab() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-h2 text-primary">{item.title}</span>
                                 {item.tags && (
-                                  <span className="rounded-sm text-caption bg-white/10 px-2 py-0.5 font-mono text-primary/40">
+                                  <span className="rounded-sm text-caption bg-white/10 px-2 py-0.5 font-number text-primary/40">
                                     {item.tags}
                                   </span>
                                 )}

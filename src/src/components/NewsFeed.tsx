@@ -55,7 +55,7 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-caption leading-relaxed text-primary/80">
-                <span className="text-secondary mr-1 font-mono">{item.time}</span>
+                <span className="text-secondary mr-1 font-number">{item.time}</span>
                 {item.title}
               </p>
               {item.aiNote && (
@@ -113,7 +113,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
           >
             <option value="all">全部来源</option>
             <option value="cls">财联社</option>
@@ -146,7 +146,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-caption leading-relaxed text-primary/80 transition-colors group-hover:text-primary">
-                      <span className="text-secondary mr-2 font-mono text-caption">{item.time}</span>
+                      <span className="text-secondary mr-2 font-number text-caption">{item.time}</span>
                       {item.title}
                     </p>
                     {item.aiNote && (
@@ -177,20 +177,20 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
     <div className="bg-surface border-hairline rounded-lg flex h-full min-h-0 flex-col overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-caption text-secondary font-mono tracking-wider uppercase">
+          <span className="text-caption text-secondary font-number tracking-wider uppercase">
             📡 实时资讯
           </span>
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
           >
             <option value="all">全部</option>
             <option value="cls">财联社</option>
             <option value="jiuyan">韭研公社</option>
           </select>
         </div>
-        <span className="text-caption text-secondary font-mono">{filteredNews.length} 条</span>
+        <span className="text-caption text-secondary font-number">{filteredNews.length} 条</span>
       </div>
       <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
         {isLoading && !allItems.length ? (

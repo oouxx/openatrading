@@ -35,8 +35,8 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
             key={i}
             className={`border-hairline overflow-hidden rounded-lg border transition-all duration-200 ${
               tr.isError
-                ? "border-red-500/30 bg-red-500/5"
-                : "border-emerald-500/20 bg-emerald-500/5"
+                ? "border-danger/30 bg-danger/10"
+                : "border-success/20 bg-success/10"
             }`}
           >
             <button
@@ -44,15 +44,15 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
               onClick={() => toggleExpand(i)}
             >
               {tr.isError ? (
-                <XCircle className="size-3.5 shrink-0 text-red-500" />
+                <XCircle className="size-3.5 shrink-0 text-danger" />
               ) : (
-                <Check className="size-3.5 shrink-0 text-emerald-500" />
+                <Check className="size-3.5 shrink-0 text-success" />
               )}
-              <span className="text-secondary font-mono text-caption font-medium">
+              <span className="text-secondary font-number text-caption font-medium">
                 {tr.name || "工具结果"}
               </span>
               {!isExpanded && (
-                <span className="text-secondary/40 font-mono text-caption">
+                <span className="text-secondary/40 font-number text-caption">
                   {tr.result.length} 字符
                 </span>
               )}
@@ -67,14 +67,14 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
 
             {tr.result && isExpanded && (
               <div className="border-hairline border-t px-3 py-2">
-                <pre className="text-secondary max-h-96 overflow-y-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
+                <pre className="text-secondary max-h-96 overflow-y-auto font-number text-caption leading-relaxed whitespace-pre-wrap">
                   {isLong && !isFullShown
                     ? tr.result.slice(0, COLLAPSE_THRESHOLD) + "\n…"
                     : tr.result}
                 </pre>
                 {isLong && !isFullShown && (
                   <button
-                    className="text-secondary/50 hover:text-secondary mt-1 font-mono text-caption transition-colors"
+                    className="text-secondary/50 hover:text-secondary mt-1 font-number text-caption transition-colors"
                     onClick={() => setShowFull((prev) => ({ ...prev, [i]: true }))}
                   >
                     展开全部（{tr.result.length} 字符）
