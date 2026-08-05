@@ -145,17 +145,11 @@
   border-radius: 2px;
 }
 
-/* --- readable-content: 阅读排版行宽约束 --- */
+/* --- readable-content: 阅读排版行宽约束 — clamp 流式自适应 --- */
 @utility readable-content {
   margin-left: auto;
   margin-right: auto;
   width: 100%;
-  max-width: 42rem; /* 672px — ChatGPT / Claude 同款 — 最佳阅读行宽 45-75 字符 */
-}
-
-/* 小屏（< 768px）去掉 max-width，只保留边距 */
-@media (width < 48rem) {
-  .readable-content {
-    max-width: none;
-  }
+  /* 768px 基础 → 80% 容器宽度 → 1280px 封顶，随分辨率流畅缩放 */
+  max-width: clamp(48rem, 80%, 80rem);
 }
