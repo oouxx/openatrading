@@ -26,7 +26,7 @@ export default function TurnDivider({ label, isError }: TurnDividerProps) {
       />
       {label && (
         <span
-          className={`shrink-0 font-mono text-[9px] tracking-wider uppercase ${
+          className={`shrink-0 font-mono text-caption tracking-wider uppercase ${
             isError ? "text-red-500/40" : "text-ink-muted/30"
           }`}
         >

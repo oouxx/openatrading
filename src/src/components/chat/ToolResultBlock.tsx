@@ -24,7 +24,7 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
   }
 
   return (
-    <div className="my-2 flex flex-col gap-1.5">
+    <div className="my-2 flex flex-col gap-2">
       {results.map((tr, i) => {
         const isExpanded = expanded[i] ?? false
         const isLong = tr.result.length > COLLAPSE_THRESHOLD
@@ -48,11 +48,11 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
               ) : (
                 <Check className="size-3.5 shrink-0 text-emerald-500" />
               )}
-              <span className="text-ink-muted font-mono text-[11px] font-medium">
+              <span className="text-ink-muted font-mono text-caption font-medium">
                 {tr.name || "工具结果"}
               </span>
               {!isExpanded && (
-                <span className="text-ink-muted/40 font-mono text-[10px]">
+                <span className="text-ink-muted/40 font-mono text-caption">
                   {tr.result.length} 字符
                 </span>
               )}
@@ -67,14 +67,14 @@ export default function ToolResultBlock({ results }: ToolResultBlockProps) {
 
             {tr.result && isExpanded && (
               <div className="border-hairline border-t px-3 py-2">
-                <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap">
+                <pre className="text-ink-muted max-h-96 overflow-y-auto font-mono text-caption leading-relaxed whitespace-pre-wrap">
                   {isLong && !isFullShown
                     ? tr.result.slice(0, COLLAPSE_THRESHOLD) + "\n…"
                     : tr.result}
                 </pre>
                 {isLong && !isFullShown && (
                   <button
-                    className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-[10px] transition-colors"
+                    className="text-ink-muted/50 hover:text-ink-muted mt-1 font-mono text-caption transition-colors"
                     onClick={() => setShowFull((prev) => ({ ...prev, [i]: true }))}
                   >
                     展开全部（{tr.result.length} 字符）

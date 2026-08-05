@@ -118,7 +118,7 @@ export default function SkillEditor() {
       {/* Header */}
       <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-white">技能管理</span>
+          <span className="text-sm font-medium text-foreground">技能管理</span>
           <span className="text-ink-muted text-xs">{skills.length} 个已安装</span>
         </div>
         <Button size="sm" variant="outline" onClick={startNew}>
@@ -128,10 +128,10 @@ export default function SkillEditor() {
 
       <div className="flex min-h-0 flex-1">
         {/* Left: skill list */}
-        <div className="border-hairline flex w-[220px] shrink-0 flex-col border-r">
+        <div className="border-hairline hidden w-[220px] shrink-0 flex-col border-r md:flex">
           <div className="border-hairline border-b px-3 py-2">
             <input
-              className="bg-bg-hover text-ink-muted w-full rounded-md border-0 px-2 py-1.5 text-xs outline-none placeholder:text-white/20"
+              className="bg-bg-hover text-ink-muted w-full rounded-md border-0 px-2 py-2 text-xs outline-none placeholder:text-foreground/20"
               placeholder="搜索技能..."
               readOnly
             />
@@ -144,25 +144,25 @@ export default function SkillEditor() {
                 <button
                   key={sk.name}
                   onClick={() => selectSkill(i)}
-                  className={`w-full border-l-2 px-3 py-2.5 text-left transition-colors ${
+                  className={`w-full border-l-2 px-3 py-3 text-left transition-colors ${
                     selectedIdx === i
-                      ? "border-ai bg-ai/5 text-white"
-                      : "text-ink-muted hover:bg-bg-hover border-transparent hover:text-white"
+                      ? "border-ai bg-ai/5 text-foreground"
+                      : "text-ink-muted hover:bg-bg-hover border-transparent hover:text-foreground"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="truncate text-xs font-medium">{sk.name}</span>
                     <span
-                      className={`rounded-full px-1.5 py-[1px] text-[9px] ${
+                      className={`rounded-full px-2 py-[1px] text-caption ${
                         sk.scope === "project"
                           ? "bg-ai/10 text-ai"
-                          : "bg-white/5 text-white/40"
+                          : "bg-white/5 text-foreground/40"
                       }`}
                     >
                       {sk.scope === "project" ? "项目" : sk.scope === "temporary" ? "临时" : "用户"}
                     </span>
                   </div>
-                  <div className="text-ink-muted mt-0.5 truncate text-[10px]">{sk.description}</div>
+                  <div className="text-ink-muted mt-0.5 truncate text-caption">{sk.description}</div>
                 </button>
               ))
             )}
@@ -170,7 +170,7 @@ export default function SkillEditor() {
         </div>
 
         {/* Right: editor */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="readable-content flex min-w-0 flex-1 flex-col">
           {!selected && !isNew ? (
             <div className="text-ink-muted flex flex-1 flex-col items-center justify-center gap-2">
               <svg
@@ -196,8 +196,8 @@ export default function SkillEditor() {
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                        activeTab === tab ? "bg-ai/10 text-ai" : "text-ink-muted hover:text-white"
+                      className={`rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                        activeTab === tab ? "bg-ai/10 text-ai" : "text-ink-muted hover:text-foreground"
                       }`}
                     >
                       {tab === "manifest" ? "配置" : "内容"}
@@ -209,7 +209,7 @@ export default function SkillEditor() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-down/30 hover:bg-down/10 text-down h-7 text-[10px]"
+                      className="border-down/30 hover:bg-down/10 text-down h-7 text-caption"
                       onClick={() => deleteSkill(selected.name)}
                     >
                       删除
@@ -239,7 +239,7 @@ export default function SkillEditor() {
                             disabled={!!selected}
                           />
                           {selected && (
-                            <p className="text-ink-muted mt-0.5 text-[10px]">
+                            <p className="text-ink-muted mt-0.5 text-caption">
                               技能名称不可修改（如需要，请删除后重新创建）
                             </p>
                           )}

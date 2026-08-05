@@ -61,18 +61,18 @@ function _Sidebar({
   })
 
   return (
-    <aside className="bg-bg-surface border-hairline flex w-[260px] min-w-[260px] flex-col overflow-y-auto border-r">
+    <aside className="bg-bg-surface border-hairline hidden w-[260px] min-w-[260px] flex-col overflow-y-auto border-r md:flex">
       <div className="border-hairline flex items-center justify-between gap-2 border-b p-4">
-        <h2 className="text-[15px] font-medium text-white">角色列表</h2>
-        <span className="text-ink-muted text-[11px]">{totalCount} 个</span>
+        <h2 className="text-body font-medium text-foreground">角色列表</h2>
+        <span className="text-ink-muted text-caption">{totalCount} 个</span>
       </div>
-      <div className="border-hairline border-b px-4 py-2.5">
+      <div className="border-hairline border-b px-4 py-3">
         <input
           type="text"
           placeholder="搜索角色…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-bg border-hairline focus:border-ai w-full rounded-lg border px-2.5 py-1.5 text-xs text-white transition-colors outline-none"
+          className="bg-bg border-hairline focus:border-ai w-full rounded-lg border px-3 py-2 text-xs text-foreground transition-colors outline-none"
         />
       </div>
       <div className="flex-1 overflow-y-auto py-2">
@@ -83,7 +83,7 @@ function _Sidebar({
           return (
             <div
               key={role.name}
-              className={`flex cursor-pointer items-center justify-between gap-2.5 border-l-[3px] px-4 py-2.5 transition-colors ${
+              className={`flex cursor-pointer items-center justify-between gap-3 border-l-[3px] px-4 py-3 transition-colors ${
                 selectedRole === role.name
                   ? "border-l-ai bg-ai/10"
                   : "hover:bg-bg-hover border-l-transparent"
@@ -91,11 +91,11 @@ function _Sidebar({
               onClick={() => onSelect(role.name)}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-white">{displayName}</div>
-                <div className="text-ink-muted mt-0.5 flex gap-2.5 text-[11px]">
+                <div className="truncate text-caption font-medium text-foreground">{displayName}</div>
+                <div className="text-ink-muted mt-0.5 flex gap-3 text-caption">
                   <span>{count} 持仓</span>
                   <span
-                    className={`font-mono text-[11px] font-semibold ${isNaN(pnl) ? "text-ink-muted" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-white"}`}
+                    className={`font-mono text-caption font-semibold ${isNaN(pnl) ? "text-ink-muted" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-foreground"}`}
                   >
                     {count > 0
                       ? isNaN(pnl)
@@ -120,7 +120,7 @@ function _Sidebar({
         })}
         <button
           onClick={onCreate}
-          className="hover:bg-bg-hover hover:text-ai text-ink-muted w-full cursor-pointer px-4 py-2.5 text-left text-xs transition-colors"
+          className="hover:bg-bg-hover hover:text-ai text-ink-muted w-full cursor-pointer px-4 py-3 text-left text-xs transition-colors"
         >
           + 新建角色
         </button>
@@ -179,10 +179,10 @@ function StatCard({
   negative?: boolean
 }) {
   return (
-    <div className="bg-bg-surface border-hairline rounded-[10px] border px-4 py-3.5">
-      <div className="text-ink-muted text-[11px] tracking-wider uppercase">{label}</div>
+    <div className="bg-bg-surface border-hairline rounded-lg border px-4 py-4">
+      <div className="text-ink-muted text-caption tracking-wider uppercase">{label}</div>
       <div
-        className={`mt-1 font-mono text-lg font-semibold ${positive ? "text-down" : negative ? "text-up" : "text-white"}`}
+        className={`mt-1 font-mono text-lg font-semibold ${positive ? "text-down" : negative ? "text-up" : "text-foreground"}`}
       >
         {value}
       </div>
@@ -388,12 +388,12 @@ export default function RoleView() {
     <>
       <div className="flex h-full flex-row">
         {/* Left sidebar — role list */}
-        <div className="bg-bg-surface border-hairline flex w-56 shrink-0 flex-col border-r">
+        <div className="bg-bg-surface border-hairline hidden w-56 shrink-0 flex-col border-r md:flex">
           <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-            <span className="text-xs font-semibold text-white">角色列表</span>
+            <span className="text-xs font-semibold text-foreground">角色列表</span>
             <button
               onClick={() => setShowCreate(true)}
-              className="bg-ai cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+              className="bg-ai cursor-pointer rounded-lg px-3 py-1 text-caption font-medium text-foreground transition-opacity hover:opacity-90"
             >
               + 新建
             </button>
@@ -411,7 +411,7 @@ export default function RoleView() {
                       className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left text-xs transition-colors ${
                         isActive
                           ? "bg-ai/15 text-ai border-ai/30 border font-medium"
-                          : "text-ink-muted hover:bg-bg-hover border border-transparent hover:text-white"
+                          : "text-ink-muted hover:bg-bg-hover border border-transparent hover:text-foreground"
                       }`}
                       onClick={() => {
                         setSelectedRole(r.name)
@@ -428,7 +428,7 @@ export default function RoleView() {
         </div>
 
         {/* Main Content */}
-        <main className="flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
+        <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
           {!selectedRole ? (
             <div className="text-ink-muted flex flex-1 items-center justify-center text-xs">
               选择或创建一个角色
@@ -438,24 +438,24 @@ export default function RoleView() {
               {/* Header + Tabs */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-baseline gap-3">
-                  <h1 className="text-2xl/tight font-medium text-white">
+                  <h1 className="font-display text-display font-medium text-foreground">
                     {currentRole?.name}
                   </h1>
                   {currentRole?.readonly && (
-                    <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-white/50">
+                    <span className="rounded bg-white/10 px-2 py-0.5 text-caption text-foreground/50">
                       只读
                     </span>
                   )}
                 </div>
-                <div className="bg-bg-hover flex gap-1 rounded-[10px] p-1">
+                <div className="bg-bg-hover flex gap-1 rounded-lg p-1">
                   {TABS.map((t) => (
                     <button
                       key={t.id}
                       onClick={() => setTab(t.id)}
-                      className={`cursor-pointer rounded-lg px-4 py-1.5 text-xs font-medium transition-colors ${
+                      className={`cursor-pointer rounded-lg px-4 py-2 text-xs font-medium transition-colors ${
                         tab === t.id
-                          ? "bg-bg-surface text-white shadow-sm"
-                          : "text-ink-muted hover:text-white"
+                          ? "bg-bg-surface text-foreground shadow-sm"
+                          : "text-ink-muted hover:text-foreground"
                       }`}
                     >
                       {t.label}
@@ -469,26 +469,26 @@ export default function RoleView() {
 
               {/* Tab: Holdings */}
               {tab === "holdings" && (
-                <div className="bg-bg-surface border-hairline overflow-hidden rounded-xl border">
-                  <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
-                    <h3 className="text-base font-medium text-white">持仓明细</h3>
+                <div className="bg-bg-surface border-hairline overflow-hidden rounded-lg border">
+                  <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+                    <h3 className="text-base font-medium text-foreground">持仓明细</h3>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setHoldingView("current")}
-                        className={`cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
                           holdingView === "current"
                             ? "bg-ai/20 text-ai"
-                            : "text-ink-muted hover:text-white"
+                            : "text-ink-muted hover:text-foreground"
                         }`}
                       >
                         当前持仓
                       </button>
                       <button
                         onClick={() => setHoldingView("history")}
-                        className={`cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
                           holdingView === "history"
                             ? "bg-ai/20 text-ai"
-                            : "text-ink-muted hover:text-white"
+                            : "text-ink-muted hover:text-foreground"
                         }`}
                       >
                         历史持仓
@@ -606,17 +606,17 @@ export default function RoleView() {
 
               {/* Tab: Performance */}
               {tab === "performance" && (
-                <div className="bg-bg-surface border-hairline overflow-hidden rounded-xl border">
-                  <div className="border-hairline border-b px-5 py-3.5">
-                    <h3 className="text-base font-medium text-white">累计盈利曲线</h3>
+                <div className="bg-bg-surface border-hairline overflow-hidden rounded-lg border">
+                  <div className="border-hairline border-b px-5 py-4">
+                    <h3 className="text-base font-medium text-foreground">累计盈利曲线</h3>
                   </div>
                   <PnlChart points={pnlPoints} initialCapital={1_000_000} />
-                  <div className="border-hairline text-ink-muted flex gap-5 border-t px-5 py-3 text-[11px]">
-                    <span className="flex items-center gap-1.5">
+                  <div className="border-hairline text-ink-muted flex gap-5 border-t px-5 py-3 text-caption">
+                    <span className="flex items-center gap-2">
                       <span className="bg-ai inline-block size-2 rounded-full" />
                       累计盈亏
                     </span>
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-2">
                       <span
                         className="inline-block size-2 rounded-full"
                         style={{ background: "oklch(70% 0.02 250)" }}
@@ -631,7 +631,7 @@ export default function RoleView() {
               <div className="mt-auto flex gap-2">
                 <button
                   onClick={() => setShowResetConfirm(selectedRole)}
-                  className="border-hairline hover:border-up/30 hover:text-up text-ink-muted cursor-pointer rounded-md border px-2.5 py-1 text-[11px] transition-colors"
+                  className="border-hairline hover:border-up/30 hover:text-up text-ink-muted cursor-pointer rounded-md border px-3 py-1 text-caption transition-colors"
                 >
                   重置账户
                 </button>
@@ -649,16 +649,16 @@ export default function RoleView() {
           onClick={() => setShowCreate(false)}
         >
           <div
-            className="bg-bg-surface border-hairline w-[380px] max-w-[90vw] rounded-[14px] border p-6 shadow-xl"
+            className="bg-bg-surface border-hairline w-[380px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-4 text-lg font-medium text-white">新建角色</h3>
+            <h3 className="mb-4 text-lg font-medium text-foreground">新建角色</h3>
             <label className="text-ink-muted mb-1 block text-xs">角色名称</label>
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="bg-bg border-hairline focus:border-ai mb-3 w-full rounded-lg border px-3 py-2.5 text-sm text-white transition-colors outline-none"
+              className="bg-bg border-hairline focus:border-ai mb-3 w-full rounded-lg border px-3 py-3 text-sm text-foreground transition-colors outline-none"
               placeholder="例如：套利策略 v2"
               onKeyDown={(e) => e.key === "Enter" && createRole()}
               autoFocus
@@ -666,13 +666,13 @@ export default function RoleView() {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setShowCreate(false)}
-                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-3.5 py-1.5 text-xs transition-colors hover:text-white"
+                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-4 py-2 text-xs transition-colors hover:text-foreground"
               >
                 取消
               </button>
               <button
                 onClick={createRole}
-                className="bg-ai cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                className="bg-ai cursor-pointer rounded-lg px-4 py-2 text-xs font-medium text-foreground transition-opacity hover:opacity-90"
               >
                 创建
               </button>
@@ -689,21 +689,21 @@ export default function RoleView() {
           onClick={() => setShowDeleteConfirm(null)}
         >
           <div
-            className="bg-bg-surface border-hairline w-[360px] max-w-[90vw] rounded-[14px] border p-6 shadow-xl"
+            className="bg-bg-surface border-hairline w-[360px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-2 text-lg font-medium text-white">删除角色</h3>
+            <h3 className="mb-2 text-lg font-medium text-foreground">删除角色</h3>
             <p className="text-ink-muted mb-4 text-xs">确定删除此角色？此操作不可恢复。</p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-3.5 py-1.5 text-xs transition-colors hover:text-white"
+                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-4 py-2 text-xs transition-colors hover:text-foreground"
               >
                 取消
               </button>
               <button
                 onClick={() => deleteRole(showDeleteConfirm)}
-                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-3.5 py-1.5 text-xs transition-colors hover:text-white"
+                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-4 py-2 text-xs transition-colors hover:text-foreground"
               >
                 删除
               </button>
@@ -720,21 +720,21 @@ export default function RoleView() {
           onClick={() => setShowResetConfirm(null)}
         >
           <div
-            className="bg-bg-surface border-hairline w-[360px] max-w-[90vw] rounded-[14px] border p-6 shadow-xl"
+            className="bg-bg-surface border-hairline w-[360px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-2 text-lg font-medium text-white">重置账户</h3>
+            <h3 className="mb-2 text-lg font-medium text-foreground">重置账户</h3>
             <p className="text-ink-muted mb-4 text-xs">重置将清空该角色的所有持仓和历史记录。</p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowResetConfirm(null)}
-                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-3.5 py-1.5 text-xs transition-colors hover:text-white"
+                className="bg-ink-dim text-ink-muted cursor-pointer rounded-lg px-4 py-2 text-xs transition-colors hover:text-foreground"
               >
                 取消
               </button>
               <button
                 onClick={() => resetRole(showResetConfirm)}
-                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-3.5 py-1.5 text-xs transition-colors hover:text-white"
+                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-4 py-2 text-xs transition-colors hover:text-foreground"
               >
                 重置
               </button>
@@ -761,7 +761,7 @@ export default function RoleView() {
 
 function Th({ children }: { children: React.ReactNode }) {
   return (
-    <th className="bg-ink-dim border-hairline text-ink-muted border-b px-3.5 py-2.5 text-left text-[11px] font-medium tracking-wider whitespace-nowrap uppercase">
+    <th className="bg-ink-dim border-hairline text-ink-muted border-b px-4 py-3 text-left text-caption font-medium tracking-wider whitespace-nowrap uppercase">
       {children}
     </th>
   )
@@ -779,10 +779,10 @@ function Td({
   muted?: boolean
   reason?: boolean
 }) {
-  let cls = "px-3.5 py-2.5 border-b border-hairline text-white whitespace-nowrap"
+  let cls = "px-4 py-3 border-b border-hairline text-foreground whitespace-nowrap"
   if (bold) cls += " font-semibold font-mono text-xs"
-  if (muted) cls += " text-[11px] text-ink-muted"
-  if (reason) cls += " max-w-[260px] whitespace-normal text-[11px] text-ink-muted leading-relaxed"
+  if (muted) cls += " text-caption text-ink-muted"
+  if (reason) cls += " max-w-[260px] whitespace-normal text-caption text-ink-muted leading-relaxed"
   if (className) cls += " " + className
   return <td className={cls}>{children}</td>
 }

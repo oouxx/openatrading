@@ -190,7 +190,7 @@ export default function WatchlistView() {
           {/* ── Header ── */}
           <div className="mb-4 flex items-center gap-3">
             <Star className="size-5 text-yellow-500" />
-            <h1 className="text-lg font-bold text-white">自选股</h1>
+            <h1 className="font-display text-heading font-bold text-foreground">自选股</h1>
             <span className="text-caption text-ink-muted">{items.length}只</span>
 
             {/* Local search */}
@@ -204,7 +204,7 @@ export default function WatchlistView() {
               />
               {localSearch && (
                 <button
-                  className="absolute top-1/2 right-2 -translate-y-1/2 text-white/40 hover:text-white"
+                  className="absolute top-1/2 right-2 -translate-y-1/2 text-foreground/40 hover:text-foreground"
                   onClick={() => setLocalSearch("")}
                 >
                   <X className="size-3" />
@@ -215,7 +215,7 @@ export default function WatchlistView() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-2 text-xs"
               onClick={() => setShowAdd(!showAdd)}
             >
               {showAdd ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
@@ -225,7 +225,7 @@ export default function WatchlistView() {
 
           {/* ── Add-stock search ── */}
           {showAdd && (
-            <div className="border-hairline rounded-card mb-4 border bg-white/2 p-3">
+            <div className="border-hairline rounded-lg mb-4 border bg-white/2 p-3">
               <div className="relative">
                 <Search className="text-ink-muted absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                 <Input
@@ -246,11 +246,11 @@ export default function WatchlistView() {
                   {addResults.map((r) => (
                     <div
                       key={r.code}
-                      className="hover:bg-bg-hover rounded-card flex cursor-pointer items-center justify-between px-3 py-2 transition-colors"
+                      className="hover:bg-bg-hover rounded-lg flex cursor-pointer items-center justify-between px-3 py-2 transition-colors"
                       onClick={() => handleAdd(r.code, r.name)}
                     >
                       <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-medium text-white">{r.name}</span>
+                        <span className="text-sm font-medium text-foreground">{r.name}</span>
                         <span className="text-caption text-ink-muted font-mono text-xs">
                           {r.code.replace(/^[a-z]+/i, "")}
                         </span>
@@ -269,7 +269,7 @@ export default function WatchlistView() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-bg border-hairline rounded-card h-14 animate-pulse border"
+                  className="bg-bg border-hairline rounded-lg h-14 animate-pulse border"
                 />
               ))}
             </div>
@@ -285,28 +285,28 @@ export default function WatchlistView() {
             <div className="space-y-2">
               {/* Column headers — clickable sort */}
               {!showAdd && (
-                <div className="text-caption flex items-center gap-4 px-3 py-1.5 text-[11px] tracking-wide text-white/40 uppercase">
+                <div className="text-caption flex items-center gap-4 px-3 py-2 text-caption tracking-wide text-foreground/40 uppercase">
                   <span className="flex-1">名称 / 代码</span>
                   <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
+                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-foreground/70"
                     onClick={() => toggleSort("price")}
                   >
                     最新价 {renderSortIcon("price")}
                   </button>
                   <button
-                    className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
+                    className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-foreground/70"
                     onClick={() => toggleSort("change")}
                   >
                     涨幅 {renderSortIcon("change")}
                   </button>
                   <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
+                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-foreground/70"
                     onClick={() => toggleSort("market_value")}
                   >
                     总市值 {renderSortIcon("market_value")}
                   </button>
                   <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-white/70"
+                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-foreground/70"
                     onClick={() => toggleSort("circulation_value")}
                   >
                     流通市值 {renderSortIcon("circulation_value")}
@@ -363,11 +363,11 @@ function StockRow({
 
   return (
     <div
-      className="bg-bg border-hairline hover:border-ai/30 rounded-card flex cursor-pointer items-center gap-4 border p-3 transition-colors"
+      className="bg-bg border-hairline hover:border-ai/30 rounded-lg flex cursor-pointer items-center gap-4 border p-3 transition-colors"
       onClick={() => onSelect({ symbol: code, name })}
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="truncate text-sm font-semibold text-white">{name}</span>
+        <span className="truncate text-sm font-semibold text-foreground">{name}</span>
         <span className="text-caption text-ink-muted font-mono">
           {code.replace(/^[a-z]+/i, "")}
         </span>
@@ -375,21 +375,21 @@ function StockRow({
 
       {loaded ? (
         <>
-          <span className="w-20 text-right font-mono text-sm font-bold text-white">
+          <span className="w-20 text-right font-mono text-sm font-bold text-foreground">
             {quote.last_px?.toFixed(2)}
           </span>
           <span
-            className={`rounded-card w-16 px-2 py-0.5 text-right font-mono text-xs font-semibold ${
+            className={`rounded-lg w-16 px-2 py-0.5 text-right font-mono text-xs font-semibold ${
               up ? "bg-up/20 text-up" : "bg-down/20 text-down"
             }`}
           >
             {up ? "+" : ""}
             {quote.px_change_rate?.toFixed(2)}%
           </span>
-          <span className="w-20 text-right font-mono text-xs text-white/70">
+          <span className="w-20 text-right font-mono text-xs text-foreground/70">
             {formatVolume(quote.market_value)}
           </span>
-          <span className="w-20 text-right font-mono text-xs text-white/70">
+          <span className="w-20 text-right font-mono text-xs text-foreground/70">
             {formatVolume(quote.circulation_value)}
           </span>
         </>

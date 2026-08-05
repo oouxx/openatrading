@@ -32,11 +32,11 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="text-ink-muted flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm">
           <p>该区域渲染出错。</p>
-          <pre className="bg-bg-hover max-h-48 w-full max-w-xl overflow-auto rounded-md p-2 text-left font-mono text-[11px]">
+          <pre className="bg-bg-hover max-h-48 w-full max-w-xl overflow-auto rounded-md p-2 text-left font-mono text-caption">
             {this.state.error?.message ?? "Unknown error"}
           </pre>
           <button
-            className="bg-ai hover:bg-ai/90 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors"
+            className="bg-ai hover:bg-ai/90 rounded-md px-3 py-2 text-xs font-medium text-foreground transition-colors"
             onClick={() => this.setState({ hasError: false, error: undefined })}
           >
             重试

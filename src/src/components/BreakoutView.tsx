@@ -352,16 +352,16 @@ export default function BreakoutView() {
   ) => (
     <div
       key={idx}
-      className={`bg-bg-surface rounded-[10px] border px-4 py-3.5 text-center ${s.hl ? "border-ai bg-ai/5" : "border-hairline"}`}
+      className={`bg-bg-surface rounded-lg border px-4 py-4 text-center ${s.hl ? "border-ai bg-ai/5" : "border-hairline"}`}
     >
-      <div className="text-ink-muted mb-1 text-[11px] tracking-wider uppercase">{s.label}</div>
+      <div className="text-ink-muted mb-1 text-caption tracking-wider uppercase">{s.label}</div>
       <div
-        className="font-mono text-[1.4rem] font-semibold text-white"
+        className="font-mono text-[1.4rem] font-semibold text-foreground"
         style={s.color ? { color: s.color } : undefined}
       >
         {s.value}
       </div>
-      <div className="text-ink-muted mt-0.5 text-[10px]">{s.sub}</div>
+      <div className="text-ink-muted mt-0.5 text-caption">{s.sub}</div>
     </div>
   )
 
@@ -409,30 +409,30 @@ export default function BreakoutView() {
       </div>
 
       {!hasYesterdayData && (
-        <div className="bg-bg-surface border-hairline text-ink-muted mb-[18px] rounded-xl border px-4 py-3 text-center text-xs">
+        <div className="bg-bg-surface border-hairline text-ink-muted mb-[18px] rounded-lg border px-4 py-3 text-center text-xs">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
 
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[220px_1fr]">
         {/* Filter Panel */}
-        <div className="bg-bg-surface border-hairline order-2 overflow-hidden rounded-xl border md:order-0">
-          <div className="border-hairline border-b px-3.5 py-3 text-[13px] font-medium text-white">
+        <div className="bg-bg-surface border-hairline order-2 overflow-hidden rounded-lg border md:order-0">
+          <div className="border-hairline border-b px-4 py-3 text-caption font-medium text-foreground">
             筛选 & 统计
           </div>
           <div className="p-3">
-            <div className="mb-3.5">
-              <div className="text-ink-muted mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
+            <div className="mb-4">
+              <div className="text-ink-muted mb-2 text-caption font-semibold tracking-wider uppercase">
                 结果类型
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {(["all", "promoted", "broken", "first"] as const).map((fid) => {
                   const labels = { all: "全部", promoted: "晋级", broken: "断板", first: "新进" }
                   const activeCls: Record<string, string> = {
-                    promoted: "bg-up border-up text-white",
-                    broken: "bg-down border-down text-white",
-                    first: "bg-[oklch(55%_0.14_240)] border-[oklch(55%_0.14_240)] text-white",
-                    all: "bg-ai border-ai text-white",
+                    promoted: "bg-up border-up text-foreground",
+                    broken: "bg-down border-down text-foreground",
+                    first: "bg-[oklch(55%_0.14_240)] border-[oklch(55%_0.14_240)] text-foreground",
+                    all: "bg-ai border-ai text-foreground",
                   }
                   return (
                     <button
@@ -441,10 +441,10 @@ export default function BreakoutView() {
                         setFilter(fid)
                         if (fid !== "all") setActiveLv(null)
                       }}
-                      className={`cursor-pointer rounded-2xl border px-3 py-1 text-[11px] transition-colors ${
+                      className={`cursor-pointer rounded-2xl border px-3 py-1 text-caption transition-colors ${
                         filter === fid
                           ? activeCls[fid]
-                          : "border-hairline text-ink-muted hover:text-white"
+                          : "border-hairline text-ink-muted hover:text-foreground"
                       }`}
                     >
                       {labels[fid]}
@@ -453,8 +453,8 @@ export default function BreakoutView() {
                 })}
               </div>
             </div>
-            <div className="mb-3.5">
-              <label className="text-ink-muted flex cursor-pointer items-center gap-2 text-[11px]">
+            <div className="mb-4">
+              <label className="text-ink-muted flex cursor-pointer items-center gap-2 text-caption">
                 <input
                   type="checkbox"
                   checked={hideST}
@@ -464,7 +464,7 @@ export default function BreakoutView() {
               </label>
             </div>
             <div>
-              <div className="text-ink-muted mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
+              <div className="text-ink-muted mb-2 text-caption font-semibold tracking-wider uppercase">
                 各板级晋级率
               </div>
               {[1, 2, 3, 4].map((b) => {
@@ -476,7 +476,7 @@ export default function BreakoutView() {
                 return (
                   <div
                     key={b}
-                    className={`hover:bg-bg-hover mb-0.5 flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-[11px] transition-colors ${activeLv === b ? "bg-ai/10" : ""}`}
+                    className={`hover:bg-bg-hover mb-0.5 flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-caption transition-colors ${activeLv === b ? "bg-ai/10" : ""}`}
                     onClick={() => {
                       if (activeLv === b) {
                         setActiveLv(null)
@@ -487,7 +487,7 @@ export default function BreakoutView() {
                     }}
                   >
                     <span className="text-ink-muted">{lb} →</span>
-                    <span className={`font-mono text-[10px] font-medium ${rc}`}>
+                    <span className={`font-mono text-caption font-medium ${rc}`}>
                       {rate.toFixed(1)}%
                     </span>
                   </div>
@@ -498,10 +498,10 @@ export default function BreakoutView() {
         </div>
 
         {/* Table */}
-        <div className="bg-bg-surface border-hairline order-1 overflow-hidden rounded-xl border md:order-0">
-          <div className="border-hairline flex items-center justify-between gap-2.5 border-b px-4 py-2.5">
-            <h3 className="text-[13px] font-medium text-white">涨停对比明细</h3>
-            <span className="text-ink-muted text-[11px]">{items.length} 只</span>
+        <div className="bg-bg-surface border-hairline order-1 overflow-hidden rounded-lg border md:order-0">
+          <div className="border-hairline flex items-center justify-between gap-3 border-b px-4 py-3">
+            <h3 className="text-caption font-medium text-foreground">涨停对比明细</h3>
+            <span className="text-ink-muted text-caption">{items.length} 只</span>
           </div>
           <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
             <table className="w-full border-collapse" style={{ fontSize: "0.77rem" }}>
@@ -622,14 +622,14 @@ export default function BreakoutView() {
               <div className="bg-bg-surface border-hairline sticky top-0 z-10 border-b p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-white">{selectedStock.name}</span>
+                    <span className="text-sm font-bold text-foreground">{selectedStock.name}</span>
                     <span className="text-ink-muted font-mono text-xs">
                       {selectedStock.symbol.replace(/\.[A-Z]+$/, "")}
                     </span>
                   </div>
                   <button
                     onClick={() => setSelectedStock(null)}
-                    className="text-ink-muted p-1 text-lg leading-none hover:text-white"
+                    className="text-ink-muted p-1 text-lg leading-none hover:text-foreground"
                   >
                     ✕
                   </button>
@@ -659,8 +659,8 @@ export default function BreakoutView() {
                   <button
                     key={p.value}
                     onClick={() => setKlinePeriod(p.value)}
-                    className={`rounded-button px-3 py-1 font-mono text-xs transition ${
-                      klinePeriod === p.value ? "bg-ai text-white" : "text-ink-muted bg-transparent"
+                    className={`rounded-full px-3 py-1 font-mono text-xs transition ${
+                      klinePeriod === p.value ? "bg-ai text-foreground" : "text-ink-muted bg-transparent"
                     }`}
                   >
                     {p.label}
@@ -685,7 +685,7 @@ export default function BreakoutView() {
               {selectedStock.reason && (
                 <div className="border-hairline border-t px-4 py-3">
                   <p className="text-ink-muted mb-2 text-xs">板块分析</p>
-                  <p className="text-xs/relaxed text-white/70">{selectedStock.reason}</p>
+                  <p className="text-xs/relaxed text-foreground/70">{selectedStock.reason}</p>
                 </div>
               )}
             </motion.div>
@@ -739,9 +739,9 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
   return (
     <div className="grid grid-cols-3 gap-2 p-4 text-xs">
       {metrics.map((m) => (
-        <div key={m.label} className="bg-bg border-hairline rounded-card border p-3 text-center">
-          <p className="text-ink-muted text-[11px]">{m.label}</p>
-          <p className={`mt-1 font-mono text-xs text-white ${m.cls || ""}`}>{m.value}</p>
+        <div key={m.label} className="bg-bg border-hairline rounded-lg border p-3 text-center">
+          <p className="text-ink-muted text-caption">{m.label}</p>
+          <p className={`mt-1 font-mono text-xs text-foreground ${m.cls || ""}`}>{m.value}</p>
         </div>
       ))}
     </div>

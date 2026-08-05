@@ -21,15 +21,15 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   }, [children])
 
   return (
-    <div className="bg-bg-hover border-hairline group rounded-card my-2 overflow-hidden border">
+    <div className="bg-bg-hover border-hairline group rounded-lg my-2 overflow-hidden border">
       {/* Header bar */}
-      <div className="border-hairline flex items-center justify-between border-b px-3 py-1.5">
-        <span className="text-ink-muted/60 font-mono text-[10px] tracking-wider uppercase">
+      <div className="border-hairline flex items-center justify-between border-b px-3 py-2">
+        <span className="text-ink-muted/60 font-mono text-caption tracking-wider uppercase">
           {language || "code"}
         </span>
         <button
           onClick={handleCopy}
-          className="hover:text-ink-muted text-ink-muted/50 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition-colors group-hover:opacity-100"
+          className="hover:text-ink-muted text-ink-muted/50 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-colors group-hover:opacity-100"
         >
           {copied ? (
             <>
@@ -59,7 +59,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
 function InlineCode({ children, ...props }: React.ComponentPropsWithoutRef<"code">) {
   return (
     <code
-      className="bg-bg-hover text-ink rounded px-1.5 py-0.5 font-mono text-xs"
+      className="bg-bg-hover text-ink rounded px-2 py-0.5 font-mono text-xs"
       {...props}
     >
       {children}
@@ -100,9 +100,9 @@ const mdComponents: Components = {
   ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
   hr: () => <hr className="border-hairline my-3" />,
   h1: ({ children }) => <h1 className="text-ink mt-4 mb-2 text-base font-semibold">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-ink mt-3.5 mb-1.5 text-sm font-semibold">{children}</h2>,
+  h2: ({ children }) => <h2 className="text-ink mt-4 mb-2 text-sm font-semibold">{children}</h2>,
   h3: ({ children }) => <h3 className="text-ink mt-3 mb-1 text-sm font-medium">{children}</h3>,
-  p: ({ children }) => <p className="my-1.5 leading-relaxed">{children}</p>,
+  p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="border-ai/30 text-ink-muted my-2 border-l-2 pl-3 text-xs italic">
       {children}

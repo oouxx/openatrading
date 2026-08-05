@@ -66,7 +66,7 @@
   }
   [data-slot="command"] [data-slot="command-input-wrapper"] {
     background: var(--color-background, oklch(0.97 0 0)) !important;
-    border-radius: var(--radius-input, 18px) !important;
+    border-radius: var(--radius-lg, 12px) !important;
   }
   [data-slot="command-input"]::placeholder {
     color: var(--color-muted, oklch(0.55 0 0)) !important;
@@ -104,4 +104,20 @@
 .custom-scroll::-webkit-scrollbar-thumb {
   background: oklch(1 0 0 / 0.1);
   border-radius: 2px;
+}
+
+
+/* --- readable-content: 阅读排版行宽约束 --- */
+@utility readable-content {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 42rem; /* 672px — ChatGPT / Claude 同款 — 最佳阅读行宽 45-75 字符 */
+}
+
+/* 小屏（< 768px）去掉 max-width，只保留边距 */
+@media (width < 48rem) {
+  .readable-content {
+    max-width: none;
+  }
 }

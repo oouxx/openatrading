@@ -103,11 +103,11 @@ export default function RightPanel() {
           </Button>
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-xs font-medium text-white">
+              <span className="flex-1 truncate text-xs font-medium text-foreground">
                 {TABS.find((t) => t.id === activeView)?.label}
               </span>
               <button
-                className="text-ink-muted ml-1 cursor-pointer hover:text-white"
+                className="text-ink-muted ml-1 cursor-pointer hover:text-foreground"
                 onClick={() => setPopoutView(activeView)}
                 title="弹出到独立窗口"
               >
@@ -122,7 +122,7 @@ export default function RightPanel() {
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                className="data-[active=true]:text-ai hover:bg-bg-hover rounded-card flex size-10 items-center justify-center text-[10px] transition-colors"
+                className="data-[active=true]:text-ai hover:bg-bg-hover rounded-lg flex size-10 items-center justify-center text-caption transition-colors"
                 data-active={activeView === tab.id}
                 title={tab.label}
                 onClick={() => {
@@ -140,7 +140,7 @@ export default function RightPanel() {
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  className="data-[active=false]:text-ink-muted data-[active=true]:border-ai data-[active=true]:text-ai border-b-2 px-3 py-1.5 text-xs whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:hover:text-white"
+                  className="data-[active=false]:text-ink-muted data-[active=true]:border-ai data-[active=true]:text-ai border-b-2 px-3 py-2 text-xs whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:hover:text-foreground"
                   data-active={activeView === tab.id}
                   onClick={() => setActiveView(tab.id)}
                 >
@@ -204,11 +204,11 @@ export default function RightPanel() {
                   dragControls.start(e)
                 }}
               >
-                <span className="text-sm font-medium text-white">
+                <span className="text-sm font-medium text-foreground">
                   {TABS.find((t) => t.id === popoutView)?.label}
                 </span>
                 <button
-                  className="text-ink-muted cursor-pointer hover:text-white"
+                  className="text-ink-muted cursor-pointer hover:text-foreground"
                   onClick={() => setPopoutView(null)}
                 >
                   <X className="size-4" />

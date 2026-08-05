@@ -23,9 +23,9 @@ export default function StrongStocksTab() {
   const openKline = useRightPanelStore((s) => s.openKline)
 
   return (
-    <div className="bg-bg-surface border-hairline rounded-card overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-lg overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption-strong text-ink-muted font-mono tracking-wider uppercase">
+        <span className="text-caption text-ink-muted font-mono tracking-wider uppercase">
           涨停股 · {limitUpStocks.length}
         </span>
       </div>
@@ -53,7 +53,7 @@ export default function StrongStocksTab() {
                 <td className="text-ink-muted">{s.symbol.replace(/\.[A-Z]+$/, "")}</td>
                 <td>
                   <MiniChartPreview symbol={s.symbol} name={s.stock_chi_name}>
-                    <span className="hover:text-ai text-white transition-colors">
+                    <span className="hover:text-ai text-foreground transition-colors">
                       {s.stock_chi_name}
                     </span>
                   </MiniChartPreview>

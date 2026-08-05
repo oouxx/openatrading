@@ -111,12 +111,12 @@ export default function SentimentChipTab() {
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <motion.div
-          className="bg-surface-dark border-hairline-dark p-card-inner rounded-card border"
+          className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption-strong text-ink-muted mb-4 tracking-wider uppercase">
+          <h3 className="text-caption text-ink-muted mb-4 tracking-wider uppercase">
             市场情绪周期判断
           </h3>
           {!history.length ? (
@@ -126,7 +126,7 @@ export default function SentimentChipTab() {
               <div className="flex items-center gap-3">
                 <span className="text-caption text-ink-muted">当前：</span>
                 <span
-                  className={`text-caption-strong rounded-button px-3 py-1 font-mono ${currentPhaseClass}`}
+                  className={`text-caption rounded-full px-3 py-1 font-mono ${currentPhaseClass}`}
                 >
                   {currentPhaseLabel}
                 </span>
@@ -149,12 +149,12 @@ export default function SentimentChipTab() {
 
         {/* 市场筹码结构分析 */}
         <motion.div
-          className="bg-surface-dark border-hairline-dark p-card-inner rounded-card border"
+          className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h3 className="text-caption-strong text-ink-muted mb-4 tracking-wider uppercase">
+          <h3 className="text-caption text-ink-muted mb-4 tracking-wider uppercase">
             市场筹码结构分析
           </h3>
           {!overview ? (
@@ -195,13 +195,13 @@ export default function SentimentChipTab() {
 
       {/* 情绪历史表格 */}
       <motion.div
-        className="bg-surface-dark border-hairline-dark rounded-card overflow-hidden border"
+        className="bg-surface-dark border-hairline-dark rounded-lg overflow-hidden border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.15 }}
       >
         <div className="border-hairline-dark p-card-inner border-b">
-          <h3 className="text-caption-strong text-ink-muted tracking-wider uppercase">
+          <h3 className="text-caption text-ink-muted tracking-wider uppercase">
             近{history.length}日情绪数据
           </h3>
         </div>

@@ -34,9 +34,9 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       <div className="border-border/50 flex items-center gap-2 border-b px-3 py-2">
         <Terminal className="text-muted-foreground size-3.5" />
         <span className="text-foreground font-medium">{name}</span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-2">
           {statusIcon()}
-          <span className="text-muted-foreground text-[10px] capitalize">
+          <span className="text-muted-foreground text-caption capitalize">
             {status ?? "pending"}
           </span>
         </div>
@@ -46,14 +46,14 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       {argsStr && (
         <div className="border-border/50 border-b">
           <button
-            className="hover:bg-bg-hover flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors"
+            className="hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
             onClick={() => setShowArgs(!showArgs)}
           >
             {showArgs ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            <span className="text-muted-foreground font-mono text-[10px]">Arguments</span>
+            <span className="text-muted-foreground font-mono text-caption">Arguments</span>
           </button>
           {showArgs && (
-            <pre className="bg-bg-hover text-muted-foreground overflow-x-auto px-3 py-2 font-mono text-[10px] leading-relaxed">
+            <pre className="bg-bg-hover text-muted-foreground overflow-x-auto px-3 py-2 font-mono text-caption leading-relaxed">
               {argsStr}
             </pre>
           )}
@@ -64,18 +64,18 @@ export default function ToolCallCard({ name, args, status, result, isError }: To
       {result && (
         <div>
           <button
-            className={`hover:bg-bg-hover flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors ${
+            className={`hover:bg-bg-hover flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
               isError ? "text-red-500" : ""
             }`}
             onClick={() => setShowResult(!showResult)}
           >
             {showResult ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            <span className="font-mono text-[10px]">
+            <span className="font-mono text-caption">
               {isError ? "Error" : "Result"}
             </span>
           </button>
           {showResult && (
-            <pre className={`overflow-x-auto px-3 py-2 font-mono text-[10px] leading-relaxed ${
+            <pre className={`overflow-x-auto px-3 py-2 font-mono text-caption leading-relaxed ${
               isError ? "bg-red-950/20 text-red-400" : "bg-bg-hover text-muted-foreground"
             }`}>
               {result}

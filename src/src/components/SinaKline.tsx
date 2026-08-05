@@ -80,7 +80,7 @@ export default function KlineImageFallback({
     <img
       src={url}
       alt={`${name} K线图`}
-      className="rounded-card w-full"
+      className="rounded-lg w-full"
       style={{ minHeight: 300, maxHeight: 420 }}
     />
   )

@@ -37,7 +37,7 @@ export default function TradingView() {
         {/* 错误状态 */}
         {ovError && (
           <div className="py-4">
-            <div className="bg-up/5 border-up/20 rounded-card flex items-center justify-between border px-5 py-3">
+            <div className="bg-up/5 border-up/20 rounded-lg flex items-center justify-between border px-5 py-3">
               <div className="flex items-center gap-3">
                 <span className="text-up text-sm">⚠</span>
                 <span className="text-caption text-up">{ovError.message}</span>
@@ -64,14 +64,14 @@ export default function TradingView() {
           <>
             {/* 指数加载状态 */}
             {idxLoading && !indexQuotes.length && (
-              <div className="bg-bg-surface border-hairline p-card-inner rounded-card flex items-center justify-center border py-6">
+              <div className="bg-bg-surface border-hairline p-card-inner rounded-lg flex items-center justify-center border py-6">
                 <span className="text-caption text-ink-muted font-mono">加载指数数据...</span>
               </div>
             )}
 
             {/* 指数错误状态 */}
             {!idxLoading && idxError && (
-              <div className="bg-bg-surface border-hairline p-card-inner rounded-card flex items-center justify-center border py-6">
+              <div className="bg-bg-surface border-hairline p-card-inner rounded-lg flex items-center justify-center border py-6">
                 <span className="text-caption text-up">{idxError.message}</span>
               </div>
             )}
@@ -81,10 +81,10 @@ export default function TradingView() {
                 {indexCards.map((idx) => (
                   <div
                     key={idx.name}
-                    className="bg-bg-surface border-hairline p-card-inner rounded-card flex flex-col gap-1 border"
+                    className="bg-bg-surface border-hairline p-card-inner rounded-lg flex flex-col gap-1 border"
                   >
                     <span className="text-caption text-ink-muted font-mono">{idx.name}</span>
-                    <span className="font-mono text-xl text-white tabular-nums">
+                    <span className="font-mono text-xl text-foreground tabular-nums">
                       {idx.lastPx.toFixed(2)}
                     </span>
                     <span
@@ -122,7 +122,7 @@ export default function TradingView() {
                 <button
                   key={item.view}
                   onClick={() => setActiveView(item.view)}
-                  className="bg-bg-surface border-hairline hover:border-ai/40 rounded-card border px-4 py-2 text-xs text-white transition-colors"
+                  className="bg-bg-surface border-hairline hover:border-ai/40 rounded-lg border px-4 py-2 text-xs text-foreground transition-colors"
                 >
                   {item.label} →
                 </button>

@@ -54,7 +54,7 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
               {item.severity === "major" ? "🔴" : "⚪"}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-caption leading-relaxed text-white/80">
+              <p className="text-caption leading-relaxed text-foreground/80">
                 <span className="text-ink-muted mr-1 font-mono">{item.time}</span>
                 {item.title}
               </p>
@@ -102,8 +102,8 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="text-caption mb-6 flex shrink-0 items-center gap-3">
-          <span className="text-white/60">
-            <b className="text-white">{filteredNews.length}</b> 条资讯
+          <span className="text-foreground/60">
+            <b className="text-foreground">{filteredNews.length}</b> 条资讯
             {source === "all" && (
               <span className="ml-2">
                 · <b className="text-up">{majorCount}</b> 重要
@@ -113,7 +113,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-bg border-hairline rounded-input text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-bg border-hairline rounded-lg text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
           >
             <option value="all">全部来源</option>
             <option value="cls">财联社</option>
@@ -126,7 +126,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
             <p className="text-caption text-up mb-3">资讯加载失败</p>
             <button
               onClick={() => refetch()}
-              className="border-hairline text-ink-muted cursor-pointer rounded border px-4 py-1.5 text-xs transition-colors hover:text-white"
+              className="border-hairline text-ink-muted cursor-pointer rounded border px-4 py-2 text-xs transition-colors hover:text-foreground"
             >
               重试
             </button>
@@ -139,13 +139,13 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
               {filteredNews.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-surface-dark border-hairline-dark group hover:bg-bg-hover rounded-card mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
+                  className="bg-surface-dark border-hairline-dark group hover:bg-bg-hover rounded-lg mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
                 >
                   <span className="text-caption mt-0.5 shrink-0">
                     {item.severity === "major" ? "🔴" : "⚪"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-caption leading-relaxed text-white/80 transition-colors group-hover:text-white">
+                    <p className="text-caption leading-relaxed text-foreground/80 transition-colors group-hover:text-foreground">
                       <span className="text-ink-muted mr-2 font-mono text-xs">{item.time}</span>
                       {item.title}
                     </p>
@@ -174,16 +174,16 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   }
 
   return (
-    <div className="bg-bg-surface border-hairline rounded-card flex h-full min-h-0 flex-col overflow-hidden border">
+    <div className="bg-bg-surface border-hairline rounded-lg flex h-full min-h-0 flex-col overflow-hidden border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-caption-strong text-ink-muted font-mono tracking-wider uppercase">
+          <span className="text-caption text-ink-muted font-mono tracking-wider uppercase">
             📡 实时资讯
           </span>
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-bg border-hairline rounded-input text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
+            className="bg-bg border-hairline rounded-lg text-caption text-ink-muted cursor-pointer border px-2 py-0.5 font-mono outline-none"
           >
             <option value="all">全部</option>
             <option value="cls">财联社</option>
@@ -200,7 +200,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
             <p className="text-caption text-up mb-3">资讯加载失败</p>
             <button
               onClick={() => refetch()}
-              className="border-hairline text-ink-muted cursor-pointer rounded border px-4 py-1.5 text-xs transition-colors hover:text-white"
+              className="border-hairline text-ink-muted cursor-pointer rounded border px-4 py-2 text-xs transition-colors hover:text-foreground"
             >
               重试
             </button>
