@@ -33,7 +33,7 @@ export default function TradingView() {
 
   return (
     <div className="bg-base min-h-screen pt-14">
-      <div className="mx-auto max-w-[1600px] px-6 py-4">
+      <div className="mx-auto max-w-data px-6 py-4">
         {/* 错误状态 */}
         {ovError && (
           <div className="py-4">
@@ -56,7 +56,7 @@ export default function TradingView() {
         {ovLoading && !overview && (
           <div className="flex flex-col items-center justify-center gap-4 py-32">
             <div className="bg-brand size-3 animate-pulse rounded-full" />
-            <span className="text-caption text-secondary font-mono">加载市场数据...</span>
+            <span className="text-caption text-secondary font-number">加载市场数据...</span>
           </div>
         )}
 
@@ -65,7 +65,7 @@ export default function TradingView() {
             {/* 指数加载状态 */}
             {idxLoading && !indexQuotes.length && (
               <div className="bg-surface border-hairline p-card-inner rounded-lg flex items-center justify-center border py-6">
-                <span className="text-caption text-secondary font-mono">加载指数数据...</span>
+                <span className="text-caption text-secondary font-number">加载指数数据...</span>
               </div>
             )}
 
@@ -83,12 +83,12 @@ export default function TradingView() {
                     key={idx.name}
                     className="bg-surface border-hairline p-card-inner rounded-lg flex flex-col gap-1 border"
                   >
-                    <span className="text-caption text-secondary font-mono">{idx.name}</span>
-                    <span className="font-mono text-h1 text-primary tabular-nums">
+                    <span className="text-caption text-secondary font-number">{idx.name}</span>
+                    <span className="font-number text-h1 text-primary tabular-nums">
                       {idx.lastPx.toFixed(2)}
                     </span>
                     <span
-                      className={`text-caption font-mono tabular-nums ${idx.isUp ? "text-up" : "text-down"}`}
+                      className={`text-caption font-number tabular-nums ${idx.isUp ? "text-up" : "text-down"}`}
                     >
                       {idx.isUp ? "+" : ""}
                       {idx.pxChangeRate.toFixed(2)}%

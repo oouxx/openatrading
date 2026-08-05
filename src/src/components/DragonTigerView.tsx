@@ -119,9 +119,9 @@ export default function DragonTigerView() {
   const th = {
     textAlign: "left" as const,
     padding: "9px 10px",
-    fontSize: "0.66rem",
+    fontSize: "var(--font-size-caption)",
     fontWeight: 500,
-    color: "var(--color-muted, #888780)",
+    color: "var(--color-tertiary)",
     textTransform: "uppercase" as const,
     letterSpacing: "0.03em",
     borderBottom: "1px solid var(--color-border)",
@@ -140,7 +140,7 @@ export default function DragonTigerView() {
   return (
     <>
       <div className="min-h-full w-full p-4">
-        <div className="mb-[18px] grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           {stats.map((s) => (
             <div
               key={s.l}
@@ -148,7 +148,7 @@ export default function DragonTigerView() {
             >
               <div className="text-secondary mb-1 text-caption tracking-wider uppercase">{s.l}</div>
               <div
-                className="font-mono text-[1.4rem] font-semibold text-primary"
+                className="font-number text-h1 font-semibold text-primary"
                 style={s.cl ? { color: s.cl } : undefined}
               >
                 {s.v}
@@ -197,7 +197,7 @@ export default function DragonTigerView() {
                       <button
                         key={d}
                         onClick={() => setDirFilter(d)}
-                        className={`cursor-pointer rounded-2xl border px-3 py-1 text-caption transition-colors ${dirFilter === d ? activeCls : "border-hairline text-secondary hover:text-primary"}`}
+                        className={`cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors ${dirFilter === d ? activeCls : "border-hairline text-secondary hover:text-primary"}`}
                       >
                         {labels[d]}
                       </button>
@@ -216,7 +216,7 @@ export default function DragonTigerView() {
               </span>
             </div>
             <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
-              <table className="w-full border-collapse" style={{ fontSize: "0.77rem" }}>
+              <table className="w-full border-collapse" >
                 <thead>
                   <tr>
                     <th style={th}>名称</th>
@@ -233,7 +233,7 @@ export default function DragonTigerView() {
                         style={{
                           textAlign: "center",
                           padding: "36px",
-                          color: "var(--color-muted, #888780)",
+                          color: "var(--color-tertiary)",
                         }}
                       >
                         无匹配数据
@@ -256,7 +256,7 @@ export default function DragonTigerView() {
                           </td>
                           <td style={td}>
                             <span
-                              className={`font-mono text-caption font-semibold ${up ? "text-up" : "text-down"}`}
+                              className={`font-number text-caption font-semibold ${up ? "text-up" : "text-down"}`}
                             >
                               {up ? "+" : ""}
                               {((s.billboard_net_amt ?? 0) / 1e8).toFixed(2)}亿
@@ -264,7 +264,7 @@ export default function DragonTigerView() {
                           </td>
                           <td style={td}>
                             <span
-                              className={`font-mono text-caption font-semibold ${(s.change_rate ?? 0) >= 0 ? "text-up" : "text-down"}`}
+                              className={`font-number text-caption font-semibold ${(s.change_rate ?? 0) >= 0 ? "text-up" : "text-down"}`}
                             >
                               {(s.change_rate ?? 0) >= 0 ? "+" : ""}
                               {s.change_rate?.toFixed(2) ?? "—"}%
@@ -342,7 +342,7 @@ export default function DragonTigerView() {
               if (e.target === e.currentTarget) setSelected(null)
             }}
           >
-            <div className="bg-surface border-hairline flex max-h-[90vh] w-[700px] max-w-[95vw] flex-col overflow-hidden rounded-2xl border shadow-2xl">
+            <div className="bg-surface border-hairline flex max-h-[90vh] w-modal-lg max-w-[95vw] flex-col overflow-hidden rounded-lg border shadow-modal">
               <div className="border-hairline flex shrink-0 items-center justify-between border-b px-5 py-4">
                 <span className="text-h2 font-medium text-primary">
                   {selected.name} ({selected.code})
@@ -384,7 +384,7 @@ export default function DragonTigerView() {
                     <div key={m.l} className="bg-ink-dim rounded-lg px-3 py-2 text-center">
                       <div className="text-secondary text-caption">{m.l}</div>
                       <div
-                        className={`font-mono text-caption font-semibold ${m.up ? "text-up" : (m as any).down ? "text-down" : "text-primary"}`}
+                        className={`font-number text-caption font-semibold ${m.up ? "text-up" : (m as any).down ? "text-down" : "text-primary"}`}
                       >
                         {m.v}
                       </div>
@@ -511,7 +511,7 @@ export default function DragonTigerView() {
                           <div key={i} className="bg-ink-dim rounded-lg px-3 py-2 text-center">
                             <div className="text-secondary text-caption">{d.l}</div>
                             <div
-                              className={`font-mono text-caption font-semibold ${dv >= 0 ? "text-up" : "text-down"}`}
+                              className={`font-number text-caption font-semibold ${dv >= 0 ? "text-up" : "text-down"}`}
                             >
                               {dv >= 0 ? "+" : ""}
                               {dv.toFixed(2)}%

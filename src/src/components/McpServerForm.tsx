@@ -89,7 +89,7 @@ export function McpServerForm({
             value={server.transport.command ?? ""}
             onChange={(e) => updateTransport({ command: e.target.value })}
             placeholder="npx"
-            className="font-mono text-caption"
+            className="font-number text-caption"
           />
         </div>
       ) : (
@@ -105,7 +105,7 @@ export function McpServerForm({
                 ? "http://localhost:8081/mcp"
                 : "http://localhost:8081/sse"
             }
-            className="font-mono text-caption"
+            className="font-number text-caption"
           />
           {server.transport.type === "sse" && (
             <div className="mt-2">
@@ -114,7 +114,7 @@ export function McpServerForm({
                 value={server.transport.post_url ?? ""}
                 onChange={(e) => updateTransport({ post_url: e.target.value || undefined })}
                 placeholder="留空则自动推断"
-                className="font-mono text-caption"
+                className="font-number text-caption"
               />
             </div>
           )}
@@ -130,7 +130,7 @@ export function McpServerForm({
             value={server.transport.auth_token ?? ""}
             onChange={(e) => updateTransport({ auth_token: e.target.value || undefined })}
             placeholder="Bearer token..."
-            className="font-mono text-caption"
+            className="font-number text-caption"
           />
         </div>
       )}

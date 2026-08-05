@@ -92,7 +92,7 @@ function StockCard({
       <div className="flex items-center justify-between p-2">
         <div className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-caption font-semibold text-primary">{item.name}</span>
-          <span className="text-caption text-secondary font-mono">
+          <span className="text-caption text-secondary font-number">
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>
         </div>
@@ -101,7 +101,7 @@ function StockCard({
         </div>
       </div>
       {ai && (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
-        <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-mono">
+        <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-number">
           {ai.time && <span className="text-secondary">{ai.time}</span>}
           {ai.price !== undefined && (
             <span className="text-secondary">

@@ -99,7 +99,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               openEnlarged()
             }}
           />
-          <p className="text-caption text-secondary mt-1 text-center font-mono">
+          <p className="text-caption text-secondary mt-1 text-center font-number">
             {symbol} {name}
           </p>
         </div>
@@ -124,7 +124,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               className="block rounded-md"
               alt=""
             />
-            <p className="text-caption text-secondary mt-2 text-center font-mono">
+            <p className="text-caption text-secondary mt-2 text-center font-number">
               {symbol} {name} · {scale.toFixed(2)}x 滚轮缩放
             </p>
           </div>

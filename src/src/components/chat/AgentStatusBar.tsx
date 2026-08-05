@@ -50,18 +50,18 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
       }
     case "settled":
       return {
-        icon: <CheckCircle2 className="size-3.5 text-emerald-500" />,
+        icon: <CheckCircle2 className="size-3.5 text-success" />,
         label: "处理完成",
-        color: "text-emerald-500",
-        barColor: "bg-emerald-500/60",
+        color: "text-success",
+        barColor: "bg-success/60",
         pulse: false,
       }
     case "error":
       return {
-        icon: <XCircle className="size-3.5 text-red-500" />,
+        icon: <XCircle className="size-3.5 text-danger" />,
         label: "处理出错",
-        color: "text-red-500",
-        barColor: "bg-red-500/60",
+        color: "text-danger",
+        barColor: "bg-danger/60",
         pulse: false,
       }
   }
@@ -83,7 +83,7 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
       {/* Phase indicator dot + label */}
       <div className={`flex items-center gap-2 ${vis.color} transition-colors duration-300`}>
         {vis.icon}
-        <span className="font-mono text-caption font-medium tracking-wide">{vis.label}</span>
+        <span className="font-number text-caption font-medium tracking-wide">{vis.label}</span>
       </div>
 
       {/* Animated progress bar (during active phases) */}
@@ -103,7 +103,7 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
 
       {/* Error message */}
       {phase === "error" && errorMessage && (
-        <span className="text-secondary/60 ml-1 truncate font-mono text-caption">{errorMessage}</span>
+        <span className="text-secondary/60 ml-1 truncate font-number text-caption">{errorMessage}</span>
       )}
     </div>
   )

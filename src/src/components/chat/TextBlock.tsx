@@ -24,7 +24,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
     <div className="bg-hover border-hairline group rounded-lg my-2 overflow-hidden border">
       {/* Header bar */}
       <div className="border-hairline flex items-center justify-between border-b px-3 py-2">
-        <span className="text-secondary/60 font-mono text-caption tracking-wider uppercase">
+        <span className="text-secondary/60 font-number text-caption tracking-wider uppercase">
           {language || "code"}
         </span>
         <button
@@ -33,8 +33,8 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
         >
           {copied ? (
             <>
-              <Check className="size-3 text-emerald-500" />
-              <span className="text-emerald-500">已复制</span>
+              <Check className="size-3 text-success" />
+              <span className="text-success">已复制</span>
             </>
           ) : (
             <>
@@ -45,7 +45,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
         </button>
       </div>
       {/* Code content */}
-      <pre className="overflow-x-auto p-3 font-mono text-caption">
+      <pre className="overflow-x-auto p-3 font-number text-caption">
         <code className={className} {...props}>
           {children}
         </code>
@@ -59,7 +59,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
 function InlineCode({ children, ...props }: React.ComponentPropsWithoutRef<"code">) {
   return (
     <code
-      className="bg-hover text-primary rounded px-2 py-0.5 font-mono text-caption"
+      className="bg-hover text-primary rounded px-2 py-0.5 font-number text-caption"
       {...props}
     >
       {children}
@@ -80,7 +80,7 @@ const mdComponents: Components = {
   pre: ({ children }) => <>{children}</>,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse font-mono text-caption">{children}</table>
+      <table className="w-full border-collapse font-number text-caption">{children}</table>
     </div>
   ),
   th: ({ children }) => (

@@ -21,13 +21,13 @@ export default function TurnDivider({ label, isError }: TurnDividerProps) {
     <div className="flex items-center gap-2 px-0 py-1">
       <div
         className={`flex-1 border-t ${
-          isError ? "border-red-500/20" : "border-hairline"
+          isError ? "border-danger/20" : "border-hairline"
         }`}
       />
       {label && (
         <span
-          className={`shrink-0 font-mono text-caption tracking-wider uppercase ${
-            isError ? "text-red-500/40" : "text-secondary/30"
+          className={`shrink-0 font-number text-caption tracking-wider uppercase ${
+            isError ? "text-danger/40" : "text-secondary/30"
           }`}
         >
           {label}
@@ -35,7 +35,7 @@ export default function TurnDivider({ label, isError }: TurnDividerProps) {
       )}
       <ArrowRight
         className={`size-2.5 shrink-0 ${
-          isError ? "text-red-500/30" : "text-secondary/30"
+          isError ? "text-danger/30" : "text-secondary/30"
         }`}
       />
     </div>

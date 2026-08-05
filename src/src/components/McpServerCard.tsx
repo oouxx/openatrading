@@ -32,7 +32,7 @@ export function McpServerCard({
             {s.transport.type}
           </span>
         </div>
-        <p className="text-secondary truncate font-mono text-caption">{transportSummary()}</p>
+        <p className="text-secondary truncate font-number text-caption">{transportSummary()}</p>
       </div>
       <div className="flex shrink-0 gap-1">
         <button

@@ -186,7 +186,7 @@ export default function WatchlistView() {
     <div className="flex h-full">
       {/* Main content */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[1200px] px-6 py-4">
+        <div className="mx-auto max-w-wide px-6 py-4">
           {/* ── Header ── */}
           <div className="mb-4 flex items-center gap-3">
             <Star className="size-5 text-yellow-500" />
@@ -251,7 +251,7 @@ export default function WatchlistView() {
                     >
                       <div className="flex items-baseline gap-2">
                         <span className="text-body font-medium text-primary">{r.name}</span>
-                        <span className="text-caption text-secondary font-mono text-caption">
+                        <span className="text-caption text-secondary font-number text-caption">
                           {r.code.replace(/^[a-z]+/i, "")}
                         </span>
                       </div>
@@ -331,7 +331,7 @@ export default function WatchlistView() {
 
       {/* KlineDrawer overlay */}
       {klineStock && (
-        <div className="bg-surface border-hairline w-[500px] shrink-0 overflow-y-auto border-l">
+        <div className="bg-surface border-hairline w-detail-panel shrink-0 overflow-y-auto border-l">
           <KlineDrawer
             symbol={klineStock.symbol}
             name={klineStock.name}
@@ -368,28 +368,28 @@ function StockRow({
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="truncate text-body font-semibold text-primary">{name}</span>
-        <span className="text-caption text-secondary font-mono">
+        <span className="text-caption text-secondary font-number">
           {code.replace(/^[a-z]+/i, "")}
         </span>
       </div>
 
       {loaded ? (
         <>
-          <span className="w-20 text-right font-mono text-body font-bold text-primary">
+          <span className="w-20 text-right font-number text-body font-bold text-primary">
             {quote.last_px?.toFixed(2)}
           </span>
           <span
-            className={`rounded-lg w-16 px-2 py-0.5 text-right font-mono text-caption font-semibold ${
+            className={`rounded-lg w-16 px-2 py-0.5 text-right font-number text-caption font-semibold ${
               up ? "bg-up/20 text-up" : "bg-down/20 text-down"
             }`}
           >
             {up ? "+" : ""}
             {quote.px_change_rate?.toFixed(2)}%
           </span>
-          <span className="w-20 text-right font-mono text-caption text-primary/70">
+          <span className="w-20 text-right font-number text-caption text-primary/70">
             {formatVolume(quote.market_value)}
           </span>
-          <span className="w-20 text-right font-mono text-caption text-primary/70">
+          <span className="w-20 text-right font-number text-caption text-primary/70">
             {formatVolume(quote.circulation_value)}
           </span>
         </>

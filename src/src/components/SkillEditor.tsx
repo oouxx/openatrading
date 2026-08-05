@@ -128,7 +128,7 @@ export default function SkillEditor() {
 
       <div className="flex min-h-0 flex-1">
         {/* Left: skill list */}
-        <div className="border-hairline hidden w-[220px] shrink-0 flex-col border-r md:flex">
+        <div className="border-hairline hidden w-sidebar-narrow shrink-0 flex-col border-r md:flex">
           <div className="border-hairline border-b px-3 py-2">
             <input
               className="bg-hover text-secondary w-full rounded-md border-0 px-2 py-2 text-caption outline-none placeholder:text-primary/20"
@@ -234,7 +234,7 @@ export default function SkillEditor() {
                           <Input
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
-                            className="h-7 font-mono text-caption"
+                            className="h-7 font-number text-caption"
                             placeholder="my-skill"
                             disabled={!!selected}
                           />
@@ -273,7 +273,7 @@ export default function SkillEditor() {
                       <Textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
-                        className="flex-1 resize-none font-mono text-caption"
+                        className="flex-1 resize-none font-number text-caption"
                         placeholder="## 角色&#10;&#10;你是一个...&#10;"
                       />
                     </div>

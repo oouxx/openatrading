@@ -98,14 +98,14 @@ function dayLabel(d: number): string {
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
-  padding: "9px 10px",
-  fontSize: "0.66rem",
+  padding: "8px 12px",
+  fontSize: "var(--font-size-caption)",
   fontWeight: 500,
-  color: "var(--color-muted, #888780)",
+  color: "var(--color-tertiary)",
   textTransform: "uppercase",
   letterSpacing: "0.03em",
   borderBottom: "1px solid var(--color-border)",
-  background: "rgb(var(--color-fg-rgb) / 0.04)",
+  background: "var(--color-hover)",
   position: "sticky",
   top: 0,
   zIndex: 1,
@@ -113,17 +113,17 @@ const thStyle: React.CSSProperties = {
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: "7px 10px",
-  borderBottom: "1px solid rgb(var(--color-fg-rgb) / 0.04)",
+  padding: "8px 12px",
+  borderBottom: "1px solid var(--color-hairline)",
   whiteSpace: "nowrap",
 }
 
 const csBase: React.CSSProperties = {
-  fontFamily: "JetBrains Mono, monospace",
-  fontSize: "0.7rem",
+  fontFamily: "var(--font-number)",
+  fontSize: "var(--font-size-caption)",
   fontWeight: 600,
-  padding: "2px 7px",
-  borderRadius: 4,
+  padding: "2px 8px",
+  borderRadius: "var(--radius-sm)",
 }
 
 function chainEl(s: PromotionItem) {
@@ -133,15 +133,15 @@ function chainEl(s: PromotionItem) {
         <span
           style={{
             ...csBase,
-            color: "oklch(50% 0.10 240)",
-            background: "oklch(92% 0.02 240 / 0.15)",
+            color: "var(--color-brand)",
+            background: "var(--color-brand-muted)",
           }}
         >
           {dayLabel(s.yesterdayDays)}
         </span>
-        <span style={{ color: "var(--color-muted, #888780)", fontSize: "0.6rem" }}>→</span>
+        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
         <span
-          style={{ ...csBase, color: "var(--color-up)", background: "oklch(90% 0.04 22 / 0.18)" }}
+          style={{ ...csBase, color: "var(--color-up)", background: "var(--color-up-bg)" }}
         >
           {dayLabel(s.todayDays)}
         </span>
@@ -154,18 +154,18 @@ function chainEl(s: PromotionItem) {
         <span
           style={{
             ...csBase,
-            color: "oklch(50% 0.10 240)",
-            background: "oklch(92% 0.02 240 / 0.15)",
+            color: "var(--color-brand)",
+            background: "var(--color-brand-muted)",
           }}
         >
           {dayLabel(s.yesterdayDays)}
         </span>
-        <span style={{ color: "var(--color-muted, #888780)", fontSize: "0.6rem" }}>→</span>
+        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
         <span
           style={{
             ...csBase,
             color: "var(--color-down)",
-            background: "oklch(90% 0.04 155 / 0.18)",
+            background: "var(--color-down-bg)",
           }}
         >
           断
@@ -175,13 +175,13 @@ function chainEl(s: PromotionItem) {
   }
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span style={{ fontSize: "0.65rem", color: "var(--color-muted, #888780)" }}>—</span>
-      <span style={{ color: "var(--color-muted, #888780)", fontSize: "0.6rem" }}>→</span>
+      <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-tertiary)" }}>—</span>
+      <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
       <span
         style={{
           ...csBase,
-          color: "oklch(55% 0.14 240)",
-          background: "oklch(90% 0.04 240 / 0.18)",
+          color: "var(--color-brand)",
+          background: "var(--color-brand-muted)",
         }}
       >
         首板
@@ -192,9 +192,9 @@ function chainEl(s: PromotionItem) {
 
 function resultEl(s: PromotionItem) {
   const styles: Record<string, React.CSSProperties> = {
-    promoted: { background: "oklch(90% 0.04 22 / 0.18)", color: "var(--color-up)" },
-    broken: { background: "oklch(90% 0.04 155 / 0.2)", color: "var(--color-down)" },
-    first: { background: "oklch(90% 0.04 240 / 0.18)", color: "oklch(55% 0.14 240)" },
+    promoted: { background: "var(--color-up-bg)", color: "var(--color-up)" },
+    broken: { background: "var(--color-down-bg)", color: "var(--color-down)" },
+    first: { background: "var(--color-brand-muted)", color: "var(--color-brand)" },
   }
   const labels = { promoted: "晋级", broken: "断板", first: "新进" }
   return (
@@ -202,8 +202,8 @@ function resultEl(s: PromotionItem) {
       style={{
         display: "inline-block",
         padding: "2px 8px",
-        borderRadius: 4,
-        fontSize: "0.65rem",
+        borderRadius: "var(--radius-sm)",
+        fontSize: "var(--font-size-caption)",
         fontWeight: 600,
         ...styles[s.status],
       }}
@@ -356,7 +356,7 @@ export default function BreakoutView() {
     >
       <div className="text-secondary mb-1 text-caption tracking-wider uppercase">{s.label}</div>
       <div
-        className="font-mono text-[1.4rem] font-semibold text-primary"
+        className="font-number text-h1 font-semibold text-primary"
         style={s.color ? { color: s.color } : undefined}
       >
         {s.value}
@@ -368,7 +368,7 @@ export default function BreakoutView() {
   return (
     <div className="p-4">
       {/* Stats Row */}
-      <div className="mb-[18px] grid grid-cols-3 gap-3 md:grid-cols-6">
+      <div className="mb-4 grid grid-cols-3 gap-3 md:grid-cols-6">
         {[
           {
             label: "今日涨停",
@@ -380,19 +380,19 @@ export default function BreakoutView() {
             label: "1→2 晋级率",
             value: `${l1.rate >= 0 ? (l1.rate * 100).toFixed(1) : "—"}%`,
             sub: `${l1.promotedCount}/${l1.yesterdayCount}`,
-            color: l1.rate >= 0.5 ? "var(--color-up)" : "var(--color-warn, oklch(55%_0.16_55))",
+            color: l1.rate >= 0.5 ? "var(--color-up)" : "var(--color-warning)",
           },
           {
             label: "2→3 晋级率",
             value: `${l2.rate >= 0 ? (l2.rate * 100).toFixed(1) : "—"}%`,
             sub: `${l2.promotedCount}/${l2.yesterdayCount}`,
-            color: l2.rate >= 0.5 ? "var(--color-up)" : "var(--color-warn, oklch(55%_0.16_55))",
+            color: l2.rate >= 0.5 ? "var(--color-up)" : "var(--color-warning)",
           },
           {
             label: "3→4+ 晋级率",
             value: `${l3Rate.toFixed(1)}%`,
             sub: `${l3Promoted}/${l3Total}`,
-            color: l3Rate >= 50 ? "var(--color-up)" : "var(--color-warn, oklch(55%_0.16_55))",
+            color: l3Rate >= 50 ? "var(--color-up)" : "var(--color-warning)",
           },
           {
             label: "整体晋级率",
@@ -409,7 +409,7 @@ export default function BreakoutView() {
       </div>
 
       {!hasYesterdayData && (
-        <div className="bg-surface border-hairline text-secondary mb-[18px] rounded-lg border px-4 py-3 text-center text-caption">
+        <div className="bg-surface border-hairline text-secondary mb-4 rounded-lg border px-4 py-3 text-center text-caption">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
@@ -431,7 +431,7 @@ export default function BreakoutView() {
                   const activeCls: Record<string, string> = {
                     promoted: "bg-up border-up text-primary",
                     broken: "bg-down border-down text-primary",
-                    first: "bg-[oklch(55%_0.14_240)] border-[oklch(55%_0.14_240)] text-primary",
+                    first: "bg-brand border-brand text-primary",
                     all: "bg-brand border-brand text-primary",
                   }
                   return (
@@ -441,7 +441,7 @@ export default function BreakoutView() {
                         setFilter(fid)
                         if (fid !== "all") setActiveLv(null)
                       }}
-                      className={`cursor-pointer rounded-2xl border px-3 py-1 text-caption transition-colors ${
+                      className={`cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors ${
                         filter === fid
                           ? activeCls[fid]
                           : "border-hairline text-secondary hover:text-primary"
@@ -472,7 +472,7 @@ export default function BreakoutView() {
                 const rate = b < 4 ? (row ? row.rate * 100 : 0) : l3Rate
                 const lb = b === 1 ? "首板" : b === 2 ? "二板" : b === 3 ? "三板" : "四板+"
                 const rc =
-                  rate >= 50 ? "text-up" : rate >= 30 ? "text-[oklch(55%_0.16_55)]" : "text-down"
+                  rate >= 50 ? "text-up" : rate >= 30 ? "text-warning" : "text-down"
                 return (
                   <div
                     key={b}
@@ -487,7 +487,7 @@ export default function BreakoutView() {
                     }}
                   >
                     <span className="text-secondary">{lb} →</span>
-                    <span className={`font-mono text-caption font-medium ${rc}`}>
+                    <span className={`font-number text-caption font-medium ${rc}`}>
                       {rate.toFixed(1)}%
                     </span>
                   </div>
@@ -504,7 +504,7 @@ export default function BreakoutView() {
             <span className="text-secondary text-caption">{items.length} 只</span>
           </div>
           <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
-            <table className="w-full border-collapse" style={{ fontSize: "0.77rem" }}>
+            <table className="w-full border-collapse" >
               <thead>
                 <tr>
                   <th style={thStyle}>名称</th>
@@ -523,7 +523,7 @@ export default function BreakoutView() {
                       style={{
                         textAlign: "center",
                         padding: "36px",
-                        color: "var(--color-muted, #888780)",
+                        color: "var(--color-tertiary)",
                       }}
                     >
                       无匹配数据
@@ -545,7 +545,7 @@ export default function BreakoutView() {
                       >
                         <td style={tdStyle}>
                           <span
-                            className="text-brand cursor-pointer font-medium underline decoration-[oklch(80%_0.04_28)] underline-offset-[3px]"
+                            className="text-brand cursor-pointer font-medium underline decoration-brand underline-offset-[3px]"
                             onClick={(e) => {
                               e.stopPropagation()
                               setSelectedStock(s)
@@ -557,8 +557,8 @@ export default function BreakoutView() {
                           </span>
                           <span
                             style={{
-                              fontSize: "0.68rem",
-                              color: "var(--color-muted, #888780)",
+                              fontSize: "var(--font-size-caption)",
+                              color: "var(--color-tertiary)",
                               marginLeft: 3,
                             }}
                           >
@@ -568,11 +568,11 @@ export default function BreakoutView() {
                         <td style={tdStyle}>
                           <span
                             style={{
-                              fontSize: "0.64rem",
-                              color: "var(--color-muted, #888780)",
-                              background: "rgb(var(--color-fg-rgb) / 0.04)",
-                              padding: "2px 7px",
-                              borderRadius: 4,
+                              fontSize: "var(--font-size-caption)",
+                              color: "var(--color-tertiary)",
+                              background: "var(--color-hover)",
+                              padding: "2px 8px",
+                              borderRadius: "var(--radius-sm)",
                             }}
                           >
                             {s.reason.split(",")[0] || "—"}
@@ -583,14 +583,14 @@ export default function BreakoutView() {
                         <td
                           style={{
                             ...tdStyle,
-                            fontFamily: "JetBrains Mono, monospace",
-                            fontSize: "0.73rem",
-                            color: "var(--color-muted, #888780)",
+                            fontFamily: "var(--font-number)",
+                            fontSize: "var(--font-size-caption)",
+                            color: "var(--color-tertiary)",
                           }}
                         >
                           —
                         </td>
-                        <td style={{ ...tdStyle, color: "var(--color-muted, #888780)" }}>—</td>
+                        <td style={{ ...tdStyle, color: "var(--color-tertiary)" }}>—</td>
                       </tr>
                     )
                   })
@@ -623,7 +623,7 @@ export default function BreakoutView() {
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-body font-bold text-primary">{selectedStock.name}</span>
-                    <span className="text-secondary font-mono text-caption">
+                    <span className="text-secondary font-number text-caption">
                       {selectedStock.symbol.replace(/\.[A-Z]+$/, "")}
                     </span>
                   </div>
@@ -636,7 +636,7 @@ export default function BreakoutView() {
                 </div>
                 <div className="flex items-center gap-3 text-caption">
                   <span
-                    className={`font-mono font-semibold ${selectedStock.changePercent >= 0 ? "text-up" : "text-down"}`}
+                    className={`font-number font-semibold ${selectedStock.changePercent >= 0 ? "text-up" : "text-down"}`}
                   >
                     {selectedStock.changePercent >= 0 ? "+" : ""}
                     {(selectedStock.changePercent * 100).toFixed(2)}%
@@ -659,7 +659,7 @@ export default function BreakoutView() {
                   <button
                     key={p.value}
                     onClick={() => setKlinePeriod(p.value)}
-                    className={`rounded-full px-3 py-1 font-mono text-caption transition ${
+                    className={`rounded-full px-3 py-1 font-number text-caption transition ${
                       klinePeriod === p.value ? "bg-brand text-primary" : "text-secondary bg-transparent"
                     }`}
                   >
@@ -741,7 +741,7 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
       {metrics.map((m) => (
         <div key={m.label} className="bg-base border-hairline rounded-lg border p-3 text-center">
           <p className="text-secondary text-caption">{m.label}</p>
-          <p className={`mt-1 font-mono text-caption text-primary ${m.cls || ""}`}>{m.value}</p>
+          <p className={`mt-1 font-number text-caption text-primary ${m.cls || ""}`}>{m.value}</p>
         </div>
       ))}
     </div>

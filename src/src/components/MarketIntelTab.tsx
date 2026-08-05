@@ -53,7 +53,7 @@ export default function MarketIntelTab() {
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
-            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-mono transition-colors ${
+            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-number transition-colors ${
               activeSection === s.id ? "bg-brand/20 text-brand" : "text-secondary hover:text-primary/80"
             }`}
           >
@@ -88,10 +88,10 @@ export default function MarketIntelTab() {
                         key={s[0]}
                         className="rounded-lg flex items-center gap-3 px-2 py-2 transition-colors hover:bg-white/4"
                       >
-                        <span className="text-caption w-6 font-mono text-primary/40">#{idx + 1}</span>
-                        <span className="text-caption font-mono text-primary">{s[0]}</span>
+                        <span className="text-caption w-6 font-number text-primary/40">#{idx + 1}</span>
+                        <span className="text-caption font-number text-primary">{s[0]}</span>
                         <span className="text-caption text-primary/60">{s[1]}</span>
-                        <span className="bg-brand/15 rounded-sm text-brand text-caption ml-auto px-2 py-0.5 font-mono">
+                        <span className="bg-brand/15 rounded-sm text-brand text-caption ml-auto px-2 py-0.5 font-number">
                           {s[2]}次
                         </span>
                       </div>
@@ -120,7 +120,7 @@ export default function MarketIntelTab() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="mb-1 flex items-center gap-2">
-                              <span className="text-caption shrink-0 font-mono text-primary/40">
+                              <span className="text-caption shrink-0 font-number text-primary/40">
                                 #{idx + 1}
                               </span>
                               <a
@@ -138,7 +138,7 @@ export default function MarketIntelTab() {
                               <span>👍 {a.like_count}</span>
                               <span>💬 {a.comment_count}</span>
                               <span>🔄 {a.forward_count}</span>
-                              <span className="bg-brand/15 rounded-sm text-brand text-caption px-1 py-0.5 font-mono">
+                              <span className="bg-brand/15 rounded-sm text-brand text-caption px-1 py-0.5 font-number">
                                 {a.heat_score}热度
                               </span>
                             </div>
@@ -200,7 +200,7 @@ export default function MarketIntelTab() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-caption shrink-0 font-mono text-primary/40">
+                          <span className="text-caption shrink-0 font-number text-primary/40">
                             #{idx + 1}
                           </span>
                           <span className="text-caption truncate font-medium text-primary">

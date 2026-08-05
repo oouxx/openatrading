@@ -128,7 +128,7 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
             transition={{ duration: 0.35, delay: card.delay }}
           >
             <p className="text-caption text-secondary mb-2">{card.label}</p>
-            <p className={`font-mono font-semibold ${card.valueClass}`} style={{ fontSize: 22 }}>
+            <p className={`font-number font-semibold ${card.valueClass}`} className="text-h1">
               {card.value}
             </p>
             <p className="text-caption text-secondary mt-1">{card.sub}</p>
@@ -139,7 +139,7 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
       {decisionSummary && (
         <div className="bg-surface border-hairline rounded-lg flex items-center gap-4 border px-5 py-4">
           <span
-            className={`text-caption rounded-full px-3 py-1 font-mono ${riskBadgeClass}`}
+            className={`text-caption rounded-full px-3 py-1 font-number ${riskBadgeClass}`}
           >
             {riskLevel}
           </span>

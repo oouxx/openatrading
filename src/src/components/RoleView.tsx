@@ -61,7 +61,7 @@ function _Sidebar({
   })
 
   return (
-    <aside className="bg-surface border-hairline hidden w-[260px] min-w-[260px] flex-col overflow-y-auto border-r md:flex">
+    <aside className="bg-surface border-hairline hidden w-sidebar min-w-sidebar flex-col overflow-y-auto border-r md:flex">
       <div className="border-hairline flex items-center justify-between gap-2 border-b p-4">
         <h2 className="text-h2 font-medium text-primary">角色列表</h2>
         <span className="text-secondary text-caption">{totalCount} 个</span>
@@ -95,7 +95,7 @@ function _Sidebar({
                 <div className="text-secondary mt-0.5 flex gap-3 text-caption">
                   <span>{count} 持仓</span>
                   <span
-                    className={`font-mono text-caption font-semibold ${isNaN(pnl) ? "text-secondary" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-primary"}`}
+                    className={`font-number text-caption font-semibold ${isNaN(pnl) ? "text-secondary" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-primary"}`}
                   >
                     {count > 0
                       ? isNaN(pnl)
@@ -182,7 +182,7 @@ function StatCard({
     <div className="bg-surface border-hairline rounded-lg border px-4 py-4">
       <div className="text-secondary text-caption tracking-wider uppercase">{label}</div>
       <div
-        className={`mt-1 font-mono text-h1 font-semibold ${positive ? "text-down" : negative ? "text-up" : "text-primary"}`}
+        className={`mt-1 font-number text-h1 font-semibold ${positive ? "text-down" : negative ? "text-up" : "text-primary"}`}
       >
         {value}
       </div>
@@ -233,7 +233,7 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
   for (let i = 0; i <= 4; i++) {
     const val = minVal + (range * i) / 4
     const ly = y(val)
-    yLabels += `<text x="${padL - 8}" y="${ly + 3}" text-anchor="end" font-size="9" fill="#888780">¥${val.toFixed(0)}</text>`
+    yLabels += `<text x="${padL - 8}" y="${ly + 3}" text-anchor="end" font-size="9" fill="var(--color-tertiary)">¥${val.toFixed(0)}</text>`
     yLabels += `<line x1="${padL}" y1="${ly}" x2="${W - padR}" y2="${ly}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5" stroke-dasharray="3,3"/>`
   }
 
@@ -243,7 +243,7 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
     .filter((_, i) => i % labelStep === 0 || i === points.length - 1)
     .map((p) => {
       const idx = points.indexOf(p)
-      return `<text x="${x(idx).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#888780">${p.date.slice(5)}</text>`
+      return `<text x="${x(idx).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--color-tertiary)">${p.date.slice(5)}</text>`
     })
     .join("")
 
@@ -253,7 +253,7 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
       const isLast = i === points.length - 1
       const r = isLast ? "4.5" : "3"
       const fill = isLast ? "var(--color-accent)" : "var(--color-accent)"
-      const stroke = isLast ? "#fff" : "#fff"
+      const stroke = "var(--color-primary)"
       const val = (p.equity ?? initialCapital) - initialCapital
       return `<circle cx="${x(i).toFixed(1)}" cy="${y(val).toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`
     })
@@ -266,7 +266,7 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
       dangerouslySetInnerHTML={{
         __html: `
       ${yLabels}
-      <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="oklch(70%_0.02_250)" stroke-width="1" stroke-dasharray="6,4"/>
+      <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--color-hairline)" stroke-width="1" stroke-dasharray="6,4"/>
       <path d="${areaD}" fill="var(--color-accent)" opacity="0.08"/>
       <path d="${pathD}" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       ${circles}
@@ -454,7 +454,7 @@ export default function RoleView() {
                       onClick={() => setTab(t.id)}
                       className={`cursor-pointer rounded-lg px-4 py-2 text-caption font-medium transition-colors ${
                         tab === t.id
-                          ? "bg-surface text-primary shadow-sm"
+                          ? "bg-surface text-primary shadow-card"
                           : "text-secondary hover:text-primary"
                       }`}
                     >
@@ -619,7 +619,7 @@ export default function RoleView() {
                     <span className="flex items-center gap-2">
                       <span
                         className="inline-block size-2 rounded-full"
-                        style={{ background: "oklch(70% 0.02 250)" }}
+                        style={{ background: "var(--color-hairline)" }}
                       />
                       基准线
                     </span>
@@ -649,7 +649,7 @@ export default function RoleView() {
           onClick={() => setShowCreate(false)}
         >
           <div
-            className="bg-surface border-hairline w-[380px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
+            className="bg-surface border-hairline w-dialog-md max-w-[90vw] rounded-lg border p-6 shadow-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-4 text-h1 font-medium text-primary">新建角色</h3>
@@ -689,7 +689,7 @@ export default function RoleView() {
           onClick={() => setShowDeleteConfirm(null)}
         >
           <div
-            className="bg-surface border-hairline w-[360px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
+            className="bg-surface border-hairline w-dialog-sm max-w-[90vw] rounded-lg border p-6 shadow-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-h1 font-medium text-primary">删除角色</h3>
@@ -720,7 +720,7 @@ export default function RoleView() {
           onClick={() => setShowResetConfirm(null)}
         >
           <div
-            className="bg-surface border-hairline w-[360px] max-w-[90vw] rounded-lg border p-6 shadow-xl"
+            className="bg-surface border-hairline w-dialog-sm max-w-[90vw] rounded-lg border p-6 shadow-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-h1 font-medium text-primary">重置账户</h3>
@@ -780,9 +780,9 @@ function Td({
   reason?: boolean
 }) {
   let cls = "px-4 py-3 border-b border-hairline text-primary whitespace-nowrap"
-  if (bold) cls += " font-semibold font-mono text-caption"
+  if (bold) cls += " font-semibold font-number text-caption"
   if (muted) cls += " text-caption text-secondary"
-  if (reason) cls += " max-w-[260px] whitespace-normal text-caption text-secondary leading-relaxed"
+  if (reason) cls += " max-w-sidebar whitespace-normal text-caption text-secondary leading-relaxed"
   if (className) cls += " " + className
   return <td className={cls}>{children}</td>
 }

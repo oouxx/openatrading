@@ -1,3 +1,5 @@
+import { chartColors } from "@/lib/chartColors"
+
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useReplayEvents } from "@/hooks/query/useReplayEvents"
 
@@ -177,7 +179,7 @@ export default function ReplayView() {
               setFilter(f)
               setSelectedId(null)
             }}
-            className={`cursor-pointer rounded-2xl border px-4 py-1 text-caption font-medium transition-colors ${
+            className={`cursor-pointer rounded-lg border px-4 py-1 text-caption font-medium transition-colors ${
               filter === f
                 ? f === "good"
                   ? "border-up bg-up text-primary"
@@ -198,7 +200,7 @@ export default function ReplayView() {
             <button
               key={t}
               onClick={() => setEventTypeFilter(eventTypeFilter === t ? null : t)}
-              className={`cursor-pointer rounded-2xl border px-3 py-1 text-caption font-medium transition-colors ${
+              className={`cursor-pointer rounded-lg border px-3 py-1 text-caption font-medium transition-colors ${
                 eventTypeFilter === t
                   ? "border-brand bg-brand text-primary"
                   : "border-hairline text-secondary hover:text-primary"
@@ -216,14 +218,14 @@ export default function ReplayView() {
             <button
               key={p}
               onClick={() => setMinPct(p)}
-              className={`cursor-pointer rounded px-2 py-0.5 font-mono text-caption transition-colors ${minPct === p ? "bg-brand text-primary" : "border-hairline text-secondary border hover:text-primary"}`}
+              className={`cursor-pointer rounded px-2 py-0.5 font-number text-caption transition-colors ${minPct === p ? "bg-brand text-primary" : "border-hairline text-secondary border hover:text-primary"}`}
             >
               {p}%
             </button>
           ))}
         </div>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <span className="min-w-[46px] text-center font-mono text-body font-semibold text-primary">
+        <span className="min-w-[46px] text-center font-number text-body font-semibold text-primary">
           {minToTime(currentMinute)}
         </span>
         <span className="bg-hairline mx-1 h-5 w-px" />
@@ -249,7 +251,7 @@ export default function ReplayView() {
                 setTooltip({
                   x,
                   y,
-                  html: `<div style="font-weight:600">${ev.plateName} ${isGood ? "利好" : "利空"}</div><div style="font-family:var(--font-mono)">${minToTime(ev.minute)} | ${ev.pcp >= 0 ? "+" : "-"}${(Math.abs(ev.pcp) * 100).toFixed(2)}% | ${ev.relatedStocks.length}只</div>`,
+                  html: `<div style="font-weight:600">${ev.plateName} ${isGood ? "利好" : "利空"}</div><div style="font-family:var(--font-number)">${minToTime(ev.minute)} | ${ev.pcp >= 0 ? "+" : "-"}${(Math.abs(ev.pcp) * 100).toFixed(2)}% | ${ev.relatedStocks.length}只</div>`,
                 })
               }
             } else {
@@ -267,7 +269,7 @@ export default function ReplayView() {
         />
         {tooltip && (
           <div
-            className="bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-caption whitespace-nowrap text-primary shadow-lg"
+            className="bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-caption whitespace-nowrap text-primary shadow-modal"
             style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}
           >
             <span dangerouslySetInnerHTML={{ __html: tooltip.html }} />
@@ -293,7 +295,7 @@ export default function ReplayView() {
               }}
             >
               <span className={`size-2 shrink-0 rounded-full ${isGood ? "bg-up" : "bg-down"}`} />
-              <span className="text-secondary min-w-[42px] font-mono text-caption">
+              <span className="text-secondary min-w-[42px] font-number text-caption">
                 {minToTime(e.minute)}
               </span>
               <span className="w-[72px] truncate text-caption font-semibold text-primary">
@@ -305,7 +307,7 @@ export default function ReplayView() {
                 {isGood ? "利好" : "利空"}
               </span>
               <span
-                className={`w-[64px] font-mono text-caption font-medium ${isGood ? "text-up" : "text-down"}`}
+                className={`w-[64px] font-number text-caption font-medium ${isGood ? "text-up" : "text-down"}`}
               >
                 {e.pcp >= 0 ? "+" : "-"}
                 {(Math.abs(e.pcp) * 100).toFixed(2)}%
@@ -314,7 +316,7 @@ export default function ReplayView() {
                 {e.relatedStocks.map((s) => (
                   <span key={s.symbol}>
                     {s.name}
-                    <span className={`ml-0.5 font-mono ${s.pcp >= 0 ? "text-up" : "text-down"}`}>
+                    <span className={`ml-0.5 font-number ${s.pcp >= 0 ? "text-up" : "text-down"}`}>
                       {s.pcp >= 0 ? "+" : "-"}
                       {(Math.abs(s.pcp) * 100).toFixed(2)}%
                     </span>{" "}
@@ -436,7 +438,7 @@ function PulseChart({
         ctx.beginPath()
         ctx.arc(cx, isGood ? y1 : y2, isGlow ? 5 : 3, 0, Math.PI * 2)
         ctx.fill()
-        ctx.strokeStyle = "#fff"
+        ctx.strokeStyle = chartColors.primary()
         ctx.lineWidth = 1.5
         ctx.setLineDash([])
         ctx.stroke()
@@ -449,10 +451,8 @@ function PulseChart({
     }
 
     const upColor =
-      getComputedStyle(document.documentElement).getPropertyValue("--color-up").trim() || "#FF5C5C"
-    const downColor =
-      getComputedStyle(document.documentElement).getPropertyValue("--color-down").trim() ||
-      "#1D9E75"
+      chartColors.up()
+    const downColor = chartColors.down()
 
     // Draw all bars first (non-glow)
     events.forEach((e) => {
@@ -469,8 +469,7 @@ function PulseChart({
     // ── Current time cursor ──
     const curX = xFromMin(curMin)
     ctx.strokeStyle =
-      getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim() ||
-      "#7F77DD"
+      chartColors.brand()
     ctx.lineWidth = 1.5
     ctx.setLineDash([6, 4])
     ctx.globalAlpha = 0.7
@@ -482,18 +481,17 @@ function PulseChart({
     ctx.globalAlpha = 1
 
     // Cursor circle
-    ctx.fillStyle = "#fff"
+    ctx.fillStyle = chartColors.primary()
     ctx.beginPath()
     ctx.arc(curX, midY, 7, 0, Math.PI * 2)
     ctx.fill()
     ctx.strokeStyle =
-      getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim() ||
-      "#7F77DD"
+      chartColors.brand()
     ctx.lineWidth = 2.5
     ctx.stroke()
 
     // ── Labels ──
-    ctx.fillStyle = "rgb(var(--color-muted-rgb))"
+    ctx.fillStyle = chartColors.tertiary()
     ctx.font = "9px Inter, system-ui, sans-serif"
 
     // X labels

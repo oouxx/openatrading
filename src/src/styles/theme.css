@@ -84,6 +84,15 @@
   --color-down-bg: oklch(0.55 0.12 160 / 0.12);
   --color-data-green: oklch(0.55 0.12 160);
   --color-data-red: oklch(0.48 0.18 30);
+  /* ── 状态语义色 ── */
+  --color-success: oklch(0.55 0.12 160);     /* 成功 — 同 down 冷绿 */
+  --color-success-bg: oklch(0.55 0.12 160 / 0.12);
+  --color-danger: oklch(0.55 0.18 25);       /* 危险 — 暖红 */
+  --color-danger-bg: oklch(0.55 0.18 25 / 0.12);
+  --color-warning: oklch(0.7 0.15 65);       /* 警告 — 琥珀 */
+  --color-warning-bg: oklch(0.7 0.15 65 / 0.12);
+  --color-info: oklch(0.55 0.12 260);        /* 信息 — 同 brand */
+  --color-info-bg: oklch(0.55 0.12 260 / 0.12);
 
   /* Legacy aliases (过渡，逐步迁移) */
   --color-foreground: oklch(0.2 0 0);
@@ -126,6 +135,18 @@
   --shadow-card: 0 0 0 1px oklch(0.2 0 0 / 0.08);
   --shadow-modal: 0 0 0 1px oklch(0.2 0 0 / 0.14), 0 4px 16px rgba(0, 0, 0, 0.15);
   --shadow-tooltip: 0 0 0 1px oklch(0.2 0 0 / 0.14), 0 8px 24px rgba(0, 0, 0, 0.2);
+
+  /* ── 布局宽度 token ── */
+  --width-sidebar: 260px;
+  --width-sidebar-narrow: 220px;
+  --width-detail-panel: 500px;
+  --width-dialog-sm: 360px;
+  --width-dialog-md: 380px;
+  --width-modal-lg: 700px;
+  --container-narrow: 720px;
+  --container-default: 960px;
+  --container-wide: 1200px;
+  --container-data: 1600px;
   --shadow-terminal: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-terminal-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
@@ -207,6 +228,16 @@
   --color-down-muted: oklch(0.6 0.12 160 / 0.15);
   --color-data-green: oklch(0.6 0.12 160);
   --color-data-red: oklch(0.65 0.18 30);
+
+  /* ── 状态语义色 dark ── */
+  --color-success: oklch(0.6 0.12 160);
+  --color-success-bg: oklch(0.6 0.12 160 / 0.12);
+  --color-danger: oklch(0.65 0.18 25);
+  --color-danger-bg: oklch(0.65 0.18 25 / 0.12);
+  --color-warning: oklch(0.75 0.15 65);
+  --color-warning-bg: oklch(0.75 0.15 65 / 0.12);
+  --color-info: oklch(0.55 0.12 260);
+  --color-info-bg: oklch(0.55 0.12 260 / 0.12);
 
   /* Legacy aliases dark override */
   --color-foreground: oklch(0.92 0.004 285);

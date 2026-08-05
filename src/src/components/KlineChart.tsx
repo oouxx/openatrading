@@ -1,3 +1,5 @@
+import { chartColors } from "@/lib/chartColors"
+
 import { useRef, useEffect, useCallback } from "react"
 import {
   createChart,
@@ -150,8 +152,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "#888780",
-        fontSize: 10,
+        textColor: "var(--color-tertiary)",
+        fontSize: 12,
         panes: {
           enableResize: false,
           separatorColor: "rgba(255,255,255,0.08)",
@@ -194,7 +196,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     priceSeriesRef.current = chart.addSeries(LineSeries, {
-      color: "#7F77DD",
+      color: chartColors.brand(),
       lineWidth: 2,
       priceScaleId: "left",
       crosshairMarkerVisible: true,
@@ -205,7 +207,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     avgPriceSeriesRef.current = chart.addSeries(LineSeries, {
-      color: "#f5a623",
+      color: chartColors.warning(),
       lineWidth: 1,
       lineStyle: 2,
       priceScaleId: "left",
@@ -287,8 +289,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       layout: {
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
-        textColor: "#888780",
-        fontSize: 10,
+        textColor: "var(--color-tertiary)",
+        fontSize: 12,
         panes: {
           enableResize: false,
           separatorColor: "rgba(255,255,255,0.08)",
@@ -320,22 +322,22 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: "#FF5C5C",
-      downColor: "#1D9E75",
-      borderUpColor: "#FF5C5C",
-      borderDownColor: "#1D9E75",
-      wickUpColor: "#FF5C5C",
-      wickDownColor: "#1D9E75",
+      upColor: chartColors.up(),
+      downColor: chartColors.down(),
+      borderUpColor: chartColors.up(),
+      borderDownColor: chartColors.down(),
+      wickUpColor: chartColors.up(),
+      wickDownColor: chartColors.down(),
       priceScaleId: "right",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     })
 
     // Moving averages
     const maConfig = [
-      { ref: ma5SeriesRef, color: "#F5A623", label: "MA5" },
-      { ref: ma10SeriesRef, color: "#4A90D9", label: "MA10" },
-      { ref: ma20SeriesRef, color: "#D0021B", label: "MA20" },
-      { ref: ma30SeriesRef, color: "#7ED321", label: "MA30" },
+      { ref: ma5SeriesRef, color: chartColors.ma5, label: "MA5" },
+      { ref: ma10SeriesRef, color: chartColors.ma10, label: "MA10" },
+      { ref: ma20SeriesRef, color: chartColors.ma20, label: "MA20" },
+      { ref: ma30SeriesRef, color: chartColors.ma30, label: "MA30" },
     ] as const
     seriesRefs.current = maConfig.map(({ ref, color, label }) => {
       const series = chart.addSeries(LineSeries, {

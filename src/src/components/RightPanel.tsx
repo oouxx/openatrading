@@ -31,19 +31,26 @@ const TABS: { id: RightPanelView; label: string }[] = [
 ]
 
 export default function RightPanel() {
+
+const PANEL_DEFAULT_WIDTH = 400
+const PANEL_MIN_WIDTH = 300
+const PANEL_MAX_WIDTH = 700
+const POPOUT_MIN_W = 480
+const POPOUT_MIN_H = 300
+
   const activeView = useRightPanelStore((s) => s.activeView)
   const setActiveView = useRightPanelStore((s) => s.setActiveView)
   const klineTarget = useRightPanelStore((s) => s.klineTarget)
   const closeKline = useRightPanelStore((s) => s.closeKline)
   const [popoutView, setPopoutView] = useState<RightPanelView | null>(null)
-  const [popoutSize, setPopoutSize] = useState({ w: 896, h: 600 })
+  const [popoutSize, setPopoutSize] = useState({ w: 896, h: 600 }) // popout default: wide enough for charts
   const isResizing = useRef(false)
   const dragControls = useDragControls()
   const { width, setWidth, collapsed, toggleCollapse } = usePanelWidth(
     "layout:right-width",
-    400,
-    300,
-    700,
+    PANEL_DEFAULT_WIDTH,
+    PANEL_MIN_WIDTH,
+    PANEL_MAX_WIDTH,
     "layout:right-collapsed"
   )
 
@@ -180,7 +187,7 @@ export default function RightPanel() {
             }}
           >
             <motion.div
-              className="bg-surface border-hairline relative flex flex-col rounded-lg border shadow-2xl"
+              className="bg-surface border-hairline relative flex flex-col rounded-lg border shadow-modal"
               style={{
                 width: popoutSize.w,
                 height: popoutSize.h,
@@ -241,8 +248,8 @@ export default function RightPanel() {
                   document.body.style.userSelect = "none"
                   const onMove = (ev: MouseEvent) => {
                     setPopoutSize({
-                      w: Math.max(480, startW + ev.clientX - startX),
-                      h: Math.max(300, startH + ev.clientY - startY),
+                      w: Math.max(POPOUT_MIN_W, startW + ev.clientX - startX),
+                      h: Math.max(POPOUT_MIN_H, startH + ev.clientY - startY),
                     })
                   }
                   const onUp = () => {
