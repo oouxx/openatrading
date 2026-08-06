@@ -283,13 +283,6 @@ export default function AiCopilot({
       } else {
         setShowSlash(false)
       }
-
-      // Auto-resize
-      const el = textareaRef.current
-      if (el) {
-        el.style.height = "auto"
-        el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-      }
     },
     [],
   )
@@ -372,7 +365,7 @@ export default function AiCopilot({
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className={`bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] w-full resize-none rounded-2xl border px-4 py-4 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3 ${
+        className={`bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] max-h-[200px] w-full resize-none rounded-2xl border px-4 py-4 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3 ${
           isStreamingActive ? "pr-14" : "pr-4"
         }`}
         placeholder="有什么可以帮你？"
@@ -496,7 +489,7 @@ export default function AiCopilot({
             onScroll={onContainerScroll}
             className="flex flex-1 flex-col overflow-y-auto py-5"
           >
-            <div className="readable-content flex flex-col gap-5 px-6">
+            <div className="readable-content flex flex-col gap-5 px-6 pb-40">
               {currentTurns.map((turn, idx) => {
                 const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
                 const isFirst = idx === 0
@@ -556,16 +549,16 @@ export default function AiCopilot({
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-modal transition-colors"
+              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-32 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-modal transition-colors"
             >
               <ArrowDown className="size-3" />
               回到最新
             </button>
           )}
 
-          {/* ── Input area (docked) ───────────────────────────────────── */}
-          <div className="border-hairline shrink-0 border-t px-6 py-3">
-            <div className="readable-content flex items-end gap-2">
+          {/* ── Floating input (Claude style) ─────────────────────────── */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-base via-base/90 to-transparent px-6 pt-12 pb-4">
+            <div className="pointer-events-auto readable-content flex items-end gap-2">
               {renderInputField()}
             </div>
           </div>
