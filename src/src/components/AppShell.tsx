@@ -51,7 +51,7 @@ export default function AppShell() {
 
   return (
     <TooltipProvider>
-      <SidebarProvider defaultOpen>
+      <SidebarProvider defaultOpen className="h-svh">
         {mode === "settings" ? (
           <SettingsSidebar activeTab={settingsTab} onTabChange={setSettingsTab} />
         ) : (
