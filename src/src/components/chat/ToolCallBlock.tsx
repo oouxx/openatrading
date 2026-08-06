@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react"
 import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw, Terminal, FileEdit } from "lucide-react"
-import { getApiBaseUrl } from "@/stores/data"
+import { fetchJson } from "@/stores/data"
 
 /**
  * Coerce any tool result / partial-result payload to a renderable string.
@@ -252,12 +252,10 @@ function ResultBlock({
     if (!sessionId) return
     setLoading(true)
     try {
-      const base = getApiBaseUrl()
-      const res = await fetch(`${base}/api/ai/sessions/${sessionId}/tool-results/${toolCallId}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFullContent(data.content ?? content)
-      }
+      const data = await fetchJson<{ content?: string }>(
+        `/api/ai/sessions/${sessionId}/tool-results/${toolCallId}`
+      )
+      setFullContent(data.content ?? content)
     } catch {
       // Fall back to the content we already have
     } finally {

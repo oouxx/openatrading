@@ -39,6 +39,11 @@ pub struct AppState {
     /// Persists across WebSocket reconnects for the same session so the
     /// `lastSeq` handshake can resume the gap.
     pub event_states: Arc<Mutex<HashMap<String, Arc<agent_ws::SessionEventState>>>>,
+    /// Tauri-only: sessions that already have a background event-forward task.
+    /// Guards against creating a new subscription + forward task on every
+    /// `send_prompt`, which would deliver every event N times (WebSocket path
+    /// uses `UnsubscribeOnDrop` per connection instead).
+    pub forward_tasks: std::sync::Mutex<std::collections::HashMap<String, ()>>,
 }
 
 impl AppState {
