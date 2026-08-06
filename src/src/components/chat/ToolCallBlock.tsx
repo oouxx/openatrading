@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react"
 import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw, Terminal, FileEdit } from "lucide-react"
-import { diffLines } from "diff"
 import { getApiBaseUrl } from "@/stores/data"
 
 /**
@@ -34,7 +33,6 @@ interface ToolCallBlockProps {
 }
 
 const COLLAPSE_THRESHOLD = 500
-const RESULT_PREVIEW_LENGTH = 200
 
 export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -78,10 +76,6 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
 
           // ── Completed state: collapsed by default, expandable ──
           const resultText = asText(tc.result ?? "")
-          const preview = resultText.length > RESULT_PREVIEW_LENGTH
-            ? resultText.slice(0, RESULT_PREVIEW_LENGTH) + "…"
-            : ""
-
           return (
             <div
               key={tc.id || i}

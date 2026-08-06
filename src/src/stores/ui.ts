@@ -2,7 +2,7 @@ import { create } from "zustand"
 
 const PREFIX = "openatrading-"
 
-type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles"
+export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles"
 type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
 
 interface UiState {

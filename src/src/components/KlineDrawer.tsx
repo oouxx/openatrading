@@ -156,7 +156,6 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const currCrosshair = crosshair ?? defaultCrosshair
 
   const up = quote && quote.px_change_rate >= 0
-  const _changeClass = up ? "text-up" : "text-down"
 
   return (
     <div className="bg-base h-full overflow-y-auto">
