@@ -131,7 +131,7 @@ export default function SentimentChipTab() {
                   {currentPhaseLabel}
                 </span>
               </div>
-              <div className="bg-base h-2 overflow-hidden rounded-full">
+              <div className="bg-canvas h-2 overflow-hidden rounded-full">
                 <div
                   className="from-down to-up via-ai h-full rounded-full bg-linear-to-r"
                   style={{ width: currentSentimentPct + "%" }}

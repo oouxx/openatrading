@@ -113,7 +113,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
+            className="bg-canvas border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
           >
             <option value="all">全部来源</option>
             <option value="cls">财联社</option>
@@ -183,7 +183,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="bg-base border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
+            className="bg-canvas border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
           >
             <option value="all">全部</option>
             <option value="cls">财联社</option>

@@ -21,7 +21,7 @@
   }
 
   body {
-    background: var(--color-base);
+    background: var(--color-canvas);
     color: var(--color-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

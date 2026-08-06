@@ -32,7 +32,7 @@ export default function TradingView() {
   }, [indexQuotes])
 
   return (
-    <div className="bg-base min-h-screen pt-14">
+    <div className="bg-canvas min-h-screen pt-14">
       <div className="mx-auto max-w-data px-6 py-4">
         {/* 错误状态 */}
         {ovError && (

@@ -54,7 +54,7 @@
   --color-disabled:  oklch(0.8205 0.0115 89.7);   /* 禁用状态 */
 
   /* ── 语义色板 — 背景层级（暖奶油） ── */
-  --color-base:     oklch(0.9818 0.0054 95.1);    /* 最深背景 #FAF9F5 */
+  --color-canvas:   oklch(0.9818 0.0054 95.1);    /* 最深背景 #FAF9F5 */
   --color-surface:  oklch(1 0 0);                 /* 卡片表面 */
   --color-hover:    oklch(0.9463 0.007 88.6);     /* 悬停状态 */
   --color-elevated: oklch(0.9703 0.007 88.6);     /* 弹窗/下拉 */
@@ -104,7 +104,6 @@
   --color-bg-tertiary: oklch(0.9703 0.007 88.6);
   --color-white: oklch(0.2357 0.0024 67.7);
   --color-black: oklch(0.9818 0.0054 95.1);
-  --color-canvas: oklch(0.9818 0.0054 95.1);
   --color-ink: oklch(0.2357 0.0024 67.7);
   --color-ink-muted: oklch(0.5312 0.0095 91.6);
   --color-ink-dim: oklch(0.2357 0.0024 67.7 / 0.06);
@@ -201,7 +200,7 @@
   --color-tertiary:  oklch(0.6406 0.0109 87.5);
   --color-disabled:  oklch(0.5207 0.0096 91.6);
 
-  --color-base:     oklch(0.2679 0.0036 106.6);
+  --color-canvas:   oklch(0.2679 0.0036 106.6);
   --color-surface:  oklch(0.3085 0.0035 106.6);
   --color-hover:    oklch(0.3474 0.0051 106.7);
   --color-elevated: oklch(0.3743 0.005 106.6);
@@ -249,7 +248,6 @@
   --color-bg-tertiary: oklch(0.3743 0.005 106.6);
   --color-white: oklch(0.9251 0.0071 88.6);
   --color-black: oklch(0.2679 0.0036 106.6);
-  --color-canvas: oklch(0.2679 0.0036 106.6);
   --color-ink: oklch(0.9251 0.0071 88.6);
   --color-ink-muted: oklch(0.7124 0.0119 89.8);
   --color-ink-dim: oklch(0.9251 0.0071 88.6 / 0.06);

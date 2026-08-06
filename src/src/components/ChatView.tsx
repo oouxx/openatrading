@@ -467,7 +467,7 @@ export default function AiCopilot({
             <Search className="text-secondary absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <input
               ref={searchRef}
-              className="bg-base border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-tertiary"
+              className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-tertiary"
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
@@ -613,7 +613,7 @@ export default function AiCopilot({
           )}
 
           {/* ── Floating input (Claude style) ─────────────────────────── */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-base via-base/90 to-transparent px-6 pt-12 pb-4">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-canvas via-canvas/90 to-transparent px-6 pt-12 pb-4">
             <div className="pointer-events-auto readable-content flex items-end gap-2">
               {renderInputField()}
             </div>
