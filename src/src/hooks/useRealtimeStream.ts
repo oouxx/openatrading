@@ -1,6 +1,16 @@
 import { getApiBaseUrl } from "@/stores/data"
 
 import { isTauri } from "@/lib/env"
+import { toYahooSymbol } from "@/lib/stock-utils"
+
+/** 归一化失败时回退原始输入，保持与后端容错行为一致。 */
+function normalizeSymbolSafe(raw: string): string {
+  try {
+    return toYahooSymbol(raw)
+  } catch {
+    return raw
+  }
+}
 
 /**
  * Try to match a raw symbol (e.g. "000001") against a batch-response map
@@ -37,6 +47,7 @@ export function subscribeRealtime(
   onError?: (err: string) => void
 ): () => void {
   if (!symbol) return () => {}
+  const normalized = normalizeSymbolSafe(symbol)
 
   if (isTauri) {
     let active = true
@@ -51,12 +62,12 @@ export function subscribeRealtime(
           onError?.(String(parsed.error))
         } else {
           // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-          const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+          const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
           if (found) onData(found)
         }
       }
       try {
-        await invoke("api_realtime_stream", { symbol, channel })
+        await invoke("api_realtime_stream", { symbol: normalized, channel })
       } catch (e: unknown) {
         if (active) onError?.(String(e))
       }
@@ -68,7 +79,7 @@ export function subscribeRealtime(
 
   // Web: EventSource
   const es = new EventSource(
-    `${getApiBaseUrl()}/api/realtime/stream?symbols=${encodeURIComponent(symbol)}`
+    `${getApiBaseUrl()}/api/realtime/stream?symbols=${encodeURIComponent(normalized)}`
   )
   es.onmessage = (e) => {
     const parsed = safeParse(e.data, "realtime")
@@ -77,7 +88,7 @@ export function subscribeRealtime(
       onError?.(String(parsed.error))
     } else {
       // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-      const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+      const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
       if (found) onData(found)
     }
   }
@@ -106,7 +117,8 @@ export function subscribeRealtimeBatch(
 ): () => void {
   if (symbols.length === 0) return () => {}
 
-  const code = symbols.join(",")
+  const normalizedSymbols = symbols.map(normalizeSymbolSafe)
+  const code = normalizedSymbols.join(",")
 
   if (isTauri) {
     let active = true
@@ -120,9 +132,9 @@ export function subscribeRealtimeBatch(
         if (parsed.error) {
           onError?.(String(parsed.error))
         } else {
-          for (const rawCode of symbols) {
-            const found = matchSymbol(parsed, rawCode)
-            if (found) onData(rawCode, found)
+          for (let i = 0; i < symbols.length; i++) {
+            const found = matchSymbol(parsed, normalizedSymbols[i])
+            if (found) onData(symbols[i], found)
           }
         }
       }
@@ -147,9 +159,9 @@ export function subscribeRealtimeBatch(
     if (parsed.error) {
       onError?.(String(parsed.error))
     } else {
-      for (const rawCode of symbols) {
-        const found = matchSymbol(parsed, rawCode)
-        if (found) onData(rawCode, found)
+      for (let i = 0; i < symbols.length; i++) {
+        const found = matchSymbol(parsed, normalizedSymbols[i])
+        if (found) onData(symbols[i], found)
       }
     }
   }
