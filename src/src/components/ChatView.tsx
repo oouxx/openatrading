@@ -245,7 +245,19 @@ export default function AiCopilot({
     } else {
       // Use wsAgent directly with the resolved sessionId so we don't
       // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
-      await wsAgent.sendPrompt(sessionId, text)
+      try {
+        await wsAgent.sendPrompt(sessionId, text)
+      } catch (e) {
+        // Connection couldn't be established — restore the input and stop
+        // the streaming state so the user can retry instead of losing text.
+        console.error("发送失败:", e)
+        setInput(text)
+        setStreaming(false)
+        if (streamThreadRef.current === sessionId) {
+          streamThreadRef.current = null
+          setStreamThreadId(null)
+        }
+      }
     }
   }, [input, activeThreadId, onActiveThreadChange, startTauriTransport, wsAgent.sendPrompt])
 

@@ -272,6 +272,19 @@ export function useMultiAgentWebSocket(
 
   // ── Public API ────────────────────────────────────────────────────────
 
+  // Create the connection on demand if it's missing (e.g. sendPrompt raced
+  // ahead of the sessionIds effect, or the connection was torn down). Makes
+  // the send path self-healing instead of throwing "Session not found".
+  const ensureConnection = useCallback((sid: string) => {
+    let conn = connectionsRef.current.get(sid)
+    if (!conn) {
+      conn = createConnectionState()
+      connectionsRef.current.set(sid, conn)
+      connectSession(sid, conn)
+    }
+    return conn
+  }, [])
+
   const waitForReady = useCallback(async (sid: string): Promise<void> => {
     // Poll until the connection exists (may not be created yet if the
     // caller just triggered a state update that will cause a re-render
@@ -288,42 +301,52 @@ export function useMultiAgentWebSocket(
       }
     }
     if (conn.readyState === ReadyState.OPEN) return
-    return new Promise<void>((resolve) => {
-      conn.readyResolve = resolve
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (conn.readyResolve === resolve) conn.readyResolve = null
+        reject(new Error(`Session ${sid} 连接超时`))
+      }, 10000)
+      conn.readyResolve = () => {
+        clearTimeout(timer)
+        resolve()
+      }
     })
   }, [])
 
   const sendPrompt = useCallback(
     async (sid: string, text: string): Promise<void> => {
+      ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
       if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(JSON.stringify({ type: "prompt", text }))
       }
     },
-    [waitForReady],
+    [ensureConnection, waitForReady],
   )
 
   const interrupt = useCallback(
     async (sid: string): Promise<void> => {
+      ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
       if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(JSON.stringify({ type: "interrupt" }))
       }
     },
-    [waitForReady],
+    [ensureConnection, waitForReady],
   )
 
   const respondToPermission = useCallback(
     async (sid: string, id: string, approved: boolean): Promise<void> => {
+      ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
       if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(JSON.stringify({ type: "permission_response", id, approved }))
       }
     },
-    [waitForReady],
+    [ensureConnection, waitForReady],
   )
 
   const getTurns = useCallback((sid: string): TranscriptTurn[] => {
