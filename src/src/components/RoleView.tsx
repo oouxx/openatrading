@@ -32,7 +32,7 @@ function pctClass(v: number) {
 
 // ── Sidebar ───────────────────────────────────────────
 
-function _Sidebar({
+function Sidebar({
   roles,
   selectedRole,
   onSelect,
@@ -56,7 +56,7 @@ function _Sidebar({
   totalCount: number
 }) {
   const filtered = roles.filter((r) => {
-    const displayName = (r as any).display_name || r.name
+    const displayName = r.display_name || r.name
     return displayName.toLowerCase().includes(search.toLowerCase())
   })
 
@@ -77,7 +77,7 @@ function _Sidebar({
       </div>
       <div className="flex-1 overflow-y-auto py-2">
         {filtered.map((role) => {
-          const displayName = (role as any).display_name || role.name
+          const displayName = role.display_name || role.name
           const pnl = rolePnl[role.name] || 0
           const count = rolePositionCounts[role.name] || 0
           return (
@@ -286,7 +286,7 @@ const TABS = [
 
 export default function RoleView() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
-  const [_search, _setSearch] = useState("")
+  const [search, setSearch] = useState("")
   const [tab, setTab] = useState("holdings")
   const [holdingView, setHoldingView] = useState<"current" | "history">("current")
   const [showCreate, setShowCreate] = useState(false)
@@ -304,16 +304,6 @@ export default function RoleView() {
   const deleteRoleMutation = useDeleteRole()
   const resetRoleMutation = useResetRole()
 
-  // Fetch all roles' positions for sidebar PnL stats
-  const positionQueries = useQueries({
-    queries: roles.map((r) => ({
-      queryKey: roleKeys.positions(r.name),
-      queryFn: () => fetchJson<RolePosition[]>(`/api/roles/${r.name}/positions`),
-      staleTime: 5 * 60 * 1000,
-      enabled: !!r.name,
-    })),
-  })
-
   // Select first role on load — mount initialization
   useEffect(() => {
     if (roles.length > 0 && !selectedRole) {
@@ -324,7 +314,17 @@ export default function RoleView() {
 
   const currentRole = roles.find((r) => r.name === selectedRole)
 
-  const _rolePnl = useMemo(() => {
+  // Fetch all roles' positions for sidebar PnL stats
+  const positionQueries = useQueries({
+    queries: roles.map((r) => ({
+      queryKey: roleKeys.positions(r.name),
+      queryFn: () => fetchJson<RolePosition[]>(`/api/roles/${r.name}/positions`),
+      staleTime: 5 * 60 * 1000,
+      enabled: !!r.name,
+    })),
+  })
+
+  const rolePnl = useMemo(() => {
     const result: Record<string, number> = {}
     roles.forEach((r, i) => {
       const pos = positionQueries[i]?.data
@@ -340,7 +340,7 @@ export default function RoleView() {
     return result
   }, [roles, positionQueries])
 
-  const _rolePositionCounts = useMemo(() => {
+  const rolePositionCounts = useMemo(() => {
     const result: Record<string, number> = {}
     roles.forEach((r, i) => {
       result[r.name] = positionQueries[i]?.data?.length || 0
@@ -387,45 +387,22 @@ export default function RoleView() {
   return (
     <>
       <div className="flex h-full flex-row">
-        {/* Left sidebar — role list */}
-        <div className="bg-surface border-hairline hidden w-56 shrink-0 flex-col border-r md:flex">
-          <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-            <span className="text-caption font-semibold text-primary">角色列表</span>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="bg-brand cursor-pointer rounded-lg px-3 py-1 text-caption font-medium text-primary transition-opacity hover:opacity-90"
-            >
-              + 新建
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {roles.length === 0 ? (
-              <div className="text-secondary px-4 py-8 text-center text-caption">暂无角色</div>
-            ) : (
-              <div className="space-y-0.5 p-2">
-                {roles.map((r) => {
-                  const isActive = selectedRole === r.name
-                  return (
-                    <button
-                      key={r.name}
-                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left text-caption transition-colors ${
-                        isActive
-                          ? "bg-brand/15 text-brand border-brand/30 border font-medium"
-                          : "text-secondary hover:bg-hover border border-transparent hover:text-primary"
-                      }`}
-                      onClick={() => {
-                        setSelectedRole(r.name)
-                        setShowCreate(false)
-                      }}
-                    >
-                      <div className="truncate">{r.name}</div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Left sidebar — role list with search + PnL stats */}
+        <Sidebar
+          roles={roles}
+          selectedRole={selectedRole}
+          onSelect={(name) => {
+            setSelectedRole(name)
+            setShowCreate(false)
+          }}
+          onDelete={(name) => setShowDeleteConfirm(name)}
+          onCreate={() => setShowCreate(true)}
+          rolePnl={rolePnl}
+          rolePositionCounts={rolePositionCounts}
+          search={search}
+          setSearch={setSearch}
+          totalCount={roles.length}
+        />
 
         {/* Main Content */}
         <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
