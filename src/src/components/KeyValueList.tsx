@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Input } from "@/components/ui/input"
 
 export function KeyValueList({
@@ -18,11 +18,13 @@ export function KeyValueList({
   const [display, setDisplay] = useState<string[]>(() =>
     items.length > 0 ? [...items, ""] : [""]
   )
+  const [prevItems, setPrevItems] = useState(items)
 
   // Sync from parent when items change externally (e.g., transport type switch)
-  useEffect(() => {
+  if (prevItems !== items) {
+    setPrevItems(items)
     setDisplay(items.length > 0 ? [...items, ""] : [""])
-  }, [items])
+  }
 
   const commit = (next: string[]) => {
     const nonEmpty = next.filter((e) => e.trim())

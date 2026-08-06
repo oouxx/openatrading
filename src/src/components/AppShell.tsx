@@ -65,7 +65,7 @@ export default function AppShell() {
         )}
         <SidebarInset className="overflow-hidden">
           {mode === "chat" ? (
-            <div className="flex h-full max-h-screen min-w-0 flex-1 flex-row">
+            <div className="flex h-svh min-w-0 flex-1 flex-row">
               <div className="flex min-w-0 flex-1 flex-col">
                 <ErrorBoundary name="AiCopilot">
                   <AiCopilot
