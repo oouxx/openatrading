@@ -35,7 +35,7 @@ export default function ConversationSidebar({
   const filteredThreads = useMemo(() => {
     if (!search.trim()) return threads
     const q = search.trim().toLowerCase()
-    return threads.filter((t) => t.name.toLowerCase().includes(q))
+    return threads.filter((t) => (t.name ?? "").toLowerCase().includes(q))
   }, [threads, search])
 
   return (
