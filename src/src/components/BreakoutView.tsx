@@ -324,7 +324,7 @@ export default function BreakoutView() {
   if (isLoading) {
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <div className="text-secondary flex items-center gap-3 text-caption">
@@ -338,7 +338,7 @@ export default function BreakoutView() {
   if (error && allItems.length === 0) {
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <p className="text-secondary text-caption">{error.message}</p>
@@ -739,7 +739,7 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
   return (
     <div className="grid grid-cols-3 gap-2 p-4 text-caption">
       {metrics.map((m) => (
-        <div key={m.label} className="bg-base border-hairline rounded-lg border p-3 text-center">
+        <div key={m.label} className="bg-canvas border-hairline rounded-lg border p-3 text-center">
           <p className="text-secondary text-caption">{m.label}</p>
           <p className={`mt-1 font-number text-caption text-primary ${m.cls || ""}`}>{m.value}</p>
         </div>

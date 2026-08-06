@@ -71,7 +71,7 @@ export default function DragonTigerView() {
   if (isLoading) {
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <div className="text-secondary flex items-center gap-3 text-caption">
@@ -85,7 +85,7 @@ export default function DragonTigerView() {
   if (error) {
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <p className="text-secondary text-caption">{error.message}</p>
@@ -173,7 +173,7 @@ export default function DragonTigerView() {
                   placeholder="名称或代码…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-base border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
+                  className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
                 />
               </div>
               <div>

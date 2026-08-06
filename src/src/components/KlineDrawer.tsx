@@ -158,7 +158,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const up = quote && quote.px_change_rate >= 0
 
   return (
-    <div className="bg-base h-full overflow-y-auto">
+    <div className="bg-canvas h-full overflow-y-auto">
       {/* Header */}
       <div className="bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
         <button
@@ -207,7 +207,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             className={`rounded-full border px-4 py-1 text-caption transition-colors ${
               period === p.value
                 ? "border-brand bg-brand text-primary"
-                : "border-hairline bg-base text-secondary hover:border-hairline-dark hover:text-primary"
+                : "border-hairline bg-canvas text-secondary hover:border-hairline-dark hover:text-primary"
             }`}
           >
             {p.label}

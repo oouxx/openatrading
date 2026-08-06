@@ -86,7 +86,7 @@ function StockCard({
 
   return (
     <div
-      className="bg-base border-hairline hover:border-brand/30 rounded-lg cursor-pointer border transition-colors"
+      className="bg-canvas border-hairline hover:border-brand/30 rounded-lg cursor-pointer border transition-colors"
       onClick={() => onOpenKline(item.code, item.name)}
     >
       <div className="flex items-center justify-between p-2">

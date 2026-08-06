@@ -25,7 +25,7 @@ export default function ChromeTabs({ tabs, activeTab, onSelect, onClose }: Chrom
             onClick={() => onSelect(tab.id)}
             className={`group border-hairline flex shrink-0 cursor-pointer items-center gap-2 border-r px-3 text-caption whitespace-nowrap transition-colors select-none ${
               isActive
-                ? "border-b-ai bg-base border-b-2 text-primary"
+                ? "border-b-ai bg-canvas border-b-2 text-primary"
                 : "bg-surface text-secondary hover:bg-hover hover:text-primary"
             }`}
           >

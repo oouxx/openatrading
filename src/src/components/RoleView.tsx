@@ -72,7 +72,7 @@ function Sidebar({
           placeholder="搜索角色…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-base border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
+          className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
         />
       </div>
       <div className="flex-1 overflow-y-auto py-2">
@@ -635,7 +635,7 @@ export default function RoleView() {
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="bg-base border-hairline focus:border-brand mb-3 w-full rounded-lg border px-3 py-3 text-body text-primary transition-colors outline-none"
+              className="bg-canvas border-hairline focus:border-brand mb-3 w-full rounded-lg border px-3 py-3 text-body text-primary transition-colors outline-none"
               placeholder="例如：套利策略 v2"
               onKeyDown={(e) => e.key === "Enter" && createRole()}
               autoFocus

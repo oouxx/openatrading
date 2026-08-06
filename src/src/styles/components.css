@@ -65,7 +65,7 @@
     color: var(--color-primary) !important;
   }
   [data-slot="command"] [data-slot="command-input-wrapper"] {
-    background: var(--color-base) !important;
+    background: var(--color-canvas) !important;
     border-radius: var(--radius-lg) !important;
   }
   [data-slot="command-input"]::placeholder {

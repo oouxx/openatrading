@@ -141,7 +141,7 @@ export default function ReplayView() {
   if (isLoading) {
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <div className="text-secondary flex items-center gap-3 text-caption">
@@ -154,7 +154,7 @@ export default function ReplayView() {
   if (error)
     return (
       <div
-        className="bg-base flex min-h-screen items-center justify-center pt-11"
+        className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
         <p className="text-secondary text-caption">{error.message}</p>

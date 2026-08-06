@@ -269,7 +269,7 @@ export default function WatchlistView() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-base border-hairline rounded-lg h-14 animate-pulse border"
+                  className="bg-canvas border-hairline rounded-lg h-14 animate-pulse border"
                 />
               ))}
             </div>
@@ -363,7 +363,7 @@ function StockRow({
 
   return (
     <div
-      className="bg-base border-hairline hover:border-brand/30 rounded-lg flex cursor-pointer items-center gap-4 border p-3 transition-colors"
+      className="bg-canvas border-hairline hover:border-brand/30 rounded-lg flex cursor-pointer items-center gap-4 border p-3 transition-colors"
       onClick={() => onSelect({ symbol: code, name })}
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
