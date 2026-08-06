@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Search, Square, ArrowDown, Copy, Check } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
@@ -120,8 +120,12 @@ export default function AiCopilot({
    *  user's previous scroll position is no longer meaningful. */
   const scrollToBottomForced = useCallback(() => {
     requestAnimationFrame(() => {
-      const el = msgContainerRef.current
-      if (el) el.scrollTop = el.scrollHeight
+      // Double rAF: React's async render may not have flushed the new turns
+      // into the DOM by the first frame, so scroll after the next paint.
+      requestAnimationFrame(() => {
+        const el = msgContainerRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
     })
   }, [])
 
@@ -389,12 +393,31 @@ export default function AiCopilot({
 
   // ── Derived state ─────────────────────────────────────────────────────
   const currentTurns = activeThreadId ? threadTurns.get(activeThreadId) ?? [] : []
-  const isEmpty = currentTurns.length === 0 && !streaming
+  const isEmpty = currentTurns.length === 0 && !(streaming && streamThreadId === activeThreadId)
   // True only when the *active* thread is streaming — controls the Stop
   // button and disables Send for the active thread.
   const isStreamingActive = streaming && streamThreadId === activeThreadId
   // Show a "jump to latest" button when the user scrolls up during a stream.
   const [showJumpBottom, setShowJumpBottom] = useState(false)
+
+  // Force-scroll to bottom when switching sessions. History loads
+  // asynchronously, so keep scrolling until the new session's turns render.
+  // useLayoutEffect runs synchronously after the DOM update, so scrollHeight
+  // is already correct here — no rAF timing races.
+  const lastSessionRef = useRef<string | null>(null)
+  const pendingScrollRef = useRef(false)
+  useLayoutEffect(() => {
+    if (lastSessionRef.current !== activeThreadId) {
+      lastSessionRef.current = activeThreadId
+      pendingScrollRef.current = true
+    }
+    if (!pendingScrollRef.current) return
+    const el = msgContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+    if (currentTurns.length > 0) {
+      pendingScrollRef.current = false
+    }
+  }, [activeThreadId, currentTurns])
 
   const onContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
@@ -421,6 +444,8 @@ export default function AiCopilot({
         <div className="absolute bottom-full left-0 right-0 mb-1">
           <SlashCommandMenu
             commands={commands}
+            filter={input.startsWith("/") ? input.slice(1) : ""}
+            ref={slashMenuRef}
             onSelect={(cmd) => {
               setInput(`/${cmd.name} `)
               setShowSlash(false)
@@ -565,7 +590,7 @@ export default function AiCopilot({
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}
-                            isStreaming={isLastAi && streaming}
+                            isStreaming={isLastAi && streaming && streamThreadId === activeThreadId}
                             respondToPermission={
                               isTauri
                                 ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
