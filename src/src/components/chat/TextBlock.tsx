@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useId, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import rehypeHighlight from "rehype-highlight"
 import type { Components } from "react-markdown"
 import { Check, Copy } from "lucide-react"
+import { useUiStore } from "@/stores/ui"
 
 // ── Code Block Component ──────────────────────────────
 
@@ -67,13 +68,59 @@ function InlineCode({ children, ...props }: React.ComponentPropsWithoutRef<"code
   )
 }
 
+// ── Mermaid Diagram Component ─────────────────────────
+// Renders ```mermaid blocks as diagrams. During streaming the raw source is
+// shown (the diagram would be incomplete); once the block is complete the
+// diagram is rendered. Falls back to the code block on parse errors.
+
+function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boolean }) {
+  const theme = useUiStore((s) => s.theme)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [failedCode, setFailedCode] = useState<string | null>(null)
+  const id = useId().replace(/[^a-zA-Z0-9]/g, "")
+  const failed = failedCode === code
+
+  useEffect(() => {
+    if (isStreaming) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { default: mermaid } = await import("mermaid")
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: theme === "dark" ? "dark" : "default",
+        })
+        const { svg } = await mermaid.render(`mmd-${id}`, code)
+        if (!cancelled && containerRef.current) {
+          containerRef.current.innerHTML = svg
+        }
+      } catch {
+        if (!cancelled) setFailedCode(code)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [code, isStreaming, theme, id])
+
+  if (isStreaming || failed) {
+    return <CodeBlock className="language-mermaid">{code}</CodeBlock>
+  }
+  return <div ref={containerRef} className="my-2 overflow-x-auto" />
+}
+
 // ── Markdown Components ──────────────────────────────
 
-const mdComponents: Components = {
+const getMdComponents = (isStreaming: boolean): Components => ({
   code: ({ className, children, ...props }) => {
     const isInline = !className
     if (isInline) {
       return <InlineCode {...props}>{children}</InlineCode>
+    }
+    if (className?.includes("language-mermaid")) {
+      return (
+        <MermaidBlock code={String(children).replace(/\n$/, "")} isStreaming={isStreaming} />
+      )
     }
     return <CodeBlock className={className} {...props}>{children}</CodeBlock>
   },
@@ -108,7 +155,7 @@ const mdComponents: Components = {
       {children}
     </blockquote>
   ),
-}
+})
 
 // ── Streaming Indicator ────────────────────────────────
 // A subtle pulsing cursor shown at the end of streaming text (Claude-style).
@@ -167,7 +214,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
-        components={mdComponents}
+        components={getMdComponents(isStreaming)}
       >
         {content}
       </ReactMarkdown>
