@@ -274,18 +274,6 @@ export default function AiCopilot({
     }
   }, [input, activeThreadId, onActiveThreadChange, startTauriTransport, wsAgent.sendPrompt])
 
-  // ── Permission response ──────────────────────────────────────────────
-  const respondToPermission = useCallback(
-    async (id: string, approved: boolean) => {
-      if (isTauri) {
-        await transportRef.current?.respondToPermission(id, approved)
-      } else if (activeThreadId) {
-        await wsAgent.respondToPermission(activeThreadId, id, approved)
-      }
-    },
-    [wsAgent.respondToPermission, activeThreadId],
-  )
-
   // ── Stop / interrupt the active stream ───────────────────────────────
   const stop = useCallback(async () => {
     if (!activeThreadId) return

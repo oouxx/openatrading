@@ -1,6 +1,6 @@
 import { chartColors } from "@/lib/chartColors"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useReplayEvents } from "@/hooks/query/useReplayEvents"
 
 // ── Constants ──────────────────────────────────────────

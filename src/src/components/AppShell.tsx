@@ -13,7 +13,6 @@ import RoleView from "@/components/RoleView"
 import WatchlistView from "./WatchlistView"
 import SettingsView from "./SettingsView"
 import SettingsSidebar from "./SettingsSidebar"
-import type { SettingsTab } from "./SettingsSidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 

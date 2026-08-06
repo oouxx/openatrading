@@ -1,5 +1,5 @@
 import { isTauri } from "@/lib/env"
-import { useState, useMemo, useCallback, useEffect, useRef } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { Star, Plus, Trash2, X, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import {
   useWatchlist,
@@ -133,7 +133,7 @@ export default function WatchlistView() {
 
   // ── Build rich list + sort ──
   const richList = useMemo((): RichStock[] => {
-    return items.map((item, i) => ({
+    return items.map((item) => ({
       ...item,
       quote: quotesMap.get(item.code),
     }))

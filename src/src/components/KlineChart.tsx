@@ -400,7 +400,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       { ref: ma20SeriesRef, color: chartColors.ma20, label: "MA20" },
       { ref: ma30SeriesRef, color: chartColors.ma30, label: "MA30" },
     ] as const
-    seriesRefs.current = maConfig.map(({ ref, color, label }) => {
+    seriesRefs.current = maConfig.map(({ ref, color }) => {
       const series = chart.addSeries(LineSeries, {
         color,
         lineWidth: 1,
