@@ -33,11 +33,17 @@ echo "   SHA256: $SHA"
 
 # ── 1. gh 上传 DMG 到 tap 仓库的 GitHub Release ──
 echo "📦 创建/复用 Release ${TAG}（${TAP_REPO}）"
-gh release create "$TAG" \
-  --repo "$TAP_REPO" \
-  --title "$TAG" \
-  --notes "OpenATrading $V" \
-  2>/dev/null || echo "⚠ Release $TAG 已存在，复用"
+CREATE_EXIT=0
+CREATE_OUT="$(gh release create "$TAG" --repo "$TAP_REPO" --title "$TAG" --notes "OpenATrading $V" 2>&1)" || CREATE_EXIT=$?
+if [ "$CREATE_EXIT" -ne 0 ]; then
+  if echo "$CREATE_OUT" | rg -q "already exists"; then
+    echo "⚠ Release $TAG 已存在，复用"
+  else
+    echo "❌ 创建 Release 失败："
+    echo "$CREATE_OUT"
+    exit 1
+  fi
+fi
 echo "📤 上传 $(basename "$DMG")"
 gh release upload "$TAG" "$DMG" --repo "$TAP_REPO" --clobber
 URL="https://github.com/$TAP_REPO/releases/download/$TAG/$(basename "$DMG")"
