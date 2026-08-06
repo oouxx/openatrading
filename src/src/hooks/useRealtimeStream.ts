@@ -33,6 +33,10 @@ function safeParse(raw: string, context: string): Record<string, unknown> | null
   }
 }
 
+// Desktop polls the one-shot IPC stream command on the same cadence the
+// backend used to push (3s). Keeps no long-lived invoke/channel alive.
+const TAURI_STREAM_POLL_MS = 3000
+
 /**
  * Subscribe to realtime quotes, updated every 3 seconds.
  *
@@ -51,29 +55,34 @@ export function subscribeRealtime(
 
   if (isTauri) {
     let active = true
-    ;(async () => {
-      const { invoke, Channel } = await import("@tauri-apps/api/core")
-      const channel = new Channel<string>()
-      channel.onmessage = (text) => {
-        if (!active) return
-        const parsed = safeParse(text, "realtime")
-        if (!parsed) return
-        if (parsed.error) {
-          onError?.(String(parsed.error))
-        } else {
-          // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-          const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
-          if (found) onData(found)
-        }
-      }
+    let timer: ReturnType<typeof setInterval> | null = null
+    const poll = async () => {
+      if (!active) return
       try {
+        const { invoke, Channel } = await import("@tauri-apps/api/core")
+        const channel = new Channel<string>()
+        channel.onmessage = (text) => {
+          if (!active) return
+          const parsed = safeParse(text, "realtime")
+          if (!parsed) return
+          if (parsed.error) {
+            onError?.(String(parsed.error))
+          } else {
+            // Backend returns { "symbol": {...}, ... } — extract the one we asked for
+            const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
+            if (found) onData(found)
+          }
+        }
         await invoke("api_realtime_stream", { symbol: normalized, channel })
       } catch (e: unknown) {
         if (active) onError?.(String(e))
       }
-    })()
+    }
+    poll()
+    timer = setInterval(poll, TAURI_STREAM_POLL_MS)
     return () => {
       active = false
+      if (timer) clearInterval(timer)
     }
   }
 
@@ -217,27 +226,32 @@ export function subscribeKline(
 
   if (isTauri) {
     let active = true
-    ;(async () => {
-      const { invoke, Channel } = await import("@tauri-apps/api/core")
-      const channel = new Channel<string>()
-      channel.onmessage = (text) => {
-        if (!active) return
-        const parsed = safeParse(text, "kline")
-        if (!parsed) return
-        if (parsed.error) {
-          onError?.(String(parsed.error))
-        } else {
-          onData(parsed)
-        }
-      }
+    let timer: ReturnType<typeof setInterval> | null = null
+    const poll = async () => {
+      if (!active) return
       try {
+        const { invoke, Channel } = await import("@tauri-apps/api/core")
+        const channel = new Channel<string>()
+        channel.onmessage = (text) => {
+          if (!active) return
+          const parsed = safeParse(text, "kline")
+          if (!parsed) return
+          if (parsed.error) {
+            onError?.(String(parsed.error))
+          } else {
+            onData(parsed)
+          }
+        }
         await invoke("api_kline_stream", { symbol, period, count, channel })
       } catch (e: unknown) {
         if (active) onError?.(String(e))
       }
-    })()
+    }
+    poll()
+    timer = setInterval(poll, TAURI_STREAM_POLL_MS)
     return () => {
       active = false
+      if (timer) clearInterval(timer)
     }
   }
 

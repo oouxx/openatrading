@@ -15,11 +15,16 @@ use crate::AppState;
 /// # Panics
 /// Panics if the MCP server lock is poisoned.
 pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerConfig>> {
+    Json(list_mcp_servers_data(&state).await)
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+pub async fn list_mcp_servers_data(state: &Arc<AppState>) -> Vec<McpServerConfig> {
     let guard = state
         .mcp_servers
         .lock()
         .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
-    Json(guard.clone())
+    guard.clone()
 }
 
 /// POST /api/mcp/servers — add a new MCP server
@@ -33,18 +38,29 @@ pub async fn add_handler(
     State(state): State<Arc<AppState>>,
     Json(config): Json<McpServerConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    add_mcp_server_data(&state, config.clone())
+        .await
+        .map_err(|_| StatusCode::CONFLICT)?;
+    Ok((StatusCode::CREATED, Json(config)))
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+pub async fn add_mcp_server_data(
+    state: &Arc<AppState>,
+    config: McpServerConfig,
+) -> Result<(), String> {
     {
         let mut guard = state
             .mcp_servers
             .lock()
-            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+            .map_err(|_| "MCP server lock poisoned".to_string())?;
         if guard.iter().any(|s| s.name == config.name) {
-            return Err(StatusCode::CONFLICT);
+            return Err("MCP server already exists".to_string());
         }
-        guard.push(config.clone());
+        guard.push(config);
     }
-    load_servers_and_reload(&state).await;
-    Ok((StatusCode::CREATED, Json(config)))
+    load_servers_and_reload(state).await;
+    Ok(())
 }
 
 /// DELETE /api/mcp/servers/:name — delete an MCP server
@@ -58,19 +74,27 @@ pub async fn delete_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    delete_mcp_server_data(&state, &name)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((StatusCode::NO_CONTENT, ""))
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+pub async fn delete_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), String> {
     {
         let mut guard = state
             .mcp_servers
             .lock()
-            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+            .map_err(|_| "MCP server lock poisoned".to_string())?;
         let before = guard.len();
         guard.retain(|s| s.name != name);
         if guard.len() == before {
-            return Err(StatusCode::NOT_FOUND);
+            return Err("MCP server not found".to_string());
         }
     }
-    load_servers_and_reload(&state).await;
-    Ok((StatusCode::NO_CONTENT, ""))
+    load_servers_and_reload(state).await;
+    Ok(())
 }
 
 /// POST /api/mcp/servers/:name/toggle — toggle an MCP server's enabled state
@@ -84,18 +108,48 @@ pub async fn toggle_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    toggle_mcp_server_data(&state, &name)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((StatusCode::NO_CONTENT, ""))
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+pub async fn toggle_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), String> {
     let found = {
         let mut guard = state
             .mcp_servers
             .lock()
-            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
+            .map_err(|_| "MCP server lock poisoned".to_string())?;
         guard.iter_mut().find(|s| s.name == name).map(|s| {
             s.enabled = !s.enabled;
         })
     };
-    found.ok_or(StatusCode::NOT_FOUND)?;
-    load_servers_and_reload(&state).await;
-    Ok((StatusCode::NO_CONTENT, ""))
+    found.ok_or_else(|| "MCP server not found".to_string())?;
+    load_servers_and_reload(state).await;
+    Ok(())
+}
+
+/// Update an existing MCP server (PUT — edit flow in the UI). Not exposed on
+/// the HTTP router yet, used by the Tauri IPC dispatch.
+pub async fn update_mcp_server_data(
+    state: &Arc<AppState>,
+    name: &str,
+    config: McpServerConfig,
+) -> Result<(), String> {
+    {
+        let mut guard = state
+            .mcp_servers
+            .lock()
+            .map_err(|_| "MCP server lock poisoned".to_string())?;
+        let slot = guard
+            .iter_mut()
+            .find(|s| s.name == name)
+            .ok_or_else(|| "MCP server not found".to_string())?;
+        *slot = config;
+    }
+    load_servers_and_reload(state).await;
+    Ok(())
 }
 
 async fn load_servers_and_reload(state: &Arc<AppState>) {

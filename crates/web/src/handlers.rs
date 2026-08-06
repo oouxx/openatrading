@@ -1096,3 +1096,26 @@ pub async fn get_tool_result_data(
 
     Err("not found".to_string())
 }
+
+// ── Skills (Tauri-compatible wrappers) ────────────────────────────────────
+
+pub fn get_skills_data() -> Vec<openatrading_core::skills::SkillEntry> {
+    openatrading_core::skills::list_skill_entries()
+}
+
+pub fn save_skill_data(
+    req: openatrading_core::skills::SkillRequest,
+) -> Result<openatrading_core::skills::SkillEntry, String> {
+    openatrading_core::skills::validate_skill_name(&req.name)?;
+    openatrading_core::skills::install_skill(&req)
+        .map_err(|e| format!("failed to save skill: {e}"))?;
+    openatrading_core::skills::list_skill_entries()
+        .into_iter()
+        .find(|s| s.name == req.name)
+        .ok_or_else(|| "skill not found after save".to_string())
+}
+
+pub fn delete_skill_data(name: &str) -> Result<(), String> {
+    openatrading_core::skills::uninstall_skill(name)
+        .map_err(|e| format!("failed to delete skill '{name}': {e}"))
+}

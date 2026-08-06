@@ -120,6 +120,13 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/sentiment-history" => {
             openatrading_web::handlers::get_sentiment_history_data(state).await
         }
+        "/api/skills" => Ok(
+            serde_json::to_value(openatrading_web::handlers::get_skills_data()).unwrap_or_default(),
+        ),
+        "/api/mcp/servers" => Ok(serde_json::to_value(
+            openatrading_web::mcp::list_mcp_servers_data(state).await,
+        )
+        .unwrap_or_default()),
         _ => dispatch_get_fallback(path, state).await,
     }
 }
@@ -208,6 +215,15 @@ async fn dispatch_get_fallback(
         if let Some(msg_id) = rest.strip_suffix("/messages") {
             return openatrading_web::handlers::get_session_messages_data(state, msg_id).await;
         }
+        if let Some((sid, tail)) = rest.split_once("/tool-results/") {
+            return openatrading_web::chat::get_tool_result_data(sid, tail);
+        }
+    }
+    if let Some(rest) = path.strip_prefix("/api/mcp/servers/") {
+        if let Some(name) = rest.strip_suffix("/toggle") {
+            openatrading_web::mcp::toggle_mcp_server_data(state, &url_decode(name)).await?;
+            return Ok(serde_json::Value::Null);
+        }
     }
     if let Some(rest) = path.strip_prefix("/api/roles/") {
         return dispatch_roles_get(rest, state).await;
@@ -284,6 +300,19 @@ async fn dispatch_post(
                 .to_string();
             openatrading_web::handlers::create_role_data(state, &name, &display_name).await
         }
+        "/api/skills" => {
+            let req: openatrading_core::skills::SkillRequest = serde_json::from_value(body.clone())
+                .map_err(|e| format!("invalid skill payload: {e}"))?;
+            serde_json::to_value(openatrading_web::handlers::save_skill_data(req)?)
+                .map_err(|e| format!("serialize error: {e}"))
+        }
+        "/api/mcp/servers" => {
+            let config: openatrading_core::llm::McpServerConfig =
+                serde_json::from_value(body.clone())
+                    .map_err(|e| format!("invalid MCP server payload: {e}"))?;
+            openatrading_web::mcp::add_mcp_server_data(state, config).await?;
+            Ok(serde_json::Value::Null)
+        }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
@@ -317,6 +346,24 @@ async fn dispatch_post(
                     .ok_or_else(|| "missing name".to_string())?
                     .to_string();
                 openatrading_web::handlers::add_watchlist_data(&code, &name).await
+            } else if let Some(name) = path.strip_prefix("/api/skills/") {
+                // DELETE /api/skills/{name}
+                openatrading_web::handlers::delete_skill_data(name)?;
+                Ok(serde_json::Value::Null)
+            } else if let Some(name) = path.strip_prefix("/api/mcp/servers/") {
+                // PUT /api/mcp/servers/{name} (edit, has body) or
+                // DELETE /api/mcp/servers/{name} (no body) — the frontend
+                // routes both through `api_post`.
+                let name = url_decode(name);
+                if body.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                    let config: openatrading_core::llm::McpServerConfig =
+                        serde_json::from_value(body.clone())
+                            .map_err(|e| format!("invalid MCP server payload: {e}"))?;
+                    openatrading_web::mcp::update_mcp_server_data(state, &name, config).await?;
+                } else {
+                    openatrading_web::mcp::delete_mcp_server_data(state, &name).await?;
+                }
+                Ok(serde_json::Value::Null)
             } else {
                 Err(format!("unknown path: {path}"))
             }
@@ -478,10 +525,6 @@ async fn respond_permission(session_id: String, id: String, approved: bool) -> R
     Ok(())
 }
 
-// ── Named timing constants (finding #17) ────────────────────────────────────
-/// Polling interval for realtime/kline streaming channels pushed to the
-/// frontend via Tauri IPC.
-const STREAM_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
 /// Delay before restarting the app so the IPC response reaches the frontend.
 const APP_RESTART_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
@@ -496,13 +539,36 @@ async fn ensure_session_tauri(
     state: &Arc<AppState>,
     app: &tauri::AppHandle,
 ) -> Result<(), String> {
+    // Only set up the event-forward task once per session. A new subscription
+    // on every send_prompt would accumulate listeners that never unsubscribe,
+    // delivering each event N times to the frontend.
+    {
+        let mut fwd = state
+            .forward_tasks
+            .lock()
+            .map_err(|_| "internal lock poisoned".to_string())?;
+        if fwd.contains_key(session_id) {
+            return Ok(());
+        }
+        fwd.insert(session_id.to_string(), ());
+    }
+
     let event_state = state.get_event_state(session_id).await;
     let session_with_events = openatrading_web::chat_session::ensure_session_with_events(
         &state.ctx.pool,
         session_id,
         &event_state,
     )
-    .await?;
+    .await
+    .map_err(|e| {
+        // Roll back the forward-task marker so a later call can retry.
+        state
+            .forward_tasks
+            .lock()
+            .ok()
+            .map(|mut m| m.remove(session_id));
+        e
+    })?;
 
     let mut rx = session_with_events.rx;
     // 必须把 subscription_handle 移入 spawn 任务，否则 ensure_session_tauri
@@ -543,23 +609,24 @@ async fn api_realtime_stream(
         .collect();
     let client = openatrading_core::api::xuangubao::XuanguBaoClient::new();
 
-    loop {
-        match client.fetch_realtime_batch(&symbols).await {
-            Ok(data) => {
-                let json = serde_json::to_string(&data).unwrap_or_default();
-                channel
-                    .send(json)
-                    .map_err(|e| format!("channel error: {e}"))?;
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                eprintln!("[realtime-stream] {:?}: {msg}", symbols);
-                channel
-                    .send(format!(r#"{{"error":"{msg}"}}"#))
-                    .map_err(|f| format!("channel error: {f}"))?;
-            }
+    // One-shot: the frontend re-invokes on its own 3s polling interval. An
+    // infinite loop here would outlive the subscription (the JS Channel is
+    // held by the pending invoke), leaking a permanent upstream poller per
+    // subscribe call.
+    match client.fetch_realtime_batch(&symbols).await {
+        Ok(data) => {
+            let json = serde_json::to_string(&data).map_err(|e| format!("serialize error: {e}"))?;
+            channel
+                .send(json)
+                .map_err(|e| format!("channel error: {e}"))
         }
-        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
+        Err(e) => {
+            let msg = e.to_string();
+            eprintln!("[realtime-stream] {:?}: {msg}", symbols);
+            channel
+                .send(format!(r#"{{"error":"{msg}"}}"#))
+                .map_err(|f| format!("channel error: {f}"))
+        }
     }
 }
 
@@ -577,22 +644,20 @@ async fn api_kline_stream(
         _ => KlinePeriod::Day,
     };
     let client = XuanguBaoClient::new();
-    loop {
-        match client.fetch_kline(&symbol, kline_period, count).await {
-            Ok(data) => {
-                let json = serde_json::to_string(&data).unwrap_or_default();
-                channel
-                    .send(json)
-                    .map_err(|e| format!("channel error: {e}"))?;
-            }
-            Err(e) => {
-                eprintln!("[kline-stream] {symbol}: {e}");
-                channel
-                    .send(format!(r#"{{"error":"{e}"}}"#))
-                    .map_err(|f| format!("channel error: {f}"))?;
-            }
+    // One-shot — see api_realtime_stream.
+    match client.fetch_kline(&symbol, kline_period, count).await {
+        Ok(data) => {
+            let json = serde_json::to_string(&data).map_err(|e| format!("serialize error: {e}"))?;
+            channel
+                .send(json)
+                .map_err(|e| format!("channel error: {e}"))
         }
-        tokio::time::sleep(STREAM_POLL_INTERVAL).await;
+        Err(e) => {
+            eprintln!("[kline-stream] {symbol}: {e}");
+            channel
+                .send(format!(r#"{{"error":"{e}"}}"#))
+                .map_err(|f| format!("channel error: {f}"))
+        }
     }
 }
 
@@ -729,6 +794,7 @@ fn main() {
         cache: openatrading_web::cache::new_cache(),
         market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
         event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
     tauri::Builder::default()

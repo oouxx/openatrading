@@ -52,6 +52,7 @@ impl Gateway {
             cache: cache::new_cache(),
             market_hub: market_stream::MarketStreamHub::new(),
             event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
         });
 
         // Seed config roles first, then discover disk roles (config wins)

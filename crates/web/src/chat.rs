@@ -734,12 +734,22 @@ pub async fn rename_session(
 pub async fn get_tool_result(
     axum::extract::Path((session_id, tool_call_id)): axum::extract::Path<(String, String)>,
 ) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
-    let Some(path) = find_session_file(&session_id) else {
-        return Err(axum::http::StatusCode::NOT_FOUND);
+    get_tool_result_data(&session_id, &tool_call_id)
+        .map(axum::Json)
+        .map_err(|_| axum::http::StatusCode::NOT_FOUND)
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+pub fn get_tool_result_data(
+    session_id: &str,
+    tool_call_id: &str,
+) -> Result<serde_json::Value, String> {
+    let Some(path) = find_session_file(session_id) else {
+        return Err("session not found".to_string());
     };
 
     let Ok(content) = std::fs::read_to_string(&path) else {
-        return Err(axum::http::StatusCode::NOT_FOUND);
+        return Err("session not found".to_string());
     };
 
     // Scan the JSONL file for the matching tool result message
@@ -752,7 +762,7 @@ pub async fn get_tool_result(
                 if msg.get("role").and_then(|v| v.as_str()) != Some("toolResult") {
                     continue;
                 }
-                if msg.get("tool_call_id").and_then(|v| v.as_str()) != Some(&tool_call_id) {
+                if msg.get("tool_call_id").and_then(|v| v.as_str()) != Some(tool_call_id) {
                     continue;
                 }
                 // Found the matching tool result — extract the text content
@@ -767,15 +777,15 @@ pub async fn get_tool_result(
                             .join("\n")
                     })
                     .unwrap_or_default();
-                return Ok(axum::Json(serde_json::json!({
+                return Ok(serde_json::json!({
                     "tool_call_id": tool_call_id,
                     "content": text,
-                })));
+                }));
             }
         }
     }
 
-    Err(axum::http::StatusCode::NOT_FOUND)
+    Err("tool result not found".to_string())
 }
 
 // ── Inner functions for Tauri compatibility ─────────────────────────────
