@@ -12,6 +12,14 @@ import type { HistoryMessage } from "@/agents/types"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 
 import { fetchJson } from "@/stores/data"
 import { fetchCommands, type ChatSession } from "@/hooks/useChatThreads"
@@ -91,6 +99,7 @@ export default function AiCopilot({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const slashMenuRef = useRef<HTMLDivElement | null>(null)
 
   const SCROLL_THRESHOLD = 60 // px — auto-scroll if user within this distance of bottom
 
@@ -301,13 +310,35 @@ export default function AiCopilot({
 
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Slash menu open: forward navigation keys to cmdk, Escape closes.
+      if (showSlash && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
+        e.preventDefault()
+        slashMenuRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: e.key, bubbles: true })
+        )
+        return
+      }
+      if (showSlash && e.key === "Escape") {
+        setShowSlash(false)
+        return
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
         send()
       }
     },
-    [send],
+    [send, showSlash],
   )
+
+  // Pre-select the first command when the slash menu opens, so Enter works
+  // immediately without an explicit ArrowDown first.
+  useEffect(() => {
+    if (showSlash) {
+      slashMenuRef.current?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })
+      )
+    }
+  }, [showSlash])
 
   // ── Stock search ──────────────────────────────────────────────────────
   const onSearchChange = useCallback(
@@ -584,25 +615,59 @@ export default function AiCopilot({
 
 function SlashCommandMenu({
   commands,
+  filter,
   onSelect,
+  ref,
 }: {
   commands: SlashCommand[]
+  filter: string
   onSelect: (cmd: SlashCommand) => void
+  ref?: React.Ref<HTMLDivElement>
 }) {
-  if (commands.length === 0) return null
+  const groups = useMemo(() => {
+    const map = new Map<string, SlashCommand[]>()
+    for (const cmd of commands) {
+      const key = cmd.command_type || "Slash"
+      const list = map.get(key) ?? []
+      list.push(cmd)
+      map.set(key, list)
+    }
+    return [...map.entries()]
+  }, [commands])
+
+  if (groups.length === 0) return null
+
+  const groupLabel = (type: string) =>
+    type === "Skill" ? "技能" : type === "Slash" ? "基础命令" : type
+
   return (
-    <div className="bg-surface border-hairline rounded-lg max-h-48 overflow-y-auto border shadow-modal">
-      {commands.map((cmd) => (
-        <button
-          key={cmd.name}
-          className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
-          onClick={() => onSelect(cmd)}
-        >
-          <span className="font-number text-brand">/{cmd.name}</span>
-          <span className="text-secondary">{cmd.description}</span>
-        </button>
-      ))}
-    </div>
+    <Command
+      ref={ref}
+      className="bg-surface border-hairline rounded-lg! max-h-48 overflow-hidden border p-0 shadow-modal"
+    >
+      {/* Hidden input drives cmdk's built-in filtering from the textarea value. */}
+      <div className="hidden">
+        <CommandInput value={filter} onValueChange={() => {}} />
+      </div>
+      <CommandList className="max-h-48 p-0">
+        <CommandEmpty className="text-secondary py-3 text-caption">无匹配命令</CommandEmpty>
+        {groups.map(([type, cmds]) => (
+          <CommandGroup key={type} heading={groupLabel(type)} className="p-0">
+            {cmds.map((cmd) => (
+              <CommandItem
+                key={cmd.name}
+                value={cmd.name}
+                onSelect={() => onSelect(cmd)}
+                className="hover:bg-hover data-selected:bg-hover data-selected:text-primary flex w-full items-center gap-2 rounded-none px-3 py-2 text-left text-caption transition-colors [&>svg]:hidden"
+              >
+                <span className="font-number text-brand">/{cmd.name}</span>
+                <span className="text-secondary">{cmd.description}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ))}
+      </CommandList>
+    </Command>
   )
 }
 
