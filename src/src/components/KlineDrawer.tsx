@@ -4,6 +4,7 @@ import { usePlatesByStock } from "@/hooks/query/usePlatesByStock"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 import KlineChart, { type KlineCandle, type CrosshairInfo } from "./KlineChart"
 import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
+import { toYahooSymbol } from "@/lib/stock-utils"
 import { Star } from "lucide-react"
 
 interface KlineDrawerProps {
@@ -26,6 +27,15 @@ function formatVolume(v: number) {
   return v.toFixed(0)
 }
 
+/** 归一化为 Yahoo 格式；失败时回退原始输入，与后端 watchlist 容错一致。 */
+function canonicalWatchSymbol(raw: string): string {
+  try {
+    return toYahooSymbol(raw)
+  } catch {
+    return raw
+  }
+}
+
 function toXuangubaoSymbol(code: string): string {
   const clean = code.replace(/[.].*$/, "")
   if (clean.startsWith("6")) return clean + ".SS"
@@ -43,7 +53,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const { data: watchlist = [] } = useWatchlist()
   const addWatchlist = useAddWatchlist()
   const deleteWatchlist = useDeleteWatchlist()
-  const inWatchlist = watchlist.some((w) => w.code === symbol)
+  // 自选股统一以 Yahoo 格式存储，比较/增删前先归一化，避免同一股票重复
+  const watchSymbol = canonicalWatchSymbol(symbol)
+  const inWatchlist = watchlist.some((w) => w.code === watchSymbol)
 
   // Kline data from SSE
   const [klineData, setKlineData] = useState<KlineCandle[]>([])
@@ -173,9 +185,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           onClick={(e) => {
             e.stopPropagation()
             if (inWatchlist) {
-              deleteWatchlist.mutate(symbol)
+              deleteWatchlist.mutate(watchSymbol)
             } else {
-              addWatchlist.mutate({ code: symbol, name })
+              addWatchlist.mutate({ code: watchSymbol, name })
             }
           }}
           className="ml-1 flex size-7 items-center justify-center rounded-full text-caption transition-colors hover:bg-white/10"
