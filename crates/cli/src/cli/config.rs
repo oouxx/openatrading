@@ -120,14 +120,17 @@ impl AppConfig {
         };
 
         // Load config from {atrading_home}/config.toml
-        if let Some(cfg) = Self::load_from(&home.join("config.toml")) {
+        let home_cfg = home.join("config.toml");
+        if let Some(cfg) = Self::load_from(&home_cfg) {
             merged.merge(cfg);
         }
 
         // Layer 3: Project-level config from cwd/.atrading/config.toml
         if let Ok(cwd) = std::env::current_dir() {
             let project_cfg_path = cwd.join(".atrading").join("config.toml");
-            if project_cfg_path.exists() {
+            // OPENATRADING_HOME 指向项目根时 home 配置与项目配置是同一个文件，
+            // 跳过重复加载与重复的未知字段告警。
+            if project_cfg_path.exists() && project_cfg_path != home_cfg {
                 openatrading_core::log::info!(
                     "Loading project config from {}",
                     project_cfg_path.display()
