@@ -344,25 +344,15 @@ impl AppConfig {
 }
 
 pub fn cmd_init() -> Result<()> {
+    let created = openatrading_core::init::ensure_initialized()?;
     let atrading = openatrading_core::atrading_home();
-
-    if atrading.exists() {
+    if created {
+        eprintln!("✅ 已初始化 {}", atrading.display());
+        eprintln!("   配置文件: {}", atrading.join("config.toml").display());
+        eprintln!("   (可运行 `openatrading skills install` 安装 pi-rs 技能)");
+    } else {
         eprintln!("{} 已存在，跳过初始化", atrading.display());
-        return Ok(());
     }
-
-    std::fs::create_dir_all(&atrading)?;
-    std::fs::write(
-        atrading.join("config.toml"),
-        include_str!("../../../../config.example.toml"),
-    )?;
-
-    // Create roles dir for trading-account labels
-    std::fs::create_dir_all(atrading.join("roles"))?;
-
-    eprintln!("✅ 已初始化 {}", atrading.display());
-    eprintln!("   配置文件: {}", atrading.join("config.toml").display());
-    eprintln!("   (可运行 `openatrading skills install` 安装 pi-rs 技能)");
     Ok(())
 }
 
