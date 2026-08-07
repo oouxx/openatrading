@@ -792,15 +792,53 @@ fn watchlist_path() -> std::path::PathBuf {
     openatrading_core::atrading_home().join("watchlist.json")
 }
 
+/// 把自选股代码统一为 Yahoo 格式（`XXXXXX.SS/.SZ/.BJ`）。
+///
+/// 前端各入口传入的 code 可能是裸数字（`600519`）、带交易所前缀（`sh600519`）
+/// 或已是 Yahoo 格式（`600519.SS`），不统一会导致同一股票重复出现在自选股里。
+/// 归一化失败（如非 A 股代码）时回退原始输入，保持容错。
+fn normalize_watchlist_code(raw: &str) -> String {
+    openatrading_core::api::utils::to_yahoo_symbol(raw).unwrap_or_else(|_| raw.trim().to_string())
+}
+
 fn load_watchlist() -> Vec<serde_json::Value> {
     let path = watchlist_path();
     if !path.exists() {
         return Vec::new();
     }
-    std::fs::read_to_string(&path)
+    let items: Vec<serde_json::Value> = std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let (items, changed) = normalize_watchlist_items(items);
+    if changed {
+        // 迁移落盘为尽力而为：失败不影响本次读取
+        if let Err(e) = save_watchlist(&items) {
+            openatrading_core::log::warn!("watchlist migration save failed: {e}");
+        }
+    }
+    items
+}
+
+/// 迁移自选股条目：统一为 Yahoo 格式并按规范后的 code 去重。
+///
+/// 返回 `(去重后的条目, 是否有改动)`。同一股票以多种格式（如 `600519` 与
+/// `600519.SS`）同时存在时只保留先添加的一条。
+fn normalize_watchlist_items(mut items: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, bool) {
+    let mut seen = std::collections::HashSet::new();
+    let mut changed = false;
+    items.retain_mut(|item| {
+        let Some(raw_code) = item.get("code").and_then(|v| v.as_str()) else {
+            return true;
+        };
+        let canonical = normalize_watchlist_code(raw_code);
+        if canonical != raw_code {
+            item["code"] = serde_json::Value::String(canonical.clone());
+            changed = true;
+        }
+        seen.insert(canonical)
+    });
+    (items, changed)
 }
 
 fn save_watchlist(items: &[serde_json::Value]) -> Result<(), String> {
@@ -823,16 +861,17 @@ pub async fn get_watchlist_data() -> Result<serde_json::Value, String> {
 
 /// POST /api/watchlist
 pub async fn add_watchlist_data(code: &str, name: &str) -> Result<serde_json::Value, String> {
+    let canonical_code = normalize_watchlist_code(code);
     let mut items = load_watchlist();
     if items
         .iter()
-        .any(|i| i.get("code").and_then(|v| v.as_str()) == Some(code))
+        .any(|i| i.get("code").and_then(|v| v.as_str()) == Some(canonical_code.as_str()))
     {
         return Err("already exists".to_string());
     }
     let now = chrono::Utc::now().to_rfc3339();
     items.push(serde_json::json!({
-        "code": code,
+        "code": canonical_code,
         "name": name,
         "added_at": now,
     }));
@@ -842,9 +881,10 @@ pub async fn add_watchlist_data(code: &str, name: &str) -> Result<serde_json::Va
 
 /// DELETE /api/watchlist/:code
 pub async fn delete_watchlist_data(code: &str) -> Result<serde_json::Value, String> {
+    let canonical_code = normalize_watchlist_code(code);
     let mut items = load_watchlist();
     let before = items.len();
-    items.retain(|i| i.get("code").and_then(|v| v.as_str()) != Some(code));
+    items.retain(|i| i.get("code").and_then(|v| v.as_str()) != Some(canonical_code.as_str()));
     if items.len() == before {
         return Err(format!("not found: {code}"));
     }
@@ -1158,4 +1198,53 @@ pub fn update_pi_agent_settings_data(
         mgr.set_default_thinking_level(t);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(code: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({ "code": code, "name": name, "added_at": "2026-01-01T00:00:00+00:00" })
+    }
+
+    fn codes(items: &[serde_json::Value]) -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|i| i.get("code").and_then(|v| v.as_str()).map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn normalize_watchlist_items_unifies_to_yahoo_and_dedups() {
+        // 同一股票以裸数字、交易所前缀、Yahoo 格式三种形式出现，只保留先添加的一条
+        let items = vec![
+            item("603773", "沃格光电"),
+            item("sh600721", "百花医药"),
+            item("600519.SS", "贵州茅台"),
+            item("603773.SS", "沃格光电(重复)"),
+        ];
+        let (items, changed) = normalize_watchlist_items(items);
+        assert!(changed, "duplicates must be detected");
+        assert_eq!(
+            codes(&items),
+            vec!["603773.SS", "600721.SS", "600519.SS"],
+            "格式应统一为 Yahoo 且按 code 去重"
+        );
+    }
+
+    #[test]
+    fn normalize_watchlist_items_keeps_canonical_entries_unchanged() {
+        let items = vec![item("600519.SS", "贵州茅台"), item("300308.SZ", "中际旭创")];
+        let (items, changed) = normalize_watchlist_items(items);
+        assert!(!changed);
+        assert_eq!(codes(&items), vec!["600519.SS", "300308.SZ"]);
+    }
+
+    #[test]
+    fn normalize_watchlist_code_falls_back_on_non_ashare() {
+        // 非 A 股 / 无法推断交易所的输入回退原样，不破坏已有条目
+        assert_eq!(normalize_watchlist_code("AAPL"), "AAPL");
+        assert_eq!(normalize_watchlist_code("600000.SS"), "600000.SS");
+    }
 }
