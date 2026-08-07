@@ -1119,3 +1119,43 @@ pub fn delete_skill_data(name: &str) -> Result<(), String> {
     openatrading_core::skills::uninstall_skill(name)
         .map_err(|e| format!("failed to delete skill '{name}': {e}"))
 }
+
+// ── pi-rs agent settings (default provider / model / thinking level) ─────
+
+fn pi_settings_manager() -> pi_coding_agent::core::settings_manager::SettingsManager {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    pi_coding_agent::core::settings_manager::SettingsManager::create(&cwd, None)
+}
+
+/// Read pi-rs `settings.json` defaults: `defaultProvider` / `defaultModel` /
+/// `thinkingLevel`.
+pub fn get_pi_agent_settings_data() -> Result<serde_json::Value, String> {
+    let mgr = pi_settings_manager();
+    Ok(serde_json::json!({
+        "defaultProvider": mgr.get_default_provider(),
+        "defaultModel": mgr.get_default_model(),
+        "thinkingLevel": mgr.get_default_thinking_level(),
+    }))
+}
+
+/// Update pi-rs `settings.json` defaults. Only non-empty fields are written.
+pub fn update_pi_agent_settings_data(
+    provider: Option<&str>,
+    model: Option<&str>,
+    thinking_level: Option<&str>,
+) -> Result<(), String> {
+    let mut mgr = pi_settings_manager();
+    if let Some(p) = provider.filter(|s| !s.is_empty()) {
+        mgr.set_default_provider(p);
+    }
+    if let Some(m) = model.filter(|s| !s.is_empty()) {
+        mgr.set_default_model(m);
+    }
+    if let Some(t) = thinking_level.filter(|s| !s.is_empty()) {
+        mgr.set_default_thinking_level(t);
+    }
+    Ok(())
+}

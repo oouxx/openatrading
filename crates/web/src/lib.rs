@@ -99,6 +99,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/ai/sessions/ws", get(agent_ws::ws_handler))
         .route("/api/ai/roles", get(chat::get_ai_roles))
         .route("/api/ai/commands", get(chat::get_ai_commands))
+        .route("/api/agent/settings", get(chat::get_agent_settings))
+        .route("/api/agent/settings", post(chat::update_agent_settings))
         .route("/api/skills", get(chat::get_skills))
         .route("/api/skills", post(chat::save_skill))
         .route("/api/skills/:name", delete(chat::delete_skill))

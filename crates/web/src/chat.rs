@@ -53,6 +53,36 @@ pub async fn get_ai_commands() -> Json<Vec<CommandSpec>> {
     Json(serde_json::from_value(data).unwrap_or_default())
 }
 
+/// GET /api/agent/settings — pi-rs default provider/model/thinking level.
+pub async fn get_agent_settings() -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    crate::handlers::get_pi_agent_settings_data()
+        .map(axum::Json)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// POST /api/agent/settings — update pi-rs defaults.
+#[derive(serde::Deserialize)]
+pub struct UpdateAgentSettingsRequest {
+    #[serde(default)]
+    default_provider: Option<String>,
+    #[serde(default)]
+    default_model: Option<String>,
+    #[serde(default)]
+    thinking_level: Option<String>,
+}
+
+pub async fn update_agent_settings(
+    axum::Json(req): axum::Json<UpdateAgentSettingsRequest>,
+) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    crate::handlers::update_pi_agent_settings_data(
+        req.default_provider.as_deref(),
+        req.default_model.as_deref(),
+        req.thinking_level.as_deref(),
+    )
+    .map(|_| axum::Json(serde_json::json!({ "ok": true })))
+    .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 #[derive(Serialize)]
 pub struct ToolResponse {
     pub name: String,

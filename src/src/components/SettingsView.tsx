@@ -32,7 +32,21 @@ interface SocialConfig {
   discord_channel_id: string
 }
 
+interface AgentSettings {
+  defaultProvider: string
+  defaultModel: string
+  thinkingLevel: string
+}
+
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
+
+const THINKING_LEVELS: { value: string; label: string }[] = [
+  { value: "off", label: "关闭" },
+  { value: "minimal", label: "极简" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+]
 
 export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) {
   const theme = useUiStore((s) => s.theme)
@@ -57,6 +71,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
   const [editingOriginalName, setEditingOriginalName] = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
+  // pi-rs settings.json 默认值（provider / model / thinkingLevel）
+  const [agentSettings, setAgentSettings] = useState<AgentSettings>({
+    defaultProvider: "",
+    defaultModel: "",
+    thinkingLevel: "medium",
+  })
   // About info
   const [aboutInfo, setAboutInfo] = useState<Record<string, string> | null>(null)
 
@@ -84,12 +104,46 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     }
   }, [])
 
+  const loadAgentSettings = useCallback(async () => {
+    try {
+      const data = await fetchJson<Partial<AgentSettings>>("/api/agent/settings")
+      setAgentSettings({
+        defaultProvider: data.defaultProvider ?? "",
+        defaultModel: data.defaultModel ?? "",
+        thinkingLevel: data.thinkingLevel ?? "medium",
+      })
+    } catch {
+      // API 可能不可用（Web 端网关未启动等）
+    }
+  }, [])
+
+  const saveAgentSettings = useCallback(
+    async (patch: Partial<AgentSettings>) => {
+      const next = { ...agentSettings, ...patch }
+      setAgentSettings(next)
+      try {
+        await fetchJson("/api/agent/settings", {
+          method: "POST",
+          body: JSON.stringify({
+            defaultProvider: next.defaultProvider,
+            defaultModel: next.defaultModel,
+            thinkingLevel: next.thinkingLevel,
+          }),
+        })
+      } catch (e) {
+        console.error("保存 Agent 设置失败", e)
+      }
+    },
+    [agentSettings]
+  )
+
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- 初始化加载，不在 React 数据流内 */
     loadServers()
     loadAbout()
+    loadAgentSettings()
     if (isTauri) {
       ;(async () => {
         const { invoke } = await import("@tauri-apps/api/core")
@@ -159,6 +213,44 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
       {activeTab === "agent" && (
         <>
+          <section>
+            <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
+              默认模型
+            </h2>
+            <div className="bg-surface border-hairline space-y-3 rounded-lg border p-4">
+              <div>
+                <label className="text-secondary mb-1 block text-caption">Provider</label>
+                <Input
+                  value={agentSettings.defaultProvider}
+                  onBlur={(e) => saveAgentSettings({ defaultProvider: e.target.value })}
+                  placeholder="如 deepseek / openrouter / ollama"
+                />
+              </div>
+              <div>
+                <label className="text-secondary mb-1 block text-caption">Model</label>
+                <Input
+                  value={agentSettings.defaultModel}
+                  onBlur={(e) => saveAgentSettings({ defaultModel: e.target.value })}
+                  placeholder="如 deepseek-chat"
+                />
+              </div>
+              <div>
+                <label className="text-secondary mb-1 block text-caption">思考级别</label>
+                <select
+                  value={agentSettings.thinkingLevel}
+                  onChange={(e) => saveAgentSettings({ thinkingLevel: e.target.value })}
+                  className="bg-elevated border-hairline text-primary w-full rounded-lg border px-3 py-2 font-number text-caption focus:outline-none"
+                >
+                  {THINKING_LEVELS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
+
           <section>
             <h2 className="text-secondary mb-3 text-caption font-medium tracking-wider uppercase">
               数据源
