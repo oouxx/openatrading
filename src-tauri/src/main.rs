@@ -112,6 +112,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/ai/roles" => openatrading_web::handlers::get_ai_roles_data(state).await,
         "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
         "/api/agent/settings" => openatrading_web::handlers::get_pi_agent_settings_data(),
+        "/api/agent/models" => openatrading_web::handlers::get_pi_agent_models_data(),
         "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
         "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,

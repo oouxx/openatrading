@@ -1200,6 +1200,43 @@ pub fn update_pi_agent_settings_data(
     Ok(())
 }
 
+/// GET /api/agent/models — pi-rs 可选模型列表（按 provider 分组）。
+///
+/// 复用 pi-coding-agent 的 `ModelRegistry`（与会话工厂同一来源），返回
+/// provider + 模型元数据，供前端 ModelPicker 选择默认 provider/model。
+pub fn get_pi_agent_models_data() -> Result<serde_json::Value, String> {
+    use pi_coding_agent::core::model_registry::ModelRegistry;
+
+    // 与 create_agent_session 一致：先注册内置 provider/模型，再构建注册表
+    pi_coding_agent::pi_agent_core::pi_ai::providers::register_builtins::register_built_in_api_providers();
+    let registry = ModelRegistry::new(ModelRegistry::builtin_models_list());
+
+    let mut providers: Vec<serde_json::Value> = Vec::new();
+    for provider in registry.get_providers() {
+        let mut models: Vec<serde_json::Value> = registry
+            .get_models_for_provider(&provider)
+            .into_iter()
+            .map(|m| {
+                serde_json::json!({
+                    "id": m.id,
+                    "name": m.name,
+                    "reasoning": m.reasoning,
+                    "contextWindow": m.context_window,
+                    "maxTokens": m.max_tokens,
+                    "available": registry.has_configured_auth(&m),
+                })
+            })
+            .collect();
+        models.sort_by(|a, b| {
+            a.get("id")
+                .and_then(|v| v.as_str())
+                .cmp(&b.get("id").and_then(|v| v.as_str()))
+        });
+        providers.push(serde_json::json!({ "name": provider, "models": models }));
+    }
+    Ok(serde_json::json!({ "providers": providers }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1246,5 +1283,25 @@ mod tests {
         // 非 A 股 / 无法推断交易所的输入回退原样，不破坏已有条目
         assert_eq!(normalize_watchlist_code("AAPL"), "AAPL");
         assert_eq!(normalize_watchlist_code("600000.SS"), "600000.SS");
+    }
+
+    #[test]
+    fn pi_agent_models_returns_providers_with_models() {
+        // pi-rs 内置模型数据在编译期嵌入，注册表必然非空
+        let data = get_pi_agent_models_data().unwrap_or_else(|e| panic!("models data: {e}"));
+        let providers = data["providers"]
+            .as_array()
+            .unwrap_or_else(|| panic!("providers array"));
+        assert!(!providers.is_empty(), "至少有一个 provider");
+        let first = &providers[0];
+        assert!(first["name"].is_string());
+        let models = first["models"]
+            .as_array()
+            .unwrap_or_else(|| panic!("models array"));
+        assert!(!models.is_empty(), "每个 provider 至少有一个模型");
+        let model = &models[0];
+        assert!(model["id"].is_string());
+        assert!(model["name"].is_string());
+        assert!(model["available"].is_boolean());
     }
 }
