@@ -794,6 +794,12 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
 fn main() {
     load_env();
 
+    // 首次启动幂等初始化：创建 ~/.atrading + config.toml 模板 + roles/（已存在则跳过）。
+    // 失败不阻塞启动——Gateway::init 会以更明确的错误暴露目录不可写等问题。
+    if let Err(e) = openatrading_core::init::ensure_initialized() {
+        eprintln!("[tauri] 初始化 .atrading 失败: {e}");
+    }
+
     let db_path = openatrading_core::atrading_home().join("data.db");
 
     let gateway = Gateway::init(&db_path).unwrap_or_else(|e| panic!("failed to init gateway: {e}"));

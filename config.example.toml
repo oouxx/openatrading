@@ -1,5 +1,6 @@
 # ── OpenATrading 配置 ──────────────────────────────────
-# 优先级：项目根 config.toml > 项目根/.atrading/config.toml > ~/.atrading/config.toml
+# 优先级：项目 .atrading/config.toml > ~/.atrading/config.toml
+# （高优先级完整覆盖低优先级；同名角色高优先级覆盖低优先级）
 # 角色（role）= 交易账号标签（name + display_name），用于按策略分区持仓/交易日志。
 # 在 角色管理 UI 或 ~/.atrading/roles/{name}.toml 中创建可编辑角色；
 # 在此处用 [[roles]] 声明的角色为只读（readonly），无法通过 UI 删除。示例：
@@ -29,12 +30,18 @@ web_bind = "0.0.0.0:8080"
 
 # ── Cron 调度 ────────────────────────────────────────────
 # cron 表达式为 6 字段：秒 分 时 日 月 周
+# 当前仅保留两个 job：采集（collection）与新闻推送（news_push）；
+# 自动决策/条件单监控管线已移除，决策在 chat 中手动触发。
 [cron]
 enabled = true
-collection_schedule = "0 0 18 * * 1-5"
+# 采集：交易时间每 30 分钟
+collection_schedule = "0 */30 9-15 * * 1-5"
+# 新闻推送：交易时间每 5 分钟
 news_schedule = "0 */5 9-15 * * 1-5"
 
 # ── 社交平台通知 ──────────────────────────────────────────
+# notify_channel: cron 通知发送到哪个渠道 (telegram / discord / slack / lark)
+# notify_on_*: 控制各类事件是否发送通知
 [social]
 notify_channel = "telegram"
 notify_on_collect = true
@@ -63,3 +70,7 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 # app_id = "${LARK_APP_ID}"
 # app_secret = "${LARK_APP_SECRET}"
 # receive_id = "${LARK_RECEIVE_ID}"
+
+# ── 模型配置 ────────────────────────────────────────────
+# 默认 provider/model 不在此配置：在设置页「默认模型」或
+# $PI_RS_HOME/agent/settings.json 中设置，API Key 在 $PI_RS_HOME/agent/auth.json。
