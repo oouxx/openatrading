@@ -111,6 +111,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         }
         "/api/ai/roles" => openatrading_web::handlers::get_ai_roles_data(state).await,
         "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
+        "/api/agent/settings" => openatrading_web::handlers::get_pi_agent_settings_data(),
         "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
         "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
@@ -320,6 +321,17 @@ async fn dispatch_post(
                 serde_json::from_value(body.clone())
                     .map_err(|e| format!("invalid MCP server payload: {e}"))?;
             openatrading_web::mcp::add_mcp_server_data(state, config).await?;
+            Ok(serde_json::Value::Null)
+        }
+        "/api/agent/settings" => {
+            let provider = body.get("defaultProvider").and_then(|v| v.as_str());
+            let model = body.get("defaultModel").and_then(|v| v.as_str());
+            let thinking_level = body.get("thinkingLevel").and_then(|v| v.as_str());
+            openatrading_web::handlers::update_pi_agent_settings_data(
+                provider,
+                model,
+                thinking_level,
+            )?;
             Ok(serde_json::Value::Null)
         }
         _ => {
