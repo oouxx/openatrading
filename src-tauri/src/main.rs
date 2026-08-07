@@ -153,6 +153,15 @@ async fn dispatch_get_fallback(
         let category = rest.split('?').next().unwrap_or("");
         return openatrading_web::handlers::get_telegraph_data(state, category).await;
     }
+    // /api/telegraph?last_time=...&count=20 — infinite-scroll pagination.
+    // The exact-match arm in dispatch_get only covers the bare path; with a
+    // query string the path no longer equals "/api/telegraph", so it lands
+    // here. Without this, the Tauri app could load page 1 but never page 2+.
+    if path == "/api/telegraph" || path.starts_with("/api/telegraph?") {
+        let last_time = extract_query(path, "last_time").and_then(|s| s.parse::<i64>().ok());
+        let count = extract_query(path, "count").and_then(|s| s.parse::<u32>().ok());
+        return openatrading_web::handlers::get_telegraph_all_data(state, last_time, count).await;
+    }
     if let Some(rest) = path.strip_prefix("/api/market-trend/") {
         let symbol = rest.split('?').next().unwrap_or("");
         return openatrading_web::handlers::get_market_trend_data(state, symbol).await;
