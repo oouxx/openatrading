@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ahash::AHashMap;
 use rmcp::model::{CallToolRequestParams, CallToolResult, ContentBlock, Tool};
@@ -22,6 +23,19 @@ use async_trait::async_trait;
 use pi_extension_api::{
     ExtensionContext, HookHandler, ToolCallOutput, ToolDefinition, ToolRegistry,
 };
+
+// ============================================================================
+// 超时控制
+// ============================================================================
+
+/// MCP 连接握手（rmcp initialize）超时。
+///
+/// 远端 server 无响应（网络挂起、服务卡死）时，rmcp 的握手会无限等待，
+/// 阻塞网关/CLI 启动。健康 server 的握手应在亚秒级完成，5s 足以覆盖慢速冷启动。
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// MCP 工具列举（`list_tools`）超时：连接成功但响应停滞时避免发现流程无限等待。
+const LIST_TOOLS_TIMEOUT: Duration = Duration::from_secs(5);
 
 // ============================================================================
 // McpError
@@ -59,7 +73,12 @@ impl McpClient {
     /// 连接失败时返回 `McpError::Connect`。
     pub async fn connect(endpoint: impl Into<String>) -> Result<Self, McpError> {
         let transport = StreamableHttpClientTransport::from_uri(endpoint.into());
-        let service = ().serve(transport).await.map_err(|e| McpError::Connect(e.to_string()))?;
+        let service = tokio::time::timeout(CONNECT_TIMEOUT, ().serve(transport))
+            .await
+            .map_err(|_| {
+                McpError::Connect(format!("handshake timed out after {CONNECT_TIMEOUT:?}"))
+            })?
+            .map_err(|e| McpError::Connect(e.to_string()))?;
         Ok(Self { service })
     }
 
@@ -89,7 +108,12 @@ impl McpClient {
         );
         let transport =
             TokioChildProcess::new(cmd).map_err(|e| McpError::Connect(e.to_string()))?;
-        let service = ().serve(transport).await.map_err(|e| McpError::Connect(e.to_string()))?;
+        let service = tokio::time::timeout(CONNECT_TIMEOUT, ().serve(transport))
+            .await
+            .map_err(|_| {
+                McpError::Connect(format!("handshake timed out after {CONNECT_TIMEOUT:?}"))
+            })?
+            .map_err(|e| McpError::Connect(e.to_string()))?;
         tracing::info!("[mcp] connect_stdio: handshake complete, service initialized");
         Ok(Self { service })
     }
@@ -99,12 +123,7 @@ impl McpClient {
     /// # Errors
     /// 请求失败时返回 `McpError::List`。
     pub async fn list_tools(&self) -> Result<Value, McpError> {
-        let tools = self
-            .service
-            .peer()
-            .list_all_tools()
-            .await
-            .map_err(|e| McpError::List(e.to_string()))?;
+        let tools = self.list_all_tools_with_timeout().await?;
         tracing::info!("[mcp] list_tools: got {} tools", tools.len());
         Ok(serde_json::to_value(&tools).unwrap_or_default())
     }
@@ -174,12 +193,7 @@ impl McpClient {
 
     /// 原始列举工具元数据（供发现使用，不做 JSON 序列化往返）。
     async fn list_specs(&self) -> Result<Vec<RemoteToolSpec>, McpError> {
-        let tools: Vec<Tool> = self
-            .service
-            .peer()
-            .list_all_tools()
-            .await
-            .map_err(|e| McpError::List(e.to_string()))?;
+        let tools = self.list_all_tools_with_timeout().await?;
         Ok(tools
             .into_iter()
             .map(|t| RemoteToolSpec {
@@ -188,6 +202,14 @@ impl McpClient {
                 schema: Value::Object((*t.input_schema).clone()),
             })
             .collect())
+    }
+
+    /// 带超时地列举 server 全部工具；响应停滞时返回 `McpError::List`。
+    async fn list_all_tools_with_timeout(&self) -> Result<Vec<Tool>, McpError> {
+        tokio::time::timeout(LIST_TOOLS_TIMEOUT, self.service.peer().list_all_tools())
+            .await
+            .map_err(|_| McpError::List(format!("timed out after {LIST_TOOLS_TIMEOUT:?}")))?
+            .map_err(|e| McpError::List(e.to_string()))
     }
 }
 
@@ -418,5 +440,49 @@ impl HookHandler for McpExtension {
                 terminate: None,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 挂起的 MCP server（accept 连接但永不响应 HTTP 请求）不应阻塞发现流程：
+    /// `discover_mcp` 必须在超时上界内返回并跳过该 server。
+    #[tokio::test]
+    async fn discover_mcp_skips_hung_server_without_blocking() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap_or_else(|e| panic!("bind test listener: {e}"));
+        let addr = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("local addr: {e}"));
+        tokio::spawn(async move {
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let cfg = McpServerConfig {
+            name: "hung".to_string(),
+            transport: McpTransportConfig::StreamableHttp {
+                url: format!("http://{addr}/mcp"),
+                auth_token: None,
+            },
+            enabled: true,
+        };
+
+        let started = std::time::Instant::now();
+        let discovered = discover_mcp(&[cfg]).await;
+        let elapsed = started.elapsed();
+
+        assert!(discovered.is_empty(), "hung server must be skipped");
+        let upper_bound = CONNECT_TIMEOUT + LIST_TOOLS_TIMEOUT + Duration::from_secs(2);
+        assert!(
+            elapsed < upper_bound,
+            "discovery blocked too long: {elapsed:?} (upper bound {upper_bound:?})"
+        );
     }
 }
