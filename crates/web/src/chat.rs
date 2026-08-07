@@ -60,6 +60,13 @@ pub async fn get_agent_settings() -> Result<axum::Json<serde_json::Value>, axum:
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+/// GET /api/agent/models — pi-rs 可选模型列表（provider + models）。
+pub async fn get_agent_models() -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    crate::handlers::get_pi_agent_models_data()
+        .map(axum::Json)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 /// POST /api/agent/settings — update pi-rs defaults.
 #[derive(serde::Deserialize)]
 pub struct UpdateAgentSettingsRequest {

@@ -6,6 +6,7 @@ import { useSettingsStore } from "@/stores/settingsStore"
 import { fetchJson } from "@/stores/data"
 import { McpServerForm } from "./McpServerForm"
 import { McpServerCard } from "./McpServerCard"
+import ModelPicker from "./ModelPicker"
 import type { McpServerConfig } from "../types/mcp"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
@@ -218,22 +219,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               默认模型
             </h2>
             <div className="bg-surface border-hairline space-y-3 rounded-lg border p-4">
-              <div>
-                <label className="text-secondary mb-1 block text-caption">Provider</label>
-                <Input
-                  value={agentSettings.defaultProvider}
-                  onBlur={(e) => saveAgentSettings({ defaultProvider: e.target.value })}
-                  placeholder="如 deepseek / openrouter / ollama"
-                />
-              </div>
-              <div>
-                <label className="text-secondary mb-1 block text-caption">Model</label>
-                <Input
-                  value={agentSettings.defaultModel}
-                  onBlur={(e) => saveAgentSettings({ defaultModel: e.target.value })}
-                  placeholder="如 deepseek-chat"
-                />
-              </div>
+              <ModelPicker
+                provider={agentSettings.defaultProvider}
+                model={agentSettings.defaultModel}
+                onChange={(provider, model) =>
+                  saveAgentSettings({ defaultProvider: provider, defaultModel: model })
+                }
+              />
               <div>
                 <label className="text-secondary mb-1 block text-caption">思考级别</label>
                 <select
