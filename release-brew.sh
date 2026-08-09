@@ -13,6 +13,26 @@ if ! which gh >/dev/null 2>&1; then
   exit 1
 fi
 
+# ── gh 认证：优先 keyring，避免 .env 泄漏的 GITHUB_TOKEN 覆盖 ──
+# Makefile 顶部 `-include .env` + `export` 会把 .env 里的 GITHUB_TOKEN
+# （fine-grained PAT，通常无 release 权限）注入环境；gh 优先读环境变量，
+# 导致 "Resource not accessible by personal access token" (HTTP 403)。
+# 本地发布应使用 `gh auth login` 的 keyring 凭据；CI 等无 keyring 场景
+# 用 RELEASE_GH_TOKEN 显式指定。
+if [ -n "${RELEASE_GH_TOKEN:-}" ]; then
+  export GH_TOKEN="$RELEASE_GH_TOKEN"
+  unset GITHUB_TOKEN
+else
+  unset GH_TOKEN GITHUB_TOKEN
+fi
+
+# 预检：gh 已登录（keyring 或 RELEASE_GH_TOKEN）
+if ! gh auth status >/dev/null 2>&1; then
+  echo "❌ gh 未登录：请先运行 gh auth login（GitHub.com + HTTPS）"
+  echo "   或指定 RELEASE_GH_TOKEN=xxx make release-brew"
+  exit 1
+fi
+
 case "$(uname -m)" in
   arm64)  ARCH="aarch64" ;;
   x86_64) ARCH="x64" ;;
@@ -41,6 +61,14 @@ if [ "$CREATE_EXIT" -ne 0 ]; then
   else
     echo "❌ 创建 Release 失败："
     echo "$CREATE_OUT"
+    if echo "$CREATE_OUT" | rg -q "403|not accessible"; then
+      echo ""
+      echo "💡 原因：gh 使用了无 release 权限的 token（通常是 .env 的 GITHUB_TOKEN 泄漏覆盖了 keyring）。"
+      echo "   本脚本已自动忽略 .env 的 GITHUB_TOKEN，改用 gh auth login 的 keyring 凭据。"
+      echo "   若仍失败，请检查："
+      echo "     1. gh auth status 确认登录账号为 oouxx 且 scope 含 repo"
+      echo "     2. 或显式指定有权限的 token：RELEASE_GH_TOKEN=xxx make release-brew"
+    fi
     exit 1
   fi
 fi

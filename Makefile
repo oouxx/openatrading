@@ -130,6 +130,11 @@ _release:
 
 # ─── Release Tauri (local build + gh upload) ─────────
 
+# gh 优先读 GH_TOKEN/GITHUB_TOKEN 环境变量；Makefile 顶部 `-include .env` + `export`
+# 会把 .env 的 GITHUB_TOKEN（fine-grained PAT，无 release 权限）注入环境导致 403。
+# 本地发布用 keyring 凭据（gh auth login）；CI 场景用 RELEASE_GH_TOKEN 显式指定。
+GH_AUTH := if [ -n "$${RELEASE_GH_TOKEN:-}" ]; then export GH_TOKEN="$$RELEASE_GH_TOKEN"; unset GITHUB_TOKEN; else unset GH_TOKEN GITHUB_TOKEN; fi
+
 build-tauri:
 	cd src-tauri && cargo tauri build
 
@@ -138,7 +143,7 @@ release-tauri-local: build-tauri
 	$(eval V := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
 	$(eval TAG := v$(V))
 	@echo "🚀 发布 OpenATrading $(V) → 公开 tap 仓库"
-	@gh release create "$(TAG)" \
+	@$(GH_AUTH); gh release create "$(TAG)" \
 		--repo oouxx/homebrew-openatrading \
 		--title "$(TAG)" \
 		--notes "OpenATrading $(V)" \
@@ -147,7 +152,7 @@ release-tauri-local: build-tauri
 	for f in $$(find target/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.msi' -o -name '*.exe' \) ! -name 'rw.*' 2>/dev/null); do \
 		found=1; \
 		echo "📤 上传 $$(basename "$$f")"; \
-		gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
+		$(GH_AUTH); gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
 	done; \
 	if [ "$$found" -eq 0 ]; then \
 		echo "❌ 未找到编译产物，请先运行 make build-tauri"; \
