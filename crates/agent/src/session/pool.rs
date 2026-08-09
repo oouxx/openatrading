@@ -200,7 +200,10 @@ impl SessionPool {
             .ok_or_else(|| "Session not found".to_string())?
             .clone();
         let rt = session.lock().await;
-        rt.session().prompt(text, None).await;
+        rt.session()
+            .prompt(text, None)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -244,7 +247,11 @@ impl SessionPool {
                 tokio::pin!(abort);
                 tokio::select! {
                     // Normal completion — turn finished on its own.
-                    _ = &mut prompt_fut => {}
+                    result = &mut prompt_fut => {
+                        if let Err(e) = result {
+                            eprintln!("[pool] prompt failed: {e}");
+                        }
+                    }
                     // Interrupt — cancel the run, then let the prompt observe
                     // the cancellation and finish (so the terminal AgentEnd
                     // event is emitted). `s` is a shared `&` ref, so
@@ -253,7 +260,7 @@ impl SessionPool {
                     // before this handler runs).
                     _ = &mut abort => {
                         s.abort().await;
-                        (&mut prompt_fut).await;
+                        let _ = (&mut prompt_fut).await;
                     }
                 }
             });
@@ -283,7 +290,7 @@ impl SessionPool {
             rt.block_on(async {
                 let rt = session.lock().await;
                 let s = rt.session();
-                s.prompt(&msg, None).await;
+                s.prompt(&msg, None).await.map_err(|e| e.to_string())?;
                 s.get_last_assistant_text()
                     .await
                     .ok_or_else(|| "No assistant response".to_string())

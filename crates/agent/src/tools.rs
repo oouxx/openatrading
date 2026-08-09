@@ -61,6 +61,8 @@ pub fn text_result<T: serde::Serialize>(value: &T) -> AgentToolResult<serde_json
             serde_json::to_string(value).unwrap_or_default(),
         )],
         details: serde_json::Value::Null,
+        usage: None,
+        added_tool_names: None,
         terminate: None,
     }
 }

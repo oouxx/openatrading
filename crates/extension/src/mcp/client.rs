@@ -5,7 +5,7 @@
 //! [`HookHandler`](pi_extension_api::HookHandler)，把发现的远端工具注册进
 //! `ExtensionRegistry`，并在 `handle_tool_call` 中把调用路由回对应 MCP server。
 //!
-//! pi-rs v1.81.0 已落地 `mcp` feature，但仅限 ACP 会话内使用（按 ACP `McpServer`
+//! pi-rs v1.82.0 已落地 `mcp` feature，但仅限 ACP 会话内使用（按 ACP `McpServer`
 //! 配置连接），未通过 pi-coding-agent SDK 暴露通用 MCP 客户端能力；本项目需直连
 //! 外部 server 并经 HookHandler 接入所有会话类型，故仍自实现 rmcp↔HookHandler 桥接。
 
