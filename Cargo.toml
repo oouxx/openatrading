@@ -27,9 +27,9 @@ chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 dotenvy = "0.15"
 async-trait = "0.1"
-pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.81.0" }
-pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.81.0" }
-pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.81.0" }
+pi-extension-api = { git = "https://github.com/oouxx/pi-rs", tag = "v1.82.0" }
+pi-extensions = { git = "https://github.com/oouxx/pi-rs", tag = "v1.82.0" }
+pi-coding-agent = { git = "https://github.com/oouxx/pi-rs", tag = "v1.82.0" }
 ahash = { version = "0.8", features = ["serde"] }
 lru = "0.12"
 
