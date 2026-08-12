@@ -113,6 +113,7 @@ pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory 
                     extension_registry: Some(ext_registry),
                     fallback_message: None,
                     session_start_event: params.session_start_event,
+                    ui_context: None,
                 })
                 .await
                 .unwrap_or_else(|e| panic!("Failed to create session: {e}"));

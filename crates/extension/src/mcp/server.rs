@@ -142,6 +142,11 @@ fn synthetic_context() -> ExtensionContext {
             notify: Arc::new(|msg, _level| eprintln!("[mcp-server] {msg}")),
             set_status: Arc::new(|_, _| ()),
             confirm: Arc::new(|_, _| false),
+            select: Arc::new(|_, _, _| Box::pin(async { None })),
+            input: Arc::new(|_, _, _| Box::pin(async { None })),
+            set_widget: Arc::new(|_, _, _| {}),
+            set_title: Arc::new(|_| {}),
+            set_editor_text: Arc::new(|_| {}),
         },
         RuntimeHandle::noop(),
     )
