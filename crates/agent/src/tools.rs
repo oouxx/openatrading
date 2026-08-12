@@ -80,6 +80,8 @@ pub fn tool(
     Arc::new(DynTool {
         name: name.to_string(),
         description: description.to_string(),
+        prompt_snippet: None,
+        prompt_guidelines: None,
         parameters_schema,
         label: String::new(),
         execution_mode: None,
