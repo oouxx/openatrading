@@ -2,9 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Search, Square, ArrowDown, Copy, Check } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import ThinkingBlock from "@/components/chat/ThinkingBlock"
-import ToolCallBlock from "@/components/chat/ToolCallBlock"
-import ToolResultBlock from "@/components/chat/ToolResultBlock"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
+import ToolCallList from "@/components/chat/ToolCallList"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import TurnDivider from "@/components/chat/TurnDivider"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
@@ -619,6 +618,7 @@ export default function AiCopilot({
             </div>
           </div>
         </div>
+
       )}
     </div>
   )
@@ -694,80 +694,121 @@ interface TurnRendererProps {
 }
 
 function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: TurnRendererProps) {
-  const segments = groupBlocks(turn.blocks)
+  // Tool calls render as compact inline rows (Claude web style). Consecutive
+  // tool calls within a turn are grouped into one list so they stack tightly.
+  const nodes: React.ReactNode[] = []
+  let toolGroup: Extract<TranscriptBlock, { type: "tool_call" }>[] = []
+  let idx = 0
 
+  const flushTools = () => {
+    if (toolGroup.length === 0) return
+    nodes.push(
+      <ToolCallList
+        key={`tools-${idx++}`}
+        toolCalls={toolGroup.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          args: tc.input,
+          result: tc.result,
+          partialResult: tc.partialResult,
+          status: tc.status === "done" ? "success" : tc.status,
+          output: tc.output,
+        }))}
+        isStreaming={isStreaming}
+        sessionId={sessionId}
+      />
+    )
+    toolGroup = []
+  }
+
+  for (const block of turn.blocks) {
+    if (block.type === "tool_call") {
+      toolGroup.push(block)
+      continue
+    }
+    flushTools()
+
+    if (block.type === "thinking") {
+      nodes.push(
+        <ThinkingBlock
+          key={`t-${idx++}`}
+          content={block.content}
+          isStreaming={isStreaming && block.streaming}
+        />
+      )
+    } else if (block.type === "text") {
+      nodes.push(
+        <TextSegment
+          key={`t-${idx++}`}
+          content={block.content}
+          isStreaming={isStreaming && block.streaming}
+        />
+      )
+    } else if (block.type === "system_notice" && block.kind !== "turn") {
+      // Only non-turn system notices (compaction / retry / error) render in
+      // the transcript. The "turn" kind is a concatenated tool-result preview
+      // — redundant now that each tool row expands to show its own result.
+      nodes.push(
+        <SystemNoticeBlock
+          key={`t-${idx++}`}
+          notices={[
+            {
+              id: block.id,
+              kind: block.kind,
+              detail: block.detail,
+              isError: block.isError,
+              status: block.status,
+              attempt: block.attempt,
+              maxAttempts: block.maxAttempts,
+              delayMs: block.delayMs,
+            },
+          ]}
+        />
+      )
+    } else if (block.type === "permission_request") {
+      nodes.push(
+        <PermissionRequestCard
+          key={`t-${idx++}`}
+          block={block}
+          respondToPermission={respondToPermission}
+        />
+      )
+    }
+  }
+  flushTools()
+
+  return <>{nodes}</>
+}
+
+// ── Text segment with hover copy (#3) ─────────────────────────────────────
+
+interface TextSegmentProps {
+  content: string
+  isStreaming: boolean
+}
+
+function TextSegment({ content, isStreaming }: TextSegmentProps) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = useCallback(() => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [content])
   return (
-    <>
-      {segments.map((seg, i) => {
-        if (seg.kind === "thinking") {
-          return (
-            <ThinkingBlock
-              key={`t-${i}`}
-              content={seg.block.content}
-              isStreaming={isStreaming && seg.block.streaming}
-            />
-          )
-        }
-        if (seg.kind === "text") {
-          return <TextSegment key={`t-${i}`} content={seg.block.content} isStreaming={isStreaming && seg.block.streaming} />
-        }
-        if (seg.kind === "tools") {
-          return (
-            <ToolCallBlock
-              key={`t-${i}`}
-              toolCalls={seg.blocks.map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                args: tc.input,
-                result: tc.result,
-                partialResult: tc.partialResult,
-                status: tc.status === "done" ? "success" : tc.status,
-                output: tc.output,
-              }))}
-              isStreaming={isStreaming}
-              sessionId={sessionId}
-            />
-          )
-        }
-        if (seg.kind === "permission") {
-          return (
-            <PermissionRequestCard
-              key={`t-${i}`}
-              block={seg.block}
-              respondToPermission={respondToPermission}
-            />
-          )
-        }
-        if (seg.kind === "system") {
-          return (
-            <SystemNoticeBlock
-              key={`t-${i}`}
-              notices={seg.blocks.map((b) => ({
-                id: b.id,
-                kind: b.kind as "compaction" | "retry" | "turn" | "notice",
-                detail: b.detail,
-                isError: b.isError,
-                status: b.status as "active" | "done" | "error" | undefined,
-                attempt: b.attempt,
-                maxAttempts: b.maxAttempts,
-                delayMs: b.delayMs,
-              }))}
-            />
-          )
-        }
-        // results
-        return (
-          <ToolResultBlock
-            key={`t-${i}`}
-            results={seg.blocks.map((b) => ({
-              name: b.kind === "notice" ? "提示" : "工具结果",
-              result: b.detail,
-              isError: b.isError,
-            }))}
-          />
-        )
-      })}
-    </>
+    <div className="group/seg relative">
+      <TextBlock content={content} isStreaming={isStreaming} />
+      {!isStreaming && content.trim() && (
+        <button
+          onClick={onCopy}
+          className="text-secondary/60 hover:text-primary absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
+          aria-label="复制"
+        >
+          {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+          {copied ? "已复制" : "复制"}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -825,75 +866,3 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
 }
 
 // ── Text segment with hover copy (#3) ─────────────────────────────────────
-
-interface TextSegmentProps {
-  content: string
-  isStreaming: boolean
-}
-
-function TextSegment({ content, isStreaming }: TextSegmentProps) {
-  const [copied, setCopied] = useState(false)
-  const onCopy = useCallback(() => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }, [content])
-  return (
-    <div className="group/seg relative">
-      <TextBlock content={content} isStreaming={isStreaming} />
-      {!isStreaming && content.trim() && (
-        <button
-          onClick={onCopy}
-          className="text-secondary/60 hover:text-primary absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
-          aria-label="复制"
-        >
-          {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
-          {copied ? "已复制" : "复制"}
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ── Block grouping helpers ─────────────────────────────────────────────────
-
-type BlockGroup =
-  | { kind: "thinking"; block: Extract<TranscriptBlock, { type: "thinking" }>; blocks: Extract<TranscriptBlock, { type: "thinking" }>[] }
-  | { kind: "text"; block: Extract<TranscriptBlock, { type: "text" }>; blocks: Extract<TranscriptBlock, { type: "text" }>[] }
-  | { kind: "tools"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "tool_call" }>[] }
-  | { kind: "results"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "system_notice" }>[] }
-  | { kind: "system"; block?: undefined; blocks: Extract<TranscriptBlock, { type: "system_notice" }>[] }
-  | { kind: "permission"; block: Extract<TranscriptBlock, { type: "permission_request" }>; blocks: Extract<TranscriptBlock, { type: "permission_request" }>[] }
-
-function groupBlocks(blocks: TranscriptBlock[]): BlockGroup[] {
-  const groups: BlockGroup[] = []
-  for (const block of blocks) {
-    if (block.type === "thinking") {
-      groups.push({ kind: "thinking", block, blocks: [block] })
-    } else if (block.type === "text") {
-      groups.push({ kind: "text", block, blocks: [block] })
-    } else if (block.type === "tool_call") {
-      const last = groups[groups.length - 1]
-      if (last && last.kind === "tools") {
-        last.blocks.push(block)
-      } else {
-        groups.push({ kind: "tools", blocks: [block] })
-      }
-    } else if (block.type === "system_notice" && (block.kind === "compaction" || block.kind === "retry")) {
-      // Compaction and retry blocks get their own "system" group
-      const last = groups[groups.length - 1]
-      if (last && last.kind === "system") {
-        last.blocks.push(block)
-      } else {
-        groups.push({ kind: "system", blocks: [block] })
-      }
-    } else if (block.type === "system_notice") {
-      // Regular notices (turn, notice) go to results
-      groups.push({ kind: "results", blocks: [block] })
-    } else if (block.type === "permission_request") {
-      groups.push({ kind: "permission", block, blocks: [block] })
-    }
-  }
-  return groups
-}

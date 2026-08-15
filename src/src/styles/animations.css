@@ -68,7 +68,7 @@
   }
 
   /* ── Notice fade-in ────────────────────────────────────────────────
-   * Used by SystemNoticeBlock and ToolCallBlock partial result sections
+   * Used by SystemNoticeBlock and ToolCallList result sections
    * for a subtle entrance animation. */
   @keyframes notice-fade-in {
     from { opacity: 0; transform: translateY(-4px); }
