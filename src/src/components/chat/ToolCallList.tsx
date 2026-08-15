@@ -1,10 +1,38 @@
-import { useState, useMemo } from "react"
-import { Check, Loader2, ChevronDown, ChevronRight, XCircle, Wrench, RefreshCw, Terminal, FileEdit } from "lucide-react"
+import { useMemo, useState } from "react"
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileEdit,
+  Loader2,
+  RefreshCw,
+  Terminal,
+  Wrench,
+  XCircle,
+} from "lucide-react"
 import { fetchJson } from "@/stores/data"
 
-/**
- * Coerce any tool result / partial-result payload to a renderable string.
- */
+// ── Types ────────────────────────────────────────────────
+
+export interface ToolCall {
+  id: string
+  name: string
+  args?: string
+  result?: string
+  partialResult?: string
+  status?: "streaming" | "running" | "success" | "error"
+  output?: { preview: string; truncated: boolean; fullLength: number }
+}
+
+interface ToolCallListProps {
+  toolCalls: ToolCall[]
+  isStreaming?: boolean
+  sessionId?: string | null
+}
+
+const COLLAPSE_THRESHOLD = 500
+
+/** Coerce any tool result / partial-result payload to a renderable string. */
 function asText(v: unknown): string {
   if (v == null) return ""
   if (typeof v === "string") return v
@@ -16,25 +44,14 @@ function asText(v: unknown): string {
   }
 }
 
-interface ToolCall {
-  id: string
-  name: string
-  args?: string
-  result?: string
-  partialResult?: string
-  status?: "streaming" | "running" | "success" | "error"
-  output?: { preview: string; truncated: boolean; fullLength: number }
-}
+// ── Main Component ───────────────────────────────────────
 
-interface ToolCallBlockProps {
-  toolCalls: ToolCall[]
-  isStreaming?: boolean
-  sessionId?: string
-}
-
-const COLLAPSE_THRESHOLD = 500
-
-export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: ToolCallBlockProps) {
+/**
+ * Inline tool-call items (Claude web style): each invocation is a single
+ * compact row (icon + name + status) embedded in the conversation flow at the
+ * point it happened. Clicking a row reveals its arguments and result.
+ */
+export default function ToolCallList({ toolCalls, isStreaming, sessionId }: ToolCallListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   if (!toolCalls || toolCalls.length === 0) return null
@@ -43,46 +60,28 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  // Default collapsed for all completed tool calls.
-  const isAutoExpanded = () => false
-
   return (
-    <div className="my-2 flex flex-col gap-2">
+    <div className="my-2 flex flex-col gap-1.5">
       {toolCalls
         .filter((tc) => tc.name)
         .map((tc, i) => {
-          const isExpanded = expanded[tc.id] ?? isAutoExpanded() ?? false
+          const isExpanded = expanded[tc.id] ?? false
           const status = tc.status ?? (isStreaming ? "streaming" : "success")
           const isRunning = status === "streaming" || status === "running"
           const hasArgs = tc.args && tc.args.length > 0
-          const hasResult = !!tc.result
-          const hasContent = hasArgs || hasResult
-
-          // ── Running state: compact card ──
-          if (isRunning) {
-            return (
-              <div
-                key={tc.id || i}
-                className="border-hairline overflow-hidden rounded-lg border bg-hover/40 transition-all duration-200"
-              >
-                <div className="flex items-center gap-2 px-3 py-2">
-                  <ToolIcon name={tc.name} />
-                  <span className="text-secondary font-number text-caption font-medium">{tc.name}</span>
-                  <StatusBadge status={status} />
-                </div>
-              </div>
-            )
-          }
-
-          // ── Completed state: collapsed by default, expandable ──
           const resultText = asText(tc.result ?? "")
+          const liveText = asText(tc.partialResult ?? "")
+          const hasResult = !!tc.result || !!tc.partialResult
+
           return (
             <div
               key={tc.id || i}
               className={`border-hairline overflow-hidden rounded-lg border transition-all duration-200 ${
                 status === "error"
                   ? "border-danger/30 bg-danger/10"
-                  : "bg-hover/40"
+                  : isRunning
+                    ? "border-brand/20 bg-brand/[0.04]"
+                    : "bg-hover/40"
               }`}
             >
               <button
@@ -90,15 +89,17 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 onClick={() => toggleExpand(tc.id)}
               >
                 <ToolIcon name={tc.name} />
-                <span className="text-secondary font-number text-caption font-medium">{tc.name}</span>
-                <StatusBadge status={status} />
-                {/* Show result length in collapsed state */}
-                {hasResult && !isExpanded && (
-                  <span className="text-secondary/40 font-number text-caption">
+                <span className="text-secondary min-w-0 flex-1 truncate font-number text-caption font-medium">
+                  {tc.name}
+                </span>
+                {isRunning ? (
+                  <StatusBadge status={status} />
+                ) : hasResult && !isExpanded ? (
+                  <span className="text-secondary/40 shrink-0 font-number text-caption">
                     {resultText.length} 字符
                   </span>
-                )}
-                <span className="text-secondary/50 ml-auto">
+                ) : null}
+                <span className="text-secondary/50 ml-auto shrink-0">
                   {isExpanded ? (
                     <ChevronDown className="size-3" />
                   ) : (
@@ -107,7 +108,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                 </span>
               </button>
 
-              {hasContent && isExpanded && (
+              {(hasArgs || hasResult) && isExpanded && (
                 <div className="border-hairline space-y-2 border-t px-3 py-2">
                   {hasArgs && (
                     <Section title="参数">
@@ -118,7 +119,7 @@ export default function ToolCallBlock({ toolCalls, isStreaming, sessionId }: Too
                     <Section title="结果">
                       <ToolResultContent
                         name={tc.name}
-                        content={resultText}
+                        content={isRunning && liveText ? liveText : resultText}
                         toolCallId={tc.id}
                         sessionId={sessionId}
                         output={tc.output}
@@ -174,7 +175,7 @@ function ToolResultContent({
   name: string
   content: string
   toolCallId: string
-  sessionId?: string
+  sessionId?: string | null
   output?: { preview: string; truncated: boolean; fullLength: number }
 }) {
   const safeContent = useMemo(() => asText(content), [content])
@@ -229,7 +230,7 @@ function ResultBlock({
 }: {
   content: string
   toolCallId: string
-  sessionId?: string
+  sessionId?: string | null
   output?: { preview: string; truncated: boolean; fullLength: number }
 }) {
   const [fullContent, setFullContent] = useState<string | null>(null)
@@ -297,28 +298,28 @@ function StatusBadge({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "streaming":
       return (
-        <span className="text-brand flex items-center gap-1 text-caption">
+        <span className="text-brand flex shrink-0 items-center gap-1 text-caption">
           <Loader2 className="size-3 animate-spin" />
           调用中
         </span>
       )
     case "running":
       return (
-        <span className="flex items-center gap-1 text-caption text-warning">
+        <span className="flex shrink-0 items-center gap-1 text-caption text-warning">
           <RefreshCw className="size-3 animate-spin" />
           执行中
         </span>
       )
     case "success":
       return (
-        <span className="flex items-center gap-1 text-caption text-success">
+        <span className="flex shrink-0 items-center gap-1 text-caption text-success">
           <Check className="size-3" />
           完成
         </span>
       )
     case "error":
       return (
-        <span className="flex items-center gap-1 text-caption text-danger">
+        <span className="flex shrink-0 items-center gap-1 text-caption text-danger">
           <XCircle className="size-3" />
           失败
         </span>
