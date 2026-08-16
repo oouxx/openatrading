@@ -13,7 +13,15 @@ pub mod tools;
 
 // ── Session lifecycle (from the agent crate) ───────────────────────────────
 pub use openatrading_agent::session::{
-    create_factory, find_session_file_by_id, FactoryOptions, SessionPool,
+    create_factory, find_session_file_by_id, handle_slash_command, CreateSessionFactory,
+    CreateSessionParams, FactoryOptions, SessionHandle, SessionPool, SessionStatus,
+    SESSION_SLASH_COMMANDS,
+};
+
+// ── Event protocol (from the agent crate) ──────────────────────────────────
+pub use openatrading_agent::events::{
+    convert_agent_event, convert_session_event, EventEnvelope, ReplayGap, SessionEventPayload,
+    SessionEventState, ToolResultPayload, TranscriptEvent, SCHEMA_VERSION,
 };
 
 // ── MCP infrastructure (from the extension crate) ──────────────────────────

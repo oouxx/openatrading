@@ -259,82 +259,7 @@ pub async fn fetch_overview_data(api: &ApiClient) -> anyhow::Result<OverviewResp
 /// Execute a slash command on the given agent session.
 ///
 /// Returns the response text to stream back to the client, or an error message.
-pub async fn handle_slash_command(
-    cmd_name: &str,
-    cmd_args: &str,
-    session: &mut pi_coding_agent::core::agent_session::AgentSession,
-) -> Result<String, String> {
-    match cmd_name {
-        "model" => {
-            // Resolve model from "provider/model" format
-            let model_registry = session.get_model_registry();
-            let result = pi_coding_agent::core::model_resolver::resolve_cli_model(
-                None,
-                Some(cmd_args),
-                model_registry,
-            );
-            match result.model {
-                Some(model) => {
-                    let display = format!("{}/{}", model.provider, model.id);
-                    session
-                        .set_model(model)
-                        .await
-                        .map(|_| format!("Model set to {display}"))
-                        .map_err(|e| format!("Failed to set model: {e}"))
-                }
-                None => {
-                    let err = result.error.unwrap_or_else(|| "Unknown model".to_string());
-                    Err(format!("Failed to resolve model: {err}"))
-                }
-            }
-        }
-        "name" => {
-            if cmd_args.is_empty() {
-                return Err("Usage: /name <session name>".to_string());
-            }
-            session.set_session_name(cmd_args);
-            Ok(format!("Session name set to \"{cmd_args}\""))
-        }
-        "compact" => match session.compact(None).await {
-            Ok(_) => Ok("Session compacted".to_string()),
-            Err(e) => Err(format!("Compaction failed: {e}")),
-        },
-        "session" => {
-            let sid = session.get_session_id();
-            let name = session.get_session_name().unwrap_or_default();
-            let mgr = session.get_session_manager();
-            let msg_count = mgr.get_entries().len();
-            let file = mgr
-                .get_session_file()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            drop(mgr);
-            Ok(format!(
-                "Session: {name} ({sid})\nMessages: {msg_count}\nFile: {file}"
-            ))
-        }
-        "help" | "?" => {
-            let commands = pi_coding_agent::core::slash_commands::builtin_slash_commands();
-            let mut help = "Available slash commands:\n".to_string();
-            for cmd in &commands {
-                let hint = cmd.argument_hint.as_deref().unwrap_or("");
-                help.push_str(&format!(
-                    "  /{} {} — {}\n",
-                    cmd.name,
-                    if hint.is_empty() { "" } else { hint },
-                    cmd.description
-                ));
-            }
-            Ok(help)
-        }
-        _ => Err(format!("Unknown slash command: /{cmd_name}")),
-    }
-}
-
-/// Session-level slash commands handled locally (they mutate AgentSession
-/// state, which pi-rs `prompt()` does not do). `/skill:` is intentionally
-/// absent — it flows through to pi-rs `prompt()`, which expands it itself.
-const SESSION_SLASH_COMMANDS: &[&str] = &["model", "name", "compact", "session", "help", "?"];
+pub use openatrading_core::llm::{handle_slash_command, SESSION_SLASH_COMMANDS};
 
 /// If `text` is a session-level slash command we handle locally, return its
 /// `(name, args)`. Returns `None` for `/skill:`, unknown commands, and non-slash
@@ -355,22 +280,20 @@ pub async fn run_session_slash_command(
     session_id: &str,
     cmd_name: &str,
     cmd_args: &str,
-) -> crate::agent_ws::SessionEventPayload {
-    if let Some(rt) = pool.get_session(session_id).await {
-        let mut rt = rt.lock().await;
-        let session = rt.session_mut();
-        match handle_slash_command(cmd_name, cmd_args, session).await {
-            Ok(text) => crate::agent_ws::SessionEventPayload::Notice {
+) -> openatrading_core::llm::SessionEventPayload {
+    if let Some(handle) = pool.get_session(session_id).await {
+        match handle.slash(cmd_name, cmd_args).await {
+            Ok(text) => openatrading_core::llm::SessionEventPayload::Notice {
                 text,
                 is_error: false,
             },
-            Err(e) => crate::agent_ws::SessionEventPayload::Notice {
+            Err(e) => openatrading_core::llm::SessionEventPayload::Notice {
                 text: format!("[Slash Error] {e}"),
                 is_error: true,
             },
         }
     } else {
-        crate::agent_ws::SessionEventPayload::Notice {
+        openatrading_core::llm::SessionEventPayload::Notice {
             text: "session not found".to_string(),
             is_error: true,
         }
@@ -437,39 +360,17 @@ pub async fn create_session(
     };
     openatrading_core::log::info!("create_session: created session id={session_id}");
 
-    // Get session metadata from the runtime
-    let runtime = state.ctx.pool.get_session(&session_id).await;
-    let (session_file, session_name) = if let Some(rt) = runtime {
-        let rt = rt.lock().await;
-        let session = rt.session();
-        let mgr = session.get_session_manager();
-        let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
-        let sname = mgr.get_session_name();
-        drop(mgr);
-
-        // Force-write the session file to disk so list_sessions can find it
-        if let Some(ref path) = sfile {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+    // Ask the actor to flush the session JSONL to disk so list_sessions can
+    // find it, and return its metadata.
+    let (session_file, session_name) = match state.ctx.pool.get_session(&session_id).await {
+        Some(handle) => match handle.flush_to_disk().await {
+            Ok((file, name)) => (file, name),
+            Err(e) => {
+                openatrading_core::log::error!("create_session: flush failed: {e}");
+                (None, None)
             }
-            let mut lines: Vec<String> = Vec::new();
-            if let Some(hdr) = session.get_session_manager().get_header() {
-                if let Ok(json) = serde_json::to_string(hdr) {
-                    lines.push(json);
-                }
-            }
-            for entry in session.get_session_manager().get_entries() {
-                if let Ok(json) = serde_json::to_string(entry) {
-                    lines.push(json);
-                }
-            }
-            if !lines.is_empty() {
-                let _ = std::fs::write(path, lines.join("\n") + "\n");
-            }
-        }
-        (sfile, sname)
-    } else {
-        (None, None)
+        },
+        None => (None, None),
     };
 
     openatrading_core::log::info!(

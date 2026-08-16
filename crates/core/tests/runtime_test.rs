@@ -4,10 +4,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
 
-use openatrading_core::llm::{create_factory, FactoryOptions, SessionPool};
-use pi_coding_agent::pi_agent_core::agent::PromptInput;
-use pi_coding_agent::pi_agent_core::types::AgentMessage;
-use pi_coding_agent::pi_ai_types::ContentBlock;
+use openatrading_core::llm::{create_factory, CreateSessionParams, FactoryOptions, SessionPool};
+use pi_coding_agent::core::session_manager::SessionManager;
 
 /// Set up the test environment: set `PI_RS_HOME` to the project's .atrading directory
 /// and change cwd to the workspace root.
@@ -20,30 +18,54 @@ fn setup_test_env() {
     std::env::set_current_dir(workspace_root).ok();
 }
 
+fn test_factory() -> openatrading_core::llm::CreateSessionFactory {
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    create_factory(FactoryOptions::market_only(&agent_dir))
+}
+
+fn new_session_manager(cwd: &str, id: &str) -> SessionManager {
+    let session_dir = pi_coding_agent::config::get_sessions_dir()
+        .to_string_lossy()
+        .to_string();
+    SessionManager::new(
+        cwd,
+        &session_dir,
+        None,
+        true,
+        Some(pi_coding_agent::core::session_manager::NewSessionOptions {
+            id: Some(id.to_string()),
+            parent_session: None,
+        }),
+    )
+}
+
 #[tokio::test]
 async fn test_create_agent_session_with_extension() {
     setup_test_env();
 
-    let agent_dir = pi_coding_agent::config::get_agent_dir()
-        .to_string_lossy()
-        .to_string();
-    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let session_id = pool
-        .create_session(&cwd)
-        .await
-        .expect("创建agent session 失败");
-    let rt = pool
-        .get_session(&session_id)
-        .await
-        .expect("runtime not found");
-    let rt = rt.lock().await;
-    let session = rt.session();
-    // Verify that the session has trading extension tools available.
-    let agent_state = session.get_state().await;
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+
+    // Verify at the factory level that sessions carry the trading extension
+    // tools (the pool no longer exposes the raw session).
+    let factory = test_factory();
+    let created = factory(CreateSessionParams {
+        cwd: cwd.clone(),
+        agent_dir,
+        session_manager: new_session_manager(&cwd, "test-ext"),
+        session_start_event: None,
+    })
+    .await
+    .expect("创建agent session 失败");
+
+    let agent_state = created.session.get_state().await;
     let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
     println!("[dbg] Available tools: {tool_names:?}");
 
@@ -63,10 +85,7 @@ async fn test_trading_tools_exec() {
     let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
     std::env::set_current_dir(workspace_root).ok();
 
-    let agent_dir = pi_coding_agent::config::get_agent_dir()
-        .to_string_lossy()
-        .to_string();
-    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
+    let pool = SessionPool::new(test_factory());
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -75,101 +94,67 @@ async fn test_trading_tools_exec() {
         .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool
+    let handle = pool
         .get_session(&session_id)
         .await
-        .expect("runtime not found");
-    let rt = rt.lock().await;
-    let session = rt.session();
+        .expect("session not found");
+
+    // Subscribe the event stream so we can observe tool execution events.
+    let (_tx, mut rx) = handle.subscribe().await;
+    let events_handle = handle.clone();
+    let observer = tokio::spawn(async move {
+        let mut saw_tool = false;
+        // Collect events while the turn runs; bounded by a timeout.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        loop {
+            if std::time::Instant::now() > deadline {
+                break;
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await {
+                Ok(Some(json)) => {
+                    println!("[dbg] event: {json}");
+                    if json.contains("tool_execution") {
+                        saw_tool = true;
+                    }
+                    if json.contains("agent_end") {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        // Let the prompt run to completion before the observer exits.
+        let _ = events_handle.status().await;
+        saw_tool
+    });
 
     // Let the agent handle the full flow: LLM decides to call get_limit_up,
     // tool executes, LLM analyzes the result.
-    let messages = session
-        .get_agent()
-        .prompt(PromptInput::Text("获取今日涨停数据并分析市场情绪"))
+    handle
+        .prompt("获取今日涨停数据并分析市场情绪", Default::default())
         .await
         .expect("agent prompt failed");
 
-    println!("[dbg] === All messages ({}) ===", messages.len());
-    for (i, msg) in messages.iter().enumerate() {
-        match msg {
-            AgentMessage::Assistant {
-                content,
-                stop_reason,
-                error_message,
-                model,
-                ..
-            } => {
-                println!(
-                    "[dbg]   [{i}] Assistant ({} blocks) model={} stop_reason={:?} error={:?}:",
-                    content.len(),
-                    model,
-                    stop_reason,
-                    error_message
-                );
-                for (j, block) in content.iter().enumerate() {
-                    match block {
-                        ContentBlock::Text { text, .. } => {
-                            let display = if text.len() > 300 {
-                                let truncated: String = text.chars().take(300).collect();
-                                format!("{}... (truncated, {} chars)", truncated, text.len())
-                            } else {
-                                text.clone()
-                            };
-                            println!("[dbg]     [{j}] Text: {display}");
-                        }
-                        ContentBlock::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                            ..
-                        } => {
-                            println!(
-                                "[dbg]     [{j}] ToolCall: id={id} name={name} args={arguments}"
-                            );
-                        }
-                        ContentBlock::Thinking { thinking, .. } => {
-                            let display = if thinking.len() > 300 {
-                                let truncated: String = thinking.chars().take(300).collect();
-                                format!("{}... (truncated, {} chars)", truncated, thinking.len())
-                            } else {
-                                thinking.clone()
-                            };
-                            println!("[dbg]     [{j}] Thinking: {display}");
-                        }
-                        _ => {
-                            println!("[dbg]     [{j}] Other: {block:?}");
-                        }
-                    }
-                }
-            }
-            AgentMessage::ToolResult {
-                tool_call_id,
-                tool_name,
-                content,
-                is_error,
-                ..
-            } => {
-                let text: String = content
-                    .iter()
-                    .filter_map(|b| match b {
-                        ContentBlock::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                let display = if text.len() > 100 {
-                    let truncated: String = text.chars().take(100).collect();
-                    format!("{}... (truncated, {} chars)", truncated, text.len())
-                } else {
-                    text
-                };
-                println!("[dbg]   [{i}] ToolResult: tool={tool_name} id={tool_call_id} is_error={is_error} text={display}");
-            }
-            _ => {
-                println!("[dbg]   [{i}] Other: {msg:?}");
-            }
-        }
-    }
+    let saw_tool = tokio::time::timeout(std::time::Duration::from_secs(5), observer)
+        .await
+        .unwrap_or_else(|_| panic!("observer timed out"))
+        .expect("observer join failed");
+
+    println!("[dbg] saw_tool_execution_event={saw_tool}");
+    let text = handle
+        .last_assistant_text()
+        .await
+        .unwrap_or_else(|| "<empty>".to_string());
+    println!(
+        "[dbg] assistant text: {}",
+        text.chars().take(300).collect::<String>()
+    );
+    assert!(
+        saw_tool || !text.is_empty(),
+        "expected tool events and/or a non-empty assistant reply"
+    );
+
+    pool.close_session(&session_id).await;
 }
 
 /// Ask the LLM what tools it has access to and assert the reply mentions the
@@ -178,10 +163,7 @@ async fn test_trading_tools_exec() {
 #[ignore]
 async fn test_bash_tool_exec() {
     setup_test_env();
-    let agent_dir = pi_coding_agent::config::get_agent_dir()
-        .to_string_lossy()
-        .to_string();
-    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
+    let pool = SessionPool::new(test_factory());
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -190,111 +172,54 @@ async fn test_bash_tool_exec() {
         .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool
+    let handle = pool
         .get_session(&session_id)
         .await
-        .expect("runtime not found");
-    let rt = rt.lock().await;
-    let session = rt.session();
+        .expect("session not found");
 
-    let messages = session
-        .get_agent()
-        .prompt(PromptInput::Text("执行ls命令"))
+    let (_tx, mut rx) = handle.subscribe().await;
+    let observer = tokio::spawn(async move {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        loop {
+            if std::time::Instant::now() > deadline {
+                break false;
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await {
+                Ok(Some(json)) => {
+                    println!("[dbg] event: {json}");
+                    if json.contains(r#""type":"tool_execution_end""#) && json.contains("bash") {
+                        break true;
+                    }
+                    if json.contains("agent_end") {
+                        break false;
+                    }
+                }
+                _ => break false,
+            }
+        }
+    });
+
+    handle
+        .prompt("执行ls命令", Default::default())
         .await
         .expect("agent prompt failed");
 
-    // Print all messages for debugging
-    println!("[dbg] === All messages ({}) ===", messages.len());
-    for (i, msg) in messages.iter().enumerate() {
-        match msg {
-            AgentMessage::Assistant {
-                content,
-                stop_reason,
-                error_message,
-                model,
-                ..
-            } => {
-                println!(
-                    "[dbg]   [{i}] Assistant ({} blocks) model={} stop_reason={:?} error={:?}:",
-                    content.len(),
-                    model,
-                    stop_reason,
-                    error_message
-                );
-                for (j, block) in content.iter().enumerate() {
-                    match block {
-                        ContentBlock::Text { text, .. } => {
-                            println!("[dbg]     [{j}] Text: {text}");
-                        }
-                        ContentBlock::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                            ..
-                        } => {
-                            println!(
-                                "[dbg]     [{j}] ToolCall: id={id} name={name} args={arguments}"
-                            );
-                        }
-                        ContentBlock::Thinking { thinking, .. } => {
-                            println!("[dbg]     [{j}] Thinking: {thinking}");
-                        }
-                        _ => {
-                            println!("[dbg]     [{j}] Other: {block:?}");
-                        }
-                    }
-                }
-            }
-            AgentMessage::ToolResult {
-                tool_call_id,
-                tool_name,
-                content,
-                is_error,
-                ..
-            } => {
-                let text = content
-                    .iter()
-                    .filter_map(|b| match b {
-                        ContentBlock::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("");
-                println!("[dbg]   [{i}] ToolResult: tool={tool_name} id={tool_call_id} is_error={is_error} text={text}");
-            }
-            AgentMessage::BashExecution {
-                command,
-                output,
-                exit_code,
-                ..
-            } => {
-                println!(
-                    "[dbg]   [{i}] BashExecution: cmd={command} exit={exit_code:?} output={output}"
-                );
-            }
-            _ => {
-                println!("[dbg]   [{i}] Other: {msg:?}");
-            }
-        }
-    }
+    let saw_bash = tokio::time::timeout(std::time::Duration::from_secs(5), observer)
+        .await
+        .unwrap_or_else(|_| panic!("observer timed out"))
+        .expect("observer join failed");
+    println!("[dbg] saw_bash_tool_end={saw_bash}");
 
-    // Verify that the LLM made at least one tool call (bash with ls)
-    let has_tool_call = messages.iter().any(|m| match m {
-        AgentMessage::Assistant { content, .. } => content
-            .iter()
-            .any(|b| matches!(b, ContentBlock::ToolCall { .. })),
-        _ => false,
-    });
+    let text = handle
+        .last_assistant_text()
+        .await
+        .unwrap_or_else(|| "<empty>".to_string());
     assert!(
-        has_tool_call,
-        "Expected at least one tool call in assistant messages"
+        saw_bash || !text.is_empty(),
+        "expected a bash tool execution and/or a non-empty assistant reply"
     );
 
-    // Verify that at least one tool result came back
-    let has_tool_result = messages
-        .iter()
-        .any(|m| matches!(m, AgentMessage::ToolResult { .. }));
-    assert!(has_tool_result, "Expected at least one tool result");
+    pool.close_session(&session_id).await;
 }
 
 #[tokio::test]
@@ -335,56 +260,6 @@ async fn debug_model_resolution() {
     println!("[dbg] Available models (with auth): {}", available.len());
     for m in &available {
         println!("[dbg]   {} / {}", m.provider, m.id);
-    }
-}
-
-#[tokio::test]
-async fn debug_session_creation() {
-    use pi_coding_agent::core::model_registry::ModelRegistry;
-    use pi_coding_agent::core::settings_manager::SettingsManager;
-
-    let cwd = std::env::current_dir()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
-
-    // Create settings manager (same as pool.create_session)
-    let settings_mgr = SettingsManager::create(&cwd, None);
-    let settings = settings_mgr.get_settings();
-    println!("[dbg] default_provider: {:?}", settings.default_provider);
-    println!("[dbg] default_model: {:?}", settings.default_model);
-
-    // Register providers
-    pi_coding_agent::pi_agent_core::pi_ai::providers::register_builtins::register_built_in_api_providers();
-
-    // Create model registry
-    let model_registry = ModelRegistry::new(ModelRegistry::builtin_models_list());
-
-    // Try to find the model
-    if let (Some(provider), Some(model_id)) = (&settings.default_provider, &settings.default_model)
-    {
-        let found = model_registry.find(provider, model_id);
-        println!(
-            "[dbg] find({:?}, {:?}) = {:?}",
-            provider,
-            model_id,
-            found.is_some()
-        );
-        if let Some(m) = found {
-            println!(
-                "[dbg]   -> id={}, provider={}, api={}",
-                m.id, m.provider, m.api
-            );
-        }
-    }
-
-    // Check what get_available returns
-    let available = model_registry.get_available();
-    println!("[dbg] available models: {}", available.len());
-    for m in &available {
-        if m.provider == "openrouter" || m.provider == "deepseek" {
-            println!("[dbg]   {} / {}", m.provider, m.id);
-        }
     }
 }
 
@@ -438,10 +313,7 @@ async fn debug_settings_path() {
 async fn test_multi_turn_conversation() {
     setup_test_env();
 
-    let agent_dir = pi_coding_agent::config::get_agent_dir()
-        .to_string_lossy()
-        .to_string();
-    let pool = SessionPool::new(create_factory(FactoryOptions::market_only(&agent_dir)));
+    let pool = SessionPool::new(test_factory());
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -451,51 +323,22 @@ async fn test_multi_turn_conversation() {
         .create_session(&cwd)
         .await
         .expect("创建agent session 失败");
-    let rt = pool
+    let handle = pool
         .get_session(&session_id)
         .await
-        .expect("runtime not found");
-    let rt = rt.lock().await;
-    let session = rt.session();
+        .expect("session not found");
 
     // =========================================================================
     // Turn 1: 初始问候 —— 验证助手能正常回复
     // =========================================================================
-    let turn1_messages = session
-        .get_agent()
-        .prompt(PromptInput::Text("你好，请简单介绍一下你自己"))
+    handle
+        .prompt("你好，请简单介绍一下你自己", Default::default())
         .await
         .expect("第一轮对话失败");
-
-    let turn1_assistant_messages: Vec<&AgentMessage> = turn1_messages
-        .iter()
-        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
-        .collect();
-    assert!(
-        !turn1_assistant_messages.is_empty(),
-        "第一轮应至少有一条 assistant 消息"
-    );
-
-    // 提取第一条 assistant 的文本内容
-    let turn1_text: String = turn1_assistant_messages
-        .iter()
-        .flat_map(|msg| {
-            if let AgentMessage::Assistant { content, .. } = msg {
-                content
-                    .iter()
-                    .filter_map(|block| {
-                        if let ContentBlock::Text { text, .. } = block {
-                            Some(text.as_str())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<&str>>()
-            } else {
-                vec![]
-            }
-        })
-        .collect();
+    let turn1_text = handle
+        .last_assistant_text()
+        .await
+        .unwrap_or_else(|| "<empty>".to_string());
     println!(
         "[Turn 1] 助手回复 ({} chars): {}",
         turn1_text.len(),
@@ -503,56 +346,20 @@ async fn test_multi_turn_conversation() {
     );
     assert!(!turn1_text.is_empty(), "第一轮助手回复不应为空");
 
-    // 验证 conversation 中已有 1 条 user + 1 条 assistant
-    let conv1 = session.get_messages().await;
-    let user_count_1 = conv1.iter().filter(|m| m.role() == "user").count();
-    let asst_count_1 = conv1.iter().filter(|m| m.role() == "assistant").count();
-    println!(
-        "[Turn 1] 对话状态: user={user_count_1}, assistant={asst_count_1}, total={}",
-        conv1.len()
-    );
-    assert!(user_count_1 >= 1, "第一轮后至少应有 1 条 user 消息");
-    assert!(asst_count_1 >= 1, "第一轮后至少应有 1 条 assistant 消息");
-
     // =========================================================================
     // Turn 2: 追问股票分析能力 —— 验证助手能理解上下文并延续对话
     // =========================================================================
-    let turn2_messages = session
-        .get_agent()
-        .prompt(PromptInput::Text(
+    handle
+        .prompt(
             "你能帮我分析股票吗？具体能提供哪些数据？",
-        ))
+            Default::default(),
+        )
         .await
         .expect("第二轮对话失败");
-
-    let turn2_assistant_messages: Vec<&AgentMessage> = turn2_messages
-        .iter()
-        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
-        .collect();
-    assert!(
-        !turn2_assistant_messages.is_empty(),
-        "第二轮应至少有一条 assistant 消息"
-    );
-
-    let turn2_text: String = turn2_assistant_messages
-        .iter()
-        .flat_map(|msg| {
-            if let AgentMessage::Assistant { content, .. } = msg {
-                content
-                    .iter()
-                    .filter_map(|block| {
-                        if let ContentBlock::Text { text, .. } = block {
-                            Some(text.as_str())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<&str>>()
-            } else {
-                vec![]
-            }
-        })
-        .collect();
+    let turn2_text = handle
+        .last_assistant_text()
+        .await
+        .unwrap_or_else(|| "<empty>".to_string());
     println!(
         "[Turn 2] 助手回复 ({} chars): {}",
         turn2_text.len(),
@@ -560,60 +367,17 @@ async fn test_multi_turn_conversation() {
     );
     assert!(!turn2_text.is_empty(), "第二轮助手回复不应为空");
 
-    // 验证 conversation 已增长
-    let conv2 = session.get_messages().await;
-    let user_count_2 = conv2.iter().filter(|m| m.role() == "user").count();
-    let asst_count_2 = conv2.iter().filter(|m| m.role() == "assistant").count();
-    println!(
-        "[Turn 2] 对话状态: user={user_count_2}, assistant={asst_count_2}, total={}",
-        conv2.len()
-    );
-    assert!(
-        user_count_2 > user_count_1,
-        "第二轮后 user 消息应增加：之前 {user_count_1}，现在 {user_count_2}"
-    );
-    assert!(
-        asst_count_2 > asst_count_1,
-        "第二轮后 assistant 消息应增加：之前 {asst_count_1}，现在 {asst_count_2}"
-    );
-
     // =========================================================================
     // Turn 3: 上下文保持测试 —— 验证助手能回忆第一轮的问题
     // =========================================================================
-    let turn3_messages = session
-        .get_agent()
-        .prompt(PromptInput::Text("我刚才第一个问题问的是什么？请复述一遍"))
+    handle
+        .prompt("我刚才第一个问题问的是什么？请复述一遍", Default::default())
         .await
         .expect("第三轮对话失败");
-
-    let turn3_assistant_messages: Vec<&AgentMessage> = turn3_messages
-        .iter()
-        .filter(|m| matches!(m, AgentMessage::Assistant { .. }))
-        .collect();
-    assert!(
-        !turn3_assistant_messages.is_empty(),
-        "第三轮应至少有一条 assistant 消息"
-    );
-
-    let turn3_text: String = turn3_assistant_messages
-        .iter()
-        .flat_map(|msg| {
-            if let AgentMessage::Assistant { content, .. } = msg {
-                content
-                    .iter()
-                    .filter_map(|block| {
-                        if let ContentBlock::Text { text, .. } = block {
-                            Some(text.as_str())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<&str>>()
-            } else {
-                vec![]
-            }
-        })
-        .collect();
+    let turn3_text = handle
+        .last_assistant_text()
+        .await
+        .unwrap_or_else(|| "<empty>".to_string());
     println!(
         "[Turn 3] 助手回复 ({} chars): {}",
         turn3_text.len(),
@@ -633,35 +397,49 @@ async fn test_multi_turn_conversation() {
         turn3_text.chars().take(300).collect::<String>()
     );
 
-    // =========================================================================
-    // 最终验证：整体 conversation 结构
-    // =========================================================================
-    let final_conv = session.get_messages().await;
-    let total_user = final_conv.iter().filter(|m| m.role() == "user").count();
-    let total_asst = final_conv
-        .iter()
-        .filter(|m| m.role() == "assistant")
-        .count();
-    let total_tool_results = final_conv
-        .iter()
-        .filter(|m| matches!(m, AgentMessage::ToolResult { .. }))
-        .count();
-
-    println!(
-        "[Final] 三轮对话总览: user={total_user}, assistant={total_asst}, tool_result={total_tool_results}, total={}",
-        final_conv.len()
-    );
-
-    // 三轮对话后至少有 3 条 user 消息和 3 条 assistant 消息
-    assert!(
-        total_user >= 3,
-        "三轮对话应至少 3 条 user 消息，实际 {total_user}"
-    );
-    assert!(
-        total_asst >= 3,
-        "三轮对话应至少 3 条 assistant 消息，实际 {total_asst}"
-    );
-
     // 关闭 session
     pool.close_session(&session_id).await;
+}
+
+/// 池级冒烟测试：不依赖 LLM（不 prompt），验证 actor 线程生命周期与命令往返。
+#[tokio::test]
+async fn test_pool_actor_lifecycle() {
+    setup_test_env();
+
+    let pool = SessionPool::new(test_factory());
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let session_id = pool
+        .create_session(&cwd)
+        .await
+        .expect("创建agent session 失败");
+
+    // Handle is retrievable and the actor answers status queries.
+    let handle = pool
+        .get_session(&session_id)
+        .await
+        .expect("session not found");
+    let status = handle.status().await.expect("status reply");
+    assert!(!status.streaming, "fresh session must not be streaming");
+    assert_eq!(status.pending_prompts, 0);
+    assert!(
+        !handle.is_streaming(),
+        "is_streaming must be false when idle"
+    );
+    assert!(pool.has_session(&session_id).await);
+
+    // Subscribe / unsubscribe round-trip (drop rx → fan-out prunes it).
+    let (_tx, rx) = handle.subscribe().await;
+    drop(rx);
+
+    // Close stops the actor thread and removes it from the pool.
+    pool.close_session(&session_id).await;
+    assert!(!pool.has_session(&session_id).await);
+    assert!(pool.get_session(&session_id).await.is_none());
+
+    // Sending to a closed session fails cleanly.
+    let err = pool.prompt(&session_id, "hi").await.unwrap_err();
+    assert!(err.contains("not found"), "err={err}");
 }

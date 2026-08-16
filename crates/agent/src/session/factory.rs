@@ -1,9 +1,15 @@
-use pi_coding_agent::core::agent_session_runtime::*;
-use pi_coding_agent::core::agent_session_services::*;
+use std::sync::Arc;
+
+use pi_coding_agent::core::agent_session::AgentSession;
+use pi_coding_agent::core::agent_session_services::{
+    create_agent_session_from_services, create_agent_session_services, AgentSessionServices,
+    CreateAgentSessionFromServicesOptions, CreateAgentSessionServicesOptions,
+};
 use pi_coding_agent::core::model_registry::ModelRegistry;
+use pi_coding_agent::core::sdk::SessionStartEvent;
+use pi_coding_agent::core::session_manager::SessionManager;
 use pi_coding_agent::pi_ai_types::Model;
 use pi_extension_api::ToolDefinition;
-use std::sync::Arc;
 
 /// Options for [`create_factory`].
 ///
@@ -43,13 +49,49 @@ impl FactoryOptions {
     }
 }
 
-/// Create a factory closure that produces `AgentSessionRuntime` instances.
+/// Parameters for creating one session via the factory.
+///
+/// Bundled into a struct (per the project's ≤3-params rule).
+pub struct CreateSessionParams {
+    pub cwd: String,
+    pub agent_dir: String,
+    pub session_manager: SessionManager,
+    /// Session start event metadata, passed through to pi-rs so extensions
+    /// receive `session_start` with the correct reason and previous session
+    /// file (used on resume).
+    pub session_start_event: Option<SessionStartEvent>,
+}
+
+/// A freshly created session, ready to be owned by a session actor.
+///
+/// `services` must be kept alive for the session's lifetime (it holds the
+/// cwd-bound services and extension registry the session depends on).
+pub struct CreatedSession {
+    pub session: Arc<AgentSession>,
+    pub services: AgentSessionServices,
+    pub cwd: String,
+}
+
+/// Factory type for creating one [`CreatedSession`].
+///
+/// The factory closes over process-global fixed inputs and recreates
+/// cwd-bound services for the effective cwd, then creates the session.
+pub type CreateSessionFactory = Arc<
+    dyn Fn(
+            CreateSessionParams,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<CreatedSession, String>> + Send>,
+        > + Send
+        + Sync,
+>;
+
+/// Create a factory closure that produces [`CreatedSession`] instances.
 ///
 /// The factory captures configuration once and reuses it for every session,
 /// avoiding repeated setup. The extension registry is created fresh for each
 /// session via `openatrading_extension::create_registry()` since
 /// `ExtensionRegistry` does not implement `Clone`.
-pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory {
+pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
     let agent_dir = opts.agent_dir;
     let model = opts.model;
     let tools = opts.tools;
@@ -57,7 +99,7 @@ pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory 
     let trading = opts.trading;
     let mcp = opts.mcp;
 
-    Arc::new(move |params: CreateAgentSessionRuntimeParams| {
+    Arc::new(move |params: CreateSessionParams| {
         let agent_dir = agent_dir.clone();
         let model = model.clone();
         let tools = tools.clone();
@@ -79,7 +121,9 @@ pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory 
             })
             .await;
 
-            let diagnostics = services.diagnostics.clone();
+            for d in &services.diagnostics {
+                eprintln!("[session-factory] {d:?}");
+            }
 
             // Resolve model from settings if not explicitly provided
             let resolved_model = model.clone().or_else(|| {
@@ -99,7 +143,7 @@ pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory 
                     mcp: mcp.clone(),
                 });
 
-            let (session, services, result) =
+            let (session, services, _result) =
                 create_agent_session_from_services(CreateAgentSessionFromServicesOptions {
                     services,
                     session_manager: params.session_manager,
@@ -116,14 +160,13 @@ pub fn create_factory(opts: FactoryOptions) -> CreateAgentSessionRuntimeFactory 
                     ui_context: None,
                 })
                 .await
-                .unwrap_or_else(|e| panic!("Failed to create session: {e}"));
+                .map_err(|e| format!("Failed to create session: {e}"))?;
 
-            CreateAgentSessionRuntimeResult {
-                session,
+            Ok(CreatedSession {
+                session: Arc::new(session),
                 services,
-                diagnostics,
-                model_fallback_message: result.model_fallback_message,
-            }
+                cwd: params.cwd,
+            })
         })
     })
 }

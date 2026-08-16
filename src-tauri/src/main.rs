@@ -473,12 +473,11 @@ async fn send_prompt(
     // The event_state assigns seq + retains the event in the ring (kept
     // consistent with the WebSocket path). Desktop doesn't reconnect so dedup
     // isn't needed, but routing through emit keeps a single serialization path.
-    let event_state = state.get_event_state(&session_id).await;
+    let event_state = state.ctx.pool.event_state(&session_id).await;
 
-    // Session-level slash commands (model/compact/name/session/help) need
-    // `&mut AgentSession` and are handled locally — pi-rs `prompt()` won't
-    // execute them. `/skill:` and unknown commands fall through to pi-rs,
-    // which expands `/skill:name` itself.
+    // Session-level slash commands (model/compact/name/session/help) are
+    // executed by the actor; `/skill:` and unknown commands fall through to
+    // pi-rs, which expands `/skill:name` itself.
     if let Some((cmd_name, cmd_args)) = openatrading_web::chat::parse_session_slash_command(&text) {
         let notice = openatrading_web::chat::run_session_slash_command(
             &state.ctx.pool,
@@ -487,7 +486,7 @@ async fn send_prompt(
             &cmd_args,
         )
         .await;
-        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(notice));
+        let json = event_state.emit(openatrading_core::llm::TranscriptEvent::Session(notice));
         let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
         let payload = serde_json::json!({ "session_id": session_id, "event": event_value });
         let _ = app.emit("agent-event", payload);
@@ -516,8 +515,8 @@ async fn send_prompt(
         // `send_prompt` invoke resolves Ok so the frontend renders the error
         // through the same event stream as everything else. Route through
         // event_state.emit for consistent seq/serialization.
-        let json = event_state.emit(openatrading_web::agent_ws::TranscriptEvent::Session(
-            openatrading_web::agent_ws::SessionEventPayload::Notice {
+        let json = event_state.emit(openatrading_core::llm::TranscriptEvent::Session(
+            openatrading_core::llm::SessionEventPayload::Notice {
                 text: e,
                 is_error: true,
             },
@@ -575,34 +574,26 @@ async fn ensure_session_tauri(
         fwd.insert(session_id.to_string(), ());
     }
 
-    let event_state = state.get_event_state(session_id).await;
-    let session_with_events = openatrading_web::chat_session::ensure_session_with_events(
-        &state.ctx.pool,
-        session_id,
-        &event_state,
-    )
-    .await
-    .map_err(|e| {
-        // Roll back the forward-task marker so a later call can retry.
-        state
-            .forward_tasks
-            .lock()
-            .ok()
-            .map(|mut m| m.remove(session_id));
-        e
-    })?;
+    let session_with_events =
+        openatrading_web::chat_session::ensure_session_with_events(&state.ctx.pool, session_id)
+            .await
+            .map_err(|e| {
+                // Roll back the forward-task marker so a later call can retry.
+                state
+                    .forward_tasks
+                    .lock()
+                    .ok()
+                    .map(|mut m| m.remove(session_id));
+                e
+            })?;
 
     let mut rx = session_with_events.rx;
-    // 必须把 subscription_handle 移入 spawn 任务，否则 ensure_session_tauri
-    // 返回时 UnsubscribeOnDrop::drop 会立即取消订阅，rx 永远收不到事件。
-    let _subscription_handle = session_with_events.subscription_handle;
     let app_handle = app.clone();
     let sid = session_id.to_string();
 
-    // rx yields already-serialized EventEnvelope JSON strings (with seq).
+    // rx yields already-serialized EventEnvelope JSON strings (with seq). The
+    // actor's fan-out prunes this connection's channel when `rx` is dropped.
     let join_handle = tokio::spawn(async move {
-        // 持有 subscription_handle，确保事件监听器在任务生命周期内保持活跃
-        let _keep_alive = _subscription_handle;
         loop {
             let Some(json) = rx.recv().await else { break };
             let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
@@ -821,7 +812,6 @@ fn main() {
         mcp_servers: std::sync::Mutex::new(Vec::new()),
         cache: openatrading_web::cache::new_cache(),
         market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
-        event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
 

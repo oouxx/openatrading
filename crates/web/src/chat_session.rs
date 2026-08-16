@@ -3,70 +3,44 @@
 //!
 //! Centralizes session lifecycle (`ensure_session_with_events`) so the
 //! WebSocket handler and the Tauri IPC layer share one source of truth.
+//!
+//! With the actor architecture the pool never hands out the raw
+//! `AgentSessionRuntime` — callers get a [`SessionHandle`] (mailbox) and a
+//! subscribed event channel. The actor owns the pi-rs event subscription for
+//! the whole session lifetime and fans events out to every live subscriber
+//! channel; a dropped receiver (connection closed) is pruned lazily by the
+//! fan-out task, so no per-connection unsubscribe bookkeeping is needed.
 
-use std::sync::Arc;
-
-use pi_coding_agent::core::agent_session::SessionEventUnsubscribeHandle;
-use pi_coding_agent::core::agent_session_runtime::AgentSessionRuntime;
-use tokio::sync::{mpsc, Mutex};
-
-use crate::agent_ws::{setup_event_channel, SessionEventState};
+use openatrading_core::llm::SessionHandle;
+use tokio::sync::mpsc;
 
 /// Result of ensuring a session with events.
 pub struct SessionWithEvents {
-    pub runtime: Arc<Mutex<AgentSessionRuntime>>,
+    pub handle: SessionHandle,
+    /// Multi-producer sender into this connection's event stream — the actor's
+    /// fan-out task holds a clone for live events; the caller can send local
+    /// notices (slash results, errors) on its own clone.
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
-    /// Auto-unsubscribes the session event listener when dropped.
-    ///
-    /// pi-rs' [`SessionEventUnsubscribeHandle`] has no `Drop` impl of its own,
-    /// so dropping it silently leaves the listener subscribed on the
-    /// [`AgentSession`]. On every WebSocket reconnect a *new* listener would
-    /// accumulate while the old one kept emitting into a dead channel — every
-    /// event was emitted N times into the ring buffer, so the next
-    /// reconnect-replay delivered each event N times, producing duplicated /
-    /// garbled content in the live transcript (refresh was clean because the
-    /// REST history path reads from disk, not the ring). Unsubscribing here on
-    /// disconnect guarantees exactly one live listener per session at a time.
-    pub subscription_handle: UnsubscribeOnDrop,
 }
 
-/// RAII wrapper that calls `unsubscribe()` on drop — see
-/// [`SessionWithEvents::subscription_handle`] for the rationale.
-pub struct UnsubscribeOnDrop(Option<SessionEventUnsubscribeHandle>);
-
-impl UnsubscribeOnDrop {
-    pub fn new(handle: SessionEventUnsubscribeHandle) -> Self {
-        Self(Some(handle))
-    }
-}
-
-impl Drop for UnsubscribeOnDrop {
-    fn drop(&mut self) {
-        if let Some(handle) = self.0.take() {
-            handle.unsubscribe();
-        }
-    }
-}
-
-/// Ensure a session exists (resume from disk or create new) and set up its
+/// Ensure a session exists (resume from disk or create new) and subscribe its
 /// event channel.
 ///
-/// Returns the runtime reference and the event receiver. This is the shared
+/// Returns the session handle and the event receiver. This is the shared
 /// session lifecycle logic used by both the WebSocket handler and the Tauri
 /// IPC layer.
 pub async fn ensure_session_with_events(
     pool: &openatrading_core::llm::SessionPool,
     session_id: &str,
-    event_state: &Arc<SessionEventState>,
 ) -> Result<SessionWithEvents, String> {
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
-    let runtime = match pool.get_or_resume(session_id).await {
-        Ok(rt) => rt,
+    let handle = match pool.get_or_resume(session_id).await {
+        Ok(h) => h,
         Err(_) => {
             pool.create_session_with_id(&cwd, Some(session_id))
                 .await
@@ -77,15 +51,7 @@ pub async fn ensure_session_with_events(
         }
     };
 
-    let (tx, rx, _subscription_handle) = {
-        let rt = runtime.lock().await;
-        setup_event_channel(rt.session(), event_state).await
-    };
+    let (tx, rx) = handle.subscribe().await;
 
-    Ok(SessionWithEvents {
-        runtime,
-        tx,
-        rx,
-        subscription_handle: UnsubscribeOnDrop::new(_subscription_handle),
-    })
+    Ok(SessionWithEvents { handle, tx, rx })
 }
