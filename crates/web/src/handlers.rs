@@ -1007,39 +1007,17 @@ pub async fn create_session_data(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Get session metadata from the runtime
-    let runtime = state.ctx.pool.get_session(&sid).await;
-    let (session_file, session_name) = if let Some(rt) = runtime {
-        let rt = rt.lock().await;
-        let session = rt.session();
-        let mgr = session.get_session_manager();
-        let sfile = mgr.get_session_file().map(std::path::Path::to_path_buf);
-        let sname = mgr.get_session_name();
-        drop(mgr);
-
-        // Force-write the session file to disk so list_sessions can find it
-        if let Some(ref path) = sfile {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+    // Ask the actor to flush the session JSONL to disk so list_sessions can
+    // find it, and return its metadata.
+    let (session_file, session_name) = match state.ctx.pool.get_session(&sid).await {
+        Some(handle) => match handle.flush_to_disk().await {
+            Ok((file, name)) => (file, name),
+            Err(e) => {
+                openatrading_core::log::error!("create_session_data: flush failed: {e}");
+                (None, None)
             }
-            let mut lines: Vec<String> = Vec::new();
-            if let Some(hdr) = session.get_session_manager().get_header() {
-                if let Ok(json) = serde_json::to_string(hdr) {
-                    lines.push(json);
-                }
-            }
-            for entry in session.get_session_manager().get_entries() {
-                if let Ok(json) = serde_json::to_string(entry) {
-                    lines.push(json);
-                }
-            }
-            if !lines.is_empty() {
-                let _ = std::fs::write(path, lines.join("\n") + "\n");
-            }
-        }
-        (sfile, sname)
-    } else {
-        (None, None)
+        },
+        None => (None, None),
     };
 
     Ok(serde_json::json!({

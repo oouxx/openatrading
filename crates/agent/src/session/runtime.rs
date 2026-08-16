@@ -1,11 +1,12 @@
 //! Session file lookup utilities.
 //!
-//! The `AgentRuntime` and `AgentFacade` types have been removed in favor of
-//! the Factory + Pool architecture:
+//! Session lifecycle now uses the actor architecture:
 //!
-//! - `create_factory()` in `factory.rs` creates `AgentSessionRuntime` instances
-//! - `SessionPool` in `pool.rs` manages multiple sessions
-//! - Callers use `AgentSessionRuntime` directly from pi-coding-agent
+//! - `create_factory()` in `factory.rs` creates [`CreatedSession`] instances
+//!   (owned `Arc<AgentSession>` + keep-alive services)
+//! - `spawn_session_actor()` in `actor.rs` owns each session in a dedicated
+//!   task (mailbox + event fan-out)
+//! - `SessionPool` in `pool.rs` supervises the actors with LRU eviction
 //!
 //! This file retains only the session-file lookup helper that is shared
 //! across the web and Tauri layers.

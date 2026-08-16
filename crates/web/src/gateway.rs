@@ -51,7 +51,6 @@ impl Gateway {
             mcp_servers: std::sync::Mutex::new(config.mcp_servers),
             cache: cache::new_cache(),
             market_hub: market_stream::MarketStreamHub::new(),
-            event_states: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
         });
 

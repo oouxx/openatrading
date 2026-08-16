@@ -9,9 +9,8 @@ pub mod mcp;
 pub mod web;
 
 use cache::AppCache;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 use axum::{
     routing::{delete, get, patch, post},
@@ -35,32 +34,11 @@ pub struct AppState {
     /// Shared multiplexer for market SSE streams (kline/realtime). One upstream
     /// poll per symbol set, fanned out to every SSE connection.
     pub market_hub: Arc<market_stream::MarketStreamHub>,
-    /// Per-session [`SessionEventState`] (monotonic `seq` + ring buffer).
-    /// Persists across WebSocket reconnects for the same session so the
-    /// `lastSeq` handshake can resume the gap.
-    pub event_states: Arc<Mutex<HashMap<String, Arc<agent_ws::SessionEventState>>>>,
     /// Tauri-only: sessions that already have a background event-forward task.
     /// Guards against creating a new subscription + forward task on every
     /// `send_prompt`, which would deliver every event N times (WebSocket path
-    /// uses `UnsubscribeOnDrop` per connection instead).
+    /// relies on the actor's fan-out dropping dead subscriber channels).
     pub forward_tasks: std::sync::Mutex<std::collections::HashMap<String, ()>>,
-}
-
-impl AppState {
-    /// Get (lazily creating) the [`SessionEventState`] for a session.
-    ///
-    /// The state is retained for the lifetime of the process — it is keyed by
-    /// session id and survives WS reconnects. Cleanup is left to natural
-    /// session eviction elsewhere; the ring buffer bounds per-session memory.
-    pub async fn get_event_state(&self, session_id: &str) -> Arc<agent_ws::SessionEventState> {
-        let mut states = self.event_states.lock().await;
-        if let Some(s) = states.get(session_id) {
-            return Arc::clone(s);
-        }
-        let s = Arc::new(agent_ws::SessionEventState::new());
-        states.insert(session_id.to_string(), Arc::clone(&s));
-        s
-    }
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
