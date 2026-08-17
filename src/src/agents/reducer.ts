@@ -365,7 +365,9 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
       if (e.will_retry) {
         const last = turns[turns.length - 1]
         let next = turns
-        if (last && last.status === "in_progress") {
+        // The turn may already be `complete` (turn_end marks it), so mark the
+        // last assistant turn as errored regardless of its streaming status.
+        if (last && (last.status === "in_progress" || last.role === "assistant")) {
           next = replaceLast(turns, { ...last, status: "complete", isError: true })
         }
         return { turns: next, terminal: false }
@@ -438,7 +440,13 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
           .join("\n---\n")
         next = appendSystemNotice(next, "turn", text)
       }
-      return { turns: next, terminal: false }
+      // pi-rs emits TurnStart/TurnEnd around *every* assistant message — each
+      // tool-call iteration is its own turn. Mark the current turn complete
+      // here, otherwise the next `turn_start` finds an in-progress turn and
+      // stacks the next message's blocks into the same one, rendering a
+      // confusing [thinking, text, toolcall, thinking, …] blob for
+      // tool-calling turns (fix).
+      return { turns: markAllComplete(next), terminal: false }
     }
     case "agent_settled":
       return { turns: markAllComplete(turns), terminal: false }
