@@ -590,6 +590,7 @@ async fn ensure_session_tauri(
     let mut rx = session_with_events.rx;
     let app_handle = app.clone();
     let sid = session_id.to_string();
+    let cleanup_state = state.clone();
 
     // rx yields already-serialized EventEnvelope JSON strings (with seq). The
     // actor's fan-out prunes this connection's channel when `rx` is dropped.
@@ -599,6 +600,12 @@ async fn ensure_session_tauri(
             let event_value: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
             let payload = serde_json::json!({ "session_id": sid, "event": event_value });
             let _ = app_handle.emit("agent-event", payload);
+        }
+        // The stream ended (session actor evicted / closed / session switched):
+        // clear the forward-task marker so a later send_prompt rebuilds the
+        // forward task instead of short-circuiting on the stale marker.
+        if let Ok(mut fwd) = cleanup_state.forward_tasks.lock() {
+            fwd.remove(&sid);
         }
     });
     tokio::spawn(async move {
