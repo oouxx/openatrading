@@ -623,7 +623,9 @@ fn reports_tool() -> ToolDefinition {
     ToolDefinition {
         name: "get_reports".into(),
         label: Some("研究报告".into()),
-        description: "获取东方财富研究报告列表。支持分类：strategyreport(策略报告)、macresearch(宏观研究)、            brokerreport(券商晨报)、industry(行业研报)、stock(个股研报)。            返回报告标题、作者、机构、发布日期等。".into(),
+        description: "获取东方财富研究报告列表。支持分类：strategyreport(策略报告)、macresearch(宏观研究)、\
+            brokerreport(券商晨报)、industry(行业研报)、stock(个股研报)。\
+            返回报告标题、作者、机构、发布日期等。注意：个股研报请用 get_stock_reports（含盈利预测）。".into(),
         parameters: Some(json!({
             "type": "object",
             "properties": {
@@ -678,7 +680,10 @@ fn report_detail_tool() -> ToolDefinition {
     ToolDefinition {
         name: "get_report_detail".into(),
         label: Some("研报详情".into()),
-        description: "获取东方财富研报详情，包括 PDF 下载链接和正文摘要。            需要提供 info_code（从 get_reports/get_stock_reports 返回的 encodeUrl 或 infoCode）            和 category（研报分类）。".into(),
+        description: "获取东方财富研报详情，返回 PDF 下载链接和纯文本正文摘要（description）。\
+            需要提供 info_code（从 get_reports/get_stock_reports 返回的 encodeUrl 或 infoCode）\
+            和 category（研报分类）。注意：industry 分类传 infoCode，其余非个股分类传 encodeUrl。"
+            .into(),
         parameters: Some(json!({
             "type": "object",
             "properties": {

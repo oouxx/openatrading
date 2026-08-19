@@ -955,12 +955,18 @@ impl ReportCategory {
 }
 
 /// 研报列表条目（非个股研报）
+///
+/// 东方财富列表接口返回 camelCase 字段（`orgName`/`publishDate`/`encodeUrl` 等），
+/// 与 Rust 字段的 snake_case 通过 `rename_all` 映射。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReportItem {
     pub id: i64,
     pub title: String,
     pub author: Vec<String>,
     pub org_name: String,
+    /// 东方财富字段名为 `orgSName`（非 camelCase 规则的 orgShortName）
+    #[serde(rename = "orgSName")]
     pub org_short_name: String,
     pub publish_date: String,
     pub encode_url: String,
@@ -970,11 +976,14 @@ pub struct ReportItem {
 
 /// 个股研报条目（含盈利预测）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StockReportItem {
     pub title: String,
     pub stock_name: String,
     pub stock_code: String,
     pub org_name: String,
+    /// 东方财富字段名 `orgSName`（非 camelCase 的 `orgShortName`）
+    #[serde(rename = "orgSName")]
     pub org_short_name: String,
     pub publish_date: String,
     pub info_code: String,
@@ -983,7 +992,9 @@ pub struct StockReportItem {
     pub predict_next_year_eps: Option<String>,
     pub predict_next_year_pe: Option<String>,
     pub em_rating_name: String,
-    pub rating_change: Option<String>,
+    /// 评级变动（上调/下调次数），东方财富返回整数或空字符串
+    #[serde(default, deserialize_with = "deserialize_optional_i64")]
+    pub rating_change: Option<i64>,
     pub industry_name: String,
     pub researcher: String,
     pub attach_pages: Option<i64>,
@@ -1061,16 +1072,16 @@ impl LhbClient {
         let url = if category == ReportCategory::Stock {
             format!("https://data.eastmoney.com/report/info/{}.html", info_code)
         } else {
-            let link_type = match category {
-                ReportCategory::BrokerReport => "zw_brokerreport",
-                ReportCategory::Industry => "zw_industry",
-                ReportCategory::MacroResearch => "zw_macresearch",
-                ReportCategory::StrategyReport => "zw_strategy",
-                _ => "zw_strategy",
+            // 非个股研报详情页：encodeUrl/infocode 仅作为查询参数，不带路径段
+            let (path, param) = match category {
+                ReportCategory::BrokerReport => ("zw_brokerreport", "encodeUrl"),
+                ReportCategory::Industry => ("zw_industry", "infocode"),
+                ReportCategory::MacroResearch => ("zw_macresearch", "encodeUrl"),
+                _ => ("zw_strategy", "encodeUrl"),
             };
             format!(
-                "https://data.eastmoney.com/report/{}/{}.jshtml?encodeUrl={}",
-                link_type, info_code, info_code
+                "https://data.eastmoney.com/report/{}.jshtml?{}={}",
+                path, param, info_code
             )
         };
 
@@ -1078,14 +1089,14 @@ impl LhbClient {
         let html = resp.text().await?;
 
         let pdf_url = extract_pdf_url(&html);
-        let description = extract_description(&html, category == ReportCategory::Stock);
+        let description = extract_description(&html);
 
         Ok(ReportDetail {
-            title: String::new(),
+            title: extract_title(&html),
             pdf_url,
             description,
-            org_name: String::new(),
-            publish_date: String::new(),
+            org_name: extract_org_name(&html),
+            publish_date: extract_publish_date(&html),
         })
     }
 }
@@ -1125,24 +1136,83 @@ fn extract_pdf_url(html: &str) -> Option<String> {
     None
 }
 
-/// 从研报详情页 HTML 中提取描述/正文。
-fn extract_description(html: &str, is_stock: bool) -> String {
-    if is_stock {
-        // 个股研报: .newsContent
-        let re = regex::Regex::new(r#"(?i)class="newsContent"[^>]*>(.*?)</div>"#).ok();
-        if let Some(re) = re {
-            if let Some(cap) = re.captures(html) {
-                return cap[1].to_string();
-            }
-        }
-    } else {
-        // 非个股研报: .ctx-content
-        let re = regex::Regex::new(r#"(?i)class="ctx-content"[^>]*>(.*?)</div>"#).ok();
-        if let Some(re) = re {
-            if let Some(cap) = re.captures(html) {
-                return cap[1].to_string();
-            }
-        }
+/// 容忍东方财富 `ratingChange` 的空字符串（`""`）/ null / 整数三种形态。
+fn deserialize_optional_i64<'de, D>(de: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(de)?;
+    match v {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(s) if s.trim().is_empty() => Ok(None),
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom("expected integer")),
+        _ => Err(serde::de::Error::custom("unexpected ratingChange value")),
     }
-    String::new()
+}
+
+/// 去掉 HTML 标签、折叠空白，得到纯文本。
+fn strip_html(raw: &str) -> String {
+    let strip_tags = regex::Regex::new(r"<[^>]+>").ok();
+    let collapse = regex::Regex::new(r"\s+").ok();
+    let text = strip_tags
+        .map(|re| re.replace_all(raw, " "))
+        .unwrap_or_else(|| raw.into());
+    collapse
+        .map(|re| re.replace_all(&text, " ").trim().to_string())
+        .unwrap_or_else(|| text.trim().to_string())
+}
+
+/// 从研报详情页 HTML 中提取正文摘要（纯文本）。
+///
+/// 个股与非个股详情页的正文都位于 `.ctx-content`（旧版个股页为 `.newsContent`），
+/// 内容为多行 HTML（`<p>` 等标签），提取后去掉标签、折叠空白得到纯文本。
+fn extract_description(html: &str) -> String {
+    let Some(re) =
+        regex::Regex::new(r#"(?is)class="(?:ctx-content|newsContent)"[^>]*>(.*?)</div>"#).ok()
+    else {
+        return String::new();
+    };
+    let Some(cap) = re.captures(html) else {
+        return String::new();
+    };
+    strip_html(&cap[1])
+}
+
+/// 从研报详情页 HTML 中提取标题（`<h1>` 标签内容）。
+fn extract_title(html: &str) -> String {
+    let Some(re) = regex::Regex::new(r#"(?is)<h1[^>]*>(.*?)</h1>"#).ok() else {
+        return String::new();
+    };
+    let Some(cap) = re.captures(html) else {
+        return String::new();
+    };
+    strip_html(&cap[1])
+}
+
+/// 从研报详情页 HTML 中提取机构名称（`publish-date` 后的下一个 `<span>`）。
+fn extract_org_name(html: &str) -> String {
+    let Some(re) =
+        regex::Regex::new(r#"(?is)<span id="publish-date"[^>]*></span>\s*<span>([^<]+)</span>"#)
+            .ok()
+    else {
+        return String::new();
+    };
+    let Some(cap) = re.captures(html) else {
+        return String::new();
+    };
+    cap[1].trim().to_string()
+}
+
+/// 从研报详情页 HTML 中提取发布日期（`notice_date` 字段，格式 `YYYY-MM-DD HH:MM:SS`）。
+fn extract_publish_date(html: &str) -> String {
+    let Some(re) = regex::Regex::new(r#""notice_date":"([^"]+)""#).ok() else {
+        return String::new();
+    };
+    let Some(cap) = re.captures(html) else {
+        return String::new();
+    };
+    cap[1].to_string()
 }
