@@ -231,6 +231,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         timeVisible: true,
         secondsVisible: false,
         borderColor: "rgba(255,255,255,0.06)",
+        // 边缘 tick 标签内移对齐：9:30（最左）左对齐、15:00（最右）右对齐，
+        // 避免标签被 canvas 边缘裁掉（如 15:00 只显示 “15:”）。
+        fixLeftEdge: true,
+        fixRightEdge: true,
         tickMarkFormatter: (time: Time) =>
           formatIntradayLabel(time as number, timeLabelMapRef.current),
       },
@@ -243,13 +247,15 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       rightPriceScale: {
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0.03, bottom: 0.03 },
+        // 顶部/底部留出标签空间：顶部数字上对齐、底部数字下对齐，避免被 canvas 裁掉
+        // （默认 top 0.2 / bottom 0.1，分时图此前 0.03 太小导致顶部标签被裁）
+        scaleMargins: { top: 0.08, bottom: 0.05 },
       },
       leftPriceScale: {
         visible: true,
         borderVisible: false,
         autoScale: false,
-        scaleMargins: { top: 0.03, bottom: 0.03 },
+        scaleMargins: { top: 0.08, bottom: 0.05 },
       },
     })
 
