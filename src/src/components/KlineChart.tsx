@@ -30,7 +30,8 @@ export interface KlineCandle {
   change_rate?: number | null
 }
 
-// Shanghai/Shenzhen morning+afternoon sessions (minutes since midnight)
+// Shanghai/Shenzhen morning+afternoon sessions (minutes since midnight).
+// 区间含 11:30 / 15:00 收盘 bar：选股宝把午盘收盘标在 11:30、全天收盘标在 15:00。
 const TRADING_SESSIONS = [
   [570, 690], // 9:30 - 11:30
   [780, 900], // 13:00 - 15:00
@@ -39,7 +40,7 @@ const TRADING_SESSIONS = [
 function isTradingTime(ts: number): boolean {
   const d = new Date(ts * 1000)
   const mins = d.getHours() * 60 + d.getMinutes()
-  return TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)
+  return TRADING_SESSIONS.some(([s, e]) => mins >= s && mins <= e)
 }
 
 function formatTime(ts: number, period: string): string {
@@ -82,28 +83,29 @@ function formatIntradayLabel(ts: number, labelMap: Map<number, string>): string 
   // Gap / whitespace point — only render if within trading hours
   const d = new Date(ts * 1000)
   const mins = d.getHours() * 60 + d.getMinutes()
-  if (!TRADING_SESSIONS.some(([s, e]) => mins >= s && mins < e)) return ""
+  if (!TRADING_SESSIONS.some(([s, e]) => mins >= s && mins <= e)) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /**
  * Build the full intraday time grid for the local trading day containing
- * `refTime`: every trading minute 9:30–11:29 and 13:00–14:59 (240 points).
+ * `refTime`: every trading minute 9:30–11:30 and 13:00–15:00 (242 points).
  *
  * The grid is pre-populated as whitespace on the chart so the time axis is
  * drawn once for the whole session; stream data then fills values in place
  * instead of re-creating the chart / re-fitting the axis on every tick.
  *
- * Minute convention matches `isTradingTime` (start-of-bar, excludes 11:30 and
- * 15:00), so grid timestamps line up with the stream's `tick_at` values.
+ * Minute convention matches `isTradingTime` — the session is inclusive of the
+ * 11:30 / 15:00 close bars, since the upstream feed stamps the last bar of
+ * each session at those times (not at 11:29 / 14:59).
  */
 function buildSessionGrid(refTime: number): number[] {
   const d = new Date(refTime * 1000)
   const y = d.getFullYear()
   const mo = d.getMonth()
   const da = d.getDate()
-  // [startH, startM, endH, endM] — end is exclusive, matching isTradingTime
+  // [startH, startM, endH, endM] — end inclusive, matching isTradingTime
   const sessions: [number, number, number, number][] = [
     [9, 30, 11, 30],
     [13, 0, 15, 0],
@@ -112,7 +114,7 @@ function buildSessionGrid(refTime: number): number[] {
   for (const [sh, sm, eh, em] of sessions) {
     const end = Math.floor(new Date(y, mo, da, eh, em, 0).getTime() / 1000)
     let t = Math.floor(new Date(y, mo, da, sh, sm, 0).getTime() / 1000)
-    while (t < end) {
+    while (t <= end) {
       grid.push(t)
       t += 60
     }
