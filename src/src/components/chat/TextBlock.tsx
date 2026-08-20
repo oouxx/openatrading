@@ -149,9 +149,9 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   h1: ({ children }) => <h1 className="text-h1 mt-5 mb-3 text-primary">{children}</h1>,
   h2: ({ children }) => <h2 className="text-h2 mt-4 mb-2 text-primary">{children}</h2>,
   h3: ({ children }) => <h3 className="text-h2 mt-3 mb-1.5 text-primary">{children}</h3>,
-  p: ({ children }) => <p className="text-body my-2 leading-relaxed">{children}</p>,
+  p: ({ children }) => <p className="my-2 text-[15px] leading-[1.7]">{children}</p>,
   blockquote: ({ children }) => (
-    <blockquote className="text-body border-brand/30 text-secondary my-2 border-l-2 pl-3 italic">
+    <blockquote className="border-brand/30 text-secondary my-2 border-l-2 pl-3 text-[15px] italic">
       {children}
     </blockquote>
   ),
@@ -210,7 +210,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
   // content gracefully — incomplete constructs simply don't close until the
   // final delta arrives.
   return (
-    <div className="prose-custom text-body">
+    <div className="prose-custom text-[15px]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
