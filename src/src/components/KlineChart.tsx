@@ -1,11 +1,12 @@
-import { chartColors } from "@/lib/chartColors"
+import { chartColors, withAlpha } from "@/lib/chartColors"
 
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 import {
   createChart,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   CrosshairMode,
   type IChartApi,
   type ISeriesApi,
@@ -37,6 +38,20 @@ const TRADING_SESSIONS = [
   [780, 900], // 13:00 - 15:00
 ]
 
+// ---- 同花顺分时图复刻参数 ----
+// 价格轴网格：昨收居中，向上/向下各 `PRICE_GRID_HALF_SEGMENTS` 格，
+// 默认 2 格 → 全场 5 条横线（跌停、-半程、昨收、+半程、涨停）。
+// 对应同花顺手机端“分时坐标格数 5 格”；改成 3 即为 7 格（8 条线）。
+const PRICE_GRID_HALF_SEGMENTS = 2
+// 网格/昨收线的具体颜色取品牌 token（动态读取，见数据填充 effect），
+// 样式固定为同花顺式虚线：普通网格浅色虚线、昨收黄色系虚线。
+// 时间轴只标注这几个整点标签（同花顺分时图横轴样式）
+const INTRADAY_TICK_LABELS = ["09:30", "10:30", "11:30", "13:30", "14:30", "15:00"]
+// 上述 6 个标签在 242 根会话网格中的 index（0/60/120/151/211/241）：
+// 9:30=0、10:30=60、11:30=120、13:30=151(121+30)、14:30=211(121+90)、15:00=241。
+// 标签由 HTML 在固定格点绘制（不依赖 LWC tick 选择），保证像素级对齐。
+const INTRADAY_TICK_INDEX = [0, 60, 120, 151, 211, 241]
+
 function isTradingTime(ts: number): boolean {
   const d = new Date(ts * 1000)
   const mins = d.getHours() * 60 + d.getMinutes()
@@ -49,6 +64,19 @@ function formatTime(ts: number, period: string): string {
   const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   if (period === "minute") return `${ymd} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return ymd
+}
+
+/**
+ * K 线（日/周/月）时间轴刻度标签 —— 同花顺复刻：
+ * 日K/周K 在月初 bar 显示 `yy/mm`（如 25/01），月K 显示年份。
+ * 相邻同月/同年只显示一次（`klineTickKeyRef` 过滤），
+ * 十字光标浮窗仍走 `formatTime`（完整日期）。
+ */
+function formatKlineTick(ts: number, period: string): string {
+  const d = new Date(ts * 1000)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  if (period === "month") return `${d.getFullYear()}`
+  return `${String(d.getFullYear() % 100).padStart(2, "0")}/${pad(d.getMonth() + 1)}`
 }
 
 function buildTimeLabels(candles: KlineCandle[]): Map<number, string> {
@@ -176,6 +204,20 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const priceLinesRef = useRef<IPriceLine[]>([])
   const timeLabelMapRef = useRef<Map<number, string>>(new Map())
   const onCrosshairRef = useRef<((info: CrosshairInfo) => void) | null>(null)
+  // K 线时间轴刻度：记录上一个已显示的月份/年份，避免重复标签
+  const klineTickKeyRef = useRef("")
+  // K 线最新价虚线（同花顺右轴黄色虚线 + 价格标签）
+  const lastPriceLineRef = useRef<IPriceLine | null>(null)
+  // K 线主图左上角 MA 图例（同花顺 MA5/MA10/MA20/MA30）
+  const [maLegend, setMaLegend] = useState<{ label: string; color: string; value: string }[] | null>(
+    null
+  )
+  // 分时横轴布局（HTML 标签定位用）：左/右价格轴宽 + 容器宽
+  const [tickLayout, setTickLayout] = useState<{ leftW: number; rightW: number; width: number } | null>(
+    null
+  )
+  // 会话网格长度（渲染期读取 ref 被 React 19 禁止，故镜像为 state）
+  const [gridLen, setGridLen] = useState(0)
   // Mirrors of props read inside the long-lived crosshair handler / data fill,
   // kept in refs so chart creation does not depend on `data`/`preclose`.
   const dataRef = useRef<KlineCandle[]>(data)
@@ -218,31 +260,42 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         fontSize: 12,
         panes: {
           enableResize: false,
-          separatorColor: "rgba(255,255,255,0.08)",
-          separatorHoverColor: "rgba(255,255,255,0.08)",
+          separatorColor: withAlpha(chartColors.tertiary(), 0.16),
+          separatorHoverColor: withAlpha(chartColors.tertiary(), 0.16),
         },
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.06)" },
-        horzLines: { color: "rgba(255,255,255,0.06)" },
+        // 品牌配色：竖网格线用 tertiary 淡化（同花顺样式）
+        vertLines: { color: withAlpha(chartColors.tertiary(), 0.16) },
+        // 横向网格线关掉：同花顺分时横线固定在 -涨停/-半程/昨收/+半程/+涨停
+        // 位置，由 5 条 priceLine 自绘（见数据填充 effect），LWC 自动刻度不保证对齐。
+        horzLines: { color: "transparent" },
       },
       crosshair: { mode: CrosshairMode.Magnet },
+      // 同花顺分时横轴固定整段交易时段，不支持拖动/缩放（K 线模式不受影响）
+      handleScroll: false,
+      handleScale: false,
       timeScale: {
+        // 分时横轴完全由 HTML 标签接管（见渲染层 INTRADAY_TICK_INDEX），
+        // 隐藏 LWC 时间轴，避免自动 tick 位置/刻度短线与同花顺不一致。
+        visible: false,
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "rgba(255,255,255,0.06)",
+        borderColor: withAlpha(chartColors.tertiary(), 0.16),
         // 边缘 tick 标签内移对齐：9:30（最左）左对齐、15:00（最右）右对齐，
         // 避免标签被 canvas 边缘裁掉（如 15:00 只显示 “15:”）。
         fixLeftEdge: true,
         fixRightEdge: true,
-        tickMarkFormatter: (time: Time) =>
-          formatIntradayLabel(time as number, timeLabelMapRef.current),
       },
       localization: {
         // Crosshair vertical-line label on the time axis uses timeFormatter,
         // not tickMarkFormatter — keep them consistent for the custom time axis.
         timeFormatter: (time: Time) =>
           formatIntradayLabel(time as number, timeLabelMapRef.current),
+        // 隐藏 LWC 自动价格刻度（位置由 nice-tick 决定，不保证落在网格线上）：
+        // 网格线位置的价格/百分比标签由 priceLine 的 axisLabel 提供。
+        tickmarksPriceFormatter: (prices: readonly number[]) => prices.map(() => " "),
+        tickmarksPercentageFormatter: (prices: readonly number[]) => prices.map(() => " "),
       },
       rightPriceScale: {
         borderVisible: false,
@@ -259,21 +312,21 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       },
     })
 
+    // 同花顺复刻：现价白线（1px），十字光标无圆点 marker（同花顺分时是纯十字线）
     priceSeriesRef.current = chart.addSeries(LineSeries, {
-      color: chartColors.brand(),
-      lineWidth: 2,
+      color: chartColors.primary(),
+      lineWidth: 1,
       priceScaleId: "left",
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
+      crosshairMarkerVisible: false,
       lastValueVisible: false,
       priceLineVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     })
 
+    // 同花顺复刻：均价线黄色实线（VWAP）
     avgPriceSeriesRef.current = chart.addSeries(LineSeries, {
       color: chartColors.warning(),
       lineWidth: 1,
-      lineStyle: 2,
       priceScaleId: "left",
       crosshairMarkerVisible: false,
       lastValueVisible: false,
@@ -289,7 +342,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       crosshairMarkerVisible: false,
       priceFormat: {
         type: "custom",
-        formatter: (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`,
+        // 同花顺百分比轴：正数带 “+”，0 不带（同花顺昨收处显示 0.00%）
+        formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`,
         minMove: 0.01,
       },
     })
@@ -313,12 +367,22 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       1
     )
 
-    chart.panes()[0].setHeight(320)
-    chart.panes()[1].setHeight(100)
+    // 同花顺分时主图 : 成交量副图 ≈ 2.5 : 1
+    chart.panes()[0].setHeight(300)
+    chart.panes()[1].setHeight(120)
 
     chart.priceScale("right", 1).applyOptions({
       borderVisible: false,
       autoScale: true,
+    })
+
+    // 成交量副图基线（0 线），同花顺副图底部淡线（品牌 tertiary 淡化）
+    volumeSeriesRef.current.createPriceLine({
+      price: 0,
+      color: withAlpha(chartColors.tertiary(), 0.35),
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: false,
     })
 
     chart.subscribeCrosshairMove((param) => {
@@ -357,20 +421,27 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         fontSize: 12,
         panes: {
           enableResize: false,
-          separatorColor: "rgba(255,255,255,0.08)",
-          separatorHoverColor: "rgba(255,255,255,0.08)",
+          separatorColor: withAlpha(chartColors.tertiary(), 0.16),
+          separatorHoverColor: withAlpha(chartColors.tertiary(), 0.16),
         },
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.06)" },
-        horzLines: { color: "rgba(255,255,255,0.06)" },
+        // 品牌配色：网格/边框用 tertiary 淡化（同花顺样式）
+        vertLines: { color: withAlpha(chartColors.tertiary(), 0.12) },
+        horzLines: { color: withAlpha(chartColors.tertiary(), 0.12) },
       },
       crosshair: { mode: CrosshairMode.Magnet },
       timeScale: {
         timeVisible: period === "minute",
         secondsVisible: false,
-        borderColor: "rgba(255,255,255,0.06)",
-        tickMarkFormatter: (time: Time) => formatTime(time as number, period),
+        borderColor: withAlpha(chartColors.tertiary(), 0.16),
+        // 同花顺复刻：日K/周K 标 yy/mm，月K 标年份，同月只显示一次
+        tickMarkFormatter: (time: Time) => {
+          const key = formatKlineTick(time as number, period)
+          if (key === klineTickKeyRef.current) return " "
+          klineTickKeyRef.current = key
+          return key
+        },
       },
       localization: {
         // Crosshair vertical-line label on the time axis uses timeFormatter,
@@ -378,7 +449,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         timeFormatter: (time: Time) => formatTime(time as number, period),
       },
       rightPriceScale: {
-        borderColor: "rgba(255,255,255,0.06)",
+        borderColor: withAlpha(chartColors.tertiary(), 0.16),
         autoScale: true,
         scaleMargins: {
           top: 0.08,
@@ -441,8 +512,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       1
     )
 
-    chart.panes()[0].setHeight(340)
-    chart.panes()[1].setHeight(80)
+    // 同花顺 K 线主图 : VOL 副图 ≈ 3.2 : 1
+    chart.panes()[0].setHeight(320)
+    chart.panes()[1].setHeight(100)
 
     chart.priceScale("right", 1).applyOptions({
       borderVisible: false,
@@ -500,6 +572,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     gridDayRef.current = -1
     axisPinnedRef.current = false
     precloseAppliedRef.current = null
+    klineTickKeyRef.current = ""
+    lastPriceLineRef.current = null
+    setMaLegend(null)
 
     if (period === "minute") {
       initIntradayChart()
@@ -530,6 +605,29 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     dataRef.current = data
     precloseRef.current = preclose
   }, [data, preclose])
+
+  // 分时横轴 HTML 标签定位：监听容器尺寸变化（图表重建后重新绑定），
+  // 同步 LWC 宽度并读取左右价格轴宽，供渲染层计算 6 个标签的 x 坐标。
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const updateLayout = () => {
+      const chart = chartRef.current
+      if (!chart) return
+      setTickLayout({
+        leftW: chart.priceScale("left", 0).width(),
+        rightW: chart.priceScale("right", 0).width(),
+        width: el.clientWidth,
+      })
+    }
+    const ro = new ResizeObserver(() => {
+      chartRef.current?.applyOptions({ width: el.clientWidth })
+      updateLayout()
+    })
+    ro.observe(el)
+    updateLayout()
+    return () => ro.disconnect()
+  }, [period, symbol])
 
   // Data fill: intraday pre-draws the full-session grid and fills values as the
   // stream arrives; kline applies a full snapshot each tick. Never re-creates
@@ -566,6 +664,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       if (gridDayRef.current !== lastDay) {
         gridRef.current = buildSessionGrid(dayCandles[dayCandles.length - 1].time)
         gridDayRef.current = lastDay
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setGridLen(gridRef.current.length)
         timeLabelMapRef.current = buildTimeLabels(
           gridRef.current.map((t) => ({ time: t, close: 0 }))
         )
@@ -606,18 +706,19 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         })
       )
 
-      // Volume, colored vs previous close; whitespace for future minutes.
-      let prevClose: number | null = null
+      // Volume, colored vs previous close (同花顺：红涨绿跌，对比昨收)；
+      // whitespace for future minutes.
+      const pc = precloseRef.current
       volume.setData(
         grid.map((t) => {
           const c = candleMap.get(t)
           if (!c) return { time: t as Time, value: undefined as unknown as number }
-          const isUp = prevClose !== null ? c.close >= prevClose : c.close >= (c.open ?? c.close)
-          prevClose = c.close
+          const isUp = pc ? c.close >= pc : c.close >= (c.open ?? c.close)
           return {
             time: t as Time,
             value: c.volume || 0,
-            color: isUp ? "rgba(255,92,92,0.3)" : "rgba(29,158,117,0.3)",
+            // 同花顺量柱比 K 线副图更实（不透明度更高）
+            color: isUp ? withAlpha(chartColors.up(), 0.55) : withAlpha(chartColors.down(), 0.55),
           }
         })
       )
@@ -636,29 +737,42 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         axisPinnedRef.current = true
       }
 
-      // Preclose price lines + fixed ±涨跌停 price range — applied once when
-      // preclose becomes available (and re-applied if it changes).
+      // 同花顺复刻网格：以昨收为中线、±涨跌停对称等分（默认上下各 2 格 → 5 条横线）。
+      // 每格位置同时画两条 priceLine：左轴（价格 series）显示价格标签，
+      // 右轴（百分比 series）显示百分比标签；昨收（0%）用品牌 warning 色虚线。
+      // 网格线 priceLine 挂在 series 上，宽度贯穿整个主图 pane，
+      // 而 LWC 自动刻度文本已被 `tickmarksPriceFormatter` 隐藏。
       if (preclose && preclose > 0 && precloseAppliedRef.current !== preclose) {
         clearPriceLines()
-        priceLinesRef.current.push(
-          price.createPriceLine({
-            price: preclose,
-            color: "rgba(0,0,0,0.20)",
-            lineStyle: 2,
-            lineWidth: 1,
-            axisLabelVisible: true,
-          })
-        )
-        priceLinesRef.current.push(
-          pctAnchor.createPriceLine({
-            price: 0,
-            color: "rgba(0,0,0,0.20)",
-            lineStyle: 2,
-            lineWidth: 1,
-            axisLabelVisible: true,
-          })
-        )
+        const limitPct = getLimitPct(symbol)
         const prRange = preclose * (limitPct / 100)
+        // 品牌配色：网格线 = tertiary 淡化，昨收线 = warning（与均价线同色系）
+        const gridColor = withAlpha(chartColors.tertiary(), 0.35)
+        const preCloseColor = chartColors.warning()
+        const n = PRICE_GRID_HALF_SEGMENTS * 2 // 全场格数（默认 4 → 5 条线）
+        for (let i = 0; i <= n; i++) {
+          const pct = -limitPct + (2 * limitPct * i) / n
+          const isPreClose = i === n / 2
+          const color = isPreClose ? preCloseColor : gridColor
+          priceLinesRef.current.push(
+            price.createPriceLine({
+              price: preclose + (pct / 100) * preclose,
+              color,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              axisLabelVisible: true,
+            })
+          )
+          priceLinesRef.current.push(
+            pctAnchor.createPriceLine({
+              price: pct,
+              color,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              axisLabelVisible: true,
+            })
+          )
+        }
         chart.priceScale("left", 0).setAutoScale(false)
         chart.priceScale("left", 0).setVisibleRange({
           from: preclose - prRange,
@@ -689,7 +803,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         deduped.map((c) => ({
           time: c.time as Time,
           value: c.volume || 0,
-          color: c.close >= (c.open ?? c.close) ? "rgba(255,92,92,0.3)" : "rgba(29,158,117,0.3)",
+          color:
+            c.close >= (c.open ?? c.close)
+              ? withAlpha(chartColors.up(), 0.3)
+              : withAlpha(chartColors.down(), 0.3),
         }))
       )
 
@@ -713,8 +830,47 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         if (maData.length > 0) series.setData(maData)
       })
 
+      // 同花顺最新价虚线：右轴黄色虚线 + 价格标签，跟随最新 bar 更新
+      const lastCandle = deduped[deduped.length - 1]
+      if (lastCandle) {
+        if (!lastPriceLineRef.current) {
+          lastPriceLineRef.current = candle.createPriceLine({
+            price: lastCandle.close,
+            color: chartColors.warning(),
+            lineStyle: LineStyle.Dashed,
+            lineWidth: 1,
+            axisLabelVisible: true,
+          })
+        } else {
+          lastPriceLineRef.current.applyOptions({ price: lastCandle.close })
+        }
+      }
+
+      // 同花顺主图左上角 MA 图例：MA5/MA10/MA20/MA30 最新值（品牌 MA 调色板）
+      const legendColors = [
+        chartColors.ma5,
+        chartColors.ma10,
+        chartColors.ma20,
+        chartColors.ma30,
+      ]
+      const n = closes.length
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMaLegend(
+        [5, 10, 20, 30].map((p, i) => {
+          let sum = 0
+          for (let j = Math.max(0, n - p); j < n; j++) sum += closes[j]
+          const v = n >= p ? sum / p : null
+          return {
+            label: `MA${p}`,
+            color: legendColors[i],
+            value: v !== null ? v.toFixed(2) : "-",
+          }
+        })
+      )
+
       clearPriceLines()
-      const visible = period === "day" ? 60 : period === "week" ? 60 : 36
+      // 同花顺默认可见密度：日K≈半年、周K≈2~3 年、月K≈5 年
+      const visible = period === "day" ? 120 : period === "week" ? 120 : 60
       const to = deduped.length - 1
       const from = Math.max(0, to - visible + 1)
       chart.timeScale().setVisibleLogicalRange({ from, to })
@@ -736,5 +892,58 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     }
   }, [])
 
-  return <div ref={containerRef} className="w-full" style={{ height: 420 }} />
+  return (
+    <div className="relative w-full" style={{ height: period === "minute" ? 436 : 420 }}>
+      {/* K 线主图左上角 MA 图例（同花顺样式：整行与均线同色；分时图不显示） */}
+      {period !== "minute" && maLegend && (
+        <div className="absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-number text-[11px]">
+          {maLegend.map((m) => (
+            <span key={m.label} className="flex items-center gap-1" style={{ color: m.color }}>
+              {m.label}: <span className="font-bold">{m.value}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* K 线 VOL 副图左上角标注（同花顺样式） */}
+      {period !== "minute" && (
+        <span
+          className="absolute left-1 z-10 font-number text-[11px] text-secondary"
+          style={{ top: 322 }}
+        >
+          VOL
+        </span>
+      )}
+      {/* 分时横轴：同花顺 6 个整点标签，按 242 根网格固定格点像素级定位
+          （index 0/60/120/151/211/241 → 9:30/10:30/11:30/13:30/14:30/15:00）。
+          首尾贴边（左对齐/右对齐），中间居中；LWC 时间轴已隐藏。 */}
+      {period === "minute" && tickLayout && gridLen > 1 && (
+        <div className="pointer-events-none absolute bottom-0 left-0 z-10 h-4 w-full">
+          {INTRADAY_TICK_INDEX.map((idx, k) => {
+            // bar 中心 x：fitContent 后 242 根等宽铺满绘图区，
+            // 第 idx 根中心 = ((idx + 0.5) / gridLen) * plotW
+            const plotW = Math.max(1, tickLayout.width - tickLayout.leftW - tickLayout.rightW)
+            const x = tickLayout.leftW + ((idx + 0.5) / gridLen) * plotW
+            return (
+              <span
+                key={idx}
+                className="absolute top-0 font-number text-[11px] text-secondary"
+                style={{
+                  left: x,
+                  transform:
+                    k === 0
+                      ? "none"
+                      : k === INTRADAY_TICK_INDEX.length - 1
+                        ? "translateX(-100%)"
+                        : "translateX(-50%)",
+                }}
+              >
+                {INTRADAY_TICK_LABELS[k]}
+              </span>
+            )
+          })}
+        </div>
+      )}
+      <div ref={containerRef} className="w-full" style={{ height: 420 }} />
+    </div>
+  )
 }
