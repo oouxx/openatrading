@@ -44,107 +44,117 @@ function asText(v: unknown): string {
   }
 }
 
-// ── Main Component ───────────────────────────────────────
+// ── Main Components ───────────────────────────────────────
 
 /**
- * Inline tool-call items (Claude web style): each invocation is a single
- * compact row (icon + name + status) embedded in the conversation flow at the
- * point it happened. Clicking a row reveals its arguments and result.
+ * Single tool-call card (Claude.ai activity-timeline style). Each invocation
+ * is one compact row (icon + name + status); clicking reveals args/result.
+ * `showIcon` hides the inline icon so the timeline node can provide it.
+ */
+export function ToolCallItem({
+  toolCall: tc,
+  isStreaming,
+  sessionId,
+  showIcon = true,
+}: {
+  toolCall: ToolCall
+  isStreaming?: boolean
+  sessionId?: string | null
+  showIcon?: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const status = tc.status ?? (isStreaming ? "streaming" : "success")
+  const isRunning = status === "streaming" || status === "running"
+  const hasArgs = tc.args && tc.args.length > 0
+  const resultText = asText(tc.result ?? "")
+  const liveText = asText(tc.partialResult ?? "")
+  const hasResult = !!tc.result || !!tc.partialResult
+
+  return (
+    <div
+      className={`rounded-[10px] border transition-all duration-200 ${
+        status === "error" ? "border-danger/30 bg-danger/10" : "border-hairline bg-hover/50"
+      }`}
+    >
+      <button
+        className="hover:bg-hover/60 flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {showIcon && (
+          <span className="bg-hover flex size-5 shrink-0 items-center justify-center rounded-md">
+            <ToolIcon name={tc.name} className="size-3" />
+          </span>
+        )}
+        <span className="text-primary min-w-0 flex-1 truncate text-[13px] font-medium">
+          {tc.name}
+        </span>
+        <StatusIcon status={status} />
+        <span className="text-secondary/50 shrink-0">
+          {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        </span>
+      </button>
+
+      {(hasArgs || hasResult) && expanded && (
+        <div className="border-hairline space-y-2 border-t px-3 py-2.5">
+          {hasArgs && (
+            <Section title="参数">
+              <ToolArgsContent name={tc.name} args={tc.args!} />
+            </Section>
+          )}
+          {hasResult && (
+            <Section title="结果">
+              <ToolResultContent
+                name={tc.name}
+                content={isRunning && liveText ? liveText : resultText}
+                toolCallId={tc.id}
+                sessionId={sessionId}
+                output={tc.output}
+              />
+            </Section>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Stacked tool-call list (several invocations of one turn, standalone use).
  */
 export default function ToolCallList({ toolCalls, isStreaming, sessionId }: ToolCallListProps) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
   if (!toolCalls || toolCalls.length === 0) return null
-
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
-
   return (
     <div className="my-2 flex flex-col gap-1.5">
       {toolCalls
         .filter((tc) => tc.name)
-        .map((tc, i) => {
-          const isExpanded = expanded[tc.id] ?? false
-          const status = tc.status ?? (isStreaming ? "streaming" : "success")
-          const isRunning = status === "streaming" || status === "running"
-          const hasArgs = tc.args && tc.args.length > 0
-          const resultText = asText(tc.result ?? "")
-          const liveText = asText(tc.partialResult ?? "")
-          const hasResult = !!tc.result || !!tc.partialResult
-
-          return (
-            <div
-              key={tc.id || i}
-              className={`border-hairline overflow-hidden rounded-lg border transition-all duration-200 ${
-                status === "error"
-                  ? "border-danger/30 bg-danger/10"
-                  : isRunning
-                    ? "border-brand/20 bg-brand/[0.04]"
-                    : "bg-hover/40"
-              }`}
-            >
-              <button
-                className="hover:bg-hover/70 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
-                onClick={() => toggleExpand(tc.id)}
-              >
-                <ToolIcon name={tc.name} />
-                <span className="text-secondary min-w-0 flex-1 truncate font-number text-caption font-medium">
-                  {tc.name}
-                </span>
-                {isRunning ? (
-                  <StatusBadge status={status} />
-                ) : hasResult && !isExpanded ? (
-                  <span className="text-secondary/40 shrink-0 font-number text-caption">
-                    {resultText.length} 字符
-                  </span>
-                ) : null}
-                <span className="text-secondary/50 ml-auto shrink-0">
-                  {isExpanded ? (
-                    <ChevronDown className="size-3" />
-                  ) : (
-                    <ChevronRight className="size-3" />
-                  )}
-                </span>
-              </button>
-
-              {(hasArgs || hasResult) && isExpanded && (
-                <div className="border-hairline space-y-2 border-t px-3 py-2">
-                  {hasArgs && (
-                    <Section title="参数">
-                      <ToolArgsContent name={tc.name} args={tc.args!} />
-                    </Section>
-                  )}
-                  {hasResult && (
-                    <Section title="结果">
-                      <ToolResultContent
-                        name={tc.name}
-                        content={isRunning && liveText ? liveText : resultText}
-                        toolCallId={tc.id}
-                        sessionId={sessionId}
-                        output={tc.output}
-                      />
-                    </Section>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
+        .map((tc, i) => (
+          <ToolCallItem
+            key={tc.id || i}
+            toolCall={tc}
+            isStreaming={isStreaming}
+            sessionId={sessionId}
+          />
+        ))}
     </div>
   )
 }
 
 // ── Tool icon by name ─────────────────────────────────
 
-function ToolIcon({ name }: { name: string }) {
-  if (name.startsWith("edit") || name === "file_edit" || name === "write_file" || name === "create_file") {
-    return <FileEdit className="size-3.5 shrink-0 text-warning" />
+export function ToolIcon({ name, className }: { name: string; className?: string }) {
+  const cls = className ?? "size-3.5"
+  if (
+    name.startsWith("edit") ||
+    name === "file_edit" ||
+    name === "write_file" ||
+    name === "create_file"
+  ) {
+    return <FileEdit className={`${cls} shrink-0 text-warning`} />
   }
   if (name.startsWith("bash") || name === "execute_command" || name === "run") {
-    return <Terminal className="size-3.5 shrink-0 text-sky-500" />
+    return <Terminal className={`${cls} shrink-0 text-sky-500`} />
   }
-  return <Wrench className="size-3.5 shrink-0 text-secondary" />
+  return <Wrench className={`${cls} shrink-0 text-secondary`} />
 }
 
 // ── Tool args content ─────────────────────────────────
@@ -294,36 +304,17 @@ function ResultBlock({
   )
 }
 
-function StatusBadge({ status }: { status: ToolCall["status"] }) {
+// Claude.ai 风格状态指示：仅图标，无文字标签
+function StatusIcon({ status }: { status: ToolCall["status"] }) {
   switch (status) {
     case "streaming":
-      return (
-        <span className="text-brand flex shrink-0 items-center gap-1 text-caption">
-          <Loader2 className="size-3 animate-spin" />
-          调用中
-        </span>
-      )
+      return <Loader2 className="text-brand size-3.5 shrink-0 animate-spin" />
     case "running":
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-caption text-warning">
-          <RefreshCw className="size-3 animate-spin" />
-          执行中
-        </span>
-      )
+      return <RefreshCw className="size-3.5 shrink-0 animate-spin text-warning" />
     case "success":
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-caption text-success">
-          <Check className="size-3" />
-          完成
-        </span>
-      )
+      return <Check className="text-success size-3.5 shrink-0" />
     case "error":
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-caption text-danger">
-          <XCircle className="size-3" />
-          失败
-        </span>
-      )
+      return <XCircle className="size-3.5 shrink-0 text-danger" />
     default:
       return null
   }

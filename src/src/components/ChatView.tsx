@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Search, Square, ArrowDown, Copy, Check } from "lucide-react"
+import { Search, Square, ArrowDown, Copy, Check, ArrowUp } from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
-import ThinkingBlock from "@/components/chat/ThinkingBlock"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
-import ToolCallList from "@/components/chat/ToolCallList"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
-import TurnDivider from "@/components/chat/TurnDivider"
+import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityTimeline"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import type { HistoryMessage } from "@/agents/types"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -414,13 +412,12 @@ export default function AiCopilot({
 
   // ── Input field (shared by the centered new-session hero and the docked
   //    bottom bar) so the textarea keeps one identity per layout branch.
+  //    Claude.ai 样式：大圆角输入框 + 输入内容时右下角圆形发送按钮。
   const renderInputField = () => (
     <div className="relative flex-1">
       <Textarea
         ref={textareaRef}
-        className={`bg-surface border-hairline focus:border-brand/50 focus:ring-brand/20 min-h-[52px] max-h-[200px] w-full resize-none rounded-2xl border px-4 py-4 text-body text-primary shadow-card outline-none transition-all placeholder:text-tertiary focus:ring-3 ${
-          isStreamingActive ? "pr-14" : "pr-4"
-        }`}
+        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 min-h-[56px] max-h-[200px] w-full resize-none rounded-[24px] border border-border px-4 py-4 pr-16 text-body text-primary shadow-[0_2px_16px_rgba(0,0,0,0.07)] outline-none transition-all placeholder:text-tertiary focus:ring-3`}
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -441,16 +438,26 @@ export default function AiCopilot({
           />
         </div>
       )}
-      {isStreamingActive && (
+      {isStreamingActive ? (
         <Button
           size="icon"
           variant="destructive"
-          className="absolute bottom-2 right-2 size-9 rounded-lg"
+          className="absolute right-2 bottom-2 size-9 rounded-full"
           onClick={stop}
           aria-label="停止生成"
         >
           <Square className="size-4" fill="currentColor" />
         </Button>
+      ) : (
+        input.trim() && (
+          <button
+            onClick={() => send()}
+            className="bg-brand hover:bg-brand-hover absolute right-2 bottom-2 flex size-9 items-center justify-center rounded-full text-white shadow-card transition-colors"
+            aria-label="发送"
+          >
+            <ArrowUp className="size-4" />
+          </button>
+        )
       )}
     </div>
   )
@@ -530,9 +537,9 @@ export default function AiCopilot({
           onClose={() => setActiveStockTab(null)}
         />
       ) : isEmpty ? (
-        // ── Centered new-session hero (Claude / ChatGPT style) ──────────
+        // ── Centered new-session hero (Claude.ai 样式) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-          <div className="readable-content">
+          <div className="w-full max-w-[48rem]">
             <h2 className="mb-6 text-center text-hero font-semibold text-primary">AI 行情助手</h2>
             {renderInputField()}
           </div>
@@ -544,49 +551,44 @@ export default function AiCopilot({
             onScroll={onContainerScroll}
             className="flex flex-1 flex-col overflow-y-auto py-5"
           >
-            <div className="readable-content flex flex-col gap-5 px-6 pb-40">
+            {/* Claude.ai 消息列宽：固定 48rem 居中（不随宽屏放大） */}
+            <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-6 px-6 pb-40">
               {currentTurns.map((turn, idx) => {
                 const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
-                const isFirst = idx === 0
 
                 return (
                   <div key={turn.id}>
-                    {/* ── Turn divider (between turns) ──────────── */}
-                    {turn.role === "assistant" && !isFirst && (
-                      <TurnDivider isError={turn.isError} />
-                    )}
-
-                    <div
-                      className={`flex w-full gap-3 ${turn.role === "user" ? "flex-row-reverse" : ""}`}
-                    >
-                      <span
-                        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${
-                          turn.role === "user" ? "bg-brand text-primary" : "bg-hover text-primary"
-                        }`}
-                      >
-                        {turn.role === "user" ? "U" : "AI"}
-                      </span>
-                      <div
-                        className={`min-w-0 flex-1 text-body leading-relaxed ${
-                          turn.role === "user" ? "flex items-center" : ""
-                        }`}
-                      >
-                        {turn.role === "user" ? (
-                          <p className="text-secondary">{turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}</p>
-                        ) : (
+                    {turn.role === "user" ? (
+                      // Claude 样式：用户消息右侧气泡（无头像）
+                      <div className="flex w-full justify-end">
+                        <div className="bg-surface text-primary max-w-[85%] rounded-2xl px-4 py-2.5 shadow-card">
+                          <p className="text-[15px] leading-[1.7] whitespace-pre-wrap">
+                            {turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      // Claude 样式：助手消息直排 + 顶部模型名小字（无头像）
+                      <div className="flex w-full flex-col">
+                        <span className="text-secondary/70 mb-1 px-1 text-[13px]">AI 行情助手</span>
+                        <div className="w-full min-w-0 text-[15px] leading-[1.7]">
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}
-                            isStreaming={isLastAi && streaming && streamThreadId === activeThreadId}
+                            isStreaming={
+                              isLastAi && streaming && streamThreadId === activeThreadId
+                            }
                             respondToPermission={
                               isTauri
-                                ? (id: string, approved: boolean) => transportRef.current?.respondToPermission(id, approved)
-                                : (id: string, approved: boolean) => wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
+                                ? (id: string, approved: boolean) =>
+                                    transportRef.current?.respondToPermission(id, approved)
+                                : (id: string, approved: boolean) =>
+                                    wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
                             }
                           />
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })}
@@ -613,7 +615,7 @@ export default function AiCopilot({
 
           {/* ── Floating input (Claude style) ─────────────────────────── */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-canvas via-canvas/90 to-transparent px-6 pt-12 pb-4">
-            <div className="pointer-events-auto readable-content flex items-end gap-2">
+            <div className="pointer-events-auto mx-auto flex w-full max-w-[48rem] items-end gap-2">
               {renderInputField()}
             </div>
           </div>
@@ -694,49 +696,54 @@ interface TurnRendererProps {
 }
 
 function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: TurnRendererProps) {
-  // Tool calls render as compact inline rows (Claude web style). Consecutive
-  // tool calls within a turn are grouped into one list so they stack tightly.
+  // Claude.ai 活动时间线：thinking 与 tool call 按发生顺序串在一条垂直
+  // 时间线上；文字/系统通知/权限卡不在时间线内（flush 后独立渲染）。
   const nodes: React.ReactNode[] = []
-  let toolGroup: Extract<TranscriptBlock, { type: "tool_call" }>[] = []
+  let activity: ActivityItem[] = []
   let idx = 0
 
-  const flushTools = () => {
-    if (toolGroup.length === 0) return
+  const flushActivity = () => {
+    if (activity.length === 0) return
     nodes.push(
-      <ToolCallList
-        key={`tools-${idx++}`}
-        toolCalls={toolGroup.map((tc) => ({
-          id: tc.id,
-          name: tc.name,
-          args: tc.input,
-          result: tc.result,
-          partialResult: tc.partialResult,
-          status: tc.status === "done" ? "success" : tc.status,
-          output: tc.output,
-        }))}
+      <ActivityTimeline
+        key={`activity-${idx++}`}
+        items={activity}
         isStreaming={isStreaming}
         sessionId={sessionId}
       />
     )
-    toolGroup = []
+    activity = []
   }
 
   for (const block of turn.blocks) {
-    if (block.type === "tool_call") {
-      toolGroup.push(block)
+    if (block.type === "thinking") {
+      activity.push({
+        type: "thinking",
+        id: block.id,
+        content: block.content,
+        streaming: isStreaming && block.streaming,
+      })
       continue
     }
-    flushTools()
+    if (block.type === "tool_call") {
+      activity.push({
+        type: "tool",
+        id: block.id,
+        toolCall: {
+          id: block.id,
+          name: block.name,
+          args: block.input,
+          result: block.result,
+          partialResult: block.partialResult,
+          status: block.status === "done" ? "success" : block.status,
+          output: block.output,
+        },
+      })
+      continue
+    }
+    flushActivity()
 
-    if (block.type === "thinking") {
-      nodes.push(
-        <ThinkingBlock
-          key={`t-${idx++}`}
-          content={block.content}
-          isStreaming={isStreaming && block.streaming}
-        />
-      )
-    } else if (block.type === "text") {
+    if (block.type === "text") {
       nodes.push(
         <TextSegment
           key={`t-${idx++}`}
@@ -775,7 +782,7 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
       )
     }
   }
-  flushTools()
+  flushActivity()
 
   return <>{nodes}</>
 }
