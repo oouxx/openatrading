@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b --force",
     "check": "bun run typecheck && bun run lint",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/"
