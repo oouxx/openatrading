@@ -124,7 +124,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))
-        .route("/api/mcp/servers/:name", delete(mcp::delete_handler))
+        .route(
+            "/api/mcp/servers/:name",
+            delete(mcp::delete_handler).put(mcp::update_handler),
+        )
         .route("/api/mcp/servers/:name/toggle", get(mcp::toggle_handler))
         .route("/api/watchlist", get(web::get_watchlist))
         .route("/api/watchlist", post(web::add_watchlist))
