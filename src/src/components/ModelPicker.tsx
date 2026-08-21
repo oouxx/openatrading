@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -8,7 +9,10 @@ import {
   CommandEmpty,
   CommandItem,
 } from "@/components/ui/command"
-import { ChevronDownIcon, CheckIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { CheckIcon, ChevronDownIcon, LockKeyholeIcon } from "lucide-react"
+import { SettingRow, SelectField } from "./settings-ui"
 
 export interface ModelOption {
   id: string
@@ -31,8 +35,62 @@ interface ModelPickerProps {
   disabled?: boolean
 }
 
-const selectClass =
-  "bg-elevated border-hairline text-primary w-full rounded-lg border px-3 py-2 font-number text-caption focus:outline-none"
+/** Model 触发按钮：Codex 风格下拉（右对齐、固定宽度 220px） */
+const triggerClass =
+  "bg-surface border-input hover:bg-hover text-primary flex h-8 w-[220px] items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+
+/** 上下文窗口格式化：128000 → "128K"、1000000 → "1M" */
+function formatContext(n: number): string {
+  if (!n) return ""
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    return `${m >= 10 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, "")}M`
+  }
+  return `${(n / 1000).toFixed(0)}K`
+}
+
+/**
+ * 模型下拉项：Codex 模型选择器风格 — 第一行名称 + 能力徽标，
+ * 第二行 ID / 上下文窗口 / 密钥状态；不可用模型置灰并加锁。
+ */
+function ModelItem({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: ModelOption
+  selected: boolean
+  onSelect: () => void
+}) {
+  const { id, name, reasoning, contextWindow, available } = option
+  const context = formatContext(contextWindow)
+  return (
+    <CommandItem
+      value={`${name} ${id}`}
+      disabled={!available}
+      onSelect={onSelect}
+      className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="min-w-0 truncate text-[13px] font-medium">{name || id}</span>
+          {reasoning && (
+            <span className="text-secondary border-hairline shrink-0 rounded border px-1 py-px text-[10px] leading-3">
+              推理
+            </span>
+          )}
+          {!available && <LockKeyholeIcon className="text-secondary size-3 shrink-0" />}
+        </div>
+        <p className="text-secondary font-number mt-0.5 truncate text-[11px]">
+          {id}
+          {context ? ` · ${context} 上下文` : ""}
+          {!available ? " · 未配置密钥" : ""}
+        </p>
+      </div>
+      {selected && <CheckIcon className="text-brand size-3.5 shrink-0" />}
+    </CommandItem>
+  )
+}
 
 /**
  * 从 pi-rs 可选模型列表（/api/agent/models）中选择 provider + model。
@@ -42,28 +100,19 @@ const selectClass =
  * 在 Model 搜索框里选中某个模型时才一次性提交 provider + model。
  */
 export default function ModelPicker({ provider, model, onChange, disabled }: ModelPickerProps) {
-  const [providers, setProviders] = useState<ProviderOption[]>([])
-  const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   // 切换 Provider 时的草稿状态：未选中 Model 前不提交保存
   const [draftProvider, setDraftProvider] = useState<string | null>(null)
 
-  useEffect(() => {
-    let active = true
-    fetchJson<{ providers: ProviderOption[] }>("/api/agent/models")
-      .then((data) => {
-        if (active) setProviders(data.providers ?? [])
-      })
-      .catch(() => {
-        // 列表不可用时保持空，仍可通过保留选项展示当前值
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [])
+  // 模型列表走 react-query 缓存：staleTime 内重复进入设置页不重新请求
+  const modelsQuery = useQuery({
+    queryKey: ["agent-models"],
+    queryFn: () => fetchJson<{ providers: ProviderOption[] }>("/api/agent/models"),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  })
+  const providers = modelsQuery.data?.providers ?? []
+  const loading = modelsQuery.isPending
 
   const activeProvider = draftProvider ?? provider
   const activeModels = providers.find((p) => p.name === activeProvider)?.models ?? []
@@ -81,79 +130,103 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
     setOpen(false)
   }
 
-  const triggerLabel = draftProvider
-    ? currentModel?.name || "选择模型..."
-    : currentModel?.name || model || "选择模型..."
+  const loadFailed = modelsQuery.isError && providers.length === 0
+  const noModels = !loadFailed && activeModels.length === 0
+  const triggerLabel =
+    currentModel?.name ||
+    model ||
+    (loadFailed ? "加载失败" : noModels ? "暂无可用模型" : "选择模型...")
+
+  const providerOptions = [
+    // 当前值不在候选列表时保留展示
+    ...(activeProvider && !providers.some((p) => p.name === activeProvider)
+      ? [{ value: activeProvider, label: activeProvider }]
+      : []),
+    ...providers.map((p) => ({ value: p.name, label: p.name })),
+  ]
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="text-secondary mb-1 block text-caption">Provider</label>
-        <select
-          value={activeProvider}
-          disabled={disabled || loading}
-          onChange={(e) => handleProviderChange(e.target.value)}
-          className={selectClass}
-        >
-          {activeProvider && !providers.some((p) => p.name === activeProvider) && (
-            <option value={activeProvider}>{activeProvider}</option>
-          )}
-          {providers.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label className="text-secondary mb-1 block text-caption">Model</label>
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              disabled={disabled || loading || activeModels.length === 0}
-              className="bg-elevated border-hairline text-primary flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 font-number text-caption focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span className="truncate">{triggerLabel}</span>
-              <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="bg-surface border-hairline w-[var(--radix-popover-trigger-width)] gap-0 rounded-lg border p-0 shadow-modal ring-0"
-          >
-            <Command className="rounded-lg!">
-              <CommandInput placeholder="搜索模型名称或 ID..." />
-              <CommandList className="max-h-72">
-                <CommandEmpty className="text-secondary py-3 text-caption">无匹配模型</CommandEmpty>
-                {!draftProvider && model && !modelInList && (
-                  <CommandItem
-                    value={model}
-                    onSelect={() => setOpen(false)}
-                    className="hover:bg-hover data-selected:bg-hover data-selected:text-primary flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{model}</span>
-                    <CheckIcon className="text-brand size-3.5 shrink-0" />
-                  </CommandItem>
+    <>
+      <SettingRow
+        label="Provider"
+        description="模型供应商"
+        control={
+          loading ? (
+            <Skeleton className="h-8 w-[200px] rounded-lg" />
+          ) : (
+            <SelectField
+              value={activeProvider}
+              disabled={disabled}
+              onChange={handleProviderChange}
+              options={providerOptions}
+              className="w-[200px]"
+            />
+          )
+        }
+      />
+      <SettingRow
+        label="Model"
+        description="默认使用的模型"
+        control={
+          loading ? (
+            <Skeleton className="h-8 w-[220px] rounded-lg" />
+          ) : (
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-haspopup="listbox"
+                  disabled={disabled || noModels}
+                  className={triggerClass}
+                >
+                  <span className="truncate">{triggerLabel}</span>
+                  <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="bg-surface border-hairline shadow-modal w-80 gap-0 rounded-lg border p-0 ring-0"
+              >
+                {loadFailed ? (
+                  <div className="flex flex-col items-center gap-2 py-6 text-center">
+                    <p className="text-secondary text-caption">无法加载模型列表</p>
+                    <Button size="xs" variant="outline" onClick={() => modelsQuery.refetch()}>
+                      重试
+                    </Button>
+                  </div>
+                ) : (
+                  <Command className="rounded-lg!">
+                    <CommandInput placeholder="搜索模型名称或 ID..." />
+                    <CommandList className="max-h-80">
+                      <CommandEmpty className="text-secondary text-caption py-4">
+                        无匹配模型
+                      </CommandEmpty>
+                      {!draftProvider && model && !modelInList && (
+                        <CommandItem
+                          value={model}
+                          onSelect={() => setOpen(false)}
+                          className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{model}</span>
+                          <CheckIcon className="text-brand size-3.5 shrink-0" />
+                        </CommandItem>
+                      )}
+                      {activeModels.map((m) => (
+                        <ModelItem
+                          key={m.id}
+                          option={m}
+                          selected={m.id === model}
+                          onSelect={() => handleModelSelect(m.id)}
+                        />
+                      ))}
+                    </CommandList>
+                  </Command>
                 )}
-                {activeModels.map((m) => (
-                  <CommandItem
-                    key={m.id}
-                    value={`${m.name} ${m.id}`}
-                    onSelect={() => handleModelSelect(m.id)}
-                    className="hover:bg-hover data-selected:bg-hover data-selected:text-primary flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
-                  >
-                    <span className="min-w-0 flex-1 truncate">{m.name || m.id}</span>
-                    <span className="text-secondary shrink-0 font-number">{m.id}</span>
-                    {m.available ? null : <span className="text-secondary shrink-0">未配置密钥</span>}
-                    {m.id === model && <CheckIcon className="text-brand size-3.5 shrink-0" />}
-                  </CommandItem>
-                ))}
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-      </div>
-    </div>
+              </PopoverContent>
+            </Popover>
+          )
+        }
+      />
+    </>
   )
 }

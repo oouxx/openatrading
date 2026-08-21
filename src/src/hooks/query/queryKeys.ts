@@ -89,3 +89,7 @@ export const roleKeys = {
 export const watchlistKeys = {
   all: ["watchlist"] as const,
 }
+
+export const mcpKeys = {
+  all: ["mcp-servers"] as const,
+}

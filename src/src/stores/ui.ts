@@ -21,20 +21,33 @@ interface UiState {
 
 function storedMode(): AppMode {
   const v = localStorage.getItem(`${PREFIX}mode`)
-  if (v === "chat" || v === "watchlist" || v === "skill-editor" || v === "settings" || v === "roles") return v
+  if (
+    v === "chat" ||
+    v === "watchlist" ||
+    v === "skill-editor" ||
+    v === "settings" ||
+    v === "roles"
+  )
+    return v
   return "chat"
 }
 
 function storedSettingsTab(): SettingsTab {
   const v = localStorage.getItem(`${PREFIX}settings-tab`)
-  if (v === "appearance" || v === "agent" || v === "social" || v === "mcp" || v === "about") return v
+  if (v === "appearance" || v === "agent" || v === "social" || v === "mcp" || v === "about")
+    return v
   return "appearance"
 }
 
+const initialTheme: "dark" | "light" =
+  (localStorage.getItem(`${PREFIX}theme`) as "dark" | "light") ||
+  (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark")
+
+// 首次加载即应用已存储主题（否则 data-theme 只在用户点击后才会写入）
+document.documentElement.setAttribute("data-theme", initialTheme)
+
 export const useUiStore = create<UiState>((set) => ({
-  theme:
-    (localStorage.getItem(`${PREFIX}theme`) as "dark" | "light") ||
-    (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark"),
+  theme: initialTheme,
   setTheme: (theme) => {
     localStorage.setItem(`${PREFIX}theme`, theme)
     document.documentElement.setAttribute("data-theme", theme)
