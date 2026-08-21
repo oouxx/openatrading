@@ -97,6 +97,24 @@ pub async fn delete_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result
     Ok(())
 }
 
+/// PUT /api/mcp/servers/:name — update an existing MCP server (edit flow)
+///
+/// # Errors
+/// Returns `404 Not Found` if no server with the given name exists.
+///
+/// # Panics
+/// Panics if the MCP server lock is poisoned.
+pub async fn update_handler(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(config): Json<McpServerConfig>,
+) -> Result<impl IntoResponse, StatusCode> {
+    update_mcp_server_data(&state, &name, config.clone())
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(config))
+}
+
 /// POST /api/mcp/servers/:name/toggle — toggle an MCP server's enabled state
 ///
 /// # Errors
