@@ -2,11 +2,12 @@
 //!
 //! Provides [`create_registry()`] which returns an [`ExtensionRegistry`]
 //! pre-configured with all openatrading extensions (market data / paper trading /
-//! MCP 客户端) plus the pi-rs built-in goal extension.
+//! MCP 客户端) plus the pi-rs built-in Rust extensions (`pi-extensions`:
+//! goal / subagent / web_search).
 //!
-//! Pass the registry to `create_agent_session()` via
+//! Pass the extension registry to `create_agent_session()` via
 //! `CreateAgentSessionOptions.extension_registry` to register extension-provided
-//! tool metadata, prompt guidelines, and event hooks.
+//! tool metadata, prompt guidelines, and lifecycle hooks.
 //!
 //! MCP 客户端工具（外部 MCP server）通过 [`mcp::McpExtension`] 接入；
 //! MCP 服务端（对外暴露扩展工具）见 [`mcp::server`]。两者均基于 pi-rs 的
@@ -20,7 +21,9 @@ pub use mcp::{DiscoveredServer, McpServerConfig, McpTransportConfig};
 pub use state::{DecisionSink, MemoryReader, PositionReader, TradingContext};
 
 use mcp::McpExtension;
-use pi_extension_api::{create_synthetic_source_info, ExtensionRegistry};
+use pi_extension_api::{
+    create_builtin_source_info, create_synthetic_source_info, ExtensionRegistry,
+};
 
 /// 构造扩展注册表的入参。
 ///
@@ -65,6 +68,20 @@ pub fn create_registry(options: RegistryOptions) -> ExtensionRegistry {
             );
         }
     }
-    // registry.register(Box::new(pi_extensions::goal::GoalExtension::new()));
+    // pi-rs built-in Rust extensions (pi-extensions): goal / subagent / web_search.
+    // Registered unconditionally — these are general-purpose agent capabilities
+    // available to every session regardless of trading/mcp state.
+    registry.register(
+        Box::new(pi_extensions::goal::GoalExtension::new()),
+        create_builtin_source_info("goal"),
+    );
+    registry.register(
+        Box::new(pi_extensions::subagent::SubagentExtension::new()),
+        create_builtin_source_info("subagent"),
+    );
+    registry.register(
+        Box::new(pi_extensions::web_search::WebSearchExtension::new()),
+        create_builtin_source_info("web_search"),
+    );
     registry
 }
