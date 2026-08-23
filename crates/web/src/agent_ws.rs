@@ -14,6 +14,7 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::{EventEnvelope, SessionEventPayload, TranscriptEvent, SCHEMA_VERSION};
 use pi_coding_agent::core::agent_session::PromptOptions;
+use pi_coding_agent::pi_ai_types::ContentBlock;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
@@ -142,7 +143,7 @@ async fn forward_events(
                     Some(Ok(Message::Text(text))) => {
                         log::debug!("ws: {session_id} <- client text (len={})", text.len());
                         match serde_json::from_str::<ClientCommand>(&text) {
-                            Ok(ClientCommand::Prompt { text }) => {
+                            Ok(ClientCommand::Prompt { text, images }) => {
                                 // Session-level slash commands (model/compact/name/session/help)
                                 // are executed by the actor; `/skill:` and unknown `/` commands
                                 // fall through to pi-rs `prompt()` (skill expansion).
@@ -187,12 +188,22 @@ async fn forward_events(
                                 let sid = session_id.to_string();
                                 let prompt_tx = tx.clone();
                                 let prompt_state = state.clone();
+                                // Multimodal: convert attached images to pi-rs
+                                // `ContentBlock::Image` and carry them through
+                                // `PromptOptions.images` (pi-rs already supports
+                                // images — we just thread them end-to-end).
+                                let image_blocks: Vec<ContentBlock> = images
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .map(ClientImage::to_content_block)
+                                    .collect();
                                 let worker = tokio::spawn(async move {
                                     log::info!("ws: agent turn started for {sid}");
                                     // The actor serializes turns (pi-acp turn queue), so a
                                     // concurrent prompt is queued rather than raced.
                                     let opts = PromptOptions {
                                         streaming_behavior: Some("followUp".to_string()),
+                                        images: (!image_blocks.is_empty()).then_some(image_blocks),
                                         ..Default::default()
                                     };
                                     if let Err(e) = handle.prompt(&text, opts).await {
@@ -250,12 +261,133 @@ async fn forward_events(
 
 // ── Client commands ───────────────────────────────────────────────────────
 
+/// An image attachment sent with a prompt (wire format mirrors the frontend
+/// `PromptImage`): raw base64 `data` (no `data:image/…;base64,` prefix) and a
+/// `mimeType`. Converted to a pi-rs `ContentBlock::Image` before the turn.
+#[derive(Debug, Clone, Deserialize)]
+struct ClientImage {
+    data: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+}
+
+impl ClientImage {
+    fn to_content_block(&self) -> ContentBlock {
+        ContentBlock::Image {
+            data: self.data.clone(),
+            mime_type: self.mime_type.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(dead_code)]
 enum ClientCommand {
-    Prompt { text: String },
+    Prompt {
+        text: String,
+        images: Option<Vec<ClientImage>>,
+    },
     Interrupt,
     Ping,
-    PermissionResponse { id: String, approved: bool },
+    PermissionResponse {
+        id: String,
+        approved: bool,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn prompt_json(text: &str, images_json: &str) -> String {
+        format!(r#"{{"type":"prompt","text":{text},"images":{images_json}}}"#)
+    }
+
+    #[test]
+    fn prompt_with_images_deserializes_and_converts() {
+        let raw = prompt_json(
+            r#""look at this chart""#,
+            r#"[{"data":"aGVsbG8=","mimeType":"image/png"}]"#,
+        );
+        let cmd: ClientCommand = serde_json::from_str(&raw).expect("parse");
+        match cmd {
+            ClientCommand::Prompt { text, images } => {
+                assert_eq!(text, "look at this chart");
+                let imgs = images.expect("images present");
+                assert_eq!(imgs.len(), 1);
+                match imgs[0].to_content_block() {
+                    ContentBlock::Image { data, mime_type } => {
+                        assert_eq!(data, "aGVsbG8=");
+                        assert_eq!(mime_type, "image/png");
+                    }
+                    other => panic!("expected Image block, got {other:?}"),
+                }
+            }
+            other => panic!("expected Prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prompt_without_images_field_is_backward_compatible() {
+        let raw = prompt_json(r#""hello""#, "[]");
+        let cmd: ClientCommand = serde_json::from_str(&raw).expect("parse match");
+        match cmd {
+            ClientCommand::Prompt { text, images } => {
+                assert_eq!(text, "hello");
+                // Empty array → None (no images threaded into PromptOptions).
+                assert_eq!(images.map(|v| v.len()), Some(0));
+            }
+            other => panic!("expected Prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prompt_missing_images_field_is_allowed() {
+        let raw = r#"{"type":"prompt","text":"hello"}"#;
+        let cmd: ClientCommand = serde_json::from_str(raw).expect("parse match");
+        match cmd {
+            ClientCommand::Prompt { text, images } => {
+                assert_eq!(text, "hello");
+                assert!(images.is_none());
+            }
+            other => panic!("expected Prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prompt_multiple_images_converts_all_in_order() {
+        let raw = prompt_json(
+            r#""two images""#,
+            r#"[
+                {"data":"AAA=","mimeType":"image/jpeg"},
+                {"data":"BBB=","mimeType":"image/webp"}
+            ]"#,
+        );
+        let cmd: ClientCommand = serde_json::from_str(&raw).expect("parse match");
+        match cmd {
+            ClientCommand::Prompt { images, .. } => {
+                let imgs = images.expect("images present");
+                assert_eq!(imgs.len(), 2);
+                let blocks: Vec<_> = imgs.iter().map(ClientImage::to_content_block).collect();
+                for (i, b) in blocks.iter().enumerate() {
+                    match b {
+                        ContentBlock::Image { mime_type, .. } => {
+                            let expect = if i == 0 { "image/jpeg" } else { "image/webp" };
+                            assert_eq!(mime_type, expect);
+                        }
+                        other => panic!("expected Image block, got {other:?}"),
+                    }
+                }
+            }
+            other => panic!("expected Prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prompt_with_malformed_image_fails_deserialization() {
+        // Missing required `mimeType` field → error propagates to the client.
+        let raw = r#"{"type":"prompt","text":"x","images":[{"data":"AAA="}]}"#;
+        assert!(serde_json::from_str::<ClientCommand>(raw).is_err());
+    }
 }

@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Search, Square, ArrowDown, Copy, Check, ArrowUp } from "lucide-react"
+import {
+  Search,
+  Square,
+  ArrowDown,
+  Copy,
+  Check,
+  ArrowUp,
+  Paperclip,
+  X,
+} from "lucide-react"
 import TextBlock from "@/components/chat/TextBlock"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
@@ -26,6 +35,7 @@ import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { applyEvent, historyToTurns } from "@/agents/reducer"
 import type {
+  PromptImage,
   TranscriptBlock,
   TranscriptTurn,
 } from "@/agents/types"
@@ -43,6 +53,16 @@ interface AiCopilotProps {
   sessions?: ChatSession[]
 }
 
+/** Read a File as a data URL (base64). Rejects on read error. */
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
 import { isTauri } from "@/lib/env"
 
 export default function AiCopilot({
@@ -51,6 +71,8 @@ export default function AiCopilot({
   onReload,
 }: AiCopilotProps) {
   const [input, setInput] = useState("")
+  const [attachments, setAttachments] = useState<PromptImage[]>([])
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
@@ -228,9 +250,52 @@ export default function AiCopilot({
   )
 
   // ── Send ──────────────────────────────────────────────────────────────
+  /** Optimistically append the user's own turn (text + image thumbnails) so
+   *  sending has immediate visual feedback before the assistant turn streams.
+   *  The turn is replaced by persisted history once the agent settles. */
+  const appendLocalUserTurn = useCallback(
+    (sessionId: string, text: string, images: PromptImage[]) => {
+      const current = threadTurnsRef.current
+      const turns = current.get(sessionId) ?? []
+      const now = Date.now()
+      const blocks: TranscriptBlock[] = [
+        ...images.map((img, i) => ({
+          type: "image" as const,
+          id: `${sessionId}-img-${now}-${i}`,
+          data: img.data,
+          mimeType: img.mimeType,
+        })),
+        ...(text
+          ? [{
+              type: "text" as const,
+              id: `${sessionId}-user-${now}`,
+              content: text,
+              streaming: false,
+            }]
+          : []),
+      ]
+      const next = [
+        ...turns,
+        {
+          id: `${sessionId}-turn-${now}`,
+          role: "user" as const,
+          status: "complete" as const,
+          blocks,
+        },
+      ]
+      const updated = new Map(current)
+      updated.set(sessionId, next)
+      threadTurnsRef.current = updated
+      setThreadTurns(updated)
+      scrollDown()
+    },
+    [scrollDown],
+  )
+
   const send = useCallback(async (override?: string) => {
     const text = (override ?? input).trim()
-    if (!text) return
+    const images = attachments
+    if (!text && images.length === 0) return
 
     // If no active session, generate a client-side ID and use it directly.
     // The WebSocket endpoint will create the session if it doesn't exist.
@@ -243,7 +308,15 @@ export default function AiCopilot({
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
+    // Optimistically render the user's own message (text + image thumbnails)
+    // so there's immediate feedback while the turn streams. History reload
+    // replaces this turn once the agent settles.
+    if (sessionId) {
+      appendLocalUserTurn(sessionId, text, images)
+    }
+
     setInput("")
+    setAttachments([])
     setShowSlash(false)
     setStreaming(true)
     streamThreadRef.current = sessionId
@@ -251,17 +324,18 @@ export default function AiCopilot({
 
     if (isTauri) {
       await startTauriTransport(sessionId)
-      transportRef.current?.sendPrompt(text)
+      transportRef.current?.sendPrompt(text, images)
     } else {
       // Use wsAgent directly with the resolved sessionId so we don't
       // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
       try {
-        await wsAgent.sendPrompt(sessionId, text)
+        await wsAgent.sendPrompt(sessionId, text, images)
       } catch (e) {
         // Connection couldn't be established — restore the input and stop
         // the streaming state so the user can retry instead of losing text.
         console.error("发送失败:", e)
         setInput(text)
+        setAttachments(images)
         setStreaming(false)
         if (streamThreadRef.current === sessionId) {
           streamThreadRef.current = null
@@ -269,7 +343,44 @@ export default function AiCopilot({
         }
       }
     }
-  }, [input, activeThreadId, onActiveThreadChange, startTauriTransport, wsAgent.sendPrompt])
+  }, [
+    input,
+    attachments,
+    activeThreadId,
+    onActiveThreadChange,
+    startTauriTransport,
+    wsAgent.sendPrompt,
+    appendLocalUserTurn,
+  ])
+
+  // ── Attachment handlers (multimodal) ─────────────────────────────────
+  const handleAttachFiles = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? [])
+      e.target.value = ""
+      if (files.length === 0) return
+      const imgs: PromptImage[] = []
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue
+        try {
+          const dataUrl = await readFileAsDataURL(file)
+          const idx = dataUrl.indexOf(",")
+          imgs.push({
+            data: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
+            mimeType: file.type || "image/png",
+          })
+        } catch {
+          // Skip unreadable files.
+        }
+      }
+      if (imgs.length > 0) setAttachments((prev) => [...prev, ...imgs])
+    },
+    [],
+  )
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
   // ── Stop / interrupt the active stream ───────────────────────────────
   const stop = useCallback(async () => {
@@ -415,6 +526,28 @@ export default function AiCopilot({
   //    Claude.ai 样式：大圆角输入框 + 输入内容时右下角圆形发送按钮。
   const renderInputField = () => (
     <div className="relative flex-1">
+      {/* Attached image previews (multimodal) */}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((img, i) => (
+            <div key={i} className="relative">
+              <img
+                src={`data:${img.mimeType};base64,${img.data}`}
+                alt={`附件 ${i + 1}`}
+                className="h-16 w-16 rounded-lg border border-border object-cover shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => removeAttachment(i)}
+                className="bg-black/60 hover:bg-black/80 absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full text-white transition-colors"
+                aria-label="移除附件"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <Textarea
         ref={textareaRef}
         className={`bg-surface focus:border-brand/60 focus:ring-brand/20 min-h-[56px] max-h-[200px] w-full resize-none rounded-[24px] border border-border px-4 py-4 pr-16 text-body text-primary shadow-[0_2px_16px_rgba(0,0,0,0.07)] outline-none transition-all placeholder:text-tertiary focus:ring-3`}
@@ -449,7 +582,7 @@ export default function AiCopilot({
           <Square className="size-4" fill="currentColor" />
         </Button>
       ) : (
-        input.trim() && (
+        (input.trim() || attachments.length > 0) && (
           <button
             onClick={() => send()}
             className="bg-brand hover:bg-brand-hover absolute right-2 bottom-2 flex size-9 items-center justify-center rounded-full text-white shadow-card transition-colors"
@@ -459,6 +592,24 @@ export default function AiCopilot({
           </button>
         )
       )}
+      {/* Image attach (multimodal) — hidden input opened by the paperclip button. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleAttachFiles}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="text-secondary hover:text-brand absolute left-2 bottom-2 flex size-9 items-center justify-center rounded-full transition-colors"
+        aria-label="添加图片"
+        disabled={isStreamingActive}
+      >
+        <Paperclip className="size-4.5" />
+      </button>
     </div>
   )
 
@@ -562,6 +713,20 @@ export default function AiCopilot({
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
                         <div className="bg-surface text-primary max-w-[85%] rounded-2xl px-4 py-2.5 shadow-card">
+                          {turn.blocks.some((b) => b.type === "image") && (
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              {turn.blocks.map((b) =>
+                                b.type === "image" ? (
+                                  <img
+                                    key={b.id}
+                                    src={`data:${b.mimeType};base64,${b.data}`}
+                                    alt="图片"
+                                    className="h-24 w-24 rounded-lg border border-border object-cover"
+                                  />
+                                ) : null,
+                              )}
+                            </div>
+                          )}
                           <p className="text-[15px] leading-[1.7] whitespace-pre-wrap">
                             {turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}
                           </p>

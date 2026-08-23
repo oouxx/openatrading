@@ -7,6 +7,7 @@
 /** A single renderable unit inside a turn. */
 export type TranscriptBlock =
   | { type: "text"; id: string; content: string; streaming: boolean }
+  | { type: "image"; id: string; data: string; mimeType: string }
   | { type: "thinking"; id: string; content: string; streaming: boolean }
   | {
       type: "tool_call"
@@ -111,9 +112,19 @@ export interface SessionEvent {
 
 export type TranscriptEvent = SessionEvent | { kind: string; [k: string]: unknown }
 
-/** Client → server commands (matches backend `ClientCommand`). */
+/** A single image attachment sent with a prompt.
+ *
+ * `data` is raw base64 (no `data:image/png;base64,` prefix) and `mimeType`
+ * is the media type (e.g. `image/png`). The backend converts each to a pi-rs
+ * `ContentBlock::Image` and threads it through `PromptOptions.images`. */
+export interface PromptImage {
+  data: string
+  mimeType: string
+}
+
+/** Client → server transport (matches backend `ClientCommand`). */
 export type ClientCommand =
-  | { type: "prompt"; text: string }
+  | { type: "prompt"; text: string; images?: PromptImage[] }
   | { type: "interrupt" }
   | { type: "ping" }
   | { type: "permission_response"; id: string; approved: boolean }

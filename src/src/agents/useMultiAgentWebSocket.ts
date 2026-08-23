@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef } from "react"
 import { applyEvent, historyToTurns } from "./reducer"
-import type { HistoryMessage, TranscriptEvent, TranscriptTurn } from "./types"
+import type { HistoryMessage, PromptImage, TranscriptEvent, TranscriptTurn } from "./types"
 import { getApiBaseUrl } from "@/stores/data"
 
 export enum ReadyState {
@@ -314,12 +314,14 @@ export function useMultiAgentWebSocket(
   }, [])
 
   const sendPrompt = useCallback(
-    async (sid: string, text: string): Promise<void> => {
+    async (sid: string, text: string, images?: PromptImage[]): Promise<void> => {
       ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
       if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
-        conn.ws.send(JSON.stringify({ type: "prompt", text }))
+        conn.ws.send(
+          JSON.stringify({ type: "prompt", text, images: images ?? [] }),
+        )
       }
     },
     [ensureConnection, waitForReady],

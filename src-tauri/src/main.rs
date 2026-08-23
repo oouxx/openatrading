@@ -459,10 +459,19 @@ fn extract_query(path: &str, key: &str) -> Option<String> {
     None
 }
 
+/// An image attachment sent via Tauri IPC (mirrors the frontend `PromptImage`).
+#[derive(Debug, serde::Deserialize)]
+struct SendPromptImage {
+    data: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+}
+
 #[tauri::command]
 async fn send_prompt(
     session_id: String,
     text: String,
+    #[allow(unused)] images: Option<Vec<SendPromptImage>>,
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
@@ -500,8 +509,17 @@ async fn send_prompt(
     // `streaming_behavior` only to choose steer vs followUp. We pass a fixed
     // policy (followUp = queue as a new turn when streaming) and let pi-rs
     // decide, avoiding a racy `is_stream()` TOCTOU check on our side.
+    let image_blocks: Vec<pi_coding_agent::pi_ai_types::ContentBlock> = images
+        .unwrap_or_default()
+        .iter()
+        .map(|img| pi_coding_agent::pi_ai_types::ContentBlock::Image {
+            data: img.data.clone(),
+            mime_type: img.mime_type.clone(),
+        })
+        .collect();
     let opts = pi_coding_agent::core::agent_session::PromptOptions {
         streaming_behavior: Some("followUp".to_string()),
+        images: (!image_blocks.is_empty()).then_some(image_blocks),
         ..Default::default()
     };
     if let Err(e) = state
