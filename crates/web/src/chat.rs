@@ -430,6 +430,13 @@ pub enum HistoryBlock {
     Text {
         text: String,
     },
+    Image {
+        /// Raw base64 image data (no `data:image/…;base64,` prefix).
+        data: String,
+        /// Media type, e.g. `image/png`.
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+    },
 }
 
 /// Read the message history of a session **directly from its JSONL file**,
@@ -541,7 +548,12 @@ pub(crate) fn messages_to_session_messages(
                             is_error,
                         });
                     }
-                    ContentBlock::Image { .. } => {}
+                    ContentBlock::Image { data, mime_type } => {
+                        blocks.push(HistoryBlock::Image {
+                            data: data.clone(),
+                            mime_type: mime_type.clone(),
+                        });
+                    }
                 }
             }
 
@@ -803,8 +815,9 @@ pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value
 
 #[cfg(test)]
 mod tests {
-    use super::{messages_to_session_messages, HistoryBlock};
-    
+    use super::{get_ai_commands_inner, messages_to_session_messages, HistoryBlock};
+    use openatrading_core::commands::CommandType;
+
     use openatrading_core::llm::pi_ai_types::ContentBlock;
     use openatrading_core::llm::{pi_ai_types::Usage, AgentMessage};
 
@@ -905,5 +918,59 @@ mod tests {
             }
             other => panic!("expected ToolUse, got {other:?}"),
         }
+    }
+
+    /// Happy path: a user message carrying an image attachment surfaces an
+    /// `Image` history block so the frontend can re-render it after reload.
+    #[test]
+    fn user_image_block_surfaces_in_history() {
+        let messages = vec![AgentMessage::User {
+            content: vec![
+                ContentBlock::text("look at this chart"),
+                ContentBlock::Image {
+                    data: "aGVsbG8=".to_string(),
+                    mime_type: "image/png".to_string(),
+                },
+            ],
+            timestamp: 1,
+        }];
+        let out = messages_to_session_messages(&messages);
+        assert_eq!(out.len(), 1);
+        let user = &out[0];
+        assert_eq!(user.content, "look at this chart");
+        match &user.blocks[1] {
+            HistoryBlock::Image { data, mime_type } => {
+                assert_eq!(data, "aGVsbG8=");
+                assert_eq!(mime_type, "image/png");
+            }
+            other => panic!("expected Image block, got {other:?}"),
+        }
+    }
+
+    /// Happy path: the slash-command list exposes builtin session commands,
+    /// extension commands (e.g. pi-extensions `/goal`), and skills.
+    #[tokio::test]
+    async fn ai_commands_include_extension_commands() {
+        let specs = get_ai_commands_inner().await;
+
+        // Builtin session-level commands keep `Slash` type. Note `help`/`?`
+        // are handled locally by the session actor and are not part of
+        // pi-rs's `builtin_slash_commands()` list, so they are not exposed.
+        for name in ["model", "name", "compact", "session"] {
+            assert!(
+                specs
+                    .iter()
+                    .any(|c| { c.name == name && c.command_type == CommandType::Slash }),
+                "missing builtin slash command /{name}: {specs:?}"
+            );
+        }
+
+        // Extension commands (pi-extensions `/goal`) surface with `Extension`.
+        let goal = specs
+            .iter()
+            .find(|c| c.name == "goal")
+            .unwrap_or_else(|| panic!("missing extension command /goal: {specs:?}"));
+        assert_eq!(goal.command_type, CommandType::Extension);
+        assert!(!goal.description.is_empty());
     }
 }

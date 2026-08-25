@@ -1,0 +1,103 @@
+/* Syntax highlighting for code blocks.
+ *
+ * Claude.ai renders code blocks with syntax colors that follow the app theme
+ * (light vs dark). The default (light) theme is `github`; the dark theme is
+ * scoped to `[data-theme="dark"]` so blocks adapt instead of being hard-coded
+ * dark (previously main.tsx always imported `github-dark.css`).
+ *
+ * The `.hljs` background is forced transparent — the CodeBlock container
+ * (`bg-hover`) supplies the subtle slab background, matching Claude's look
+ * instead of painting a pure white / near-black block.
+ */
+@import "highlight.js/styles/github.css";
+
+/* Neutralise the library default block padding/background; the wrapper owns
+   layout and background. */
+pre code.hljs,
+code.hljs {
+  background: transparent;
+}
+pre code.hljs {
+  padding: 0;
+}
+
+[data-theme="dark"] {
+  /* Override the light `.hljs` color/background for dark mode. */
+  .hljs {
+    color: #c9d1d9;
+    background: transparent;
+  }
+  .hljs-doctag,
+  .hljs-keyword,
+  .hljs-meta .hljs-keyword,
+  .hljs-template-tag,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-variable.language_ {
+    color: #ff7b72;
+  }
+  .hljs-title,
+  .hljs-title.class_,
+  .hljs-title.class_.inherited__,
+  .hljs-title.function_ {
+    color: #d2a8ff;
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-literal,
+  .hljs-meta,
+  .hljs-number,
+  .hljs-operator,
+  .hljs-variable,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-id {
+    color: #79c0ff;
+  }
+  .hljs-regexp,
+  .hljs-string,
+  .hljs-meta .hljs-string {
+    color: #a5d6ff;
+  }
+  .hljs-built_in,
+  .hljs-symbol {
+    color: #ffa657;
+  }
+  .hljs-comment,
+  .hljs-code,
+  .hljs-formula {
+    color: #8b949e;
+  }
+  .hljs-name,
+  .hljs-quote,
+  .hljs-selector-tag,
+  .hljs-selector-pseudo {
+    color: #7ee787;
+  }
+  .hljs-subst {
+    color: #c9d1d9;
+  }
+  .hljs-section {
+    color: #1f6feb;
+    font-weight: bold;
+  }
+  .hljs-bullet {
+    color: #f2cc60;
+  }
+  .hljs-emphasis {
+    color: #c9d1d9;
+    font-style: italic;
+  }
+  .hljs-strong {
+    color: #c9d1d9;
+    font-weight: bold;
+  }
+  .hljs-addition {
+    color: #aff5b4;
+    background-color: #033a16;
+  }
+  .hljs-deletion {
+    color: #ffdcd7;
+    background-color: #67060c;
+  }
+}

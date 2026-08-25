@@ -550,7 +550,7 @@ export default function AiCopilot({
       )}
       <Textarea
         ref={textareaRef}
-        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 min-h-[56px] max-h-[200px] w-full resize-none rounded-[24px] border border-border px-4 py-4 pr-16 text-body text-primary shadow-[0_2px_16px_rgba(0,0,0,0.07)] outline-none transition-all placeholder:text-tertiary focus:ring-3`}
+        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 min-h-[56px] max-h-[200px] w-full resize-none rounded-[24px] border border-border pl-16 py-4 pr-16 text-body text-primary shadow-[0_2px_16px_rgba(0,0,0,0.07)] outline-none transition-all placeholder:text-tertiary focus:ring-3`}
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -604,7 +604,7 @@ export default function AiCopilot({
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="text-secondary hover:text-brand absolute left-2 bottom-2 flex size-9 items-center justify-center rounded-full transition-colors"
+        className="text-secondary hover:text-brand hover:bg-hover disabled:pointer-events-none disabled:opacity-40 absolute left-2 bottom-2 flex size-9 items-center justify-center rounded-full transition-colors"
         aria-label="添加图片"
         disabled={isStreamingActive}
       >
