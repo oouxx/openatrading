@@ -830,7 +830,7 @@ function SlashCommandMenu({
   return (
     <Command
       ref={ref}
-      className="bg-surface border-hairline rounded-lg! max-h-48 overflow-hidden border p-0 shadow-modal"
+      className="bg-popover text-popover-foreground border-hairline rounded-lg! max-h-48 overflow-hidden border p-0 shadow-modal"
     >
       {/* Hidden input drives cmdk's built-in filtering from the textarea value. */}
       <div className="hidden">
