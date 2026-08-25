@@ -817,8 +817,15 @@ function SlashCommandMenu({
 
   if (groups.length === 0) return null
 
-  const groupLabel = (type: string) =>
-    type === "Skill" ? "技能" : type === "Slash" ? "基础命令" : type
+  // Backend serializes CommandType as snake_case (`slash`/`skill`/`extension`);
+  // compare case-insensitively so group headings always match.
+  const groupLabel = (type: string) => {
+    const t = type.toLowerCase()
+    if (t === "skill") return "技能"
+    if (t === "slash") return "基础命令"
+    if (t === "extension") return "扩展命令"
+    return type
+  }
 
   return (
     <Command
