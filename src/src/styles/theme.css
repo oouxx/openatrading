@@ -58,6 +58,8 @@
   --color-surface:  oklch(1 0 0);                 /* 卡片表面 */
   --color-hover:    oklch(0.9463 0.007 88.6);     /* 悬停状态 */
   --color-elevated: oklch(0.9703 0.007 88.6);     /* 弹窗/下拉 */
+  --color-popover:  oklch(0.9703 0.007 88.6);     /* 弹窗表面（shadcn bg-popover） */
+  --color-popover-foreground: oklch(0.2357 0.0024 67.7);
 
   /* ── 语义色板 — 边框层级（暖灰） ── */
   --color-border: oklch(0.35 0.008 85 / 0.12);    /* 默认边框 */
@@ -204,6 +206,8 @@
   --color-surface:  oklch(0.3085 0.0035 106.6);
   --color-hover:    oklch(0.3474 0.0051 106.7);
   --color-elevated: oklch(0.3743 0.005 106.6);
+  --color-popover:  oklch(0.3743 0.005 106.6);
+  --color-popover-foreground: oklch(0.9251 0.0071 88.6);
 
   --color-border: oklch(0.9 0.008 85 / 0.12);
   --color-input: oklch(0.9 0.008 85 / 0.15);
