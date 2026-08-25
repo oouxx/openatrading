@@ -11,7 +11,13 @@ import { useUiStore } from "@/stores/ui"
 
 function CodeBlock({ className, children, ...props }: React.ComponentPropsWithoutRef<"code">) {
   const [copied, setCopied] = useState(false)
-  const language = className ? className.replace("language-", "") : ""
+  // rehype-highlight adds `language-*` and `hljs` classes; pick only the
+  // language class so the header label never shows the stray `hljs` token.
+  const language =
+    className
+      ?.split(/\s+/)
+      .find((c) => c.startsWith("language-"))
+      ?.slice("language-".length) ?? ""
 
   const handleCopy = useCallback(() => {
     const text = String(children).replace(/\n$/, "")
@@ -24,8 +30,8 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   return (
     <div className="bg-hover border-hairline group rounded-lg my-2 overflow-hidden border">
       {/* Header bar */}
-      <div className="border-hairline flex items-center justify-between border-b px-3 py-2">
-        <span className="text-secondary/60 font-number text-caption tracking-wider uppercase">
+      <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
+        <span className="text-secondary/70 font-number text-[12px]">
           {language || "code"}
         </span>
         <button

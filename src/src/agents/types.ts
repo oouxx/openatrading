@@ -152,6 +152,13 @@ export type HistoryBlock =
       is_error?: boolean
     }
   | { type: "text"; text: string }
+  | {
+      type: "image"
+      /** Raw base64 image data (no `data:image/…;base64,` prefix). */
+      data: string
+      /** Media type, e.g. `image/png`. */
+      mimeType: string
+    }
 
 export interface HistoryMessage {
   role: string

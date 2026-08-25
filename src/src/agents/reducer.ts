@@ -572,6 +572,13 @@ function historyBlockToTranscriptBlock(
         status: block.is_error ? "error" : "done",
         result: block.result,
       }
+    case "image":
+      return {
+        type: "image",
+        id: newBlockId(),
+        data: block.data,
+        mimeType: block.mimeType,
+      }
     default:
       return null
   }

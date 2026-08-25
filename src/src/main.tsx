@@ -1,5 +1,5 @@
 import ReactDOM from "react-dom/client"
-import "highlight.js/styles/github-dark.css"
+import "@/styles/hljs.css"
 import { BrowserRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { queryClient } from "@/hooks/queryClient"
