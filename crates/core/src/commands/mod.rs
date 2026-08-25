@@ -6,6 +6,8 @@ pub enum CommandType {
     Tool,
     Skill,
     Slash,
+    /// Extension-registered slash command (e.g. pi-extensions `/goal`).
+    Extension,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
