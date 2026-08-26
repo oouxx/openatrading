@@ -42,6 +42,7 @@ fn new_session_manager(cwd: &str, id: &str) -> SessionManager {
 }
 
 #[tokio::test]
+#[allow(clippy::expect_used)]
 async fn test_create_agent_session_with_extension() {
     setup_test_env();
 
