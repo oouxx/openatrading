@@ -131,30 +131,38 @@ export function subscribeRealtimeBatch(
 
   if (isTauri) {
     let active = true
-    ;(async () => {
-      const { invoke, Channel } = await import("@tauri-apps/api/core")
-      const channel = new Channel<string>()
-      channel.onmessage = (text) => {
-        if (!active) return
-        const parsed = safeParse(text, "realtime-batch")
-        if (!parsed) return
-        if (parsed.error) {
-          onError?.(String(parsed.error))
-        } else {
-          for (let i = 0; i < symbols.length; i++) {
-            const found = matchSymbol(parsed, normalizedSymbols[i])
-            if (found) onData(symbols[i], found)
+    let timer: ReturnType<typeof setInterval> | null = null
+    const poll = async () => {
+      if (!active) return
+      try {
+        const { invoke, Channel } = await import("@tauri-apps/api/core")
+        const channel = new Channel<string>()
+        channel.onmessage = (text) => {
+          if (!active) return
+          const parsed = safeParse(text, "realtime-batch")
+          if (!parsed) return
+          if (parsed.error) {
+            onError?.(String(parsed.error))
+          } else {
+            for (let i = 0; i < symbols.length; i++) {
+              const found = matchSymbol(parsed, normalizedSymbols[i])
+              if (found) onData(symbols[i], found)
+            }
           }
         }
-      }
-      try {
         await invoke("api_realtime_stream", { symbol: code, channel })
       } catch (e: unknown) {
         if (active) onError?.(String(e))
       }
-    })()
+    }
+    // Backend `api_realtime_stream` is one-shot, so we must re-invoke on the
+    // same cadence as the single-symbol `subscribeRealtime` to keep the batch
+    // (watchlist) quotes live on desktop.
+    poll()
+    timer = setInterval(poll, TAURI_STREAM_POLL_MS)
     return () => {
       active = false
+      if (timer) clearInterval(timer)
     }
   }
 
