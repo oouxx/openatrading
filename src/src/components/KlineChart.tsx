@@ -45,12 +45,19 @@ const TRADING_SESSIONS = [
 const PRICE_GRID_HALF_SEGMENTS = 2
 // 网格/昨收线的具体颜色取品牌 token（动态读取，见数据填充 effect），
 // 样式固定为同花顺式虚线：普通网格浅色虚线、昨收黄色系虚线。
-// 时间轴只标注这几个整点标签（同花顺分时图横轴样式）
-const INTRADAY_TICK_LABELS = ["09:30", "10:30", "11:30", "13:30", "14:30", "15:00"]
-// 上述 6 个标签在 242 根会话网格中的 index（0/60/120/151/211/241）：
-// 9:30=0、10:30=60、11:30=120、13:30=151(121+30)、14:30=211(121+90)、15:00=241。
+// 时间轴只标注三个时间（同花顺分时图横轴样式）：09:30 / 11:30 / 15:00。
+// 全场分为四格，中间格界（10:30、14:00）只画刻度短线不标文字。
+// 注意不能用 11:30 与 13:00 两个独立标签：两格在 242 根网格中相邻
+// （120/121），标签会完全重叠 —— 故交界处合并为位置居中的单一标签。
+const INTRADAY_TICK_LABELS = ["09:30", "11:30", "15:00"]
+// 上述标签在 242 根会话网格中的 index（0/120.5/241）：
+// 9:30=0、午休交界=120.5（11:30=120 与 13:00=121 的中点）、15:00=241。
+// 全场分为四格：上午 09:30→10:30→11:30、下午 13:00→14:00→15:00；
+// 中间格界（10:30=60、14:00=181）只画刻度短线、不标文字
+// （INTRADAY_TICK_MARK_INDEX，见渲染层）。
 // 标签由 HTML 在固定格点绘制（不依赖 LWC tick 选择），保证像素级对齐。
-const INTRADAY_TICK_INDEX = [0, 60, 120, 151, 211, 241]
+const INTRADAY_TICK_INDEX = [0, 120.5, 241]
+const INTRADAY_TICK_MARK_INDEX = [60, 181]
 
 function isTradingTime(ts: number): boolean {
   const d = new Date(ts * 1000)
@@ -175,6 +182,27 @@ function getLimitPct(symbol: string): number {
   if (/^[46]0\d{4}$/.test(code)) return 10
   if (/^00\d{4}$/.test(code)) return 10
   return 10
+}
+
+/** Round to the exchange price tick (A 股 0.01 元，四舍五入）。 */
+const roundTick = (p: number) => Math.round(p * 100) / 100
+
+/** Actual limit-up/down prices at `preclose`（交易所把 ±限幅取整到 0.01 —
+ *  例如昨收 15.16 → 涨停 16.68 = +10.03%，并非精确 ±10%）。
+ *  分时网格顶部/底部线必须锚在取整后的涨跌停价上，否则封板时
+ *  现价线与 ±10% 网格线相差 0.004 元，视觉上“没贴到 10% 上”。 */
+function getLimitPrices(
+  preclose: number,
+  limitPct: number,
+): { up: number; down: number; upPct: number; downPct: number } {
+  const up = roundTick(preclose * (1 + limitPct / 100))
+  const down = roundTick(preclose * (1 - limitPct / 100))
+  return {
+    up,
+    down,
+    upPct: (up / preclose - 1) * 100,
+    downPct: (down / preclose - 1) * 100,
+  }
 }
 
 export interface CrosshairInfo {
@@ -724,11 +752,18 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       )
 
       // pct anchor: two endpoints spanning the full grid (±涨跌停).
-      const limitPct = getLimitPct(symbol)
-      pctAnchor.setData([
-        { time: grid[0] as Time, value: -limitPct },
-        { time: grid[grid.length - 1] as Time, value: limitPct },
-      ])
+      // 有昨收时用取整后的真实涨跌停幅度（如 +10.03%），与价格轴严格对齐。
+      {
+        const limitPct = getLimitPct(symbol)
+        const pc = precloseRef.current
+        const lim = pc && pc > 0 ? getLimitPrices(pc, limitPct) : null
+        const upPct = lim ? lim.upPct : limitPct
+        const downPct = lim ? lim.downPct : -limitPct
+        pctAnchor.setData([
+          { time: grid[0] as Time, value: downPct },
+          { time: grid[grid.length - 1] as Time, value: upPct },
+        ])
+      }
 
       // Pin the time axis to the full session once per grid build so later
       // stream ticks (which keep the same grid) don't shift it.
@@ -737,7 +772,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         axisPinnedRef.current = true
       }
 
-      // 同花顺复刻网格：以昨收为中线、±涨跌停对称等分（默认上下各 2 格 → 5 条横线）。
+      // 同花顺复刻网格：以昨收为中线、涨跌停对称等分（默认上下各 2 格 → 5 条横线）。
+      // 顶部/底部线锚在取整后的真实涨跌停价（如 16.68 = +10.03%），封板时
+      // 现价线恰好落在顶线上，而不是悬在未取整的 ±10% 下方/上方。
       // 每格位置同时画两条 priceLine：左轴（价格 series）显示价格标签，
       // 右轴（百分比 series）显示百分比标签；昨收（0%）用品牌 warning 色虚线。
       // 网格线 priceLine 挂在 series 上，宽度贯穿整个主图 pane，
@@ -745,13 +782,14 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       if (preclose && preclose > 0 && precloseAppliedRef.current !== preclose) {
         clearPriceLines()
         const limitPct = getLimitPct(symbol)
-        const prRange = preclose * (limitPct / 100)
+        const lim = getLimitPrices(preclose, limitPct)
+        const { upPct, downPct } = lim
         // 品牌配色：网格线 = tertiary 淡化，昨收线 = warning（与均价线同色系）
         const gridColor = withAlpha(chartColors.tertiary(), 0.35)
         const preCloseColor = chartColors.warning()
         const n = PRICE_GRID_HALF_SEGMENTS * 2 // 全场格数（默认 4 → 5 条线）
         for (let i = 0; i <= n; i++) {
-          const pct = -limitPct + (2 * limitPct * i) / n
+          const pct = downPct + ((upPct - downPct) * i) / n
           const isPreClose = i === n / 2
           const color = isPreClose ? preCloseColor : gridColor
           priceLinesRef.current.push(
@@ -775,12 +813,12 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         }
         chart.priceScale("left", 0).setAutoScale(false)
         chart.priceScale("left", 0).setVisibleRange({
-          from: preclose - prRange,
-          to: preclose + prRange,
+          from: lim.down,
+          to: lim.up,
         })
         chart.priceScale("right", 0).setVisibleRange({
-          from: -limitPct,
-          to: limitPct,
+          from: downPct,
+          to: upPct,
         })
         precloseAppliedRef.current = preclose
       }
@@ -913,11 +951,24 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
           VOL
         </span>
       )}
-      {/* 分时横轴：同花顺 6 个整点标签，按 242 根网格固定格点像素级定位
-          （index 0/60/120/151/211/241 → 9:30/10:30/11:30/13:30/14:30/15:00）。
+      {/* 分时横轴：同花顺四格刻度 + 3 个整点标签，按 242 根网格固定格点
+          像素级定位（标签 index 0/120.5/241 → 9:30/11:30/15:00；
+          四格中间格界 60/181 → 10:30/14:00 只画刻度短线）。
           首尾贴边（左对齐/右对齐），中间居中；LWC 时间轴已隐藏。 */}
       {period === "minute" && tickLayout && gridLen > 1 && (
         <div className="pointer-events-none absolute bottom-0 left-0 z-10 h-4 w-full">
+          {/* 四格中间格界的刻度短线（10:30 / 14:00，无文字） */}
+          {INTRADAY_TICK_MARK_INDEX.map((idx) => {
+            const plotW = Math.max(1, tickLayout.width - tickLayout.leftW - tickLayout.rightW)
+            const x = tickLayout.leftW + ((idx + 0.5) / gridLen) * plotW
+            return (
+              <span
+                key={`mark-${idx}`}
+                className="bg-tertiary/50 absolute bottom-0 h-1.5 w-px"
+                style={{ left: x }}
+              />
+            )
+          })}
           {INTRADAY_TICK_INDEX.map((idx, k) => {
             // bar 中心 x：fitContent 后 242 根等宽铺满绘图区，
             // 第 idx 根中心 = ((idx + 0.5) / gridLen) * plotW
