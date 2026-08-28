@@ -130,3 +130,7 @@ fn analyze(snapshot: &StockSnapshot) -> Result<Report>
 ## 工作流
 
 - 写完代码不要自动提交
+
+## token节约
+
+- 禁止使用playwright等浏览器自动化工具调试bug
