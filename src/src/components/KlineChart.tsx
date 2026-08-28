@@ -43,6 +43,14 @@ const TRADING_SESSIONS = [
 // 默认 2 格 → 全场 5 条横线（跌停、-半程、昨收、+半程、涨停）。
 // 对应同花顺手机端“分时坐标格数 5 格”；改成 3 即为 7 格（8 条线）。
 const PRICE_GRID_HALF_SEGMENTS = 2
+// 分时主图字号（layout.fontSize 与 y 轴留白共用，单一来源）
+const INTRADAY_FONT_SIZE = 12
+// 分时 y 轴上下留白（CSS 像素；DPR 无关 —— LWC 内部按 devicePixelRatio 位图缩放坐标）。
+// 几何下限 = 轴标签盒高的一半：盒高 = fontSize×17/12（fontSize + 上下各 2.5/12×fontSize
+// 的 padding，见官方 price-axis-renderer-options-provider），12px 字号 → 盒高 17px、半高 8.5px。
+// ceil(8.5)+1 = 10px：任何 pane 高度 / DPR 下标签盒都不顶、不裁画布边缘，且留白压到最小。
+// 用像素而不用 scaleMargins 百分比：留白恒定，不随 pane 高度漂移（同花顺式）。
+const INTRADAY_AXIS_MARGIN_PX = Math.ceil((INTRADAY_FONT_SIZE * 17) / 24) + 1
 // 网格/昨收线的具体颜色取品牌 token（动态读取，见数据填充 effect），
 // 样式固定为同花顺式虚线：普通网格浅色虚线、昨收黄色系虚线。
 // 时间轴只标注三个时间（同花顺分时图横轴样式）：09:30 / 11:30 / 15:00。
@@ -255,6 +263,12 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const gridDayRef = useRef<number>(-1)
   const axisPinnedRef = useRef(false)
   const precloseAppliedRef = useRef<number | null>(null)
+  // 分时量程锚点（数据填充 effect 写入，series 的 autoscaleInfoProvider 读取）：
+  // 左轴 = 取整后的真实涨跌停价，右轴 = 对应涨跌停百分比。量程钉死 + 像素留白。
+  const intradayRangeRef = useRef<{
+    left: { minValue: number; maxValue: number }
+    right: { minValue: number; maxValue: number }
+  } | null>(null)
 
   const clearPriceLines = useCallback(() => {
     for (const pl of priceLinesRef.current) {
@@ -285,7 +299,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         attributionLogo: false,
         background: { type: "solid", color: "transparent" } as any,
         textColor: chartColors.tertiary(),
-        fontSize: 12,
+        fontSize: INTRADAY_FONT_SIZE,
         panes: {
           enableResize: false,
           separatorColor: withAlpha(chartColors.tertiary(), 0.16),
@@ -327,16 +341,19 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       },
       rightPriceScale: {
         borderVisible: false,
-        autoScale: false,
-        // 顶部/底部留出标签空间：顶部数字上对齐、底部数字下对齐，避免被 canvas 裁掉
-        // （默认 top 0.2 / bottom 0.1，分时图此前 0.03 太小导致顶部标签被裁）
-        scaleMargins: { top: 0.08, bottom: 0.05 },
+        // 像素 margins 只在 autoScale 重算路径生效，量程由 series 的 autoscaleInfoProvider
+        // 钉死（见 pctAnchor series 创建处），必须 autoScale: true（handleScale 已禁，拖不坏）
+        autoScale: true,
+        // 百分比 scaleMargins 归零：留白全部交给 autoscaleInfoProvider 的像素 margins，
+        // 恒定不随 pane 高度漂移（旧 0.08/0.05 → 300px pane = 24px/15px 且随高度变化；
+        // 更早的 0.03 = 9px 时标签被官方钳位推到贴死画布边，视觉上像被裁）
+        scaleMargins: { top: 0, bottom: 0 },
       },
       leftPriceScale: {
         visible: true,
         borderVisible: false,
-        autoScale: false,
-        scaleMargins: { top: 0.08, bottom: 0.05 },
+        autoScale: true,
+        scaleMargins: { top: 0, bottom: 0 },
       },
     })
 
@@ -373,6 +390,28 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         // 同花顺百分比轴：正数带 “+”，0 不带（同花顺昨收处显示 0.00%）
         formatter: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`,
         minMove: 0.01,
+      },
+    })
+
+    // 分时量程 + 像素留白：价格轴（左）/百分比轴（右）量程由 intradayRangeRef 钉死为
+    // 取整后的 [跌停, 涨停]，上下各留 INTRADAY_AXIS_MARGIN_PX —— 恰好容纳一个轴标签盒，
+    // 恒定不随 pane 高度/分辨率漂移（scaleMargins 百分比做不到）。官方机制：
+    // autoscaleInfoProvider 返回的 margins 单位是像素，叠加在 scaleMargins 之上
+    // （见 price-scale.ts 的 _topMarginPx = scaleMargins.top×height + marginAbove）。
+    const INTRADAY_AUTOSCALE_MARGINS = {
+      above: INTRADAY_AXIS_MARGIN_PX,
+      below: INTRADAY_AXIS_MARGIN_PX,
+    }
+    priceSeriesRef.current.applyOptions({
+      autoscaleInfoProvider: () => {
+        const r = intradayRangeRef.current?.left
+        return r ? { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS } : null
+      },
+    })
+    pctAnchorSeriesRef.current.applyOptions({
+      autoscaleInfoProvider: () => {
+        const r = intradayRangeRef.current?.right
+        return r ? { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS } : null
       },
     })
 
@@ -811,15 +850,14 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
             })
           )
         }
-        chart.priceScale("left", 0).setAutoScale(false)
-        chart.priceScale("left", 0).setVisibleRange({
-          from: lim.down,
-          to: lim.up,
-        })
-        chart.priceScale("right", 0).setVisibleRange({
-          from: downPct,
-          to: upPct,
-        })
+        // 量程钉死改走 series 的 autoscaleInfoProvider（见 series 创建处）：
+        // - 像素 margins 只在 autoScale 重算路径生效，setVisibleRange 的 custom range
+        //   会绕过该路径（price-scale.ts: isCustomPriceRange && !isAutoScale → return），故弃用
+        // - 同一次 effect 里上方的 setData 已让 LWC 排队重算，provider 下一帧即读到本 ref
+        intradayRangeRef.current = {
+          left: { minValue: lim.down, maxValue: lim.up },
+          right: { minValue: downPct, maxValue: upPct },
+        }
         precloseAppliedRef.current = preclose
       }
     } else {
