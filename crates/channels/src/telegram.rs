@@ -169,9 +169,8 @@ impl Channel for TelegramAdapter {
             .post(&cmd_url)
             .json(&serde_json::json!({
                 "commands": [
-                    {"command": "ask", "description": "向角色提问 /ask role_name question"},
-                    {"command": "new", "description": "开始新对话"},
-                    {"command": "decision", "description": "触发每日决策"},
+                    {"command": "model", "description": "查看当前使用的模型"},
+                    {"command": "new", "description": "开始新对话"}
                 ]
             }))
             .send()
