@@ -1,4 +1,5 @@
 use crate::context::AppContext;
+use crate::social::current_model_display;
 use crate::RoleEntry;
 use ahash::AHashMap as HashMap;
 use anyhow::Result;
@@ -8,6 +9,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// 消息处理运行时——接收适配器事件，调用 Agent，回复。
+///
+/// 仅处理以下命令，其余消息忽略：
+/// - `/model` — 查看当前默认模型
+/// - `/skill:<名称> [问题]` — 选择技能并向其提问
+/// - `/new` — 清空上下文，开始新对话
 pub async fn run_adapter_handler(
     mut rx: mpsc::Receiver<MessageEvent>,
     adapters: Vec<Arc<dyn Channel>>,
@@ -34,70 +40,36 @@ pub async fn run_adapter_handler(
 
         // 处理命令
         if let Some(cmd) = text.strip_prefix('/') {
-            let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-            let command = parts[0];
-            let args = parts.get(1).copied().unwrap_or("");
+            // 归一化：`/skill:<名称>` → `skill <名称>`
+            let body: String = if let Some(rest) = cmd.strip_prefix("skill:") {
+                let rest = rest.trim();
+                if rest.is_empty() {
+                    "skill".to_string()
+                } else {
+                    format!("skill {rest}")
+                }
+            } else {
+                cmd.to_string()
+            };
+
+            let (command, args) = body.split_once(' ').unwrap_or((&body, ""));
 
             match command {
-                "ask" => {
-                    handle_ask(adapter, &event, args, &roles, &ctx).await;
+                "skill" => {
+                    handle_skill(adapter, &event, args.trim(), &roles, &ctx).await;
                 }
                 "new" => {
                     adapter.reply(&event, "已清空上下文，开始新对话").await.ok();
                 }
-                "tools" => {
-                    let tools = ctx.all_tools();
-                    if tools.is_empty() {
-                        adapter.reply(&event, "暂无可用工具").await.ok();
-                    } else {
-                        let names: Vec<_> = tools.iter().map(|t| format!("- {}", t.name)).collect();
-                        let msg = format!("可用工具:\n{}", names.join("\n"));
-                        adapter.reply(&event, &msg).await.ok();
-                    }
-                }
-                "skills" => {
-                    let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
-                    if names.is_empty() {
-                        adapter.reply(&event, "暂无可用角色").await.ok();
-                    } else {
-                        let msg = format!(
-                            "可用角色:\n{}",
-                            names
-                                .iter()
-                                .map(|n| format!("- {n}"))
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        );
-                        adapter.reply(&event, &msg).await.ok();
-                    }
-                }
                 "model" => {
-                    let msg = format!("当前模型: {:?}", "");
-                    adapter.reply(&event, &msg).await.ok();
-                }
-                "mcp" => {
-                    let tools = ctx.mcp_tools();
-                    if tools.is_empty() {
-                        adapter.reply(&event, "暂无 MCP 服务").await.ok();
-                    } else {
-                        let names: Vec<_> = tools.iter().map(|t| format!("- {t}")).collect();
-                        let msg = format!("MCP 服务:\n{}", names.join("\n"));
-                        adapter.reply(&event, &msg).await.ok();
-                    }
-                }
-                "start" | "help" => {
-                    let msg = "可用命令:\n/ask role_name 问题 — 向指定角色提问\n\
-                         /new — 开始新对话\n\
-                         /tools — 查看可用工具\n/skills — 查看可用角色\n\
-                         /model — 查看当前模型\n/mcp — 查看 MCP 服务"
-                        .to_string();
+                    let msg = format!("当前模型: {}", current_model_display());
                     adapter.reply(&event, &msg).await.ok();
                 }
                 _ => {
                     adapter
                         .reply(
                             &event,
-                            &format!("未知命令: /{command}，发送 /help 查看可用命令"),
+                            "未知命令，可用命令:\n/skill:<名称> [问题] — 选择技能提问\n/new — 开始新对话\n/model — 查看当前模型",
                         )
                         .await
                         .ok();
@@ -109,27 +81,53 @@ pub async fn run_adapter_handler(
     Ok(())
 }
 
-async fn handle_ask(
+async fn handle_skill(
     adapter: &Arc<dyn Channel>,
     event: &MessageEvent,
     args: &str,
     roles: &[RoleEntry],
     ctx: &AppContext,
 ) {
-    let Some((role_name, question)) = args.split_once(' ') else {
+    // args 为空时列出可用技能
+    if args.is_empty() {
+        let msg = if roles.is_empty() {
+            "暂无可用技能".to_string()
+        } else {
+            let names: Vec<_> = roles
+                .iter()
+                .map(|r| format!("/skill:{} — {}", r.name, r.display_name))
+                .collect();
+            format!(
+                "用法: /skill:<名称> [问题]\n\n可用技能:\n{}",
+                names.join("\n")
+            )
+        };
+        adapter.reply(event, &msg).await.ok();
+        return;
+    }
+
+    let (skill_name, question) = match args.split_once(' ') {
+        Some((name, q)) => (name.trim(), Some(q.trim())),
+        None => (args.trim(), None),
+    };
+
+    let Some(role) = roles.iter().find(|r| r.name == skill_name) else {
+        let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
         adapter
-            .reply(event, "用法: /ask role_name 你的问题")
+            .reply(
+                event,
+                &format!("未找到技能 '{skill_name}'，可用技能: {}", names.join(", ")),
+            )
             .await
             .ok();
         return;
     };
 
-    let Some(role) = roles.iter().find(|r| r.name == role_name) else {
-        let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
+    let Some(question) = question.filter(|q| !q.is_empty()) else {
         adapter
             .reply(
                 event,
-                &format!("未找到角色 '{role_name}'，可用角色: {}", names.join(", ")),
+                &format!("已选择技能「{}」，请发送问题", role.display_name),
             )
             .await
             .ok();

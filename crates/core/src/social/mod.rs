@@ -70,6 +70,23 @@ impl NotificationSender for FilteredSender {
     }
 }
 
+// ── 模型信息 ──────────────────────────────────────────
+
+/// 读取 agent 设置中的默认模型，返回 `provider/model` 形式。
+pub fn current_model_display() -> String {
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let sm = pi_coding_agent::core::settings_manager::SettingsManager::create(&cwd, None);
+    match (sm.get_default_model(), sm.get_default_provider()) {
+        (Some(model), Some(provider)) => format!("{provider}/{model}"),
+        (Some(model), None) => model.to_string(),
+        (None, Some(provider)) => format!("{provider}/(默认)"),
+        (None, None) => "未设置".to_string(),
+    }
+}
+
 // ── 适配器工厂 ──────────────────────────────────────
 
 /// 从 Social 配置构建平台适配器列表。
@@ -121,3 +138,5 @@ pub fn build_adapters(social: &Option<crate::config::SocialConfig>) -> Vec<Arc<d
 
 pub mod adapter_handler;
 pub mod telegram_bot;
+
+pub use telegram_bot::{TelegramBot, TelegramBotConfig};

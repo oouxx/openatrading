@@ -121,8 +121,39 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         openatrading_core::log::info!("mcp: enabled at http://{mcp_bind}/mcp");
     }
 
-    // ── 平台适配器 ─────────────────────────────────
-    let adapters = openatrading_core::social::build_adapters(&app_config.social);
+    // ── Telegram 交互 Bot（多轮会话 + /model 内联菜单） + 平台适配器 ──
+    // bot_polling 启用时由 TelegramBot 接管 Telegram 轮询，
+    // 同时从适配器列表移除 telegram，避免双 polling（409 冲突）。
+    let mut adapters = openatrading_core::social::build_adapters(&app_config.social);
+    if let Some(tg) = app_config.social.as_ref().and_then(|s| s.telegram.as_ref()) {
+        let tg_ready = tg.enabled
+            && tg.bot_polling
+            && tg.bot_token.as_deref().is_some_and(|t| !t.is_empty())
+            && tg.chat_id.as_deref().is_some_and(|c| !c.is_empty());
+        if tg_ready {
+            adapters.retain(|a| a.name() != "telegram");
+            let bot_ctx =
+                AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone())
+                    .await;
+            let bot = openatrading_core::social::TelegramBot::new(
+                openatrading_core::social::TelegramBotConfig {
+                    bot_token: tg.bot_token.clone().unwrap_or_default(),
+                    chat_id: tg.chat_id.clone().unwrap_or_default(),
+                    mcp_servers: mcp_servers.clone(),
+                },
+                roles.clone(),
+                bot_ctx,
+            );
+            handles.push(tokio::spawn(async move {
+                if let Err(e) = bot.start_polling().await {
+                    openatrading_core::log::error!("telegram bot error: {e}");
+                }
+            }));
+            openatrading_core::log::info!("telegram bot: enabled (interactive /model menu)");
+        }
+    }
+
+    // ── 平台适配器（Discord 等） ────────────────
     if !adapters.is_empty() {
         let adapter_ctx = Arc::new(
             AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone()).await,
