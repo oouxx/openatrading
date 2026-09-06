@@ -15,6 +15,7 @@ openatrading-api = { path = "../api" }
 openatrading-agent = { path = "../agent" }
 openatrading-extension = { path = "../extension" }
 pi-coding-agent = { workspace= true }
+pi-ai = { workspace = true }
 pi-extension-api = { workspace = true }
 arc-swap = "1"
 tokio = { workspace = true }
