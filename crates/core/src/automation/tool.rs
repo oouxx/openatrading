@@ -3,16 +3,21 @@
 //! 工具通过 [`FactoryOptions.custom_tools`](crate::llm::FactoryOptions) 注入
 //! 每个 agent 会话,执行时直接操作 [`AutomationStore`] 并触发调度器 reload。
 //!
-//! 为减少 LLM 传参错误,三个工具都提供:字段级 schema 说明、完整调用示例、
-//! `prompt_guidelines` 规则清单(注入系统提示),以及执行前的参数归一化
-//! (数字字符串→数字、单个周序号→数组、缺省字段兜底)。
+//! 为减少 LLM 传参错误,本模块做了四层防御:
+//! 1. **扁平参数**——schedule/scope 不再是嵌套对象,而是顶层标量字段
+//!    (`schedule_kind`/`hour`/`minute`/`minutes`/`days`/`cron_expr`/`scope`),
+//!    消除 tagged union 二次编码问题(嵌套写法仍兼容,自动转换);
+//! 2. **字段级 schema 说明 + 完整调用示例**(可直接照抄);
+//! 3. **prompt_guidelines 规则清单**(注入系统提示);
+//! 4. **执行前归一化**——数字字符串→数字、单个周序号→数组、缺省兜底,
+//!    且解析失败时错误信息带正确格式指引。
 
 use std::sync::Arc;
 
 use pi_extension_api::{ToolCallOutput, ToolDefinition, ToolExecuteFn};
 use serde_json::{json, Value};
 
-use super::model::{NewAutomation, Schedule};
+use super::model::{AutomationPatch, NewAutomation, Schedule, Scope, SessionId};
 use super::runner::AutomationHub;
 
 /// 构建自动化任务工具集:`create_automation` + `list_automations` + `update_automation`。
@@ -45,39 +50,38 @@ const CREATE_SCHEMA: &str = r#"{
   "properties": {
     "name": { "type": "string", "description": "简短任务名称,如「每日提交简报」" },
     "prompt": { "type": "string", "description": "每次运行执行的指令,必须自包含:写清做什么、检查什么、什么算有发现、何时停止或求助" },
-    "schedule": {
-      "description": "调度计划对象;kind 决定其余必填字段(hour/minute/minutes/days 均为数字)",
-      "oneOf": [
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "daily" }, "hour": { "type": "integer", "minimum": 0, "maximum": 23, "description": "0-23" }, "minute": { "type": "integer", "minimum": 0, "maximum": 59, "description": "0-59" } }, "required": ["kind", "hour", "minute"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "weekly" }, "days": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 7 }, "minItems": 1, "description": "ISO 周序号数组:1=周一 2=周二 … 7=周日,如 [1,3,5]" }, "hour": { "type": "integer", "minimum": 0, "maximum": 23 }, "minute": { "type": "integer", "minimum": 0, "maximum": 59 } }, "required": ["kind", "days", "hour", "minute"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "every_minutes" }, "minutes": { "type": "integer", "minimum": 1, "maximum": 1440, "description": "1-1440,建议 ≥15" } }, "required": ["kind", "minutes"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "cron" }, "expr": { "type": "string", "description": "6 字段 cron:秒 分 时 日 月 周(周 1=周日),如「工作日 18 点」= \"0 0 18 * * 2-6\"" } }, "required": ["kind", "expr"] }
-      ]
+    "schedule_kind": {
+      "type": "string",
+      "enum": ["daily", "weekly", "every_minutes", "cron"],
+      "description": "调度类型;daily=每天固定时间, weekly=每周固定时间, every_minutes=每 N 分钟, cron=自定义 6 字段 cron"
     },
-    "scope": {
-      "description": "运行范围;不确定 session_id 时用 new_thread",
-      "oneOf": [
-        { "type": "object", "additionalProperties": false, "properties": { "type": { "const": "new_thread" } }, "required": ["type"] },
-        { "type": "object", "additionalProperties": false, "properties": { "type": { "const": "existing_thread" }, "session_id": { "type": "string", "description": "要心跳唤醒的既有会话 ID" } }, "required": ["type", "session_id"] }
-      ]
-    },
-    "cwd": { "type": "string", "description": "NewThread 的工作目录(项目路径);existing_thread 可省略" },
+    "hour": { "type": "integer", "minimum": 0, "maximum": 23, "description": "daily/weekly 必填:0-23" },
+    "minute": { "type": "integer", "minimum": 0, "maximum": 59, "description": "daily/weekly 必填:0-59" },
+    "days": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 7 }, "description": "仅 weekly 必填:ISO 周序号数组 1=周一 2=周二 … 7=周日,工作日=[1,2,3,4,5]" },
+    "minutes": { "type": "integer", "minimum": 1, "maximum": 1440, "description": "仅 every_minutes 必填:间隔分钟数,建议 ≥15" },
+    "cron_expr": { "type": "string", "description": "仅 cron 必填:6 字段「秒 分 时 日 月 周」,周字段 1=周日;工作日 18 点 = \"0 0 18 * * 2-6\"" },
+    "scope": { "type": "string", "enum": ["new_thread", "existing_thread"], "description": "new_thread=每次全新运行(默认推荐);existing_thread=心跳唤醒同一会话,需提供 session_id" },
+    "session_id": { "type": "string", "description": "仅 scope=existing_thread 必填:要唤醒的会话 ID" },
+    "cwd": { "type": "string", "description": "new_thread 的工作目录(项目路径);省略则为当前目录" },
     "read_only": { "type": "boolean", "description": "只读模式:禁用 bash/edit/write 与交易决策;巡检/简报类建议 true" },
     "timeout_secs": { "type": "integer", "minimum": 1, "maximum": 86400, "description": "单次运行超时秒数,省略则默认 600" }
   },
-  "required": ["name", "prompt", "schedule", "scope"]
+  "required": ["name", "prompt", "schedule_kind", "scope"]
 }"#;
 
-const CREATE_EXAMPLES: &str = r#"完整调用示例(字段名、kind 名必须一字不差):
+const CREATE_EXAMPLES: &str = r#"完整调用示例(字段名、取值必须一字不差;数字不要加引号):
 
 ① 每天 9 点简报(最常用):
-{"name":"每日提交简报","prompt":"查看本仓库最近 24 小时的提交,按主题分组写一份简短简报;若无新提交,回复「过去 24 小时无新提交」即可。","schedule":{"kind":"daily","hour":9,"minute":0},"scope":{"type":"new_thread"},"cwd":"/path/to/repo","read_only":true}
+{"name":"每日提交简报","prompt":"查看本仓库最近 24 小时的提交,按主题分组写一份简短简报;若无新提交,回复「过去 24 小时无新提交」即可。","schedule_kind":"daily","hour":9,"minute":0,"scope":"new_thread","cwd":"/path/to/repo","read_only":true}
 
 ② 每 30 分钟盯一次 PR:
-{"name":"PR 状态巡检","prompt":"检查 PR #42 的 CI 状态与评论;有新变化才输出详情,否则不输出任何内容。","schedule":{"kind":"every_minutes","minutes":30},"scope":{"type":"new_thread"},"read_only":true}
+{"name":"PR 状态巡检","prompt":"检查 PR #42 的 CI 状态与评论;有新变化才输出详情,否则不输出任何内容。","schedule_kind":"every_minutes","minutes":30,"scope":"new_thread","read_only":true}
 
 ③ 每周一 09:00 周报:
-{"name":"每周简报","prompt":"汇总最近 7 天的提交与 PR,按工作流分组输出周报。","schedule":{"kind":"weekly","days":[1],"hour":9,"minute":0},"scope":{"type":"new_thread"},"cwd":"/path/to/repo","read_only":true}"#;
+{"name":"每周简报","prompt":"汇总最近 7 天的提交与 PR,按工作流分组输出周报。","schedule_kind":"weekly","days":[1],"hour":9,"minute":0,"scope":"new_thread","cwd":"/path/to/repo","read_only":true}
+
+④ 工作日 18 点(用 cron):
+{"name":"收盘总结","prompt":"汇总今天涨停/炸板与情绪数据,输出收盘总结。","schedule_kind":"cron","cron_expr":"0 0 18 * * 2-6","scope":"new_thread","read_only":true}"#;
 
 const LIST_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"properties":{}}"#;
 
@@ -88,116 +92,84 @@ const UPDATE_SCHEMA: &str = r#"{
     "id": { "type": "string", "description": "任务 ID(先 list_automations 查询)" },
     "name": { "type": "string", "description": "可选;只传需要修改的字段" },
     "prompt": { "type": "string", "description": "可选" },
-    "schedule": {
-      "description": "可选;结构与 create_automation 相同",
-      "oneOf": [
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "daily" }, "hour": { "type": "integer", "minimum": 0, "maximum": 23 }, "minute": { "type": "integer", "minimum": 0, "maximum": 59 } }, "required": ["kind", "hour", "minute"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "weekly" }, "days": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 7 }, "minItems": 1 }, "hour": { "type": "integer", "minimum": 0, "maximum": 23 }, "minute": { "type": "integer", "minimum": 0, "maximum": 59 } }, "required": ["kind", "days", "hour", "minute"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "every_minutes" }, "minutes": { "type": "integer", "minimum": 1, "maximum": 1440 } }, "required": ["kind", "minutes"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "cron" }, "expr": { "type": "string" } }, "required": ["kind", "expr"] }
-      ]
-    },
-    "enabled": { "type": "boolean", "description": "暂停/恢复任务" }
+    "schedule_kind": { "type": "string", "enum": ["daily", "weekly", "every_minutes", "cron"], "description": "可选;修改计划时必填,配套字段同 create_automation" },
+    "hour": { "type": "integer", "minimum": 0, "maximum": 23 },
+    "minute": { "type": "integer", "minimum": 0, "maximum": 59 },
+    "days": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 7 } },
+    "minutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+    "cron_expr": { "type": "string" },
+    "enabled": { "type": "boolean", "description": "false=暂停,true=恢复" }
   },
   "required": ["id"]
 }"#;
 
 const UPDATE_EXAMPLES: &str = r#"示例——把任务改为每天 10 点并暂停:
-{"id":"<list_automations 查到的 id>","schedule":{"kind":"daily","hour":10,"minute":0},"enabled":false}"#;
+{"id":"<list_automations 查到的 id>","schedule_kind":"daily","hour":10,"minute":0,"enabled":false}"#;
 
-/// 执行前归一化常见传参错误(降低重试):
-/// - schedule/scope 传成 JSON 字符串(二次编码)→ 解析回对象
-/// - 数字字段传成字符串("9" → 9)、浮点(9.0 → 9)
-/// - weekly.days 传单个数字 → 数组
-/// - scope 缺省 → new_thread;scope 有 session_id 缺 type → existing_thread
-/// - cwd 缺省 → "."
-fn normalize_create_args(args: Value) -> Value {
-    let mut v = args;
-    if let Some(obj) = v.as_object_mut() {
-        // 二次编码的 JSON 字符串 → 解析回对象(schedule/scope 是高频翻车点)。
-        for key in ["schedule", "scope"] {
-            if let Some(Value::String(s)) = obj.get(key) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(s) {
-                    if parsed.is_object() {
-                        obj.insert(key.to_string(), parsed);
-                    }
-                }
-            }
-        }
-    }
-    normalize_object_args(v)
-}
+// ── 参数解析(扁平 schema → 领域模型)─────────────────────────────────
 
-/// 对象级归一化:缺省兜底 + 字段类型纠偏。
-fn normalize_object_args(args: Value) -> Value {
+/// schedule_kind 的合法取值(错误信息用)。
+const SCHEDULE_KINDS: &str = "daily|weekly|every_minutes|cron";
+
+/// 兼容层:把三种历史写法归一成扁平参数再解析——
+/// 1. schedule/scope 二次编码 JSON 字符串 → 解包对象
+/// 2. 嵌套 schedule/scope 对象 → 平铺为顶层字段
+/// 3. 数字字符串 → 数字、单个周序号 → 数组
+/// 扁平 schema 的字段(若同时出现)优先于兼容写法。
+fn normalize_compat(args: Value) -> Value {
     let mut v = args;
     let Some(obj) = v.as_object_mut() else {
         return v;
     };
 
-    // scope 缺省/补 type
-    let scope_missing_type = match obj.get("scope") {
-        Some(Value::Object(m)) => !m.contains_key("type"),
-        Some(Value::Null) | None => true,
-        _ => false,
-    };
-    if scope_missing_type {
-        let new_scope = match obj.get("scope") {
-            Some(Value::Object(m)) => {
-                let mut m = m.clone();
-                m.insert("type".into(), json!("existing_thread"));
-                Value::Object(m)
-            }
-            _ => json!({"type": "new_thread"}),
-        };
-        obj.insert("scope".into(), new_scope);
-    }
-
-    // cwd 缺省
-    if !obj.contains_key("cwd") {
-        obj.insert("cwd".into(), json!("."));
-    }
-
-    // schedule 归一化
-    if let Some(schedule) = obj.get_mut("schedule") {
-        coerce_number(schedule, &["hour", "minute", "minutes"]);
-        if let Some(days) = schedule.get_mut("days") {
-            match days {
-                Value::Number(_) => {
-                    let n = days.as_i64().unwrap_or(0);
-                    *days = json!([n]);
+    // 1. 二次编码字符串解包(schedule/scope 是高频翻车点)
+    for key in ["schedule", "scope"] {
+        if let Some(Value::String(s)) = obj.get(key) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(s) {
+                if parsed.is_object() {
+                    obj.insert(key.to_string(), parsed);
                 }
-                Value::Array(items) => {
-                    for item in items.iter_mut() {
-                        if let Some(n) = item.as_str().and_then(|s| s.trim().parse::<i64>().ok()) {
-                            *item = json!(n);
-                        }
-                    }
-                }
-                _ => {}
             }
         }
     }
 
-    // timeout_secs 字符串→数字
-    if let Some(t) = obj.get_mut("timeout_secs") {
-        if let Some(s) = t.as_str() {
-            if let Ok(n) = s.trim().parse::<i64>() {
-                *t = json!(n);
+    // 2. 嵌套 schedule 对象 → 平铺
+    if let Some(schedule) = obj.get("schedule").cloned() {
+        if let Some(m) = schedule.as_object() {
+            if obj.get("schedule_kind").is_none() {
+                if let Some(kind) = m.get("kind").and_then(Value::as_str) {
+                    obj.insert("schedule_kind".into(), json!(kind));
+                }
+            }
+            for key in ["hour", "minute", "minutes", "days"] {
+                if let Some(x) = m.get(key) {
+                    obj.entry(key.to_string()).or_insert_with(|| x.clone());
+                }
+            }
+            if let Some(Value::String(expr)) = m.get("expr") {
+                obj.entry("cron_expr".to_string()).or_insert(json!(expr));
             }
         }
     }
 
-    v
-}
+    // 3. 嵌套 scope 对象 → 平铺
+    if let Some(scope) = obj.get("scope").cloned() {
+        if let Some(m) = scope.as_object() {
+            if let Some(t) = m.get("type").and_then(Value::as_str) {
+                if !matches!(obj.get("scope"), Some(Value::String(_))) {
+                    obj.insert("scope".into(), json!(t));
+                }
+            }
+            if let Some(sid) = m.get("session_id") {
+                obj.entry("session_id".to_string())
+                    .or_insert_with(|| sid.clone());
+            }
+        }
+    }
 
-/// 对象内的指定键做字符串→整数转换(忽略无法解析的值,交给校验层报错)。
-fn coerce_number(value: &mut Value, keys: &[&str]) {
-    let Some(obj) = value.as_object_mut() else {
-        return;
-    };
-    for key in keys {
-        if let Some(v) = obj.get_mut(*key) {
+    // 4. 数字字符串纠偏 + days 单值/字符串数组转数组
+    for key in ["hour", "minute", "minutes", "timeout_secs"] {
+        if let Some(v) = obj.get_mut(key) {
             if let Some(s) = v.as_str() {
                 if let Ok(n) = s.trim().parse::<i64>() {
                     *v = json!(n);
@@ -205,6 +177,171 @@ fn coerce_number(value: &mut Value, keys: &[&str]) {
             }
         }
     }
+    if let Some(days) = obj.get("days").cloned() {
+        match days {
+            Value::Number(_) => {
+                let n = days.as_i64().unwrap_or(0);
+                obj.insert("days".into(), json!([n]));
+            }
+            Value::String(s) => {
+                if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(&s) {
+                    obj.insert("days".into(), Value::Array(items));
+                } else if let Ok(n) = s.trim().parse::<i64>() {
+                    obj.insert("days".into(), json!([n]));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    v
+}
+
+/// 从扁平参数构造调度计划;缺配套字段时给出面向模型的明确指引。
+fn build_schedule(kind: &str, args: &Value) -> Result<Schedule, String> {
+    let get_i64 = |key: &str| -> Option<i64> {
+        args.get(key).and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+        })
+    };
+    let hour = || -> Result<u8, String> {
+        get_i64("hour")
+            .map(|h| u8::try_from(h).unwrap_or(255))
+            .ok_or_else(|| format!("kind={kind} 需要 hour(0-23);示例 \"hour\": 9"))
+    };
+    let minute = || -> Result<u8, String> {
+        get_i64("minute")
+            .map(|m| u8::try_from(m).unwrap_or(255))
+            .ok_or_else(|| format!("kind={kind} 需要 minute(0-59);示例 \"minute\": 0"))
+    };
+
+    match kind {
+        "daily" => Ok(Schedule::Daily {
+            hour: hour()?,
+            minute: minute()?,
+        }),
+        "weekly" => {
+            let days: Vec<u8> = match args.get("days") {
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .filter_map(|v| {
+                        v.as_i64()
+                            .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+                            .and_then(|n| u8::try_from(n).ok())
+                    })
+                    .collect(),
+                Some(v) => v
+                    .as_i64()
+                    .map(|n| vec![u8::try_from(n).unwrap_or(0)])
+                    .ok_or_else(|| {
+                        "kind=weekly 需要 days 数组(1=周一..7=周日);示例 \"days\": [1,2,3,4,5]"
+                            .to_string()
+                    })?,
+                None => {
+                    return Err(
+                        "kind=weekly 需要 days 数组(1=周一..7=周日);示例 \"days\": [1,2,3,4,5]"
+                            .into(),
+                    )
+                }
+            };
+            Ok(Schedule::Weekly {
+                days,
+                hour: hour()?,
+                minute: minute()?,
+            })
+        }
+        "every_minutes" => {
+            let minutes = get_i64("minutes").ok_or_else(|| {
+                "kind=every_minutes 需要 minutes(1-1440);示例 \"minutes\": 30".to_string()
+            })?;
+            Ok(Schedule::EveryMinutes {
+                minutes: u32::try_from(minutes).unwrap_or(0),
+            })
+        }
+        "cron" => {
+            let expr = args
+                .get("cron_expr")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "kind=cron 需要 cron_expr(6 字段「秒 分 时 日 月 周」);示例 \"cron_expr\": \"0 0 18 * * 2-6\""
+                        .to_string()
+                })?;
+            Ok(Schedule::Cron {
+                expr: expr.to_string(),
+            })
+        }
+        _ => Err(format!(
+            "未知的 schedule_kind「{kind}」;合法取值:{SCHEDULE_KINDS}"
+        )),
+    }
+}
+
+/// 从扁平参数构造 NewAutomation;缺省兜底 + 归一化都在这里完成。
+fn build_draft(args: &Value) -> Result<NewAutomation, String> {
+    let name = args
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "缺少 name".to_string())?;
+    let prompt = args
+        .get("prompt")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "缺少 prompt".to_string())?;
+    let kind = args
+        .get("schedule_kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("缺少 schedule_kind(合法取值:{SCHEDULE_KINDS})"))?;
+    let schedule = build_schedule(kind, args)?;
+    let scope = match args
+        .get("scope")
+        .and_then(Value::as_str)
+        .unwrap_or("new_thread")
+    {
+        "existing_thread" => Scope::ExistingThread {
+            session_id: SessionId(
+                args.get("session_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+        },
+        _ => Scope::NewThread,
+    };
+    let timeout_secs = args.get("timeout_secs").and_then(|v| {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+    });
+    Ok(NewAutomation {
+        name: name.to_string(),
+        prompt: prompt.to_string(),
+        schedule,
+        scope,
+        cwd: args
+            .get("cwd")
+            .and_then(Value::as_str)
+            .unwrap_or(".")
+            .to_string(),
+        read_only: args
+            .get("read_only")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        timeout_secs,
+    })
+}
+
+/// 从扁平参数构造更新补丁;没有任何 schedule 字段时 schedule 保持不变。
+fn build_patch(args: &Value) -> Result<AutomationPatch, String> {
+    let mut patch = AutomationPatch::default();
+    patch.name = args.get("name").and_then(Value::as_str).map(str::to_string);
+    patch.prompt = args
+        .get("prompt")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    patch.enabled = args.get("enabled").and_then(Value::as_bool);
+    if let Some(kind) = args.get("schedule_kind").and_then(Value::as_str) {
+        patch.schedule = Some(build_schedule(kind, args)?);
+    }
+    Ok(patch)
 }
 
 fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
@@ -212,13 +349,7 @@ fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
     let execute: ToolExecuteFn = Arc::new(move |_call_id, args, _cancel| {
         let hub = Arc::clone(&hub);
         Box::pin(async move {
-            let normalized = normalize_create_args(args);
-            let draft: NewAutomation = serde_json::from_value(normalized).map_err(|e| {
-                tool_error(format!(
-                    "参数解析失败:{e}\n正确格式见工具 description 中的完整示例;\
-                         schedule/scope 必须是对象且 kind/type 名字精确。"
-                ))
-            })?;
+            let draft = build_draft(&normalize_compat(args)).map_err(tool_error)?;
             let created = hub.store().create(&draft).map_err(tool_error)?;
             // 已启动的调度器立即热更新;未启动(桌面端)时为 no-op,由 reconcile 兜底。
             if let Err(e) = hub.reload().await {
@@ -240,12 +371,12 @@ fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         description: format!(
             "创建定时自动化任务:按计划在后台重复运行一段提示词。\
              有发现的运行进入收件箱并通知用户;无产出自动归档,不打扰。\n\n\
-             schedule 必须是对象,kind 取 daily|weekly|every_minutes|cron,各自必填字段:\n\
-             - {{kind:\"daily\", hour:0-23, minute:0-59}}\n\
-             - {{kind:\"weekly\", days:[1-7], hour, minute}}  days 为 ISO 周序号 1=周一…7=周日\n\
-             - {{kind:\"every_minutes\", minutes:1-1440}}\n\
-             - {{kind:\"cron\", expr:\"秒 分 时 日 月 周\"}}  周字段 1=周日\n\n\
-             scope:{{type:\"new_thread\"}} 每次全新运行;{{type:\"existing_thread\", session_id}} 心跳唤醒同一会话。\n\n\
+             参数全是顶层字段:schedule_kind 决定哪个字段必填——\n\
+             - daily → hour + minute\n\
+             - weekly → days + hour + minute(days 是 ISO 周序号 1=周一…7=周日)\n\
+             - every_minutes → minutes\n\
+             - cron → cron_expr(6 字段「秒 分 时 日 月 周」,周字段 1=周日)\n\
+             scope 为 \"new_thread\"(默认,推荐)或 \"existing_thread\"(需 session_id)。\n\n\
              {CREATE_EXAMPLES}"
         ),
         prompt_snippet: Some(
@@ -255,10 +386,10 @@ fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         ),
         parameters: Some(serde_json::from_str(CREATE_SCHEMA).unwrap_or_default()),
         prompt_guidelines: Some(vec![
-            "schedule 与 scope 必须传完整对象;kind/type 的取值精确为 daily|weekly|every_minutes|cron 与 new_thread|existing_thread,不要发明其他值。".into(),
-            "hour、minute、minutes、days 必须是数字或数字数组,不要传字符串。".into(),
+            "schedule_kind 精确取值: daily|weekly|every_minutes|cron;scope 取值: new_thread|existing_thread,不要发明其他值。".into(),
+            "所有数字字段(hour/minute/minutes/days)直接写数字,不要加引号。".into(),
             "weekly 的 days 是 ISO 周序号:1=周一、2=周二、…、7=周日,「工作日」=[1,2,3,4,5]。".into(),
-            "cron 的 expr 是 6 字段(秒 分 时 日 月 周),周字段 1=周日;5 字段会自动补秒,但优先写全 6 字段。".into(),
+            "cron_expr 是 6 字段(秒 分 时 日 月 周),周字段 1=周日。".into(),
             "创建前先调用 list_automations 确认没有同名的既有任务,避免重复。".into(),
             "巡检/简报/盯盘类只读任务一律 read_only=true;需要真正修改文件的任务才用 false 并向用户确认。".into(),
             "用户未指定时间时,先询问具体时间点,不要擅自猜测;timeout_secs 一般省略(默认 600 秒)。".into(),
@@ -314,18 +445,12 @@ fn update_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
     let execute: ToolExecuteFn = Arc::new(move |_call_id, args, _cancel| {
         let hub = Arc::clone(&hub);
         Box::pin(async move {
-            let body = normalize_create_args(args);
-            let id = body
+            let id = args
                 .get("id")
                 .and_then(Value::as_str)
                 .map(std::string::ToString::to_string)
                 .ok_or_else(|| tool_error("缺少 id;先用 list_automations 查询任务 ID"))?;
-            let patch = serde_json::from_value(body.clone()).map_err(|e| {
-                tool_error(format!(
-                    "参数解析失败:{e}\nupdate 只传需要修改的字段,示例:\
-                     {{\"id\":\"<任务id>\",\"schedule\":{{\"kind\":\"daily\",\"hour\":10,\"minute\":0}},\"enabled\":false}}"
-                ))
-            })?;
+            let patch = build_patch(&normalize_compat(args)).map_err(tool_error)?;
             let updated = hub
                 .store()
                 .update(&crate::automation::AutomationId(id), &patch)
@@ -347,8 +472,8 @@ fn update_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         name: "update_automation".into(),
         label: Some("更新自动化".into()),
         description: format!(
-            "更新已有定时自动化任务:只传 id 与需要修改的字段(name/prompt/schedule/enabled),\
-             未提及的字段保持不变。schedule 结构与 create_automation 相同。\n\n\
+            "更新已有定时自动化任务:只传 id 与需要修改的字段(name/prompt/schedule_kind+配套字段/enabled),\
+             未提及的字段保持不变。\n\n\
              {UPDATE_EXAMPLES}"
         ),
         prompt_snippet: None,
@@ -375,6 +500,7 @@ fn format_cron_hint(schedule: &Schedule) -> String {
 mod tests {
     use super::*;
     use crate::automation::model::Scope;
+    
 
     fn temp_hub() -> (tempfile::TempDir, Arc<AutomationHub>) {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
@@ -406,8 +532,10 @@ mod tests {
             json!({
                 "name": "工具创建的任务",
                 "prompt": "巡检依赖",
-                "schedule": {"kind": "daily", "hour": 8, "minute": 30},
-                "scope": {"type": "new_thread"},
+                "schedule_kind": "daily",
+                "hour": 8,
+                "minute": 30,
+                "scope": "new_thread",
                 "cwd": "/tmp"
             }),
         )
@@ -418,6 +546,13 @@ mod tests {
         let list = store.list().unwrap_or_else(|e| panic!("list: {e}"));
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "工具创建的任务");
+        assert_eq!(
+            list[0].schedule,
+            Schedule::Daily {
+                hour: 8,
+                minute: 30
+            }
+        );
     }
 
     #[tokio::test]
@@ -436,7 +571,14 @@ mod tests {
         // 参数合法但业务校验失败 → Err(框架转成工具错误输出)
         let result = execute(
             "test".into(),
-            json!({ "name": "", "prompt": "p", "schedule": {"kind":"daily","hour":9,"minute":0}, "scope": {"type":"new_thread"}, "cwd": "." }),
+            json!({
+                "name": "",
+                "prompt": "p",
+                "schedule_kind": "daily",
+                "hour": 9,
+                "minute": 0,
+                "scope": "new_thread"
+            }),
             None,
         )
         .await;
@@ -473,10 +615,10 @@ mod tests {
         assert!(text.contains("已有任务"), "list output contains task name");
     }
 
-    // ── 本轮:参数归一化 ────────────────────────────────────────────────
+    // ── 扁平参数与错误引导 ────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn normalize_coerces_string_numbers_and_single_day() {
+    async fn flat_args_weekly_single_day_and_string_numbers() {
         let (_dir, hub) = temp_hub();
         let tools = automation_tools(&hub);
         let create = tools
@@ -490,40 +632,15 @@ mod tests {
             json!({
                 "name": "归一化任务",
                 "prompt": "p",
-                "schedule": {"kind": "daily", "hour": "9", "minute": "0"},
-                "scope": {"type": "new_thread"},
+                "schedule_kind": "weekly",
+                "days": "1",
+                "hour": "9",
+                "minute": "0",
                 "timeout_secs": "120"
             }),
         )
         .await;
-        assert!(!out.is_error, "string numbers must be coerced");
-
-        let store = hub.store();
-        let list = store.list().unwrap_or_else(|e| panic!("list: {e}"));
-        assert_eq!(list[0].timeout_secs, Some(120));
-        assert_eq!(list[0].cwd, ".");
-    }
-
-    #[tokio::test]
-    async fn normalize_single_day_becomes_array() {
-        let (_dir, hub) = temp_hub();
-        let tools = automation_tools(&hub);
-        let create = tools
-            .iter()
-            .find(|t| t.name == "create_automation")
-            .unwrap_or_else(|| panic!("missing create_automation"));
-
-        let out = call_tool(
-            create,
-            json!({
-                "name": "周报",
-                "prompt": "p",
-                "schedule": {"kind": "weekly", "days": 1, "hour": 9, "minute": 0},
-                "scope": {"type": "new_thread"}
-            }),
-        )
-        .await;
-        assert!(!out.is_error, "single day number must coerce to array");
+        assert!(!out.is_error, "string numbers and single day must coerce");
 
         let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
         assert_eq!(
@@ -534,70 +651,99 @@ mod tests {
                 minute: 0
             }
         );
+        assert_eq!(list[0].timeout_secs, Some(120));
+        assert_eq!(list[0].cwd, ".");
     }
 
     #[tokio::test]
-    async fn parse_failure_error_contains_hint() {
+    async fn missing_required_kind_field_gives_field_hint() {
         let (_dir, hub) = temp_hub();
         let tools = automation_tools(&hub);
         let create = tools
             .iter()
             .find(|t| t.name == "create_automation")
-            .unwrap_or_else(|| panic!("missing create_automation"));
+            .unwrap_or_else(|| panic!("missing"));
         let execute = create
             .execute
             .clone()
             .unwrap_or_else(|| panic!("no execute"));
 
-        // schedule 传成字符串 → 解析失败,错误信息必须包含示例指引
+        // kind=daily 但漏了 minute → 错误信息必须指出缺哪个字段 + 示例
         let result = execute(
             "test".into(),
             json!({
                 "name": "n",
                 "prompt": "p",
-                "schedule": "每天九点",
-                "scope": {"type": "new_thread"}
+                "schedule_kind": "daily",
+                "hour": 9,
+                "scope": "new_thread"
             }),
             None,
         )
         .await;
         let err = result.err().unwrap_or_else(|| panic!("expected error"));
         assert!(
-            err.to_string().contains("schedule/scope 必须是对象"),
-            "error must guide the model to retry with correct shape, got: {err}"
+            err.to_string().contains("minute"),
+            "error must name the missing field, got: {err}"
+        );
+
+        // 未知 kind → 列出合法取值
+        let result = execute(
+            "test".into(),
+            json!({
+                "name": "n",
+                "prompt": "p",
+                "schedule_kind": "every_hour",
+                "scope": "new_thread"
+            }),
+            None,
+        )
+        .await;
+        let err = result.err().unwrap_or_else(|| panic!("expected error"));
+        assert!(
+            err.to_string().contains("daily|weekly|every_minutes|cron"),
+            "error must list valid kinds, got: {err}"
         );
     }
 
+    // ── 兼容层:嵌套/二次编码写法仍被接受 ────────────────────────────────
+
     #[tokio::test]
-    async fn tool_definitions_carry_guidelines_and_examples() {
+    async fn nested_schedule_object_still_accepted() {
         let (_dir, hub) = temp_hub();
         let tools = automation_tools(&hub);
-
         let create = tools
             .iter()
             .find(|t| t.name == "create_automation")
-            .unwrap_or_else(|| panic!("missing"));
-        // 描述含完整示例(模型可直接照抄的 JSON)
-        assert!(create.description.contains(r#""kind":"daily""#));
-        assert!(create.description.contains(r#""read_only":true"#));
-        // guidelines 注入系统提示
-        let guidelines = create.prompt_guidelines.clone().unwrap_or_default();
-        assert!(
-            guidelines.iter().any(|g| g.contains("数字")),
-            "guidelines should warn about number types"
-        );
-        assert!(create.prompt_snippet.is_some());
+            .unwrap_or_else(|| panic!("missing create_automation"));
 
-        let update = tools
-            .iter()
-            .find(|t| t.name == "update_automation")
-            .unwrap_or_else(|| panic!("missing"));
-        assert!(update.description.contains(r#""kind":"daily""#));
+        let out = call_tool(
+            create,
+            json!({
+                "name": "嵌套写法",
+                "prompt": "p",
+                "schedule": {"kind": "daily", "hour": 7, "minute": 15},
+                "scope": {"type": "new_thread"}
+            }),
+        )
+        .await;
+        assert!(
+            !out.is_error,
+            "nested tagged-object form must stay supported"
+        );
+
+        let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
+        assert_eq!(
+            list[0].schedule,
+            Schedule::Daily {
+                hour: 7,
+                minute: 15
+            }
+        );
     }
-    // ── 线上报错回归:二次编码的 JSON 字符串 ──────────────────────────────
 
     #[tokio::test]
-    async fn normalize_unwraps_double_encoded_json_string() {
+    async fn double_encoded_json_string_still_accepted() {
         let (_dir, hub) = temp_hub();
         let tools = automation_tools(&hub);
         let create = tools
@@ -607,15 +753,15 @@ mod tests {
 
         // 真实案例:schedule 被模型整体传成 JSON 字符串(内容完全正确)
         let out = call_tool(
-        create,
-        json!({
-            "name": "工作日简报",
-            "prompt": "p",
-            "schedule": "{\"days\": [1, 2, 3, 4, 5], \"hour\": 8, \"kind\": \"weekly\", \"minute\": 30}",
-            "scope": {"type": "new_thread"}
-        }),
-    )
-    .await;
+            create,
+            json!({
+                "name": "工作日简报",
+                "prompt": "p",
+                "schedule": "{\"days\": [1, 2, 3, 4, 5], \"hour\": 8, \"kind\": \"weekly\", \"minute\": 30}",
+                "scope": "new_thread"
+            }),
+        )
+        .await;
         assert!(!out.is_error, "double-encoded schedule must be unwrapped");
 
         let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
@@ -630,27 +776,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn normalize_unwraps_scope_as_json_string() {
+    async fn tool_definitions_carry_guidelines_and_examples() {
         let (_dir, hub) = temp_hub();
         let tools = automation_tools(&hub);
+
         let create = tools
             .iter()
             .find(|t| t.name == "create_automation")
-            .unwrap_or_else(|| panic!("missing create_automation"));
+            .unwrap_or_else(|| panic!("missing"));
+        // 描述含完整示例(模型可直接照抄的 JSON)
+        assert!(create.description.contains(r#""schedule_kind":"daily""#));
+        assert!(create.description.contains(r#""read_only":true"#));
+        // guidelines 注入系统提示
+        let guidelines = create.prompt_guidelines.clone().unwrap_or_default();
+        assert!(
+            guidelines.iter().any(|g| g.contains("数字")),
+            "guidelines should warn about number types"
+        );
+        assert!(create.prompt_snippet.is_some());
 
-        let out = call_tool(
-            create,
-            json!({
-                "name": "n",
-                "prompt": "p",
-                "schedule": {"kind": "daily", "hour": 9, "minute": 0},
-                "scope": "{\"type\": \"new_thread\"}"
-            }),
-        )
-        .await;
-        assert!(!out.is_error, "double-encoded scope must be unwrapped");
-
-        let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
-        assert_eq!(list[0].scope, Scope::NewThread);
+        let update = tools
+            .iter()
+            .find(|t| t.name == "update_automation")
+            .unwrap_or_else(|| panic!("missing"));
+        assert!(update.description.contains(r#""schedule_kind":"daily""#));
     }
 }
