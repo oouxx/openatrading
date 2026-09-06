@@ -1,13 +1,19 @@
+//! 内置定时任务(自 `cron` 模块合并):行情采集 + 财经快讯推送。
+//!
+//! 由 [`AutomationHub::start`] 按 `[cron]` 配置注册进同一个调度器;
+//! 用户自定义自动化的增删改不影响这些固定任务。
+
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use chrono_tz::Asia::Shanghai;
 use serde::Deserialize;
-use std::sync::Arc;
-use tokio_cron_scheduler::{Job, JobScheduler};
+use tokio_cron_scheduler::Job;
 
 use crate::api::Client as ApiClient;
 use crate::context::AppContext;
 use crate::social::NotificationSender;
+
+use super::runner::{add_job, AutomationHub};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CronConfig {
@@ -36,25 +42,13 @@ pub struct CollectSummary {
     pub snapshot_count: u32,
 }
 
-macro_rules! add_job {
-    ($scheduler:expr, $schedule:expr, $name:expr, $task:expr) => {
-        match Job::new_async_tz($schedule.as_str(), Shanghai, $task) {
-            Ok(j) => {
-                $scheduler.add(j).await?;
-            }
-            Err(e) => {
-                crate::log::error!("[cron] {}: invalid schedule '{}': {e}", $name, $schedule);
-            }
-        }
-    };
-}
-
-pub async fn start_scheduler(ctx: Arc<AppContext>, config: CronConfig) -> Result<()> {
-    if !config.enabled {
-        return Ok(());
-    }
-
-    let scheduler = JobScheduler::new().await?;
+/// 把内置任务注册进调度器(只在 gateway 进程执行一次)。
+///
+/// # Errors
+/// 调度器句柄不可用或添加 job 失败;单个表达式非法仅记日志跳过。
+pub(super) async fn register_builtin(hub: &AutomationHub, config: CronConfig) -> Result<()> {
+    let ctx = hub.ctx()?;
+    let scheduler = hub.scheduler().await?;
 
     // ── Collection ──
     {
@@ -62,12 +56,12 @@ pub async fn start_scheduler(ctx: Arc<AppContext>, config: CronConfig) -> Result
         add_job!(
             scheduler,
             config.collection_schedule,
-            "collection",
+            "builtin_collection",
             move |_uuid, _lock| {
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_collection(&ctx).await {
-                        crate::log::error!("[cron] collection error: {e}");
+                        crate::log::error!("[automation] builtin collection error: {e}");
                     }
                 })
             }
@@ -80,12 +74,12 @@ pub async fn start_scheduler(ctx: Arc<AppContext>, config: CronConfig) -> Result
         add_job!(
             scheduler,
             config.news_schedule,
-            "news_push",
+            "builtin_news_push",
             move |_uuid, _lock| {
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
-                        crate::log::error!("[cron] news_push error: {e}");
+                        crate::log::error!("[automation] builtin news_push error: {e}");
                     }
                 })
             }
@@ -99,24 +93,19 @@ pub async fn start_scheduler(ctx: Arc<AppContext>, config: CronConfig) -> Result
         add_job!(
             scheduler,
             schedule,
-            "news_push_offhours",
+            "builtin_news_push_offhours",
             move |_uuid, _lock| {
                 let ctx = ctx.clone();
                 Box::pin(async move {
                     if let Err(e) = run_news_push(&ctx.api, &*ctx.social).await {
-                        crate::log::error!("[cron] news_push error: {e}");
+                        crate::log::error!("[automation] builtin news_push error: {e}");
                     }
                 })
             }
         );
     }
 
-    scheduler.start().await?;
-    crate::log::info!("[cron] scheduler started (tz=Asia/Shanghai)");
-
-    tokio::signal::ctrl_c().await?;
-    crate::log::info!("[cron] shutting down...");
-
+    crate::log::info!("[automation] builtin jobs registered (collection + news push)");
     Ok(())
 }
 
@@ -140,7 +129,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         }
         Err(e) => {
-            crate::log::warn!("[cron] collection: fetch overview failed: {e}");
+            crate::log::warn!("[automation] builtin collection: fetch overview failed: {e}");
         }
     }
 
@@ -152,7 +141,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         }
         Err(e) => {
-            crate::log::warn!("[cron] collection: fetch limit_up failed: {e}");
+            crate::log::warn!("[automation] builtin collection: fetch limit_up failed: {e}");
         }
     }
 
@@ -164,7 +153,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
             snapshot_count += 1;
         }
         Err(e) => {
-            crate::log::warn!("[cron] collection: fetch super_stock failed: {e}");
+            crate::log::warn!("[automation] builtin collection: fetch super_stock failed: {e}");
         }
     }
 
@@ -180,7 +169,9 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
                 snapshot_count += 1;
             }
             Err(e) => {
-                crate::log::warn!("[cron] collection: fetch jiuyan field failed: {e}");
+                crate::log::warn!(
+                    "[automation] builtin collection: fetch jiuyan field failed: {e}"
+                );
             }
         }
     }
@@ -200,6 +191,7 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
 
     Ok(())
 }
+
 static LAST_PUSHED_NEWS_TIME: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static NEWS_TIME_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -213,7 +205,7 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
     if !NEWS_TIME_INITIALIZED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let now = chrono::Utc::now().timestamp();
         LAST_PUSHED_NEWS_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
-        crate::log::info!("[cron] news_push: initialized, skipping existing items");
+        crate::log::info!("[automation] builtin news_push: initialized, skipping existing items");
         return Ok(());
     }
 
@@ -281,12 +273,12 @@ pub async fn run_news_push(api: &ApiClient, social: &dyn NotificationSender) -> 
             .unwrap_or_default();
         let msg = format!("{level_tag} {time_str} {text}");
         if let Err(e) = social.notify_news(&msg).await {
-            crate::log::warn!("[cron] news_push: send failed: {e}");
+            crate::log::warn!("[automation] builtin news_push: send failed: {e}");
         }
     }
 
     crate::log::info!(
-        "[cron] news_push: pushed {} important items (A/B level)",
+        "[automation] builtin news_push: pushed {} important items (A/B level)",
         important.len()
     );
     Ok(())

@@ -76,6 +76,31 @@ impl SessionPool {
         let session_id = session_id
             .unwrap_or(&uuid::Uuid::new_v4().to_string())
             .to_string();
+        self.spawn_session(cwd, Some(session_id), None).await
+    }
+
+    /// Create a session excluding specific tools (e.g. read-only automations
+    /// excluding bash/edit/write). Returns the new session ID.
+    ///
+    /// # Errors
+    /// Session creation failed.
+    pub async fn create_session_with_tools(
+        &self,
+        cwd: &str,
+        exclude_tools: &[&str],
+    ) -> Result<String, String> {
+        let excluded: Vec<String> = exclude_tools.iter().map(|s| (*s).to_string()).collect();
+        self.spawn_session(cwd, None, Some(excluded)).await
+    }
+
+    /// Unified session creation: optional custom ID + optional tool exclusion.
+    async fn spawn_session(
+        &self,
+        cwd: &str,
+        session_id: Option<String>,
+        exclude_tools: Option<Vec<String>>,
+    ) -> Result<String, String> {
+        let session_id = session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
             .to_string();
@@ -95,6 +120,7 @@ impl SessionPool {
         let created = (self.factory.clone())(CreateSessionParams {
             cwd: cwd.to_string(),
             agent_dir,
+            exclude_tools,
             session_manager,
             session_start_event: None,
         })
@@ -138,6 +164,7 @@ impl SessionPool {
         let created = (self.factory.clone())(CreateSessionParams {
             cwd: session_manager.get_cwd().to_string(),
             agent_dir,
+            exclude_tools: None,
             session_manager,
             session_start_event: Some(SessionStartEvent {
                 reason: SessionStartReason::Resume,

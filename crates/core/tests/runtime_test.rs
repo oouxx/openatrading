@@ -60,6 +60,7 @@ async fn test_create_agent_session_with_extension() {
     let created = factory(CreateSessionParams {
         cwd: cwd.clone(),
         agent_dir,
+        exclude_tools: None,
         session_manager: new_session_manager(&cwd, "test-ext"),
         session_start_event: None,
     })
