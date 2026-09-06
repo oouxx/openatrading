@@ -597,7 +597,10 @@ async fn update_tool_changes_name_and_schedule() {
         serde_json::json!({
             "id": automation.id.0,
             "name": "新名字",
-            "schedule": {"kind": "weekly", "days": [1, 3, 5], "hour": 8, "minute": 30},
+            "schedule_kind": "weekly",
+            "days": [1, 3, 5],
+            "hour": 8,
+            "minute": 30,
         }),
         None,
     )
