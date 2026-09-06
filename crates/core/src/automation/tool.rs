@@ -226,7 +226,6 @@ fn format_cron_hint(schedule: &Schedule) -> String {
 mod tests {
     use super::super::model::Scope;
     use super::*;
-    
 
     fn temp_hub() -> (tempfile::TempDir, Arc<AutomationHub>) {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));

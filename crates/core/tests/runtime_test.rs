@@ -4,6 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
 
+use openatrading_core::automation::{automation_tools, AutomationHub, AutomationStore};
 use openatrading_core::llm::{create_factory, CreateSessionParams, FactoryOptions, SessionPool};
 use pi_coding_agent::core::session_manager::SessionManager;
 
@@ -444,4 +445,105 @@ async fn test_pool_actor_lifecycle() {
     // Sending to a closed session fails cleanly.
     let err = pool.prompt(&session_id, "hi").await.unwrap_err();
     assert!(err.contains("not found"), "err={err}");
+}
+
+/// 对话建任务的接线证明:automation 工具通过 custom_tools 注入后,
+/// 必须出现在会话的激活工具集(agent.state.tools,即 LLM 可见可调用的集合)。
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_automation_tools_are_active_in_session() {
+    setup_test_env();
+    let dir = tempfile::tempdir().unwrap();
+    let store = AutomationStore::open(&dir.path().join("data.db")).unwrap();
+    let hub = AutomationHub::new(store.into());
+
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let factory = create_factory(FactoryOptions {
+        agent_dir: agent_dir.clone(),
+        model: None,
+        tools: None,
+        custom_tools: Some(automation_tools(&hub)),
+        trading: None,
+        mcp: None,
+    });
+
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let created = factory(CreateSessionParams {
+        cwd: cwd.clone(),
+        agent_dir,
+        exclude_tools: None,
+        session_manager: new_session_manager(&cwd, "test-automation-tools"),
+        session_start_event: None,
+    })
+    .await
+    .expect("创建 agent session 失败");
+
+    // LLM 激活工具集里必须能看到三个 automation 工具。
+    let agent_state = created.session.get_state().await;
+    let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
+    for expected in ["create_automation", "list_automations", "update_automation"] {
+        assert!(
+            tool_names.contains(&expected),
+            "expected active tool {expected}, got: {tool_names:?}"
+        );
+    }
+
+    // 工具定义(JSON Schema)也已注册,prompt_snippet 可见。
+    let all = created.session.get_all_tools();
+    let create_def = all
+        .iter()
+        .find(|t| t.name == "create_automation")
+        .expect("create_automation definition missing");
+    assert!(create_def.parameters.is_some(), "parameters schema missing");
+}
+
+/// 只读模式接线证明:exclude_tools 传给工厂后,会话激活工具里
+/// 不再包含可变更内置工具与交易决策,但保留 read 与行情扩展工具。
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_read_only_exclusion_removes_mutation_tools() {
+    setup_test_env();
+    let agent_dir = pi_coding_agent::config::get_agent_dir()
+        .to_string_lossy()
+        .to_string();
+    let factory = create_factory(FactoryOptions::market_only(&agent_dir));
+
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let created = factory(CreateSessionParams {
+        cwd: cwd.clone(),
+        agent_dir,
+        exclude_tools: Some(vec![
+            "bash".to_string(),
+            "edit".to_string(),
+            "write".to_string(),
+            "submit_trading_decision".to_string(),
+        ]),
+        session_manager: new_session_manager(&cwd, "test-read-only"),
+        session_start_event: None,
+    })
+    .await
+    .expect("创建 agent session 失败");
+
+    let agent_state = created.session.get_state().await;
+    let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
+    for forbidden in ["bash", "edit", "write", "submit_trading_decision"] {
+        assert!(
+            !tool_names.contains(&forbidden),
+            "read-only session must not expose {forbidden}, got: {tool_names:?}"
+        );
+    }
+    for expected in ["read", "get_limit_up"] {
+        assert!(
+            tool_names.contains(&expected),
+            "read-only session should keep {expected}, got: {tool_names:?}"
+        );
+    }
 }
