@@ -117,6 +117,9 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
         "/api/about" => Ok(openatrading_web::web::get_about().await.0),
+        "/api/automations" => {
+            openatrading_web::automations::list_automations_data(&state.automation).await
+        }
         "/api/replay/snapshots" => openatrading_web::handlers::get_replay_snapshots_data().await,
         "/api/replay/index" => openatrading_web::handlers::get_replay_index_data().await,
         "/api/sentiment-history" => {
@@ -154,6 +157,21 @@ async fn dispatch_get_fallback(
     if let Some(rest) = path.strip_prefix("/api/telegraph/") {
         let category = rest.split('?').next().unwrap_or("");
         return openatrading_web::handlers::get_telegraph_data(state, category).await;
+    }
+    if let Some(rest) = path.strip_prefix("/api/automations/runs") {
+        let automation_id = extract_query(path, "automation_id")
+            .filter(|v| !v.is_empty())
+            .map(openatrading_core::automation::AutomationId);
+        let query = openatrading_core::automation::RunListQuery {
+            automation_id,
+            unread_only: extract_query(path, "unread").is_some_and(|v| v == "true"),
+            active_only: extract_query(path, "active").is_some_and(|v| v == "true"),
+            limit: extract_query(path, "limit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50),
+        };
+        let _ = rest;
+        return openatrading_web::automations::list_runs_data(&state.automation, &query).await;
     }
     // /api/telegraph?last_time=...&count=20 — infinite-scroll pagination.
     // The exact-match arm in dispatch_get only covers the bare path; with a
@@ -324,6 +342,9 @@ async fn dispatch_post(
             openatrading_web::mcp::add_mcp_server_data(state, config).await?;
             Ok(serde_json::Value::Null)
         }
+        "/api/automations" => {
+            openatrading_web::automations::create_automation_data(&state.automation, body).await
+        }
         "/api/agent/settings" => {
             let provider = body.get("defaultProvider").and_then(|v| v.as_str());
             let model = body.get("defaultModel").and_then(|v| v.as_str());
@@ -368,6 +389,49 @@ async fn dispatch_post(
                     .ok_or_else(|| "missing name".to_string())?
                     .to_string();
                 openatrading_web::handlers::add_watchlist_data(&code, &name).await
+            } else if let Some(rest) = path.strip_prefix("/api/automations/") {
+                let parts: Vec<&str> = rest.split('/').collect();
+                match parts[..] {
+                    [id] if body.as_object().is_some_and(|m| !m.is_empty()) => {
+                        openatrading_web::automations::update_automation_data(
+                            &state.automation,
+                            id,
+                            Some(body),
+                        )
+                        .await
+                    }
+                    [id] => {
+                        // 空 body → DELETE /api/automations/{id}
+                        openatrading_web::automations::delete_automation_data(&state.automation, id)
+                            .await
+                    }
+                    [id, "trigger"] => {
+                        openatrading_web::automations::trigger_automation_data(
+                            &state.automation,
+                            id,
+                        )
+                        .await
+                    }
+                    [run_id, "runs", "read" | "archive"] => {
+                        let parsed: i64 =
+                            run_id.parse().map_err(|_| "invalid run id".to_string())?;
+                        if parts[2] == "read" {
+                            openatrading_web::automations::mark_run_read_data(
+                                &state.automation,
+                                parsed,
+                            )
+                            .await
+                        } else {
+                            openatrading_web::automations::archive_run_data(
+                                &state.automation,
+                                parsed,
+                                body,
+                            )
+                            .await
+                        }
+                    }
+                    _ => Err(format!("unknown automations path: {path}")),
+                }
             } else if let Some(name) = path.strip_prefix("/api/skills/") {
                 // DELETE /api/skills/{name}
                 openatrading_web::handlers::delete_skill_data(name)?;
@@ -822,13 +886,22 @@ fn main() {
 
     let roles = build_roles();
 
+    // 自动化中枢:桌面端提供 store 级 CRUD/收件箱 + agent 工具;调度器在
+    // gateway 进程启动,避免 gateway 与桌面端同时运行时重复执行同一任务。
+    // 工具创建的任务先落库,由 gateway 的 reconcile(每分钟)感知并加载。
+    let automation_hub =
+        openatrading_core::automation::AutomationHub::new(gateway.automation.clone());
+
     let app_ctx = tokio::runtime::Runtime::new()
         .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
         .block_on(openatrading_core::context::AppContext::build(
-            &[],
-            gateway.memory.clone(),
-            gateway.trade.clone(),
-            Arc::new(openatrading_core::social::NoopChannel),
+            openatrading_core::context::ContextParams {
+                mcp_servers: Vec::new(),
+                memory: gateway.memory.clone(),
+                trade: gateway.trade.clone(),
+                social: Arc::new(openatrading_core::social::NoopChannel),
+                automations: Some(automation_hub.clone()),
+            },
         ));
 
     let app_state = Arc::new(AppState {
@@ -838,6 +911,7 @@ fn main() {
         cache: openatrading_web::cache::new_cache(),
         market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
         forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
+        automation: automation_hub,
     });
 
     tauri::Builder::default()

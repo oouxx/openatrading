@@ -55,6 +55,8 @@ impl FactoryOptions {
 pub struct CreateSessionParams {
     pub cwd: String,
     pub agent_dir: String,
+    /// 会话级工具排除清单(如只读自动化排除 bash/edit/write);None = 不限制。
+    pub exclude_tools: Option<Vec<String>>,
     pub session_manager: SessionManager,
     /// Session start event metadata, passed through to pi-rs so extensions
     /// receive `session_start` with the correct reason and previous session
@@ -152,8 +154,9 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
                     scoped_models: None,
                     tools,
                     no_tools: None,
-                    exclude_tools: None,
+                    exclude_tools: params.exclude_tools.clone(),
                     custom_tools,
+                    tools_options: None,
                     extension_registry: Some(ext_registry),
                     fallback_message: None,
                     session_start_event: params.session_start_event,

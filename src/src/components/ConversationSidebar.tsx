@@ -10,7 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Search, Plus, Settings, Puzzle, Users, Star, Trash2 } from "lucide-react"
+import { Search, Plus, Settings, Puzzle, Users, Star, Trash2, Timer } from "lucide-react"
 import { useAppMode } from "@/contexts/AppModeContext"
 import type { ChatSession } from "@/hooks/useChatThreads"
 
@@ -82,6 +82,16 @@ export default function ConversationSidebar({
               >
                 <Star />
                 <span>自选</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setMode(mode === "automations" ? "chat" : "automations")}
+                isActive={mode === "automations"}
+                tooltip="自动化"
+              >
+                <Timer />
+                <span>自动化</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

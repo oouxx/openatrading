@@ -26,12 +26,35 @@ pub struct AppContext {
     pub session_dir: String,
 }
 
+/// [`AppContext::build`] 的参数束(参数 >3 个时按规范合并为 struct)。
+pub struct ContextParams {
+    pub mcp_servers: Vec<McpServerConfig>,
+    pub memory: Arc<MemoryStore>,
+    pub trade: Arc<TradeManager>,
+    pub social: Arc<dyn NotificationSender>,
+    /// 自动化调度中枢;`Some` 时为每个会话注册 create/list automation 工具。
+    pub automations: Option<Arc<crate::automation::AutomationHub>>,
+}
+
 impl AppContext {
-    pub async fn build(
+    pub async fn build(params: ContextParams) -> Self {
+        let ContextParams {
+            mcp_servers,
+            memory,
+            trade,
+            social,
+            automations,
+        } = params;
+        let mcp_servers = &mcp_servers;
+        Self::build_from(mcp_servers, memory, trade, social, automations).await
+    }
+
+    async fn build_from(
         mcp_servers: &[McpServerConfig],
         memory: Arc<MemoryStore>,
         trade: Arc<TradeManager>,
         social: Arc<dyn NotificationSender>,
+        automations: Option<Arc<crate::automation::AutomationHub>>,
     ) -> Self {
         let agent_dir = pi_coding_agent::config::get_agent_dir()
             .to_string_lossy()
@@ -54,11 +77,16 @@ impl AppContext {
             .iter()
             .flat_map(|s| s.specs.iter().map(|t| t.name.clone()))
             .collect();
+        // 自动化任务工具:创建/查看定时任务(对话内建任务)。
+        let automation_tools = automations
+            .as_ref()
+            .map(crate::automation::automation_tools);
+
         let factory = create_factory(FactoryOptions {
             agent_dir,
             model: None,
             tools: None,
-            custom_tools: None,
+            custom_tools: automation_tools,
             trading: Some(trading),
             mcp: Some(discovered),
         });

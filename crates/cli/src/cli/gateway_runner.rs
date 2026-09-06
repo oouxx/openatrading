@@ -3,9 +3,9 @@
 use anyhow::Result;
 use std::sync::Arc;
 
+use openatrading_core::automation::{AutomationHub, CronConfig};
 use openatrading_core::channels::adapter::launch_channels;
-use openatrading_core::context::AppContext;
-use openatrading_core::cron::{self, CronConfig};
+use openatrading_core::context::{AppContext, ContextParams};
 use openatrading_core::social::NotificationSender;
 use openatrading_web::gateway::{Gateway, GatewayConfig};
 
@@ -50,36 +50,43 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         None => Arc::new(openatrading_core::social::NoopChannel),
     };
 
-    // ── Cron ────────────────────────────────────────
-    if do_cron {
-        let cron_cfg = app_config.cron.as_ref().map_or_else(
-            || CronConfig {
-                enabled: true,
-                collection_schedule: "0 0 18 * * 1-5".to_string(),
-                news_schedule: "0 */5 9-15 * * 1-5".to_string(),
-            },
-            |c| CronConfig {
-                enabled: c.enabled,
-                collection_schedule: c.collection_schedule.clone(),
-                news_schedule: c.news_schedule.clone(),
-            },
-        );
-
-        let cron_ctx = Arc::new(
-            AppContext::build(&cron_mcp, memory.clone(), trade.clone(), social.clone()).await,
-        );
-        handles.push(tokio::spawn(async move {
-            if let Err(e) = cron::start_scheduler(cron_ctx, cron_cfg).await {
-                openatrading_core::log::error!("cron error: {e}");
-            }
-        }));
-    }
+    // ── Automation 调度中枢(内置定时任务 + 用户自动化)──
+    let automation_hub = AutomationHub::new(gateway.automation.clone());
+    let cron_cfg = app_config.cron.as_ref().map_or_else(
+        || CronConfig {
+            enabled: true,
+            collection_schedule: "0 0 18 * * 1-5".to_string(),
+            news_schedule: "0 */5 9-15 * * 1-5".to_string(),
+        },
+        |c| CronConfig {
+            enabled: c.enabled,
+            collection_schedule: c.collection_schedule.clone(),
+            news_schedule: c.news_schedule.clone(),
+        },
+    );
+    let builtin_jobs = if do_cron && cron_cfg.enabled {
+        Some(cron_cfg.clone())
+    } else {
+        None
+    };
 
     // ── Web ─────────────────────────────────────────
     if do_web {
         let web_bind = app_config.service.web_bind.clone();
-        let web_ctx =
-            AppContext::build(&web_mcp, memory.clone(), trade.clone(), social.clone()).await;
+        let web_ctx = AppContext::build(ContextParams {
+            mcp_servers: web_mcp.clone(),
+            memory: memory.clone(),
+            trade: trade.clone(),
+            social: social.clone(),
+            automations: Some(automation_hub.clone()),
+        })
+        .await;
+        // 调度器跟随 web 进程:内置任务(若启用 cron)+ 用户自动化。
+        let web_hub = automation_hub.clone();
+        web_hub.attach(Arc::new(web_ctx.clone()));
+        if let Err(e) = web_hub.start(builtin_jobs).await {
+            openatrading_core::log::error!("automation scheduler error: {e}");
+        }
         let gh = tokio::spawn(async move {
             if let Err(e) = gateway
                 .start(
@@ -87,6 +94,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                         web_bind,
                         roles: web_roles.clone(),
                         mcp_servers: web_mcp.clone(),
+                        automation: web_hub,
                     },
                     web_ctx,
                 )
@@ -96,6 +104,31 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             }
         });
         handles.push(gh);
+    }
+
+    // ── Automation-only(cron-only 模式,web 未启用时仍需调度内置任务)──
+    if do_cron && !do_web {
+        let cron_ctx = Arc::new(
+            AppContext::build(ContextParams {
+                mcp_servers: cron_mcp.clone(),
+                memory: memory.clone(),
+                trade: trade.clone(),
+                social: social.clone(),
+                automations: Some(automation_hub.clone()),
+            })
+            .await,
+        );
+        automation_hub.attach(cron_ctx);
+        let cron_hub = automation_hub.clone();
+        handles.push(tokio::spawn(async move {
+            if let Err(e) = cron_hub.start(Some(cron_cfg)).await {
+                openatrading_core::log::error!("automation scheduler error: {e}");
+                return;
+            }
+            // JobScheduler 任务独立运行;保持 handle 存活直到 Ctrl+C(与旧 cron 服务一致)。
+            let _ = tokio::signal::ctrl_c().await;
+            openatrading_core::log::info!("automation scheduler shutting down...");
+        }));
     }
 
     // ── MCP Server ──────────────────────────────────
@@ -132,9 +165,14 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             && tg.chat_id.as_deref().is_some_and(|c| !c.is_empty());
         if tg_ready {
             adapters.retain(|a| a.name() != "telegram");
-            let bot_ctx =
-                AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone())
-                    .await;
+            let bot_ctx = AppContext::build(ContextParams {
+                mcp_servers: mcp_servers.clone(),
+                memory: memory.clone(),
+                trade: trade.clone(),
+                social: social.clone(),
+                automations: Some(automation_hub.clone()),
+            })
+            .await;
             let bot = openatrading_core::social::TelegramBot::new(
                 openatrading_core::social::TelegramBotConfig {
                     bot_token: tg.bot_token.clone().unwrap_or_default(),
@@ -156,7 +194,14 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     // ── 平台适配器（Discord 等） ────────────────
     if !adapters.is_empty() {
         let adapter_ctx = Arc::new(
-            AppContext::build(&mcp_servers, memory.clone(), trade.clone(), social.clone()).await,
+            AppContext::build(ContextParams {
+                mcp_servers: mcp_servers.clone(),
+                memory: memory.clone(),
+                trade: trade.clone(),
+                social: social.clone(),
+                automations: Some(automation_hub.clone()),
+            })
+            .await,
         );
         let (rx, adapter_refs, adapter_handles, _cancel) = launch_channels(adapters, 1024);
         handles.extend(adapter_handles);

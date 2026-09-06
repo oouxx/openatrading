@@ -15,6 +15,8 @@ use crate::{self as web, AppState, RoleEntry};
 pub struct Gateway {
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
+    /// 自动化任务存储(与 memory/trade 同一数据库)。
+    pub automation: Arc<openatrading_core::automation::AutomationStore>,
 }
 
 pub struct GatewayConfig {
@@ -22,6 +24,8 @@ pub struct GatewayConfig {
     pub web_bind: String,
     pub roles: Vec<RoleEntry>,
     pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
+    /// 自动化调度中枢(由调用方 attach + start)。
+    pub automation: Arc<openatrading_core::automation::AutomationHub>,
 }
 
 impl Gateway {
@@ -37,7 +41,14 @@ impl Gateway {
         }
         let memory = Arc::new(MemoryStore::open(db_path)?);
         let trade = Arc::new(TradeManager::open(db_path)?);
-        Ok(Self { memory, trade })
+        let automation = Arc::new(openatrading_core::automation::AutomationStore::open(
+            db_path,
+        )?);
+        Ok(Self {
+            memory,
+            trade,
+            automation,
+        })
     }
 
     /// Start the web API server.
@@ -52,6 +63,7 @@ impl Gateway {
             cache: cache::new_cache(),
             market_hub: market_stream::MarketStreamHub::new(),
             forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
+            automation: config.automation,
         });
 
         // Seed config roles first, then discover disk roles (config wins)

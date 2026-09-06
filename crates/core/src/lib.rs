@@ -1,8 +1,8 @@
 pub mod api;
+pub mod automation;
 pub mod commands;
 pub mod config;
 pub mod context;
-pub mod cron;
 pub mod init;
 pub mod llm;
 pub mod log;

@@ -56,6 +56,7 @@ fn factory_produces_session_with_goal_command() {
         let params = CreateSessionParams {
             cwd: cwd.clone(),
             agent_dir,
+            exclude_tools: None,
             session_manager: SessionManager::new(&cwd, &sessions_dir, None, false, None),
             session_start_event: None,
         };

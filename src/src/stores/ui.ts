@@ -2,7 +2,7 @@ import { create } from "zustand"
 
 const PREFIX = "openatrading-"
 
-export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles"
+export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles" | "automations"
 type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
 
 interface UiState {
@@ -26,7 +26,8 @@ function storedMode(): AppMode {
     v === "watchlist" ||
     v === "skill-editor" ||
     v === "settings" ||
-    v === "roles"
+    v === "roles" ||
+    v === "automations"
   )
     return v
   return "chat"

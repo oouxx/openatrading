@@ -1,4 +1,5 @@
 pub mod agent_ws;
+pub mod automations;
 pub mod cache;
 pub mod chat;
 pub mod chat_session;
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use axum::{
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use openatrading_core::log::Level;
@@ -34,6 +35,8 @@ pub struct AppState {
     /// Shared multiplexer for market SSE streams (kline/realtime). One upstream
     /// poll per symbol set, fanned out to every SSE connection.
     pub market_hub: Arc<market_stream::MarketStreamHub>,
+    /// 自动化调度中枢(定时任务 CRUD/触发/收件箱)。
+    pub automation: Arc<openatrading_core::automation::AutomationHub>,
     /// Tauri-only: sessions that already have a background event-forward task.
     /// Guards against creating a new subscription + forward task on every
     /// `send_prompt`, which would deliver every event N times (WebSocket path
@@ -121,6 +124,27 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/ai/sessions/:id/tool-results/:tool_call_id",
             get(chat::get_tool_result),
+        )
+        .route(
+            "/api/automations",
+            get(automations::list_automations).post(automations::create_automation),
+        )
+        .route(
+            "/api/automations/:id",
+            put(automations::update_automation).delete(automations::delete_automation),
+        )
+        .route(
+            "/api/automations/:id/trigger",
+            post(automations::trigger_automation),
+        )
+        .route("/api/automations/runs", get(automations::list_runs))
+        .route(
+            "/api/automations/runs/:id/read",
+            post(automations::mark_run_read),
+        )
+        .route(
+            "/api/automations/runs/:id/archive",
+            post(automations::archive_run),
         )
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))
