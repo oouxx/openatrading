@@ -106,11 +106,30 @@ const UPDATE_EXAMPLES: &str = r#"示例——把任务改为每天 10 点并暂�
 {"id":"<list_automations 查到的 id>","schedule":{"kind":"daily","hour":10,"minute":0},"enabled":false}"#;
 
 /// 执行前归一化常见传参错误(降低重试):
+/// - schedule/scope 传成 JSON 字符串(二次编码)→ 解析回对象
 /// - 数字字段传成字符串("9" → 9)、浮点(9.0 → 9)
 /// - weekly.days 传单个数字 → 数组
 /// - scope 缺省 → new_thread;scope 有 session_id 缺 type → existing_thread
 /// - cwd 缺省 → "."
 fn normalize_create_args(args: Value) -> Value {
+    let mut v = args;
+    if let Some(obj) = v.as_object_mut() {
+        // 二次编码的 JSON 字符串 → 解析回对象(schedule/scope 是高频翻车点)。
+        for key in ["schedule", "scope"] {
+            if let Some(Value::String(s)) = obj.get(key) {
+                if let Ok(parsed) = serde_json::from_str::<Value>(s) {
+                    if parsed.is_object() {
+                        obj.insert(key.to_string(), parsed);
+                    }
+                }
+            }
+        }
+    }
+    normalize_object_args(v)
+}
+
+/// 对象级归一化:缺省兜底 + 字段类型纠偏。
+fn normalize_object_args(args: Value) -> Value {
     let mut v = args;
     let Some(obj) = v.as_object_mut() else {
         return v;
@@ -356,7 +375,6 @@ fn format_cron_hint(schedule: &Schedule) -> String {
 mod tests {
     use super::*;
     use crate::automation::model::Scope;
-    
 
     fn temp_hub() -> (tempfile::TempDir, Arc<AutomationHub>) {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
@@ -575,5 +593,64 @@ mod tests {
             .find(|t| t.name == "update_automation")
             .unwrap_or_else(|| panic!("missing"));
         assert!(update.description.contains(r#""kind":"daily""#));
+    }
+    // ── 线上报错回归:二次编码的 JSON 字符串 ──────────────────────────────
+
+    #[tokio::test]
+    async fn normalize_unwraps_double_encoded_json_string() {
+        let (_dir, hub) = temp_hub();
+        let tools = automation_tools(&hub);
+        let create = tools
+            .iter()
+            .find(|t| t.name == "create_automation")
+            .unwrap_or_else(|| panic!("missing create_automation"));
+
+        // 真实案例:schedule 被模型整体传成 JSON 字符串(内容完全正确)
+        let out = call_tool(
+        create,
+        json!({
+            "name": "工作日简报",
+            "prompt": "p",
+            "schedule": "{\"days\": [1, 2, 3, 4, 5], \"hour\": 8, \"kind\": \"weekly\", \"minute\": 30}",
+            "scope": {"type": "new_thread"}
+        }),
+    )
+    .await;
+        assert!(!out.is_error, "double-encoded schedule must be unwrapped");
+
+        let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
+        assert_eq!(
+            list[0].schedule,
+            Schedule::Weekly {
+                days: vec![1, 2, 3, 4, 5],
+                hour: 8,
+                minute: 30
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_unwraps_scope_as_json_string() {
+        let (_dir, hub) = temp_hub();
+        let tools = automation_tools(&hub);
+        let create = tools
+            .iter()
+            .find(|t| t.name == "create_automation")
+            .unwrap_or_else(|| panic!("missing create_automation"));
+
+        let out = call_tool(
+            create,
+            json!({
+                "name": "n",
+                "prompt": "p",
+                "schedule": {"kind": "daily", "hour": 9, "minute": 0},
+                "scope": "{\"type\": \"new_thread\"}"
+            }),
+        )
+        .await;
+        assert!(!out.is_error, "double-encoded scope must be unwrapped");
+
+        let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
+        assert_eq!(list[0].scope, Scope::NewThread);
     }
 }
