@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use pi_ai::types::{ConstrainedSamplingConfig, JsonSchemaStrict};
 use pi_extension_api::{ToolCallOutput, ToolDefinition, ToolExecuteFn};
 use serde_json::{json, Value};
 
@@ -115,7 +116,7 @@ const SCHEDULE_KINDS: &str = "daily|weekly|every_minutes|cron";
 /// 1. schedule/scope 二次编码 JSON 字符串 → 解包对象
 /// 2. 嵌套 schedule/scope 对象 → 平铺为顶层字段
 /// 3. 数字字符串 → 数字、单个周序号 → 数组
-/// 扁平 schema 的字段(若同时出现)优先于兼容写法。
+///    扁平 schema 的字段(若同时出现)优先于兼容写法。
 fn normalize_compat(args: Value) -> Value {
     let mut v = args;
     let Some(obj) = v.as_object_mut() else {
@@ -331,13 +332,15 @@ fn build_draft(args: &Value) -> Result<NewAutomation, String> {
 
 /// 从扁平参数构造更新补丁;没有任何 schedule 字段时 schedule 保持不变。
 fn build_patch(args: &Value) -> Result<AutomationPatch, String> {
-    let mut patch = AutomationPatch::default();
-    patch.name = args.get("name").and_then(Value::as_str).map(str::to_string);
-    patch.prompt = args
-        .get("prompt")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    patch.enabled = args.get("enabled").and_then(Value::as_bool);
+    let mut patch = AutomationPatch {
+        name: args.get("name").and_then(Value::as_str).map(str::to_string),
+        prompt: args
+            .get("prompt")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        enabled: args.get("enabled").and_then(Value::as_bool),
+        ..AutomationPatch::default()
+    };
     if let Some(kind) = args.get("schedule_kind").and_then(Value::as_str) {
         patch.schedule = Some(build_schedule(kind, args)?);
     }
@@ -384,6 +387,12 @@ fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
              再调用 create_automation 挂成定时任务,并复述返回的计划给用户。"
                 .into(),
         ),
+        // 受限采样:provider 支持 strict 工具时,参数结构由 API 侧保证,
+        // 彻底消除二次编码/格式错误;不支持的 provider 经 Prefer 优雅降级
+        // (归一化兜底继续生效)。
+        constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
+            strict: JsonSchemaStrict::Prefer,
+        }),
         parameters: Some(serde_json::from_str(CREATE_SCHEMA).unwrap_or_default()),
         prompt_guidelines: Some(vec![
             "schedule_kind 精确取值: daily|weekly|every_minutes|cron;scope 取值: new_thread|existing_thread,不要发明其他值。".into(),
@@ -431,6 +440,9 @@ fn list_automations_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
              无需参数,传 {} 即可;在创建同名任务前先调用它去重。"
             .into(),
         prompt_snippet: None,
+        constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
+            strict: JsonSchemaStrict::Prefer,
+        }),
         parameters: Some(serde_json::from_str(LIST_SCHEMA).unwrap_or_default()),
         prompt_guidelines: Some(vec!["调用时传空对象 {} 或省略参数。".into()]),
         render_shell: None,
@@ -477,6 +489,9 @@ fn update_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
              {UPDATE_EXAMPLES}"
         ),
         prompt_snippet: None,
+        constrained_sampling: Some(ConstrainedSamplingConfig::JsonSchema {
+            strict: JsonSchemaStrict::Prefer,
+        }),
         parameters: Some(serde_json::from_str(UPDATE_SCHEMA).unwrap_or_default()),
         prompt_guidelines: Some(vec![
             "id 必填,来自 list_automations;不要凭记忆猜测。".into(),
@@ -500,7 +515,6 @@ fn format_cron_hint(schedule: &Schedule) -> String {
 mod tests {
     use super::*;
     use crate::automation::model::Scope;
-    
 
     fn temp_hub() -> (tempfile::TempDir, Arc<AutomationHub>) {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));

@@ -79,6 +79,7 @@ pub fn tool(
 ) -> Arc<DynTool> {
     Arc::new(DynTool {
         name: name.to_string(),
+        constrained_sampling: None,
         description: description.to_string(),
         prompt_snippet: None,
         prompt_guidelines: None,
