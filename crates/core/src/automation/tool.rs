@@ -29,10 +29,20 @@ pub fn automation_tools(hub: &Arc<AutomationHub>) -> Vec<ToolDefinition> {
     ]
 }
 
+/// 把结构化 JSON 包成 pi 的 text ContentBlock。
+///
+/// pi 在 agent_session.rs 中把 `ToolCallOutput.content` 逐项
+/// `serde_json::from_value::<ContentBlock>` 并 `.ok()` 丢弃不匹配项:
+/// 裸 JSON 对象(无 `type` 字段)会被静默丢成空 content,模型只会看到
+/// 空工具结果。因此必须包成 `{"type":"text","text":...}`;
+/// 结构化原文放 `details` 供 UI 使用。
 fn output(content: serde_json::Value) -> ToolCallOutput {
     ToolCallOutput {
-        content: vec![content],
-        details: None,
+        content: vec![json!({
+            "type": "text",
+            "text": serde_json::to_string(&content).unwrap_or_default()
+        })],
+        details: Some(content),
         is_error: false,
         terminate: None,
     }
@@ -421,7 +431,35 @@ mod tests {
     async fn call_tool(tool: &ToolDefinition, args: serde_json::Value) -> ToolCallOutput {
         let execute = tool.execute.clone().unwrap_or_else(|| panic!("no execute"));
         let fut = execute("test-call".into(), args, None);
-        fut.await.unwrap_or_else(|e| panic!("execute: {e}"))
+        let out = fut.await.unwrap_or_else(|e| panic!("execute: {e}"));
+        assert_tool_output_survives_pi_roundtrip(&out);
+        out
+    }
+
+    /// 取第一个 text ContentBlock 的正文(模拟模型实际读到的文本)。
+    fn first_text_block(out: &ToolCallOutput) -> String {
+        out.content
+            .first()
+            .and_then(|v| v.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or_else(|| panic!("first content block has no text: {:?}", out.content))
+            .to_string()
+    }
+
+    /// 回归防杜:pi 在 agent_session.rs 里把 content 逐项
+    /// `from_value::<ContentBlock>(v).ok()` 丢弃不匹配项。所有工具输出必须
+    /// 能无损反序列化为 ContentBlock,否则模型看到的是空结果。
+    fn assert_tool_output_survives_pi_roundtrip(out: &ToolCallOutput) {
+        use pi_ai::types::ContentBlock;
+        for (i, v) in out.content.iter().enumerate() {
+            let block: ContentBlock = serde_json::from_value(v.clone()).unwrap_or_else(|e| {
+                panic!("content[{i}] not a valid ContentBlock: {e}; value={v}")
+            });
+            assert!(
+                matches!(block, ContentBlock::Text { .. }),
+                "content[{i}] should be a text block, got {block:?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -570,13 +608,10 @@ mod tests {
         )
         .await;
         assert!(!out.is_error);
-        assert!(out
-            .content
-            .first()
-            .cloned()
-            .unwrap_or_else(|| panic!("empty content"))
-            .to_string()
-            .contains(r#""created":true"#));
+        let text = first_text_block(&out);
+        let payload: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("text block is valid JSON: {e}"));
+        assert_eq!(payload["created"], json!(true));
 
         let list = hub.store().list().unwrap_or_else(|e| panic!("list: {e}"));
         assert_eq!(list[0].cwd, "."); // cwd 缺省兜底保留(属于 API 语义)
