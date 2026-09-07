@@ -107,7 +107,8 @@ db_path = "data.db"
 
 [cron]
 enabled = true
-collection_schedule = "0 0 18 * * 1-5 *"
+collection_schedule = "0 0 18 * * 1-5"   # 交易日 18:00(6 字段:秒 分 时 日 月 周)
+news_schedule = "0 */5 9-15 * * 1-5"     # 盘中每 5 分钟
 
 [social]
 notify_channel = "telegram"
@@ -181,10 +182,30 @@ bind    = "0.0.0.0:8082"    # mcp serve / gateway 的默认 bind
 
 ## Automation
 
-Cron 调度器定时执行：
-- **数据采集** — 交易日每 30 分钟采集市场快照
-- **决策生成** — 每日盘后 LLM 分析持仓 + 市场数据，输出买卖建议
-- **新闻推送** — 盘中每 5 分钟推送重要电报，非交易时段每 30 分钟
+定时自动化复刻自 Codex 桌面端 Scheduled Tasks,**收件箱语义与其对齐,但实现与使用方式有以下差异**:
+
+| | Codex 原版 | 本项目 |
+|---|---|---|
+| 存储 | 桌面端本地任务文件 | SQLite(与 memory/trade 同库),CLI / Web / 桌面端共享同一份数据 |
+| 创建入口 | 桌面端 UI 表单 | 对话内让 agent 创建(工具 `create_automation` / `list_automations` / `update_automation`)、REST API `/api/automations`、桌面端面板 |
+| 调度器 | 桌面端进程托管 | gateway 进程内 cron(6 字段表达式 + Asia/Shanghai);桌面端跨进程的增删改由调度器每 60s 指纹比对 reconcile |
+| 执行环境 | 起新会话执行 prompt | 同为独立 agent 会话,但可控 `cwd`、`read_only`(禁用 bash/edit/write 与交易决策)、`timeout_secs`(默认 600s,上限 24h) |
+
+- **调度类型** — `daily` / `weekly` / `every_minutes` / `cron`(6 字段「秒 分 时 日 月 周」)
+- **运行范围** — `new_thread`(独立会话,跑完即弃)或 `existing_thread`(复用指定会话)
+- **收件箱** — 运行有产出 → 未读 + 通知;有产出为空 → 自动归档不打扰;失败 → 未读;运行记录保留 30 天
+
+### 对话创建示例
+
+直接跟 agent 说:「每个交易日早上 8:30 给我一份盘前新闻早报」。agent 会先调 `list_automations` 去重,再通过 `create_automation` 落库并热更新调度器。
+
+### 内置任务(随 gateway 启动,不可删除)
+
+| 任务 | 计划 | 说明 |
+|------|------|------|
+| 数据采集 | 交易日 18:00(`collection_schedule` 可配置) | 选股宝大盘/涨停/强势股快照落库 |
+| 新闻推送(盘中) | 交易日 9:00–15:59 每 5 分钟(`news_schedule` 可配置) | 财联社新增 A/B 级电报推送 |
+| 新闻推送(盘后) | 每日 16:00–次日 8:59 每 30 分钟(固定) | 同上 |
 
 ## Desktop App
 
