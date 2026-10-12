@@ -72,43 +72,8 @@ jobs:
       - name: Upload DMG to private repo
         uses: softprops/action-gh-release@v2
         with:
-          files: src-tauri/target/release/bundle/dmg/*.dmg
-      - name: Upload DMG to public tap repo & update Cask
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          TAG="${{ github.ref_name }}"
-
-          # Create release in public tap repo (idempotent, reuse if exists)
-          gh release create "$TAG" \
-            --repo oouxx/homebrew-openatrading \
-            --title "$TAG" \
-            --notes "OpenATrading $VERSION" \
-            2>/dev/null || echo "Release $TAG already exists" >&2
-
-          # Upload DMG to public tap repo
-          for f in src-tauri/target/release/bundle/dmg/*.dmg; do
-            [ -f "$f" ] || continue
-            gh release upload "$TAG" "$f" --repo oouxx/homebrew-openatrading --clobber
-          done
-
-          # Update Cask formula's version
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/oouxx/homebrew-openatrading.git /tmp/homebrew-openatrading
-          cd /tmp/homebrew-openatrading
-
-          OLD_VER=$(grep 'version "' Casks/openatrading.rb | sed 's/.*"\(.*\)".*/\1/')
-          if [ "$OLD_VER" = "$VERSION" ]; then
-            echo "Cask already at $VERSION, skipping"
-            exit 0
-          fi
-
-          sed -i '' "s/version \".*\"/version \"$VERSION\"/" Casks/openatrading.rb
-          git add -A
-          git -c user.name="github-actions" -c user.email="actions@github.com" commit -m "openatrading $VERSION"
-          git push
-          git push
+          files: target/release/bundle/dmg/*.dmg
+      # brew cask 发布会由 release-brew.yml 自动完成（跨仓库，需 TAP_GITHUB_TOKEN）
 
   build-tauri-linux-amd64:
     needs: create-release

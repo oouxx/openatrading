@@ -82,42 +82,14 @@ echo "✅ 已上传：${URL}"
 CASK="$TAP_DIR/Casks/openatrading.rb"
 [ -f "$CASK" ] || { echo "❌ cask 文件不存在：$CASK"; exit 1; }
 
-export BREW_CASK="$CASK" BREW_VERSION="$V" BREW_SHA="$SHA" BREW_ARCH="$ARCH"
-ruby <<'RUBY'
-cask = ENV.fetch("BREW_CASK")
-v    = ENV.fetch("BREW_VERSION")
-sha  = ENV.fetch("BREW_SHA")
-arch = ENV.fetch("BREW_ARCH")
-base = "https://github.com/oouxx/homebrew-openatrading/releases/download"
-src  = File.read(cask)
-
-# version
-src.sub!(/^  version "[^"]*"/, %Q{  version "#{v}"})
-# 顶层 sha256（旧格式）移除
-src.sub!(/^  sha256 :no_check\n/, "")
-# 兼容旧版（自建服务器 URL）→ GitHub Releases
-src.gsub!(%r{https://trading\.96112901\.xyz/downloads}, base)
-# 架构分支整体重写（幂等）
-sha_x64 = arch == "x64" ? %Q{"#{sha}"} : ":no_check"
-sha_arm = arch == "aarch64" ? %Q{"#{sha}"} : ":no_check"
-block = "  if Hardware::CPU.intel?\n" \
-        "    url \"#{base}/v\#{version}/openatrading_\#{version}_x64.dmg\"\n" \
-        "    sha256 #{sha_x64}\n" \
-        "  else\n" \
-        "    url \"#{base}/v\#{version}/openatrading_\#{version}_aarch64.dmg\"\n" \
-        "    sha256 #{sha_arm}\n" \
-        "  end\n"
-unless src.sub!(/  if Hardware::CPU\.intel\?\n.*?  end\n/m, block)
-  # 兼容：找不到标准分支时至少替换 URL 基底
-  src.gsub!(%r{https://trading\.96112901\.xyz/downloads}, base)
-end
-# livecheck：GitHub Releases 策略
-src.sub!(/  livecheck do\n.*?  end\n/m,
-  "  livecheck do\n    url :url\n    strategy :github_latest\n  end\n")
-
-File.write(cask, src)
-puts "✅ 已更新 #{cask}"
-RUBY
+# 单架构发布：只填本机架构的 sha，另一架构写 :no_check（多架构请用 CI/release-brew.yml）
+if [ "$ARCH" = "x64" ]; then
+  export BREW_SHA_X64="$SHA" BREW_SHA_AARCH64=""
+else
+  export BREW_SHA_X64="" BREW_SHA_AARCH64="$SHA"
+fi
+export BREW_CASK="$CASK" BREW_VERSION="$V"
+ruby scripts/update-cask.rb
 
 # ── 3. 提交 tap 并推送（RELEASE_PUSH=0 可跳过推送） ──
 cd "$TAP_DIR"
