@@ -23,7 +23,8 @@ pub struct GatewayConfig {
     /// Full bind address (`host:port`) for the web API, e.g. `0.0.0.0:8080`.
     pub web_bind: String,
     pub roles: Vec<RoleEntry>,
-    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
+    /// 外部 MCP server 配置读写入口（读写 pi-rs 的 `mcp.json`）。
+    pub mcp: openatrading_core::llm::McpConfigStore,
     /// 自动化调度中枢(由调用方 attach + start)。
     pub automation: Arc<openatrading_core::automation::AutomationHub>,
 }
@@ -59,7 +60,7 @@ impl Gateway {
         let state = Arc::new(AppState {
             ctx,
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
-            mcp_servers: std::sync::Mutex::new(config.mcp_servers),
+            mcp: config.mcp,
             cache: cache::new_cache(),
             market_hub: market_stream::MarketStreamHub::new(),
             forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),

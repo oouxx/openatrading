@@ -97,11 +97,6 @@ docker compose up -d
 LLM 模型/Provider 配置已移交 pi-rs，在 `$PI_RS_HOME/agent/settings.json` 中设置 `defaultProvider` / `defaultModel`。
 
 ```toml
-[[mcp_servers]]
-name = "akshare"
-transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
-enabled = true
-
 [service]
 db_path = "data.db"
 
@@ -136,7 +131,41 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 | 韭研公社 | 社区文章/时间线/异动 | HTTP API（需登录） |
 | 财联社 | 电报快讯（A/B 级自动推送） | HTTP API |
 | 龙虎榜 | 席位详情/个股上榜 | HTTP API |
-| MCP 工具 | akshare 等数据扩展 | Streamable HTTP |
+| MCP 工具 | akshare 等数据扩展 | MCP（stdio / HTTP / SSE），见 MCP 客户端 |
+
+## MCP 客户端
+
+连接外部 MCP server 的能力由 [pi-rs](https://github.com/oouxx/pi-rs) 提供，配置文件是标准的
+`mcpServers` 形状，放在两个位置（同名时项目级覆盖全局）：
+
+| 作用域 | 路径 | 说明 |
+| ------ | ---- | ---- |
+| 全局 | `$PI_RS_HOME/agent/mcp.json` | Web 面板「设置 → MCP 服务器」写入这里 |
+| 项目 | `{cwd}/.pi-rs/mcp.json` | 随工作目录走，界面中只读，需直接编辑 |
+
+```json
+{
+  "mcpServers": {
+    "akshare": { "url": "http://localhost:8081/mcp" },
+    "legacy":  { "type": "sse", "url": "https://example.com/sse" },
+    "fs":      { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+    "docs":    { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" } },
+    "off":     { "command": "some-server", "enabled": false }
+  }
+}
+```
+
+- 传输：省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。
+- 鉴权写 `headers`（没有单独的 auth token 字段）；`env` / `headers` 的值支持 `${VAR}` 环境变量与 `!命令` 引用。
+- `enabled: false` 保留配置但不连接；stdio 条目可加 `"cwd"` 指定子进程工作目录。
+- 配置在**每次创建会话**时读取，所以修改后新建的会话立即生效，无需重启；界面里的「测试」请用
+  `openatrading doctor`（MCP 检查会逐个连接并列出工具数）。
+
+> **迁移提示**：自本版本起 MCP 客户端只认上面两个 `mcp.json`。此前的 `config.toml`
+> `[[mcp_servers]]`、`~/.atrading/.mcp.json`、`{cwd}/.atrading/.mcp.json` 都不再读取
+> （残留的 `[[mcp_servers]]` 会触发未知字段告警）。搬迁时注意形状变化：
+> `transport = { type = "streamable-http", url = "..." }` → `{"url": "..."}`；
+> `type = "sse"` 需保留 `"type": "sse"`；`stdio` → `{"command": "...", "args": [...]}`。
 
 ## MCP Server
 
@@ -167,7 +196,7 @@ enabled = true              # gateway run 时是否一并启动
 bind    = "0.0.0.0:8082"    # mcp serve / gateway 的默认 bind
 ```
 
-> 注意：`mcp_server`（单数）配置本服务暴露的 server；`mcp_servers`（复数）是连接的远端 server 列表。
+> 注意：`mcp_server`（单数）配置本服务**对外暴露**的 server；**连接**的远端 server 列表见下一节。
 
 ### 支持的工具
 

@@ -26,32 +26,26 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
         });
     }
 
-    // 远端 MCP server 工具（失败不阻断本地工具文档生成）
-    if let Ok(client) = openatrading_core::llm::McpClient::connect(endpoint).await {
-        if let Ok(tools) = client.list_tools().await {
-            if let Some(arr) = tools.as_array() {
-                for t in arr {
-                    let name = t
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("?")
-                        .to_string();
-                    // 与本地/已收录工具同名则跳过，保证每个工具名只出现一次。
-                    if !seen.insert(name.clone()) {
-                        continue;
-                    }
-                    let desc = t
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    views.push(ToolView {
-                        name,
-                        description: desc,
-                        params: format_params(t.get("inputSchema")),
-                    });
-                }
+    // 远端 MCP server 工具（失败不阻断本地工具文档生成）。
+    // 连接与工具元数据来自 pi-rs SDK 的 MCP 客户端。
+    let spec = openatrading_core::llm::McpServerSpec {
+        name: "endpoint".to_string(),
+        transport: openatrading_core::llm::McpTransportSpec::Http {
+            url: endpoint.to_string(),
+            headers: std::collections::BTreeMap::new(),
+        },
+    };
+    if let Ok(connection) = openatrading_core::llm::McpConnection::connect_spec(&spec).await {
+        for tool in connection.tool_definitions() {
+            // 与本地/已收录工具同名则跳过，保证每个工具名只出现一次。
+            if !seen.insert(tool.name.clone()) {
+                continue;
             }
+            views.push(ToolView {
+                name: tool.name,
+                description: tool.description,
+                params: format_params(tool.parameters.as_ref()),
+            });
         }
     }
 

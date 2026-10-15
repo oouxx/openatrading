@@ -20,7 +20,6 @@ struct ChatSession {
 pub struct TelegramBotConfig {
     pub bot_token: String,
     pub chat_id: String,
-    pub mcp_servers: Vec<crate::llm::McpServerConfig>,
 }
 
 pub struct TelegramBot {

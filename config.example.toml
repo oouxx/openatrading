@@ -10,15 +10,11 @@
 # readonly = true
 # 复制为 config.toml 后修改
 
-# ── MCP 服务器 ────────────────────────────────────────────
-# akshare 数据源（Docker 环境下使用服务名，本地改为 localhost）
-[[mcp_servers]]
-name = "akshare"
-transport = { type = "streamable-http", url = "http://akshare-mcp:8081/mcp" }
-enabled = true
-
 # ── MCP Server ─────────────────────────────────────────────
-# 本服务暴露的 MCP 行情工具 server（注意与 [[mcp_servers]] 复数配置的区别）
+# 本服务**对外暴露**的 MCP 行情工具 server。
+# 需要连接的**远端** MCP server 不在这里配置：改在 pi-rs 的
+# $PI_RS_HOME/agent/mcp.json（全局）或 {cwd}/.pi-rs/mcp.json（项目级），
+# 也可在 Web 面板「设置 → MCP 服务器」里维护。
 [mcp_server]
 enabled = true
 bind    = "0.0.0.0:8082"

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::cli::app::McpTransport;
@@ -34,39 +35,49 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
     result
 }
 
+/// 连接一个 MCP 端点（`--endpoint`，streamable HTTP）。
+///
+/// 客户端实现来自 pi-rs SDK；本命令只做参数拼装与结果呈现。
+async fn connect_endpoint(endpoint: &str) -> Result<openatrading_core::llm::McpConnection> {
+    use openatrading_core::llm::{McpConnection, McpServerSpec, McpTransportSpec};
+
+    let spec = McpServerSpec {
+        name: "endpoint".to_string(),
+        transport: McpTransportSpec::Http {
+            url: endpoint.to_string(),
+            headers: BTreeMap::new(),
+        },
+    };
+    McpConnection::connect_spec(&spec)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
 pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::connect(endpoint)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let tools = client
-        .list_tools()
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let connection = connect_endpoint(endpoint).await?;
+    let tools = connection.tool_definitions();
 
-    let arr = tools
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("返回格式异常"))?;
-
-    if arr.is_empty() {
+    if tools.is_empty() {
         eprintln!("MCP 服务端无注册工具");
         return Ok(());
     }
 
-    println!("MCP 端点: {}\n已注册工具 ({}):\n", endpoint, arr.len());
-    for (i, tool) in arr.iter().enumerate() {
-        let name = tool["name"].as_str().unwrap_or("?");
-        let desc = tool["description"].as_str().unwrap_or("");
-        let input_schema = &tool["inputSchema"];
-        let props = input_schema["properties"].as_object();
-        let prop_count = props.map_or(0, serde_json::Map::len);
+    println!("MCP 端点: {}\n已注册工具 ({}):\n", endpoint, tools.len());
+    for (i, tool) in tools.iter().enumerate() {
+        let schema = tool.parameters.as_ref();
+        let prop_count = schema
+            .and_then(|s| s.get("properties"))
+            .and_then(serde_json::Value::as_object)
+            .map_or(0, serde_json::Map::len);
 
-        println!("  {}. {:<30} {}", i + 1, name, desc);
+        println!("  {}. {:<30} {}", i + 1, tool.name, tool.description);
         if prop_count > 0 {
-            let required = input_schema["required"]
-                .as_array()
+            let required = schema
+                .and_then(|s| s.get("required"))
+                .and_then(serde_json::Value::as_array)
                 .map(|r| {
                     r.iter()
-                        .filter_map(|v| v.as_str())
+                        .filter_map(serde_json::Value::as_str)
                         .collect::<Vec<_>>()
                         .join(", ")
                 })
@@ -80,26 +91,14 @@ pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
 }
 
 pub async fn cmd_mcp_status(endpoint: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::connect(endpoint)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    match client.list_tools().await {
-        Ok(tools) => {
-            let count = tools.as_array().map_or(0, std::vec::Vec::len);
-            println!("✅ MCP 服务器可达 ({endpoint})");
-            println!("   已注册工具: {count}");
-        }
-        Err(e) => {
-            anyhow::bail!("❌ MCP 服务器不可达 ({endpoint}): {e}");
-        }
-    }
+    let connection = connect_endpoint(endpoint).await?;
+    println!("✅ MCP 服务器可达 ({endpoint})");
+    println!("   已注册工具: {}", connection.tool_count());
     Ok(())
 }
 
 pub async fn cmd_mcp_call(endpoint: &str, tool_name: &str, arguments: &str) -> Result<()> {
-    let client = openatrading_core::llm::McpClient::connect(endpoint)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let connection = connect_endpoint(endpoint).await?;
 
     let args: serde_json::Value = if arguments.is_empty() || arguments == "{}" {
         serde_json::json!({})
@@ -108,11 +107,42 @@ pub async fn cmd_mcp_call(endpoint: &str, tool_name: &str, arguments: &str) -> R
             .map_err(|e| anyhow::anyhow!("参数解析失败: {e} (应为 JSON 对象)"))?
     };
 
-    let result = client
-        .call(tool_name, args)
+    let tools = connection.tool_definitions();
+    let Some(tool) = tools.iter().find(|t| t.name == tool_name) else {
+        let available: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        anyhow::bail!(
+            "服务端没有工具 {tool_name}（可用: {}）",
+            if available.is_empty() {
+                "无".to_string()
+            } else {
+                available.join(", ")
+            }
+        );
+    };
+    let Some(execute) = tool.execute.clone() else {
+        anyhow::bail!("工具 {tool_name} 没有可执行实现");
+    };
+
+    let output = execute(String::new(), args, None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    println!("{}", render_output(&output.content));
+    if output.is_error {
+        anyhow::bail!("工具 {tool_name} 返回错误");
+    }
     Ok(())
+}
+
+/// 呈现工具结果。
+///
+/// pi-rs 的结果是 `ContentBlock` 形状的 JSON 数组；只有一个 text 块时直接打印其
+/// 文本（服务端通常返回 JSON 文本），否则打印原始结构。
+fn render_output(content: &[serde_json::Value]) -> String {
+    if let [only] = content {
+        if let Some(text) = only.get("text").and_then(serde_json::Value::as_str) {
+            return text.to_string();
+        }
+    }
+    serde_json::to_string_pretty(content).unwrap_or_default()
 }
