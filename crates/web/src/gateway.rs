@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use openatrading_core::context::AppContext;
 use openatrading_core::memory::sqlite::MemoryStore;
-use openatrading_core::trade::sqlite::TradeManager;
+use openatrading_core::trade::TradeStore;
 
 use crate::cache;
 use crate::market_stream;
@@ -14,7 +14,7 @@ use crate::{self as web, AppState, RoleEntry};
 
 pub struct Gateway {
     pub memory: Arc<MemoryStore>,
-    pub trade: Arc<TradeManager>,
+    pub trade: Arc<TradeStore>,
     /// 自动化任务存储(与 memory/trade 同一数据库)。
     pub automation: Arc<openatrading_core::automation::AutomationStore>,
 }
@@ -41,7 +41,7 @@ impl Gateway {
             }
         }
         let memory = Arc::new(MemoryStore::open(db_path)?);
-        let trade = Arc::new(TradeManager::open(db_path)?);
+        let trade = Arc::new(TradeStore::open(db_path)?);
         let automation = Arc::new(openatrading_core::automation::AutomationStore::open(
             db_path,
         )?);
@@ -67,19 +67,21 @@ impl Gateway {
             automation: config.automation,
         });
 
-        // Seed config roles first, then discover disk roles (config wins)
+        // Seed config roles first, then discover disk roles (config wins).
+        //
+        // 这里**不能**擅自改 `readonly`：`config.roles` 是调用方合并后的列表，
+        // 里面既有 config.toml 声明的角色、也有磁盘角色。过去在这里统一置
+        // `readonly = true`，导致 gateway 一重启所有角色都变成不可删/不可改，
+        // 磁盘角色也被误伤。readonly 的语义由构建列表的一方决定
+        // （见 `build_roles`：config 声明的为只读，磁盘角色可编辑）。
         {
             let mut roles = state.roles.write().await;
             let disk_roles = openatrading_core::roles::list_roles_from_disk();
-            // config.toml roles have higher priority, marked readonly
             for role in config.roles {
                 if !roles.iter().any(|r| r.name == role.name) {
-                    let mut r = role;
-                    r.readonly = true;
-                    roles.push(r);
+                    roles.push(role);
                 }
             }
-            // disk roles are editable
             for disk_role in disk_roles {
                 if !roles.iter().any(|r| r.name == disk_role.name) {
                     roles.push(disk_role);
