@@ -1,84 +1,69 @@
 # OpenATrading
 
-AI-native A 股短线交易决策工作台。集成实时行情、多源舆情、AI 决策引擎，支持 CLI / Web / TUI / 桌面端四种交互方式。
+AI-native A 股短线交易决策工作台。聚合实时行情与多源舆情，在对话中由 agent 完成分析与交易决策，提供 CLI / Web 面板 / 桌面端三种交互方式。
 
 ## Features
 
-- **多源数据聚合** — 选股宝（涨停跌停/板块异动/大盘异动）、韭研公社（社区情绪/时间线）、财联社电报、龙虎榜
-- **AI 驱动决策** — 接入 LLM，结合持仓分析、市场情绪、策略技能，生成每日买卖建议
-- **定时自动化** — 内置 cron 调度器：盘中数据采集、盘后决策、新闻推送
-- **灵活部署** — CLI 直接运行、Web 面板、TUI 终端、Tauri 桌面端、Docker 容器化
-- **MCP 协议** — 支持标准 MCP 工具调用，扩展数据源和分析能力
-- **多角色策略** — 支持同时运行多个交易角色，每个角色独立策略和仓位管理
-- **多平台通知** — Telegram / Discord / Slack / Lark 推送
+- **多源数据聚合** — 选股宝（涨停跌停/板块异动/大盘异动/K 线/分时）、韭研公社（社区情绪/时间线/异动）、财联社电报、东财龙虎榜、新浪集合竞价
+- **AI 决策** — 对话内结合行情、持仓与策略技能生成交易决策，结构化落库
+- **定时自动化** — 内置 cron 调度器：盘中数据采集、财联社 A/B 级电报推送
+- **多平台通知** — Telegram / Discord / Slack / Lark 单向推送（双向对话仅 Telegram / Discord）
+- **MCP 双向** — 作为客户端连接外部数据源，也作为 server 对外暴露行情工具
 
 ## Architecture
 
 ```
-openatrading
-├── crates/
-│   ├── core/        # 核心业务逻辑：API 客户端、LLM、cron、角色、技能
-│   ├── cli/         # CLI 二进制入口，gateway 生命周期管理
-│   ├── web/         # Axum Web 服务，提供 REST API
-│   ├── tui/         # 终端 TUI 界面（pi-tui）
-│   ├── api/         # 第三方 API 封装（选股宝、韭研公社、财联社等）
-│   ├── channels/    # 通知渠道抽象（Telegram / Discord / Slack / Lark）
-│   ├── agent/       # Agent 相关逻辑
-│   ├── provider/    # 数据 provider
-│   └── channels/    # 通知渠道实现
-├── src/             # Vue 3 + Vite 前端
-├── src-tauri/       # Tauri 桌面端
-├── opendesign/      # 原型设计稿
-└── Dockerfile*      # 容器化部署
+crates/
+├── api/         第三方数据源客户端（选股宝 / 韭研公社 / 财联社 / 东财 / 新浪）
+├── core/        核心业务：配置、交易、记忆、角色、技能、自动化
+├── extension/   行情与交易工具扩展（注册进 pi-rs 扩展系统）
+├── agent/       pi-rs 会话生命周期与事件协议
+├── web/         Axum REST + SSE + WebSocket
+├── channels/    通知渠道（Telegram / Discord / Slack / Lark）
+└── cli/         CLI 入口与 gateway 生命周期
+src/            React 19 + Vite 前端
+src-tauri/      Tauri 桌面端
 ```
 
-所有交付方式（CLI / Web / TUI / Desktop）都是对 `core` 的薄封装层。
+所有交付方式（CLI / Web / Desktop）都是对 `core` 的薄封装层。LLM 调用、会话管理、MCP 客户端、技能加载等能力复用 [pi-rs](https://github.com/oouxx/pi-rs)。
 
 ## Quick Start
 
 ### 初始化
 
 ```bash
-openatrading init              # 创建 ~/.atrading/ 和默认配置
+openatrading init      # 创建 ~/.atrading/ 与默认配置
 ```
+
+LLM 配置不在 `config.toml`：在 `~/.atrading/agent/settings.json` 设置 `defaultProvider` / `defaultModel`，在 `auth.json` 填 API Key。
 
 ### CLI
 
 ```bash
-openatrading                   # 全量数据 → Markdown
-openatrading --json            # JSON 输出
-openatrading --data limit_up,overview   # 指定数据源
-openatrading --ai              # 全量 + AI 分析
-openatrading decision          # 手动触发决策
-openatrading decision --dry-run --role zarili   # 指定角色试运行
-openatrading doctor            # 诊断服务状态
-openatrading skills list       # 列出可安装技能
-openatrading mcp list          # 列出 MCP 工具
-openatrading mcp serve         # 启动 MCP 行情工具服务器
-openatrading tools doc         # 生成工具参考文档
-openatrading trade add --role zarili --symbol 000001 --price 10.5 --shares 100
-openatrading trade list        # 持仓列表
-openatrading trade close --id 1 --price 11.0
+openatrading doctor                  # 诊断环境与服务状态
+openatrading gateway run             # 前台启动 Web + Cron + MCP
+openatrading gateway run --web-only  # 仅 Web
+openatrading gateway run --cron-only # 仅定时任务
+openatrading gateway run --no-mcp    # 不启动 MCP server
+openatrading gateway install         # 安装 systemd 服务
+openatrading skills list             # 已安装技能
+openatrading skills install --name my-skill ./SKILL.md
+openatrading mcp list                # 列出 MCP 端点上的工具
+openatrading mcp serve               # 对外暴露行情工具（MCP server）
+openatrading tools doc               # 生成工具参考文档
+openatrading config show             # 查看配置
+openatrading channels list           # 通知渠道编译状态
+openatrading update                  # 从 GitHub Releases 自更新
 ```
+
+交易决策不走 CLI：在 Web / 桌面端的对话里由 agent 分析后调用 `submit_trading_decision` 落库。
 
 ### Web 面板
 
-```bash
-openatrading gateway run          # 启动 Web + Cron + Telegram Bot（前台）
-openatrading gateway run --web-only   # 仅启动 Web
-openatrading gateway run --cron-only  # 仅启动定时任务
-```
-
-Web 服务默认监听 `:8080`，配套 Vue 3 前端：
+`openatrading gateway run` 后访问 `:8080`。前端开发：
 
 ```bash
 cd src && bun install && bun run dev
-```
-
-### TUI 终端
-
-```bash
-openatrading chat              # AI 对话界面
 ```
 
 ### Docker
@@ -93,82 +78,70 @@ docker compose up -d
 
 ## Configuration
 
-配置文件位于 `~/.atrading/config.toml`（可通过 `$OPENATRADING_HOME` 环境变量自定义路径）。
-LLM 模型/Provider 配置已移交 pi-rs，在 `~/.atrading/agent/settings.json` 中设置 `defaultProvider` / `defaultModel`。
-
-### 目录布局（单一品牌根）
-
-`~/.atrading` 是唯一的品牌根：openatrading 自己的东西放根下，pi-rs（内嵌的 agent SDK）
-的家也**嵌在根内**的 `agent/` 子目录，因此用户只需要记一个目录。
+配置位于 `~/.atrading/config.toml`（`$OPENATRADING_HOME` 可整体改根目录）。`~/.atrading` 是唯一品牌根，pi-rs 的 agent 目录内嵌为 `agent/`，用户只需记一个目录：
 
 ```
-~/.atrading/                 ← 品牌根（$OPENATRADING_HOME 可整体改路径）
-├── config.toml              openatrading 配置
-├── data.db                  记忆 / 交易 / 自动化
+~/.atrading/
+├── config.toml      openatrading 配置
+├── data.db          记忆 / 交易 / 自动化
 ├── roles/  watchlist.json  .env
-└── agent/                   ← pi-rs 的 agent 目录（PI_RS_HOME 指向品牌根）
-    ├── settings.json        LLM provider / model
-    ├── auth.json            API Key
-    ├── sessions/            会话记录
-    ├── skills/  prompts/  extensions/  bin/
-    └── mcp.json             外部 MCP server 列表
+└── agent/           pi-rs 的家
+    ├── settings.json  auth.json      LLM provider / model / API Key
+    ├── sessions/  skills/  mcp.json  会话 / 技能 / 外部 MCP server
 ```
-
-进程启动时会把 `PI_RS_HOME` 设为品牌根（pi-rs 内部有大量路径是直接读全局解析的，
-绑一次才能保证"我们传的目录"与"pi-rs 内部解析的目录"同源）。若你已经用
-`PI_RS_HOME` / `PI_CODING_AGENT_DIR` 显式指定过 pi-rs 目录，则以你的设置为准，不会被覆盖。
-
-> 绑定只作用于 openatrading 自己的进程，不会导出到你的 shell：同一台机器上独立安装的
-> pi-rs 应用继续用 `~/.pi-rs`，两个应用各持一份 agent 目录，会话 / 登录 / 技能互不影响。
-> 因此 openatrading 的 `~/.atrading/agent/` 初始是空的 —— 需要在这里单独配置一次
-> provider/model 与 API Key（想省这一步可以把两者的 `auth.json` 做成符号链接，但那样凭证就共享了）。
 
 ```toml
 [service]
-db_path = "data.db"
+db_path  = "data.db"
+web_bind = "0.0.0.0:8080"
 
 [cron]
-enabled = true
-collection_schedule = "0 0 18 * * 1-5"   # 交易日 18:00(6 字段:秒 分 时 日 月 周)
-news_schedule = "0 */5 9-15 * * 1-5"     # 盘中每 5 分钟
+enabled             = true
+collection_schedule = "0 */30 9-15 * * 1-5"   # 6 字段：秒 分 时 日 月 周
+news_schedule       = "0 */5 9-15 * * 1-5"
 
 [social]
-notify_channel = "telegram"
+notify_channel = "telegram"    # telegram / discord / slack / lark
+
 [social.telegram]
-enabled = true
+enabled   = true
 bot_token = "${TELEGRAM_BOT_TOKEN}"
-chat_id = "${TELEGRAM_CHAT_ID}"
+chat_id   = "${TELEGRAM_CHAT_ID}"
+
+[mcp_server]                   # 本服务对外暴露的 MCP server
+enabled = true
+bind    = "0.0.0.0:8082"
 ```
 
-环境变量（也支持从 `~/.atrading/.env` 加载）：
+环境变量按 `~/.atrading/.env` → `{cwd}/.atrading/.env` 顺序加载（后者覆盖前者），`config.toml` 中用 `${VAR}` 引用：
 
-| 变量 | 必需 | 用途 |
-|------|------|------|
-| `LLM_API_KEY` | AI 功能必需 | LLM API key |
-| `TELEGRAM_BOT_TOKEN` | Telegram 通知 | Bot token |
-| `TELEGRAM_CHAT_ID` | Telegram 通知 | 聊天 ID |
-| `JIUYAN_PHONE` | 韭研公社 | 登录手机号 |
-| `OPENATRADING_HOME` | 可选 | 自定义配置目录 |
+| 变量 | 用途 |
+|------|------|
+| `OPENATRADING_HOME` | 自定义品牌根目录 |
+| `JIUYAN_PHONE` / `JIUYAN_PASSWORD` | 韭研公社登录 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram |
+| `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` | Discord |
+| `SLACK_BOT_TOKEN` / `SLACK_CHANNEL` | Slack |
+| `LARK_APP_ID` / `LARK_APP_SECRET` / `LARK_RECEIVE_ID` | Lark |
 
 ## Data Sources
 
-| 数据源 | 内容 | 访问方式 |
-|--------|------|---------|
-| 选股宝 | 涨停/跌停/板块异动/大盘异动/市场趋势 | HTTP API |
-| 韭研公社 | 社区文章/时间线/异动 | HTTP API（需登录） |
-| 财联社 | 电报快讯（A/B 级自动推送） | HTTP API |
-| 龙虎榜 | 席位详情/个股上榜 | HTTP API |
-| MCP 工具 | akshare 等数据扩展 | MCP（stdio / HTTP / SSE），见 MCP 客户端 |
+| 数据源 | 内容 |
+|--------|------|
+| 选股宝 | 涨停 / 跌停 / 强势股、市场概览、昨日涨停、大盘异动、板块异动、实时行情、K 线、分时走势、个股所属板块 |
+| 韭研公社 | 异动、时间线、社区文章（需登录） |
+| 财联社 | 电报快讯（A/B 级自动推送） |
+| 东财龙虎榜 | 席位详情、个股席位、合并、活跃营业部、研报 |
+| 新浪 | 集合竞价快照 |
 
-## MCP 客户端
+## MCP
 
-连接外部 MCP server 的能力由 [pi-rs](https://github.com/oouxx/pi-rs) 提供，配置文件是标准的
-`mcpServers` 形状，放在两个位置（同名时项目级覆盖全局）：
+**客户端** — 连接外部 MCP server 的能力由 pi-rs 提供，配置为标准的 `mcpServers` 形状，同名时项目级覆盖全局：
 
-| 作用域 | 路径 | 说明 |
-| ------ | ---- | ---- |
-| 全局 | `~/.atrading/agent/mcp.json` | Web 面板「设置 → MCP 服务器」写入这里 |
-| 项目 | `{cwd}/.pi-rs/mcp.json` | 随工作目录走，界面中只读，需直接编辑 |
+| 作用域 | 路径 |
+|--------|------|
+| 全局 | `~/.atrading/agent/mcp.json`（Web 面板「设置 → MCP 服务器」写入） |
+| 项目 | `{cwd}/.pi-rs/mcp.json`（界面中只读，需直接编辑） |
 
 ```json
 {
@@ -176,114 +149,51 @@ chat_id = "${TELEGRAM_CHAT_ID}"
     "akshare": { "url": "http://localhost:8081/mcp" },
     "legacy":  { "type": "sse", "url": "https://example.com/sse" },
     "fs":      { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
-    "docs":    { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" } },
     "off":     { "command": "some-server", "enabled": false }
   }
 }
 ```
 
-- 传输：省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。
-- 鉴权写 `headers`（没有单独的 auth token 字段）；`env` / `headers` 的值支持 `${VAR}` 环境变量与 `!命令` 引用。
-- `enabled: false` 保留配置但不连接；stdio 条目可加 `"cwd"` 指定子进程工作目录。
-- 配置在**每次创建会话**时读取，所以修改后新建的会话立即生效，无需重启；界面里的「测试」请用
-  `openatrading doctor`（MCP 检查会逐个连接并列出工具数）。
+省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。鉴权写 `headers`（值支持 `${VAR}` 与 `!命令`），`enabled: false` 保留配置但不连接。配置在每次创建会话时读取，改动后新建会话即生效。
 
-> **迁移提示**：自本版本起 MCP 客户端只认上面两个 `mcp.json`。此前的 `config.toml`
-> `[[mcp_servers]]`、`~/.atrading/.mcp.json`、`{cwd}/.atrading/.mcp.json` 都不再读取
-> （残留的 `[[mcp_servers]]` 会触发未知字段告警）。搬迁时注意形状变化：
-> `transport = { type = "streamable-http", url = "..." }` → `{"url": "..."}`；
-> `type = "sse"` 需保留 `"type": "sse"`；`stdio` → `{"command": "...", "args": [...]}`。
-
-## MCP Server
-
-把 17 个公开行情工具按 [Model Context Protocol](https://modelcontextprotocol.io/) 标准对外暴露，可直接被 Claude Desktop、Cursor、远程 agent 等 MCP 客户端消费。
-
-### 独立运行
+**Server** — 把 22 个行情工具按 MCP 标准对外暴露，可被 Claude Desktop / Cursor 等 MCP 客户端消费：
 
 ```bash
-# stdio：用于 Claude Desktop / Cursor 本地配置
-openatrading mcp serve --transport stdio
-
-# HTTP：远程或脚本调用
-openatrading mcp serve --transport http --bind 0.0.0.0:8082
+openatrading mcp serve --transport stdio                     # 本地客户端
+openatrading mcp serve --transport http --bind 0.0.0.0:8082  # 远程调用
 ```
 
-### 随 gateway 启动
-
-```bash
-openatrading gateway run             # web + cron + telegram + mcp 全开
-openatrading gateway run --no-mcp    # 仅关 mcp
-```
-
-### 配置
-
-```toml
-[mcp_server]
-enabled = true              # gateway run 时是否一并启动
-bind    = "0.0.0.0:8082"    # mcp serve / gateway 的默认 bind
-```
-
-> 注意：`mcp_server`（单数）配置本服务**对外暴露**的 server；**连接**的远端 server 列表见下一节。
-
-### 支持的工具
-
-涨停/跌停/强势股/市场概览/昨日涨停/大盘异动/实时行情/股票板块/分时走势/板块异动/K 线/财联社电报/韭研公社/东财龙虎榜（详情/合并/活跃营业部）。
-
-## Strategies（技能）
-
-策略以 `SKILL.md` 形式存储在 `~/.atrading/skills/{name}/`，使用 YAML frontmatter + Markdown 描述。
-
-内置策略（`openatrading skills list` 查看）：
-- **zarili** — 量价低吸派，市场温度择时 + 涨停股池 + 分时低吸
+随 gateway 启动由 `[mcp_server] enabled` 控制。
 
 ## Automation
 
-定时自动化复刻自 Codex 桌面端 Scheduled Tasks,**收件箱语义与其对齐,但实现与使用方式有以下差异**:
+对话内让 agent 创建定时任务（工具 `create_automation` / `list_automations` / `update_automation`），也可用 REST `/api/automations` 或桌面端面板。任务持久化在 `data.db`，由 gateway 进程内的 cron 执行；桌面端跨进程的增删改由调度器每 60s 指纹比对 reconcile。
 
-| | Codex 原版 | 本项目 |
-|---|---|---|
-| 存储 | 桌面端本地任务文件 | SQLite(与 memory/trade 同库),CLI / Web / 桌面端共享同一份数据 |
-| 创建入口 | 桌面端 UI 表单 | 对话内让 agent 创建(工具 `create_automation` / `list_automations` / `update_automation`)、REST API `/api/automations`、桌面端面板 |
-| 调度器 | 桌面端进程托管 | gateway 进程内 cron(6 字段表达式 + Asia/Shanghai);桌面端跨进程的增删改由调度器每 60s 指纹比对 reconcile |
-| 执行环境 | 起新会话执行 prompt | 同为独立 agent 会话,但可控 `cwd`、`read_only`(禁用 bash/edit/write 与交易决策)、`timeout_secs`(默认 600s,上限 24h) |
+- **调度类型** — `daily` / `weekly` / `every_minutes` / `cron`（6 字段）
+- **运行范围** — `new_thread`（独立会话，跑完即弃）或 `existing_thread`（复用指定会话）
+- **可控项** — `cwd`、`read_only`（禁用 bash/edit/write 与交易决策）、`timeout_secs`（默认 600s）
+- **收件箱** — 有产出 → 未读 + 通知；产出为空 → 自动归档不打扰；失败 → 未读；运行记录保留 30 天
 
-- **调度类型** — `daily` / `weekly` / `every_minutes` / `cron`(6 字段「秒 分 时 日 月 周」)
-- **运行范围** — `new_thread`(独立会话,跑完即弃)或 `existing_thread`(复用指定会话)
-- **收件箱** — 运行有产出 → 未读 + 通知;有产出为空 → 自动归档不打扰;失败 → 未读;运行记录保留 30 天
-
-### 对话创建示例
-
-直接跟 agent 说:「每个交易日早上 8:30 给我一份盘前新闻早报」。agent 会先调 `list_automations` 去重,再通过 `create_automation` 落库并热更新调度器。
-
-### 内置任务(随 gateway 启动,不可删除)
+内置任务（随 gateway 启动，不可删除）：
 
 | 任务 | 计划 | 说明 |
 |------|------|------|
-| 数据采集 | 交易日 18:00(`collection_schedule` 可配置) | 选股宝大盘/涨停/强势股快照落库 |
-| 新闻推送(盘中) | 交易日 9:00–15:59 每 5 分钟(`news_schedule` 可配置) | 财联社新增 A/B 级电报推送 |
-| 新闻推送(盘后) | 每日 16:00–次日 8:59 每 30 分钟(固定) | 同上 |
-
-## Desktop App
-
-Tauri 桌面端提供原生体验，支持 macOS / Linux / Windows。可通过 GitHub Releases 下载安装包。
+| 数据采集 | 交易日按 `collection_schedule` | 选股宝大盘 / 涨停 / 强势股快照落库 |
+| 新闻推送（盘中） | 交易日按 `news_schedule` | 财联社新增 A/B 级电报推送 |
+| 新闻推送（盘后） | 每日 16:00–次日 8:59 每 30 分钟 | 同上 |
 
 ## Development
 
 ```bash
-# 构建
 cargo build
-
-# 运行 CLI
-cargo run -- --ai
-
-# 前端开发
-cd src && bun install && bun run dev
-
-# 质量检查
 cargo fmt --all
-cargo clippy --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test
+
+cd src && bun install && bun run dev     # 前端
 ```
+
+常用 Makefile 目标：`make check`（fmt + lint + test）、`make run-web`、`make run-frontend`、`make run-tauri`。
 
 ## License
 
