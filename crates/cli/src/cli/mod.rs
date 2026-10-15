@@ -35,8 +35,11 @@ use crate::cli::tools_cmd::cmd_tools_doc;
 use crate::cli::uninstall_cmd::cmd_uninstall;
 use crate::cli::update::{cmd_update, cmd_update_check};
 
-/// Entry point for the `openatrading` CLI.
-pub async fn run() -> Result<()> {
+/// 进程级前置准备：加载 `.env`，并把品牌根绑定为 pi-rs 的家。
+///
+/// **必须由 `main` 在 async runtime 起来之前调用**：`.env` 与 `PI_RS_HOME` 都是进程
+/// 环境变量的写入，要在单线程阶段做完（详见 `init::bind_pi_rs_home`）。
+pub fn preflight() {
     // Layer 2: 全局 .env
     dotenvy::from_path(openatrading_core::atrading_home().join(".env")).ok();
 
@@ -48,6 +51,15 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    // 品牌根即 pi-rs 的家：agent 目录落在 `{品牌根}/agent`（可用 PI_RS_HOME /
+    // PI_CODING_AGENT_DIR 覆盖，见该函数文档）。
+    openatrading_core::init::bind_pi_rs_home();
+}
+
+/// Entry point for the `openatrading` CLI.
+///
+/// 前置准备见 [`preflight`]（由 `main` 在 runtime 之前调用）。
+pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
