@@ -94,7 +94,34 @@ docker compose up -d
 ## Configuration
 
 配置文件位于 `~/.atrading/config.toml`（可通过 `$OPENATRADING_HOME` 环境变量自定义路径）。
-LLM 模型/Provider 配置已移交 pi-rs，在 `$PI_RS_HOME/agent/settings.json` 中设置 `defaultProvider` / `defaultModel`。
+LLM 模型/Provider 配置已移交 pi-rs，在 `~/.atrading/agent/settings.json` 中设置 `defaultProvider` / `defaultModel`。
+
+### 目录布局（单一品牌根）
+
+`~/.atrading` 是唯一的品牌根：openatrading 自己的东西放根下，pi-rs（内嵌的 agent SDK）
+的家也**嵌在根内**的 `agent/` 子目录，因此用户只需要记一个目录。
+
+```
+~/.atrading/                 ← 品牌根（$OPENATRADING_HOME 可整体改路径）
+├── config.toml              openatrading 配置
+├── data.db                  记忆 / 交易 / 自动化
+├── roles/  watchlist.json  .env
+└── agent/                   ← pi-rs 的 agent 目录（PI_RS_HOME 指向品牌根）
+    ├── settings.json        LLM provider / model
+    ├── auth.json            API Key
+    ├── sessions/            会话记录
+    ├── skills/  prompts/  extensions/  bin/
+    └── mcp.json             外部 MCP server 列表
+```
+
+进程启动时会把 `PI_RS_HOME` 设为品牌根（pi-rs 内部有大量路径是直接读全局解析的，
+绑一次才能保证"我们传的目录"与"pi-rs 内部解析的目录"同源）。若你已经用
+`PI_RS_HOME` / `PI_CODING_AGENT_DIR` 显式指定过 pi-rs 目录，则以你的设置为准，不会被覆盖。
+
+> 绑定只作用于 openatrading 自己的进程，不会导出到你的 shell：同一台机器上独立安装的
+> pi-rs 应用继续用 `~/.pi-rs`，两个应用各持一份 agent 目录，会话 / 登录 / 技能互不影响。
+> 因此 openatrading 的 `~/.atrading/agent/` 初始是空的 —— 需要在这里单独配置一次
+> provider/model 与 API Key（想省这一步可以把两者的 `auth.json` 做成符号链接，但那样凭证就共享了）。
 
 ```toml
 [service]
@@ -140,7 +167,7 @@ chat_id = "${TELEGRAM_CHAT_ID}"
 
 | 作用域 | 路径 | 说明 |
 | ------ | ---- | ---- |
-| 全局 | `$PI_RS_HOME/agent/mcp.json` | Web 面板「设置 → MCP 服务器」写入这里 |
+| 全局 | `~/.atrading/agent/mcp.json` | Web 面板「设置 → MCP 服务器」写入这里 |
 | 项目 | `{cwd}/.pi-rs/mcp.json` | 随工作目录走，界面中只读，需直接编辑 |
 
 ```json
