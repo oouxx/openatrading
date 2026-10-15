@@ -1,17 +1,39 @@
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { AnimatePresence } from "framer-motion"
 import { useQueries } from "@tanstack/react-query"
+import { AlertTriangle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Command,
+  CommandEmpty,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import {
   fetchJson,
   type RoleEntry,
   type RolePosition,
+  type RoleAccount,
+  type RoleTrade,
   type ClosedPosition,
   type PnlPoint,
 } from "@/stores/data"
+import { searchStocks } from "@/lib/stock-utils"
 import { roleKeys } from "@/hooks/query/queryKeys"
 import {
   useRoleList,
   useRolePositions,
+  useRoleAccount,
+  useRoleTrades,
   useRoleHistory,
   useRolePnlHistory,
 } from "@/hooks/query/useRoleQueries"
@@ -19,15 +41,38 @@ import {
   useCreateRole,
   useDeleteRole,
   useResetRole,
+  usePlaceOrder,
 } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
 
-function formatPct(v: number) {
-  return (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%"
+/** 行情不可用时的占位符 —— 后端返回 null 时用它，绝不能显示 0 */
+const DASH = "—"
+
+function formatMoney(v: number): string {
+  return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function pctClass(v: number) {
-  return v >= 0 ? "text-up" : "text-down"
+/** 带正负号的金额，用于盈亏展示 */
+function formatSignedMoney(v: number): string {
+  return `${v >= 0 ? "+" : "-"}¥${formatMoney(Math.abs(v))}`
+}
+
+/**
+ * 后端所有 `*_pct` 字段已经是百分数（`2.9` 表示 2.9%），不要再次乘 100。
+ * 旧版 `pnl_pct` 是小数比例，字段已随接口改版一起换掉。
+ */
+function formatPct(v: number): string {
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`
+}
+
+/** 涨跌色：正数走 `text-up`（涨—红），负数走 `text-down`（跌—绿） */
+function pctClass(v: number | null): string {
+  if (v === null || v === 0) return "text-primary"
+  return v > 0 ? "text-up" : "text-down"
+}
+
+function FieldError({ children }: { children: string }) {
+  return <p className="text-danger text-caption mt-1">{children}</p>
 }
 
 // ── Sidebar ───────────────────────────────────────────
@@ -129,62 +174,89 @@ function Sidebar({
   )
 }
 
-// ── Stats Row ──────────────────────────────────────────
-
-function StatsRow({
-  positions,
-  history,
-}: {
-  positions: RolePosition[]
-  history: ClosedPosition[]
-}) {
-  const currentPnl = positions.reduce((s, p) => s + (p.current_price - p.cost_price) * p.shares, 0)
-  const histPnlAccurate = history.reduce((s, h) => s + (h.exit_price - h.entry_price) * h.shares, 0)
-  const totalTrades = positions.length + history.length
-  const winTrades = [
-    ...positions.filter((p) => (p.current_price - p.cost_price) * p.shares > 0),
-    ...history.filter((h) => h.pnl_pct > 0),
-  ].length
-  const winRate = totalTrades > 0 ? ((winTrades / totalTrades) * 100).toFixed(1) : "—"
-
-  return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <StatCard
-        label="当前持仓盈亏"
-        value={`${currentPnl >= 0 ? "+" : ""}¥${Math.abs(currentPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-        positive={currentPnl >= 0}
-        negative={currentPnl < 0}
-      />
-      <StatCard
-        label="历史累计盈亏"
-        value={`${histPnlAccurate >= 0 ? "+" : ""}¥${Math.abs(histPnlAccurate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-        positive={histPnlAccurate >= 0}
-        negative={histPnlAccurate < 0}
-      />
-      <StatCard label="总交易次数" value={String(totalTrades)} />
-      <StatCard label="胜率" value={`${winRate}%`} />
-    </div>
-  )
-}
+// ── Account overview ───────────────────────────────────
 
 function StatCard({
   label,
   value,
-  positive,
-  negative,
+  sub,
+  tone = "neutral",
+  action,
 }: {
   label: string
   value: string
-  positive?: boolean
-  negative?: boolean
+  sub?: string
+  tone?: "up" | "down" | "neutral"
+  action?: React.ReactNode
 }) {
+  const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-primary"
   return (
     <div className="bg-surface border-hairline rounded-lg border px-4 py-4">
-      <div className="text-secondary text-caption tracking-wider uppercase">{label}</div>
-      <div
-        className={`mt-1 font-number text-h1 font-semibold ${positive ? "text-down" : negative ? "text-up" : "text-primary"}`}
-      >
-        {value}
+      <div className="text-secondary flex items-center justify-between gap-2 text-caption tracking-wider uppercase">
+        <span>{label}</span>
+        {action}
+      </div>
+      <div className={`mt-1 font-number text-h1 font-semibold ${toneCls}`}>{value}</div>
+      {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}
+    </div>
+  )
+}
+
+function AccountOverview({
+  account,
+  loading,
+  error,
+}: {
+  account: RoleAccount | undefined
+  loading: boolean
+  error: string | null
+}) {
+  if (error) {
+    return (
+      <div className="border-danger/30 bg-danger/10 text-danger rounded-lg border px-3 py-2 text-caption">
+        账户信息加载失败：{error}
+      </div>
+    )
+  }
+
+  if (loading || !account) {
+    return (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="bg-surface border-hairline rounded-lg border px-4 py-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-5 w-24" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const pnlTone = account.total_pnl > 0 ? "up" : account.total_pnl < 0 ? "down" : "neutral"
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* 行情不完整时账户数字是残缺值，必须显式提示，避免用户当成准确值 */}
+      {!account.valuation_complete && (
+        <div className="border-warning/30 bg-warning/10 text-warning flex items-center gap-2 rounded-lg border px-3 py-2 text-caption">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          部分持仓行情获取失败，持仓市值与权益为不完整值，仅供参考
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatCard
+          label="初始资金"
+          value={`¥${formatMoney(account.initial_capital)}`}
+        />
+        <StatCard label="现金" value={`¥${formatMoney(account.cash)}`} />
+        <StatCard label="持仓市值" value={`¥${formatMoney(account.market_value)}`} />
+        <StatCard label="权益" value={`¥${formatMoney(account.equity)}`} />
+        <StatCard
+          label="总盈亏"
+          value={formatSignedMoney(account.total_pnl)}
+          sub={formatPct(account.total_pnl_pct)}
+          tone={pnlTone}
+        />
       </div>
     </div>
   )
@@ -277,6 +349,366 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
   )
 }
 
+// ── 买入 Dialog ────────────────────────────────────────
+
+function BuyDialog({
+  roleName,
+  onClose,
+}: {
+  roleName: string
+  onClose: () => void
+}) {
+  const placeOrder = usePlaceOrder()
+  const [symbol, setSymbol] = useState("")
+  const [stockName, setStockName] = useState("")
+  const [shares, setShares] = useState("")
+  const [price, setPrice] = useState("")
+  const [reason, setReason] = useState("")
+  const [attempted, setAttempted] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [results, setResults] = useState<{ code: string; name: string }[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
+  // 从下拉里选中后回填代码，不应再触发一次搜索把下拉弹回来
+  const skipNextSearch = useRef(false)
+
+  const handleSymbolChange = (value: string) => {
+    setSymbol(value)
+    setSearched(false)
+    if (value.trim() === "") setResults([])
+  }
+
+  useEffect(() => {
+    if (skipNextSearch.current) {
+      skipNextSearch.current = false
+      return
+    }
+    const q = symbol.trim()
+    if (!q) return
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const items = await searchStocks(q)
+        if (!cancelled) setResults(items)
+      } catch {
+        if (!cancelled) setResults([])
+      } finally {
+        if (!cancelled) {
+          setSearching(false)
+          setSearched(true)
+        }
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [symbol])
+
+  const pickStock = (item: { code: string; name: string }) => {
+    skipNextSearch.current = true
+    setSymbol(item.code)
+    setStockName(item.name)
+    setResults([])
+    setSearched(false)
+  }
+
+  // ── 校验 ──
+  const sharesNum = Number(shares)
+  const priceNum = Number(price)
+  const symbolOk = symbol.trim() !== ""
+  const sharesOk = shares.trim() !== "" && Number.isFinite(sharesNum) && sharesNum > 0
+  const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
+  const lotOk = sharesOk && sharesNum % 100 === 0
+  const valid = symbolOk && sharesOk && lotOk && priceOk
+
+  const symbolError = attempted && !symbolOk ? "请输入股票代码" : null
+  const sharesError = attempted
+    ? !sharesOk
+      ? "股数必须为正数"
+      : !lotOk
+        ? "股数必须是 100 的整数倍"
+        : null
+    : null
+  const priceError = attempted && !priceOk ? "价格必须为正数" : null
+
+  const handleSubmit = async () => {
+    setAttempted(true)
+    setFormError(null)
+    if (!valid) return
+    try {
+      await placeOrder.mutateAsync({
+        roleName,
+        side: "buy",
+        symbol: symbol.trim(),
+        stockName: stockName.trim() || undefined,
+        shares: sharesNum,
+        price: priceNum,
+        reason: reason.trim() || undefined,
+      })
+      onClose()
+    } catch (e) {
+      // 后端 400 的中文原因（如「股数必须是 100 的整数倍」）由 fetchJson 抛出
+      setFormError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // 搜索完成且无结果时也要展开，让用户看到「无匹配股票」而不是一片空白
+  const showSuggestions = symbol.trim() !== "" && (searching || searched || results.length > 0)
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>买入</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-secondary text-caption">股票代码</label>
+            <Input
+              value={symbol}
+              onChange={(e) => handleSymbolChange(e.target.value)}
+              placeholder="例如 300272"
+              aria-invalid={symbolError ? true : undefined}
+              className="font-number text-caption"
+              autoFocus
+            />
+            {symbolError && <FieldError>{symbolError}</FieldError>}
+            {showSuggestions && (
+              <div className="border-hairline bg-elevated overflow-hidden rounded-lg border">
+                <Command shouldFilter={false} className="bg-transparent">
+                  <CommandList className="max-h-52">
+                    <CommandEmpty className="text-secondary text-caption py-3">
+                      {searching ? "搜索中…" : "无匹配股票"}
+                    </CommandEmpty>
+                    {results.map((r) => (
+                      <CommandItem
+                        key={r.code}
+                        value={r.code}
+                        onSelect={() => pickStock(r)}
+                        className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
+                      >
+                        <span className="font-number text-primary">{r.code}</span>
+                        <span className="text-secondary truncate">{r.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-secondary text-caption">股票名称（可选）</label>
+            <Input
+              value={stockName}
+              onChange={(e) => setStockName(e.target.value)}
+              placeholder="选中搜索结果后自动带出"
+              className="text-caption"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-secondary text-caption">股数（100 的整数倍）</label>
+              <Input
+                value={shares}
+                onChange={(e) => setShares(e.target.value)}
+                placeholder="100"
+                inputMode="numeric"
+                aria-invalid={sharesError ? true : undefined}
+                className="font-number text-caption"
+              />
+              {sharesError && <FieldError>{sharesError}</FieldError>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-secondary text-caption">买入价格</label>
+              <Input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="10.50"
+                inputMode="decimal"
+                aria-invalid={priceError ? true : undefined}
+                className="font-number text-caption"
+              />
+              {priceError && <FieldError>{priceError}</FieldError>}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-secondary text-caption">备注（可选）</label>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="买入理由"
+              className="text-caption"
+            />
+          </div>
+
+          {valid && (
+            <div className="bg-canvas border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-caption">
+              <span className="text-secondary">预估买入金额</span>
+              <span className="font-number text-primary font-medium">
+                ¥{formatMoney(sharesNum * priceNum)}
+              </span>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          {formError && <span className="text-danger text-caption mr-auto">{formError}</span>}
+          <Button variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={() => void handleSubmit()} disabled={placeOrder.isPending}>
+            {placeOrder.isPending ? "提交中…" : "买入"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── 卖出 Dialog ────────────────────────────────────────
+
+function SellDialog({
+  roleName,
+  position,
+  onClose,
+}: {
+  roleName: string
+  position: RolePosition
+  onClose: () => void
+}) {
+  const placeOrder = usePlaceOrder()
+  const [shares, setShares] = useState(String(position.shares))
+  const [price, setPrice] = useState(position.last_price === null ? "" : String(position.last_price))
+  const [reason, setReason] = useState("")
+  const [attempted, setAttempted] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const sharesNum = Number(shares)
+  const priceNum = Number(price)
+  const sharesOk =
+    shares.trim() !== "" && Number.isFinite(sharesNum) && sharesNum > 0 && sharesNum <= position.shares
+  const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
+  const valid = sharesOk && priceOk
+
+  const sharesError = attempted
+    ? shares.trim() === ""
+      ? "请输入卖出股数"
+      : !Number.isFinite(sharesNum) || sharesNum <= 0
+        ? "股数必须为正数"
+        : sharesNum > position.shares
+          ? `最多可卖 ${position.shares} 股`
+          : null
+    : null
+  const priceError = attempted && !priceOk ? "价格必须为正数" : null
+
+  // 预估已实现盈亏随输入实时变化：(卖价 − 成本价) × 股数
+  const estimatedPnl = sharesOk && priceOk ? (priceNum - position.cost_price) * sharesNum : null
+
+  const handleSubmit = async () => {
+    setAttempted(true)
+    setFormError(null)
+    if (!valid) return
+    try {
+      await placeOrder.mutateAsync({
+        roleName,
+        side: "sell",
+        symbol: position.symbol,
+        stockName: position.stock_name,
+        shares: sharesNum,
+        price: priceNum,
+        reason: reason.trim() || undefined,
+      })
+      onClose()
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>卖出 {position.stock_name}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="bg-canvas border-hairline grid grid-cols-3 gap-2 rounded-lg border px-3 py-2 text-caption">
+            <div>
+              <div className="text-secondary">代码</div>
+              <div className="font-number text-primary">{position.symbol}</div>
+            </div>
+            <div>
+              <div className="text-secondary">成本价</div>
+              <div className="font-number text-primary">{formatMoney(position.cost_price)}</div>
+            </div>
+            <div>
+              <div className="text-secondary">可卖股数</div>
+              <div className="font-number text-primary">{position.shares}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-secondary text-caption">卖出股数（可部分卖出）</label>
+              <Input
+                value={shares}
+                onChange={(e) => setShares(e.target.value)}
+                placeholder={String(position.shares)}
+                inputMode="numeric"
+                aria-invalid={sharesError ? true : undefined}
+                className="font-number text-caption"
+                autoFocus
+              />
+              {sharesError && <FieldError>{sharesError}</FieldError>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-secondary text-caption">卖出价格</label>
+              <Input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="10.50"
+                inputMode="decimal"
+                aria-invalid={priceError ? true : undefined}
+                className="font-number text-caption"
+              />
+              {priceError && <FieldError>{priceError}</FieldError>}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-secondary text-caption">备注（可选）</label>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="卖出理由"
+              className="text-caption"
+            />
+          </div>
+
+          <div className="bg-canvas border-hairline flex items-center justify-between rounded-lg border px-3 py-2 text-caption">
+            <span className="text-secondary">预估已实现盈亏</span>
+            <span className={`font-number font-medium ${pctClass(estimatedPnl)}`}>
+              {estimatedPnl === null ? DASH : formatSignedMoney(estimatedPnl)}
+            </span>
+          </div>
+        </div>
+        <DialogFooter>
+          {formError && <span className="text-danger text-caption mr-auto">{formError}</span>}
+          <Button variant="ghost" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={() => void handleSubmit()} disabled={placeOrder.isPending}>
+            {placeOrder.isPending ? "提交中…" : "卖出"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main Component ────────────────────────────────────
 
 const TABS = [
@@ -284,19 +716,35 @@ const TABS = [
   { id: "performance", label: "盈利分析" },
 ]
 
+type HoldingView = "current" | "trades" | "history"
+
+const HOLDING_VIEWS: { id: HoldingView; label: string }[] = [
+  { id: "current", label: "当前持仓" },
+  { id: "trades", label: "成交流水" },
+  { id: "history", label: "历史持仓" },
+]
+
 export default function RoleView() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [tab, setTab] = useState("holdings")
-  const [holdingView, setHoldingView] = useState<"current" | "history">("current")
+  const [holdingView, setHoldingView] = useState<HoldingView>("current")
   const [showCreate, setShowCreate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState<string | null>(null)
+  const [showBuy, setShowBuy] = useState(false)
+  const [sellTarget, setSellTarget] = useState<RolePosition | null>(null)
   const [newName, setNewName] = useState("")
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null)
 
   const { data: roles = [] } = useRoleList()
   const { data: positions = [] } = useRolePositions(selectedRole ?? "")
+  const {
+    data: account,
+    isPending: accountPending,
+    error: accountError,
+  } = useRoleAccount(selectedRole ?? "")
+  const { data: trades = [] } = useRoleTrades(selectedRole ?? "")
   const { data: history = [] } = useRoleHistory(selectedRole ?? "")
   const { data: pnlPoints = [] } = useRolePnlHistory(selectedRole ?? "")
 
@@ -332,9 +780,14 @@ export default function RoleView() {
         result[r.name] = 0
         return
       }
-      const totalValue = pos.reduce((s, p) => s + p.current_price * p.shares, 0)
-      const totalCost = pos.reduce((s, p) => s + p.cost_price * p.shares, 0)
-      // Only compute PnL % when cost basis is meaningful (>0)
+      // 只统计有行情的持仓；全部缺行情时给 NaN，让 UI 显示 N/A 而不是 0%
+      let totalValue = 0
+      let totalCost = 0
+      for (const p of pos) {
+        if (p.last_price === null) continue
+        totalValue += p.last_price * p.shares
+        totalCost += p.cost_price * p.shares
+      }
       result[r.name] = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : Number.NaN
     })
     return result
@@ -354,7 +807,7 @@ export default function RoleView() {
     const id =
       name
         .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fff_-]/g, "_")
+        .replace(/[^a-z0-9一-鿿_-]/g, "_")
         .replace(/_+/g, "_")
         .replace(/^_|_$/g, "")
         .slice(0, 64) || "role_" + Date.now().toString(36)
@@ -441,108 +894,178 @@ export default function RoleView() {
                 </div>
               </div>
 
-              {/* Stats */}
-              <StatsRow positions={positions} history={history} />
+              {/* Account overview */}
+              <AccountOverview
+                account={account}
+                loading={accountPending}
+                error={accountError instanceof Error ? accountError.message : null}
+              />
 
               {/* Tab: Holdings */}
               {tab === "holdings" && (
                 <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
                   <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
                     <h3 className="text-h2 font-medium text-primary">持仓明细</h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setHoldingView("current")}
-                        className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
-                          holdingView === "current"
-                            ? "bg-brand/20 text-brand"
-                            : "text-secondary hover:text-primary"
-                        }`}
-                      >
-                        当前持仓
-                      </button>
-                      <button
-                        onClick={() => setHoldingView("history")}
-                        className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
-                          holdingView === "history"
-                            ? "bg-brand/20 text-brand"
-                            : "text-secondary hover:text-primary"
-                        }`}
-                      >
-                        历史持仓
-                      </button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-2">
+                        {HOLDING_VIEWS.map((v) => (
+                          <button
+                            key={v.id}
+                            onClick={() => setHoldingView(v.id)}
+                            className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
+                              holdingView === v.id
+                                ? "bg-brand/20 text-brand"
+                                : "text-secondary hover:text-primary"
+                            }`}
+                          >
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Button size="sm" onClick={() => setShowBuy(true)}>
+                        买入
+                      </Button>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
-                    {holdingView === "current" ? (
+                    {holdingView === "current" && (
                       positions.length > 0 ? (
                         <table className="w-full border-collapse text-caption">
                           <thead>
                             <tr>
                               <Th>股票</Th>
-                              <Th>成本</Th>
+                              <Th>成本价</Th>
                               <Th>现价</Th>
-                              <Th>盈亏</Th>
-                              <Th>盈亏%</Th>
                               <Th>数量</Th>
+                              <Th>市值</Th>
+                              <Th>浮动盈亏</Th>
+                              <Th>盈亏%</Th>
                               <Th>入场日期</Th>
-                              <Th>入场理由</Th>
+                              <Th>操作</Th>
                             </tr>
                           </thead>
                           <tbody>
-                            {positions.map((p: RolePosition) => {
-                              const pnlPct = (p.current_price - p.cost_price) / p.cost_price
-                              const pnl = (p.current_price - p.cost_price) * p.shares
-                              return (
-                                <tr key={p.id}>
-                                  <Td bold>
-                                    <button
-                                      className="hover:text-brand cursor-pointer text-left transition-colors"
-                                      onClick={() =>
-                                        setSelectedStock({ symbol: p.symbol, name: p.stock_name })
-                                      }
-                                    >
-                                      {p.stock_name}
-                                    </button>
-                                  </Td>
-                                  <Td>{p.cost_price.toFixed(2)}</Td>
-                                  <Td>{p.current_price.toFixed(2)}</Td>
-                                  <Td className={pctClass(pnlPct)}>
-                                    {pnl >= 0 ? "+" : ""}¥
-                                    {Math.abs(pnl).toLocaleString(undefined, {
-                                      maximumFractionDigits: 2,
-                                    })}
-                                  </Td>
-                                  <Td className={pctClass(pnlPct)}>{formatPct(pnlPct)}</Td>
-                                  <Td>{p.shares}</Td>
-                                  <Td muted>{p.entry_date}</Td>
-                                  <Td reason>{p.entry_reason}</Td>
-                                </tr>
-                              )
-                            })}
+                            {positions.map((p: RolePosition) => (
+                              <tr key={p.symbol}>
+                                <Td bold>
+                                  <button
+                                    className="hover:text-brand cursor-pointer text-left transition-colors"
+                                    onClick={() =>
+                                      setSelectedStock({ symbol: p.symbol, name: p.stock_name })
+                                    }
+                                  >
+                                    {p.stock_name}
+                                  </button>
+                                  <span className="text-secondary ml-2 font-number text-caption">
+                                    {p.symbol}
+                                  </span>
+                                </Td>
+                                <Td>{formatMoney(p.cost_price)}</Td>
+                                <Td>{p.last_price === null ? DASH : formatMoney(p.last_price)}</Td>
+                                <Td>{p.shares}</Td>
+                                <Td>{p.market_value === null ? DASH : formatMoney(p.market_value)}</Td>
+                                <Td className={pctClass(p.unrealized_pnl)}>
+                                  {p.unrealized_pnl === null
+                                    ? DASH
+                                    : formatSignedMoney(p.unrealized_pnl)}
+                                </Td>
+                                <Td className={pctClass(p.unrealized_pct)}>
+                                  {p.unrealized_pct === null ? DASH : formatPct(p.unrealized_pct)}
+                                </Td>
+                                <Td muted>{p.opened_at}</Td>
+                                <Td>
+                                  <Button
+                                    variant="outline"
+                                    size="xs"
+                                    onClick={() => setSellTarget(p)}
+                                  >
+                                    卖出
+                                  </Button>
+                                </Td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       ) : (
                         <div className="text-secondary py-12 text-center text-caption">空仓</div>
                       )
-                    ) : history.length > 0 ? (
-                      <table className="w-full border-collapse text-caption">
-                        <thead>
-                          <tr>
-                            <Th>股票</Th>
-                            <Th>入场价</Th>
-                            <Th>出场价</Th>
-                            <Th>盈亏</Th>
-                            <Th>盈亏%</Th>
-                            <Th>数量</Th>
-                            <Th>持有期</Th>
-                            <Th>出场理由</Th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {history.map((h: ClosedPosition) => {
-                            const pnl = (h.exit_price - h.entry_price) * h.shares
-                            return (
-                              <tr key={h.position_id}>
+                    )}
+
+                    {holdingView === "trades" && (
+                      trades.length > 0 ? (
+                        <table className="w-full border-collapse text-caption">
+                          <thead>
+                            <tr>
+                              <Th>成交时间</Th>
+                              <Th>股票</Th>
+                              <Th>方向</Th>
+                              <Th>价格</Th>
+                              <Th>数量</Th>
+                              <Th>成本价</Th>
+                              <Th>已实现盈亏</Th>
+                              <Th>备注</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {trades.map((t: RoleTrade) => (
+                              <tr key={t.id}>
+                                <Td muted>{t.traded_at}</Td>
+                                <Td bold>
+                                  <button
+                                    className="hover:text-brand cursor-pointer text-left transition-colors"
+                                    onClick={() =>
+                                      setSelectedStock({ symbol: t.symbol, name: t.stock_name })
+                                    }
+                                  >
+                                    {t.stock_name}
+                                  </button>
+                                  <span className="text-secondary ml-2 font-number text-caption">
+                                    {t.symbol}
+                                  </span>
+                                </Td>
+                                <Td>
+                                  <span className={t.side === "buy" ? "text-up" : "text-down"}>
+                                    {t.side === "buy" ? "买入" : "卖出"}
+                                  </span>
+                                </Td>
+                                <Td>{formatMoney(t.price)}</Td>
+                                <Td>{t.shares}</Td>
+                                <Td>{formatMoney(t.cost_price)}</Td>
+                                <Td className={pctClass(t.realized_pnl)}>
+                                  {t.realized_pnl === null
+                                    ? DASH
+                                    : formatSignedMoney(t.realized_pnl)}
+                                </Td>
+                                <Td reason>{t.reason}</Td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="text-secondary py-12 text-center text-caption">
+                          暂无成交流水
+                        </div>
+                      )
+                    )}
+
+                    {holdingView === "history" && (
+                      history.length > 0 ? (
+                        <table className="w-full border-collapse text-caption">
+                          <thead>
+                            <tr>
+                              <Th>股票</Th>
+                              <Th>成本价</Th>
+                              <Th>出场价</Th>
+                              <Th>数量</Th>
+                              <Th>已实现盈亏</Th>
+                              <Th>盈亏%</Th>
+                              <Th>平仓时间</Th>
+                              <Th>出场理由</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {history.map((h: ClosedPosition) => (
+                              <tr key={h.id}>
                                 <Td bold>
                                   <button
                                     className="hover:text-brand cursor-pointer text-left transition-colors"
@@ -552,30 +1075,30 @@ export default function RoleView() {
                                   >
                                     {h.stock_name}
                                   </button>
+                                  <span className="text-secondary ml-2 font-number text-caption">
+                                    {h.symbol}
+                                  </span>
                                 </Td>
-                                <Td>{h.entry_price.toFixed(2)}</Td>
-                                <Td>{h.exit_price.toFixed(2)}</Td>
-                                <Td className={pctClass(h.pnl_pct)}>
-                                  {pnl >= 0 ? "+" : ""}¥
-                                  {Math.abs(pnl).toLocaleString(undefined, {
-                                    maximumFractionDigits: 2,
-                                  })}
-                                </Td>
-                                <Td className={pctClass(h.pnl_pct)}>{formatPct(h.pnl_pct)}</Td>
+                                <Td>{formatMoney(h.cost_price)}</Td>
+                                <Td>{formatMoney(h.exit_price)}</Td>
                                 <Td>{h.shares}</Td>
-                                <Td muted>
-                                  {h.entry_date} → {h.exit_date}
+                                <Td className={pctClass(h.realized_pnl)}>
+                                  {formatSignedMoney(h.realized_pnl)}
                                 </Td>
-                                <Td reason>{h.exit_reason}</Td>
+                                <Td className={pctClass(h.realized_pct)}>
+                                  {formatPct(h.realized_pct)}
+                                </Td>
+                                <Td muted>{h.closed_at}</Td>
+                                <Td reason>{h.reason}</Td>
                               </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="text-secondary py-12 text-center text-caption">
-                        暂无历史持仓记录
-                      </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="text-secondary py-12 text-center text-caption">
+                          暂无历史持仓记录
+                        </div>
+                      )
                     )}
                   </div>
                 </div>
@@ -587,7 +1110,14 @@ export default function RoleView() {
                   <div className="border-hairline border-b px-5 py-4">
                     <h3 className="text-h2 font-medium text-primary">累计盈利曲线</h3>
                   </div>
-                  <PnlChart points={pnlPoints} initialCapital={1_000_000} />
+                  {/* 基准线取自账户的初始资金，账户未就绪时先占位，避免用 0 画出一条错误曲线 */}
+                  {account ? (
+                    <PnlChart points={pnlPoints} initialCapital={account.initial_capital} />
+                  ) : (
+                    <div className="px-5 py-6">
+                      <Skeleton className="h-[280px] w-full" />
+                    </div>
+                  )}
                   <div className="border-hairline text-secondary flex gap-5 border-t px-5 py-3 text-caption">
                     <span className="flex items-center gap-2">
                       <span className="bg-brand inline-block size-2 rounded-full" />
@@ -619,105 +1149,93 @@ export default function RoleView() {
       </div>
 
       {/* Create Modal */}
-      {showCreate && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.3)" }}
-          onClick={() => setShowCreate(false)}
-        >
-          <div
-            className="bg-surface border-hairline w-dialog-md max-w-[90vw] rounded-lg border p-6 shadow-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-4 text-h1 font-medium text-primary">新建角色</h3>
-            <label className="text-secondary mb-1 block text-caption">角色名称</label>
-            <input
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>新建角色</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-secondary text-caption">角色名称</label>
+            <Input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="bg-canvas border-hairline focus:border-brand mb-3 w-full rounded-lg border px-3 py-3 text-body text-primary transition-colors outline-none"
+              className="text-caption"
               placeholder="例如：套利策略 v2"
-              onKeyDown={(e) => e.key === "Enter" && createRole()}
+              onKeyDown={(e) => e.key === "Enter" && void createRole()}
               autoFocus
             />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="bg-ink-dim text-secondary cursor-pointer rounded-lg px-4 py-2 text-caption transition-colors hover:text-primary"
-              >
-                取消
-              </button>
-              <button
-                onClick={createRole}
-                className="bg-brand cursor-pointer rounded-lg px-4 py-2 text-caption font-medium text-primary transition-opacity hover:opacity-90"
-              >
-                创建
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              取消
+            </Button>
+            <Button onClick={() => void createRole()}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirm */}
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.3)" }}
-          onClick={() => setShowDeleteConfirm(null)}
-        >
-          <div
-            className="bg-surface border-hairline w-dialog-sm max-w-[90vw] rounded-lg border p-6 shadow-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-2 text-h1 font-medium text-primary">删除角色</h3>
-            <p className="text-secondary mb-4 text-caption">确定删除此角色？此操作不可恢复。</p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="bg-ink-dim text-secondary cursor-pointer rounded-lg px-4 py-2 text-caption transition-colors hover:text-primary"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => deleteRole(showDeleteConfirm)}
-                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-4 py-2 text-caption transition-colors hover:text-primary"
-              >
-                删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={showDeleteConfirm !== null}
+        onOpenChange={(open) => !open && setShowDeleteConfirm(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>删除角色</DialogTitle>
+          </DialogHeader>
+          <p className="text-secondary text-caption">确定删除此角色？此操作不可恢复。</p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowDeleteConfirm(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => showDeleteConfirm && void deleteRole(showDeleteConfirm)}
+            >
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Reset Confirm */}
-      {showResetConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.3)" }}
-          onClick={() => setShowResetConfirm(null)}
-        >
-          <div
-            className="bg-surface border-hairline w-dialog-sm max-w-[90vw] rounded-lg border p-6 shadow-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-2 text-h1 font-medium text-primary">重置账户</h3>
-            <p className="text-secondary mb-4 text-caption">重置将清空该角色的所有持仓和历史记录。</p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowResetConfirm(null)}
-                className="bg-ink-dim text-secondary cursor-pointer rounded-lg px-4 py-2 text-caption transition-colors hover:text-primary"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => resetRole(showResetConfirm)}
-                className="border-up hover:bg-up text-up cursor-pointer rounded-lg border px-4 py-2 text-caption transition-colors hover:text-primary"
-              >
-                重置
-              </button>
-            </div>
-          </div>
-        </div>
+      <Dialog
+        open={showResetConfirm !== null}
+        onOpenChange={(open) => !open && setShowResetConfirm(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>重置账户</DialogTitle>
+          </DialogHeader>
+          <p className="text-secondary text-caption">
+            重置将清空该角色的全部持仓与成交流水，历史无法恢复；初始资金不变。
+            要换一个本金请新建角色。
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowResetConfirm(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => showResetConfirm && void resetRole(showResetConfirm)}
+            >
+              重置
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Buy / Sell dialogs — 关闭即卸载，表单状态自然重置 */}
+      {showBuy && selectedRole && (
+        <BuyDialog roleName={selectedRole} onClose={() => setShowBuy(false)} />
+      )}
+      {sellTarget && selectedRole && (
+        <SellDialog
+          roleName={selectedRole}
+          position={sellTarget}
+          onClose={() => setSellTarget(null)}
+        />
       )}
 
       {/* Stock Detail Drawer */}

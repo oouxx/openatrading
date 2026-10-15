@@ -17,10 +17,7 @@ use pi_coding_agent::core::session_manager::SessionManager;
 
 #[test]
 fn create_registry_collects_extension_commands() {
-    let mut registry =
-        openatrading_extension::create_registry(openatrading_extension::RegistryOptions {
-            trading: None,
-        });
+    let mut registry = openatrading_extension::create_registry();
     let resolved = pi_coding_agent::core::slash_commands::resolve_extension_commands(
         &registry.collect_commands(),
     );
@@ -47,7 +44,7 @@ fn factory_produces_session_with_goal_command() {
             .join(format!("pi-rs-agent-{}", std::process::id()))
             .to_string_lossy()
             .to_string();
-        let factory = create_factory(FactoryOptions::market_only(agent_dir.clone()));
+        let factory = create_factory(FactoryOptions::new(agent_dir.clone()));
         let cwd = std::env::temp_dir().to_string_lossy().to_string();
         let sessions_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()

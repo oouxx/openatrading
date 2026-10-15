@@ -5,10 +5,10 @@ use std::sync::Arc;
 use crate::cli::app::McpTransport;
 
 pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
-    use openatrading_core::llm::{create_registry, serve_http, serve_stdio, RegistryOptions};
+    use openatrading_core::llm::{create_registry, serve_http, serve_stdio};
     use tokio::sync::watch;
 
-    let registry = Arc::new(create_registry(RegistryOptions::market_only()));
+    let registry = Arc::new(create_registry());
     let (tx, rx) = watch::channel(false);
 
     let signal_task = tokio::spawn(async move {

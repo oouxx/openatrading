@@ -539,7 +539,7 @@ export default function AutomationsView() {
                 <div>
                   <div className="text-sm font-medium">只读模式</div>
                   <div className="text-secondary text-xs">
-                    禁用 bash/edit/write 和交易决策(推荐巡检类任务开启)
+                    禁用 bash/edit/write(推荐巡检类任务开启)
                   </div>
                 </div>
                 <Switch

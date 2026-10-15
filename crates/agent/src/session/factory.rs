@@ -14,8 +14,7 @@ use pi_extension_api::ToolDefinition;
 /// Options for [`create_factory`].
 ///
 /// Bundling these into a struct keeps `create_factory` to a single parameter
-/// (per the project's ≤3-params rule) while still allowing per-session trading
-/// state to be threaded through.
+/// (per the project's ≤3-params rule).
 pub struct FactoryOptions {
     /// pi-rs agent directory (`$PI_RS_HOME/agent`).
     pub agent_dir: String,
@@ -25,21 +24,17 @@ pub struct FactoryOptions {
     pub tools: Option<Vec<String>>,
     /// Extra custom tool definitions to register.
     pub custom_tools: Option<Vec<ToolDefinition>>,
-    /// Paper-trading state. `Some` registers the paper-trading tools
-    /// (positions / historical context / decision sink) on every session;
-    /// `None` yields a market-data-only session.
-    pub trading: Option<openatrading_extension::TradingContext>,
 }
 
 impl FactoryOptions {
-    /// Market-data-only options (no paper-trading tools).
-    pub fn market_only(agent_dir: impl Into<String>) -> Self {
+    /// 默认选项：模型由 settings 解析，注册全部工具。
+    #[must_use]
+    pub fn new(agent_dir: impl Into<String>) -> Self {
         Self {
             agent_dir: agent_dir.into(),
             model: None,
             tools: None,
             custom_tools: None,
-            trading: None,
         }
     }
 }
@@ -93,14 +88,12 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
     let model = opts.model;
     let tools = opts.tools;
     let custom_tools = opts.custom_tools;
-    let trading = opts.trading;
 
     Arc::new(move |params: CreateSessionParams| {
         let agent_dir = agent_dir.clone();
         let model = model.clone();
         let tools = tools.clone();
         let custom_tools = custom_tools.clone();
-        let trading = trading.clone();
 
         Box::pin(async move {
             // Ensure API providers are registered before any LLM calls
@@ -132,10 +125,7 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
             });
 
             // Create a fresh extension registry for each session.
-            let ext_registry =
-                openatrading_extension::create_registry(openatrading_extension::RegistryOptions {
-                    trading: trading.clone(),
-                });
+            let ext_registry = openatrading_extension::create_registry();
 
             let (session, services, _result) =
                 create_agent_session_from_services(CreateAgentSessionFromServicesOptions {

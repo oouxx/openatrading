@@ -1,5 +1,20 @@
 // Shared stock symbol and chart URL utilities
 
+import { fetchJson } from "@/stores/data"
+import type { StockSearchItem } from "@/stores/data"
+
+// ── Stock search ───────────────────────────────────────
+
+/**
+ * 按名称或代码搜索 A 股（后端 `/api/search-stocks`，数据源为东方财富 suggest 接口）。
+ * web 与 Tauri 两个运行时的差异由 `fetchJson` 统一抹平，调用方不需要分支。
+ */
+export async function searchStocks(keyword: string): Promise<StockSearchItem[]> {
+  const q = keyword.trim()
+  if (!q) return []
+  return fetchJson<StockSearchItem[]>(`/api/search-stocks?q=${encodeURIComponent(q)}`)
+}
+
 // ── Symbol normalization (mirrors backend crates/api/src/utils.rs to_yahoo_symbol) ──
 
 const YAHOO_SUFFIXES = ["SS", "SZ", "HK", "TW"]

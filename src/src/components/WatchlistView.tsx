@@ -1,4 +1,4 @@
-import { isTauri } from "@/lib/env"
+import { searchStocks } from "@/lib/stock-utils"
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { Star, Plus, Trash2, X, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import {
@@ -101,24 +101,14 @@ export default function WatchlistView() {
       }
       setAddSearching(true)
       try {
-        if (isTauri) {
-          const { invoke } = await import("@tauri-apps/api/core")
-          const data = await invoke("api_search_stocks", { q: q.trim() })
-          setAddResults(data as { code: string; name: string }[])
-        } else {
-          const res = await fetch(`/api/search-stocks?q=${encodeURIComponent(q.trim())}`)
-          if (res.ok) {
-            const data = await res.json()
-            setAddResults(data)
-          }
-        }
+        setAddResults(await searchStocks(q))
       } catch {
         // ignore
       } finally {
         setAddSearching(false)
       }
     },
-    [isTauri]
+    []
   )
 
   const handleAdd = useCallback(

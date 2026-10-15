@@ -94,10 +94,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/roles", get(web::get_roles))
         .route("/api/roles/:name/positions", get(web::get_role_positions))
-        .route("/api/roles/:name/logs", get(web::get_role_logs))
+        .route("/api/roles/:name/account", get(web::get_role_account))
+        .route("/api/roles/:name/trades", get(web::get_role_trades))
         .route("/api/roles", post(web::create_role))
         .route("/api/roles/:name", delete(web::delete_role))
         .route("/api/roles/:name/reset", post(web::reset_role))
+        .route("/api/roles/:name/orders", post(web::place_order))
         .route(
             "/api/roles/:name/pnl-history",
             get(web::get_role_pnl_history),

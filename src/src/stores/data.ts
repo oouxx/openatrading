@@ -23,32 +23,52 @@ export function getApiBaseUrl(): string {
   return resolveStoredApiUrl() || __API_BASE_URL__
 }
 
+/**
+ * 把后端错误响应转成用户可读的错误信息。
+ *
+ * 后端校验失败会返回 `{ "error": "股数必须是 100 的整数倍" }`，这类业务原因
+ * 必须原样透出给用户；body 不是 JSON、或没有 `error` 字段时回退到兜底文案
+ * （web 端是 HTTP 状态码，Tauri 端是 invoke 的原始错误串）。
+ */
+function toErrorMessage(raw: unknown, fallback: string): string {
+  const text = typeof raw === "string" ? raw.trim() : ""
+  if (!text) return fallback
+  if (text.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(text)
+      const err = (parsed as { error?: unknown }).error
+      if (typeof err === "string" && err.trim()) return err.trim()
+    } catch {
+      /* 非法 JSON —— 按纯文本处理 */
+    }
+    return fallback
+  }
+  return text
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const parseBody = (): Record<string, unknown> => {
+    if (!init?.body) return {}
+    try {
+      return JSON.parse(String(init.body)) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  }
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core")
-    if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
-      let body: Record<string, unknown> = {}
-      if (init.body) {
-        try {
-          body = JSON.parse(String(init.body))
-        } catch {
-          /* use empty */
-        }
+    try {
+      if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
+        return (await invoke("api_post", { path, body: parseBody() })) as T
       }
-      return invoke("api_post", { path, body }) as Promise<T>
-    }
-    if (init?.method === "PATCH") {
-      let body: Record<string, unknown> = {}
-      if (init.body) {
-        try {
-          body = JSON.parse(String(init.body))
-        } catch {
-          /* use empty */
-        }
+      if (init?.method === "PATCH") {
+        return (await invoke("api_patch", { path, body: parseBody() })) as T
       }
-      return invoke("api_patch", { path, body }) as Promise<T>
+      return (await invoke("api_fetch", { path })) as T
+    } catch (e) {
+      // Tauri 端把后端错误直接作为字符串 reject（可能带 `{ "error": ... }` 结构）
+      throw new Error(toErrorMessage(e, e instanceof Error ? e.message : "请求失败"), { cause: e })
     }
-    return invoke("api_fetch", { path }) as Promise<T>
   }
   const base = getApiBaseUrl()
   const headers: Record<string, string> = {}
@@ -57,7 +77,10 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   })
-  if (!resp.ok) throw new Error(`${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "")
+    throw new Error(toErrorMessage(body, `${resp.status}`))
+  }
   if (resp.status === 204) return undefined as T
   return resp.json()
 }
@@ -127,17 +150,74 @@ export interface RoleEntry {
   name: string
   display_name: string
   readonly?: boolean
+  /** 该角色的初始资金（元）。建角色时设定，之后不可修改——要重新开始只能重置账户 */
+  initial_capital: number
 }
 
 export interface RolePosition {
-  id: number
+  role_name: string
   symbol: string
   stock_name: string
-  cost_price: number
-  current_price: number
   shares: number
-  entry_reason: string
-  entry_date: string
+  cost_price: number
+  /** 建仓日期，格式 YYYY-MM-DD */
+  opened_at: string
+  /** 以下估值字段在行情不可用时为 null，UI 必须显示 “—” 而不是 0 */
+  last_price: number | null
+  market_value: number | null
+  unrealized_pnl: number | null
+  /** 浮盈百分比，单位是百分数（2.9 表示 2.9%） */
+  unrealized_pct: number | null
+}
+
+/** 账户概览 —— GET /api/roles/:name/account */
+export interface RoleAccount {
+  role_name: string
+  initial_capital: number
+  cash: number
+  market_value: number
+  equity: number
+  unrealized_pnl: number
+  realized_pnl: number
+  total_pnl: number
+  /** 总盈亏百分比，单位是百分数（0.1 表示 0.1%） */
+  total_pnl_pct: number
+  /** false 表示部分持仓行情拉取失败，市值/权益是不完整值 */
+  valuation_complete: boolean
+}
+
+export type OrderSide = "buy" | "sell"
+
+/** 下单请求体 —— POST /api/roles/:name/orders */
+export interface PlaceOrderPayload {
+  side: OrderSide
+  symbol: string
+  stock_name?: string
+  shares: number
+  price: number
+  reason?: string
+}
+
+/** 成交流水 —— GET /api/roles/:name/trades */
+export interface RoleTrade {
+  id: number
+  role_name: string
+  symbol: string
+  stock_name: string
+  side: OrderSide
+  price: number
+  shares: number
+  cost_price: number
+  /** 买入为 null */
+  realized_pnl: number | null
+  reason: string
+  traded_at: string
+}
+
+/** 下单成功响应 —— 全部卖光时 position 为 null */
+export interface PlaceOrderResponse {
+  trade: RoleTrade
+  position: RolePosition | null
 }
 
 export interface RoleLog {
@@ -162,18 +242,26 @@ export interface PnlHistoryResponse {
   initial_capital: number
 }
 
+/** 已平仓记录 —— GET /api/roles/:name/history（只包含卖出成交） */
 export interface ClosedPosition {
-  position_id: number
+  id: number
+  role_name: string
   symbol: string
   stock_name: string
-  entry_date: string
-  exit_date: string
-  entry_price: number
-  exit_price: number
   shares: number
-  pnl_pct: number
-  entry_reason: string
-  exit_reason: string
+  cost_price: number
+  exit_price: number
+  realized_pnl: number
+  /** 已实现盈亏百分比，单位是百分数（-0.2 表示 -0.2%） */
+  realized_pct: number
+  closed_at: string
+  reason: string
+}
+
+/** 股票搜索建议项 —— GET /api/search-stocks?q= */
+export interface StockSearchItem {
+  code: string
+  name: string
 }
 
 export interface IndexQuote {

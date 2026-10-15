@@ -71,7 +71,7 @@ const CREATE_SCHEMA: &str = r#"{
     "scope": { "type": "string", "enum": ["new_thread", "existing_thread"], "description": "new_thread=每次全新运行(默认推荐);existing_thread=心跳唤醒同一会话,需提供 session_id" },
     "session_id": { "type": "string", "description": "仅 scope=existing_thread 必填:要唤醒的会话 ID" },
     "cwd": { "type": "string", "description": "new_thread 的工作目录(项目路径);省略则为当前目录" },
-    "read_only": { "type": "boolean", "description": "只读模式:禁用 bash/edit/write 与交易决策;巡检/简报类建议 true" },
+    "read_only": { "type": "boolean", "description": "只读模式:禁用 bash/edit/write;巡检/简报类建议 true" },
     "timeout_secs": { "type": "integer", "minimum": 1, "maximum": 86400, "description": "单次运行超时秒数,省略则默认 600" }
   },
   "required": ["name", "prompt", "schedule_kind", "scope"]

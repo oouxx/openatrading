@@ -75,7 +75,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let web_bind = app_config.service.web_bind.clone();
         let web_ctx = AppContext::build(ContextParams {
             memory: memory.clone(),
-            trade: trade.clone(),
+            trade_store: trade.clone(),
             social: social.clone(),
             automations: Some(automation_hub.clone()),
         })
@@ -110,7 +110,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let cron_ctx = Arc::new(
             AppContext::build(ContextParams {
                 memory: memory.clone(),
-                trade: trade.clone(),
+                trade_store: trade.clone(),
                 social: social.clone(),
                 automations: Some(automation_hub.clone()),
             })
@@ -141,9 +141,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let (mcp_tx, mcp_rx) = tokio::sync::watch::channel(false);
         mcp_shutdown.replace(mcp_tx);
 
-        let registry = std::sync::Arc::new(openatrading_core::llm::create_registry(
-            openatrading_core::llm::RegistryOptions::market_only(),
-        ));
+        let registry = std::sync::Arc::new(openatrading_core::llm::create_registry());
         handles.push(tokio::spawn(async move {
             if let Err(e) = openatrading_core::llm::serve_http(registry, mcp_bind, mcp_rx).await {
                 openatrading_core::log::error!("[gateway] mcp error: {e}");
@@ -165,7 +163,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
             adapters.retain(|a| a.name() != "telegram");
             let bot_ctx = AppContext::build(ContextParams {
                 memory: memory.clone(),
-                trade: trade.clone(),
+                trade_store: trade.clone(),
                 social: social.clone(),
                 automations: Some(automation_hub.clone()),
             })
@@ -192,7 +190,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         let adapter_ctx = Arc::new(
             AppContext::build(ContextParams {
                 memory: memory.clone(),
-                trade: trade.clone(),
+                trade_store: trade.clone(),
                 social: social.clone(),
                 automations: Some(automation_hub.clone()),
             })

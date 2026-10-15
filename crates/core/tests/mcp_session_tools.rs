@@ -16,7 +16,6 @@ use std::time::Duration;
 
 use openatrading_core::llm::{
     create_factory, create_registry, serve_http, CreateSessionParams, FactoryOptions,
-    RegistryOptions,
 };
 use pi_coding_agent::core::session_manager::SessionManager;
 
@@ -43,7 +42,7 @@ async fn mcp_servers_from_mcp_json_reach_the_session() {
     // ── 1. 起一个真的 MCP server（本项目自己的行情工具暴露服务）──
     let port = free_port();
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
-    let registry = Arc::new(create_registry(RegistryOptions::market_only()));
+    let registry = Arc::new(create_registry());
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = tokio::spawn(async move {
         let _ = serve_http(registry, addr, shutdown_rx).await;
@@ -71,9 +70,7 @@ async fn mcp_servers_from_mcp_json_reach_the_session() {
     std::env::set_current_dir(&cwd).expect("set cwd");
 
     // ── 3. 建会话，断言 MCP 工具进了工具列表 ──
-    let factory = create_factory(FactoryOptions::market_only(
-        agent_dir.to_string_lossy().to_string(),
-    ));
+    let factory = create_factory(FactoryOptions::new(agent_dir.to_string_lossy().to_string()));
     let created = factory(CreateSessionParams {
         cwd: cwd.to_string_lossy().to_string(),
         agent_dir: agent_dir.to_string_lossy().to_string(),

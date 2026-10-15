@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// 角色未声明 `initial_capital` 时使用的默认初始资金（元）。
+pub const DEFAULT_INITIAL_CAPITAL: f64 = 1_000_000.0;
+
+/// serde 默认值：`true`（用于 `[[roles]]` 的 `readonly`）。
+const fn default_true() -> bool {
+    true
+}
+
 /// A role declared in `config.toml` `[[roles]]`. Readonly roles cannot be
 /// edited or deleted via the API.
 #[derive(Debug, Clone, Deserialize)]
@@ -11,26 +19,31 @@ pub struct RoleConfig {
     /// Human-readable label shown in the UI. Falls back to `name` when absent.
     #[serde(default)]
     pub display_name: Option<String>,
-    #[serde(default)]
+    /// config.toml 里声明的角色默认只读（与 `config.example.toml` 的说明一致），
+    /// 想允许编辑需显式写 `readonly = false`。磁盘角色（roles/*.toml）不受此默认影响。
+    #[serde(default = "default_true")]
     pub readonly: bool,
+    /// 模拟盘初始资金（元）。缺省用 [`DEFAULT_INITIAL_CAPITAL`]。
+    #[serde(default)]
+    pub initial_capital: Option<f64>,
 }
-
-pub mod pnl;
-pub mod prompt;
 
 /// Path to the roles directory (`{atrading_home}/roles/`).
 ///
-/// Roles are pure trading-account labels (name + display_name); the AI persona
-/// they used to carry is now handled by pi-rs skills under `$PI_RS_HOME/agent/skills`.
+/// Roles are pure trading-account labels (name + display_name + 初始资金);
+/// the AI persona they used to carry is now handled by pi-rs skills under
+/// `$PI_RS_HOME/agent/skills`.
 pub fn default_roles_dir() -> PathBuf {
     crate::atrading_home().join("roles")
 }
 
-/// On-disk role file: a single `display_name` field. Filename stem = role name.
+/// On-disk role file. Filename stem = role name.
 #[derive(Debug, Clone, Deserialize)]
 struct RoleFile {
     #[serde(default)]
     display_name: Option<String>,
+    #[serde(default)]
+    initial_capital: Option<f64>,
 }
 
 /// Load all editable roles from `~/.atrading/roles/*.toml`.
@@ -50,16 +63,23 @@ pub fn list_roles_from_disk() -> Vec<crate::RoleEntry> {
         let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
-        let display_name = fs::read_to_string(&path)
+        let parsed = fs::read_to_string(&path)
             .ok()
-            .and_then(|raw| toml::from_str::<RoleFile>(&raw).ok())
-            .and_then(|f| f.display_name)
+            .and_then(|raw| toml::from_str::<RoleFile>(&raw).ok());
+        let display_name = parsed
+            .as_ref()
+            .and_then(|f| f.display_name.clone())
             .unwrap_or_else(|| name.to_string());
+        let initial_capital = parsed
+            .as_ref()
+            .and_then(|f| f.initial_capital)
+            .unwrap_or(DEFAULT_INITIAL_CAPITAL);
 
         roles.push(crate::RoleEntry {
             name: name.to_string(),
             display_name,
             readonly: false,
+            initial_capital,
         });
     }
 
@@ -76,23 +96,39 @@ fn validate_role_name(name: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 struct RoleFileOut {
     display_name: String,
+    initial_capital: f64,
+}
+
+/// 保存角色所需的字段（多于 3 个时按规范合并为 struct）。
+#[derive(Debug, Clone, Copy)]
+pub struct RoleSave<'a> {
+    pub name: &'a str,
+    pub display_name: &'a str,
+    pub initial_capital: f64,
 }
 
 /// Persist a role as `~/.atrading/roles/{name}.toml`.
-pub fn save_role(name: &str, display_name: &str) -> Result<()> {
-    validate_role_name(name)?;
+///
+/// # Errors
+/// 角色名非法、目录创建失败或序列化/写入失败时返回错误。
+pub fn save_role(role: &RoleSave<'_>) -> Result<()> {
+    validate_role_name(role.name)?;
     let dir = default_roles_dir();
     fs::create_dir_all(&dir).with_context(|| format!("创建目录失败: {}", dir.display()))?;
     let content = toml::to_string(&RoleFileOut {
-        display_name: display_name.to_string(),
+        display_name: role.display_name.to_string(),
+        initial_capital: role.initial_capital,
     })
     .context("序列化角色失败")?;
-    let path = dir.join(format!("{name}.toml"));
+    let path = dir.join(format!("{}.toml", role.name));
     fs::write(&path, content).with_context(|| format!("写入角色失败: {}", path.display()))?;
     Ok(())
 }
 
 /// Delete a role file `~/.atrading/roles/{name}.toml`.
+///
+/// # Errors
+/// 角色名非法或删除失败时返回错误。
 pub fn delete_role(name: &str) -> Result<()> {
     validate_role_name(name)?;
     let path = default_roles_dir().join(format!("{name}.toml"));

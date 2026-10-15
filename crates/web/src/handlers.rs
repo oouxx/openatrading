@@ -525,50 +525,60 @@ pub async fn get_roles_data(state: &Arc<AppState>) -> Result<serde_json::Value, 
     Ok(serde_json::to_value(roles_guard.clone()).unwrap_or_default())
 }
 
+/// 解析角色的初始资金；角色不存在或未声明时用默认值。
+async fn initial_capital_of(state: &Arc<AppState>, name: &str) -> f64 {
+    state
+        .roles
+        .read()
+        .await
+        .iter()
+        .find(|r| r.name == name)
+        .map_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL, |r| {
+            r.initial_capital
+        })
+}
+
 /// GET /api/roles/:name/positions
 pub async fn get_role_positions_data(
     state: &Arc<AppState>,
     name: &str,
 ) -> Result<serde_json::Value, String> {
-    let positions = state
+    let (positions, _valuation_complete) = state
         .ctx
         .trade
-        .list_positions(name)
+        .positions(name)
+        .await
         .map_err(|e| e.to_string())?;
-    let result: Vec<serde_json::Value> = positions
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "id": p.id, "symbol": p.symbol, "stock_name": p.stock_name,
-                "cost_price": p.cost_price, "current_price": p.current_price.unwrap_or(0.0),
-                "shares": p.shares, "entry_reason": p.entry_reason, "entry_date": p.entry_date,
-            })
-        })
-        .collect();
-    Ok(serde_json::json!(result))
+    Ok(serde_json::to_value(positions).unwrap_or_default())
 }
 
-/// GET /api/roles/:name/logs
-pub async fn get_role_logs_data(
+/// GET /api/roles/:name/account
+pub async fn get_role_account_data(
     state: &Arc<AppState>,
     name: &str,
 ) -> Result<serde_json::Value, String> {
-    let logs = state
+    let capital = initial_capital_of(state, name).await;
+    let account = state
         .ctx
         .trade
-        .get_trade_logs_by_role(name, 20)
+        .account(name, capital)
+        .await
         .map_err(|e| e.to_string())?;
-    let result: Vec<serde_json::Value> = logs
-        .iter()
-        .map(|l| {
-            let date: String = l.created_at.chars().take(10).collect();
-            serde_json::json!({
-                "date": date, "action": l.action, "symbol": l.symbol,
-                "price": l.price, "shares": l.shares, "reason": l.reason,
-            })
-        })
-        .collect();
-    Ok(serde_json::json!(result))
+    Ok(serde_json::to_value(account).unwrap_or_default())
+}
+
+/// GET /api/roles/:name/trades
+pub async fn get_role_trades_data(
+    state: &Arc<AppState>,
+    name: &str,
+    limit: u32,
+) -> Result<serde_json::Value, String> {
+    let trades = state
+        .ctx
+        .trade
+        .trades(name, limit)
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::to_value(trades).unwrap_or_default())
 }
 
 /// GET /api/roles/:name/pnl-history
@@ -577,36 +587,28 @@ pub async fn get_role_pnl_history_data(
     name: &str,
     days: usize,
 ) -> Result<serde_json::Value, String> {
-    let all_logs = state
+    let capital = initial_capital_of(state, name).await;
+    let points = state
         .ctx
         .trade
-        .get_all_trade_logs_by_role(name)
+        .pnl_history(name, capital, days)
+        .await
         .map_err(|e| e.to_string())?;
-    let positions = state.ctx.trade.list_positions(name).unwrap_or_default();
-    let current_value: f64 = positions
-        .iter()
-        .map(|p| p.current_price.unwrap_or(p.cost_price) * p.shares as f64)
-        .sum();
-    let mut points = openatrading_core::roles::pnl::compute_pnl_history(&all_logs, current_value);
-    if days > 0 {
-        let cutoff = points.len().saturating_sub(days);
-        points = points.into_iter().skip(cutoff).collect();
-    }
-    Ok(serde_json::json!({"points": points, "initial_capital": 1_000_000.0}))
+    Ok(serde_json::json!({"points": points, "initial_capital": capital}))
 }
 
 /// GET /api/roles/:name/history
 pub async fn get_role_history_data(
     state: &Arc<AppState>,
     name: &str,
-    limit: usize,
+    limit: u32,
 ) -> Result<serde_json::Value, String> {
-    let positions = state
+    let closed = state
         .ctx
         .trade
-        .get_closed_positions(name, limit)
+        .closed_trades(name, limit)
         .map_err(|e| e.to_string())?;
-    Ok(serde_json::to_value(positions).unwrap_or_default())
+    Ok(serde_json::to_value(closed).unwrap_or_default())
 }
 
 // ── Replay ────────────────────────────────────────────────────────────────
@@ -899,17 +901,38 @@ pub async fn create_role_data(
     state: &Arc<AppState>,
     name: &str,
     display_name: &str,
+    initial_capital: Option<f64>,
 ) -> Result<serde_json::Value, String> {
-    openatrading_core::roles::save_role(name, display_name).map_err(|e| e.to_string())?;
+    let existing_capital = state
+        .roles
+        .read()
+        .await
+        .iter()
+        .find(|r| r.name == name)
+        .map_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL, |r| {
+            r.initial_capital
+        });
+    let capital = initial_capital.unwrap_or(existing_capital);
+    if !capital.is_finite() || capital <= 0.0 {
+        return Err("初始资金必须是正数".to_string());
+    }
+    openatrading_core::roles::save_role(&openatrading_core::roles::RoleSave {
+        name,
+        display_name,
+        initial_capital: capital,
+    })
+    .map_err(|e| e.to_string())?;
     {
         let mut roles = state.roles.write().await;
         if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
             existing.display_name = display_name.to_string();
+            existing.initial_capital = capital;
         } else {
             roles.push(crate::RoleEntry {
                 name: name.to_string(),
                 display_name: display_name.to_string(),
                 readonly: false,
+                initial_capital: capital,
             });
         }
     }
@@ -930,8 +953,7 @@ pub async fn delete_role_data(
             }
         }
     }
-    state.ctx.trade.delete_positions_by_role(name).ok();
-    state.ctx.trade.delete_trade_logs_by_role(name).ok();
+    state.ctx.trade.reset(name).ok();
     openatrading_core::roles::delete_role(name).ok();
     {
         let mut roles = state.roles.write().await;
@@ -940,22 +962,32 @@ pub async fn delete_role_data(
     Ok(serde_json::json!({"ok": true}))
 }
 
-/// POST /api/roles/:name/reset — reset account to 1,000,000
+/// POST /api/roles/:name/reset — 清空该角色的持仓与流水
 pub async fn reset_role_data(
     state: &Arc<AppState>,
     name: &str,
 ) -> Result<serde_json::Value, String> {
-    state
-        .ctx
-        .trade
-        .delete_trade_logs_by_role(name)
-        .map_err(|e| e.to_string())?;
-    state
-        .ctx
-        .trade
-        .delete_positions_by_role(name)
-        .map_err(|e| e.to_string())?;
+    state.ctx.trade.reset(name).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({"ok": true}))
+}
+
+/// POST /api/roles/:name/orders — 手动下单
+///
+/// 返回 [`openatrading_core::trade::OrderError`] 而非 `String`，让 web 层能按
+/// `is_client_error()` 区分 400（输入有误，原因要展示给用户）与 500。
+pub async fn place_order_data(
+    state: &Arc<AppState>,
+    name: &str,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, openatrading_core::trade::OrderError> {
+    let request: openatrading_core::trade::OrderRequest = serde_json::from_value(body)
+        .map_err(|e| openatrading_core::trade::OrderError::InvalidSymbol(e.to_string()))?;
+    let capital = initial_capital_of(state, name).await;
+    let outcome = state.ctx.trade.place_order(name, capital, &request).await?;
+    Ok(serde_json::json!({
+        "trade": outcome.trade,
+        "position": outcome.position,
+    }))
 }
 
 // ── Session CRUD ─────────────────────────────────────────────────────────

@@ -1,97 +1,93 @@
-use crate::types::StockCode;
-use serde::{Deserialize, Serialize};
+//! 模拟盘手动交易。
+//!
+//! 用户自己填写成交价与股数来记账，**不做撮合**（无滑点、无模拟成交价），
+//! **不计手续费**。每个角色一个独立账户，初始资金由角色配置提供。
+//!
+//! 现金不落库，由成交流水推导：
+//!
+//! ```text
+//! cash = initial_capital - Σ(买入 price × shares) + Σ(卖出 price × shares)
+//! ```
+//!
+//! 因此不存在「现金列与流水不一致」的可能。
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum TradeAction {
-    Buy,
-    Sell,
-    Hold,
-    Open,
-    Close,
+pub mod order;
+pub mod quote;
+pub mod service;
+pub mod store;
+
+pub use order::{
+    round_money, Account, ClosedTrade, OrderRequest, PnlPoint, Position, PositionView, Price,
+    Shares, Side, Trade,
+};
+pub use quote::{ApiQuoteSource, Quote, QuoteSource};
+pub use service::TradeService;
+pub use store::{OrderOutcome, PlaceOrderCtx, TradeStore};
+
+/// 交易账户的错误类型。
+///
+/// 刻意把「调用方输入有误」与「存储失败」分开：前者应映射为 HTTP 400 并把
+/// 中文原因展示给用户，后者才是 500。`is_client_error` 是这条分界线的唯一判据。
+#[derive(Debug, Clone)]
+pub enum OrderError {
+    /// 买卖方向无法识别。
+    InvalidSide(String),
+    /// 价格非正数或非有限值。
+    InvalidPrice(f64),
+    /// 股数非正数，或买入股数不是 100 的整数倍。
+    InvalidShares(String),
+    /// 股票代码无法归一化。
+    InvalidSymbol(String),
+    /// 卖出的股数超过当前持仓。
+    InsufficientShares { held: i64, requested: i64 },
+    /// 买入所需金额超过可用现金。
+    InsufficientCash { available: f64, required: f64 },
+    /// 角色不存在（仅用于读取路径；下单会自动建账）。
+    UnknownRole(String),
+    /// 存储层失败。
+    Store(String),
 }
 
-impl TradeAction {
-    pub const fn as_str(&self) -> &'static str {
+impl OrderError {
+    /// 是否属于「调用方输入有误」（映射 HTTP 400 而非 500）。
+    pub const fn is_client_error(&self) -> bool {
+        !matches!(self, Self::Store(_))
+    }
+}
+
+impl std::fmt::Display for OrderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Buy => "buy",
-            Self::Sell => "sell",
-            Self::Hold => "hold",
-            Self::Open => "open",
-            Self::Close => "close",
+            Self::InvalidSide(v) => write!(f, "买卖方向无效: {v}（应为 buy 或 sell）"),
+            Self::InvalidPrice(v) => write!(f, "价格必须是正数，收到 {v}"),
+            Self::InvalidShares(msg) => f.write_str(msg),
+            Self::InvalidSymbol(v) => write!(f, "股票代码无效: {v}"),
+            Self::InsufficientShares { held, requested } => {
+                write!(
+                    f,
+                    "卖出股数超过持仓：持有 {held} 股，试图卖出 {requested} 股"
+                )
+            }
+            Self::InsufficientCash {
+                available,
+                required,
+            } => write!(
+                f,
+                "可用现金不足：可用 {available:.2} 元，本次买入需要 {required:.2} 元"
+            ),
+            Self::UnknownRole(v) => write!(f, "角色不存在: {v}"),
+            Self::Store(msg) => write!(f, "交易数据读写失败: {msg}"),
         }
     }
 }
 
-impl std::fmt::Display for TradeAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+impl std::error::Error for OrderError {}
+
+impl From<rusqlite::Error> for OrderError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::Store(e.to_string())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Position {
-    pub id: i64,
-    pub role_name: String,
-    pub symbol: StockCode,
-    pub stock_name: String,
-    pub entry_date: String,
-    pub cost_price: f64,
-    pub shares: i64,
-    pub current_price: Option<f64>,
-    pub stop_loss: Option<f64>,
-    pub target_price: Option<f64>,
-    pub entry_reason: String,
-    pub sector: String,
-    pub position_pct: f64,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TradeLog {
-    pub id: i64,
-    pub position_id: i64,
-    pub action: TradeAction,
-    pub price: f64,
-    pub shares: i64,
-    pub reason: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct TradeLogEntry {
-    pub id: i64,
-    pub position_id: i64,
-    pub action: TradeAction,
-    pub price: f64,
-    pub shares: i64,
-    pub reason: String,
-    pub created_at: String,
-    pub symbol: StockCode,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ClosedPosition {
-    pub position_id: i64,
-    pub symbol: StockCode,
-    pub stock_name: String,
-    pub entry_date: String,
-    pub exit_date: String,
-    pub entry_price: f64,
-    pub exit_price: f64,
-    pub shares: i64,
-    pub pnl_pct: f64,
-    pub entry_reason: String,
-    pub exit_reason: String,
-}
-
-pub mod broker;
-pub mod paper;
-pub mod paper_executor;
-pub mod sqlite;
-
-pub use broker::execute_buy;
-pub use broker::execute_sell;
-pub use paper_executor::PaperExecutor;
-pub use sqlite::TradeManager;
+/// 交易模块的 Result 别名。
+pub type Result<T> = std::result::Result<T, OrderError>;
