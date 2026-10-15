@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { McpServerConfig } from "../types/mcp"
+import { isReadOnly, type McpServerConfig } from "../types/mcp"
 import { mcpErrorMessage } from "@/hooks/query/useMcpServers"
 
 export function McpServerCard({
@@ -50,10 +50,13 @@ export function McpServerCard({
 
   const transportSummary = () => {
     if (s.transport.type === "stdio") {
-      return `${s.transport.command ?? ""} ${(s.transport.args ?? []).join(" ")}`.trim()
+      return `${s.transport.command} ${s.transport.args.join(" ")}`.trim()
     }
-    return s.transport.url ?? ""
+    return s.transport.url
   }
+
+  // 项目级条目只读：项目级按名覆盖全局，写全局不会生效（后端也会拒绝）。
+  const readOnly = isReadOnly(s)
 
   return (
     <div className="flex min-h-[52px] items-center gap-3 py-3">
@@ -64,6 +67,14 @@ export function McpServerCard({
           <span className="text-secondary border-hairline text-caption rounded-md border px-1.5 py-0.5">
             {s.transport.type}
           </span>
+          {readOnly && (
+            <span
+              className="text-secondary border-hairline text-caption rounded-md border px-1.5 py-0.5"
+              title={`定义在 ${s.source}，请直接编辑该文件`}
+            >
+              项目
+            </span>
+          )}
         </div>
         <p className="text-secondary font-number text-caption mt-0.5 truncate">
           {transportSummary()}
@@ -75,7 +86,9 @@ export function McpServerCard({
       <div className="flex shrink-0 gap-1">
         <button
           type="button"
-          className="hover:bg-hover text-secondary text-caption hover:text-primary rounded px-2 py-1 transition-colors"
+          className="hover:bg-hover text-secondary text-caption hover:text-primary rounded px-2 py-1 transition-colors disabled:opacity-40"
+          disabled={readOnly}
+          title={readOnly ? `定义在 ${s.source}，请直接编辑该文件` : undefined}
           onClick={onEdit}
         >
           编辑
@@ -83,7 +96,7 @@ export function McpServerCard({
         <button
           type="button"
           className="hover:bg-hover text-secondary text-caption hover:text-primary rounded px-2 py-1 transition-colors disabled:opacity-40"
-          disabled={busy !== null}
+          disabled={busy !== null || readOnly}
           onClick={() => run("toggle", onToggle)}
         >
           {busy === "toggle" ? "切换中…" : s.enabled ? "停用" : "启用"}
@@ -93,7 +106,7 @@ export function McpServerCard({
           className={`text-caption rounded px-2 py-1 transition-colors disabled:opacity-40 ${
             confirming ? "bg-danger-bg text-down" : "text-secondary hover:bg-hover hover:text-down"
           }`}
-          disabled={busy !== null}
+          disabled={busy !== null || readOnly}
           onClick={() => {
             if (confirming) {
               run("delete", onDelete)

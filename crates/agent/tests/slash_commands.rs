@@ -20,7 +20,6 @@ fn create_registry_collects_extension_commands() {
     let mut registry =
         openatrading_extension::create_registry(openatrading_extension::RegistryOptions {
             trading: None,
-            mcp: None,
         });
     let resolved = pi_coding_agent::core::slash_commands::resolve_extension_commands(
         &registry.collect_commands(),

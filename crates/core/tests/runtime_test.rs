@@ -466,7 +466,6 @@ async fn test_automation_tools_are_active_in_session() {
         tools: None,
         custom_tools: Some(automation_tools(&hub)),
         trading: None,
-        mcp: None,
     });
 
     let cwd = std::env::current_dir()

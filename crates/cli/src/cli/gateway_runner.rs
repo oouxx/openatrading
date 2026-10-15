@@ -40,9 +40,9 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     let memory = gateway.memory.clone();
     let trade = gateway.trade.clone();
     let web_roles = roles.clone();
-    let mcp_servers = app_config.mcp_servers.clone();
-    let cron_mcp = mcp_servers.clone();
-    let web_mcp = mcp_servers.clone();
+    // 外部 MCP server 配置的读写入口（管理接口用）。会话侧的 MCP 工具由 pi-rs SDK
+    // 在装配时直接读 mcp.json，不需要在这里传递。
+    let mcp_config = openatrading_core::llm::McpConfigStore::from_process()?;
 
     // ── 通知发送器 ──────────────────────────────────
     let social: Arc<dyn NotificationSender> = match &app_config.social {
@@ -74,7 +74,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     if do_web {
         let web_bind = app_config.service.web_bind.clone();
         let web_ctx = AppContext::build(ContextParams {
-            mcp_servers: web_mcp.clone(),
             memory: memory.clone(),
             trade: trade.clone(),
             social: social.clone(),
@@ -93,7 +92,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                     GatewayConfig {
                         web_bind,
                         roles: web_roles.clone(),
-                        mcp_servers: web_mcp.clone(),
+                        mcp: mcp_config,
                         automation: web_hub,
                     },
                     web_ctx,
@@ -110,7 +109,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     if do_cron && !do_web {
         let cron_ctx = Arc::new(
             AppContext::build(ContextParams {
-                mcp_servers: cron_mcp.clone(),
                 memory: memory.clone(),
                 trade: trade.clone(),
                 social: social.clone(),
@@ -166,7 +164,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
         if tg_ready {
             adapters.retain(|a| a.name() != "telegram");
             let bot_ctx = AppContext::build(ContextParams {
-                mcp_servers: mcp_servers.clone(),
                 memory: memory.clone(),
                 trade: trade.clone(),
                 social: social.clone(),
@@ -177,7 +174,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
                 openatrading_core::social::TelegramBotConfig {
                     bot_token: tg.bot_token.clone().unwrap_or_default(),
                     chat_id: tg.chat_id.clone().unwrap_or_default(),
-                    mcp_servers: mcp_servers.clone(),
                 },
                 roles.clone(),
                 bot_ctx,
@@ -195,7 +191,6 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     if !adapters.is_empty() {
         let adapter_ctx = Arc::new(
             AppContext::build(ContextParams {
-                mcp_servers: mcp_servers.clone(),
                 memory: memory.clone(),
                 trade: trade.clone(),
                 social: social.clone(),

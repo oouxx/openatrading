@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 pub struct AppConfig {
     pub default_role: Option<String>,
     pub roles: Vec<openatrading_core::roles::RoleConfig>,
-    pub mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     pub service: ServiceConfig,
     pub cron: Option<CronTomlConfig>,
     pub social: Option<SocialConfig>,
@@ -42,8 +41,6 @@ struct RawConfig {
     default_role: Option<String>,
     #[serde(default)]
     roles: Vec<openatrading_core::roles::RoleConfig>,
-    #[serde(default)]
-    mcp_servers: Vec<openatrading_core::llm::McpServerConfig>,
     #[serde(default)]
     service: Option<ServiceConfig>,
     #[serde(default)]
@@ -109,7 +106,6 @@ impl AppConfig {
         let mut merged = Self {
             default_role: None,
             roles: Vec::new(),
-            mcp_servers: Vec::new(),
             service: ServiceConfig {
                 db_path: default_db_path(),
                 web_bind: default_web_bind(),
@@ -142,21 +138,6 @@ impl AppConfig {
             }
         }
 
-        // Project-level .mcp.json (cwd/.atrading/.mcp.json)
-        if let Ok(cwd) = std::env::current_dir() {
-            let project_mcp = cwd.join(".atrading").join(".mcp.json");
-            if project_mcp.exists() {
-                openatrading_core::log::info!(
-                    "Loading project MCP config from {}",
-                    project_mcp.display()
-                );
-                Self::load_mcp_json(&project_mcp, &mut merged.mcp_servers);
-            }
-        }
-
-        // Load .mcp.json MCP server configs
-        Self::load_mcp_json(&home.join(".mcp.json"), &mut merged.mcp_servers);
-
         // 配置校验：检查未知字段
         validate_config(&home.join("config.toml"));
 
@@ -183,7 +164,6 @@ impl AppConfig {
         Some(Self {
             default_role: raw.default_role,
             roles: raw.roles,
-            mcp_servers: raw.mcp_servers,
             service: raw.service.unwrap_or_else(|| ServiceConfig {
                 db_path: default_db_path(),
                 web_bind: default_web_bind(),
@@ -209,96 +189,7 @@ impl AppConfig {
             self.roles.retain(|e| e.name != entry.name);
             self.roles.push(entry);
         }
-        if !other.mcp_servers.is_empty() {
-            self.mcp_servers = other.mcp_servers;
-        }
         self.mcp_server = other.mcp_server;
-    }
-
-    /// Load MCP servers from a `.mcp.json` file.
-    ///
-    /// Supports both Claude Code format and streamable-http format:
-    /// ```json
-    /// { "mcpServers": { "name": { "type": "stdio", "command": "npx", "args": ["..."] } } }
-    /// { "mcpServers": { "name": { "url": "http://...", "enabled": true } } }
-    /// ```
-    fn load_mcp_json(path: &Path, servers: &mut Vec<openatrading_core::llm::McpServerConfig>) {
-        use openatrading_core::llm::{McpServerConfig, McpTransportConfig};
-
-        #[derive(serde::Deserialize)]
-        struct McpJson {
-            #[serde(rename = "mcpServers")]
-            mcp_servers: std::collections::HashMap<String, McpJsonEntry>,
-        }
-        #[derive(serde::Deserialize)]
-        struct McpJsonEntry {
-            #[serde(default = "default_enabled")]
-            enabled: bool,
-            /// Transport type: "streamable-http", "sse", or "stdio"
-            #[serde(rename = "type", default = "default_transport_type")]
-            transport_type: String,
-            /// Server URL (for streamable-http / sse).
-            #[serde(default = "default_url")]
-            url: String,
-            /// Optional POST endpoint for SSE mode.
-            #[serde(skip_serializing_if = "Option::is_none")]
-            post_url: Option<String>,
-            /// Executable command (for stdio).
-            #[serde(default)]
-            command: String,
-            /// Command arguments (for stdio).
-            #[serde(default)]
-            args: Vec<String>,
-            /// Environment variables (for stdio).
-            #[serde(default)]
-            env: ahash::AHashMap<String, String>,
-        }
-        fn default_transport_type() -> String {
-            "streamable-http".to_string()
-        }
-        fn default_url() -> String {
-            "http://localhost:8081/mcp".to_string()
-        }
-        const fn default_enabled() -> bool {
-            true
-        }
-
-        let Ok(content) = std::fs::read_to_string(path) else {
-            return;
-        };
-        let parsed: McpJson = match serde_json::from_str(&content) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("跳过 {} (解析错误): {e}", path.display());
-                return;
-            }
-        };
-
-        for (name, entry) in parsed.mcp_servers {
-            if servers.iter().any(|s| s.name == name) {
-                continue;
-            }
-            let transport = match entry.transport_type.as_str() {
-                "sse" => McpTransportConfig::Sse {
-                    url: entry.url,
-                    post_url: entry.post_url,
-                },
-                "stdio" => McpTransportConfig::Stdio {
-                    command: entry.command,
-                    args: entry.args,
-                    env: entry.env,
-                },
-                _ => McpTransportConfig::StreamableHttp {
-                    url: entry.url,
-                    auth_token: None,
-                },
-            };
-            servers.push(McpServerConfig {
-                name,
-                transport,
-                enabled: entry.enabled,
-            });
-        }
     }
 
     pub fn config_path() -> PathBuf {
@@ -372,7 +263,6 @@ pub fn validate_config(path: &Path) {
     let known: std::collections::HashSet<&str> = [
         "default_role",
         "roles",
-        "mcp_servers",
         "service",
         "cron",
         "social",

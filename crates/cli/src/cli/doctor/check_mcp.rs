@@ -2,17 +2,16 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
-use openatrading_core::llm::{McpClient, McpTransportConfig};
+use openatrading_core::llm::{McpConfigStore, McpConnection, McpTransportSpec};
 
 /// Network timeout for a single MCP server connect handshake.
 ///
-/// A healthy MCP server should complete the initialize handshake quickly;
-/// 10s is generous for a slow cold start (e.g. a stdio child) while still
-/// failing fast on a hung endpoint.
-#[allow(dead_code)]
+/// `McpConnection::connect_spec` has no timeout of its own (the 10s bound lives in
+/// `connect_specs`), so the check wraps it. A healthy MCP server completes the
+/// initialize handshake quickly; 10s is generous for a slow stdio cold start while
+/// still failing fast on a hung endpoint.
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[allow(dead_code)]
 pub struct McpCheck;
 
 #[async_trait]
@@ -33,34 +32,36 @@ impl Check for McpCheck {
         None
     }
 
-    async fn check(&self, ctx: &CheckContext) -> CheckResult {
-        let servers = match &ctx.app_config {
-            Some(cfg) => &cfg.mcp_servers,
-            None => {
-                return CheckResult {
-                    status: CheckStatus::Error("无法加载配置".into()),
-                    summary: "配置加载失败".into(),
-                    details: vec![],
-                    duration_ms: 0,
-                }
-            }
+    async fn check(&self, _ctx: &CheckContext) -> CheckResult {
+        let Ok(store) = McpConfigStore::from_process() else {
+            return CheckResult {
+                status: CheckStatus::Error("无法定位 mcp.json".into()),
+                summary: "配置加载失败".into(),
+                details: vec![],
+                duration_ms: 0,
+            };
         };
+
+        let (servers, load_errors) = store.loaded();
+        let mut details: Vec<String> = load_errors
+            .iter()
+            .map(|e| format!("  ⤚ 配置项已跳过: {e}"))
+            .collect();
 
         if servers.is_empty() {
             return CheckResult {
                 status: CheckStatus::Warn("无 MCP 服务".into()),
-                summary: "未配置任何 MCP 服务器".into(),
-                details: vec![],
+                summary: format!("未配置任何 MCP 服务器 ({})", store.global_path().display()),
+                details,
                 duration_ms: 0,
             };
         }
 
         let enabled = servers.iter().filter(|s| s.enabled).count();
         let disabled = servers.len() - enabled;
-        let mut details = Vec::new();
         let mut failures = 0usize;
 
-        for server in servers {
+        for server in &servers {
             let label = if server.enabled {
                 format!("  {}  ", server.name)
             } else {
@@ -72,71 +73,26 @@ impl Check for McpCheck {
                 continue;
             }
 
-            let transport_desc = match &server.transport {
-                McpTransportConfig::StreamableHttp { url, .. } => {
-                    format!("streamable-http → {url}")
-                }
-                McpTransportConfig::Sse { url, .. } => {
-                    format!("sse → {url}")
-                }
-                McpTransportConfig::Stdio { command, args, .. } => {
-                    format!("stdio → {command} {}", args.join(" "))
-                }
-            };
-
-            let connect_result = match &server.transport {
-                McpTransportConfig::StreamableHttp { url, .. } => {
-                    tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
-                        .await
-                        .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                }
-                McpTransportConfig::Sse { url, .. } => {
-                    tokio::time::timeout(NETWORK_TIMEOUT, McpClient::connect(url.clone()))
-                        .await
-                        .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})"))
-                }
-                McpTransportConfig::Stdio { command, args, env } => tokio::time::timeout(
-                    NETWORK_TIMEOUT,
-                    McpClient::connect_stdio(command, args, env),
-                )
+            let transport_desc = describe_transport(&server.transport);
+            // 只做连接握手 + 工具枚举：pi-rs 没有 verify()，而调用任意一个远端工具
+            // 可能带副作用（写文件、下单……），不适合作为健康检查。
+            match tokio::time::timeout(NETWORK_TIMEOUT, McpConnection::connect_spec(&server.spec()))
                 .await
-                .map_err(|_| format!("连接超时 (>{NETWORK_TIMEOUT:?})")),
-            };
-
-            match connect_result {
-                Ok(Ok(client)) => {
-                    // Verify: list tools and call the first one
-                    let verify_result = client.verify().await;
-                    match verify_result {
-                        Ok((tool_count, call_outcome)) => {
-                            let call_icon = match &call_outcome {
-                                Ok(()) => "✓",
-                                Err(_) => "✗",
-                            };
-                            let call_note = match &call_outcome {
-                                Ok(()) => String::new(),
-                                Err(e) => format!(", call failed: {e}"),
-                            };
-                            details.push(format!(
-                                "{label} {transport_desc}  ✓ ({tool_count} tools, {call_icon} tool call{call_note})"
-                            ));
-                            if call_outcome.is_err() {
-                                failures += 1;
-                            }
-                        }
-                        Err(e) => {
-                            details
-                                .push(format!("{label} {transport_desc}  ✗ (verify failed: {e})"));
-                            failures += 1;
-                        }
-                    }
+            {
+                Ok(Ok(connection)) => {
+                    details.push(format!(
+                        "{label} {transport_desc}  ✓ ({} tools)",
+                        connection.tool_count()
+                    ));
                 }
                 Ok(Err(e)) => {
                     details.push(format!("{label} {transport_desc}  ✗ ({e})"));
                     failures += 1;
                 }
-                Err(e) => {
-                    details.push(format!("{label} {transport_desc}  ✗ ({e})"));
+                Err(_) => {
+                    details.push(format!(
+                        "{label} {transport_desc}  ✗ (连接超时 (>{NETWORK_TIMEOUT:?}))"
+                    ));
                     failures += 1;
                 }
             }
@@ -163,9 +119,31 @@ impl Check for McpCheck {
         // `has_fix()` 返回 false，正常流程不会到达这里；返回 Skipped 而非
         // panic，与 PortCheck/TelegramCheck/LlmCheck 等无破坏性修复项一致，
         // 防御性地给出提示。
+        let message = match McpConfigStore::from_process() {
+            Ok(store) => format!(
+                "请在 {} 或 {} 中检查 MCP 服务器配置",
+                store.global_path().display(),
+                store.project_path().display()
+            ),
+            Err(_) => "请在 pi-rs 的 mcp.json 中检查 MCP 服务器配置".to_string(),
+        };
         Ok(FixResult {
             status: FixStatus::Skipped,
-            message: "请在 config.toml [[mcp_servers]] 中检查 MCP 服务器配置".into(),
+            message,
         })
+    }
+}
+
+fn describe_transport(transport: &McpTransportSpec) -> String {
+    match transport {
+        McpTransportSpec::Stdio { command, args, .. } => {
+            let mut parts = vec![format!("stdio → {command}")];
+            if !args.is_empty() {
+                parts.push(args.join(" "));
+            }
+            parts.join(" ")
+        }
+        McpTransportSpec::Http { url, .. } => format!("http → {url}"),
+        McpTransportSpec::Sse { url, .. } => format!("sse → {url}"),
     }
 }

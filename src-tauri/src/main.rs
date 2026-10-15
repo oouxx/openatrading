@@ -129,7 +129,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
             serde_json::to_value(openatrading_web::handlers::get_skills_data()).unwrap_or_default(),
         ),
         "/api/mcp/servers" => Ok(serde_json::to_value(
-            openatrading_web::mcp::list_mcp_servers_data(state).await,
+            openatrading_web::mcp::list_mcp_servers_data(state),
         )
         .unwrap_or_default()),
         _ => dispatch_get_fallback(path, state).await,
@@ -250,7 +250,8 @@ async fn dispatch_get_fallback(
     }
     if let Some(rest) = path.strip_prefix("/api/mcp/servers/") {
         if let Some(name) = rest.strip_suffix("/toggle") {
-            openatrading_web::mcp::toggle_mcp_server_data(state, &url_decode(name)).await?;
+            openatrading_web::mcp::toggle_mcp_server_data(state, &url_decode(name))
+                .map_err(|e| e.to_string())?;
             return Ok(serde_json::Value::Null);
         }
     }
@@ -336,10 +337,11 @@ async fn dispatch_post(
                 .map_err(|e| format!("serialize error: {e}"))
         }
         "/api/mcp/servers" => {
-            let config: openatrading_core::llm::McpServerConfig =
+            let payload: openatrading_core::llm::McpServerPayload =
                 serde_json::from_value(body.clone())
                     .map_err(|e| format!("invalid MCP server payload: {e}"))?;
-            openatrading_web::mcp::add_mcp_server_data(state, config).await?;
+            openatrading_web::mcp::add_mcp_server_data(state, payload)
+                .map_err(|e| e.to_string())?;
             Ok(serde_json::Value::Null)
         }
         "/api/automations" => {
@@ -442,12 +444,14 @@ async fn dispatch_post(
                 // routes both through `api_post`.
                 let name = url_decode(name);
                 if body.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
-                    let config: openatrading_core::llm::McpServerConfig =
+                    let payload: openatrading_core::llm::McpServerPayload =
                         serde_json::from_value(body.clone())
                             .map_err(|e| format!("invalid MCP server payload: {e}"))?;
-                    openatrading_web::mcp::update_mcp_server_data(state, &name, config).await?;
+                    openatrading_web::mcp::update_mcp_server_data(state, &name, payload)
+                        .map_err(|e| e.to_string())?;
                 } else {
-                    openatrading_web::mcp::delete_mcp_server_data(state, &name).await?;
+                    openatrading_web::mcp::delete_mcp_server_data(state, &name)
+                        .map_err(|e| e.to_string())?;
                 }
                 Ok(serde_json::Value::Null)
             } else {
@@ -892,11 +896,15 @@ fn main() {
     let automation_hub =
         openatrading_core::automation::AutomationHub::new(gateway.automation.clone());
 
+    // MCP 服务器配置读写入口：文件（$PI_RS_HOME/agent/mcp.json +
+    // {cwd}/.pi-rs/mcp.json）是唯一事实源；会话侧由 pi-rs SDK 在装配时读取。
+    let mcp_config = openatrading_core::llm::McpConfigStore::from_process()
+        .unwrap_or_else(|e| panic!("failed to resolve MCP config paths: {e}"));
+
     let app_ctx = tokio::runtime::Runtime::new()
         .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
         .block_on(openatrading_core::context::AppContext::build(
             openatrading_core::context::ContextParams {
-                mcp_servers: Vec::new(),
                 memory: gateway.memory.clone(),
                 trade: gateway.trade.clone(),
                 social: Arc::new(openatrading_core::social::NoopChannel),
@@ -907,7 +915,7 @@ fn main() {
     let app_state = Arc::new(AppState {
         ctx: app_ctx,
         roles: Arc::new(RwLock::new(roles)),
-        mcp_servers: std::sync::Mutex::new(Vec::new()),
+        mcp: mcp_config,
         cache: openatrading_web::cache::new_cache(),
         market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
         forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),

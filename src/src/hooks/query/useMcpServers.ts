@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
-import type { McpServerConfig } from "@/types/mcp"
+import type { McpServerConfig, McpServerPayload } from "@/types/mcp"
 import { mcpKeys } from "./queryKeys"
 
 /** 后端错误 → 用户可读文案（web 端只带状态码，Tauri 端带原始字符串） */
 export function mcpErrorMessage(raw: string): string {
   if (raw === "409" || raw === "MCP server already exists") return "已存在同名服务器"
   if (raw === "404" || raw === "MCP server not found") return "服务器不存在或已被删除"
+  if (raw === "403" || raw.includes("project config")) return "该服务器定义在项目配置文件中，请直接编辑该文件"
+  if (raw === "400" || raw.includes("invalid MCP server config")) return "配置不完整：请检查名称与命令/URL"
   if (/^\d{3}$/.test(raw)) return `操作失败 (${raw})`
   return raw
 }
@@ -58,7 +60,7 @@ export function useDeleteMcpServer() {
 }
 
 export interface SaveMcpServerVars {
-  config: McpServerConfig
+  config: McpServerPayload
   /** 非空表示编辑（PUT 到原名称路径），为空表示新建（POST） */
   originalName: string | null
 }

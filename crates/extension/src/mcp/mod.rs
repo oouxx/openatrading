@@ -1,17 +1,12 @@
-//! MCP 协议支持（客户端 + 服务端），基于 pi-extension-api 的 `HookHandler`。
+//! MCP 服务端：把 pi-rs 扩展注册表里的工具对外暴露为标准 MCP server。
 //!
-//! - [`client`]：[`McpClient`] 封装 rmcp 客户端传输，[`McpExtension`] 把外部 MCP
-//!   server 的工具注册为 pi-rs 扩展工具。
-//! - [`server`]：[`server::McpServerHandler`] 把 pi-rs 扩展注册表里的工具对外
-//!   暴露为标准 MCP server，派发经 `HookRunner::dispatch_tool_call`。
+//! [`server::McpServerHandler`] 派发经 `HookRunner::dispatch_tool_call`，
+//! 由 `serve_http` / `serve_stdio` 起 stdio 或 streamable HTTP 传输。
 //!
-//! 两端均不依赖 `pi-coding-agent`/`DynTool`，仅在 extension 层完成 rmcp↔pi-rs 桥接。
+//! MCP **客户端**（连接外部 server）不再由本 crate 提供：pi-rs v1.87 起
+//! `pi_coding_agent::core::{mcp, mcp_config}` 已提供完整客户端能力，本项目经
+//! `openatrading_core::llm::McpToolSet` 复用（pi-rs 无服务端能力，故这一半留在本 crate）。
 
-pub mod client;
 pub mod server;
 
-pub use client::{
-    discover_mcp, DiscoveredServer, McpClient, McpError, McpExtension, McpServerConfig,
-    McpTransportConfig, RemoteToolSpec,
-};
 pub use server::{serve_http, serve_stdio, McpServerHandler};

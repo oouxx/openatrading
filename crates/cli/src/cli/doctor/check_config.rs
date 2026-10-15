@@ -32,7 +32,10 @@ impl Check for ConfigCheck {
             },
             |cfg| {
                 let roles_count = cfg.roles.len();
-                let mcp_count = cfg.mcp_servers.len();
+                // MCP 服务器不再来自 config.toml：配置在 pi-rs 的 mcp.json 里
+                // （见 check_mcp）。
+                let mcp_count = openatrading_core::llm::McpConfigStore::from_process()
+                    .map_or(0, |store| store.loaded().0.len());
                 CheckResult {
                     status: CheckStatus::Ok,
                     summary: format!("{roles_count} 个角色, {mcp_count} 个 MCP 服务"),
