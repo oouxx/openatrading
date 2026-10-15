@@ -56,7 +56,6 @@ fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
                         content,
                         details: serde_json::Value::Null,
                         usage: None,
-                        added_tool_names: None,
                         terminate: output.terminate,
                     })
                 })
