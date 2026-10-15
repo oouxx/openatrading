@@ -24,13 +24,14 @@ use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use openatrading_core::context::AppContext;
-use openatrading_core::llm::McpServerConfig;
+use openatrading_core::llm::McpConfigStore;
 pub use openatrading_core::RoleEntry;
 
 pub struct AppState {
     pub ctx: AppContext,
     pub roles: Arc<RwLock<Vec<RoleEntry>>>,
-    pub mcp_servers: std::sync::Mutex<Vec<McpServerConfig>>,
+    /// 外部 MCP server 的配置读写入口（文件为唯一事实源）。
+    pub mcp: McpConfigStore,
     pub cache: Arc<AppCache>,
     /// Shared multiplexer for market SSE streams (kline/realtime). One upstream
     /// poll per symbol set, fanned out to every SSE connection.

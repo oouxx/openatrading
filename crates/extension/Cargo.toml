@@ -13,23 +13,16 @@ async-trait = { workspace = true }
 tracing = "0.1"
 openatrading-api = { path = "../api" }
 
-# MCP 协议支持（client + server）。pi-rs v1.82.4 已落地 `mcp` feature，但仅限
-# ACP 会话内使用（`modes/acp/session.rs` 按 ACP `McpServer` 配置连接），未通过
-# pi-coding-agent SDK 暴露通用 MCP 客户端能力。本项目的 MCP 客户端直连外部
-# server（streamable HTTP / stdio）并经 HookHandler 接入所有会话类型，故仍基于
-# pi-extension-api 自实现桥接；若 pi-rs 后续将 MCP 能力下沉到 SDK 层可再迁移。
+# MCP **服务端**（把本项目工具对外暴露为 MCP server）。pi-rs 只提供 MCP 客户端
+# （v1.87 起在 `pi_coding_agent::core::{mcp, mcp_config}`），服务端仍由本 crate 基于
+# rmcp 实现，因此这里只保留 server 侧特性。
 rmcp = { version = "3.1", features = [
-    "client",
     "server",
-    "transport-streamable-http-client-reqwest",
     "transport-streamable-http-server",
     "transport-io",
-    "transport-child-process",
 ] }
 axum = "0.7"
-tokio = { workspace = true, features = ["net", "process", "rt", "sync", "macros", "io-util", "signal", "time"] }
-ahash = { workspace = true }
-thiserror = "2"
+tokio = { workspace = true, features = ["net", "rt", "sync", "macros", "io-util", "signal", "time"] }
 anyhow = { workspace = true }
 
 [lints]

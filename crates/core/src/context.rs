@@ -3,10 +3,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{
-    create_factory, discover_mcp, DynTool, FactoryOptions, McpServerConfig, SessionPool,
-    ToolRegistry,
-};
+use crate::llm::{create_factory, DynTool, FactoryOptions, SessionPool, ToolRegistry};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::sqlite::TradeManager;
@@ -28,7 +25,6 @@ pub struct AppContext {
 
 /// [`AppContext::build`] 的参数束(参数 >3 个时按规范合并为 struct)。
 pub struct ContextParams {
-    pub mcp_servers: Vec<McpServerConfig>,
     pub memory: Arc<MemoryStore>,
     pub trade: Arc<TradeManager>,
     pub social: Arc<dyn NotificationSender>,
@@ -39,18 +35,15 @@ pub struct ContextParams {
 impl AppContext {
     pub async fn build(params: ContextParams) -> Self {
         let ContextParams {
-            mcp_servers,
             memory,
             trade,
             social,
             automations,
         } = params;
-        let mcp_servers = &mcp_servers;
-        Self::build_from(mcp_servers, memory, trade, social, automations).await
+        Self::build_from(memory, trade, social, automations).await
     }
 
     async fn build_from(
-        mcp_servers: &[McpServerConfig],
         memory: Arc<MemoryStore>,
         trade: Arc<TradeManager>,
         social: Arc<dyn NotificationSender>,
@@ -72,11 +65,6 @@ impl AppContext {
             sink: Arc::new(PaperExecutor::new(trade.clone(), api.clone())),
         };
 
-        let discovered = discover_mcp(mcp_servers).await;
-        let mcp_names: Vec<String> = discovered
-            .iter()
-            .flat_map(|s| s.specs.iter().map(|t| t.name.clone()))
-            .collect();
         // 自动化任务工具:创建/查看定时任务(对话内建任务)。
         let automation_tools = automations
             .as_ref()
@@ -88,7 +76,6 @@ impl AppContext {
             tools: None,
             custom_tools: automation_tools,
             trading: Some(trading),
-            mcp: Some(discovered),
         });
         let pool = Arc::new(SessionPool::new(factory));
         let mut registry = ToolRegistry::new();
@@ -96,7 +83,6 @@ impl AppContext {
             openatrading_extension::RegistryOptions::market_only(),
         );
         registry.set_extension_tools(&ext_registry);
-        registry.set_mcp_names(mcp_names);
         let tool_registry = Arc::new(ArcSwap::from_pointee(registry));
         let session_dir = pi_coding_agent::config::get_sessions_dir()
             .to_string_lossy()
@@ -115,10 +101,5 @@ impl AppContext {
     /// Get all extension tools.
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.tool_registry.load().all_tools()
-    }
-
-    /// Get discovered MCP tool names.
-    pub fn mcp_tools(&self) -> Vec<String> {
-        self.tool_registry.load().mcp_tools()
     }
 }

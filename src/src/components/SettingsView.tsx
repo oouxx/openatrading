@@ -17,7 +17,7 @@ import { McpServerCard } from "./McpServerCard"
 import ModelPicker from "./ModelPicker"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
 import { CheckIcon } from "lucide-react"
-import type { McpServerConfig } from "../types/mcp"
+import type { McpServerPayload } from "../types/mcp"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
 import { isTauri } from "@/lib/env"
@@ -167,7 +167,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     discord_bot_token: "",
     discord_channel_id: "",
   })
-  const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
+  const [editingServer, setEditingServer] = useState<McpServerPayload | null>(null)
   const [editingOriginalName, setEditingOriginalName] = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
   // pi-rs settings.json 默认值（provider / model / thinkingLevel）
@@ -186,10 +186,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const saveMcp = useSaveMcpServer()
   const servers = mcpQuery.data ?? []
 
-  const newServerTemplate = (): McpServerConfig => ({
+  const newServerTemplate = (): McpServerPayload => ({
     name: "",
     enabled: true,
-    transport: { type: "streamable-http", url: "" },
+    transport: { type: "http", url: "", headers: {} },
   })
 
   const loadAbout = useCallback(async () => {
@@ -597,7 +597,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     onToggle={() => toggleMcp.mutateAsync(s.name).then(() => undefined)}
                     onDelete={() => deleteMcp.mutateAsync(s.name).then(() => undefined)}
                     onEdit={() => {
-                      setEditingServer(s)
+                      setEditingServer({
+                        name: s.name,
+                        enabled: s.enabled,
+                        transport: s.transport,
+                      })
                       setEditingOriginalName(s.name)
                       setShowNewForm(true)
                     }}
@@ -605,6 +609,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 ))
               )}
             </div>
+
+            <p className="text-secondary text-caption mt-4">
+              新增与修改写入 pi-rs 的全局 <code>$PI_RS_HOME/agent/mcp.json</code>，
+              对之后新建的会话生效；项目级 <code>{"{cwd}"}/.pi-rs/mcp.json</code>{" "}
+              的同名条目会覆盖全局，需直接编辑该文件。
+            </p>
           </>
         )}
 

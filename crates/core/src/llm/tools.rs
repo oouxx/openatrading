@@ -2,11 +2,11 @@
 //!
 //! 注意：agent 会话内真正的工具派发走的是 per-session 的 `ExtensionRegistry`
 //! （见 `openatrading_agent::session::factory`）。本模块只维护一个轻量列表
-//! `ToolRegistry`：扩展工具（行情/交易）的 DynTool 视图 + MCP 客户端工具名。
+//! `ToolRegistry`：扩展工具（行情/交易）的 DynTool 视图。
 //!
 //! 市场扩展工具用 `handle_tool_call` 而非 `ToolDefinition::execute`，故
-//! `extension_tools_as_dyn` 对它们产出为空（与旧实现行为一致）；MCP 客户端
-//! 工具名由 `AppContext` 经 `discover_mcp` 发现后注入，用于 `/mcp` 展示。
+//! `extension_tools_as_dyn` 对它们产出为空（与旧实现行为一致）。外部 MCP 工具
+//! 不在此列出：它们由 pi-rs 的 MCP 客户端在会话装配时注入（见 `llm::mcp`）。
 
 use std::sync::Arc;
 
@@ -67,16 +67,12 @@ fn extension_tools_as_dyn(registry: &ExtensionRegistry) -> Vec<Arc<DynTool>> {
 }
 
 // ============================================================================
-// ToolRegistry — extension tool list + MCP tool names
+// ToolRegistry — extension tool list
 // ============================================================================
 
-/// AppContext 级工具列表。
-///
-/// `extension` 为扩展工具的 DynTool 视图（行情/交易），`mcp_names` 为已发现
-/// 外部 MCP server 暴露的工具名，用于 `/mcp` 展示。
+/// AppContext 级工具列表：扩展工具（行情/交易）的 DynTool 视图。
 pub struct ToolRegistry {
     extension: Vec<Arc<DynTool>>,
-    mcp_names: Vec<String>,
 }
 
 impl Default for ToolRegistry {
@@ -89,18 +85,12 @@ impl ToolRegistry {
     pub const fn new() -> Self {
         Self {
             extension: Vec::new(),
-            mcp_names: Vec::new(),
         }
     }
 
     /// 从 `ExtensionRegistry` 载入扩展工具（DynTool 视图）。
     pub fn set_extension_tools(&mut self, ext_registry: &ExtensionRegistry) {
         self.extension = extension_tools_as_dyn(ext_registry);
-    }
-
-    /// 设置已发现的 MCP 客户端工具名。
-    pub fn set_mcp_names(&mut self, names: Vec<String>) {
-        self.mcp_names = names;
     }
 
     /// 扩展工具（行情/交易等）。
@@ -111,10 +101,5 @@ impl ToolRegistry {
     /// 所有工具（当前即扩展工具）。
     pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
         self.extension.to_vec()
-    }
-
-    /// 已发现的 MCP 客户端工具名。
-    pub fn mcp_tools(&self) -> Vec<String> {
-        self.mcp_names.clone()
     }
 }

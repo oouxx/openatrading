@@ -29,10 +29,6 @@ pub struct FactoryOptions {
     /// (positions / historical context / decision sink) on every session;
     /// `None` yields a market-data-only session.
     pub trading: Option<openatrading_extension::TradingContext>,
-    /// 已发现的 MCP server（活跃连接 + 工具元数据）。
-    /// `None` 表示该会话不接入外部 MCP 工具；同一 `Vec` 的 `Arc<McpClient>`
-    /// 连接由 `AppContext` 持有，会话间共享。
-    pub mcp: Option<Vec<openatrading_extension::DiscoveredServer>>,
 }
 
 impl FactoryOptions {
@@ -44,7 +40,6 @@ impl FactoryOptions {
             tools: None,
             custom_tools: None,
             trading: None,
-            mcp: None,
         }
     }
 }
@@ -99,7 +94,6 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
     let tools = opts.tools;
     let custom_tools = opts.custom_tools;
     let trading = opts.trading;
-    let mcp = opts.mcp;
 
     Arc::new(move |params: CreateSessionParams| {
         let agent_dir = agent_dir.clone();
@@ -107,7 +101,6 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
         let tools = tools.clone();
         let custom_tools = custom_tools.clone();
         let trading = trading.clone();
-        let mcp = mcp.clone();
 
         Box::pin(async move {
             // Ensure API providers are registered before any LLM calls
@@ -142,7 +135,6 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
             let ext_registry =
                 openatrading_extension::create_registry(openatrading_extension::RegistryOptions {
                     trading: trading.clone(),
-                    mcp: mcp.clone(),
                 });
 
             let (session, services, _result) =

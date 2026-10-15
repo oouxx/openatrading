@@ -1,3 +1,10 @@
+//! MCP 服务器管理接口（配置读写）。
+//!
+//! 只是一层薄封装：真正的读取/校验/写入都在
+//! [`openatrading_core::llm::McpConfigStore`]，协议与连接由 pi-rs SDK 负责。
+//! 写入一律落在全局 `{agent_dir}/mcp.json`；定义在项目级文件里的条目只读
+//! （项目级按名覆盖全局，写全局不会生效）。
+
 use axum::response::IntoResponse;
 use axum::{
     extract::{Path, State},
@@ -6,215 +13,159 @@ use axum::{
 };
 use std::sync::Arc;
 
-use openatrading_core::llm::{self, McpServerConfig};
+use openatrading_core::llm::{McpConfigError, McpServerPayload, McpServerView};
 
 use crate::AppState;
 
-/// GET /api/mcp/servers — list all MCP servers
+/// `McpConfigError` → HTTP 状态码。
 ///
-/// # Panics
-/// Panics if the MCP server lock is poisoned.
-pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerConfig>> {
-    Json(list_mcp_servers_data(&state).await)
+/// 状态码与文案要和前端 `mcpErrorMessage` 的映射保持一致（浏览器路径只拿得到
+/// 状态码，Tauri 路径拿得到错误原文）。
+fn status_for(err: &McpConfigError) -> StatusCode {
+    match err {
+        McpConfigError::Exists => StatusCode::CONFLICT,
+        McpConfigError::NotFound => StatusCode::NOT_FOUND,
+        McpConfigError::ProjectScoped(_) => StatusCode::FORBIDDEN,
+        McpConfigError::Invalid(_) => StatusCode::BAD_REQUEST,
+        McpConfigError::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// GET /api/mcp/servers — list all MCP servers
+pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerView>> {
+    Json(list_mcp_servers_data(&state))
 }
 
 /// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
-pub async fn list_mcp_servers_data(state: &Arc<AppState>) -> Vec<McpServerConfig> {
-    let guard = state
-        .mcp_servers
-        .lock()
-        .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
-    guard.clone()
+pub fn list_mcp_servers_data(state: &Arc<AppState>) -> Vec<McpServerView> {
+    let (servers, errors) = state.mcp.servers();
+    for error in &errors {
+        tracing::warn!("[mcp] 配置解析失败: {error}");
+    }
+    servers
 }
 
 /// POST /api/mcp/servers — add a new MCP server
 ///
 /// # Errors
-/// Returns `409 Conflict` if a server with the same name already exists.
-///
-/// # Panics
-/// Panics if the MCP server lock is poisoned.
+/// `409 Conflict` if the name is taken, `400` if the payload is invalid,
+/// `500` if the config file cannot be written.
 pub async fn add_handler(
     State(state): State<Arc<AppState>>,
-    Json(config): Json<McpServerConfig>,
+    Json(payload): Json<McpServerPayload>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    add_mcp_server_data(&state, config.clone())
-        .await
-        .map_err(|_| StatusCode::CONFLICT)?;
-    Ok((StatusCode::CREATED, Json(config)))
+    add_mcp_server_data(&state, payload).map_err(|e| status_for(&e))?;
+    Ok(StatusCode::CREATED)
 }
 
 /// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
-pub async fn add_mcp_server_data(
+///
+/// # Errors
+/// See [`McpConfigStore::create`](openatrading_core::llm::McpConfigStore::create).
+pub fn add_mcp_server_data(
     state: &Arc<AppState>,
-    config: McpServerConfig,
-) -> Result<(), String> {
-    {
-        let mut guard = state
-            .mcp_servers
-            .lock()
-            .map_err(|_| "MCP server lock poisoned".to_string())?;
-        if guard.iter().any(|s| s.name == config.name) {
-            return Err("MCP server already exists".to_string());
-        }
-        guard.push(config);
-    }
-    load_servers_and_reload(state).await;
-    Ok(())
+    payload: McpServerPayload,
+) -> Result<(), McpConfigError> {
+    state.mcp.create(&payload)
 }
 
 /// DELETE /api/mcp/servers/:name — delete an MCP server
 ///
 /// # Errors
-/// Returns `404 Not Found` if no server with the given name exists.
-///
-/// # Panics
-/// Panics if the MCP server lock is poisoned.
+/// `404 Not Found` if no server with the given name exists, `403` if it is
+/// defined in the project config file.
 pub async fn delete_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    delete_mcp_server_data(&state, &name)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok((StatusCode::NO_CONTENT, ""))
+    delete_mcp_server_data(&state, &name).map_err(|e| status_for(&e))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
-pub async fn delete_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), String> {
-    {
-        let mut guard = state
-            .mcp_servers
-            .lock()
-            .map_err(|_| "MCP server lock poisoned".to_string())?;
-        let before = guard.len();
-        guard.retain(|s| s.name != name);
-        if guard.len() == before {
-            return Err("MCP server not found".to_string());
-        }
-    }
-    load_servers_and_reload(state).await;
-    Ok(())
+///
+/// # Errors
+/// See [`McpConfigStore::delete`](openatrading_core::llm::McpConfigStore::delete).
+pub fn delete_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), McpConfigError> {
+    state.mcp.delete(name)
 }
 
 /// PUT /api/mcp/servers/:name — update an existing MCP server (edit flow)
 ///
 /// # Errors
-/// Returns `404 Not Found` if no server with the given name exists.
-///
-/// # Panics
-/// Panics if the MCP server lock is poisoned.
+/// `404 Not Found` if the name is unknown, `409` if the new name is taken,
+/// `403` if the entry is defined in the project config file.
 pub async fn update_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
-    Json(config): Json<McpServerConfig>,
+    Json(payload): Json<McpServerPayload>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    update_mcp_server_data(&state, &name, config.clone())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok(Json(config))
+    update_mcp_server_data(&state, &name, payload).map_err(|e| status_for(&e))?;
+    Ok(StatusCode::OK)
 }
 
-/// POST /api/mcp/servers/:name/toggle — toggle an MCP server's enabled state
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
 ///
 /// # Errors
-/// Returns `404 Not Found` if no server with the given name exists.
+/// See [`McpConfigStore::update`](openatrading_core::llm::McpConfigStore::update).
+pub fn update_mcp_server_data(
+    state: &Arc<AppState>,
+    name: &str,
+    payload: McpServerPayload,
+) -> Result<(), McpConfigError> {
+    state.mcp.update(name, &payload)
+}
+
+/// GET /api/mcp/servers/:name/toggle — toggle an MCP server's enabled state
 ///
-/// # Panics
-/// Panics if the MCP server lock is poisoned.
+/// # Errors
+/// `404 Not Found` if the name is unknown, `403` if it is defined in the
+/// project config file.
 pub async fn toggle_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    toggle_mcp_server_data(&state, &name)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok((StatusCode::NO_CONTENT, ""))
+    toggle_mcp_server_data(&state, &name).map_err(|e| status_for(&e))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
-pub async fn toggle_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), String> {
-    let found = {
-        let mut guard = state
-            .mcp_servers
-            .lock()
-            .map_err(|_| "MCP server lock poisoned".to_string())?;
-        guard.iter_mut().find(|s| s.name == name).map(|s| {
-            s.enabled = !s.enabled;
-        })
-    };
-    found.ok_or_else(|| "MCP server not found".to_string())?;
-    load_servers_and_reload(state).await;
-    Ok(())
+///
+/// # Errors
+/// See [`McpConfigStore::toggle`](openatrading_core::llm::McpConfigStore::toggle).
+pub fn toggle_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), McpConfigError> {
+    state.mcp.toggle(name)
 }
 
-/// Update an existing MCP server (PUT — edit flow in the UI). Not exposed on
-/// the HTTP router yet, used by the Tauri IPC dispatch.
-pub async fn update_mcp_server_data(
-    state: &Arc<AppState>,
-    name: &str,
-    config: McpServerConfig,
-) -> Result<(), String> {
-    {
-        let mut guard = state
-            .mcp_servers
-            .lock()
-            .map_err(|_| "MCP server lock poisoned".to_string())?;
-        let slot = guard
-            .iter_mut()
-            .find(|s| s.name == name)
-            .ok_or_else(|| "MCP server not found".to_string())?;
-        *slot = config;
-    }
-    load_servers_and_reload(state).await;
-    Ok(())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-async fn load_servers_and_reload(state: &Arc<AppState>) {
-    let servers = {
-        let guard = state
-            .mcp_servers
-            .lock()
-            .unwrap_or_else(|e| panic!("MCP server lock poisoned: {e}"));
-        guard.clone()
-    };
-    reload_and_persist(state, &servers).await;
-}
-
-async fn reload_and_persist(state: &Arc<AppState>, servers: &[McpServerConfig]) {
-    let discovered = llm::discover_mcp(servers).await;
-    let mcp_names: Vec<String> = discovered
-        .iter()
-        .flat_map(|s| s.specs.iter().map(|t| t.name.clone()))
-        .collect();
-    let mut new_registry = llm::ToolRegistry::new();
-    let ext_registry = openatrading_core::create_extension_registry(
-        openatrading_core::llm::RegistryOptions::market_only(),
-    );
-    new_registry.set_extension_tools(&ext_registry);
-    new_registry.set_mcp_names(mcp_names);
-
-    state.ctx.tool_registry.store(Arc::new(new_registry));
-
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let path = std::path::PathBuf::from(home)
-        .join(".atrading")
-        .join(".mcp.json");
-    if let Some(p) = path.parent() {
-        let _ = std::fs::create_dir_all(p);
-    }
-    let map: std::collections::BTreeMap<_, _> = servers
-        .iter()
-        .map(|s| {
+    /// 状态码是前端错误文案的契约（浏览器路径只拿得到状态码）：每个变体必须映射到
+    /// 不同的码，否则会把「项目级只读」显示成「已存在同名服务器」。
+    #[test]
+    fn every_error_variant_maps_to_its_own_status() {
+        let cases = [
+            (McpConfigError::Exists, StatusCode::CONFLICT),
+            (McpConfigError::NotFound, StatusCode::NOT_FOUND),
             (
-                s.name.clone(),
-                serde_json::to_value(s)
-                    .unwrap_or_else(|e| panic!("MCP server config serialization failed: {e}")),
-            )
-        })
-        .collect();
-    let root = serde_json::json!({"mcpServers": map});
-    if let Ok(c) = serde_json::to_string_pretty(&root) {
-        let _ = std::fs::write(&path, &c);
+                McpConfigError::ProjectScoped("/p/mcp.json".into()),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                McpConfigError::Invalid("bad".into()),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                McpConfigError::Config("io".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for (err, expected) in cases {
+            let actual = status_for(&err);
+            assert_eq!(actual, expected, "{err:?}");
+            assert!(seen.insert(actual), "状态码重复: {actual} ({err:?})");
+        }
     }
 }
