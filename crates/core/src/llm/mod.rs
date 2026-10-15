@@ -38,7 +38,7 @@ pub use self::mcp::{
 };
 
 // ── Extension registry builder ─────────────────────────────────────────────
-pub use openatrading_extension::{create_registry, RegistryOptions};
+pub use openatrading_extension::create_registry;
 
 // ── pi-rs types ────────────────────────────────────────────────────────────
 pub use openatrading_agent::pi_ai_types;

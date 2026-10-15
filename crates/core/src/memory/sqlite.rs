@@ -97,9 +97,4 @@ impl MemoryStore {
         )?;
         Ok(())
     }
-
-    pub fn get_historical_context(&self, days: u32) -> Result<String> {
-        let snapshots = self.query_recent(days)?;
-        Ok(crate::prompts::build_historical_context(days, &snapshots))
-    }
 }

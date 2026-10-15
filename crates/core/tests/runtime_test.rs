@@ -23,7 +23,7 @@ fn test_factory() -> openatrading_core::llm::CreateSessionFactory {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    create_factory(FactoryOptions::market_only(&agent_dir))
+    create_factory(FactoryOptions::new(&agent_dir))
 }
 
 fn new_session_manager(cwd: &str, id: &str) -> SessionManager {
@@ -465,7 +465,6 @@ async fn test_automation_tools_are_active_in_session() {
         model: None,
         tools: None,
         custom_tools: Some(automation_tools(&hub)),
-        trading: None,
     });
 
     let cwd = std::env::current_dir()
@@ -502,7 +501,7 @@ async fn test_automation_tools_are_active_in_session() {
 }
 
 /// 只读模式接线证明:exclude_tools 传给工厂后,会话激活工具里
-/// 不再包含可变更内置工具与交易决策,但保留 read 与行情扩展工具。
+/// 不再包含可变更内置工具,但保留 read 与行情扩展工具。
 #[tokio::test]
 #[allow(clippy::expect_used)]
 async fn test_read_only_exclusion_removes_mutation_tools() {
@@ -510,7 +509,7 @@ async fn test_read_only_exclusion_removes_mutation_tools() {
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
-    let factory = create_factory(FactoryOptions::market_only(&agent_dir));
+    let factory = create_factory(FactoryOptions::new(&agent_dir));
 
     let cwd = std::env::current_dir()
         .unwrap_or_default()
@@ -523,7 +522,6 @@ async fn test_read_only_exclusion_removes_mutation_tools() {
             "bash".to_string(),
             "edit".to_string(),
             "write".to_string(),
-            "submit_trading_decision".to_string(),
         ]),
         session_manager: new_session_manager(&cwd, "test-read-only"),
         session_start_event: None,
@@ -533,7 +531,7 @@ async fn test_read_only_exclusion_removes_mutation_tools() {
 
     let agent_state = created.session.get_state().await;
     let tool_names: Vec<&str> = agent_state.tools.iter().map(|t| t.name.as_str()).collect();
-    for forbidden in ["bash", "edit", "write", "submit_trading_decision"] {
+    for forbidden in ["bash", "edit", "write"] {
         assert!(
             !tool_names.contains(&forbidden),
             "read-only session must not expose {forbidden}, got: {tool_names:?}"

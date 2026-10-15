@@ -54,11 +54,14 @@ pub struct SentimentHistoryDay {
 pub struct CreateRoleRequest {
     pub name: String,
     pub display_name: String,
+    /// 模拟盘初始资金；省略时沿用已有值或默认值。
+    #[serde(default)]
+    pub initial_capital: Option<f64>,
 }
 
 #[derive(Serialize)]
 pub struct PnlHistoryResponse {
-    pub points: Vec<openatrading_core::roles::pnl::PnlPoint>,
+    pub points: Vec<openatrading_core::trade::PnlPoint>,
     pub initial_capital: f64,
 }
 
@@ -479,15 +482,37 @@ pub async fn get_role_positions(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// GET /api/roles/:name/logs
-pub async fn get_role_logs(
+/// GET /api/roles/:name/account
+pub async fn get_role_account(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::get_role_logs_data(&state, &name)
+    crate::handlers::get_role_account_data(&state, &name)
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// GET /api/roles/:name/trades?limit=100
+pub async fn get_role_trades(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let limit = parse_u32(&params, "limit", 100);
+    crate::handlers::get_role_trades_data(&state, &name, limit)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// 读取 `?key=` 并解析为正整数，缺失/非法时用默认值。
+fn parse_u32(params: &std::collections::HashMap<String, String>, key: &str, fallback: u32) -> u32 {
+    params
+        .get(key)
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(fallback)
 }
 
 // ── Role CRUD handlers ─────────────────────────────────
@@ -497,10 +522,37 @@ pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::create_role_data(&state, &body.name, &body.display_name)
+    crate::handlers::create_role_data(&state, &body.name, &body.display_name, body.initial_capital)
         .await
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// POST /api/roles/:name/orders — 手动下单
+///
+/// 校验失败返回 **400 + 可读中文原因**（前端要展示给用户），存储失败才是 500。
+/// 这是本项目第一个区分二者的写接口。
+pub async fn place_order(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> axum::response::Response {
+    match crate::handlers::place_order_data(&state, &name, body).await {
+        Ok(value) => (StatusCode::CREATED, Json(value)).into_response(),
+        Err(e) if e.is_client_error() => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+        Err(e) => {
+            openatrading_core::log::error!("下单失败: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "下单失败，请查看服务端日志" })),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// DELETE /api/roles/:name — delete role and all its data
@@ -514,7 +566,7 @@ pub async fn delete_role(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// POST /api/roles/:name/reset — reset account to 1,000,000
+/// POST /api/roles/:name/reset — 清空该角色的持仓与流水
 pub async fn reset_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
@@ -531,7 +583,7 @@ pub async fn get_role_pnl_history(
     Path(name): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let days: usize = params
+    let days = params
         .get("days")
         .and_then(|d| d.parse().ok())
         .unwrap_or(30);
@@ -541,16 +593,13 @@ pub async fn get_role_pnl_history(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// GET /api/roles/:name/history — closed positions history
+/// GET /api/roles/:name/history — closed trades history
 pub async fn get_role_history(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let limit: usize = params
-        .get("limit")
-        .and_then(|d| d.parse().ok())
-        .unwrap_or(100);
+    let limit = parse_u32(&params, "limit", 100);
     crate::handlers::get_role_history_data(&state, &name, limit)
         .await
         .map(Json)

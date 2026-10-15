@@ -1,6 +1,3 @@
-use crate::memory::MarketSnapshot;
-use std::fmt::Write;
-
 // ── Web chat ───────────────────────────────────────
 
 /// Market data snapshot used to build the web chat user message.
@@ -46,22 +43,4 @@ pub fn build_web_chat_user_message(data: &WebChatMarketData<'_>) -> String {
         field_items = data.field_items,
         super_stocks = data.super_stocks,
     )
-}
-
-// ── Historical context ────────────────────────────
-
-/// Build the historical context text shown to the LLM as tool output.
-pub fn build_historical_context(days: u32, snapshots: &[MarketSnapshot]) -> String {
-    if snapshots.is_empty() {
-        return "暂无历史数据".to_string();
-    }
-    let mut ctx = format!("## 近{days}日市场数据快照 ({}条记录)\n\n", snapshots.len());
-    for s in snapshots {
-        let _ = writeln!(
-            ctx,
-            "- {} | {} | {}",
-            s.captured_at, s.data_source, s.raw_json
-        );
-    }
-    ctx
 }

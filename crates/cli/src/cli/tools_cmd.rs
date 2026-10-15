@@ -14,9 +14,7 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
     // 避免远端就是本服务自身（默认 endpoint 指向 gateway）时重复列出。
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let registry = openatrading_core::llm::create_registry(
-        openatrading_core::llm::RegistryOptions::market_only(),
-    );
+    let registry = openatrading_core::llm::create_registry();
     for rt in registry.tools() {
         seen.insert(rt.definition.name.clone());
         views.push(ToolView {

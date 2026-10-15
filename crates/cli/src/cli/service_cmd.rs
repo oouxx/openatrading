@@ -204,6 +204,9 @@ pub fn build_roles(app_config: &AppConfig) -> Vec<RoleEntry> {
                     .clone()
                     .unwrap_or_else(|| entry.name.clone()),
                 readonly: entry.readonly,
+                initial_capital: entry
+                    .initial_capital
+                    .unwrap_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL),
             });
         }
     }

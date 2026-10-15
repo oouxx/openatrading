@@ -166,7 +166,7 @@ pub struct Automation {
     /// NewThread 运行的工作目录(项目目录)。
     pub cwd: String,
     pub enabled: bool,
-    /// 只读模式:NewThread 会话禁用 bash/edit/write 及 submit_trading_decision。
+    /// 只读模式:NewThread 会话禁用 bash/edit/write。
     /// ExistingThread 复用既有会话,工具集不受本开关约束。
     pub read_only: bool,
     /// 单次运行超时秒数;`None` = 默认(600s)。

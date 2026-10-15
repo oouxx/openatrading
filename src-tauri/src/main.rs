@@ -26,6 +26,11 @@ fn load_env() {
         }
     }
 }
+/// serde 默认值：`true`（`[[roles]]` 的 `readonly`）。
+const fn default_true() -> bool {
+    true
+}
+
 fn build_roles() -> Vec<RoleEntry> {
     let mut roles: Vec<RoleEntry> = Vec::new();
 
@@ -43,6 +48,11 @@ fn build_roles() -> Vec<RoleEntry> {
                 name: String,
                 #[serde(default)]
                 display_name: Option<String>,
+                /// 与 `RoleConfig` 保持一致：config.toml 声明的角色默认只读。
+                #[serde(default = "default_true")]
+                readonly: bool,
+                #[serde(default)]
+                initial_capital: Option<f64>,
             }
             if let Ok(parsed) = toml::from_str::<RolesCfg>(&raw) {
                 for rc in parsed.roles {
@@ -51,7 +61,10 @@ fn build_roles() -> Vec<RoleEntry> {
                         roles.push(RoleEntry {
                             name: rc.name,
                             display_name,
-                            readonly: true,
+                            readonly: rc.readonly,
+                            initial_capital: rc
+                                .initial_capital
+                                .unwrap_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL),
                         });
                     }
                 }
@@ -287,7 +300,13 @@ async fn dispatch_roles_get(
     let action = parts[1].split('?').next().unwrap_or("");
     match action {
         "positions" => openatrading_web::handlers::get_role_positions_data(state, name).await,
-        "logs" => openatrading_web::handlers::get_role_logs_data(state, name).await,
+        "account" => openatrading_web::handlers::get_role_account_data(state, name).await,
+        "trades" => {
+            let limit: u32 = extract_query(rest, "limit")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100);
+            openatrading_web::handlers::get_role_trades_data(state, name, limit).await
+        }
         "pnl-history" => {
             let days: usize = extract_query(rest, "days")
                 .and_then(|s| s.parse().ok())
@@ -295,7 +314,7 @@ async fn dispatch_roles_get(
             openatrading_web::handlers::get_role_pnl_history_data(state, name, days).await
         }
         "history" => {
-            let limit: usize = extract_query(rest, "limit")
+            let limit: u32 = extract_query(rest, "limit")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(100);
             openatrading_web::handlers::get_role_history_data(state, name, limit).await
@@ -328,7 +347,16 @@ async fn dispatch_post(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            openatrading_web::handlers::create_role_data(state, &name, &display_name).await
+            let initial_capital = body
+                .get("initial_capital")
+                .and_then(serde_json::Value::as_f64);
+            openatrading_web::handlers::create_role_data(
+                state,
+                &name,
+                &display_name,
+                initial_capital,
+            )
+            .await
         }
         "/api/skills" => {
             let req: openatrading_core::skills::SkillRequest = serde_json::from_value(body.clone())
@@ -370,6 +398,15 @@ async fn dispatch_post(
                 match action {
                     "reset" => openatrading_web::handlers::reset_role_data(state, name).await,
                     "delete" => openatrading_web::handlers::delete_role_data(state, name).await,
+                    "orders" => {
+                        // 下单失败要带可读原因回前端，这里保留 OrderError 的中文描述。
+                        openatrading_web::handlers::place_order_data(state, name, body.clone())
+                            .await
+                            .map_err(|e| e.to_string())
+                    }
+                    "capital" => {
+                        Err("初始资金不可修改；要重新开始请用重置（会清空全部历史）".to_string())
+                    }
                     _ => Err(format!("unknown roles action: {action}")),
                 }
             } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
@@ -911,7 +948,7 @@ fn main() {
         .block_on(openatrading_core::context::AppContext::build(
             openatrading_core::context::ContextParams {
                 memory: gateway.memory.clone(),
-                trade: gateway.trade.clone(),
+                trade_store: gateway.trade.clone(),
                 social: Arc::new(openatrading_core::social::NoopChannel),
                 automations: Some(automation_hub.clone()),
             },

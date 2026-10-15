@@ -92,7 +92,6 @@ export function summarizeTool(name: string, args?: string): string {
   if (name === "grep") return p("pattern") ? `搜索 ${p("pattern")}` : "搜索代码"
   if (/^(web_search|search)$/.test(name)) return p("query", "q") ? `搜索 ${p("query", "q")}` : "网页搜索"
   if (/^(web_fetch|fetch)$/.test(name)) return p("url") ? `抓取 ${p("url")}` : "抓取网页"
-  if (name === "submit_trading_decision") return "提交交易决策"
 
   // Generic fallback: readable name + a single concise arg value, or the arg keys.
   const readable = toTitleCase(name)

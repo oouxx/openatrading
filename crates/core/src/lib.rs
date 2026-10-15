@@ -14,7 +14,6 @@ pub mod skills;
 pub mod social;
 pub use openatrading_channels as channels;
 pub use openatrading_extension::create_registry as create_extension_registry;
-pub use openatrading_extension::RegistryOptions;
 pub mod trade;
 pub mod types;
 pub mod utils;
@@ -46,4 +45,6 @@ pub struct RoleEntry {
     /// true = defined in config.toml, cannot be edited/deleted via API
     #[serde(default)]
     pub readonly: bool,
+    /// 模拟盘初始资金（元）。缺省为 [`roles::DEFAULT_INITIAL_CAPITAL`]。
+    pub initial_capital: f64,
 }

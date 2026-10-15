@@ -352,8 +352,10 @@ struct Execution {
     session_id: Option<String>,
 }
 
-/// 只读模式排除的会话工具(bash/edit/write + 交易决策提交)。
-const READ_ONLY_EXCLUDED_TOOLS: &[&str] = &["bash", "edit", "write", "submit_trading_decision"];
+/// 只读模式排除的会话工具(bash/edit/write)。
+///
+/// 交易工具已从 agent 侧移除（模拟盘改为手动记账），不再需要单独排除。
+const READ_ONLY_EXCLUDED_TOOLS: &[&str] = &["bash", "edit", "write"];
 
 /// 执行一次自动化 prompt,受 `timeout_secs` 约束。
 async fn execute(automation: &Automation, pool: &SessionPool, timeout_secs: u64) -> Execution {

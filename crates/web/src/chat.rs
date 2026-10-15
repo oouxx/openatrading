@@ -674,13 +674,10 @@ pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
             .collect();
 
     // Extension commands (e.g. pi-extensions `/goal`). Every session registers
-    // the same set via `create_registry()`; trading/MCP extensions currently
-    // contribute tools only, so `market_only()` reproduces the list exactly.
+    // the same set via `create_registry()`.
     // `resolve_extension_commands` applies the same `:N` conflict resolution
     // pi-rs uses when executing the command inside `prompt()`.
-    let mut registry = openatrading_core::llm::create_registry(
-        openatrading_core::llm::RegistryOptions::market_only(),
-    );
+    let mut registry = openatrading_core::llm::create_registry();
     let resolved = pi_coding_agent::core::slash_commands::resolve_extension_commands(
         &registry.collect_commands(),
     );
