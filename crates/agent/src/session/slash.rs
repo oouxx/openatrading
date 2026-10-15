@@ -29,8 +29,10 @@ pub async fn handle_slash_command(
             match result.model {
                 Some(model) => {
                     let display = format!("{}/{}", model.provider, model.id);
+                    // `persist = false` keeps the switch session-scoped,
+                    // matching pi-rs's interactive `/model` handler.
                     session
-                        .set_model(model)
+                        .set_model(model, false)
                         .await
                         .map(|_| format!("Model set to {display}"))
                         .map_err(|e| format!("Failed to set model: {e}"))
