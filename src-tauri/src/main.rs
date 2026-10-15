@@ -878,6 +878,11 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
 fn main() {
     load_env();
 
+    // 品牌根即 pi-rs 的家（`{品牌根}/agent`）。必须在任何 pi-rs 调用与多线程 runtime
+    // 起来之前绑定：pi-rs 内部有大量路径是直接读全局解析的（bash 工具的 bin、skills、
+    // prompt 模板、扩展 runtime handle），绑一次 env 才能与我们的调用点同源。
+    openatrading_core::init::bind_pi_rs_home();
+
     // 首次启动幂等初始化：创建 ~/.atrading + config.toml 模板 + roles/（已存在则跳过）。
     // 失败不阻塞启动——Gateway::init 会以更明确的错误暴露目录不可写等问题。
     if let Err(e) = openatrading_core::init::ensure_initialized() {

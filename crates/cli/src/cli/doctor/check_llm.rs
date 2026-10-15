@@ -37,7 +37,10 @@ impl Check for LlmCheck {
     async fn fix(&self, _ctx: &CheckContext) -> Result<FixResult> {
         Ok(FixResult {
             status: FixStatus::Skipped,
-            message: "请在 ~/.pi-rs/agent/settings.json (或 $PI_RS_HOME/agent/settings.json) 配置 defaultProvider/defaultModel，并在 auth.json 设置 API Key".into(),
+            message: format!(
+                "请在 {}/settings.json 配置 defaultProvider/defaultModel，并在同目录的 auth.json 设置 API Key",
+                openatrading_core::init::agent_dir().display()
+            ),
         })
     }
 }
