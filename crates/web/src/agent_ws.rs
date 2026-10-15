@@ -280,6 +280,10 @@ impl ClientImage {
     }
 }
 
+// TODO: 协议里声明了 4 个客户端命令，目前只有 `Prompt` 被处理；
+// `Interrupt` / `Ping` / `PermissionResponse` 尚未实现（权限应答对应
+// 「桌面端 respond_permission 仍是 eprintln 桩」这一缺口）。保留变体是为了
+// 让协议形状完整可见，实现时逐个接上。
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(dead_code)]

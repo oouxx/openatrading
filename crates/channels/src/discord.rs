@@ -92,12 +92,10 @@ pub struct DiscordAdapter {
 }
 
 /// Gateway OP Code
-#[allow(dead_code)]
 mod op {
     pub const DISPATCH: u8 = 0;
     pub const HEARTBEAT: u8 = 1;
     pub const IDENTIFY: u8 = 2;
-    pub const HELLO: u8 = 10;
 }
 
 /// Gateway 下行帧

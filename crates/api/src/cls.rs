@@ -141,6 +141,11 @@ impl ClsClient {
     ///
     /// # Panics
     /// Panics if the UTC+8 offset is invalid (should never happen).
+    ///
+    /// TODO: 当前无调用方——同名工具 `get_telegraph_allday` 实际调用的是
+    /// `fetch_telegraph`，本函数未接线。接线前需先修下方时区错误：
+    /// `and_hms_opt(0,0,0).and_utc()` 把北京零点当成 UTC 零点，`today_start`
+    /// 会比真实值大 8 小时，会丢掉北京时间 00:00–08:00 的电报。
     pub async fn fetch_telegraph_allday(&self, category: &str) -> Result<Vec<TelegramInfo>> {
         let today_start = chrono::Utc::now()
             .with_timezone(

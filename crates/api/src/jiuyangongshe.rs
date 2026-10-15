@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 
-use crate::utils::{gen_jiuyan_token, html_to_markdown, now_ts};
+use crate::utils::{gen_jiuyan_token, now_ts};
 
 const BASE_URL: &str = "https://app.jiuyangongshe.com/jystock-app/api/v1";
 
@@ -221,98 +221,6 @@ impl Default for JiuYanSession {
 }
 
 impl JiuYanSession {
-    /// Fetch article detail by ID.
-    ///
-    /// # Errors
-    /// Returns an error if the HTTP request fails.
-    pub async fn fetch_article_detail(&self, article_id: &str) -> Result<Option<String>> {
-        let url = format!("https://www.jiuyangongshe.com/a/{article_id}");
-
-        let html = self
-            .client
-            .get(&url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-            )
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        // Extract content field from window.__NUXT__
-        // Look for "content:" followed by a quote, then extract the JSON string
-        if let Some(start) = html.find("content:") {
-            let start_idx = start + "content:".len();
-            let bytes = html.as_bytes();
-            // Skip whitespace and the opening quote
-            let mut i = start_idx;
-            while i < bytes.len()
-                && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n' || bytes[i] == b'\r')
-            {
-                i += 1;
-            }
-            if i < bytes.len() && bytes[i] == b'"' {
-                i += 1;
-                let mut content_bytes = Vec::new();
-                while i < bytes.len() {
-                    match bytes[i] {
-                        b'\\' if i + 1 < bytes.len() => match bytes[i + 1] {
-                            b'"' => {
-                                content_bytes.push(b'"');
-                                i += 2;
-                            }
-                            b'\\' => {
-                                content_bytes.push(b'\\');
-                                i += 2;
-                            }
-                            b'n' => {
-                                content_bytes.push(b'\n');
-                                i += 2;
-                            }
-                            b'r' => {
-                                content_bytes.push(b'\r');
-                                i += 2;
-                            }
-                            b't' => {
-                                content_bytes.push(b'\t');
-                                i += 2;
-                            }
-                            b'u' if i + 5 < bytes.len() => {
-                                let hex = &html[i + 2..i + 6];
-                                if let Ok(code) = u32::from_str_radix(hex, 16) {
-                                    if let Some(c) = char::from_u32(code) {
-                                        let mut buf = [0u8; 4];
-                                        let len = c.encode_utf8(&mut buf).len();
-                                        content_bytes.extend_from_slice(&buf[..len]);
-                                    }
-                                    i += 6;
-                                } else {
-                                    content_bytes.push(bytes[i]);
-                                    i += 1;
-                                }
-                            }
-                            _ => {
-                                content_bytes.push(bytes[i]);
-                                i += 1;
-                            }
-                        },
-                        b'"' => break,
-                        _ => {
-                            content_bytes.push(bytes[i]);
-                            i += 1;
-                        }
-                    }
-                }
-                if let Ok(content_str) = String::from_utf8(content_bytes) {
-                    let markdown = html_to_markdown(&content_str);
-                    return Ok(Some(markdown));
-                }
-            }
-        }
-
-        Ok(None)
-    }
     /// Create a new `JiuYanSession`.
     ///
     /// # Panics
@@ -496,6 +404,9 @@ impl JiuYanSession {
     ///
     /// # Errors
     /// Returns an error if login fails.
+    ///
+    /// TODO: 当前无调用方。`get`/`post` 未检测 HTTP 401 与响应里的 `errCode`，
+    /// 因此 session 失效后无法自愈——应在检测到失效时接入本函数重新登录。
     pub async fn refresh(&self) -> Result<Credentials> {
         {
             let mut guard = self.inner.write().await;

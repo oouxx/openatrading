@@ -1,3 +1,9 @@
+//! 淘股吧（taoguba）数据源客户端。
+//!
+//! TODO: 完整实现（推荐页 / 用户帖子 / 帖子详情 / 落库），但**尚未接入任何调用方**——
+//! `Client` 上的 `taoguba` 字段已移除，本模块目前只有 `pub mod` 导出。
+//! 接入方式：在 `Client` 上恢复字段，并在 `crates/extension` 注册对应工具。
+
 use anyhow::Result;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};

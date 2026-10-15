@@ -74,6 +74,9 @@ impl MarketDataExtension {
     fn paper_definitions() -> Vec<ToolDefinition> {
         vec![
             get_current_positions_tool(),
+            // TODO: 工具注册被注释，导致记忆对 agent 只写不读。dispatch 分支
+            // （下方 `"get_historical_context"`）与 MemoryStore 读取链路都已就绪，
+            // 放开这一行即可让 agent 读到历史复盘上下文。
             // get_historical_context_tool()
         ]
     }
@@ -795,6 +798,8 @@ fn get_current_positions_tool() -> ToolDefinition {
     }
 }
 
+// TODO: 未注册（见 `paper_definitions` 的注释）。保留实现是因为它已可用，
+// 只差在 `paper_definitions` 里放开一行；删除会让该缺口从代码里消失。
 #[allow(dead_code)]
 fn get_historical_context_tool() -> ToolDefinition {
     ToolDefinition {

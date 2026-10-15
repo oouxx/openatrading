@@ -445,50 +445,6 @@ impl XuanguBaoClient {
         })
     }
 
-    /// Fetch market overview history for the given number of days.
-    ///
-    /// # Errors
-    /// Returns an error if the HTTP request fails or the response cannot be parsed.
-    pub async fn fetch_market_overview_history(
-        &self,
-        days: usize,
-    ) -> Result<Vec<MarketOverviewDay>> {
-        let fields = ApiField::join(&[
-            ApiField::RiseCount,
-            ApiField::FallCount,
-            ApiField::LimitUpCount,
-            ApiField::LimitDownCount,
-            ApiField::LimitUpBrokenRatio,
-            ApiField::MarketTemperature,
-        ]);
-        let url = format!("{}/market_indicator/line?fields={fields}", self.base_url);
-
-        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
-
-        let arr = resp["data"].as_array().cloned().unwrap_or_default();
-        let take = arr.len().min(days);
-        let slice = if arr.len() > take {
-            &arr[arr.len() - take..]
-        } else {
-            &arr
-        };
-
-        Ok(slice
-            .iter()
-            .map(|d| MarketOverviewDay {
-                date: d["trade_date"].as_str().unwrap_or("").to_string(),
-                rise_count: u32::try_from(d["rise_count"].as_u64().unwrap_or(0)).unwrap_or(0),
-                fall_count: u32::try_from(d["fall_count"].as_u64().unwrap_or(0)).unwrap_or(0),
-                limit_up_count: u32::try_from(d["limit_up_count"].as_u64().unwrap_or(0))
-                    .unwrap_or(0),
-                limit_down_count: u32::try_from(d["limit_down_count"].as_u64().unwrap_or(0))
-                    .unwrap_or(0),
-                bomb_rate: d["limit_up_broken_ratio"].as_f64().unwrap_or(0.0),
-                market_temperature: d["market_temperature"].as_f64().unwrap_or(50.0),
-            })
-            .collect())
-    }
-
     /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
@@ -1608,45 +1564,6 @@ fn unix_to_hhmm(ts: i64) -> String {
     let h = secs_since_midnight / 3600;
     let m = (secs_since_midnight % 3600) / 60;
     format!("{h:02}:{m:02}")
-}
-
-/// Assemble the text prompt for AI analysis from snapshot data.
-/// Build an analysis prompt from snapshots.
-///
-/// # Panics
-/// Panics if writing to the string buffer fails (should never happen).
-pub fn build_analysis_prompt(date: &str, snapshots: &[TimeSnapshot]) -> String {
-    use std::fmt::Write;
-    let mut table = String::from("时间       情绪温度  多/空  主线板块\n");
-
-    for s in snapshots.iter().step_by(2) {
-        let top_names: Vec<String> = s.top_plates.iter().map(|p| p.plate_name.clone()).collect();
-        writeln!(
-            table,
-            "{}      {:.0}       {}/{:<2}  {}",
-            s.time_label,
-            s.emotion_score,
-            s.bull_count,
-            s.bear_count,
-            top_names.join("、"),
-        )
-        .unwrap_or_else(|e| panic!("write to string should not fail: {e}"));
-    }
-
-    format!(
-        r"你是一位经验丰富的A股短线交易复盘专家。请根据以下{date}行情回放数据，对全天行情进行结构化分析。
-
-{table}
-
-请从以下维度输出分析报告（Markdown格式）：
-1. **全天情绪节奏**：情绪高点/低点出现时间，整体多空趋势
-2. **主线板块**：全天最强板块，持续时长，是否有切换
-3. **关键时间节点**：情绪突变点分析，可能的原因推断
-4. **板块轮动特征**：资金从哪个板块流向哪个板块
-5. **复盘结论**：当日适合什么策略，哪类股票机会更大，有什么风险需要注意
-
-要求：分析具体、有数据支撑，避免泛泛而谈。",
-    )
 }
 
 // ─── 指数走势（三指数并发） ──────────────────────────────

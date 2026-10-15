@@ -72,7 +72,6 @@ export default function AppShell() {
                     activeThreadId={activeThreadId}
                     onActiveThreadChange={handleActiveChange}
                     onReload={reload}
-                    sessions={sessions}
                   />
                 </ErrorBoundary>
               </div>

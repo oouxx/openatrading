@@ -941,17 +941,6 @@ impl ReportCategory {
             Self::Stock => "stock",
         }
     }
-
-    #[allow(dead_code)]
-    fn display_name(self) -> &'static str {
-        match self {
-            Self::StrategyReport => "策略报告",
-            Self::MacroResearch => "宏观研究",
-            Self::BrokerReport => "券商晨报",
-            Self::Industry => "行业研报",
-            Self::Stock => "个股研报",
-        }
-    }
 }
 
 /// 研报列表条目（非个股研报）

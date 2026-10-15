@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
-    pub default_role: Option<String>,
     pub roles: Vec<openatrading_core::roles::RoleConfig>,
     pub service: ServiceConfig,
     pub cron: Option<CronTomlConfig>,
@@ -38,7 +37,6 @@ fn default_mcp_bind() -> String {
 
 #[derive(Debug, Deserialize)]
 struct RawConfig {
-    default_role: Option<String>,
     #[serde(default)]
     roles: Vec<openatrading_core::roles::RoleConfig>,
     #[serde(default)]
@@ -104,7 +102,6 @@ impl AppConfig {
         openatrading_core::log::info!(?home, "Loading config from home");
 
         let mut merged = Self {
-            default_role: None,
             roles: Vec::new(),
             service: ServiceConfig {
                 db_path: default_db_path(),
@@ -162,7 +159,6 @@ impl AppConfig {
             }
         };
         Some(Self {
-            default_role: raw.default_role,
             roles: raw.roles,
             service: raw.service.unwrap_or_else(|| ServiceConfig {
                 db_path: default_db_path(),
@@ -175,9 +171,6 @@ impl AppConfig {
     }
 
     fn merge(&mut self, other: Self) {
-        if other.default_role.is_some() {
-            self.default_role = other.default_role;
-        }
         self.service = other.service;
         if other.cron.is_some() {
             self.cron = other.cron;
@@ -260,15 +253,8 @@ pub fn validate_config(path: &Path) {
         return;
     };
 
-    let known: std::collections::HashSet<&str> = [
-        "default_role",
-        "roles",
-        "service",
-        "cron",
-        "social",
-        "mcp_server",
-    ]
-    .into();
+    let known: std::collections::HashSet<&str> =
+        ["roles", "service", "cron", "social", "mcp_server"].into();
 
     for key in table.keys() {
         if !known.contains(key.as_str()) {
