@@ -15,7 +15,6 @@ mod check_config;
 mod check_cron;
 mod check_env;
 mod check_home;
-mod check_llm;
 mod check_mcp;
 mod check_port;
 mod check_skills;
@@ -132,7 +131,6 @@ fn all_checks() -> Vec<Box<dyn Check>> {
         Box::new(check_sqlite::SqliteCheck),
         Box::new(check_cron::CronCheck),
         Box::new(check_telegram::TelegramCheck),
-        Box::new(check_llm::LlmCheck),
         Box::new(check_mcp::McpCheck),
         Box::new(check_skills::SkillsCheck),
         Box::new(check_port::PortCheck),
@@ -199,7 +197,7 @@ fn print_report_footer(results: &[CheckResult]) {
 }
 
 /// Check ids that require real network I/O. Skipped under `--skip-network`.
-const NETWORK_CHECK_IDS: &[&str] = &["telegram", "llm", "mcp"];
+const NETWORK_CHECK_IDS: &[&str] = &["telegram", "mcp"];
 
 // ── Entry point ─────────────────────────────────────────
 

@@ -129,53 +129,6 @@ fn parse_sina_response(text: &str, codes: &[&str]) -> Vec<AuctionQuote> {
     quotes
 }
 
-// ── 竞价窗口轮询（9:15-9:25）──────────────────────────
-
-use chrono::{Local, NaiveTime};
-use tokio::time::{interval, Duration as TokioDuration};
-
-/// 在竞价时段（9:15-9:25）每 3 秒拉取一次快照，推入日志。
-///
-/// # Errors
-/// Returns an error if the HTTP request fails.
-///
-/// # Panics
-/// Panics if the hardcoded time values (9:15, 9:25) are invalid (should never happen).
-pub async fn poll_auction_window(client: &SinaQuoteClient, codes: &[&str]) -> Result<()> {
-    let start =
-        NaiveTime::from_hms_opt(9, 15, 0).unwrap_or_else(|| panic!("9,15,0 is a valid time"));
-    let end = NaiveTime::from_hms_opt(9, 25, 0).unwrap_or_else(|| panic!("9,25,0 is a valid time"));
-    let mut ticker = interval(TokioDuration::from_secs(3));
-
-    loop {
-        ticker.tick().await;
-        let now = Local::now().time();
-        if now < start {
-            continue;
-        }
-        if now > end {
-            break;
-        }
-
-        match client.fetch_quotes(codes).await {
-            Ok(quotes) => {
-                for q in &quotes {
-                    tracing::info!(
-                        code = %q.code,
-                        price = q.current_price,
-                        chg = q.change_pct,
-                        bid_vol = q.bid1_volume,
-                        ask_vol = q.ask1_volume,
-                        "[sina] 竞价快照"
-                    );
-                }
-            }
-            Err(e) => tracing::warn!(error = %e, "[sina] 本次快照拉取失败，跳过"),
-        }
-    }
-    Ok(())
-}
-
 // ── 测试 ──────────────────────────────────────────────
 
 #[cfg(test)]

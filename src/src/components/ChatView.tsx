@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/command"
 
 import { fetchJson } from "@/stores/data"
-import { fetchCommands, type ChatSession } from "@/hooks/useChatThreads"
+import { fetchCommands } from "@/hooks/useChatThreads"
 import KlineDrawer from "@/components/KlineDrawer"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
@@ -50,7 +50,6 @@ interface AiCopilotProps {
   activeThreadId: string | null
   onActiveThreadChange: (id: string | null) => void
   onReload?: () => void
-  sessions?: ChatSession[]
 }
 
 /** Read a File as a data URL (base64). Rejects on read error. */

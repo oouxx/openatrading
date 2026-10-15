@@ -8,7 +8,6 @@ pub mod xuangubao;
 use cls::ClsClient;
 
 use jiuyangongshe::JiuYanSession;
-use taoguba::TgbClient;
 use xuangubao::XuanguBaoClient;
 
 use crate::eastmoney::LhbClient;
@@ -16,7 +15,6 @@ use crate::eastmoney::LhbClient;
 pub struct Client {
     pub xuangubao: XuanguBaoClient,
     pub jiuyan: JiuYanSession,
-    pub taoguba: TgbClient,
     pub cls: ClsClient,
     pub eastmoney: LhbClient,
 }
@@ -26,7 +24,6 @@ impl Client {
         Self {
             xuangubao: XuanguBaoClient::new(),
             jiuyan: JiuYanSession::new(),
-            taoguba: TgbClient::new(),
             cls: ClsClient::new(),
             eastmoney: LhbClient::new(),
         }

@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 // Re-export everything from channels crate
 pub use openatrading_channels as channels;
+// TODO: 断路器与限速装饰器已实现（含单测），但从未装配到任何发送路径——
+// 通知发送目前既无重试也无速率控制。接入点：`create_notification_sender` 包装返回值。
 pub use openatrading_channels::circuit_breaker::{CircuitBreaker, CircuitBreakerChannel};
 pub use openatrading_channels::listing;
 pub use openatrading_channels::paced_channel::PacedChannel;

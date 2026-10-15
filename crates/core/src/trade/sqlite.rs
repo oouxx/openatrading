@@ -138,6 +138,8 @@ impl TradeManager {
         Ok(id)
     }
 
+    /// TODO: 当前无调用方。mark-to-market 未接入——`stop_loss`/`target_price` 写入后
+    /// 从不更新，持仓浮盈因此不随行情变化。接入点在持仓刷新链路（定时或按需刷新）。
     pub fn update_position(&self, pos: &Position) -> Result<()> {
         let conn = self
             .conn
@@ -309,6 +311,9 @@ impl TradeManager {
             .map_err(Into::into)
     }
 
+    /// TODO: 当前无调用方。`current_price` 只在买入时写入一次，此后从不刷新，
+    /// 导致 `format_positions` 的浮盈与 `/api/roles/:name/positions` 恒为 0。
+    /// 接入点：行情刷新后按 symbol 回写。
     pub fn update_position_price(&self, id: i64, current_price: f64) -> Result<()> {
         let conn = self
             .conn

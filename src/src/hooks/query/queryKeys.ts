@@ -6,10 +6,6 @@ export const limitUpKeys = {
   all: ["limit-up"] as const,
 }
 
-export const limitDownKeys = {
-  all: ["limit-down"] as const,
-}
-
 export const fieldItemsKeys = {
   all: ["field-items"] as const,
   byDate: (date: string) => ["field-items", date] as const,
