@@ -34,8 +34,6 @@ async function setConfig(section: string, key: string, value: string) {
 interface SocialConfig {
   notify_channel: string
   notify_on_collect: boolean
-  notify_on_decision: boolean
-  notify_on_trade: boolean
   notify_on_news: boolean
   telegram_bot_token: string
   telegram_chat_id: string
@@ -67,12 +65,10 @@ const THINKING_LEVELS: { value: string; label: string }[] = [
   { value: "high", label: "高" },
 ]
 
-type NotifyKey = "collect" | "decision" | "trade" | "news"
+type NotifyKey = "collect" | "news"
 
 const NOTIFY_ITEMS: { key: NotifyKey; label: string; description: string }[] = [
   { key: "collect", label: "采集", description: "数据采集完成时发送通知" },
-  { key: "decision", label: "决策", description: "AI 完成交易决策时发送通知" },
-  { key: "trade", label: "交易", description: "触发交易信号时发送通知" },
   { key: "news", label: "新闻", description: "收到重要新闻时发送通知" },
 ]
 
@@ -159,8 +155,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const [social, setSocial] = useState<SocialConfig>({
     notify_channel: "telegram",
     notify_on_collect: true,
-    notify_on_decision: true,
-    notify_on_trade: true,
     notify_on_news: true,
     telegram_bot_token: "",
     telegram_chat_id: "",
@@ -257,8 +251,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       const keys = [
         "notify_channel",
         "notify_on_collect",
-        "notify_on_decision",
-        "notify_on_trade",
         "notify_on_news",
         "telegram_bot_token",
         "telegram_chat_id",

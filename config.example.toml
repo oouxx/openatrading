@@ -41,8 +41,6 @@ news_schedule = "0 */5 9-15 * * 1-5"
 [social]
 notify_channel = "telegram"
 notify_on_collect = true
-notify_on_decision = true
-notify_on_trade = true
 notify_on_news = true
 
 [social.telegram]

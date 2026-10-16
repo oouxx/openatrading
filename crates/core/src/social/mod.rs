@@ -28,8 +28,6 @@ pub use openatrading_channels::{NoopChannel, NotificationSender, StdoutChannel};
 pub struct FilteredSender {
     pub inner: Arc<dyn NotificationSender>,
     pub notify_on_collect: bool,
-    pub notify_on_decision: bool,
-    pub notify_on_trade: bool,
     pub notify_on_news: bool,
 }
 
@@ -42,22 +40,6 @@ impl NotificationSender for FilteredSender {
     async fn notify_collect(&self, text: &str) -> Result<()> {
         if self.notify_on_collect {
             self.inner.notify_collect(text).await
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn notify_decision(&self, text: &str) -> Result<()> {
-        if self.notify_on_decision {
-            self.inner.notify_decision(text).await
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn notify_trade(&self, text: &str) -> Result<()> {
-        if self.notify_on_trade {
-            self.inner.notify_trade(text).await
         } else {
             Ok(())
         }
