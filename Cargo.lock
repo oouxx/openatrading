@@ -3911,7 +3911,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-agent"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3932,7 +3932,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3955,7 +3955,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3973,7 +3973,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4001,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4036,7 +4036,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-extension"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4053,7 +4053,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -4072,7 +4072,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.15.8"
+version = "0.15.9"
 dependencies = [
  "anyhow",
  "arc-swap",

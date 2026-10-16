@@ -83,7 +83,22 @@ docker compose up -d
 
 ### 桌面端（Tauri）
 
-编译后在 `src-tauri/target/release/bundle/` 获取安装包。
+从 Homebrew 安装（推荐）：
+
+```bash
+brew tap oouxx/openatrading
+brew install --cask openatrading
+```
+
+cask 安装时会自动清除 macOS 隔离属性，装完直接双击打开即可。
+
+自行编译则在 `src-tauri/target/release/bundle/` 获取安装包。
+
+> **从网页下载 DMG 的用户注意**：Release 页面的安装包是 ad-hoc 签名（未经 Apple 公证），首次打开会被 Gatekeeper 拦下。先清除隔离属性再打开：
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/OpenATrading.app
+> ```
 
 ## Configuration
 

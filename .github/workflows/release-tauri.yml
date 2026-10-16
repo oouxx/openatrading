@@ -5,10 +5,6 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      macos:
-        description: 'Build macOS'
-        type: boolean
-        default: false
       linux:
         description: 'Build Linux'
         type: boolean
@@ -38,43 +34,10 @@ jobs:
           name: ${{ github.ref_name }}
           generate_release_notes: true
 
-  build-tauri-macos:
-    needs: create-release
-    if: (vars.MACOS_BUILD == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.macos == 'true'))
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            src/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ hashFiles('src/bun.lock') }}
-          restore-keys: |
-            bun-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-      - name: Install Rust targets
-        run: rustup target add aarch64-apple-darwin
-      - name: Build frontend
-        run: cd src && bun install && bun run build:tauri
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2"
-      - name: Build Tauri app (bundle)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SKIP_SIGNING: "true"
-        run: cargo tauri build
-      - name: Upload DMG to private repo
-        uses: softprops/action-gh-release@v2
-        with:
-          files: target/release/bundle/dmg/*.dmg
-          fail_on_unmatched_files: true
-      # brew cask 发布会由 release-brew.yml 自动完成（跨仓库，需 TAP_GITHUB_TOKEN）
+  # macOS DMG 不在此构建：由 release-brew.yml 统一产出（含 ad-hoc 签名校验），
+  # 并推送到 Homebrew Tap。此处再建一次会重复构建同一产物。
+  # 注意：job 级 if 条件读不到 secrets，若将来要在此构建 macOS，
+  # 必须在仓库 Variables（而非 Secrets）中配置开关。
 
   build-tauri-linux-amd64:
     needs: create-release
