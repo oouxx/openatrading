@@ -68,15 +68,19 @@ jobs:
         working-directory: src-tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SKIP_SIGNING: "true"
         run: cargo tauri build
+
+      - name: Verify aarch64 signature
+        run: bash scripts/verify-macos-signature.sh target/release/bundle/macos/openatrading.app
 
       - name: Build Tauri app (x64, cross)
         working-directory: src-tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SKIP_SIGNING: "true"
         run: cargo tauri build --target x86_64-apple-darwin
+
+      - name: Verify x64 signature
+        run: bash scripts/verify-macos-signature.sh target/x86_64-apple-darwin/release/bundle/macos/openatrading.app
 
       - name: Collect DMGs
         run: |
