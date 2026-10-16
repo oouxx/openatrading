@@ -200,7 +200,7 @@ impl AppConfig {
         self.social.as_ref()?.discord.as_ref()
     }
     /// Write one key under `section` to config.toml.
-    /// `section` is a dotted path, e.g. "llm" or "social.telegram".
+    /// `section` is a dotted path, e.g. "service" or "social.telegram".
     /// Uses `toml_edit` for round-trip preserving comments and section style.
     pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
         let path = Self::config_path();
