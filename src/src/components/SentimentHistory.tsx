@@ -17,7 +17,7 @@ export default function SentimentHistory() {
   const interpretation = useMemo(() => {
     const recent = (raw as Array<{ date: string; sentiment: number }>).slice(-3)
     if (recent.length >= 3 && recent.every((d) => d.sentiment >= 75))
-      return "连续3日偏热区间，历史规律显示此后2~3日有回调风险，注意控仓"
+      return "连续3日情绪值≥75，处于偏热区间"
     if (recent.length >= 3 && recent.every((d) => d.sentiment >= 50))
       return "情绪正常偏暖，短线操作环境尚可"
     if (recent.length > 0 && recent[recent.length - 1].sentiment < 50)

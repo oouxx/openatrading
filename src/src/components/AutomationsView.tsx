@@ -206,7 +206,7 @@ export default function AutomationsView() {
           </div>
         ) : automations.length === 0 ? (
           <div className="border-hairline text-secondary rounded-lg border border-dashed p-8 text-center text-sm">
-            还没有自动化任务。点击「新建」让 Codex 按计划在后台替你巡检项目、生成简报。
+            还没有自动化任务。点击「新建」让 agent 按计划在后台巡检行情、生成简报。
           </div>
         ) : (
           <div className="flex flex-col gap-2">

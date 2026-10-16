@@ -13,6 +13,7 @@ import TextBlock from "@/components/chat/TextBlock"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityTimeline"
+import { summarizeTool } from "@/components/chat/ToolCallList"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import type { HistoryMessage } from "@/agents/types"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -1017,10 +1018,11 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
   return (
     <div className="border-warning/30 bg-warning/10 my-2 overflow-hidden rounded-lg border">
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-warning text-caption font-medium">需要确认</span>
+        <span className="text-warning text-caption font-medium">
+          允许执行「{summarizeTool(block.toolName, JSON.stringify(block.toolInput))}」？
+        </span>
       </div>
       <div className="border-hairline border-t px-3 py-2">
-        <div className="text-secondary font-number text-caption">{block.toolName}</div>
         <pre className="text-secondary mt-1 overflow-x-auto font-number text-caption whitespace-pre-wrap">
           {JSON.stringify(block.toolInput, null, 2)}
         </pre>

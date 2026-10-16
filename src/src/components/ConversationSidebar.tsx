@@ -68,10 +68,10 @@ export default function ConversationSidebar({
               <SidebarMenuButton
                 onClick={() => setMode(mode === "roles" ? "chat" : "roles")}
                 isActive={mode === "roles"}
-                tooltip="角色策略"
+                tooltip="模拟盘"
               >
                 <Users />
-                <span>角色策略</span>
+                <span>模拟盘</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

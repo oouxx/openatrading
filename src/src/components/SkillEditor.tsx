@@ -4,6 +4,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { fetchJson } from "@/stores/data"
 
 interface SkillEntry {
@@ -32,6 +39,9 @@ export default function SkillEditor() {
   const [editContent, setEditContent] = useState("")
   const [editDisable, setEditDisable] = useState(false)
   const [isNew, setIsNew] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState("")
+  const [deleting, setDeleting] = useState(false)
 
   const loadSkills = async () => {
     try {
@@ -101,13 +111,23 @@ export default function SkillEditor() {
   }
 
   const deleteSkill = async (name: string) => {
-    if (!confirm(`确定删除技能「${name}」？`)) return
+    setDeleting(true)
+    setDeleteError("")
     try {
       await fetchJson(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" })
+      setDeleteTarget(null)
       setSelectedIdx(null)
       await loadSkills()
-    } catch {
-      // silently fail
+    } catch (e) {
+      // 后端只对「用户技能目录」内的技能执行删除，其余（项目 / 临时）返回 404
+      const raw = e instanceof Error ? e.message : ""
+      setDeleteError(
+        raw === "404"
+          ? "删除失败：该技能不在用户技能目录中。项目与临时技能需直接编辑对应文件。"
+          : `删除失败：${raw || "未知错误"}`
+      )
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -210,7 +230,10 @@ export default function SkillEditor() {
                       variant="outline"
                       size="sm"
                       className="border-down/30 hover:bg-down/10 text-down h-7 text-caption"
-                      onClick={() => deleteSkill(selected.name)}
+                      onClick={() => {
+                        setDeleteError("")
+                        setDeleteTarget(selected.name)
+                      }}
                     >
                       删除
                     </Button>
@@ -284,6 +307,32 @@ export default function SkillEditor() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirm */}
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>删除技能「{deleteTarget}」</DialogTitle>
+          </DialogHeader>
+          <p className="text-secondary text-caption">
+            删除会连同技能目录一起移除，其中的 SKILL.md 与附带文件全部清空，无法恢复。
+            想保留内容请先复制出来。
+          </p>
+          {deleteError && <p className="text-down text-caption">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => deleteTarget && void deleteSkill(deleteTarget)}
+            >
+              {deleting ? "删除中..." : "删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
