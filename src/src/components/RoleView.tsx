@@ -191,12 +191,19 @@ function StatCard({
 }) {
   const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-primary"
   return (
-    <div className="bg-surface border-hairline rounded-lg border px-4 py-4">
+    <div className="bg-surface border-hairline min-w-0 rounded-lg border px-4 py-4">
       <div className="text-secondary flex items-center justify-between gap-2 text-caption tracking-wider uppercase">
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
         {action}
       </div>
-      <div className={`mt-1 font-number text-h1 font-semibold ${toneCls}`}>{value}</div>
+      {/*
+        金额位数随本金增长，卡宽却由列数决定：text-h1（20px）下 `¥1,000,000.00`
+        在本页任何常见窗口宽度都会顶出卡片边框。降到 text-h2（16px）并配合
+        truncate 收口——仍放不下时截断而不是溢出，完整值保留在 title 里。
+      */}
+      <div className={`mt-1 truncate font-number text-h2 font-semibold ${toneCls}`} title={value}>
+        {value}
+      </div>
       {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}
     </div>
   )
@@ -221,7 +228,7 @@ function AccountOverview({
 
   if (loading || !account) {
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="bg-surface border-hairline rounded-lg border px-4 py-4">
             <Skeleton className="h-3 w-16" />
@@ -243,7 +250,8 @@ function AccountOverview({
           部分持仓行情获取失败，持仓市值与权益为不完整值，仅供参考
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      {/* 列数按「金额放得下」定：5 列只在 2xl 起用，窄窗口退到 3/2 列 */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
         <StatCard
           label="初始资金"
           value={`¥${formatMoney(account.initial_capital)}`}
