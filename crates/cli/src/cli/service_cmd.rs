@@ -181,8 +181,6 @@ pub fn create_notification_sender(
         Some(inner) => Arc::new(FilteredSender {
             inner,
             notify_on_collect: sc.notify_on_collect,
-            notify_on_decision: sc.notify_on_decision,
-            notify_on_trade: sc.notify_on_trade,
             notify_on_news: sc.notify_on_news,
         }),
         None => Arc::new(NoopChannel),

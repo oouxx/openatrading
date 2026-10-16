@@ -19,10 +19,6 @@ pub struct SocialConfig {
     #[serde(default = "default_true")]
     pub notify_on_collect: bool,
     #[serde(default = "default_true")]
-    pub notify_on_decision: bool,
-    #[serde(default = "default_true")]
-    pub notify_on_trade: bool,
-    #[serde(default = "default_true")]
     pub notify_on_news: bool,
 }
 

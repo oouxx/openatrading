@@ -81,12 +81,6 @@ pub trait NotificationSender: Send + Sync {
     async fn notify_collect(&self, text: &str) -> Result<()> {
         self.send_text(text).await
     }
-    async fn notify_decision(&self, text: &str) -> Result<()> {
-        self.send_text(text).await
-    }
-    async fn notify_trade(&self, text: &str) -> Result<()> {
-        self.send_text(text).await
-    }
     async fn notify_news(&self, text: &str) -> Result<()> {
         self.send_text(text).await
     }

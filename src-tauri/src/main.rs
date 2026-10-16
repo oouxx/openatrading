@@ -825,14 +825,6 @@ async fn get_config() -> Result<serde_json::Value, String> {
                 serde_json::Value::Bool(s.notify_on_collect),
             );
             m.insert(
-                "notify_on_decision".into(),
-                serde_json::Value::Bool(s.notify_on_decision),
-            );
-            m.insert(
-                "notify_on_trade".into(),
-                serde_json::Value::Bool(s.notify_on_trade),
-            );
-            m.insert(
                 "notify_on_news".into(),
                 serde_json::Value::Bool(s.notify_on_news),
             );
