@@ -124,7 +124,7 @@ _release:
 	git add -A && git commit -m "release $$tag"; \
 	git tag "$$tag"; \
 	BRANCH=$$(git branch --show-current); \
-	git push origin "$$BRANCH" --tags; \
+	git push origin "$$BRANCH" --tags || { echo "❌ 推送失败：$$tag 已本地提交并打标，但未到远端"; exit 1; }; \
 	echo "✅ 已推送 $$tag 到 $$BRANCH，等待 GitHub Actions 构建"
 
 
