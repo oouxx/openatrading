@@ -24,10 +24,10 @@ const features = [
     tags: ["💬 流式对话", "📈 个股分析", "📝 复盘报告"],
   },
   {
-    title: "策略 Skill 推演",
+    title: "Skill 编排分析",
     badge: "模拟盘",
-    desc: "用 Skill 编写交易策略，AI 按策略在模拟盘推演交易。手动触发、纸面账户隔离，新增/编辑 Skill 后新建会话即生效。",
-    tags: ["🧩 Skill 编辑", "🤖 策略推演", "💹 模拟盘"],
+    desc: "把选股口径、复盘清单写成 Skill，新建会话即生效。模拟盘账户在面板里手动记账，AI 只出报告、不下单。",
+    tags: ["🧩 Skill 编辑", "🤖 分析编排", "💹 手动记账"],
   },
   {
     title: "自选行情",
@@ -65,14 +65,14 @@ export default function LandingPage() {
           AI<span className="text-ai">行情助手</span>
         </h1>
         <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-lg/relaxed">
-          通过对话复盘 A 股行情，用 Skill 推演交易策略并在模拟盘验证 ——
-          全程手动触发，纸面账户隔离，盈亏实时追踪。
+          通过对话复盘 A 股行情，把选股口径和复盘清单写成 Skill 复用。
+          模拟盘账户独立记账，行情实时估值，盈亏随时可查。
         </p>
 
         <div className="text-ink-muted mb-10 flex flex-wrap items-center justify-center gap-4 text-sm">
           {[
             { icon: "💬", label: "行情对话" },
-            { icon: "🧩", label: "策略推演" },
+            { icon: "🧩", label: "Skill 编排" },
             { icon: "💹", label: "模拟盘" },
             { icon: "📊", label: "复盘追踪" },
           ].map((node, i) => (
@@ -159,8 +159,7 @@ export default function LandingPage() {
                 </span>
               </h4>
               <p className="text-ink-muted mb-2.5 text-[0.8rem] leading-relaxed">
-                Web 与 Telegram 共享同一套对话能力 ——
-                随时随地复盘行情、查看自选，数据实时同步，无自动交易、全程手动触发。
+                Web 与 Telegram 共用同一套对话能力，会话与自选在两端实时同步。
               </p>
               <div className="flex flex-wrap gap-2">
                 {["🌐 Web", "✈️ Telegram", "🔄 实时同步"].map((t) => (
@@ -250,12 +249,6 @@ openatrading gateway run`}
         <div className="mb-3 flex flex-wrap justify-center gap-6">
           <a href="https://github.com/oouxx/openatrading" className="text-ai">
             GitHub
-          </a>
-          <a href="#" className="text-ai">
-            文档
-          </a>
-          <a href="#" className="text-ai">
-            API 参考
           </a>
           <a href="#install" className="text-ai">
             下载

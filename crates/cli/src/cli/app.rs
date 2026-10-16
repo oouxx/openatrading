@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(name = "openatrading")]
 #[command(about = "A股市场异动追踪工具 — 命令行接口")]
 #[command(long_about = r#"
-openatrading 是一个 AI-native A 股短线交易决策工作台。
+openatrading 是一个 A 股短线行情与舆情工作台。
 
 用法:
   openatrading init                  # 初始化 ~/.atrading/ 配置目录
@@ -15,7 +15,7 @@ openatrading 是一个 AI-native A 股短线交易决策工作台。
   openatrading mcp serve             # 对外暴露行情工具（MCP server）
   openatrading config show           # 查看当前配置
 
-交易决策不走 CLI：在 Web / 桌面端的对话里由 agent 分析后提交。
+模拟盘交易不走 CLI：在 Web / 桌面端面板里手动记录买卖，agent 只做行情与舆情分析。
 
 环境变量（也可写在 ~/.atrading/.env，按全局 → 项目两级加载）:
   JIUYAN_PHONE       韭研公社登录手机号

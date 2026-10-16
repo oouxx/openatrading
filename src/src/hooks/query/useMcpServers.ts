@@ -9,7 +9,8 @@ export function mcpErrorMessage(raw: string): string {
   if (raw === "404" || raw === "MCP server not found") return "服务器不存在或已被删除"
   if (raw === "403" || raw.includes("project config")) return "该服务器定义在项目配置文件中，请直接编辑该文件"
   if (raw === "400" || raw.includes("invalid MCP server config")) return "配置不完整：请检查名称与命令/URL"
-  if (/^\d{3}$/.test(raw)) return `操作失败 (${raw})`
+  if (/^5\d{2}$/.test(raw)) return "服务端处理失败，请查看 gateway 日志后重试"
+  if (/^\d{3}$/.test(raw)) return `请求被拒绝（HTTP ${raw}）`
   return raw
 }
 

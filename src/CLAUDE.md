@@ -43,7 +43,9 @@ bun run lint:fix
 - Fix all ESLint errors before considering a task complete
 - Warnings can be left but should be noted
 - Tailwind classes must follow the order defined by `eslint-plugin-tailwindcss`
-  **Do NOT:**
+
+**Do NOT:**
+
 - Disable ESLint rules with `eslint-disable` comments unless absolutely necessary
 - Add `any` type to bypass TypeScript checks
 

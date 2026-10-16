@@ -1184,7 +1184,10 @@ export default function RoleView() {
           <DialogHeader>
             <DialogTitle>删除角色</DialogTitle>
           </DialogHeader>
-          <p className="text-secondary text-caption">确定删除此角色？此操作不可恢复。</p>
+          <p className="text-secondary text-caption">
+            删除将清空该角色的全部持仓与成交流水，历史无法恢复；角色本身与初始资金设置一并删除。
+            只想清空交易记录、保留角色请用重置。
+          </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowDeleteConfirm(null)}>
               取消
