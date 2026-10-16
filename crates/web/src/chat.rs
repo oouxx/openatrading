@@ -68,7 +68,13 @@ pub async fn get_agent_models() -> Result<axum::Json<serde_json::Value>, axum::h
 }
 
 /// POST /api/agent/settings — update pi-rs defaults.
+///
+/// 字段名必须与 `GET /api/agent/settings` 的响应一致（camelCase），前端是
+/// 拿 GET 的结果回填后再 POST 的。少了 `rename_all` 时 serde 只认 snake_case，
+/// 请求体里的 `defaultProvider` 会被 `#[serde(default)]` 静默吃成 `None`，
+/// 接口照样回 200，但什么都没落盘。
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateAgentSettingsRequest {
     #[serde(default)]
     default_provider: Option<String>,
@@ -88,6 +94,62 @@ pub async fn update_agent_settings(
     )
     .map(|_| axum::Json(serde_json::json!({ "ok": true })))
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+// ── Provider API Key（pi-rs `auth.json`）──────────────────────────────────
+
+/// `AgentAuthError` → HTTP 状态码。
+///
+/// 文案随 `{"error": ...}` 一起返回，前端 `toErrorMessage` 会原样透出，
+/// 因此这里给的都是面向调用者的中文说明，不含密钥。
+fn auth_status(err: &openatrading_core::llm::AgentAuthError) -> StatusCode {
+    use openatrading_core::llm::AgentAuthError;
+    match err {
+        AgentAuthError::UnknownProvider(_)
+        | AgentAuthError::EmptyKey
+        | AgentAuthError::MultilineKey => StatusCode::BAD_REQUEST,
+        AgentAuthError::NotFound(_) => StatusCode::NOT_FOUND,
+        AgentAuthError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// 失败响应的统一形状：`(状态码, {"error": 中文原因})`。
+type AuthErrorResponse = (StatusCode, Json<serde_json::Value>);
+
+fn auth_error(err: openatrading_core::llm::AgentAuthError) -> AuthErrorResponse {
+    let status = auth_status(&err);
+    (status, Json(serde_json::json!({ "error": err.to_string() })))
+}
+
+/// GET /api/agent/auth — provider 凭据状态（不回显密钥原文）。
+pub async fn get_agent_auth() -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    crate::handlers::get_pi_agent_auth_data()
+        .map(axum::Json)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// POST /api/agent/auth — 写入 provider 的 API Key。
+#[derive(serde::Deserialize)]
+pub struct SetAgentApiKeyRequest {
+    provider: String,
+    key: String,
+}
+
+pub async fn set_agent_api_key(
+    axum::Json(req): axum::Json<SetAgentApiKeyRequest>,
+) -> Result<axum::Json<serde_json::Value>, AuthErrorResponse> {
+    crate::handlers::set_pi_agent_api_key_data(&req.provider, &req.key)
+        .map(|()| axum::Json(serde_json::json!({ "ok": true })))
+        .map_err(auth_error)
+}
+
+/// DELETE /api/agent/auth/:provider — 删除已保存的 API Key。
+pub async fn delete_agent_api_key(
+    Path(provider): Path<String>,
+) -> Result<StatusCode, AuthErrorResponse> {
+    crate::handlers::delete_pi_agent_api_key_data(&provider)
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(auth_error)
 }
 
 #[derive(Serialize)]
@@ -727,7 +789,10 @@ pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value
 
 #[cfg(test)]
 mod tests {
-    use super::{get_ai_commands_inner, messages_to_session_messages, HistoryBlock};
+    use super::{
+        get_ai_commands_inner, messages_to_session_messages, HistoryBlock,
+        UpdateAgentSettingsRequest,
+    };
     use openatrading_core::commands::CommandType;
 
     use openatrading_core::llm::pi_ai_types::ContentBlock;
@@ -884,5 +949,19 @@ mod tests {
             .unwrap_or_else(|| panic!("missing extension command /goal: {specs:?}"));
         assert_eq!(goal.command_type, CommandType::Extension);
         assert!(!goal.description.is_empty());
+    }
+
+    /// 回归：前端 POST 的是 camelCase（照搬 GET 的响应字段名），
+    /// 若结构体漏了 `rename_all`，字段会被静默吃成 `None`、接口仍回 200，
+    /// 表现为「设置页选了模型但重启后没保存」。
+    #[test]
+    fn update_settings_request_accepts_the_frontend_payload() {
+        let req: UpdateAgentSettingsRequest = serde_json::from_str(
+            r#"{"defaultProvider":"opencode-go","defaultModel":"deepseek-v4.1-flash","thinkingLevel":"medium"}"#,
+        )
+        .unwrap_or_else(|e| panic!("前端载荷应能反序列化: {e}"));
+        assert_eq!(req.default_provider.as_deref(), Some("opencode-go"));
+        assert_eq!(req.default_model.as_deref(), Some("deepseek-v4.1-flash"));
+        assert_eq!(req.thinking_level.as_deref(), Some("medium"));
     }
 }

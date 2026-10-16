@@ -15,6 +15,7 @@ import {
 import { McpServerForm } from "./McpServerForm"
 import { McpServerCard } from "./McpServerCard"
 import ModelPicker from "./ModelPicker"
+import { AgentApiKeySection } from "./AgentApiKeySection"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
 import { CheckIcon } from "lucide-react"
 import type { McpServerPayload } from "../types/mcp"
@@ -344,6 +345,8 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 }
               />
             </SettingsSection>
+
+            <AgentApiKeySection defaultProvider={agentSettings.defaultProvider} />
 
             <SettingsSection title="数据源">
               <SettingRow

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CheckIcon, ChevronDownIcon, LockKeyholeIcon } from "lucide-react"
 import { SettingRow, SelectField } from "./settings-ui"
+import { agentModelsKeys } from "@/hooks/query/queryKeys"
 
 export interface ModelOption {
   id: string
@@ -105,8 +106,9 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
   const [draftProvider, setDraftProvider] = useState<string | null>(null)
 
   // 模型列表走 react-query 缓存：staleTime 内重复进入设置页不重新请求
+  // key 取自 queryKeys——保存 API Key 后要按同一 key 失效，才能立刻刷新置灰状态
   const modelsQuery = useQuery({
-    queryKey: ["agent-models"],
+    queryKey: agentModelsKeys.all,
     queryFn: () => fetchJson<{ providers: ProviderOption[] }>("/api/agent/models"),
     staleTime: 5 * 60 * 1000,
     retry: 1,

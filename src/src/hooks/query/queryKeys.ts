@@ -102,3 +102,13 @@ export const watchlistKeys = {
 export const mcpKeys = {
   all: ["mcp-servers"] as const,
 }
+
+/** pi-rs 可选模型列表（`/api/agent/models`）。 */
+export const agentModelsKeys = {
+  all: ["agent-models"] as const,
+}
+
+/** provider 凭据状态（`/api/agent/auth`）。 */
+export const agentAuthKeys = {
+  all: ["agent-auth"] as const,
+}

@@ -126,6 +126,7 @@ async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::V
         "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
         "/api/agent/settings" => openatrading_web::handlers::get_pi_agent_settings_data(),
         "/api/agent/models" => openatrading_web::handlers::get_pi_agent_models_data(),
+        "/api/agent/auth" => openatrading_web::handlers::get_pi_agent_auth_data(),
         "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
         "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
         "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
@@ -386,6 +387,20 @@ async fn dispatch_post(
             )?;
             Ok(serde_json::Value::Null)
         }
+        // POST /api/agent/auth — 写入 provider 的 API Key（`auth.json`）。
+        "/api/agent/auth" => {
+            let provider = body
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "缺少 provider".to_string())?;
+            let key = body
+                .get("key")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "缺少 key".to_string())?;
+            openatrading_web::handlers::set_pi_agent_api_key_data(provider, key)
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::Value::Null)
+        }
         _ => {
             if let Some(rest) = path.strip_prefix("/api/roles/") {
                 let parts: Vec<&str> = rest.split('/').collect();
@@ -490,6 +505,11 @@ async fn dispatch_post(
                     openatrading_web::mcp::delete_mcp_server_data(state, &name)
                         .map_err(|e| e.to_string())?;
                 }
+                Ok(serde_json::Value::Null)
+            } else if let Some(provider) = path.strip_prefix("/api/agent/auth/") {
+                // DELETE /api/agent/auth/{provider} — 前端把 DELETE 也走 `api_post`。
+                openatrading_web::handlers::delete_pi_agent_api_key_data(&url_decode(provider))
+                    .map_err(|e| e.to_string())?;
                 Ok(serde_json::Value::Null)
             } else {
                 Err(format!("unknown path: {path}"))

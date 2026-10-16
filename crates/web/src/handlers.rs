@@ -1215,11 +1215,10 @@ pub fn update_pi_agent_settings_data(
 /// 复用 pi-coding-agent 的 `ModelRegistry`（与会话工厂同一来源），返回
 /// provider + 模型元数据，供前端 ModelPicker 选择默认 provider/model。
 pub fn get_pi_agent_models_data() -> Result<serde_json::Value, String> {
-    use pi_coding_agent::core::model_registry::ModelRegistry;
-
-    // 与 create_agent_session 一致：先注册内置 provider/模型，再构建注册表
-    pi_coding_agent::pi_agent_core::pi_ai::providers::register_builtins::register_built_in_api_providers();
-    let registry = ModelRegistry::new(ModelRegistry::builtin_models_list());
+    // `wired_model_registry` 内部已 `wire_auth_resolver`——少了这一步，
+    // `has_configured_auth` 看不到 auth.json 里存的 key，模型列表会把已配置的
+    // provider 整片判成未配置（全部置灰）。
+    let registry = openatrading_core::llm::wired_model_registry();
 
     let mut providers: Vec<serde_json::Value> = Vec::new();
     for provider in registry.get_providers() {
@@ -1245,6 +1244,33 @@ pub fn get_pi_agent_models_data() -> Result<serde_json::Value, String> {
         providers.push(serde_json::json!({ "name": provider, "models": models }));
     }
     Ok(serde_json::json!({ "providers": providers }))
+}
+
+// ── Provider API Key（pi-rs `auth.json`）──────────────────────────────────
+
+/// GET /api/agent/auth — 已知 provider 及其凭据状态。
+///
+/// 只返回状态（`source` / `label`），**不回显密钥原文**。
+pub fn get_pi_agent_auth_data() -> Result<serde_json::Value, String> {
+    let store = openatrading_core::llm::AgentAuthStore::from_pi_rs();
+    let providers = serde_json::to_value(store.providers())
+        .map_err(|e| format!("序列化 provider 凭据状态失败: {e}"))?;
+    Ok(serde_json::json!({ "providers": providers }))
+}
+
+/// POST /api/agent/auth — 写入某个 provider 的 API Key。
+pub fn set_pi_agent_api_key_data(
+    provider: &str,
+    key: &str,
+) -> Result<(), openatrading_core::llm::AgentAuthError> {
+    openatrading_core::llm::AgentAuthStore::from_pi_rs().set_api_key(provider, key)
+}
+
+/// DELETE /api/agent/auth/{provider} — 删除某个 provider 已保存的 API Key。
+pub fn delete_pi_agent_api_key_data(
+    provider: &str,
+) -> Result<(), openatrading_core::llm::AgentAuthError> {
+    openatrading_core::llm::AgentAuthStore::from_pi_rs().delete_api_key(provider)
 }
 
 #[cfg(test)]

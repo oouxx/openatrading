@@ -9,6 +9,7 @@
 //! stay in [`tools`] — they cannot move to the agent crate without creating a
 //! circular `agent → core` dependency.
 
+pub mod auth;
 pub mod mcp;
 pub mod tools;
 
@@ -29,6 +30,13 @@ pub use openatrading_agent::events::{
 // 客户端复用 pi-rs SDK（见 [`mcp`]）；服务端（对外暴露本项目工具）仍是自研实现，
 // 从 extension crate 再导出，保持 `core::llm` 公开名稳定。
 pub use openatrading_extension::mcp::{serve_http, serve_stdio, McpServerHandler};
+
+// ── Provider 凭据（pi-rs `auth.json`）───────────────────────────────────────
+// 读写全部委托给 pi-rs `AuthStorage`（见 [`auth`]）。
+pub use self::auth::{
+    model_registry_with_auth, wired_model_registry, AgentAuthError, AgentAuthStore,
+    ProviderAuthView,
+};
 
 /// MCP 客户端：pi-rs 的配置/连接原语 + 管理界面用的读写投影。
 pub use self::mcp::{
