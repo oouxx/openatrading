@@ -133,6 +133,27 @@
   box-shadow: 0 0 0 1px oklch(0.92 0 0 / 0.14);
 }
 
+/* ── 表格固定操作列 ──
+ *
+ * 持仓表 9 列在 1280px 级窗口下横向溢出，最后一列（操作/卖出）被推到视口外，
+ * 用户在 macOS 上看不到滚动条，会以为「没有卖出按钮」。把操作列钉在容器右侧，
+ * 任何宽度下都能点到；左边缘加一道阴影提示它盖住了后面的列。
+ *
+ * 必须写在 `@layer` 之外：Tailwind v4 用原生级联层，`utilities` 层在 `base` 之后，
+ * 层里的规则永远输给单元格上的 `bg-ink-dim`/`bg-*` 工具类，透明底会让后面的列透出来。
+ */
+.col-sticky-actions {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--color-surface);
+  box-shadow: -8px 0 8px -8px oklch(0.3 0.01 75 / 0.28);
+}
+/* 表头另有 bg-ink-dim 叠色，透明底会露出后面的列，这里自己铺一层不透明底 */
+th.col-sticky-actions {
+  background: linear-gradient(var(--color-ink-dim), var(--color-ink-dim)), var(--color-surface);
+}
+
 /* --- custom-scroll --- */
 .custom-scroll::-webkit-scrollbar {
   width: 4px;

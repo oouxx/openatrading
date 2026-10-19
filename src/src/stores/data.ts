@@ -272,3 +272,21 @@ export interface IndexQuote {
   px_change_rate: number
   trade_status: string
 }
+
+/**
+ * 单只股票的实时行情 —— GET /api/realtime/:symbol
+ *
+ * 后端字段远多于这里列出的，只声明交易场景（下单、持仓估值）真正用到的字段，
+ * 避免给 `useRealtimeQuote` 调用方一个 `any`。
+ */
+export interface RealtimeQuote {
+  symbol: string
+  name: string
+  last_px: number
+  px_change: number
+  px_change_rate: number
+  preclose_px: number
+  /** 交易状态（如 `TRADE` / `SUSP`）；停牌时现价不可用于下单参考 */
+  trade_status: string
+  update_time: number
+}
