@@ -3,8 +3,6 @@ import {
   Search,
   Square,
   ArrowDown,
-  Copy,
-  Check,
   ArrowUp,
   Paperclip,
   X,
@@ -917,7 +915,7 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
 
     if (block.type === "text") {
       nodes.push(
-        <TextSegment
+        <TextBlock
           key={`t-${idx++}`}
           content={block.content}
           isStreaming={isStreaming && block.streaming}
@@ -957,38 +955,6 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
   flushActivity()
 
   return <>{nodes}</>
-}
-
-// ── Text segment with hover copy (#3) ─────────────────────────────────────
-
-interface TextSegmentProps {
-  content: string
-  isStreaming: boolean
-}
-
-function TextSegment({ content, isStreaming }: TextSegmentProps) {
-  const [copied, setCopied] = useState(false)
-  const onCopy = useCallback(() => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }, [content])
-  return (
-    <div className="group/seg relative">
-      <TextBlock content={content} isStreaming={isStreaming} />
-      {!isStreaming && content.trim() && (
-        <button
-          onClick={onCopy}
-          className="text-secondary/60 hover:text-primary absolute -top-2 right-0 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-opacity group-hover/seg:opacity-100"
-          aria-label="复制"
-        >
-          {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
-          {copied ? "已复制" : "复制"}
-        </button>
-      )}
-    </div>
-  )
 }
 
 // ── Permission request card (§11.2) ──────────────────────────────────────
