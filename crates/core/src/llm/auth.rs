@@ -44,7 +44,12 @@ pub fn wired_model_registry() -> ModelRegistry {
 ///
 /// **不含密钥原文**：`label` 是来源标识（环境变量名、`--api-key` 等），
 /// 由 pi-rs `get_auth_status` 给出。
+///
+/// `rename_all = "camelCase"`：这个 view 直接序列化成 `GET /api/agent/auth` 的
+/// 响应体，多词字段必须是 camelCase（前端 `useAgentAuth` 声明的是 `displayName`）。
+/// 漏掉它时前端读到 `undefined`——provider 下拉框每行都是空白，看着像“没有 provider”。
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderAuthView {
     pub provider: String,
     /// 人类可读名，取不到时回落到 provider id。
@@ -281,6 +286,28 @@ mod tests {
 
         let json = serde_json::to_string(&store.providers()).unwrap();
         assert!(!json.contains("sk-super-secret"), "{json}");
+    }
+
+    /// 契约回归：`GET /api/agent/auth` 的多词字段必须是 camelCase。
+    ///
+    /// 前端读的是 `displayName`；漏掉 `rename_all` 时该字段为 `undefined`，
+    /// 设置页 provider 下拉框整列空白。
+    #[test]
+    fn provider_view_serializes_camel_case_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+
+        let json = serde_json::to_value(store.providers()).unwrap();
+        let first = &json.as_array().expect("providers 应为数组")[0];
+        assert!(
+            first.get("displayName").and_then(|v| v.as_str()).is_some(),
+            "displayName 缺失或非字符串: {first}"
+        );
+        assert!(first.get("display_name").is_none(), "不该出现 snake_case: {first}");
+        // 单词字段不受 rename 影响，仍按原名透给前端
+        for key in ["provider", "configured", "source", "label"] {
+            assert!(first.get(key).is_some(), "缺字段 {key}: {first}");
+        }
     }
 
     /// provider 白名单：不在模型注册表里的名字拒绝写入，避免污染 `auth.json`。
