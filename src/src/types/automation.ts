@@ -70,19 +70,50 @@ export interface RunQuery {
   limit?: number
 }
 
+/** ISO 周序号是否正好是周一~周五——任务创建页的「每工作日」预设就用这个写法 */
+export function isWeekdays(days: number[]): boolean {
+  const sorted = [...days].sort((a, b) => a - b)
+  return sorted.length === 5 && sorted.every((d, i) => d === i + 1)
+}
+
+/** 「交易时段内每 N 分钟」用的 cron 表达式。
+ *
+ * 周字段 `2-6` 是 Quartz 语义下的周一~周五（1 = 周日，与后端 `Schedule::to_cron`
+ * 的周序号映射一致），`9-15` 点覆盖全天交易时段（含飏中休市，监控任务无副作用）。
+ */
+export function tradingHoursCron(minutes: number): string {
+  return `0 */${minutes} 9-15 * * 2-6`
+}
+
+const TRADING_HOURS_CRON_RE = /^0 \*\/(\d+) 9-15 \* \* 2-6$/
+
+/** 识别 tradingHoursCron 生成的表达式，返回间隔分钟数；不是该形态返回 null */
+export function tradingHoursMinutes(expr: string): number | null {
+  const m = TRADING_HOURS_CRON_RE.exec(expr.trim())
+  if (!m) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 /** 调度计划 → 中文摘要 */
 export function describeSchedule(s: Schedule): string {
   switch (s.kind) {
-    case "cron":
+    case "cron": {
+      const tradingMinutes = tradingHoursMinutes(s.expr)
+      if (tradingMinutes !== null) return `交易时段每 ${tradingMinutes} 分钟`
       return `cron: ${s.expr}`
+    }
     case "every_minutes":
       return `每 ${s.minutes} 分钟`
     case "daily":
       return `每天 ${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`
     case "weekly": {
+      const hhmm = `${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`
+      // 周一~周五是最常见的取值，缩写一句比「每周一、二、三、四、五」好读
+      if (isWeekdays(s.days)) return `每工作日 ${hhmm}`
       const names = ["", "一", "二", "三", "四", "五", "六", "日"]
       const days = s.days.map((d) => names[d] ?? "?").join("、")
-      return `每周${days} ${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`
+      return `每周${days} ${hhmm}`
     }
   }
 }
