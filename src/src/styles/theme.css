@@ -79,6 +79,31 @@
   --color-accent-hover: oklch(0.6171 0.1375 39.0);
   --color-accent-foreground: oklch(0.985 0 0);
 
+  /*
+   * ── shadcn 组件语义色 ──
+   * `src/components/ui/**` 里的组件用的是 shadcn 的语义名（`bg-muted` / `bg-destructive` /
+   * `text-muted-foreground` / `bg-card` / `bg-sidebar` …）。Tailwind v4 只会为 `@theme` 里
+   * 声明过的 `--color-*` 生成工具类，缺失的名字不会报错、直接变成「无样式」：
+   * 弹窗底栏 `bg-muted/50` 退化成继承色，删除按钮 `bg-destructive` 变成透明。
+   * 这里把 ui 组件依赖的名字全部映射到本项目的色板（注释里的「=」指向本文件另一处 token）。
+   */
+  --color-background: oklch(0.9818 0.0054 95.1); /* = canvas */
+  --color-card: oklch(1 0 0); /* = surface */
+  --color-card-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
+  --color-secondary-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
+  --color-muted: oklch(0.9463 0.007 88.6); /* = hover，浅暖灰底 */
+  --color-muted-foreground: oklch(0.5312 0.0095 91.6); /* = secondary */
+  --color-destructive: oklch(0.55 0.18 25); /* = danger */
+  --color-destructive-foreground: oklch(0.985 0 0);
+  --color-sidebar: oklch(0.9818 0.0054 95.1); /* = canvas */
+  --color-sidebar-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
+  --color-sidebar-primary: oklch(0.6724 0.1308 38.8); /* = brand */
+  --color-sidebar-primary-foreground: oklch(0.985 0 0);
+  --color-sidebar-accent: oklch(0.9463 0.007 88.6); /* = hover */
+  --color-sidebar-accent-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
+  --color-sidebar-border: oklch(0.35 0.008 85 / 0.06); /* = hairline */
+  --color-sidebar-ring: oklch(0.6724 0.1308 38.8); /* = ring */
+
   /* ── 交易语义色（市场规则，不随品牌变更） ── */
   --color-up:   oklch(0.48 0.18 30);      /* 涨 — 暖红 */
   --color-up-bg: oklch(0.48 0.18 30 / 0.12);
@@ -98,7 +123,6 @@
 
   /* Legacy aliases (过渡，逐步迁移) */
   --color-foreground: oklch(0.2357 0.0024 67.7);
-  --color-muted: oklch(0.5312 0.0095 91.6);
   --color-surface-hover: oklch(0.9463 0.007 88.6);
   --color-bg: oklch(0.9818 0.0054 95.1);
   --color-bg-surface: oklch(1 0 0);
@@ -223,6 +247,24 @@
   --color-accent-hover: oklch(0.7622 0.1018 38.3);
   --color-accent-foreground: oklch(0.985 0 0);
 
+  /* shadcn 组件语义色（dark）—— 与 light 段同构 */
+  --color-background: oklch(0.2679 0.0036 106.6); /* = canvas */
+  --color-card: oklch(0.3085 0.0035 106.6); /* = surface */
+  --color-card-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
+  --color-secondary-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
+  --color-muted: oklch(0.3474 0.0051 106.7); /* = hover */
+  --color-muted-foreground: oklch(0.7124 0.0119 89.8); /* = secondary */
+  --color-destructive: oklch(0.65 0.18 25); /* = danger */
+  --color-destructive-foreground: oklch(0.985 0 0);
+  --color-sidebar: oklch(0.2679 0.0036 106.6); /* = canvas */
+  --color-sidebar-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
+  --color-sidebar-primary: oklch(0.717 0.1131 38.8); /* = brand */
+  --color-sidebar-primary-foreground: oklch(0.985 0 0);
+  --color-sidebar-accent: oklch(0.3474 0.0051 106.7); /* = hover */
+  --color-sidebar-accent-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
+  --color-sidebar-border: oklch(0.9 0.008 85 / 0.06); /* = hairline */
+  --color-sidebar-ring: oklch(0.717 0.1131 38.8); /* = ring */
+
   --color-up: oklch(0.65 0.18 30);
   --color-up-bg: oklch(0.65 0.18 30 / 0.12);
   --color-up-muted: oklch(0.65 0.18 30 / 0.15);
@@ -244,7 +286,6 @@
 
   /* Legacy aliases dark override */
   --color-foreground: oklch(0.9251 0.0071 88.6);
-  --color-muted: oklch(0.7124 0.0119 89.8);
   --color-surface-hover: oklch(0.3474 0.0051 106.7);
   --color-bg: oklch(0.2679 0.0036 106.6);
   --color-bg-surface: oklch(0.3085 0.0035 106.6);
