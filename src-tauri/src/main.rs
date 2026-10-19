@@ -264,7 +264,7 @@ async fn dispatch_get_fallback(
     }
     if let Some(rest) = path.strip_prefix("/api/mcp/servers/") {
         if let Some(name) = rest.strip_suffix("/toggle") {
-            openatrading_web::mcp::toggle_mcp_server_data(state, &url_decode(name))
+            openatrading_web::mcp::toggle_mcp_server_data(state, &decode_path_segment(name))
                 .map_err(|e| e.to_string())?;
             return Ok(serde_json::Value::Null);
         }
@@ -428,7 +428,7 @@ async fn dispatch_post(
                 openatrading_web::handlers::delete_session_data(state, sid).await
             } else if let Some(code) = path.strip_prefix("/api/watchlist/") {
                 // DELETE /api/watchlist/CODE
-                let code = url_decode(code);
+                let code = decode_path_segment(code);
                 openatrading_web::handlers::delete_watchlist_data(&code).await
             } else if path == "/api/watchlist" {
                 // POST /api/watchlist
@@ -494,7 +494,7 @@ async fn dispatch_post(
                 // PUT /api/mcp/servers/{name} (edit, has body) or
                 // DELETE /api/mcp/servers/{name} (no body) — the frontend
                 // routes both through `api_post`.
-                let name = url_decode(name);
+                let name = decode_path_segment(name);
                 if body.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
                     let payload: openatrading_core::llm::McpServerPayload =
                         serde_json::from_value(body.clone())
@@ -508,7 +508,7 @@ async fn dispatch_post(
                 Ok(serde_json::Value::Null)
             } else if let Some(provider) = path.strip_prefix("/api/agent/auth/") {
                 // DELETE /api/agent/auth/{provider} — 前端把 DELETE 也走 `api_post`。
-                openatrading_web::handlers::delete_pi_agent_api_key_data(&url_decode(provider))
+                openatrading_web::handlers::delete_pi_agent_api_key_data(&decode_path_segment(provider))
                     .map_err(|e| e.to_string())?;
                 Ok(serde_json::Value::Null)
             } else {
@@ -535,24 +535,19 @@ async fn dispatch_patch(
     Err(format!("unknown patch path: {path}"))
 }
 
-fn url_decode(s: &str) -> String {
-    let s = s.replace('+', " ");
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let hex: String = chars.by_ref().take(2).collect();
-            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                result.push(byte as char);
-            } else {
-                result.push('%');
-                result.push_str(&hex);
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
+/// 百分号解码（`%XX`）—— 仅用于 **path 片段**：`+` 在这里是普通字符，
+/// 不能当空格处理（MCP server 名字里带 `+` 会被解成 `+ `）。
+/// query 组件（`extract_query`）另走一步 `+` → 空格转换。
+fn decode_path_segment(s: &str) -> String {
+    openatrading_core::utils::percent_decode(s)
+}
+
+/// 解码一个 query 组件（`application/x-www-form-urlencoded`）：`+` 表示空格。
+///
+/// 中文搜索词（`q=%E5%BC%80%E8%83%BD`）必须按 UTF-8 整体还原，
+/// 否则搜索接口收到乱码，永远返回空结果。
+fn decode_query_component(raw: &str) -> String {
+    openatrading_core::utils::percent_decode(&raw.replace('+', " "))
 }
 
 fn extract_query(path: &str, key: &str) -> Option<String> {
@@ -560,25 +555,7 @@ fn extract_query(path: &str, key: &str) -> Option<String> {
     for pair in query_part.split('&') {
         let mut kv = pair.splitn(2, '=');
         if kv.next() == Some(key) {
-            let raw = kv.next()?;
-            // Simple percent-decode: %XX -> char
-            let decoded = raw.replace('+', " ");
-            let mut result = String::with_capacity(decoded.len());
-            let mut chars = decoded.chars();
-            while let Some(c) = chars.next() {
-                if c == '%' {
-                    let hex: String = chars.by_ref().take(2).collect();
-                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                        result.push(byte as char);
-                    } else {
-                        result.push('%');
-                        result.push_str(&hex);
-                    }
-                } else {
-                    result.push(c);
-                }
-            }
-            return Some(result);
+            return Some(decode_query_component(kv.next()?));
         }
     }
     None
@@ -901,18 +878,6 @@ async fn update_config(
 }
 
 #[tauri::command]
-async fn api_search_stocks(
-    q: String,
-) -> Result<Vec<openatrading_core::api::eastmoney::StockSearchItem>, String> {
-    use openatrading_core::api::eastmoney::LhbClient;
-    let client = LhbClient::new();
-    client
-        .search_stocks(&q)
-        .await
-        .map_err(|e| format!("search failed: {e}"))
-}
-
-#[tauri::command]
 async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     // Spawn a brief delay so the IPC response can reach the frontend
     let h = app_handle.clone();
@@ -987,7 +952,6 @@ fn main() {
             respond_permission,
             api_realtime_stream,
             api_kline_stream,
-            api_search_stocks,
             get_config,
             update_config,
             restart_app
