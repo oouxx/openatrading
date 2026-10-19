@@ -406,7 +406,10 @@ mod tests {
         let store = store(&dir);
         store.set_api_key(PROVIDER, "sk-test").unwrap();
 
-        let mode = std::fs::metadata(store.path()).unwrap().permissions().mode();
+        let mode = std::fs::metadata(store.path())
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o777, 0o600, "auth.json 权限应为 600，实际 {mode:o}");
     }
 }

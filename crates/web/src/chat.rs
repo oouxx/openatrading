@@ -118,7 +118,10 @@ type AuthErrorResponse = (StatusCode, Json<serde_json::Value>);
 
 fn auth_error(err: openatrading_core::llm::AgentAuthError) -> AuthErrorResponse {
     let status = auth_status(&err);
-    (status, Json(serde_json::json!({ "error": err.to_string() })))
+    (
+        status,
+        Json(serde_json::json!({ "error": err.to_string() })),
+    )
 }
 
 /// GET /api/agent/auth — provider 凭据状态（不回显密钥原文）。
