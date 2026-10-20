@@ -1,13 +1,43 @@
-import { useState, useCallback, useEffect, useId, useRef } from "react"
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  type ComponentProps,
+} from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
-import rehypeHighlight from "rehype-highlight"
 import type { Components } from "react-markdown"
 import { Check, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/stores/ui"
+
+type HighlightPlugin = (typeof import("rehype-highlight"))["default"]
+type RehypePlugins = NonNullable<ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>
+
+let highlightPluginPromise: Promise<HighlightPlugin> | null = null
+
+/** True when the message has a fenced block with a non-Mermaid language. */
+function hasHighlightableCode(content: string): boolean {
+  return /(?:```|~~~)(?!mermaid\b)[\w.+#-]+/.test(content)
+}
+
+/** Load the syntax-highlighting plugin only when a message actually has code. */
+function loadHighlightPlugin(): Promise<HighlightPlugin> {
+  if (!highlightPluginPromise) {
+    highlightPluginPromise = import("rehype-highlight")
+      .then(({ default: plugin }) => plugin)
+      .catch((error) => {
+        highlightPluginPromise = null
+        throw error
+      })
+  }
+  return highlightPluginPromise
+}
 
 // ── Code Block Component ──────────────────────────────
 
@@ -207,6 +237,29 @@ interface TextBlockProps {
 }
 
 export default function TextBlock({ content, isStreaming }: TextBlockProps) {
+  const [highlightPlugin, setHighlightPlugin] = useState<HighlightPlugin | null>(null)
+
+  // Highlighting pulls in highlight.js/lowlight (~200 kB). Defer that chunk
+  // until the message contains a fenced code block; plain chat replies never
+  // pay for it.
+  useEffect(() => {
+    if (highlightPlugin || !hasHighlightableCode(content)) return
+    let cancelled = false
+    loadHighlightPlugin()
+      .then((plugin) => {
+        if (!cancelled) setHighlightPlugin(() => plugin)
+      })
+      .catch((error) => console.warn("[markdown] 代码高亮插件加载失败", error))
+    return () => {
+      cancelled = true
+    }
+  }, [content, highlightPlugin])
+
+  const rehypePlugins = useMemo<RehypePlugins>(
+    () => [rehypeRaw, rehypeSanitize, ...(highlightPlugin ? [highlightPlugin] : [])],
+    [highlightPlugin]
+  )
+
   if (!content && isStreaming) {
     return <PulsatingDots />
   }
@@ -221,7 +274,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
     <div className="prose-custom text-[15px]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeHighlight]}
+        rehypePlugins={rehypePlugins}
         components={getMdComponents(isStreaming)}
       >
         {content}

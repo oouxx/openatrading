@@ -29,6 +29,12 @@ export default defineConfig(async ({ mode }) => {
     },
     build: {
       sourcemap: false,
+      // Mermaid is only imported when a message contains a ```mermaid block.
+      // Its core (~636 kB) and the optional cynefin diagram (~691 kB) are
+      // therefore lazy, on-demand chunks rather than initial payload. Keep the
+      // warning threshold above them so real initial-bundle regressions still
+      // surface instead of being drowned out by Mermaid internals.
+      chunkSizeWarningLimit: 720,
     },
     server: {
       proxy: {
