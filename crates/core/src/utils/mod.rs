@@ -68,4 +68,3 @@ mod tests {
         assert_eq!(percent_decode("%E8%8C%85%E5%8F%B0-600519"), "茅台-600519");
     }
 }
-

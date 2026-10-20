@@ -508,8 +508,10 @@ async fn dispatch_post(
                 Ok(serde_json::Value::Null)
             } else if let Some(provider) = path.strip_prefix("/api/agent/auth/") {
                 // DELETE /api/agent/auth/{provider} — 前端把 DELETE 也走 `api_post`。
-                openatrading_web::handlers::delete_pi_agent_api_key_data(&decode_path_segment(provider))
-                    .map_err(|e| e.to_string())?;
+                openatrading_web::handlers::delete_pi_agent_api_key_data(&decode_path_segment(
+                    provider,
+                ))
+                .map_err(|e| e.to_string())?;
                 Ok(serde_json::Value::Null)
             } else {
                 Err(format!("unknown path: {path}"))

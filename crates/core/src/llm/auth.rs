@@ -303,7 +303,10 @@ mod tests {
             first.get("displayName").and_then(|v| v.as_str()).is_some(),
             "displayName 缺失或非字符串: {first}"
         );
-        assert!(first.get("display_name").is_none(), "不该出现 snake_case: {first}");
+        assert!(
+            first.get("display_name").is_none(),
+            "不该出现 snake_case: {first}"
+        );
         // 单词字段不受 rename 影响，仍按原名透给前端
         for key in ["provider", "configured", "source", "label"] {
             assert!(first.get(key).is_some(), "缺字段 {key}: {first}");
