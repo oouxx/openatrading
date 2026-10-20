@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
-import type { OrderSide, PlaceOrderResponse } from "@/stores/data"
+import type { OrderSide, PlaceOrderResponse, RoleEntry } from "@/stores/data"
 import { roleKeys } from "./queryKeys"
 
 /**
@@ -51,22 +51,41 @@ export function usePlaceOrder() {
   })
 }
 
+export interface CreateRoleVars {
+  name: string
+  displayName: string
+  initialCapital: number
+}
+
 export function useCreateRole() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      name,
-      displayName,
-    }: {
-      name: string
-      displayName: string
-    }) =>
+    mutationFn: ({ name, displayName, initialCapital }: CreateRoleVars) =>
       fetchJson("/api/roles", {
         method: "POST",
-        body: JSON.stringify({ name, display_name: displayName }),
+        body: JSON.stringify({
+          name,
+          display_name: displayName,
+          initial_capital: initialCapital,
+        }),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roleKeys.all })
+    onSuccess: (_data, vars) => {
+      // 先把新角色写进列表缓存：创建成功后立即选中它时，activeRole 的派生
+      // 逻辑需要列表里已经有这个角色，否则会回退到旧角色。
+      queryClient.setQueryData<RoleEntry[]>(roleKeys.list(), (old) => {
+        if (!old || old.some((r) => r.name === vars.name)) return old
+        return [
+          ...old,
+          {
+            name: vars.name,
+            display_name: vars.displayName,
+            readonly: false,
+            initial_capital: vars.initialCapital,
+          },
+        ]
+      })
+      // 只刷新角色列表；新建角色不会影响已有角色的持仓/账户查询。
+      queryClient.invalidateQueries({ queryKey: roleKeys.list() })
     },
   })
 }

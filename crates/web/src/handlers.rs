@@ -897,45 +897,53 @@ pub async fn delete_watchlist_data(code: &str) -> Result<serde_json::Value, Stri
 // ── Role CRUD ────────────────────────────────────────────────────────────
 
 /// POST /api/roles — create a new role
+///
+/// 角色名是账户主键，已存在时直接报错而不是静默更新：否则前端把两个
+/// 不同的显示名归一到同一个 slug 时，会悄悄合并成同一个账户。
 pub async fn create_role_data(
     state: &Arc<AppState>,
     name: &str,
     display_name: &str,
     initial_capital: Option<f64>,
 ) -> Result<serde_json::Value, String> {
-    let existing_capital = state
-        .roles
-        .read()
-        .await
-        .iter()
-        .find(|r| r.name == name)
-        .map_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL, |r| {
-            r.initial_capital
-        });
-    let capital = initial_capital.unwrap_or(existing_capital);
+    let exists_in_state = {
+        let roles = state.roles.read().await;
+        roles.iter().any(|r| r.name == name)
+    };
+    let exists = exists_in_state
+        || openatrading_core::roles::list_roles_from_disk()
+            .iter()
+            .any(|r| r.name == name);
+    if exists {
+        return Err(format!("角色已存在：{name}，请换一个名称"));
+    }
+
+    let capital = initial_capital.unwrap_or(openatrading_core::roles::DEFAULT_INITIAL_CAPITAL);
     if !capital.is_finite() || capital <= 0.0 {
         return Err("初始资金必须是正数".to_string());
     }
+
+    // 名字可能来自一次「删除失败但文件已删」的旧角色：先清掉同名残留流水，
+    // 保证新建账户不会继承旧数据。
+    state
+        .ctx
+        .trade
+        .reset(name)
+        .map_err(|e| format!("清理同名旧交易数据失败: {e}"))?;
     openatrading_core::roles::save_role(&openatrading_core::roles::RoleSave {
         name,
         display_name,
         initial_capital: capital,
     })
-    .map_err(|e| e.to_string())?;
-    {
-        let mut roles = state.roles.write().await;
-        if let Some(existing) = roles.iter_mut().find(|r| r.name == name) {
-            existing.display_name = display_name.to_string();
-            existing.initial_capital = capital;
-        } else {
-            roles.push(crate::RoleEntry {
-                name: name.to_string(),
-                display_name: display_name.to_string(),
-                readonly: false,
-                initial_capital: capital,
-            });
-        }
-    }
+    .map_err(|e| format!("保存角色失败: {e}"))?;
+
+    let mut roles = state.roles.write().await;
+    roles.push(crate::RoleEntry {
+        name: name.to_string(),
+        display_name: display_name.to_string(),
+        readonly: false,
+        initial_capital: capital,
+    });
     Ok(serde_json::json!({"ok": true}))
 }
 
@@ -949,12 +957,19 @@ pub async fn delete_role_data(
         let roles = state.roles.read().await;
         if let Some(role) = roles.iter().find(|r| r.name == name) {
             if role.readonly {
-                return Err("readonly role".to_string());
+                return Err("角色为只读，不能删除".to_string());
             }
         }
     }
-    state.ctx.trade.reset(name).ok();
-    openatrading_core::roles::delete_role(name).ok();
+
+    // 先删角色文件再看交易库：文件删成功后即使清流水失败，也不会在重启后
+    // 以「删除了但没删干净」的状态复活；失败时保留内存角色让用户可以重试。
+    openatrading_core::roles::delete_role(name).map_err(|e| format!("删除角色文件失败: {e}"))?;
+    state
+        .ctx
+        .trade
+        .reset(name)
+        .map_err(|e| format!("清空交易数据失败: {e}"))?;
     {
         let mut roles = state.roles.write().await;
         roles.retain(|r| r.name != name);
@@ -967,7 +982,11 @@ pub async fn reset_role_data(
     state: &Arc<AppState>,
     name: &str,
 ) -> Result<serde_json::Value, String> {
-    state.ctx.trade.reset(name).map_err(|e| e.to_string())?;
+    state
+        .ctx
+        .trade
+        .reset(name)
+        .map_err(|e| format!("重置交易数据失败: {e}"))?;
     Ok(serde_json::json!({"ok": true}))
 }
 

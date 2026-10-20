@@ -517,15 +517,39 @@ fn parse_u32(params: &std::collections::HashMap<String, String>, key: &str, fall
 
 // ── Role CRUD handlers ─────────────────────────────────
 
+/// 角色写操作失败时把可读原因返回给前端。
+///
+/// 角色相关的错误绝大多数是调用方输入问题（重名、只读、非法资金），
+/// 既然后端只返回 `String`，这里统一按 400 + `{ "error": … }` 透出；
+/// 这样前端的创建/删除/重置弹窗才能显示真正原因，而不是光秃秃的 `500`。
+fn role_action_response(result: Result<serde_json::Value, String>) -> axum::response::Response {
+    match result {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(e) => {
+            openatrading_core::log::warn!("角色操作失败: {e}");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// POST /api/roles — create a new role
 pub async fn create_role(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRoleRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::create_role_data(&state, &body.name, &body.display_name, body.initial_capital)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+) -> axum::response::Response {
+    role_action_response(
+        crate::handlers::create_role_data(
+            &state,
+            &body.name,
+            &body.display_name,
+            body.initial_capital,
+        )
+        .await,
+    )
 }
 
 /// POST /api/roles/:name/orders — 手动下单
@@ -559,22 +583,16 @@ pub async fn place_order(
 pub async fn delete_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::delete_role_data(&state, &name)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+) -> axum::response::Response {
+    role_action_response(crate::handlers::delete_role_data(&state, &name).await)
 }
 
 /// POST /api/roles/:name/reset — 清空该角色的持仓与流水
 pub async fn reset_role(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
-) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::reset_role_data(&state, &name)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+) -> axum::response::Response {
+    role_action_response(crate::handlers::reset_role_data(&state, &name).await)
 }
 
 /// GET /api/roles/:name/pnl-history?days=30 — P&L curve data
