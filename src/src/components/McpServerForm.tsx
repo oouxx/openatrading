@@ -70,9 +70,7 @@ export function McpServerForm({
   // ── 校验 ──
   const trimmedName = server.name.trim()
   const duplicateName = existingNames.includes(trimmedName)
-  const missingEndpoint = isStdio
-    ? transport.command.trim() === ""
-    : transport.url.trim() === ""
+  const missingEndpoint = isStdio ? transport.command.trim() === "" : transport.url.trim() === ""
   const valid = trimmedName !== "" && !duplicateName && !missingEndpoint
 
   const nameError = attempted
@@ -119,18 +117,19 @@ export function McpServerForm({
         <label className="text-secondary text-caption mb-1 block">通信方式</label>
         <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
           {TRANSPORT_OPTIONS.map((opt) => (
-            <button
+            <Button
               key={opt.value}
               type="button"
+              variant="ghost"
               onClick={() => updateTransport(emptyTransport(opt.value))}
-              className={`text-caption flex-1 px-3 py-2 transition-colors ${
+              className={`text-caption h-auto flex-1 rounded-none px-3 py-2 ${
                 transport.type === opt.value
-                  ? "bg-brand text-primary"
-                  : "text-secondary hover:bg-hover hover:text-primary bg-transparent"
+                  ? "bg-brand text-primary hover:bg-brand hover:text-primary"
+                  : "text-secondary hover:bg-hover hover:text-primary"
               }`}
             >
               {opt.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

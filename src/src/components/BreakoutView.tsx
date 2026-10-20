@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence } from "motion/react"
+import { motionTransition } from "@/lib/motion"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { type Stock } from "@/stores/data"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
 import { getKlineImageUrl } from "@/lib/stock-utils"
+import { formatCompactNumber } from "@/lib/format"
 
 // ── Types ──────────────────────────────────────────────
 
@@ -84,12 +88,6 @@ function mergeData(todayList: Stock[], yesterdayList: Stock[]): PromotionItem[] 
   return result
 }
 
-function fmtCap(v: number): string {
-  if (v >= 1e12) return (v / 1e12).toFixed(2) + "万亿"
-  if (v >= 1e8) return (v / 1e8).toFixed(0) + "亿"
-  return v.toFixed(0)
-}
-
 function dayLabel(d: number): string {
   return d === 1 ? "首板" : d === 2 ? "二板" : d === 3 ? "三板" : d + "板"
 }
@@ -139,10 +137,10 @@ function chainEl(s: PromotionItem) {
         >
           {dayLabel(s.yesterdayDays)}
         </span>
-        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
-        <span
-          style={{ ...csBase, color: "var(--color-up)", background: "var(--color-up-bg)" }}
-        >
+        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>
+          →
+        </span>
+        <span style={{ ...csBase, color: "var(--color-up)", background: "var(--color-up-bg)" }}>
           {dayLabel(s.todayDays)}
         </span>
       </span>
@@ -160,7 +158,9 @@ function chainEl(s: PromotionItem) {
         >
           {dayLabel(s.yesterdayDays)}
         </span>
-        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
+        <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>
+          →
+        </span>
         <span
           style={{
             ...csBase,
@@ -175,8 +175,12 @@ function chainEl(s: PromotionItem) {
   }
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-tertiary)" }}>—</span>
-      <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>→</span>
+      <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-tertiary)" }}>
+        —
+      </span>
+      <span style={{ color: "var(--color-tertiary)", fontSize: "var(--font-size-caption)" }}>
+        →
+      </span>
       <span
         style={{
           ...csBase,
@@ -327,7 +331,7 @@ export default function BreakoutView() {
         className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <div className="text-secondary flex items-center gap-3 text-caption">
+        <div className="text-secondary text-caption flex items-center gap-3">
           <span className="bg-brand size-2 animate-pulse rounded-full" />
           加载晋级分析数据...
         </div>
@@ -354,14 +358,14 @@ export default function BreakoutView() {
       key={idx}
       className={`bg-surface rounded-lg border px-4 py-4 text-center ${s.hl ? "border-brand bg-brand/5" : "border-hairline"}`}
     >
-      <div className="text-secondary mb-1 text-caption tracking-wider uppercase">{s.label}</div>
+      <div className="text-secondary text-caption mb-1 tracking-wider uppercase">{s.label}</div>
       <div
-        className="font-number text-h1 font-semibold text-primary"
+        className="font-number text-h1 text-primary font-semibold"
         style={s.color ? { color: s.color } : undefined}
       >
         {s.value}
       </div>
-      <div className="text-secondary mt-0.5 text-caption">{s.sub}</div>
+      <div className="text-secondary text-caption mt-0.5">{s.sub}</div>
     </div>
   )
 
@@ -409,7 +413,7 @@ export default function BreakoutView() {
       </div>
 
       {!hasYesterdayData && (
-        <div className="bg-surface border-hairline text-secondary mb-4 rounded-lg border px-4 py-3 text-center text-caption">
+        <div className="bg-surface border-hairline text-secondary text-caption mb-4 rounded-lg border px-4 py-3 text-center">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
@@ -417,12 +421,12 @@ export default function BreakoutView() {
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[220px_1fr]">
         {/* Filter Panel */}
         <div className="bg-surface border-hairline order-2 overflow-hidden rounded-lg border md:order-0">
-          <div className="border-hairline border-b px-4 py-3 text-caption font-medium text-primary">
+          <div className="border-hairline text-caption text-primary border-b px-4 py-3 font-medium">
             筛选 & 统计
           </div>
           <div className="p-3">
             <div className="mb-4">
-              <div className="text-secondary mb-2 text-caption font-semibold tracking-wider uppercase">
+              <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
                 结果类型
               </div>
               <div className="flex flex-wrap gap-2">
@@ -435,48 +439,50 @@ export default function BreakoutView() {
                     all: "bg-brand border-brand text-primary",
                   }
                   return (
-                    <button
+                    <Button
                       key={fid}
+                      variant="outline"
+                      size="xs"
                       onClick={() => {
                         setFilter(fid)
                         if (fid !== "all") setActiveLv(null)
                       }}
-                      className={`cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors ${
+                      className={`text-caption h-auto px-3 py-1 ${
                         filter === fid
                           ? activeCls[fid]
                           : "border-hairline text-secondary hover:text-primary"
                       }`}
                     >
                       {labels[fid]}
-                    </button>
+                    </Button>
                   )
                 })}
               </div>
             </div>
             <div className="mb-4">
-              <label className="text-secondary flex cursor-pointer items-center gap-2 text-caption">
-                <input
-                  type="checkbox"
+              <label className="text-secondary text-caption flex cursor-pointer items-center gap-2">
+                <Checkbox
                   checked={hideST}
-                  onChange={(e) => setHideST(e.target.checked)}
+                  onCheckedChange={(checked) => setHideST(checked === true)}
                 />
                 隐藏ST ({stFiltered}只)
               </label>
             </div>
             <div>
-              <div className="text-secondary mb-2 text-caption font-semibold tracking-wider uppercase">
+              <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
                 各板级晋级率
               </div>
               {[1, 2, 3, 4].map((b) => {
                 const row = b < 4 ? ladder.find((r) => r.yesterdayDays === b) : null
                 const rate = b < 4 ? (row ? row.rate * 100 : 0) : l3Rate
                 const lb = b === 1 ? "首板" : b === 2 ? "二板" : b === 3 ? "三板" : "四板+"
-                const rc =
-                  rate >= 50 ? "text-up" : rate >= 30 ? "text-warning" : "text-down"
+                const rc = rate >= 50 ? "text-up" : rate >= 30 ? "text-warning" : "text-down"
                 return (
-                  <div
+                  <button
                     key={b}
-                    className={`hover:bg-hover mb-0.5 flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-caption transition-colors ${activeLv === b ? "bg-brand/10" : ""}`}
+                    type="button"
+                    aria-pressed={activeLv === b}
+                    className={`hover:bg-hover text-caption mb-0.5 flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-2 text-left transition-colors ${activeLv === b ? "bg-brand/10" : ""}`}
                     onClick={() => {
                       if (activeLv === b) {
                         setActiveLv(null)
@@ -490,7 +496,7 @@ export default function BreakoutView() {
                     <span className={`font-number text-caption font-medium ${rc}`}>
                       {rate.toFixed(1)}%
                     </span>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -500,11 +506,11 @@ export default function BreakoutView() {
         {/* Table */}
         <div className="bg-surface border-hairline order-1 overflow-hidden rounded-lg border md:order-0">
           <div className="border-hairline flex items-center justify-between gap-3 border-b px-4 py-3">
-            <h3 className="text-caption font-medium text-primary">涨停对比明细</h3>
+            <h3 className="text-caption text-primary font-medium">涨停对比明细</h3>
             <span className="text-secondary text-caption">{items.length} 只</span>
           </div>
           <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
-            <table className="w-full border-collapse" >
+            <table className="w-full border-collapse">
               <thead>
                 <tr>
                   <th style={thStyle}>名称</th>
@@ -544,17 +550,22 @@ export default function BreakoutView() {
                         }}
                       >
                         <td style={tdStyle}>
-                          <span
-                            className="text-brand cursor-pointer font-medium underline decoration-brand underline-offset-[3px]"
+                          <button
+                            type="button"
+                            aria-expanded={isSel}
+                            className="text-brand decoration-brand cursor-pointer font-medium underline underline-offset-[3px]"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setSelectedStock(s)
-                              setKlinePeriod("minute")
+                              if (isSel) {
+                                setSelectedStock(null)
+                              } else {
+                                setSelectedStock(s)
+                                setKlinePeriod("minute")
+                              }
                             }}
-                            style={{ fontWeight: 500 }}
                           >
                             {s.name}
-                          </span>
+                          </button>
                           <span
                             style={{
                               fontSize: "var(--font-size-caption)",
@@ -605,7 +616,9 @@ export default function BreakoutView() {
       <AnimatePresence>
         {selectedStock && (
           <>
-            <div
+            <button
+              type="button"
+              aria-label="关闭个股详情"
               className="fixed inset-0 z-40"
               style={{ background: "rgba(0,0,0,0.4)" }}
               onClick={() => setSelectedStock(null)}
@@ -616,25 +629,27 @@ export default function BreakoutView() {
               initial={{ x: 520 }}
               animate={{ x: 0 }}
               exit={{ x: 520 }}
-              transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              transition={motionTransition.normal}
             >
               {/* Header */}
               <div className="bg-surface border-hairline sticky top-0 z-10 border-b p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-body font-bold text-primary">{selectedStock.name}</span>
+                    <span className="text-body text-primary font-bold">{selectedStock.name}</span>
                     <span className="text-secondary font-number text-caption">
                       {selectedStock.symbol.replace(/\.[A-Z]+$/, "")}
                     </span>
                   </div>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => setSelectedStock(null)}
-                    className="text-secondary p-1 text-lg leading-none hover:text-primary"
+                    title="关闭"
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
-                <div className="flex items-center gap-3 text-caption">
+                <div className="text-caption flex items-center gap-3">
                   <span
                     className={`font-number font-semibold ${selectedStock.changePercent >= 0 ? "text-up" : "text-down"}`}
                   >
@@ -644,7 +659,9 @@ export default function BreakoutView() {
                   <span className="text-secondary">
                     换手 {((selectedStock.turnover || 0) * 100).toFixed(2)}%
                   </span>
-                  <span className="text-secondary">市值 {fmtCap(selectedStock.capital)}</span>
+                  <span className="text-secondary">
+                    市值 {formatCompactNumber(selectedStock.capital)}
+                  </span>
                 </div>
               </div>
 
@@ -656,15 +673,19 @@ export default function BreakoutView() {
                   { label: "周K", value: "week" },
                   { label: "月K", value: "month" },
                 ].map((p) => (
-                  <button
+                  <Button
                     key={p.value}
+                    variant="ghost"
+                    size="xs"
                     onClick={() => setKlinePeriod(p.value)}
-                    className={`rounded-full px-3 py-1 font-number text-caption transition ${
-                      klinePeriod === p.value ? "bg-brand text-primary" : "text-secondary bg-transparent"
+                    className={`text-caption font-number rounded-full px-3 ${
+                      klinePeriod === p.value
+                        ? "bg-brand text-primary hover:bg-brand hover:text-primary"
+                        : "text-secondary hover:text-primary"
                     }`}
                   >
                     {p.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
 
@@ -684,7 +705,7 @@ export default function BreakoutView() {
               {/* Sector/Reason below */}
               {selectedStock.reason && (
                 <div className="border-hairline border-t px-4 py-3">
-                  <p className="text-secondary mb-2 text-caption">板块分析</p>
+                  <p className="text-secondary text-caption mb-2">板块分析</p>
                   <p className="text-caption text-primary/70">{selectedStock.reason}</p>
                 </div>
               )}
@@ -722,7 +743,7 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
       cls: up ? "text-up" : "text-down",
     },
     { label: "换手率", value: `${((stock.turnover || 0) * 100).toFixed(2)}%` },
-    { label: "总市值", value: fmtCap(cap) },
+    { label: "总市值", value: formatCompactNumber(cap) },
     { label: "昨板天数", value: stock.status === "first" ? "—" : `${stock.yesterdayDays}板` },
     { label: "今板天数", value: stock.status === "broken" ? "断板" : `${stock.todayDays}板` },
     { label: "封板次数", value: stock.breakTimes != null ? String(stock.breakTimes) : "—" },
@@ -737,11 +758,11 @@ function OverviewPanel({ stock }: { stock: PromotionItem }) {
     { label: "成交量", value: "—" },
   ]
   return (
-    <div className="grid grid-cols-3 gap-2 p-4 text-caption">
+    <div className="text-caption grid grid-cols-3 gap-2 p-4">
       {metrics.map((m) => (
         <div key={m.label} className="bg-canvas border-hairline rounded-lg border p-3 text-center">
           <p className="text-secondary text-caption">{m.label}</p>
-          <p className={`mt-1 font-number text-caption text-primary ${m.cls || ""}`}>{m.value}</p>
+          <p className={`font-number text-caption text-primary mt-1 ${m.cls || ""}`}>{m.value}</p>
         </div>
       ))}
     </div>

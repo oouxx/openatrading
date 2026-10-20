@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import { useFieldItems } from "@/hooks/query/useFieldItems"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 import type { FieldPlate } from "@/stores/data"
@@ -46,17 +47,20 @@ function PlateCard({
   const isOpen = expanded === plate.name
 
   return (
-    <div className="bg-surface border-hairline rounded-lg overflow-hidden border">
-      <div
-        className="hover:bg-hover flex cursor-pointer items-center justify-between px-4 py-3 transition-colors"
+    <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
+      <Button
+        type="button"
+        variant="ghost"
+        aria-expanded={isOpen}
         onClick={() => setExpanded(isOpen ? null : plate.name)}
+        className="hover:bg-hover h-auto w-full justify-between rounded-none px-4 py-3"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-body font-semibold text-primary">{plate.name}</span>
+        <span className="flex items-center gap-3">
+          <span className="text-body text-primary font-semibold">{plate.name}</span>
           <span className="text-caption text-secondary">{plate.count}只</span>
-        </div>
+        </span>
         <span className="text-caption text-secondary">{isOpen ? "▲" : "▼"}</span>
-      </div>
+      </Button>
       {plate.reason && (
         <div className="px-4 pb-2">
           <p className="text-caption text-secondary leading-relaxed">{plate.reason}</p>
@@ -85,13 +89,14 @@ function StockCard({
   const ai = hasActionInfo(item.article?.action_info) ? item.article!.action_info : undefined
 
   return (
-    <div
-      className="bg-canvas border-hairline hover:border-brand/30 rounded-lg cursor-pointer border transition-colors"
+    <button
+      type="button"
+      className="bg-canvas border-hairline hover:border-brand/30 w-full cursor-pointer rounded-lg border text-left transition-colors"
       onClick={() => onOpenKline(item.code, item.name)}
     >
       <div className="flex items-center justify-between p-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-caption font-semibold text-primary">{item.name}</span>
+          <span className="text-caption text-primary truncate font-semibold">{item.name}</span>
           <span className="text-caption text-secondary font-number">
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>
@@ -101,7 +106,7 @@ function StockCard({
         </div>
       </div>
       {ai && (ai.time !== undefined || ai.price !== undefined || ai.shares_range !== undefined) && (
-        <div className="text-caption -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2 font-number">
+        <div className="text-caption font-number -mt-1 flex flex-wrap items-center gap-2 px-2 pb-2">
           {ai.time && <span className="text-secondary">{ai.time}</span>}
           {ai.price !== undefined && (
             <span className="text-secondary">
@@ -115,6 +120,6 @@ function StockCard({
           )}
         </div>
       )}
-    </div>
+    </button>
   )
 }

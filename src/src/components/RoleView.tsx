@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
 import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,12 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Command,
-  CommandEmpty,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
+import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command"
 import {
   fetchJson,
   type RoleEntry,
@@ -46,6 +41,7 @@ import {
   usePlaceOrder,
 } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
+import { formatPct, pctClass } from "@/lib/format"
 
 /** 行情不可用时的占位符 —— 后端返回 null 时用它，绝不能显示 0 */
 const DASH = "—"
@@ -63,16 +59,6 @@ function formatSignedMoney(v: number): string {
  * 后端所有 `*_pct` 字段已经是百分数（`2.9` 表示 2.9%），不要再次乘 100。
  * 旧版 `pnl_pct` 是小数比例，字段已随接口改版一起换掉。
  */
-function formatPct(v: number): string {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`
-}
-
-/** 涨跌色：正数走 `text-up`（涨—红），负数走 `text-down`（跌—绿） */
-function pctClass(v: number | null): string {
-  if (v === null || v === 0) return "text-primary"
-  return v > 0 ? "text-up" : "text-down"
-}
-
 function FieldError({ children }: { children: string }) {
   return <p className="text-danger text-caption mt-1">{children}</p>
 }
@@ -139,18 +125,18 @@ function Sidebar({
   })
 
   return (
-    <aside className="bg-surface border-hairline hidden w-sidebar min-w-sidebar flex-col overflow-y-auto border-r md:flex">
+    <aside className="bg-surface border-hairline w-sidebar min-w-sidebar hidden flex-col overflow-y-auto border-r md:flex">
       <div className="border-hairline flex items-center justify-between gap-2 border-b p-4">
-        <h2 className="text-h2 font-medium text-primary">角色列表</h2>
+        <h2 className="text-h2 text-primary font-medium">角色列表</h2>
         <span className="text-secondary text-caption">{totalCount} 个</span>
       </div>
       <div className="border-hairline border-b px-4 py-3">
-        <input
+        <Input
           type="text"
           placeholder="搜索角色…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
+          className="bg-canvas border-hairline focus-visible:border-brand text-caption"
         />
       </div>
       <div className="flex-1 overflow-y-auto py-2">
@@ -161,47 +147,59 @@ function Sidebar({
           return (
             <div
               key={role.name}
-              className={`flex cursor-pointer items-center justify-between gap-3 border-l-[3px] px-4 py-3 transition-colors ${
+              className={`flex items-center justify-between gap-3 border-l-[3px] px-4 py-3 transition-colors ${
                 selectedRole === role.name
                   ? "border-l-ai bg-brand/10"
                   : "hover:bg-hover border-l-transparent"
               }`}
-              onClick={() => onSelect(role.name)}
             >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-caption font-medium text-primary">{displayName}</div>
-                <div className="text-secondary mt-0.5 flex gap-3 text-caption">
-                  <span>{count} 持仓</span>
-                  <span
-                    className={`font-number text-caption font-semibold ${isNaN(pnl) ? "text-secondary" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-primary"}`}
-                  >
-                    {count > 0
-                      ? isNaN(pnl)
-                        ? "N/A"
-                        : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}%`
-                      : "空仓"}
-                  </span>
-                </div>
-              </div>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(role.name)
-                }}
-                className="hover:bg-up/10 hover:text-up text-secondary flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-h2 opacity-0 transition-all"
+                type="button"
+                aria-pressed={selectedRole === role.name}
+                className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 text-left"
+                onClick={() => onSelect(role.name)}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="text-caption text-primary block truncate font-medium">
+                    {displayName}
+                  </span>
+                  <span className="text-secondary text-caption mt-0.5 flex gap-3">
+                    <span>{count} 持仓</span>
+                    <span
+                      className={`font-number text-caption font-semibold ${isNaN(pnl) ? "text-secondary" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "text-primary"}`}
+                    >
+                      {count > 0
+                        ? isNaN(pnl)
+                          ? "N/A"
+                          : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}%`
+                        : "空仓"}
+                    </span>
+                  </span>
+                </span>
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`删除角色 ${displayName}`}
+                onClick={() => onDelete(role.name)}
+                className="hover:bg-up/10 hover:text-up text-secondary text-h2 size-6 opacity-0 transition-opacity"
                 style={{ opacity: selectedRole === role.name ? 1 : undefined }}
+                title="删除角色"
               >
                 ×
-              </button>
+              </Button>
             </div>
           )
         })}
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={onCreate}
-          className="hover:bg-hover hover:text-brand text-secondary w-full cursor-pointer px-4 py-3 text-left text-caption transition-colors"
+          className="hover:text-brand text-secondary h-auto w-full justify-start rounded-none px-4 py-3"
         >
           + 新建角色
-        </button>
+        </Button>
       </div>
     </aside>
   )
@@ -225,7 +223,7 @@ function StatCard({
   const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-primary"
   return (
     <div className="bg-surface border-hairline min-w-0 rounded-lg border px-4 py-4">
-      <div className="text-secondary flex items-center justify-between gap-2 text-caption tracking-wider uppercase">
+      <div className="text-secondary text-caption flex items-center justify-between gap-2 tracking-wider uppercase">
         <span className="truncate">{label}</span>
         {action}
       </div>
@@ -234,7 +232,7 @@ function StatCard({
         在本页任何常见窗口宽度都会顶出卡片边框。降到 text-h2（16px）并配合
         truncate 收口——仍放不下时截断而不是溢出，完整值保留在 title 里。
       */}
-      <div className={`mt-1 truncate font-number text-h2 font-semibold ${toneCls}`} title={value}>
+      <div className={`font-number text-h2 mt-1 truncate font-semibold ${toneCls}`} title={value}>
         {value}
       </div>
       {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}
@@ -253,7 +251,7 @@ function AccountOverview({
 }) {
   if (error) {
     return (
-      <div className="border-danger/30 bg-danger/10 text-danger rounded-lg border px-3 py-2 text-caption">
+      <div className="border-danger/30 bg-danger/10 text-danger text-caption rounded-lg border px-3 py-2">
         账户信息加载失败：{error}
       </div>
     )
@@ -278,17 +276,14 @@ function AccountOverview({
     <div className="flex flex-col gap-2">
       {/* 行情不完整时账户数字是残缺值，必须显式提示，避免用户当成准确值 */}
       {!account.valuation_complete && (
-        <div className="border-warning/30 bg-warning/10 text-warning flex items-center gap-2 rounded-lg border px-3 py-2 text-caption">
+        <div className="border-warning/30 bg-warning/10 text-warning text-caption flex items-center gap-2 rounded-lg border px-3 py-2">
           <AlertTriangle className="size-3.5 shrink-0" />
           部分持仓行情获取失败，持仓市值与权益为不完整值，仅供参考
         </div>
       )}
       {/* 列数按「金额放得下」定：5 列只在 2xl 起用，窄窗口退到 3/2 列 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
-        <StatCard
-          label="初始资金"
-          value={`¥${formatMoney(account.initial_capital)}`}
-        />
+        <StatCard label="初始资金" value={`¥${formatMoney(account.initial_capital)}`} />
         <StatCard label="现金" value={`¥${formatMoney(account.cash)}`} />
         <StatCard label="持仓市值" value={`¥${formatMoney(account.market_value)}`} />
         <StatCard label="权益" value={`¥${formatMoney(account.equity)}`} />
@@ -308,7 +303,9 @@ function AccountOverview({
 function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapital: number }) {
   if (points.length === 0) {
     return (
-      <div className="text-secondary py-12 text-center text-caption">暂无交易数据，无法生成盈利曲线</div>
+      <div className="text-secondary text-caption py-12 text-center">
+        暂无交易数据，无法生成盈利曲线
+      </div>
     )
   }
   const W = 700
@@ -342,63 +339,97 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
   areaD += `L${x(points.length - 1).toFixed(1)},${zeroY} L${x(0).toFixed(1)},${zeroY} Z`
 
   // Y labels
-  let yLabels = ""
-  for (let i = 0; i <= 4; i++) {
+  const yLabels = Array.from({ length: 5 }, (_, i) => {
     const val = minVal + (range * i) / 4
     const ly = y(val)
-    yLabels += `<text x="${padL - 8}" y="${ly + 3}" text-anchor="end" font-size="9" fill="var(--color-tertiary)">¥${val.toFixed(0)}</text>`
-    yLabels += `<line x1="${padL}" y1="${ly}" x2="${W - padR}" y2="${ly}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5" stroke-dasharray="3,3"/>`
-  }
+    return (
+      <g key={`y-${i}`}>
+        <text x={padL - 8} y={ly + 3} textAnchor="end" fontSize="9" fill="var(--color-tertiary)">
+          ¥{val.toFixed(0)}
+        </text>
+        <line
+          x1={padL}
+          y1={ly}
+          x2={W - padR}
+          y2={ly}
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="0.5"
+          strokeDasharray="3,3"
+        />
+      </g>
+    )
+  })
 
   // X labels — show MM-DD
   const labelStep = Math.max(1, Math.floor(points.length / 5))
   const xLabels = points
-    .filter((_, i) => i % labelStep === 0 || i === points.length - 1)
-    .map((p) => {
-      const idx = points.indexOf(p)
-      return `<text x="${x(idx).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--color-tertiary)">${p.date.slice(5)}</text>`
-    })
-    .join("")
+    .map((p, i) => ({ p, i }))
+    .filter(({ i }) => i % labelStep === 0 || i === points.length - 1)
+    .map(({ p, i }) => (
+      <text
+        key={`x-${p.date}-${i}`}
+        x={x(i)}
+        y={H - 8}
+        textAnchor="middle"
+        fontSize="9"
+        fill="var(--color-tertiary)"
+      >
+        {p.date.slice(5)}
+      </text>
+    ))
 
   // Highlight final point with a larger circle if it reflects live mark-to-market
-  const circles = points
-    .map((p, i) => {
-      const isLast = i === points.length - 1
-      const r = isLast ? "4.5" : "3"
-      const fill = isLast ? "var(--color-accent)" : "var(--color-accent)"
-      const stroke = "var(--color-primary)"
-      const val = (p.equity ?? initialCapital) - initialCapital
-      return `<circle cx="${x(i).toFixed(1)}" cy="${y(val).toFixed(1)}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`
-    })
-    .join("")
+  const circles = points.map((p, i) => {
+    const isLast = i === points.length - 1
+    const val = (p.equity ?? initialCapital) - initialCapital
+    return (
+      <circle
+        key={`c-${i}`}
+        cx={x(i)}
+        cy={y(val)}
+        r={isLast ? "4.5" : "3"}
+        fill="var(--color-accent)"
+        stroke="var(--color-primary)"
+        strokeWidth="1.5"
+      />
+    )
+  })
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       style={{ width: "100%", height: 280 }}
-      dangerouslySetInnerHTML={{
-        __html: `
-      ${yLabels}
-      <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--color-hairline)" stroke-width="1" stroke-dasharray="6,4"/>
-      <path d="${areaD}" fill="var(--color-accent)" opacity="0.08"/>
-      <path d="${pathD}" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      ${circles}
-      ${xLabels}
-    `,
-      }}
-    />
+      role="img"
+      aria-label="角色收益曲线"
+    >
+      {yLabels}
+      <line
+        x1={padL}
+        y1={zeroY}
+        x2={W - padR}
+        y2={zeroY}
+        stroke="var(--color-hairline)"
+        strokeWidth="1"
+        strokeDasharray="6,4"
+      />
+      <path d={areaD} fill="var(--color-accent)" opacity="0.08" />
+      <path
+        d={pathD}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {circles}
+      {xLabels}
+    </svg>
   )
 }
 
 // ── 买入 Dialog ────────────────────────────────────────
 
-function BuyDialog({
-  roleName,
-  onClose,
-}: {
-  roleName: string
-  onClose: () => void
-}) {
+function BuyDialog({ roleName, onClose }: { roleName: string; onClose: () => void }) {
   const placeOrder = usePlaceOrder()
   const { data: account } = useRoleAccount(roleName)
   const [symbol, setSymbol] = useState("")
@@ -636,14 +667,16 @@ function BuyDialog({
               <div className="flex items-center justify-between gap-2">
                 <label className="text-secondary text-caption">买入价格</label>
                 {livePx !== null && (
-                  <button
+                  <Button
                     type="button"
+                    variant="link"
+                    size="xs"
                     onClick={() => setPriceInput("")}
                     title="使用现价"
-                    className="text-tertiary hover:text-brand cursor-pointer text-caption transition-colors"
+                    className="text-tertiary hover:text-brand h-auto p-0"
                   >
                     现价 {livePx.toFixed(2)}
-                  </button>
+                  </Button>
                 )}
               </div>
               <Input
@@ -664,19 +697,19 @@ function BuyDialog({
           {(quickShares.length > 0 || maxShares >= BOARD_LOT) && (
             <div className="flex flex-wrap items-center gap-1.5">
               {quickShares.map((o) => (
-                <button
+                <Button
                   key={o.label}
                   type="button"
+                  variant="outline"
+                  size="xs"
                   onClick={() => setShares(String(o.shares))}
-                  className="border-hairline text-secondary hover:border-brand hover:text-brand cursor-pointer rounded-md border px-2 py-0.5 text-caption transition-colors"
+                  className="text-caption h-auto px-2 py-0.5"
                 >
                   {o.label}
-                </button>
+                </Button>
               ))}
               {maxShares >= BOARD_LOT && (
-                <span className="text-tertiary text-caption ml-auto">
-                  最多可买 {maxShares} 股
-                </span>
+                <span className="text-tertiary text-caption ml-auto">最多可买 {maxShares} 股</span>
               )}
             </div>
           )}
@@ -692,7 +725,7 @@ function BuyDialog({
           </div>
 
           {estimated !== null && (
-            <div className="bg-canvas border-hairline flex flex-col gap-1 rounded-lg border px-3 py-2 text-caption">
+            <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-secondary">预估买入金额</span>
                 <span className="font-number text-primary font-medium">
@@ -741,7 +774,9 @@ function SellDialog({
 }) {
   const placeOrder = usePlaceOrder()
   const [shares, setShares] = useState(String(position.shares))
-  const [price, setPrice] = useState(position.last_price === null ? "" : String(position.last_price))
+  const [price, setPrice] = useState(
+    position.last_price === null ? "" : String(position.last_price)
+  )
   const [reason, setReason] = useState("")
   const [attempted, setAttempted] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -749,7 +784,10 @@ function SellDialog({
   const sharesNum = Number(shares)
   const priceNum = Number(price)
   const sharesOk =
-    shares.trim() !== "" && Number.isFinite(sharesNum) && sharesNum > 0 && sharesNum <= position.shares
+    shares.trim() !== "" &&
+    Number.isFinite(sharesNum) &&
+    sharesNum > 0 &&
+    sharesNum <= position.shares
   const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
   const valid = sharesOk && priceOk
   // 已实现盈亏随输入实时变化：(卖价 − 成本价) × 股数
@@ -801,7 +839,7 @@ function SellDialog({
             void handleSubmit()
           }}
         >
-          <div className="bg-canvas border-hairline grid grid-cols-3 gap-2 rounded-lg border px-3 py-2 text-caption">
+          <div className="bg-canvas border-hairline text-caption grid grid-cols-3 gap-2 rounded-lg border px-3 py-2">
             <div>
               <div className="text-secondary">代码</div>
               <div className="font-number text-primary">{position.symbol}</div>
@@ -847,18 +885,18 @@ function SellDialog({
           {sellOptions.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5">
               {sellOptions.map((o) => (
-                <button
+                <Button
                   key={o.label}
                   type="button"
+                  variant="outline"
+                  size="xs"
                   onClick={() => setShares(String(o.shares))}
-                  className="border-hairline text-secondary hover:border-brand hover:text-brand cursor-pointer rounded-md border px-2 py-0.5 text-caption transition-colors"
+                  className="text-caption h-auto px-2 py-0.5"
                 >
                   {o.label}
-                </button>
+                </Button>
               ))}
-              <span className="text-tertiary text-caption ml-auto">
-                可卖 {position.shares} 股
-              </span>
+              <span className="text-tertiary text-caption ml-auto">可卖 {position.shares} 股</span>
             </div>
           )}
 
@@ -872,7 +910,7 @@ function SellDialog({
             />
           </div>
 
-          <div className="bg-canvas border-hairline flex flex-col gap-1 rounded-lg border px-3 py-2 text-caption">
+          <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
             <div className="flex items-center justify-between">
               <span className="text-secondary">预估卖出金额</span>
               <span className="font-number text-primary">
@@ -948,10 +986,10 @@ export default function RoleView() {
   // Select first role on load — mount initialization
   useEffect(() => {
     if (roles.length > 0 && !selectedRole) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始化默认选中第一个角色
       setSelectedRole(roles[0].name)
     }
-  }, [roles])
+  }, [roles, selectedRole])
 
   const currentRole = roles.find((r) => r.name === selectedRole)
 
@@ -1053,7 +1091,7 @@ export default function RoleView() {
         {/* Main Content */}
         <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
           {!selectedRole ? (
-            <div className="text-secondary flex flex-1 items-center justify-center text-caption">
+            <div className="text-secondary text-caption flex flex-1 items-center justify-center">
               选择或创建一个角色
             </div>
           ) : (
@@ -1061,28 +1099,28 @@ export default function RoleView() {
               {/* Header + Tabs */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-baseline gap-3">
-                  <h1 className="text-hero font-medium text-primary">
-                    {currentRole?.name}
-                  </h1>
+                  <h1 className="text-hero text-primary font-medium">{currentRole?.name}</h1>
                   {currentRole?.readonly && (
-                    <span className="rounded bg-white/10 px-2 py-0.5 text-caption text-primary/50">
+                    <span className="text-caption text-primary/50 rounded bg-white/10 px-2 py-0.5">
                       只读
                     </span>
                   )}
                 </div>
                 <div className="bg-hover flex gap-1 rounded-lg p-1">
                   {TABS.map((t) => (
-                    <button
+                    <Button
                       key={t.id}
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setTab(t.id)}
-                      className={`cursor-pointer rounded-lg px-4 py-2 text-caption font-medium transition-colors ${
+                      className={`text-caption font-medium ${
                         tab === t.id
-                          ? "bg-surface text-primary shadow-card"
+                          ? "bg-surface text-primary shadow-card hover:bg-surface hover:text-primary"
                           : "text-secondary hover:text-primary"
                       }`}
                     >
                       {t.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -1098,21 +1136,23 @@ export default function RoleView() {
               {tab === "holdings" && (
                 <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
                   <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-                    <h3 className="text-h2 font-medium text-primary">持仓明细</h3>
+                    <h3 className="text-h2 text-primary font-medium">持仓明细</h3>
                     <div className="flex items-center gap-3">
                       <div className="flex gap-2">
                         {HOLDING_VIEWS.map((v) => (
-                          <button
+                          <Button
                             key={v.id}
+                            variant="ghost"
+                            size="xs"
                             onClick={() => setHoldingView(v.id)}
-                            className={`cursor-pointer rounded-md px-3 py-1 text-caption font-medium transition-colors ${
+                            className={`text-caption font-medium ${
                               holdingView === v.id
-                                ? "bg-brand/20 text-brand"
+                                ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
                                 : "text-secondary hover:text-primary"
                             }`}
                           >
                             {v.label}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                       <Button size="sm" onClick={() => setShowBuy(true)}>
@@ -1121,9 +1161,9 @@ export default function RoleView() {
                     </div>
                   </div>
                   <div className="overflow-x-auto">
-                    {holdingView === "current" && (
-                      positions.length > 0 ? (
-                        <table className="w-full border-collapse text-caption">
+                    {holdingView === "current" &&
+                      (positions.length > 0 ? (
+                        <table className="text-caption w-full border-collapse">
                           <thead>
                             <tr>
                               <Th>股票</Th>
@@ -1141,22 +1181,26 @@ export default function RoleView() {
                             {positions.map((p: RolePosition) => (
                               <tr key={p.symbol}>
                                 <Td bold>
-                                  <button
-                                    className="hover:text-brand cursor-pointer text-left transition-colors"
+                                  <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    className="hover:text-brand h-auto justify-start p-0 font-normal hover:bg-transparent"
                                     onClick={() =>
                                       setSelectedStock({ symbol: p.symbol, name: p.stock_name })
                                     }
                                   >
                                     {p.stock_name}
-                                  </button>
-                                  <span className="text-secondary ml-2 font-number text-caption">
+                                  </Button>
+                                  <span className="text-secondary font-number text-caption ml-2">
                                     {p.symbol}
                                   </span>
                                 </Td>
                                 <Td>{formatMoney(p.cost_price)}</Td>
                                 <Td>{p.last_price === null ? DASH : formatMoney(p.last_price)}</Td>
                                 <Td>{p.shares}</Td>
-                                <Td>{p.market_value === null ? DASH : formatMoney(p.market_value)}</Td>
+                                <Td>
+                                  {p.market_value === null ? DASH : formatMoney(p.market_value)}
+                                </Td>
                                 <Td className={pctClass(p.unrealized_pnl)}>
                                   {p.unrealized_pnl === null
                                     ? DASH
@@ -1180,15 +1224,14 @@ export default function RoleView() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary py-12 text-center text-caption">
+                        <div className="text-secondary text-caption py-12 text-center">
                           当前空仓，买入后这里会出现持仓与卖出按钮
                         </div>
-                      )
-                    )}
+                      ))}
 
-                    {holdingView === "trades" && (
-                      trades.length > 0 ? (
-                        <table className="w-full border-collapse text-caption">
+                    {holdingView === "trades" &&
+                      (trades.length > 0 ? (
+                        <table className="text-caption w-full border-collapse">
                           <thead>
                             <tr>
                               <Th>成交时间</Th>
@@ -1206,15 +1249,17 @@ export default function RoleView() {
                               <tr key={t.id}>
                                 <Td muted>{t.traded_at}</Td>
                                 <Td bold>
-                                  <button
-                                    className="hover:text-brand cursor-pointer text-left transition-colors"
+                                  <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    className="hover:text-brand h-auto justify-start p-0 font-normal hover:bg-transparent"
                                     onClick={() =>
                                       setSelectedStock({ symbol: t.symbol, name: t.stock_name })
                                     }
                                   >
                                     {t.stock_name}
-                                  </button>
-                                  <span className="text-secondary ml-2 font-number text-caption">
+                                  </Button>
+                                  <span className="text-secondary font-number text-caption ml-2">
                                     {t.symbol}
                                   </span>
                                 </Td>
@@ -1237,15 +1282,14 @@ export default function RoleView() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary py-12 text-center text-caption">
+                        <div className="text-secondary text-caption py-12 text-center">
                           暂无成交流水
                         </div>
-                      )
-                    )}
+                      ))}
 
-                    {holdingView === "history" && (
-                      history.length > 0 ? (
-                        <table className="w-full border-collapse text-caption">
+                    {holdingView === "history" &&
+                      (history.length > 0 ? (
+                        <table className="text-caption w-full border-collapse">
                           <thead>
                             <tr>
                               <Th>股票</Th>
@@ -1262,15 +1306,17 @@ export default function RoleView() {
                             {history.map((h: ClosedPosition) => (
                               <tr key={h.id}>
                                 <Td bold>
-                                  <button
-                                    className="hover:text-brand cursor-pointer text-left transition-colors"
+                                  <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    className="hover:text-brand h-auto justify-start p-0 font-normal hover:bg-transparent"
                                     onClick={() =>
                                       setSelectedStock({ symbol: h.symbol, name: h.stock_name })
                                     }
                                   >
                                     {h.stock_name}
-                                  </button>
-                                  <span className="text-secondary ml-2 font-number text-caption">
+                                  </Button>
+                                  <span className="text-secondary font-number text-caption ml-2">
                                     {h.symbol}
                                   </span>
                                 </Td>
@@ -1290,11 +1336,10 @@ export default function RoleView() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary py-12 text-center text-caption">
+                        <div className="text-secondary text-caption py-12 text-center">
                           暂无历史持仓记录
                         </div>
-                      )
-                    )}
+                      ))}
                   </div>
                 </div>
               )}
@@ -1303,7 +1348,7 @@ export default function RoleView() {
               {tab === "performance" && (
                 <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
                   <div className="border-hairline border-b px-5 py-4">
-                    <h3 className="text-h2 font-medium text-primary">累计盈利曲线</h3>
+                    <h3 className="text-h2 text-primary font-medium">累计盈利曲线</h3>
                   </div>
                   {/* 基准线取自账户的初始资金，账户未就绪时先占位，避免用 0 画出一条错误曲线 */}
                   {account ? (
@@ -1313,7 +1358,7 @@ export default function RoleView() {
                       <Skeleton className="h-[280px] w-full" />
                     </div>
                   )}
-                  <div className="border-hairline text-secondary flex gap-5 border-t px-5 py-3 text-caption">
+                  <div className="border-hairline text-secondary text-caption flex gap-5 border-t px-5 py-3">
                     <span className="flex items-center gap-2">
                       <span className="bg-brand inline-block size-2 rounded-full" />
                       累计盈亏
@@ -1331,12 +1376,14 @@ export default function RoleView() {
 
               {/* Action Buttons */}
               <div className="mt-auto flex gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={() => setShowResetConfirm(selectedRole)}
-                  className="border-hairline hover:border-up/30 hover:text-up text-secondary cursor-pointer rounded-md border px-3 py-1 text-caption transition-colors"
+                  className="hover:border-up/30 hover:text-up text-secondary"
                 >
                   重置账户
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -1455,7 +1502,7 @@ export default function RoleView() {
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <th
-      className={`bg-ink-dim border-hairline text-secondary border-b px-4 py-3 text-left text-caption font-medium tracking-wider whitespace-nowrap uppercase ${
+      className={`bg-ink-dim border-hairline text-secondary text-caption border-b px-4 py-3 text-left font-medium tracking-wider whitespace-nowrap uppercase ${
         className ?? ""
       }`}
     >

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -55,7 +56,7 @@ export default function SkillEditor() {
   // Mount-time initialization — data must be fetched before user interacts
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+    /* eslint-disable react-hooks/set-state-in-effect -- 初始化加载技能列表 */
     loadSkills()
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
@@ -138,7 +139,7 @@ export default function SkillEditor() {
       {/* Header */}
       <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-body font-medium text-primary">技能管理</span>
+          <span className="text-body text-primary font-medium">技能管理</span>
           <span className="text-secondary text-caption">{skills.length} 个已安装</span>
         </div>
         <Button size="sm" variant="outline" onClick={startNew}>
@@ -148,42 +149,45 @@ export default function SkillEditor() {
 
       <div className="flex min-h-0 flex-1">
         {/* Left: skill list */}
-        <div className="border-hairline hidden w-sidebar-narrow shrink-0 flex-col border-r md:flex">
+        <div className="border-hairline w-sidebar-narrow hidden shrink-0 flex-col border-r md:flex">
           <div className="border-hairline border-b px-3 py-2">
-            <input
-              className="bg-hover text-secondary w-full rounded-md border-0 px-2 py-2 text-caption outline-none placeholder:text-primary/20"
+            <Input
+              className="bg-hover text-secondary text-caption placeholder:text-primary/20 h-auto border-0 px-2 py-2"
               placeholder="搜索技能..."
               readOnly
             />
           </div>
           <ScrollArea className="flex-1">
             {skills.length === 0 ? (
-              <p className="text-secondary px-4 py-8 text-center text-caption">暂无已安装技能</p>
+              <p className="text-secondary text-caption px-4 py-8 text-center">暂无已安装技能</p>
             ) : (
               skills.map((sk, i) => (
-                <button
+                <Button
                   key={sk.name}
+                  variant="ghost"
                   onClick={() => selectSkill(i)}
-                  className={`w-full border-l-2 px-3 py-3 text-left transition-colors ${
+                  className={`h-auto w-full flex-col items-stretch justify-start gap-0 rounded-none border-l-2 px-3 py-3 text-left font-normal whitespace-normal hover:bg-transparent ${
                     selectedIdx === i
-                      ? "border-brand bg-brand/5 text-primary"
-                      : "text-secondary hover:bg-hover border-transparent hover:text-primary"
+                      ? "border-l-brand bg-brand/5 text-primary hover:bg-brand/5"
+                      : "text-secondary hover:bg-hover hover:text-primary border-transparent"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="truncate text-caption font-medium">{sk.name}</span>
+                    <span className="text-caption truncate font-medium">{sk.name}</span>
                     <span
-                      className={`rounded-full px-2 py-[1px] text-caption ${
+                      className={`text-caption rounded-full px-2 py-[1px] ${
                         sk.scope === "project"
                           ? "bg-brand/10 text-brand"
-                          : "bg-white/5 text-primary/40"
+                          : "text-primary/40 bg-white/5"
                       }`}
                     >
                       {sk.scope === "project" ? "项目" : sk.scope === "temporary" ? "临时" : "用户"}
                     </span>
                   </div>
-                  <div className="text-secondary mt-0.5 truncate text-caption">{sk.description}</div>
-                </button>
+                  <div className="text-secondary text-caption mt-0.5 truncate">
+                    {sk.description}
+                  </div>
+                </Button>
               ))
             )}
           </ScrollArea>
@@ -213,15 +217,19 @@ export default function SkillEditor() {
               <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
                 <div className="flex items-center gap-1">
                   {(["manifest", "content"] as EditorTab[]).map((tab) => (
-                    <button
+                    <Button
                       key={tab}
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setActiveTab(tab)}
-                      className={`rounded-md px-3 py-2 text-caption font-medium transition-colors ${
-                        activeTab === tab ? "bg-brand/10 text-brand" : "text-secondary hover:text-primary"
+                      className={`text-caption font-medium ${
+                        activeTab === tab
+                          ? "bg-brand/10 text-brand hover:bg-brand/10 hover:text-brand"
+                          : "text-secondary hover:text-primary"
                       }`}
                     >
                       {tab === "manifest" ? "配置" : "内容"}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
@@ -229,7 +237,7 @@ export default function SkillEditor() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-down/30 hover:bg-down/10 text-down h-7 text-caption"
+                      className="border-down/30 hover:bg-down/10 text-down text-caption h-7"
                       onClick={() => {
                         setDeleteError("")
                         setDeleteTarget(selected.name)
@@ -238,7 +246,12 @@ export default function SkillEditor() {
                       删除
                     </Button>
                   )}
-                  <Button size="sm" className="h-7 text-caption" onClick={saveSkill} disabled={saving}>
+                  <Button
+                    size="sm"
+                    className="text-caption h-7"
+                    onClick={saveSkill}
+                    disabled={saving}
+                  >
                     {saving ? "保存中..." : "保存"}
                   </Button>
                 </div>
@@ -253,22 +266,24 @@ export default function SkillEditor() {
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div>
-                          <label className="text-secondary mb-1 block text-caption">name</label>
+                          <label className="text-secondary text-caption mb-1 block">name</label>
                           <Input
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
-                            className="h-7 font-number text-caption"
+                            className="font-number text-caption h-7"
                             placeholder="my-skill"
                             disabled={!!selected}
                           />
                           {selected && (
-                            <p className="text-secondary mt-0.5 text-caption">
+                            <p className="text-secondary text-caption mt-0.5">
                               技能名称不可修改（如需要，请删除后重新创建）
                             </p>
                           )}
                         </div>
                         <div>
-                          <label className="text-secondary mb-1 block text-caption">description</label>
+                          <label className="text-secondary text-caption mb-1 block">
+                            description
+                          </label>
                           <Textarea
                             value={editDesc}
                             onChange={(e) => setEditDesc(e.target.value)}
@@ -277,12 +292,10 @@ export default function SkillEditor() {
                             placeholder="简要描述技能的功能..."
                           />
                         </div>
-                        <label className="text-secondary flex cursor-pointer items-center gap-2 text-caption">
-                          <input
-                            type="checkbox"
+                        <label className="text-secondary text-caption flex cursor-pointer items-center gap-2">
+                          <Checkbox
                             checked={editDisable}
-                            onChange={(e) => setEditDisable(e.target.checked)}
-                            className="size-3.5"
+                            onCheckedChange={(checked) => setEditDisable(checked === true)}
                           />
                           disable-model-invocation（禁止模型自动调用，仅 /skill 显式触发）
                         </label>
@@ -292,11 +305,13 @@ export default function SkillEditor() {
                 ) : (
                   <div className="flex min-h-0 flex-1 p-4">
                     <div className="flex flex-1 flex-col">
-                      <label className="text-secondary mb-1 block text-caption">指令（Markdown）</label>
+                      <label className="text-secondary text-caption mb-1 block">
+                        指令（Markdown）
+                      </label>
                       <Textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
-                        className="flex-1 resize-none font-number text-caption"
+                        className="font-number text-caption flex-1 resize-none"
                         placeholder="## 角色&#10;&#10;你是一个...&#10;"
                       />
                     </div>

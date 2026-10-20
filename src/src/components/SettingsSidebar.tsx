@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
 } from "@/components/ui/sidebar"
 import { ArrowLeft, Palette, Plug, Info, Bell, Cpu } from "lucide-react"
-import { useAppMode } from "@/contexts/AppModeContext"
+import { useAppMode } from "@/contexts/useAppMode"
 
 type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
 

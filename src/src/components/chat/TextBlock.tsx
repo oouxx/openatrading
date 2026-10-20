@@ -2,9 +2,11 @@ import { useState, useCallback, useEffect, useId, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
+import rehypeSanitize from "rehype-sanitize"
 import rehypeHighlight from "rehype-highlight"
 import type { Components } from "react-markdown"
 import { Check, Copy } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/stores/ui"
 
 // ── Code Block Component ──────────────────────────────
@@ -28,19 +30,19 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   }, [children])
 
   return (
-    <div className="bg-hover border-hairline group rounded-lg my-2 overflow-hidden border">
+    <div className="bg-hover border-hairline group my-2 overflow-hidden rounded-lg border">
       {/* Header bar */}
       <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
-        <span className="text-secondary/70 font-number text-[12px]">
-          {language || "code"}
-        </span>
-        <button
+        <span className="text-secondary/70 font-number text-[12px]">{language || "code"}</span>
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={handleCopy}
-          className="hover:text-secondary text-secondary/50 flex items-center gap-1 rounded px-2 py-0.5 text-caption opacity-0 transition-colors group-hover:opacity-100"
+          className="hover:text-secondary text-secondary/50 px-2 opacity-0 transition-opacity group-hover:opacity-100"
         >
           {copied ? (
             <>
-              <Check className="size-3 text-success" />
+              <Check className="text-success size-3" />
               <span className="text-success">已复制</span>
             </>
           ) : (
@@ -49,10 +51,10 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
               <span>复制</span>
             </>
           )}
-        </button>
+        </Button>
       </div>
       {/* Code content */}
-      <pre className="overflow-x-auto p-3 font-number text-caption">
+      <pre className="font-number text-caption overflow-x-auto p-3">
         <code className={className} {...props}>
           {children}
         </code>
@@ -65,10 +67,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
 
 function InlineCode({ children, ...props }: React.ComponentPropsWithoutRef<"code">) {
   return (
-    <code
-      className="bg-hover text-primary rounded px-2 py-0.5 font-number text-caption"
-      {...props}
-    >
+    <code className="bg-hover text-primary font-number text-caption rounded px-2 py-0.5" {...props}>
       {children}
     </code>
   )
@@ -94,6 +93,7 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
         const { default: mermaid } = await import("mermaid")
         mermaid.initialize({
           startOnLoad: false,
+          securityLevel: "strict",
           theme: theme === "dark" ? "dark" : "default",
         })
         const { svg } = await mermaid.render(`mmd-${id}`, code)
@@ -124,16 +124,18 @@ const getMdComponents = (isStreaming: boolean): Components => ({
       return <InlineCode {...props}>{children}</InlineCode>
     }
     if (className?.includes("language-mermaid")) {
-      return (
-        <MermaidBlock code={String(children).replace(/\n$/, "")} isStreaming={isStreaming} />
-      )
+      return <MermaidBlock code={String(children).replace(/\n$/, "")} isStreaming={isStreaming} />
     }
-    return <CodeBlock className={className} {...props}>{children}</CodeBlock>
+    return (
+      <CodeBlock className={className} {...props}>
+        {children}
+      </CodeBlock>
+    )
   },
   pre: ({ children }) => <>{children}</>,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse font-number text-caption">{children}</table>
+      <table className="font-number text-caption w-full border-collapse">{children}</table>
     </div>
   ),
   th: ({ children }) => (
@@ -152,9 +154,9 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
   hr: () => <hr className="border-hairline my-3" />,
-  h1: ({ children }) => <h1 className="text-h1 mt-5 mb-3 text-primary">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-h2 mt-4 mb-2 text-primary">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-h2 mt-3 mb-1.5 text-primary">{children}</h3>,
+  h1: ({ children }) => <h1 className="text-h1 text-primary mt-5 mb-3">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-h2 text-primary mt-4 mb-2">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-h2 text-primary mt-3 mb-1.5">{children}</h3>,
   p: ({ children }) => <p className="my-2 text-[15px] leading-[1.7]">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="border-brand/30 text-secondary my-2 border-l-2 pl-3 text-[15px] italic">
@@ -219,7 +221,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
     <div className="prose-custom text-[15px]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeHighlight]}
         components={getMdComponents(isStreaming)}
       >
         {content}

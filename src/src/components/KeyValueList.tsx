@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 
 export function KeyValueList({
   items,
@@ -15,9 +16,7 @@ export function KeyValueList({
   hideKey?: boolean
 }) {
   // Internal display list: always has a trailing empty row for adding new entries
-  const [display, setDisplay] = useState<string[]>(() =>
-    items.length > 0 ? [...items, ""] : [""]
-  )
+  const [display, setDisplay] = useState<string[]>(() => (items.length > 0 ? [...items, ""] : [""]))
   const [prevItems, setPrevItems] = useState(items)
 
   // Sync from parent when items change externally (e.g., transport type switch)
@@ -50,7 +49,7 @@ export function KeyValueList({
                   commit(next)
                 }}
                 placeholder={keyPlaceholder ?? "KEY"}
-                className="w-28 font-number text-caption"
+                className="font-number text-caption w-28"
               />
             )}
             <Input
@@ -61,27 +60,32 @@ export function KeyValueList({
                 commit(next)
               }}
               placeholder={valuePlaceholder ?? "VALUE"}
-              className="flex-1 font-number text-caption"
+              className="font-number text-caption flex-1"
             />
             {!isLast && (
-              <button
+              <Button
                 type="button"
-                className="hover:text-down text-secondary shrink-0 self-center px-1 text-caption"
+                variant="ghost"
+                size="icon-xs"
+                className="text-secondary hover:text-down shrink-0 self-center"
                 onClick={() => commit(display.filter((_, j) => j !== i))}
+                title="删除"
               >
                 ✕
-              </button>
+              </Button>
             )}
           </div>
         )
       })}
-      <button
+      <Button
         type="button"
-        className="text-secondary text-caption hover:text-primary"
+        variant="ghost"
+        size="xs"
+        className="text-secondary hover:text-primary w-fit"
         onClick={() => setDisplay([...display, ""])}
       >
         + 添加
-      </button>
+      </Button>
     </div>
   )
 }

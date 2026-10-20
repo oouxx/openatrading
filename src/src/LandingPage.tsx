@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom"
+import { Button } from "@/components/ui/button"
 import { getApiBaseUrl } from "@/stores/data"
 
 const DL_BASE = `${getApiBaseUrl()}/downloads`
@@ -120,7 +121,9 @@ export default function LandingPage() {
                       className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
                       style={{
                         background:
-                          f.badge === "核心" ? "var(--color-ai, oklch(62% 0.19 250))" : "oklch(55% 0.16 145)",
+                          f.badge === "核心"
+                            ? "var(--color-ai, oklch(62% 0.19 250))"
+                            : "oklch(55% 0.16 145)",
                       }}
                     >
                       {f.badge}
@@ -266,12 +269,14 @@ function CopyCodeBlock({ text }: { text: string }) {
       className="border-hairline relative overflow-x-auto rounded-[10px] border p-[14px_18px] font-mono text-xs/relaxed whitespace-pre-wrap text-white"
       style={{ background: "var(--color-tag-bg, rgba(255,255,255,0.05))" }}
     >
-      <button
+      <Button
+        variant="outline"
+        size="xs"
         onClick={() => navigator.clipboard.writeText(text)}
-        className="bg-bg-surface border-hairline hover:border-ai hover:text-ai text-ink-muted absolute top-2.5 right-3 cursor-pointer rounded-md border px-2.5 py-1 text-[11px] transition-colors"
+        className="bg-surface border-hairline text-ink-muted hover:border-ai hover:text-ai absolute top-2.5 right-3"
       >
         复制
-      </button>
+      </Button>
       <code>{text}</code>
     </div>
   )

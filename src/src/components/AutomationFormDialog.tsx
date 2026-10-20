@@ -26,11 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useCreateAutomation, useUpdateAutomation } from "@/hooks/query/useAutomations"
 import { useThreads } from "@/hooks/useChatThreads"
 import {
@@ -181,7 +177,12 @@ function parseMinutes(value: string): number {
 function frequencyFields(
   s: Schedule
 ): Pick<FormState, "frequency" | "time" | "weeklyDays" | "minutes" | "cronExpr"> {
-  const rest = { time: DEFAULT_TIME, weeklyDays: [1, 2, 3, 4, 5], minutes: String(DEFAULT_EVERY_MINUTES), cronExpr: "" }
+  const rest = {
+    time: DEFAULT_TIME,
+    weeklyDays: [1, 2, 3, 4, 5],
+    minutes: String(DEFAULT_EVERY_MINUTES),
+    cronExpr: "",
+  }
   switch (s.kind) {
     case "cron": {
       const tradingMinutes = tradingHoursMinutes(s.expr)
@@ -394,14 +395,15 @@ export default function AutomationFormDialog({
                   const active = templateId === t.id
                   const Icon = t.icon
                   return (
-                    <button
+                    <Button
                       key={t.id}
                       type="button"
+                      variant="outline"
                       onClick={() => applyTemplate(t)}
-                      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                      className={`h-auto w-full items-start justify-start gap-2 px-3 py-2 text-left font-normal whitespace-normal ${
                         active
-                          ? "border-brand bg-brand/5"
-                          : "border-hairline hover:bg-hover cursor-pointer"
+                          ? "border-brand bg-brand/5 hover:border-brand hover:bg-brand/5"
+                          : "border-hairline hover:bg-hover"
                       }`}
                     >
                       <Icon
@@ -415,7 +417,7 @@ export default function AutomationFormDialog({
                           {t.read_only && " · 只读"}
                         </span>
                       </span>
-                    </button>
+                    </Button>
                   )
                 })}
               </div>
@@ -430,10 +432,7 @@ export default function AutomationFormDialog({
             />
           </Field>
 
-          <Field
-            label="运行指令"
-            hint="写清做什么、什么算有发现、没有发现时怎么回复"
-          >
+          <Field label="运行指令" hint="写清做什么、什么算有发现、没有发现时怎么回复">
             <Textarea
               value={form.prompt}
               onChange={(e) => update({ prompt: e.target.value })}
@@ -478,18 +477,20 @@ export default function AutomationFormDialog({
                     const day = idx + 1
                     const active = form.weeklyDays.includes(day)
                     return (
-                      <button
+                      <Button
                         key={day}
                         type="button"
+                        variant="outline"
+                        size="icon-xs"
                         onClick={() => toggleDay(day)}
-                        className={`h-7 w-7 cursor-pointer rounded-md border text-xs transition-colors ${
+                        className={`size-7 ${
                           active
-                            ? "border-brand bg-brand text-brand-foreground"
+                            ? "border-brand bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
                             : "border-hairline text-secondary hover:bg-hover"
                         }`}
                       >
                         {label}
-                      </button>
+                      </Button>
                     )
                   })}
                 </div>
@@ -520,18 +521,20 @@ export default function AutomationFormDialog({
                 />
                 <span className="text-secondary text-xs">分钟</span>
                 {MINUTE_PRESETS.map((m) => (
-                  <button
+                  <Button
                     key={m}
                     type="button"
+                    variant="outline"
+                    size="xs"
                     onClick={() => update({ minutes: String(m) })}
-                    className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs transition-colors ${
+                    className={`h-auto px-2 py-0.5 ${
                       form.minutes === String(m)
-                        ? "border-brand text-brand"
+                        ? "border-brand text-brand hover:border-brand hover:text-brand"
                         : "border-hairline text-secondary hover:bg-hover"
                     }`}
                   >
                     {m} 分
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -557,9 +560,10 @@ export default function AutomationFormDialog({
 
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
             <CollapsibleTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="border-hairline hover:bg-hover flex w-full cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors"
+                variant="outline"
+                className="border-hairline hover:bg-hover h-auto w-full justify-start gap-2 px-3 py-2 text-left font-normal whitespace-normal"
               >
                 <span className="text-sm font-medium">高级设置</span>
                 <span className="text-secondary min-w-0 flex-1 truncate text-xs">
@@ -570,15 +574,13 @@ export default function AutomationFormDialog({
                     showAdvanced ? "rotate-180" : ""
                   }`}
                 />
-              </button>
+              </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3 flex flex-col gap-3 px-1">
               <Field label="运行范围">
                 <Select
                   value={form.scopeKind}
-                  onValueChange={(v) =>
-                    update({ scopeKind: v as FormState["scopeKind"] })
-                  }
+                  onValueChange={(v) => update({ scopeKind: v as FormState["scopeKind"] })}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -590,10 +592,7 @@ export default function AutomationFormDialog({
                 </Select>
                 {form.scopeKind === "existing_thread" && (
                   <div className="mt-1.5 flex flex-col gap-1">
-                    <Select
-                      value={form.sessionId}
-                      onValueChange={(v) => update({ sessionId: v })}
-                    >
+                    <Select value={form.sessionId} onValueChange={(v) => update({ sessionId: v })}>
                       <SelectTrigger className="w-full">
                         <SelectValue
                           placeholder={

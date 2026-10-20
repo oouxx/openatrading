@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
 import { isReadOnly, type McpServerConfig } from "../types/mcp"
 import { mcpErrorMessage } from "@/hooks/query/useMcpServers"
 
@@ -84,28 +85,32 @@ export function McpServerCard({
         <span className="text-down text-caption max-w-[180px] shrink-0 truncate">{error}</span>
       )}
       <div className="flex shrink-0 gap-1">
-        <button
+        <Button
           type="button"
-          className="hover:bg-hover text-secondary text-caption hover:text-primary rounded px-2 py-1 transition-colors disabled:opacity-40"
+          variant="ghost"
+          size="xs"
+          className="text-secondary hover:text-primary"
           disabled={readOnly}
           title={readOnly ? `定义在 ${s.source}，请直接编辑该文件` : undefined}
           onClick={onEdit}
         >
           编辑
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="hover:bg-hover text-secondary text-caption hover:text-primary rounded px-2 py-1 transition-colors disabled:opacity-40"
+          variant="ghost"
+          size="xs"
+          className="text-secondary hover:text-primary"
           disabled={busy !== null || readOnly}
           onClick={() => run("toggle", onToggle)}
         >
           {busy === "toggle" ? "切换中…" : s.enabled ? "停用" : "启用"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={`text-caption rounded px-2 py-1 transition-colors disabled:opacity-40 ${
-            confirming ? "bg-danger-bg text-down" : "text-secondary hover:bg-hover hover:text-down"
-          }`}
+          variant="ghost"
+          size="xs"
+          className={`${confirming ? "bg-danger-bg text-down hover:bg-danger-bg hover:text-down" : "text-secondary hover:text-down"}`}
           disabled={busy !== null || readOnly}
           onClick={() => {
             if (confirming) {
@@ -117,7 +122,7 @@ export function McpServerCard({
           }}
         >
           {busy === "delete" ? "删除中…" : confirming ? "确认删除?" : "删除"}
-        </button>
+        </Button>
       </div>
     </div>
   )

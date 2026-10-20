@@ -1,21 +1,28 @@
-import { useEffect, useCallback, useState, useRef } from "react"
+import { lazy, Suspense, useEffect, useLayoutEffect, useCallback, useState } from "react"
+import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
-import { motion, AnimatePresence, useDragControls } from "framer-motion"
+import { motion, AnimatePresence, useDragControls } from "motion/react"
+import { Panel, Separator, usePanelRef } from "react-resizable-panels"
 import { Button } from "@/components/ui/button"
-import { usePanelWidth } from "@/hooks/usePanelWidth"
+import ErrorBoundary from "@/components/ErrorBoundary"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore"
-import ResizableHandle from "./ResizableHandle"
-import KlineDrawer from "./KlineDrawer"
-import DragonTigerView from "@/components/DragonTigerView"
-import BreakoutView from "@/components/BreakoutView"
-import ReplayView from "@/components/ReplayView"
-import StrongStocksTab from "@/components/StrongStocksTab"
-import PromotionTab from "@/components/PromotionTab"
-import PlateTab from "@/components/PlateTab"
-import TimelineTab from "@/components/TimelineTab"
-import SentimentChipTab from "@/components/SentimentChipTab"
-import MarketIntelTab from "@/components/MarketIntelTab"
-import NewsFeed from "@/components/NewsFeed"
+import { motionTransition } from "@/lib/motion"
+
+const KlineDrawer = lazy(() => import("./KlineDrawer"))
+const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
+const BreakoutView = lazy(() => import("@/components/BreakoutView"))
+const ReplayView = lazy(() => import("@/components/ReplayView"))
+const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
+const PromotionTab = lazy(() => import("@/components/PromotionTab"))
+const PlateTab = lazy(() => import("@/components/PlateTab"))
+const TimelineTab = lazy(() => import("@/components/TimelineTab"))
+const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
+const MarketIntelTab = lazy(() => import("@/components/MarketIntelTab"))
+const NewsFeed = lazy(() => import("@/components/NewsFeed"))
+
+const NOOP = () => {}
 
 const TABS: { id: RightPanelView; label: string }[] = [
   { id: "strong-stocks", label: "强势股" },
@@ -30,251 +37,271 @@ const TABS: { id: RightPanelView; label: string }[] = [
   { id: "replay", label: "行情回放" },
 ]
 
-export default function RightPanel() {
-
 const PANEL_DEFAULT_WIDTH = 400
 const PANEL_MIN_WIDTH = 300
 const PANEL_MAX_WIDTH = 700
-const POPOUT_MIN_W = 480
-const POPOUT_MIN_H = 300
+const PANEL_COLLAPSED_WIDTH = 48
 
+function ViewFallback() {
+  return (
+    <div className="p-4">
+      <Skeleton className="h-24 w-full" />
+    </div>
+  )
+}
+
+function ViewRenderer({ view }: { view: RightPanelView }) {
+  switch (view) {
+    case "dragon-tiger":
+      return <DragonTigerView />
+    case "breakout":
+      return <BreakoutView />
+    case "replay":
+      return <ReplayView />
+    case "strong-stocks":
+      return <StrongStocksTab />
+    case "promotion":
+      return <PromotionTab stocks={[]} onOpenKline={NOOP} />
+    case "plate":
+      return <PlateTab />
+    case "timeline":
+      return <TimelineTab />
+    case "sentiment-chip":
+      return <SentimentChipTab />
+    case "market-intel":
+      return <MarketIntelTab />
+    case "news":
+      return <NewsFeed />
+  }
+}
+
+export default function RightPanel() {
   const activeView = useRightPanelStore((s) => s.activeView)
   const setActiveView = useRightPanelStore((s) => s.setActiveView)
   const klineTarget = useRightPanelStore((s) => s.klineTarget)
   const closeKline = useRightPanelStore((s) => s.closeKline)
   const [popoutView, setPopoutView] = useState<RightPanelView | null>(null)
-  const [popoutSize, setPopoutSize] = useState({ w: 896, h: 600 }) // popout default: wide enough for charts
-  const isResizing = useRef(false)
   const dragControls = useDragControls()
-  const { width, setWidth, collapsed, toggleCollapse } = usePanelWidth(
-    "layout:right-width",
-    PANEL_DEFAULT_WIDTH,
-    PANEL_MIN_WIDTH,
-    PANEL_MAX_WIDTH,
-    "layout:right-collapsed"
-  )
+  const panelRef = usePanelRef()
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (!popoutView) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPopoutView(null)
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [popoutView])
+
+  // Restore the collapse state after the persisted layout is applied.
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    const size = panel.getSize()
+    setCollapsed(
+      panel.isCollapsed() || (size.inPixels > 0 && size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
+    )
+  }, [panelRef])
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as RightPanelView
-      if (collapsed) toggleCollapse()
+      panelRef.current?.expand()
       setActiveView(detail)
     }
     window.addEventListener("open-right-panel", handler)
     return () => window.removeEventListener("open-right-panel", handler)
-  }, [collapsed, toggleCollapse, setActiveView])
+  }, [panelRef, setActiveView])
 
-  const handleResize = useCallback((delta: number) => setWidth((prev) => prev + delta), [setWidth])
-
-  const renderView = () => {
-    switch (activeView) {
-      case "dragon-tiger":
-        return <DragonTigerView />
-      case "breakout":
-        return <BreakoutView />
-      case "replay":
-        return <ReplayView />
-      case "strong-stocks":
-        return <StrongStocksTab />
-      case "promotion":
-        return <PromotionTab stocks={[]} onOpenKline={() => {}} />
-      case "plate":
-        return <PlateTab />
-      case "timeline":
-        return <TimelineTab />
-      case "sentiment-chip":
-        return <SentimentChipTab />
-      case "market-intel":
-        return <MarketIntelTab />
-      case "news":
-        return <NewsFeed />
-    }
-  }
+  const toggleCollapse = useCallback(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    if (panel.isCollapsed()) panel.expand()
+    else panel.collapse()
+  }, [panelRef])
 
   return (
-    <div className="relative flex h-full shrink-0">
-      {!collapsed && <ResizableHandle onResize={handleResize} />}
-      <div
-        className="bg-surface border-hairline flex flex-col overflow-hidden border-l transition-[width] duration-150"
-        style={{ width: collapsed ? 48 : width }}
+    <>
+      <Separator className="bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 w-1 shrink-0 cursor-col-resize transition-colors" />
+      <Panel
+        id="right"
+        panelRef={panelRef}
+        defaultSize={PANEL_DEFAULT_WIDTH}
+        minSize={PANEL_MIN_WIDTH}
+        maxSize={PANEL_MAX_WIDTH}
+        collapsible
+        collapsedSize={PANEL_COLLAPSED_WIDTH}
+        collapsedThreshold={PANEL_COLLAPSED_WIDTH + 32}
+        onResize={(size) => {
+          if (size.inPixels > 0) setCollapsed(size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
+        }}
+        className="min-w-0"
       >
-        <div className="border-hairline flex shrink-0 items-center gap-1 border-b p-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={toggleCollapse}
-            title={collapsed ? "展开面板" : "折叠面板"}
+        <div className="bg-surface border-hairline flex h-full flex-col overflow-hidden border-l">
+          <div
+            className={`border-hairline flex shrink-0 items-center gap-1 border-b p-2 ${
+              collapsed ? "justify-center" : ""
+            }`}
           >
-            {collapsed ? <ChevronLeft className="size-3" /> : <ChevronRight className="size-3" />}
-          </Button>
-          {!collapsed && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={toggleCollapse}
+              title={collapsed ? "展开面板" : "折叠面板"}
+            >
+              {collapsed ? <ChevronLeft /> : <ChevronRight />}
+            </Button>
+            {!collapsed && (
+              <>
+                <span className="text-caption text-primary flex-1 truncate font-medium">
+                  {TABS.find((t) => t.id === activeView)?.label}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="ml-1"
+                  onClick={() => setPopoutView(activeView)}
+                  title="弹出到独立窗口"
+                >
+                  <Maximize2 />
+                </Button>
+              </>
+            )}
+          </div>
+
+          {collapsed ? (
+            <div className="border-hairline flex flex-1 flex-col items-center gap-1 overflow-y-auto border-t py-2">
+              {TABS.map((tab) => (
+                <Button
+                  key={tab.id}
+                  variant="ghost"
+                  size="icon"
+                  className="data-[active=true]:text-brand hover:bg-hover text-caption size-10 rounded-lg"
+                  data-active={activeView === tab.id}
+                  title={tab.label}
+                  onClick={() => {
+                    setActiveView(tab.id)
+                    toggleCollapse()
+                  }}
+                >
+                  {tab.label.slice(0, 2)}
+                </Button>
+              ))}
+            </div>
+          ) : (
             <>
-              <span className="flex-1 truncate text-caption font-medium text-primary">
-                {TABS.find((t) => t.id === activeView)?.label}
-              </span>
-              <button
-                className="text-secondary ml-1 cursor-pointer hover:text-primary"
-                onClick={() => setPopoutView(activeView)}
-                title="弹出到独立窗口"
+              <Tabs
+                value={activeView}
+                onValueChange={(value) => setActiveView(value as RightPanelView)}
+                className="shrink-0 gap-0"
               >
-                <Maximize2 className="size-3" />
-              </button>
+                <TabsList
+                  variant="line"
+                  className="border-hairline h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
+                >
+                  {TABS.map((tab) => (
+                    <TabsTrigger
+                      key={tab.id}
+                      value={tab.id}
+                      className="text-caption data-active:border-b-brand data-active:text-brand flex-none rounded-none border-b-2 border-transparent px-3 py-2 whitespace-nowrap after:hidden"
+                    >
+                      {tab.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+
+              <div className="relative flex flex-1 overflow-hidden">
+                <div className="flex-1 overflow-y-auto">
+                  <ErrorBoundary name="RightPanel">
+                    <Suspense fallback={<ViewFallback />}>
+                      <ViewRenderer view={activeView} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </div>
+
+                <AnimatePresence>
+                  {klineTarget && (
+                    <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
+                      <Suspense fallback={<ViewFallback />}>
+                        <KlineDrawer
+                          symbol={klineTarget.symbol}
+                          name={klineTarget.name}
+                          onClose={closeKline}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
             </>
           )}
         </div>
+      </Panel>
 
-        {collapsed ? (
-          <div className="border-hairline flex flex-1 flex-col items-center gap-1 overflow-y-auto border-t py-2">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                className="data-[active=true]:text-brand hover:bg-hover rounded-lg flex size-10 items-center justify-center text-caption transition-colors"
-                data-active={activeView === tab.id}
-                title={tab.label}
-                onClick={() => {
-                  setActiveView(tab.id)
-                  toggleCollapse()
-                }}
-              >
-                {tab.label.slice(0, 2)}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <>
-            <div className="border-hairline flex shrink-0 gap-0 overflow-x-auto border-b px-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  className="data-[active=false]:text-secondary data-[active=true]:border-brand data-[active=true]:text-brand border-b-2 px-3 py-2 text-caption whitespace-nowrap transition-colors data-[active=false]:border-transparent data-[active=false]:hover:text-primary"
-                  data-active={activeView === tab.id}
-                  onClick={() => setActiveView(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="relative flex flex-1 overflow-hidden">
-              <div className="flex-1 overflow-y-auto">{renderView()}</div>
-
-              <AnimatePresence>
-                {klineTarget && (
-                  <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
-                    <KlineDrawer
-                      symbol={klineTarget.symbol}
-                      name={klineTarget.name}
-                      onClose={closeKline}
-                    />
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
-          </>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {popoutView && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => {
-              if (!isResizing.current) setPopoutView(null)
-            }}
-          >
+      {/* Custom draggable popout (not a Dialog): DialogContent is centered and
+          fixed, while this window can be dragged aside. Content remains
+          standard shadcn controls. */}
+      {createPortal(
+        <AnimatePresence>
+          {popoutView && (
             <motion.div
-              className="bg-surface border-hairline relative flex flex-col rounded-lg border shadow-modal"
-              style={{
-                width: popoutSize.w,
-                height: popoutSize.h,
-                maxWidth: "90vw",
-                maxHeight: "90vh",
-              }}
-              drag
-              dragMomentum={false}
-              dragListener={false}
-              dragControls={dragControls}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPopoutView(null)}
             >
-              <div
-                className="border-hairline flex cursor-grab items-center justify-between border-b px-4 py-3 active:cursor-grabbing"
-                onPointerDown={(e) => {
-                  if (e.target instanceof HTMLElement && e.target.closest("button")) return
-                  dragControls.start(e)
-                }}
-              >
-                <span className="text-body font-medium text-primary">
-                  {TABS.find((t) => t.id === popoutView)?.label}
-                </span>
-                <button
-                  className="text-secondary cursor-pointer hover:text-primary"
-                  onClick={() => setPopoutView(null)}
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                {popoutView === "dragon-tiger" && <DragonTigerView />}
-                {popoutView === "breakout" && <BreakoutView />}
-                {popoutView === "replay" && <ReplayView />}
-                {popoutView === "strong-stocks" && <StrongStocksTab />}
-                {popoutView === "promotion" && <PromotionTab stocks={[]} onOpenKline={() => {}} />}
-                {popoutView === "plate" && <PlateTab />}
-                {popoutView === "timeline" && <TimelineTab />}
-                {popoutView === "sentiment-chip" && <SentimentChipTab />}
-                {popoutView === "market-intel" && <MarketIntelTab />}
-                {popoutView === "news" && <NewsFeed />}
-              </div>
-              {/* resize handle */}
-              <div
-                className="absolute right-0 bottom-0 z-10 cursor-se-resize"
-                style={{ width: 20, height: 20 }}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  isResizing.current = true
-                  const startX = e.clientX
-                  const startY = e.clientY
-                  const startW = popoutSize.w
-                  const startH = popoutSize.h
-                  document.body.style.userSelect = "none"
-                  const onMove = (ev: MouseEvent) => {
-                    setPopoutSize({
-                      w: Math.max(POPOUT_MIN_W, startW + ev.clientX - startX),
-                      h: Math.max(POPOUT_MIN_H, startH + ev.clientY - startY),
-                    })
-                  }
-                  const onUp = () => {
-                    document.body.style.userSelect = ""
-                    window.removeEventListener("mousemove", onMove)
-                    window.removeEventListener("mouseup", onUp)
-                    // Reset after click event had a chance to fire
-                    setTimeout(() => {
-                      isResizing.current = false
-                    }, 0)
-                  }
-                  window.addEventListener("mousemove", onMove)
-                  window.addEventListener("mouseup", onUp)
-                }}
-                onMouseUp={(e) => e.stopPropagation()}
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label={TABS.find((t) => t.id === popoutView)?.label}
+                className="bg-surface border-hairline shadow-modal flex h-[min(600px,90vh)] w-[min(896px,90vw)] flex-col rounded-lg border"
+                drag
+                dragMomentum={false}
+                dragListener={false}
+                dragControls={dragControls}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={motionTransition.fast}
                 onClick={(e) => e.stopPropagation()}
               >
-                <svg viewBox="0 0 10 10" className="text-secondary size-4">
-                  <path d="M10 0v10H0" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                </svg>
-              </div>
+                <div
+                  className="border-hairline flex cursor-grab items-center justify-between border-b px-4 py-3 active:cursor-grabbing"
+                  onPointerDown={(e) => {
+                    if (e.target instanceof HTMLElement && e.target.closest("button")) return
+                    dragControls.start(e)
+                  }}
+                >
+                  <span className="text-body text-primary font-medium">
+                    {TABS.find((t) => t.id === popoutView)?.label}
+                  </span>
+                  <Button
+                    autoFocus
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="关闭弹窗"
+                    onClick={() => setPopoutView(null)}
+                    title="关闭"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  <ErrorBoundary name="RightPanelPopout">
+                    <Suspense fallback={<ViewFallback />}>
+                      <ViewRenderer view={popoutView} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   )
 }

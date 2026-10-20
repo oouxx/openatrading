@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useDapanAbnormal } from "@/hooks/query/useDapanAbnormal"
 import { useTimeline } from "@/hooks/query/useTimeline"
 
@@ -52,15 +54,20 @@ export default function TimelineTab() {
     <div>
       <div className="mb-6 flex items-center gap-1">
         {subViews.map((v) => (
-          <button
+          <Button
             key={v.id}
+            variant="ghost"
+            size="sm"
             onClick={() => setActiveSubView(v.id)}
-            className={`text-caption rounded-full cursor-pointer px-4 py-2 font-number transition-colors ${
-              activeSubView === v.id ? "bg-brand/20 text-brand" : "text-secondary hover:text-primary/80"
-            }`}
+            className={cn(
+              "text-caption font-number rounded-full px-4",
+              activeSubView === v.id
+                ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
+                : "text-secondary hover:text-primary/80"
+            )}
           >
             {v.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -72,7 +79,7 @@ export default function TimelineTab() {
               <span className="text-caption font-number text-primary/40">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
-            <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg text-caption border text-center text-primary/40">
+            <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
               {dapanError.message}
             </div>
           ) : (
@@ -84,13 +91,15 @@ export default function TimelineTab() {
               </div>
 
               {dapanList.length === 0 ? (
-                <div className="text-caption py-12 text-center text-primary/40">今日暂无大盘异动</div>
+                <div className="text-caption text-primary/40 py-12 text-center">
+                  今日暂无大盘异动
+                </div>
               ) : (
                 <div className="space-y-2">
-                  {dapanList.map((item: any, idx: number) => (
+                  {dapanList.map((item, idx) => (
                     <div
                       key={item.id || idx}
-                      className="bg-surface-dark border-hairline-dark hover:bg-hover rounded-lg flex items-start gap-3 border px-4 py-3 transition-colors"
+                      className="bg-surface border-hairline-dark hover:bg-hover flex items-start gap-3 rounded-lg border px-4 py-3 transition-colors"
                     >
                       <span className="text-caption mt-0.5 shrink-0">
                         {typeEmoji(item.bk_yi_dong_type)}
@@ -98,7 +107,7 @@ export default function TimelineTab() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-h2 text-primary">{item.title}</span>
-                          <span className="bg-brand/15 rounded-sm text-brand text-caption px-2 py-0.5 font-number">
+                          <span className="bg-brand/15 text-brand text-caption font-number rounded-sm px-2 py-0.5">
                             {item.bkj_info?.name || "-"}
                           </span>
                           <span className="text-caption font-number text-primary/40">
@@ -132,32 +141,30 @@ export default function TimelineTab() {
               </div>
 
               {timelineDays.length === 0 ? (
-                <div className="text-caption py-12 text-center text-primary/40">暂无时间线数据</div>
+                <div className="text-caption text-primary/40 py-12 text-center">暂无时间线数据</div>
               ) : (
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
-                      <h3 className="text-brand text-caption mb-4 px-2 font-number">
-                        {day.date}
-                      </h3>
+                      <h3 className="text-brand text-caption font-number mb-4 px-2">{day.date}</h3>
                       <div className="space-y-3">
                         {day.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="bg-surface-dark border-hairline-dark rounded-lg flex items-start gap-3 border px-4 py-3"
+                            className="bg-surface border-hairline-dark flex items-start gap-3 rounded-lg border px-4 py-3"
                           >
                             <span className="text-caption mt-0.5 shrink-0">{item.grade_emoji}</span>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-h2 text-primary">{item.title}</span>
                                 {item.tags && (
-                                  <span className="rounded-sm text-caption bg-white/10 px-2 py-0.5 font-number text-primary/40">
+                                  <span className="text-caption font-number text-primary/40 rounded-sm bg-white/10 px-2 py-0.5">
                                     {item.tags}
                                   </span>
                                 )}
                               </div>
                               {item.content && (
-                                <p className="text-caption mt-1 leading-relaxed text-primary/60">
+                                <p className="text-caption text-primary/60 mt-1 leading-relaxed">
                                   {item.content}
                                 </p>
                               )}

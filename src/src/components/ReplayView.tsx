@@ -1,6 +1,7 @@
 import { chartColors } from "@/lib/chartColors"
 
 import { useState, useEffect, useRef, useMemo } from "react"
+import { Button } from "@/components/ui/button"
 import { useReplayEvents } from "@/hooks/query/useReplayEvents"
 
 // ── Constants ──────────────────────────────────────────
@@ -60,7 +61,15 @@ export default function ReplayView() {
   const [filter, setFilter] = useState<"all" | "good" | "bad">("all")
   const [eventTypeFilter, setEventTypeFilter] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null)
+  const [tooltip, setTooltip] = useState<{
+    x: number
+    y: number
+    plateName: string
+    isGood: boolean
+    minute: number
+    pcp: number
+    stockCount: number
+  } | null>(null)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -144,7 +153,7 @@ export default function ReplayView() {
         className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <div className="text-secondary flex items-center gap-3 text-caption">
+        <div className="text-secondary text-caption flex items-center gap-3">
           <span className="bg-brand size-2 animate-pulse rounded-full" />
           加载回放数据...
         </div>
@@ -173,13 +182,15 @@ export default function ReplayView() {
           { f: "good" as const, label: "利好 ↑" },
           { f: "bad" as const, label: "利空 ↓" },
         ].map(({ f, label }) => (
-          <button
+          <Button
             key={f}
+            variant="outline"
+            size="xs"
             onClick={() => {
               setFilter(f)
               setSelectedId(null)
             }}
-            className={`cursor-pointer rounded-lg border px-4 py-1 text-caption font-medium transition-colors ${
+            className={`text-caption h-auto px-4 py-1 font-medium ${
               filter === f
                 ? f === "good"
                   ? "border-up bg-up text-primary"
@@ -190,24 +201,26 @@ export default function ReplayView() {
             }`}
           >
             {label}
-          </button>
+          </Button>
         ))}
         <span className="bg-hairline mx-1 h-5 w-px" />
         {/* 类型 */}
         {eventTypes.map((t) => {
           const label = t === 11000 ? "板块异动" : t === 11001 ? "个股异动" : String(t)
           return (
-            <button
+            <Button
               key={t}
+              variant="outline"
+              size="xs"
               onClick={() => setEventTypeFilter(eventTypeFilter === t ? null : t)}
-              className={`cursor-pointer rounded-lg border px-3 py-1 text-caption font-medium transition-colors ${
+              className={`text-caption h-auto px-3 py-1 font-medium ${
                 eventTypeFilter === t
                   ? "border-brand bg-brand text-primary"
                   : "border-hairline text-secondary hover:text-primary"
               }`}
             >
               {label}
-            </button>
+            </Button>
           )
         })}
         <span className="bg-hairline mx-1 h-5 w-px" />
@@ -215,21 +228,27 @@ export default function ReplayView() {
         <span className="text-secondary text-caption">振幅≥</span>
         <div className="flex gap-0.5">
           {[0, 1, 2, 3, 5].map((p) => (
-            <button
+            <Button
               key={p}
+              variant="outline"
+              size="xs"
               onClick={() => setMinPct(p)}
-              className={`cursor-pointer rounded px-2 py-0.5 font-number text-caption transition-colors ${minPct === p ? "bg-brand text-primary" : "border-hairline text-secondary border hover:text-primary"}`}
+              className={`text-caption font-number h-auto px-2 py-0.5 ${
+                minPct === p
+                  ? "bg-brand text-primary hover:bg-brand hover:text-primary"
+                  : "border-hairline text-secondary hover:text-primary"
+              }`}
             >
               {p}%
-            </button>
+            </Button>
           ))}
         </div>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <span className="min-w-[46px] text-center font-number text-body font-semibold text-primary">
+        <span className="font-number text-body text-primary min-w-[46px] text-center font-semibold">
           {minToTime(currentMinute)}
         </span>
         <span className="bg-hairline mx-1 h-5 w-px" />
-        <span className="text-secondary ml-auto text-caption">{filtered.length} 个事件</span>
+        <span className="text-secondary text-caption ml-auto">{filtered.length} 个事件</span>
       </div>
 
       {/* Chart Area */}
@@ -251,7 +270,11 @@ export default function ReplayView() {
                 setTooltip({
                   x,
                   y,
-                  html: `<div style="font-weight:600">${ev.plateName} ${isGood ? "利好" : "利空"}</div><div style="font-family:var(--font-number)">${minToTime(ev.minute)} | ${ev.pcp >= 0 ? "+" : "-"}${(Math.abs(ev.pcp) * 100).toFixed(2)}% | ${ev.relatedStocks.length}只</div>`,
+                  plateName: ev.plateName,
+                  isGood,
+                  minute: ev.minute,
+                  pcp: ev.pcp,
+                  stockCount: ev.relatedStocks.length,
                 })
               }
             } else {
@@ -269,10 +292,16 @@ export default function ReplayView() {
         />
         {tooltip && (
           <div
-            className="bg-surface border-hairline pointer-events-none absolute z-50 rounded-lg border px-3 py-2 text-caption whitespace-nowrap text-primary shadow-modal"
+            className="bg-surface border-hairline text-caption text-primary shadow-modal pointer-events-none absolute z-50 rounded-lg border px-3 py-2 whitespace-nowrap"
             style={{ left: Math.min(tooltip.x + 16, window.innerWidth - 200), top: tooltip.y - 60 }}
           >
-            <span dangerouslySetInnerHTML={{ __html: tooltip.html }} />
+            <div className="font-semibold">
+              {tooltip.plateName} {tooltip.isGood ? "利好" : "利空"}
+            </div>
+            <div className="font-number">
+              {minToTime(tooltip.minute)} | {tooltip.pcp >= 0 ? "+" : "-"}
+              {(Math.abs(tooltip.pcp) * 100).toFixed(2)}% | {tooltip.stockCount}只
+            </div>
           </div>
         )}
       </div>
@@ -284,9 +313,11 @@ export default function ReplayView() {
           const now = e.minute === nowTs
           const isGood = e.goodOrBad === 1
           return (
-            <div
+            <button
               key={e.id}
-              className={`bg-surface mb-1 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-all ${
+              type="button"
+              aria-pressed={selectedId === e.id}
+              className={`bg-surface mb-1 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all ${
                 past ? "opacity-100" : "opacity-40"
               } ${now || selectedId === e.id ? "!border-brand !opacity-100 shadow-[0_0_0_2px_var(--color-brand)]" : "border-hairline"}`}
               onClick={() => {
@@ -295,35 +326,35 @@ export default function ReplayView() {
               }}
             >
               <span className={`size-2 shrink-0 rounded-full ${isGood ? "bg-up" : "bg-down"}`} />
-              <span className="text-secondary min-w-[42px] font-number text-caption">
+              <span className="text-secondary font-number text-caption min-w-[42px]">
                 {minToTime(e.minute)}
               </span>
-              <span className="w-[72px] truncate text-caption font-semibold text-primary">
+              <span className="text-caption text-primary w-[72px] truncate font-semibold">
                 {e.plateName}
               </span>
               <span
-                className={`shrink-0 rounded px-2 py-0.5 text-caption font-semibold ${isGood ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}
+                className={`text-caption shrink-0 rounded px-2 py-0.5 font-semibold ${isGood ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}
               >
                 {isGood ? "利好" : "利空"}
               </span>
               <span
-                className={`w-[64px] font-number text-caption font-medium ${isGood ? "text-up" : "text-down"}`}
+                className={`font-number text-caption w-[64px] font-medium ${isGood ? "text-up" : "text-down"}`}
               >
                 {e.pcp >= 0 ? "+" : "-"}
                 {(Math.abs(e.pcp) * 100).toFixed(2)}%
               </span>
-              <span className="text-secondary flex-1 truncate text-right text-caption">
+              <span className="text-secondary text-caption flex-1 truncate text-right">
                 {e.relatedStocks.map((s) => (
                   <span key={s.symbol}>
                     {s.name}
-                    <span className={`ml-0.5 font-number ${s.pcp >= 0 ? "text-up" : "text-down"}`}>
+                    <span className={`font-number ml-0.5 ${s.pcp >= 0 ? "text-up" : "text-down"}`}>
                       {s.pcp >= 0 ? "+" : "-"}
                       {(Math.abs(s.pcp) * 100).toFixed(2)}%
                     </span>{" "}
                   </span>
                 ))}
               </span>
-            </div>
+            </button>
           )
         })}
       </div>
@@ -450,8 +481,7 @@ function PulseChart({
       hitMap.current.set(String(e.id), { id: e.id, x: cx, y1, y2, isGood })
     }
 
-    const upColor =
-      chartColors.up()
+    const upColor = chartColors.up()
     const downColor = chartColors.down()
 
     // Draw all bars first (non-glow)
@@ -468,8 +498,7 @@ function PulseChart({
 
     // ── Current time cursor ──
     const curX = xFromMin(curMin)
-    ctx.strokeStyle =
-      chartColors.brand()
+    ctx.strokeStyle = chartColors.brand()
     ctx.lineWidth = 1.5
     ctx.setLineDash([6, 4])
     ctx.globalAlpha = 0.7
@@ -485,8 +514,7 @@ function PulseChart({
     ctx.beginPath()
     ctx.arc(curX, midY, 7, 0, Math.PI * 2)
     ctx.fill()
-    ctx.strokeStyle =
-      chartColors.brand()
+    ctx.strokeStyle = chartColors.brand()
     ctx.lineWidth = 2.5
     ctx.stroke()
 
@@ -537,6 +565,7 @@ function PulseChart({
     <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative" }}>
       <canvas
         ref={canvasRef}
+        aria-hidden="true"
         style={{ display: "block", width: "100%", height: "100%" }}
         onMouseMove={(e) => {
           const rect = canvasRef.current?.getBoundingClientRect()

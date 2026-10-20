@@ -117,12 +117,15 @@ function ThemeCard({
   onSelect: () => void
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={onSelect}
       aria-pressed={active}
-      className={`relative w-[140px] rounded-lg border p-1.5 text-left transition-colors ${
-        active ? "border-brand ring-brand/25 ring-2" : "border-hairline hover:border-secondary/50"
+      className={`relative h-auto w-[140px] flex-col items-stretch justify-start gap-0 rounded-lg p-1.5 text-left font-normal whitespace-normal hover:bg-transparent ${
+        active
+          ? "border-brand ring-brand/25 hover:border-brand ring-2"
+          : "border-hairline hover:border-secondary/50"
       }`}
     >
       <ThemePreview dark={dark} />
@@ -138,7 +141,7 @@ function ThemeCard({
           <CheckIcon className="text-brand-foreground size-3" />
         </span>
       )}
-    </button>
+    </Button>
   )
 }
 

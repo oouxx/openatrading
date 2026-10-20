@@ -54,7 +54,7 @@ export class TauriTransport implements AgentTransport {
       const envelope = e.payload.event
       // The event field is the EventEnvelope with flattened TranscriptEvent.
       // Strip the envelope fields to get the inner event for the reducer.
-      const { schema_version, seq, ...innerEvent } = envelope
+      const { schema_version: _schema_version, seq: _seq, ...innerEvent } = envelope
       for (const cb of this.listeners) cb(innerEvent as TranscriptEvent)
     })
   }

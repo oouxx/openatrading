@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { Button } from "@/components/ui/button"
 import {
   Check,
   ChevronDown,
@@ -11,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { fetchJson } from "@/stores/data"
+import { summarizeTool } from "@/lib/tool-summary"
 
 // ── Types ────────────────────────────────────────────────
 
@@ -42,69 +44,6 @@ function asText(v: unknown): string {
   } catch {
     return String(v)
   }
-}
-
-/** snake_case / kebab-case → Title Case. `get_kline` → `Get Kline`. */
-function toTitleCase(s: string): string {
-  return s
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
-/** Parse the serialized tool `args` string into an object (best-effort). */
-function parseArgs(args?: string): Record<string, unknown> | null {
-  if (!args) return null
-  try {
-    const p = JSON.parse(args)
-    return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
-/** First non-empty string value among candidate arg keys. */
-function argString(a: Record<string, unknown> | null, ...keys: string[]): string {
-  if (!a) return ""
-  for (const k of keys) {
-    const v = a[k]
-    if (typeof v === "string" && v.trim()) return v
-  }
-  return ""
-}
-
-/**
- * Generic tool-summary generator (Goose-style). One card serves every tool:
- * a few well-known tools get friendly Chinese phrases derived from their args;
- * everything else falls back to a readable name + the argument keys, so an
- * unknown / MCP tool never requires a bespoke card.
- */
-export function summarizeTool(name: string, args?: string): string {
-  const a = parseArgs(args)
-  const p = (...keys: string[]) => argString(a, ...keys)
-
-  if (/^(read|read_file)$/.test(name)) return p("path", "uri", "file_path") ? `查看 ${p("path", "uri", "file_path")}` : "查看文件"
-  if (/^(write|write_file|create_file)$/.test(name)) return p("path", "file_path") ? `写入 ${p("path", "file_path")}` : "写入文件"
-  if (/^(edit|edit_file|file_edit)$/.test(name)) return p("path", "file_path") ? `编辑 ${p("path", "file_path")}` : "编辑文件"
-  if (/^(bash|shell|execute_command|run)$/.test(name)) return p("command", "cmd") ? `运行 ${p("command", "cmd")}` : "运行命令"
-  if (name === "glob") return p("pattern") ? `查找 ${p("pattern")}` : "查找文件"
-  if (name === "grep") return p("pattern") ? `搜索 ${p("pattern")}` : "搜索代码"
-  if (/^(web_search|search)$/.test(name)) return p("query", "q") ? `搜索 ${p("query", "q")}` : "网页搜索"
-  if (/^(web_fetch|fetch)$/.test(name)) return p("url") ? `抓取 ${p("url")}` : "抓取网页"
-
-  // Generic fallback: readable name + a single concise arg value, or the arg keys.
-  const readable = toTitleCase(name)
-  if (a) {
-    const keys = Object.keys(a)
-    if (keys.length === 1) {
-      const val = a[keys[0]]
-      const short = typeof val === "string" ? val : JSON.stringify(val)
-      return short && short !== "{}" ? `${readable} · ${short}` : readable
-    }
-    if (keys.length > 1) return `${readable} · ${keys.join(", ")}`
-  }
-  return readable
 }
 
 // ── Main Components ───────────────────────────────────────
@@ -139,8 +78,9 @@ export function ToolCallItem({
         status === "error" ? "border-danger/30 bg-danger/10" : "border-hairline bg-hover/50"
       }`}
     >
-      <button
-        className="hover:bg-hover/60 flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors"
+      <Button
+        variant="ghost"
+        className="hover:bg-hover/60 h-auto w-full justify-start gap-2.5 rounded-none px-3 py-2 text-left font-normal whitespace-normal"
         onClick={() => setExpanded((v) => !v)}
       >
         {showIcon && (
@@ -151,14 +91,14 @@ export function ToolCallItem({
         <span className="text-primary min-w-0 flex-1 truncate text-[13px] font-medium">
           {summarizeTool(tc.name, tc.args)}
         </span>
-        <span className="text-secondary/40 hidden shrink-0 font-number text-[11px] sm:inline">
+        <span className="text-secondary/40 font-number hidden shrink-0 text-[11px] sm:inline">
           {tc.name}
         </span>
         <StatusIcon status={status} />
         <span className="text-secondary/50 shrink-0">
           {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </span>
-      </button>
+      </Button>
 
       {(hasArgs || hasResult) && expanded && (
         <div className="border-hairline space-y-2 border-t px-3 py-2.5">
@@ -215,12 +155,12 @@ export function ToolIcon({ name, className }: { name: string; className?: string
     name === "write_file" ||
     name === "create_file"
   ) {
-    return <FileEdit className={`${cls} shrink-0 text-warning`} />
+    return <FileEdit className={`${cls} text-warning shrink-0`} />
   }
   if (name.startsWith("bash") || name === "execute_command" || name === "run") {
     return <Terminal className={`${cls} shrink-0 text-sky-500`} />
   }
-  return <Wrench className={`${cls} shrink-0 text-secondary`} />
+  return <Wrench className={`${cls} text-secondary shrink-0`} />
 }
 
 // ── Tool args content ─────────────────────────────────
@@ -233,7 +173,7 @@ function ToolArgsContent({ name, args }: { name: string; args: string }) {
   }
 
   return (
-    <pre className="text-secondary overflow-x-auto font-number text-caption leading-relaxed whitespace-pre-wrap">
+    <pre className="text-secondary font-number text-caption overflow-x-auto leading-relaxed whitespace-pre-wrap">
       {safeContent}
     </pre>
   )
@@ -260,7 +200,14 @@ function ToolResultContent({
     return <DiffContent content={safeContent} />
   }
 
-  return <ResultBlock content={safeContent} toolCallId={toolCallId} sessionId={sessionId} output={output} />
+  return (
+    <ResultBlock
+      content={safeContent}
+      toolCallId={toolCallId}
+      sessionId={sessionId}
+      output={output}
+    />
+  )
 }
 
 // ── Diff content ─────────────────────────────────────
@@ -269,7 +216,9 @@ function DiffContent({ content }: { content: string }) {
   const safeContent = useMemo(() => asText(content), [content])
 
   const diffResult = useMemo(() => {
-    const hasDiffMarkers = safeContent.split("\n").some((l) => l.startsWith("+") || l.startsWith("-") || l.startsWith("@"))
+    const hasDiffMarkers = safeContent
+      .split("\n")
+      .some((l) => l.startsWith("+") || l.startsWith("-") || l.startsWith("@"))
     if (hasDiffMarkers) {
       return { type: "diff" as const }
     }
@@ -278,7 +227,7 @@ function DiffContent({ content }: { content: string }) {
 
   if (diffResult.type === "diff") {
     return (
-      <pre className="overflow-x-auto font-number text-caption leading-relaxed whitespace-pre-wrap">
+      <pre className="font-number text-caption overflow-x-auto leading-relaxed whitespace-pre-wrap">
         {safeContent.split("\n").map((line, i) => {
           let className = ""
           if (line.startsWith("+")) className = "text-success"
@@ -320,9 +269,11 @@ function ResultBlock({
   // Client-long: show first part, can expand locally
   const displayText = asText(
     fullContent ??
-    (isTruncated ? (output?.preview ?? content) :
-     isLong && !showFull ? content.slice(0, COLLAPSE_THRESHOLD) + "\n…" :
-     content)
+      (isTruncated
+        ? (output?.preview ?? content)
+        : isLong && !showFull
+          ? content.slice(0, COLLAPSE_THRESHOLD) + "\n…"
+          : content)
   )
 
   const expandFromServer = async () => {
@@ -342,29 +293,31 @@ function ResultBlock({
 
   return (
     <div>
-      <pre className="text-secondary max-h-96 overflow-y-auto font-number text-caption leading-relaxed whitespace-pre-wrap">
+      <pre className="text-secondary font-number text-caption max-h-96 overflow-y-auto leading-relaxed whitespace-pre-wrap">
         {displayText}
       </pre>
       {/* Server-side truncation: expand via API */}
       {isTruncated && !fullContent && (
-        <button
-          className="text-secondary/50 hover:text-secondary mt-1 font-number text-caption transition-colors"
+        <Button
+          variant="link"
+          size="xs"
+          className="text-secondary/50 hover:text-secondary font-number h-auto p-0"
           onClick={expandFromServer}
           disabled={loading}
         >
-          {loading
-            ? "加载中..."
-            : `展开全部（${output?.fullLength ?? content.length} 字符）`}
-        </button>
+          {loading ? "加载中..." : `展开全部（${output?.fullLength ?? content.length} 字符）`}
+        </Button>
       )}
       {/* Client-side truncation: expand locally */}
       {isLong && !showFull && !isTruncated && (
-        <button
-          className="text-secondary/50 hover:text-secondary mt-1 font-number text-caption transition-colors"
+        <Button
+          variant="link"
+          size="xs"
+          className="text-secondary/50 hover:text-secondary font-number mt-1 h-auto p-0"
           onClick={() => setShowFull(true)}
         >
           展开全部（{content.length} 字符）
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -376,11 +329,11 @@ function StatusIcon({ status }: { status: ToolCall["status"] }) {
     case "streaming":
       return <Loader2 className="text-brand size-3.5 shrink-0 animate-spin" />
     case "running":
-      return <RefreshCw className="size-3.5 shrink-0 animate-spin text-warning" />
+      return <RefreshCw className="text-warning size-3.5 shrink-0 animate-spin" />
     case "success":
       return <Check className="text-success size-3.5 shrink-0" />
     case "error":
-      return <XCircle className="size-3.5 shrink-0 text-danger" />
+      return <XCircle className="text-danger size-3.5 shrink-0" />
     default:
       return null
   }
@@ -389,7 +342,7 @@ function StatusIcon({ status }: { status: ToolCall["status"] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-secondary/70 mb-1 font-number text-caption font-medium">{title}</div>
+      <div className="text-secondary/70 font-number text-caption mb-1 font-medium">{title}</div>
       {children}
     </div>
   )

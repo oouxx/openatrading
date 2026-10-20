@@ -1,3 +1,4 @@
+import { formatCompactNumber } from "@/lib/format"
 import { searchStocks } from "@/lib/stock-utils"
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { Star, Plus, Trash2, X, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
@@ -7,31 +8,17 @@ import {
   useDeleteWatchlist,
   type WatchlistItem,
 } from "@/hooks/query/useWatchlist"
-import { subscribeRealtimeBatch } from "@/hooks/useRealtimeStream"
+import { subscribeRealtimeBatch, type RealtimeQuote } from "@/hooks/useRealtimeStream"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import KlineDrawer from "./KlineDrawer"
 
-function formatVolume(v: number | undefined): string {
-  if (!v) return "-"
-  if (v > 1e8) return (v / 1e8).toFixed(2) + "亿"
-  if (v > 1e4) return (v / 1e4).toFixed(2) + "万"
-  return v.toFixed(0)
-}
-
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
 
-interface QuoteData {
-  last_px?: number
-  px_change_rate?: number
-  market_value?: number
-  circulation_value?: number
-}
-
 /** Pair a watchlist item with its realtime quote. */
 interface RichStock extends WatchlistItem {
-  quote: QuoteData | undefined
+  quote: RealtimeQuote | undefined
 }
 
 export default function WatchlistView() {
@@ -43,22 +30,22 @@ export default function WatchlistView() {
   const [klineStock, setKlineStock] = useState<{ symbol: string; name: string } | null>(null)
 
   // ── Real-time quotes via streams — single SSE for all symbols ──
-  const [quotesMap, setQuotesMap] = useState<Map<string, QuoteData>>(new Map())
+  const [quotesMap, setQuotesMap] = useState<Map<string, RealtimeQuote>>(new Map())
   const [quoteTick, setQuoteTick] = useState(0)
 
   useEffect(() => {
     if (items.length === 0) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换自选列表时先清空上一轮行情
     setQuotesMap(new Map())
     const codes = items.map((item) => item.code)
-    return subscribeRealtimeBatch(codes, (code, data: any) => {
+    return subscribeRealtimeBatch<RealtimeQuote>(codes, (code, data) => {
       setQuotesMap((prev) => {
         const next = new Map(prev)
         next.set(code, {
-        last_px: data.last_px,
-        px_change_rate: data.px_change_rate,
-        market_value: data.market_value,
-        circulation_value: data.circulation_value,
+          last_px: data.last_px,
+          px_change_rate: data.px_change_rate,
+          market_value: data.market_value,
+          circulation_value: data.circulation_value,
         })
         return next
       })
@@ -92,24 +79,21 @@ export default function WatchlistView() {
   )
 
   // ── Add-stock search ──
-  const handleAddSearch = useCallback(
-    async (q: string) => {
-      setAddQuery(q)
-      if (!q.trim()) {
-        setAddResults([])
-        return
-      }
-      setAddSearching(true)
-      try {
-        setAddResults(await searchStocks(q))
-      } catch {
-        // ignore
-      } finally {
-        setAddSearching(false)
-      }
-    },
-    []
-  )
+  const handleAddSearch = useCallback(async (q: string) => {
+    setAddQuery(q)
+    if (!q.trim()) {
+      setAddResults([])
+      return
+    }
+    setAddSearching(true)
+    try {
+      setAddResults(await searchStocks(q))
+    } catch {
+      // ignore
+    } finally {
+      setAddSearching(false)
+    }
+  }, [])
 
   const handleAdd = useCallback(
     (code: string, name: string) => {
@@ -127,7 +111,7 @@ export default function WatchlistView() {
       ...item,
       quote: quotesMap.get(item.code),
     }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- quoteTick 仅用于在实时推送后触发重算
   }, [items, quoteTick])
 
   const sorted = useMemo(() => {
@@ -176,11 +160,11 @@ export default function WatchlistView() {
     <div className="flex h-full">
       {/* Main content */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-wide px-6 py-4">
+        <div className="max-w-wide mx-auto px-6 py-4">
           {/* ── Header ── */}
           <div className="mb-4 flex items-center gap-3">
             <Star className="size-5 text-yellow-500" />
-            <h1 className="text-h1 font-bold text-primary">自选股</h1>
+            <h1 className="text-h1 text-primary font-bold">自选股</h1>
             <span className="text-caption text-secondary">{items.length}只</span>
 
             {/* Local search */}
@@ -190,22 +174,25 @@ export default function WatchlistView() {
                 placeholder="搜索自选..."
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
-                className="h-8 pl-8 text-caption"
+                className="text-caption h-8 pl-8"
               />
               {localSearch && (
-                <button
-                  className="absolute top-1/2 right-2 -translate-y-1/2 text-primary/40 hover:text-primary"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute top-1/2 right-2 -translate-y-1/2"
                   onClick={() => setLocalSearch("")}
+                  title="清空搜索"
                 >
-                  <X className="size-3" />
-                </button>
+                  <X />
+                </Button>
               )}
             </div>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 text-caption"
+              className="text-caption h-8 gap-2"
               onClick={() => setShowAdd(!showAdd)}
             >
               {showAdd ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
@@ -215,38 +202,39 @@ export default function WatchlistView() {
 
           {/* ── Add-stock search ── */}
           {showAdd && (
-            <div className="border-hairline rounded-lg mb-4 border bg-white/2 p-3">
+            <div className="border-hairline mb-4 rounded-lg border bg-white/2 p-3">
               <div className="relative">
                 <Search className="text-secondary absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                 <Input
                   placeholder="输入股票名称或代码搜索..."
                   value={addQuery}
                   onChange={(e) => handleAddSearch(e.target.value)}
-                  className="h-9 pl-9 text-caption"
+                  className="text-caption h-9 pl-9"
                   autoFocus
                 />
               </div>
               {addSearching && (
-                <div className="text-caption text-secondary py-4 text-center text-caption">
+                <div className="text-caption text-secondary text-caption py-4 text-center">
                   搜索中...
                 </div>
               )}
               {addResults.length > 0 && (
                 <div className="mt-2 max-h-60 space-y-1 overflow-y-auto">
                   {addResults.map((r) => (
-                    <div
+                    <button
                       key={r.code}
-                      className="hover:bg-hover rounded-lg flex cursor-pointer items-center justify-between px-3 py-2 transition-colors"
+                      type="button"
+                      className="hover:bg-hover flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left transition-colors"
                       onClick={() => handleAdd(r.code, r.name)}
                     >
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-body font-medium text-primary">{r.name}</span>
-                        <span className="text-caption text-secondary font-number text-caption">
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-body text-primary font-medium">{r.name}</span>
+                        <span className="text-caption text-secondary font-number">
                           {r.code.replace(/^[a-z]+/i, "")}
                         </span>
-                      </div>
+                      </span>
                       <Plus className="text-brand size-3.5" />
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -259,7 +247,7 @@ export default function WatchlistView() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-canvas border-hairline rounded-lg h-14 animate-pulse border"
+                  className="bg-canvas border-hairline h-14 animate-pulse rounded-lg border"
                 />
               ))}
             </div>
@@ -275,32 +263,40 @@ export default function WatchlistView() {
             <div className="space-y-2">
               {/* Column headers — clickable sort */}
               {!showAdd && (
-                <div className="text-caption flex items-center gap-4 px-3 py-2 text-caption tracking-wide text-primary/40 uppercase">
+                <div className="text-caption text-caption text-primary/40 flex items-center gap-4 px-3 py-2 tracking-wide uppercase">
                   <span className="flex-1">名称 / 代码</span>
-                  <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-primary/70"
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
                     onClick={() => toggleSort("price")}
                   >
                     最新价 {renderSortIcon("price")}
-                  </button>
-                  <button
-                    className="flex w-16 cursor-pointer items-center justify-end text-right transition-colors hover:text-primary/70"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-16 justify-end px-0 font-normal uppercase hover:bg-transparent"
                     onClick={() => toggleSort("change")}
                   >
                     涨幅 {renderSortIcon("change")}
-                  </button>
-                  <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-primary/70"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
                     onClick={() => toggleSort("market_value")}
                   >
                     总市值 {renderSortIcon("market_value")}
-                  </button>
-                  <button
-                    className="flex w-20 cursor-pointer items-center justify-end text-right transition-colors hover:text-primary/70"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
                     onClick={() => toggleSort("circulation_value")}
                   >
                     流通市值 {renderSortIcon("circulation_value")}
-                  </button>
+                  </Button>
                   <span className="w-6" />
                 </div>
               )}
@@ -342,7 +338,7 @@ function StockRow({
   onSelect,
   onDelete,
 }: {
-  quote: QuoteData | undefined
+  quote: RealtimeQuote | undefined
   name: string
   code: string
   onSelect: (s: { symbol: string; name: string }) => void
@@ -352,56 +348,60 @@ function StockRow({
   const loaded = quote?.last_px != null
 
   return (
-    <div
-      className="bg-canvas border-hairline hover:border-brand/30 rounded-lg flex cursor-pointer items-center gap-4 border p-3 transition-colors"
-      onClick={() => onSelect({ symbol: code, name })}
-    >
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="truncate text-body font-semibold text-primary">{name}</span>
-        <span className="text-caption text-secondary font-number">
-          {code.replace(/^[a-z]+/i, "")}
-        </span>
-      </div>
-
-      {loaded ? (
-        <>
-          <span className="w-20 text-right font-number text-body font-bold text-primary">
-            {quote.last_px?.toFixed(2)}
-          </span>
-          <span
-            className={`rounded-lg w-16 px-2 py-0.5 text-right font-number text-caption font-semibold ${
-              up ? "bg-up/20 text-up" : "bg-down/20 text-down"
-            }`}
-          >
-            {up ? "+" : ""}
-            {quote.px_change_rate?.toFixed(2)}%
-          </span>
-          <span className="w-20 text-right font-number text-caption text-primary/70">
-            {formatVolume(quote.market_value)}
-          </span>
-          <span className="w-20 text-right font-number text-caption text-primary/70">
-            {formatVolume(quote.circulation_value)}
-          </span>
-        </>
-      ) : (
-        <>
-          <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
-          <div className="text-caption text-secondary h-4 w-16 animate-pulse rounded bg-white/5" />
-          <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
-          <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
-        </>
-      )}
-
+    <div className="bg-canvas border-hairline hover:border-brand/30 flex items-center gap-4 rounded-lg border p-3 transition-colors">
       <button
-        className="hover:text-down text-secondary w-6 shrink-0 p-1 text-right transition-colors"
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
+        type="button"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 text-left"
+        onClick={() => onSelect({ symbol: code, name })}
+      >
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="text-body text-primary truncate font-semibold">{name}</span>
+          <span className="text-caption text-secondary font-number">
+            {code.replace(/^[a-z]+/i, "")}
+          </span>
+        </div>
+
+        {loaded ? (
+          <>
+            <span className="font-number text-body text-primary w-20 text-right font-bold">
+              {quote.last_px?.toFixed(2)}
+            </span>
+            <span
+              className={`font-number text-caption w-16 rounded-lg px-2 py-0.5 text-right font-semibold ${
+                up ? "bg-up/20 text-up" : "bg-down/20 text-down"
+              }`}
+            >
+              {up ? "+" : ""}
+              {quote.px_change_rate?.toFixed(2)}%
+            </span>
+            <span className="font-number text-caption text-primary/70 w-20 text-right">
+              {formatCompactNumber(quote.market_value)}
+            </span>
+            <span className="font-number text-caption text-primary/70 w-20 text-right">
+              {formatCompactNumber(quote.circulation_value)}
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
+            <div className="text-caption text-secondary h-4 w-16 animate-pulse rounded bg-white/5" />
+            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
+            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
+          </>
+        )}
+      </button>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`删除自选 ${name}`}
+        className="text-secondary hover:text-down size-6 shrink-0"
+        onClick={onDelete}
         title="删除自选"
       >
-        <Trash2 className="size-3.5" />
-      </button>
+        <Trash2 />
+      </Button>
     </div>
   )
 }

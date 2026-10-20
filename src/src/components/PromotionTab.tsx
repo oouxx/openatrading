@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { type Stock } from "@/stores/data"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
@@ -194,7 +195,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (error) {
     return (
-      <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg text-caption border text-center text-primary/40">
+      <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
         {error}
       </div>
     )
@@ -202,7 +203,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (ladder.length === 0 && firstBoard.length === 0) {
     return (
-      <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg text-caption border text-center text-primary/40">
+      <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
         今日无涨停数据
       </div>
     )
@@ -212,20 +213,15 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     <div>
       {/* 昨日数据缺失提示 */}
       {!hasYesterdayData && (
-        <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg text-caption mb-8 border text-center text-primary/40">
+        <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 mb-8 rounded-lg border text-center">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
 
       {/* ST 过滤 */}
       <div className="mb-6 flex items-center gap-4">
-        <label className="flex cursor-pointer items-center gap-2 text-primary/60 select-none">
-          <input
-            type="checkbox"
-            checked={hideST}
-            onChange={(e) => setHideST(e.target.checked)}
-            className="cursor-pointer"
-          />
+        <label className="text-primary/60 flex cursor-pointer items-center gap-2 select-none">
+          <Checkbox checked={hideST} onCheckedChange={(checked) => setHideST(checked === true)} />
           <span className="text-caption">隐藏ST</span>
         </label>
         {hideST && stFilteredCount > 0 && (
@@ -247,46 +243,38 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             </span>
           </div>
 
-          <div className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg border">
+          <div className="bg-surface border-hairline-dark p-card-inner rounded-lg border">
             {ladder.map((row) => (
               <div key={row.yesterdayDays} className="mb-3 last:mb-0">
-                <div
-                  className="text-caption flex cursor-pointer items-center gap-3 font-number"
+                <button
+                  type="button"
+                  aria-expanded={selectedBoard === row.yesterdayDays}
+                  className="text-caption font-number flex w-full cursor-pointer items-center gap-3 text-left"
                   onClick={() =>
                     setSelectedBoard(selectedBoard === row.yesterdayDays ? null : row.yesterdayDays)
                   }
                 >
-                  <span
-                    className="rounded-sm text-caption bg-white/10 px-2 py-0.5 text-primary/60"
-                    style={{ minWidth: 56, textAlign: "center" }}
-                  >
+                  <span className="text-caption text-primary/60 min-w-14 rounded-sm bg-white/10 px-2 py-0.5 text-center">
                     昨{row.yesterdayDays}板
                   </span>
-                  <span className="text-primary/40" style={{ minWidth: 40 }}>
-                    {row.yesterdayCount}只
-                  </span>
+                  <span className="text-primary/40 min-w-10">{row.yesterdayCount}只</span>
                   <span className="text-primary/40">→</span>
-                  <span
-                    className="rounded-sm text-caption px-2 py-0.5"
-                    style={{ minWidth: 56, textAlign: "center" }}
-                  >
+                  <span className="text-caption min-w-14 rounded-sm px-2 py-0.5 text-center">
                     今{row.yesterdayDays + 1}板
                   </span>
-                  <span className="text-primary" style={{ minWidth: 40 }}>
-                    {row.promotedCount}只
-                  </span>
+                  <span className="text-primary min-w-10">{row.promotedCount}只</span>
                   <span className="text-caption text-primary/40">晋级率</span>
                   <b className={row.rate >= 0.5 ? "text-up" : "text-primary/40"}>
                     {(row.rate * 100).toFixed(1)}%
                   </b>
-                  <div className="h-2 flex-1 rounded-full bg-white/10" style={{ minWidth: 60 }}>
+                  <div className="h-2 min-w-15 flex-1 rounded-full bg-white/10">
                     <div
                       className={`h-full rounded-full transition-all ${row.rate >= 0.5 ? "bg-up" : "bg-down"}`}
                       style={{ width: row.rate * 100 + "%" }}
                     />
                   </div>
                   <span className="text-caption text-primary/40">断板 {row.brokenCount}只</span>
-                </div>
+                </button>
 
                 {/* 展开详情表 */}
                 {selectedBoard === row.yesterdayDays && (
@@ -297,25 +285,28 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                           <th>代码</th>
                           <th>名称</th>
                           <th>昨板→今板</th>
-                          <th style={{ textAlign: "right" }}>换手率</th>
-                          <th style={{ textAlign: "right" }}>流通市值</th>
+                          <th className="text-right">换手率</th>
+                          <th className="text-right">流通市值</th>
                           <th>状态</th>
                         </tr>
                       </thead>
                       <tbody>
                         {row.details.map((s) => (
                           <tr key={s.symbol}>
-                            <td
-                              className="text-brand cursor-pointer font-number hover:underline"
-                              onClick={() => handleOpenKline(s.symbol, s.name)}
-                            >
+                            <td className="text-brand font-number">
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
-                                {s.symbol}
+                                <button
+                                  type="button"
+                                  className="cursor-pointer hover:underline"
+                                  onClick={() => handleOpenKline(s.symbol, s.name)}
+                                >
+                                  {s.symbol}
+                                </button>
                               </MiniChartPreview>
                             </td>
-                            <td className="font-medium text-primary">
+                            <td className="text-primary font-medium">
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
-                                {s.name}
+                                <span>{s.name}</span>
                               </MiniChartPreview>
                             </td>
                             <td className="font-number">
@@ -326,18 +317,18 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                                 {s.status === "promoted" ? s.todayDays + "板" : "断板"}
                               </span>
                             </td>
-                            <td className="text-right font-number">
+                            <td className="font-number text-right">
                               {s.turnover ? (s.turnover * 100).toFixed(2) + "%" : "-"}
                             </td>
-                            <td className="text-right font-number">
+                            <td className="font-number text-right">
                               {(s.capital / 1e8).toFixed(1)}亿
                             </td>
                             <td>
                               <span
-                                className={`text-caption rounded-sm px-2 py-0.5 font-number ${
+                                className={`text-caption font-number rounded-sm px-2 py-0.5 ${
                                   s.status === "promoted"
                                     ? "bg-up/15 text-up"
-                                    : "bg-white/10 text-primary/40"
+                                    : "text-primary/40 bg-white/10"
                                 }`}
                               >
                                 {s.status === "promoted" ? "晋级" : "断板"}
@@ -362,43 +353,46 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
             <h3 className="text-hero text-primary">首板新进</h3>
             <span className="text-caption text-primary/40">共 {firstBoard.length} 只</span>
           </div>
-          <div className="bg-surface-dark border-hairline-dark rounded-lg overflow-hidden border">
+          <div className="bg-surface border-hairline-dark overflow-hidden rounded-lg border">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>代码</th>
                   <th>名称</th>
                   <th>现价</th>
-                  <th style={{ textAlign: "right" }}>涨跌幅</th>
-                  <th style={{ textAlign: "right" }}>换手率</th>
-                  <th style={{ textAlign: "right" }}>流通市值</th>
+                  <th className="text-right">涨跌幅</th>
+                  <th className="text-right">换手率</th>
+                  <th className="text-right">流通市值</th>
                   <th>板块</th>
                 </tr>
               </thead>
               <tbody>
                 {firstBoard.map((s) => (
                   <tr key={s.symbol}>
-                    <td
-                      className="text-brand cursor-pointer font-number hover:underline"
-                      onClick={() => handleOpenKline(s.symbol, s.name)}
-                    >
+                    <td className="text-brand font-number">
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
-                        {s.symbol}
+                        <button
+                          type="button"
+                          className="cursor-pointer hover:underline"
+                          onClick={() => handleOpenKline(s.symbol, s.name)}
+                        >
+                          {s.symbol}
+                        </button>
                       </MiniChartPreview>
                     </td>
-                    <td className="font-medium text-primary">
+                    <td className="text-primary font-medium">
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
-                        {s.name}
+                        <span>{s.name}</span>
                       </MiniChartPreview>
                     </td>
                     <td>
                       <span className="font-number text-primary/40">{s.price}</span>
                     </td>
-                    <td className="text-up text-right font-number">
+                    <td className="text-up font-number text-right">
                       +{(s.changePercent * 100).toFixed(2)}%
                     </td>
-                    <td className="text-right font-number">{(s.turnover * 100).toFixed(2)}%</td>
-                    <td className="text-right font-number">{(s.capital / 1e8).toFixed(1)}亿</td>
+                    <td className="font-number text-right">{(s.turnover * 100).toFixed(2)}%</td>
+                    <td className="font-number text-right">{(s.capital / 1e8).toFixed(1)}亿</td>
                     <td className="text-caption text-primary/40">{s.reason || "-"}</td>
                   </tr>
                 ))}

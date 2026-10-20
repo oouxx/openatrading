@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react"
-import { useTelegraphInfinite } from "@/hooks/query/useTelegraph"
+import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface NewsFeedProps {
   variant?: "default" | "tab"
@@ -14,7 +22,7 @@ interface NewsItem {
   source: string
 }
 
-function formatTime(ts: number | string): string {
+function formatTime(ts?: number | string): string {
   if (!ts) return ""
   const t = typeof ts === "string" ? parseInt(ts) : ts
   if (isNaN(t) || t === 0) return ""
@@ -24,7 +32,7 @@ function formatTime(ts: number | string): string {
   return `${h}:${m}`
 }
 
-function toNewsItem(item: any, idx: number): NewsItem {
+function toNewsItem(item: TelegraphItem, idx: number): NewsItem {
   return {
     id: item.id || idx,
     severity: (item.level === "R" || item.level === "B" ? "major" : "normal") as "major" | "normal",
@@ -54,8 +62,8 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
               {item.severity === "major" ? "🔴" : "⚪"}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-caption leading-relaxed text-primary/80">
-                <span className="text-secondary mr-1 font-number">{item.time}</span>
+              <p className="text-caption text-primary/80 leading-relaxed">
+                <span className="text-secondary font-number mr-1">{item.time}</span>
                 {item.title}
               </p>
               {item.aiNote && (
@@ -92,7 +100,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
     useTelegraphInfinite()
 
   const allItems: NewsItem[] = data
-    ? data.pages.flat().map((item: any, idx: number) => toNewsItem(item, idx))
+    ? data.pages.flat().map((item, idx) => toNewsItem(item, idx))
     : []
 
   const filteredNews = source === "all" ? allItems : allItems.filter((n) => n.source === source)
@@ -110,26 +118,27 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
               </span>
             )}
           </span>
-          <select
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="bg-canvas border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
-          >
-            <option value="all">全部来源</option>
-            <option value="cls">财联社</option>
-            <option value="jiuyan">韭研公社</option>
-          </select>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger
+              size="sm"
+              className="bg-canvas border-hairline text-caption font-number text-secondary"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部来源</SelectItem>
+              <SelectItem value="cls">财联社</SelectItem>
+              <SelectItem value="jiuyan">韭研公社</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {error && (
           <div className="shrink-0 py-12 text-center">
             <p className="text-caption text-up mb-3">资讯加载失败</p>
-            <button
-              onClick={() => refetch()}
-              className="border-hairline text-secondary cursor-pointer rounded border px-4 py-2 text-caption transition-colors hover:text-primary"
-            >
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
               重试
-            </button>
+            </Button>
           </div>
         )}
 
@@ -139,18 +148,20 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
               {filteredNews.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-surface-dark border-hairline-dark group hover:bg-hover rounded-lg mb-2 flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors"
+                  className="bg-surface border-hairline-dark group hover:bg-hover mb-2 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors"
                 >
                   <span className="text-caption mt-0.5 shrink-0">
                     {item.severity === "major" ? "🔴" : "⚪"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-caption leading-relaxed text-primary/80 transition-colors group-hover:text-primary">
-                      <span className="text-secondary mr-2 font-number text-caption">{item.time}</span>
+                    <p className="text-caption text-primary/80 group-hover:text-primary leading-relaxed transition-colors">
+                      <span className="text-secondary font-number text-caption mr-2">
+                        {item.time}
+                      </span>
                       {item.title}
                     </p>
                     {item.aiNote && (
-                      <p className="text-brand/70 text-caption mt-1 text-caption">
+                      <p className="text-brand/70 text-caption text-caption mt-1">
                         → {item.aiNote}
                       </p>
                     )}
@@ -174,21 +185,25 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   }
 
   return (
-    <div className="bg-surface border-hairline rounded-lg flex h-full min-h-0 flex-col overflow-hidden border">
+    <div className="bg-surface border-hairline flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-caption text-secondary font-number tracking-wider uppercase">
             📡 实时资讯
           </span>
-          <select
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="bg-canvas border-hairline rounded-lg text-caption text-secondary cursor-pointer border px-2 py-0.5 font-number outline-none"
-          >
-            <option value="all">全部</option>
-            <option value="cls">财联社</option>
-            <option value="jiuyan">韭研公社</option>
-          </select>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger
+              size="sm"
+              className="bg-canvas border-hairline text-caption font-number text-secondary"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="cls">财联社</SelectItem>
+              <SelectItem value="jiuyan">韭研公社</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <span className="text-caption text-secondary font-number">{filteredNews.length} 条</span>
       </div>
@@ -198,12 +213,9 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         ) : error && !allItems.length ? (
           <div className="py-8 text-center">
             <p className="text-caption text-up mb-3">资讯加载失败</p>
-            <button
-              onClick={() => refetch()}
-              className="border-hairline text-secondary cursor-pointer rounded border px-4 py-2 text-caption transition-colors hover:text-primary"
-            >
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
               重试
-            </button>
+            </Button>
           </div>
         ) : (
           <>

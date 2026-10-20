@@ -4,7 +4,7 @@
 // session. Each connection independently processes events into its own turn
 // list. Connections are created/removed as the sessionIds array changes.
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { applyEvent, historyToTurns } from "./reducer"
 import type { HistoryMessage, PromptImage, TranscriptEvent, TranscriptTurn } from "./types"
 import { getApiBaseUrl } from "@/stores/data"
@@ -52,6 +52,27 @@ function createConnectionState(): ConnectionState {
   }
 }
 
+function teardownConnection(conn: ConnectionState) {
+  if (conn.ws) {
+    conn.ws.onopen = null
+    conn.ws.onclose = null
+    conn.ws.onmessage = null
+    conn.ws.onerror = null
+    if (conn.ws.readyState === WebSocket.OPEN || conn.ws.readyState === WebSocket.CONNECTING) {
+      conn.ws.close()
+    }
+    conn.ws = null
+  }
+  if (conn.reconnectTimer) {
+    clearTimeout(conn.reconnectTimer)
+    conn.reconnectTimer = null
+  }
+  // Resolve any pending waitForReady promise so callers don't hang forever.
+  conn.readyResolve?.()
+  conn.readyResolve = null
+  conn.readyState = ReadyState.CLOSED
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────
 
 export interface UseMultiAgentWebSocketOptions {
@@ -63,7 +84,7 @@ export interface UseMultiAgentWebSocketOptions {
 
 export function useMultiAgentWebSocket(
   sessionIds: string[],
-  options: UseMultiAgentWebSocketOptions = {},
+  options: UseMultiAgentWebSocketOptions = {}
 ) {
   const connectionsRef = useRef<Map<string, ConnectionState>>(new Map())
   const optionsRef = useRef(options)
@@ -77,116 +98,9 @@ export function useMultiAgentWebSocket(
   // Track previous sessionIds to detect actual changes.
   const prevSessionIdsRef = useRef<string[]>([])
 
-  function teardownConnection(_sid: string, conn: ConnectionState) {
-    if (conn.ws) {
-      conn.ws.onopen = null
-      conn.ws.onclose = null
-      conn.ws.onmessage = null
-      conn.ws.onerror = null
-      if (conn.ws.readyState === WebSocket.OPEN || conn.ws.readyState === WebSocket.CONNECTING) {
-        conn.ws.close()
-      }
-      conn.ws = null
-    }
-    if (conn.reconnectTimer) {
-      clearTimeout(conn.reconnectTimer)
-      conn.reconnectTimer = null
-    }
-    // Resolve any pending waitForReady promise so callers don't hang forever.
-    conn.readyResolve?.()
-    conn.readyResolve = null
-    conn.readyState = ReadyState.CLOSED
-  }
-
-  function connectSession(sid: string, conn: ConnectionState) {
-    if (!mountedRef.current) return
-
-    const lastSeqParam = conn.lastSeq > 0 ? `&lastSeq=${conn.lastSeq}` : ""
-    const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sid}${lastSeqParam}`
-    conn.readyState = ReadyState.CONNECTING
-
-    const ws = new WebSocket(url)
-    conn.ws = ws
-
-    ws.onopen = () => {
-      if (!mountedRef.current || ws !== conn.ws) return
-      conn.readyState = ReadyState.OPEN
-      conn.reconnectCount = 0
-      conn.readyResolve?.()
-      conn.readyResolve = null
-      // Cold start (lastSeq===0): load full history via REST, then accept all
-      // live events (dedup off). Reconnect (lastSeq>0): the server replays
-      // the gap from its ring buffer, so skip fetchHistory and dedup by seq.
-      if (conn.lastSeq === 0) {
-        fetchHistory(sid, conn)
-      }
-    }
-
-    ws.onclose = () => {
-      if (!mountedRef.current || ws !== conn.ws) return
-      conn.readyState = ReadyState.CLOSED
-
-      // Auto-reconnect with exponential backoff
-      const maxAttempts = 20
-      if (conn.reconnectCount < maxAttempts) {
-        const delay = Math.min(1000 * Math.pow(1.5, conn.reconnectCount), 30000)
-        conn.reconnectCount++
-        // Clear any previous timer before setting a new one (prevents duplicate
-        // reconnects when onclose fires multiple times).
-        if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
-        conn.reconnectTimer = setTimeout(() => {
-          // Check ws !== conn.ws: if the connection was torn down and recreated
-          // during the delay, this stale timer must not start a new connection.
-          if (mountedRef.current && ws === conn.ws) connectSession(sid, conn)
-        }, delay)
-      }
-    }
-
-    ws.onerror = () => {
-      // onclose will fire after this
-    }
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (!mountedRef.current || ws !== conn.ws) return
-      try {
-        const parsed = JSON.parse(event.data) as Record<string, unknown>
-        // Resync signal: gap too large to replay — reset and reload full
-        // history. Advance lastSeq past this signal and bail.
-        if (
-          parsed.kind === "session" &&
-          parsed.type === "resync_required"
-        ) {
-          conn.turns = []
-          optionsRef.current.onTurnsUpdate?.(sid, [])
-          fetchHistory(sid, conn)
-          const seq = Number(parsed.seq)
-          if (Number.isFinite(seq) && seq > 0) conn.lastSeq = seq
-          return
-        }
-        // Dedup by seq: drop events already seen (overlap of replay + live,
-        // or a duplicate after reconnect). seq=0 (out-of-band, e.g. session
-        // create-failure) is always accepted — it bypasses dedup.
-        const seq = Number(parsed.seq)
-        if (Number.isFinite(seq) && seq > 0) {
-          if (seq <= conn.lastSeq) return
-          conn.lastSeq = seq
-        }
-        const prev = conn.turns
-        const { turns: newTurns, terminal } = applyEvent(prev, parsed as TranscriptEvent)
-        conn.turns = newTurns
-        optionsRef.current.onTurnsUpdate?.(sid, [...newTurns])
-        if (terminal) {
-          optionsRef.current.onTerminal?.(sid)
-        }
-      } catch {
-        // Ignore parse errors for malformed messages
-      }
-    }
-  }
-
   // ── History loading ────────────────────────────────────────────────────
 
-  async function fetchHistory(sid: string, conn: ConnectionState) {
+  const fetchHistory = useCallback(async (sid: string, conn: ConnectionState) => {
     try {
       const base = getApiBaseUrl()
       const res = await fetch(`${base}/api/ai/sessions/${sid}/messages`)
@@ -208,7 +122,101 @@ export function useMultiAgentWebSocket(
     } catch {
       // History loading is best-effort; live events will still arrive.
     }
-  }
+  }, [])
+
+  // `connectSession` reconnects itself from inside `onclose`, so keep a ref to
+  // the latest stable callback instead of putting it in its own dependency list.
+  const connectSessionRef = useRef<(sid: string, conn: ConnectionState) => void>(() => {})
+
+  const connectSession = useCallback(
+    (sid: string, conn: ConnectionState) => {
+      if (!mountedRef.current) return
+
+      const lastSeqParam = conn.lastSeq > 0 ? `&lastSeq=${conn.lastSeq}` : ""
+      const url = `${wsBaseUrl()}/api/ai/sessions/ws?id=${sid}${lastSeqParam}`
+      conn.readyState = ReadyState.CONNECTING
+
+      const ws = new WebSocket(url)
+      conn.ws = ws
+
+      ws.onopen = () => {
+        if (!mountedRef.current || ws !== conn.ws) return
+        conn.readyState = ReadyState.OPEN
+        conn.reconnectCount = 0
+        conn.readyResolve?.()
+        conn.readyResolve = null
+        // Cold start (lastSeq===0): load full history via REST, then accept all
+        // live events (dedup off). Reconnect (lastSeq>0): the server replays
+        // the gap from its ring buffer, so skip fetchHistory and dedup by seq.
+        if (conn.lastSeq === 0) {
+          fetchHistory(sid, conn)
+        }
+      }
+
+      ws.onclose = () => {
+        if (!mountedRef.current || ws !== conn.ws) return
+        conn.readyState = ReadyState.CLOSED
+
+        // Auto-reconnect with exponential backoff
+        const maxAttempts = 20
+        if (conn.reconnectCount < maxAttempts) {
+          const delay = Math.min(1000 * Math.pow(1.5, conn.reconnectCount), 30000)
+          conn.reconnectCount++
+          // Clear any previous timer before setting a new one (prevents duplicate
+          // reconnects when onclose fires multiple times).
+          if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
+          conn.reconnectTimer = setTimeout(() => {
+            // Check ws !== conn.ws: if the connection was torn down and recreated
+            // during the delay, this stale timer must not start a new connection.
+            if (mountedRef.current && ws === conn.ws) connectSessionRef.current(sid, conn)
+          }, delay)
+        }
+      }
+
+      ws.onerror = () => {
+        // onclose will fire after this
+      }
+
+      ws.onmessage = (event: MessageEvent) => {
+        if (!mountedRef.current || ws !== conn.ws) return
+        try {
+          const parsed = JSON.parse(event.data) as Record<string, unknown>
+          // Resync signal: gap too large to replay — reset and reload full
+          // history. Advance lastSeq past this signal and bail.
+          if (parsed.kind === "session" && parsed.type === "resync_required") {
+            conn.turns = []
+            optionsRef.current.onTurnsUpdate?.(sid, [])
+            fetchHistory(sid, conn)
+            const seq = Number(parsed.seq)
+            if (Number.isFinite(seq) && seq > 0) conn.lastSeq = seq
+            return
+          }
+          // Dedup by seq: drop events already seen (overlap of replay + live,
+          // or a duplicate after reconnect). seq=0 (out-of-band, e.g. session
+          // create-failure) is always accepted — it bypasses dedup.
+          const seq = Number(parsed.seq)
+          if (Number.isFinite(seq) && seq > 0) {
+            if (seq <= conn.lastSeq) return
+            conn.lastSeq = seq
+          }
+          const prev = conn.turns
+          const { turns: newTurns, terminal } = applyEvent(prev, parsed as TranscriptEvent)
+          conn.turns = newTurns
+          optionsRef.current.onTurnsUpdate?.(sid, [...newTurns])
+          if (terminal) {
+            optionsRef.current.onTerminal?.(sid)
+          }
+        } catch {
+          // Ignore parse errors for malformed messages
+        }
+      }
+    },
+    [fetchHistory]
+  )
+
+  useEffect(() => {
+    connectSessionRef.current = connectSession
+  }, [connectSession])
 
   // Sync connections when sessionIds actually change.
   //
@@ -232,7 +240,10 @@ export function useMultiAgentWebSocket(
     if (desired.size === previous.size) {
       let same = true
       for (const sid of desired) {
-        if (!previous.has(sid)) { same = false; break }
+        if (!previous.has(sid)) {
+          same = false
+          break
+        }
       }
       if (same) return
     }
@@ -240,7 +251,7 @@ export function useMultiAgentWebSocket(
     // Disconnect sessions no longer in the list
     for (const [sid, conn] of connections) {
       if (!desired.has(sid)) {
-        teardownConnection(sid, conn)
+        teardownConnection(conn)
         connections.delete(sid)
       }
     }
@@ -253,18 +264,21 @@ export function useMultiAgentWebSocket(
         connectSession(sid, conn)
       }
     }
-  }, [sessionIds])
+  }, [sessionIds, connectSession])
 
   // Unmount-only cleanup: tear down all connections when the component
   // unmounts. This is a separate effect with [] deps so it only runs once
   // on mount and cleans up on unmount — never on intermediate re-renders.
   useEffect(() => {
+    // Capture the map once so the cleanup closes over the same instance even
+    // if the ref is reassigned during teardown.
+    const connections = connectionsRef.current
     return () => {
       mountedRef.current = false
-      for (const [sid, conn] of connectionsRef.current) {
-        teardownConnection(sid, conn)
+      for (const conn of connections.values()) {
+        teardownConnection(conn)
       }
-      connectionsRef.current.clear()
+      connections.clear()
     }
   }, [])
 
@@ -275,15 +289,18 @@ export function useMultiAgentWebSocket(
   // Create the connection on demand if it's missing (e.g. sendPrompt raced
   // ahead of the sessionIds effect, or the connection was torn down). Makes
   // the send path self-healing instead of throwing "Session not found".
-  const ensureConnection = useCallback((sid: string) => {
-    let conn = connectionsRef.current.get(sid)
-    if (!conn) {
-      conn = createConnectionState()
-      connectionsRef.current.set(sid, conn)
-      connectSession(sid, conn)
-    }
-    return conn
-  }, [])
+  const ensureConnection = useCallback(
+    (sid: string) => {
+      let conn = connectionsRef.current.get(sid)
+      if (!conn) {
+        conn = createConnectionState()
+        connectionsRef.current.set(sid, conn)
+        connectSession(sid, conn)
+      }
+      return conn
+    },
+    [connectSession]
+  )
 
   const waitForReady = useCallback(async (sid: string): Promise<void> => {
     // Poll until the connection exists (may not be created yet if the
@@ -319,12 +336,10 @@ export function useMultiAgentWebSocket(
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
       if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
-        conn.ws.send(
-          JSON.stringify({ type: "prompt", text, images: images ?? [] }),
-        )
+        conn.ws.send(JSON.stringify({ type: "prompt", text, images: images ?? [] }))
       }
     },
-    [ensureConnection, waitForReady],
+    [ensureConnection, waitForReady]
   )
 
   const interrupt = useCallback(
@@ -336,7 +351,7 @@ export function useMultiAgentWebSocket(
         conn.ws.send(JSON.stringify({ type: "interrupt" }))
       }
     },
-    [ensureConnection, waitForReady],
+    [ensureConnection, waitForReady]
   )
 
   const respondToPermission = useCallback(
@@ -348,7 +363,7 @@ export function useMultiAgentWebSocket(
         conn.ws.send(JSON.stringify({ type: "permission_response", id, approved }))
       }
     },
-    [ensureConnection, waitForReady],
+    [ensureConnection, waitForReady]
   )
 
   const getTurns = useCallback((sid: string): TranscriptTurn[] => {
@@ -362,18 +377,24 @@ export function useMultiAgentWebSocket(
   /** Explicitly load history messages for a session from the REST API.
    *  Useful when switching to an already-connected session whose history
    *  was loaded only once during WebSocket onopen. */
-  const loadHistory = useCallback(async (sid: string): Promise<void> => {
-    const conn = connectionsRef.current.get(sid)
-    if (!conn) return
-    await fetchHistory(sid, conn)
-  }, [])
+  const loadHistory = useCallback(
+    async (sid: string): Promise<void> => {
+      const conn = connectionsRef.current.get(sid)
+      if (!conn) return
+      await fetchHistory(sid, conn)
+    },
+    [fetchHistory]
+  )
 
-  return {
-    sendPrompt,
-    interrupt,
-    respondToPermission,
-    getTurns,
-    isReady,
-    loadHistory,
-  }
+  return useMemo(
+    () => ({
+      sendPrompt,
+      interrupt,
+      respondToPermission,
+      getTurns,
+      isReady,
+      loadHistory,
+    }),
+    [sendPrompt, interrupt, respondToPermission, getTurns, isReady, loadHistory]
+  )
 }

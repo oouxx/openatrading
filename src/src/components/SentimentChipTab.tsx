@@ -1,5 +1,6 @@
 import { useMemo } from "react"
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
+import { motionTransition } from "@/lib/motion"
 import { type SentimentHistoryDay } from "@/stores/data"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { useOverview } from "@/hooks/query/useOverview"
@@ -111,10 +112,10 @@ export default function SentimentChipTab() {
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <motion.div
-          className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg border"
+          className="bg-surface border-hairline-dark p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={motionTransition.slow}
         >
           <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
             市场情绪周期判断
@@ -126,7 +127,7 @@ export default function SentimentChipTab() {
               <div className="flex items-center gap-3">
                 <span className="text-caption text-secondary">当前：</span>
                 <span
-                  className={`text-caption rounded-full px-3 py-1 font-number ${currentPhaseClass}`}
+                  className={`text-caption font-number rounded-full px-3 py-1 ${currentPhaseClass}`}
                 >
                   {currentPhaseLabel}
                 </span>
@@ -149,10 +150,10 @@ export default function SentimentChipTab() {
 
         {/* 市场筹码结构分析 */}
         <motion.div
-          className="bg-surface-dark border-hairline-dark p-card-inner rounded-lg border"
+          className="bg-surface border-hairline-dark p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={motionTransition.slow}
         >
           <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
             市场筹码结构分析
@@ -195,10 +196,10 @@ export default function SentimentChipTab() {
 
       {/* 情绪历史表格 */}
       <motion.div
-        className="bg-surface-dark border-hairline-dark rounded-lg overflow-hidden border"
+        className="bg-surface border-hairline-dark overflow-hidden rounded-lg border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.15 }}
+        transition={{ ...motionTransition.slow, delay: 0.15 }}
       >
         <div className="border-hairline-dark p-card-inner border-b">
           <h3 className="text-caption text-secondary tracking-wider uppercase">
@@ -212,10 +213,10 @@ export default function SentimentChipTab() {
             <thead>
               <tr>
                 <th>日期</th>
-                <th style={{ textAlign: "right" }}>情绪值</th>
-                <th style={{ textAlign: "right" }}>涨停数</th>
-                <th style={{ textAlign: "right" }}>炸板率</th>
-                <th style={{ textAlign: "right" }}>涨跌比</th>
+                <th className="text-right">情绪值</th>
+                <th className="text-right">涨停数</th>
+                <th className="text-right">炸板率</th>
+                <th className="text-right">涨跌比</th>
                 <th>市场特征</th>
               </tr>
             </thead>
@@ -224,13 +225,13 @@ export default function SentimentChipTab() {
                 <tr key={row.date}>
                   <td className="font-number">{row.date}</td>
                   <td
-                    className={`text-right font-number ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
+                    className={`font-number text-right ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
                   >
                     {row.sentiment.toFixed(1)}
                   </td>
-                  <td className="text-right font-number">{row.limit_up_count}</td>
-                  <td className="text-right font-number">{row.bomb_rate.toFixed(1)}%</td>
-                  <td className="text-right font-number">{row.rise_ratio.toFixed(2)}</td>
+                  <td className="font-number text-right">{row.limit_up_count}</td>
+                  <td className="font-number text-right">{row.bomb_rate.toFixed(1)}%</td>
+                  <td className="font-number text-right">{row.rise_ratio.toFixed(2)}</td>
                   <td>{getFeature(row)}</td>
                 </tr>
               ))}

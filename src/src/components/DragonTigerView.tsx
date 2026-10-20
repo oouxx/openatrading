@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback } from "react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import {
   useDragonTigerDetail,
   useDragonTigerStockSeat,
   type DragonTigerDetailItem,
 } from "@/hooks/query/useDragonTiger"
-
-function fmtCap(v: number): string {
-  if (v >= 1e12) return (v / 1e12).toFixed(2) + "万亿"
-  if (v >= 1e8) return (v / 1e8).toFixed(0) + "亿"
-  return v.toFixed(0)
-}
+import { formatCompactNumber } from "@/lib/format"
 
 export default function DragonTigerView() {
   const [page, setPage] = useState(1)
@@ -74,7 +78,7 @@ export default function DragonTigerView() {
         className="bg-canvas flex min-h-screen items-center justify-center pt-11"
         style={{ height: "calc(100vh - 44px)" }}
       >
-        <div className="text-secondary flex items-center gap-3 text-caption">
+        <div className="text-secondary text-caption flex items-center gap-3">
           <span className="bg-brand size-2 animate-pulse rounded-full" />
           加载龙虎榜数据...
         </div>
@@ -146,38 +150,38 @@ export default function DragonTigerView() {
               key={s.l}
               className={`bg-surface rounded-lg border px-4 py-4 text-center ${s.hl ? "border-brand bg-brand/5" : "border-hairline"}`}
             >
-              <div className="text-secondary mb-1 text-caption tracking-wider uppercase">{s.l}</div>
+              <div className="text-secondary text-caption mb-1 tracking-wider uppercase">{s.l}</div>
               <div
-                className="font-number text-h1 font-semibold text-primary"
+                className="font-number text-h1 text-primary font-semibold"
                 style={s.cl ? { color: s.cl } : undefined}
               >
                 {s.v}
               </div>
-              {s.s && <div className="text-secondary mt-0.5 text-caption">{s.s}</div>}
+              {s.s && <div className="text-secondary text-caption mt-0.5">{s.s}</div>}
             </div>
           ))}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
           <div className="bg-surface border-hairline order-2 overflow-hidden rounded-lg border md:order-0">
-            <div className="border-hairline border-b px-4 py-3 text-caption font-medium text-primary">
+            <div className="border-hairline text-caption text-primary border-b px-4 py-3 font-medium">
               筛选
             </div>
             <div className="p-3">
               <div className="mb-3">
-                <div className="text-secondary mb-2 text-caption font-semibold tracking-wider uppercase">
+                <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
                   搜索
                 </div>
-                <input
+                <Input
                   type="text"
                   placeholder="名称或代码…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border px-3 py-2 text-caption text-primary transition-colors outline-none"
+                  className="bg-canvas border-hairline focus-visible:border-brand text-caption"
                 />
               </div>
               <div>
-                <div className="text-secondary mb-2 text-caption font-semibold tracking-wider uppercase">
+                <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
                   净买卖
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -194,13 +198,15 @@ export default function DragonTigerView() {
                           ? "bg-down border-down text-primary"
                           : "bg-brand border-brand text-primary"
                     return (
-                      <button
+                      <Button
                         key={d}
+                        variant="outline"
+                        size="xs"
                         onClick={() => setDirFilter(d)}
-                        className={`cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors ${dirFilter === d ? activeCls : "border-hairline text-secondary hover:text-primary"}`}
+                        className={`text-caption h-auto px-3 py-1 ${dirFilter === d ? activeCls : "border-hairline text-secondary hover:text-primary"}`}
                       >
                         {labels[d]}
-                      </button>
+                      </Button>
                     )
                   })}
                 </div>
@@ -210,13 +216,13 @@ export default function DragonTigerView() {
 
           <div className="bg-surface border-hairline order-1 overflow-hidden rounded-lg border md:order-0">
             <div className="border-hairline flex items-center justify-between gap-3 border-b px-4 py-3">
-              <h3 className="text-caption font-medium text-primary">龙虎榜上榜个股</h3>
+              <h3 className="text-caption text-primary font-medium">龙虎榜上榜个股</h3>
               <span className="text-secondary text-caption">
                 第{page}/{totalPages}页 · {total} 只
               </span>
             </div>
             <div className="overflow-auto" style={{ maxHeight: "62vh" }}>
-              <table className="w-full border-collapse" >
+              <table className="w-full border-collapse">
                 <thead>
                   <tr>
                     <th style={th}>名称</th>
@@ -249,10 +255,18 @@ export default function DragonTigerView() {
                           onClick={() => setSelected(selected?.code === s.code ? null : s)}
                         >
                           <td style={td}>
-                            <span className="text-brand cursor-pointer font-medium hover:underline">
+                            <button
+                              type="button"
+                              aria-expanded={selected?.code === s.code}
+                              className="text-brand cursor-pointer font-medium hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelected(selected?.code === s.code ? null : s)
+                              }}
+                            >
                               {s.name}
-                            </span>
-                            <span className="text-secondary ml-1 text-caption">{s.code}</span>
+                            </button>
+                            <span className="text-secondary text-caption ml-1">{s.code}</span>
                           </td>
                           <td style={td}>
                             <span
@@ -271,7 +285,7 @@ export default function DragonTigerView() {
                             </span>
                           </td>
                           <td style={td}>
-                            <span className="text-secondary inline-block max-w-[200px] text-caption whitespace-normal">
+                            <span className="text-secondary text-caption inline-block max-w-[200px] whitespace-normal">
                               {s.explanation || "—"}
                             </span>
                           </td>
@@ -284,13 +298,15 @@ export default function DragonTigerView() {
             </div>
             {totalPages > 1 && (
               <div className="border-hairline flex items-center justify-center gap-2 border-t px-4 py-3">
-                <button
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={goPrev}
                   disabled={page <= 1}
-                  className="border-hairline text-secondary cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                  className="text-caption h-auto px-3 py-1"
                 >
                   上一页
-                </button>
+                </Button>
                 {(() => {
                   const pages: (number | "...")[] = []
                   const maxVisible = 5
@@ -307,27 +323,31 @@ export default function DragonTigerView() {
                   }
                   return pages.map((p, i) =>
                     p === "..." ? (
-                      <span key={`e${i}`} className="text-secondary px-1 text-caption">
+                      <span key={`e${i}`} className="text-secondary text-caption px-1">
                         ...
                       </span>
                     ) : (
-                      <button
+                      <Button
                         key={p}
+                        variant="outline"
+                        size="xs"
                         onClick={() => goPage(p)}
-                        className={`cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors ${page === p ? "border-brand bg-brand text-primary" : "border-hairline text-secondary hover:text-primary"}`}
+                        className={`text-caption h-auto px-3 py-1 ${page === p ? "border-brand bg-brand text-primary hover:bg-brand hover:text-primary" : "border-hairline text-secondary hover:text-primary"}`}
                       >
                         {p}
-                      </button>
+                      </Button>
                     )
                   )
                 })()}
-                <button
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={goNext}
                   disabled={page >= totalPages}
-                  className="border-hairline text-secondary cursor-pointer rounded-lg border px-3 py-1 text-caption transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                  className="text-caption h-auto px-3 py-1"
                 >
                   下一页
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -335,29 +355,23 @@ export default function DragonTigerView() {
 
         {/* Detail Modal */}
         {selected && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-5"
-            style={{ background: "rgba(0,0,0,0.35)" }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setSelected(null)
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setSelected(null)
             }}
           >
-            <div className="bg-surface border-hairline flex max-h-[90vh] w-modal-lg max-w-[95vw] flex-col overflow-hidden rounded-lg border shadow-modal">
-              <div className="border-hairline flex shrink-0 items-center justify-between border-b px-5 py-4">
-                <span className="text-h2 font-medium text-primary">
+            <DialogContent className="bg-surface border-hairline w-modal-lg shadow-modal flex max-h-[90vh] max-w-[95vw] flex-col gap-0 overflow-hidden rounded-lg border p-0 sm:max-w-[95vw]">
+              <DialogHeader className="border-hairline flex shrink-0 flex-row items-center border-b px-5 py-4">
+                <DialogTitle className="text-h2 text-primary pr-10 font-medium">
                   {selected.name} ({selected.code})
-                </span>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="text-secondary cursor-pointer rounded-md px-2 py-0.5 text-h1 hover:text-primary"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-5">
+                </DialogTitle>
+                <DialogDescription className="sr-only">龙虎榜个股详情</DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {selected.explanation && (
                   <div className="mb-4">
-                    <h4 className="mb-2 text-caption font-medium text-primary">上榜原因</h4>
+                    <h4 className="text-caption text-primary mb-2 font-medium">上榜原因</h4>
                     <p className="text-secondary text-caption">{selected.explanation}</p>
                   </div>
                 )}
@@ -378,13 +392,15 @@ export default function DragonTigerView() {
                     },
                     {
                       l: "流通市值",
-                      v: selected.free_market_cap ? fmtCap(selected.free_market_cap) : "—",
+                      v: selected.free_market_cap
+                        ? formatCompactNumber(selected.free_market_cap)
+                        : "—",
                     },
                   ].map((m) => (
                     <div key={m.l} className="bg-ink-dim rounded-lg px-3 py-2 text-center">
                       <div className="text-secondary text-caption">{m.l}</div>
                       <div
-                        className={`font-number text-caption font-semibold ${m.up ? "text-up" : (m as any).down ? "text-down" : "text-primary"}`}
+                        className={`font-number text-caption font-semibold ${m.up ? "text-up" : "text-primary"}`}
                       >
                         {m.v}
                       </div>
@@ -394,16 +410,16 @@ export default function DragonTigerView() {
                 {buyLoading || sellLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <span className="bg-brand size-2 animate-pulse rounded-full" />
-                    <span className="text-secondary ml-2 text-caption">加载席位数据...</span>
+                    <span className="text-secondary text-caption ml-2">加载席位数据...</span>
                   </div>
                 ) : (
                   <>
                     {buySeats.length > 0 && (
                       <div className="mb-4">
-                        <h4 className="text-up mb-2 text-caption font-medium">
+                        <h4 className="text-up text-caption mb-2 font-medium">
                           买方席位 ({buySeats.length})
                         </h4>
-                        <table className="w-full border-collapse text-caption">
+                        <table className="text-caption w-full border-collapse">
                           <thead>
                             <tr>
                               <th style={th}>营业部</th>
@@ -417,7 +433,7 @@ export default function DragonTigerView() {
                                 <td style={td}>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
-                                    <span className="bg-up/10 text-up ml-1 rounded px-2 py-0.5 text-caption">
+                                    <span className="bg-up/10 text-up text-caption ml-1 rounded px-2 py-0.5">
                                       机构
                                     </span>
                                   ) : null}
@@ -447,10 +463,10 @@ export default function DragonTigerView() {
                     )}
                     {sellSeats.length > 0 && (
                       <div className="mb-4">
-                        <h4 className="text-down mb-2 text-caption font-medium">
+                        <h4 className="text-down text-caption mb-2 font-medium">
                           卖方席位 ({sellSeats.length})
                         </h4>
-                        <table className="w-full border-collapse text-caption">
+                        <table className="text-caption w-full border-collapse">
                           <thead>
                             <tr>
                               <th style={th}>营业部</th>
@@ -464,7 +480,7 @@ export default function DragonTigerView() {
                                 <td style={td}>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
-                                    <span className="bg-up/10 text-up ml-1 rounded px-2 py-0.5 text-caption">
+                                    <span className="bg-up/10 text-up text-caption ml-1 rounded px-2 py-0.5">
                                       机构
                                     </span>
                                   ) : null}
@@ -498,7 +514,7 @@ export default function DragonTigerView() {
                 )}
                 {selected.d1_chg != null && (
                   <div className="mb-4">
-                    <h4 className="mb-2 text-caption font-medium text-primary">上榜后表现</h4>
+                    <h4 className="text-caption text-primary mb-2 font-medium">上榜后表现</h4>
                     <div className="grid grid-cols-4 gap-2">
                       {[
                         { l: "T+1", v: selected.d1_chg },
@@ -523,8 +539,8 @@ export default function DragonTigerView() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </>

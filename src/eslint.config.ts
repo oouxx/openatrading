@@ -1,23 +1,18 @@
-import { defineConfig } from "eslint/config";
-import js from "@eslint/js";
-import globals from "globals";
-import tseslint from "typescript-eslint";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
-import prettier from "eslint-config-prettier";
+import { defineConfig } from "eslint/config"
+import type { ESLint } from "eslint"
+import js from "@eslint/js"
+import globals from "globals"
+import tseslint from "typescript-eslint"
+import reactHooks from "eslint-plugin-react-hooks"
+import reactRefresh from "eslint-plugin-react-refresh"
+import prettier from "eslint-config-prettier"
 
 export default defineConfig([
   // ----------------------------
   // 忽略
   // ----------------------------
   {
-    ignores: [
-      "dist",
-      "node_modules",
-      "coverage",
-      ".vite",
-      "src-tauri/target",
-    ],
+    ignores: ["dist", "node_modules", "coverage", ".vite", "src-tauri/target"],
   },
 
   // ----------------------------
@@ -43,8 +38,8 @@ export default defineConfig([
     },
 
     plugins: {
-      "react-hooks": reactHooks as any,
-      "react-refresh": reactRefresh as any,
+      "react-hooks": reactHooks as unknown as ESLint.Plugin,
+      "react-refresh": reactRefresh as unknown as ESLint.Plugin,
     },
 
     rules: {
@@ -52,13 +47,10 @@ export default defineConfig([
       ...reactHooks.configs.recommended.rules,
 
       // React Fast Refresh
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
 
       // TypeScript 常用约束
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
 
       "@typescript-eslint/no-unused-vars": [
         "warn",
@@ -71,6 +63,17 @@ export default defineConfig([
 
       "@typescript-eslint/no-empty-object-type": "warn",
       "@typescript-eslint/no-require-imports": "error",
+    },
+  },
+
+  // ----------------------------
+  // shadcn 生成的基础组件
+  // 这些文件按设计会同时导出组件、variants 和 hook，Fast Refresh 规则不适用。
+  // ----------------------------
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
 
@@ -90,4 +93,4 @@ export default defineConfig([
   // Prettier（必须最后）
   // ----------------------------
   prettier,
-]);
+])

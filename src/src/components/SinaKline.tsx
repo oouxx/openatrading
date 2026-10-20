@@ -12,54 +12,7 @@
  *   https://image.sinajs.cn/newchart/{period}/n/{normalizedSymbol}.gif
  */
 
-function normalizeSymbol(raw: string): string {
-  const dot = raw.indexOf(".")
-  if (dot !== -1) {
-    const code = raw.substring(0, dot)
-    let suffix = raw.substring(dot + 1).toLowerCase()
-    if (suffix === "ss") suffix = "sh"
-    return suffix + code
-  }
-  return (
-    (raw.startsWith("6") || raw.startsWith("9")
-      ? "sh"
-      : raw.startsWith("0") || raw.startsWith("3")
-        ? "sz"
-        : "bj") + raw
-  )
-}
-
-function getKlineImageUrl(symbol: string, period: string): string {
-  const s = normalizeSymbol(symbol)
-  switch (period) {
-    case "minute":
-      return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-    case "day":
-      return `https://image.sinajs.cn/newchart/daily/n/${s}.gif`
-    case "week":
-      return `https://image.sinajs.cn/newchart/weekly/n/${s}.gif`
-    case "month":
-      return `https://image.sinajs.cn/newchart/monthly/n/${s}.gif`
-    default:
-      return `https://image.sinajs.cn/newchart/min/n/${s}.gif`
-  }
-}
-
-function getKlineImageUrlV5(symbol: string, period: string): string {
-  const s = normalizeSymbol(symbol)
-  switch (period) {
-    case "minute":
-      return `https://image.sinajs.cn/newchart/v5/min/n/${s}.gif`
-    case "day":
-      return `https://image.sinajs.cn/newchart/v5/daily/n/${s}.gif`
-    case "week":
-      return `https://image.sinajs.cn/newchart/v5/weekly/n/${s}.gif`
-    case "month":
-      return `https://image.sinajs.cn/newchart/v5/monthly/n/${s}.gif`
-    default:
-      return `https://image.sinajs.cn/newchart/v5/min/n/${s}.gif`
-  }
-}
+import { getKlineImageUrl, getKlineImageUrlV5 } from "@/lib/stock-utils"
 
 interface KlineImageFallbackProps {
   symbol: string
@@ -80,7 +33,7 @@ export default function KlineImageFallback({
     <img
       src={url}
       alt={`${name} K线图`}
-      className="rounded-lg w-full"
+      className="w-full rounded-lg"
       style={{ minHeight: 300, maxHeight: 420 }}
     />
   )

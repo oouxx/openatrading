@@ -38,7 +38,7 @@ function asResultString(v: unknown): string {
 function appendDelta(
   turns: TranscriptTurn[],
   blockType: "text" | "thinking",
-  delta: string,
+  delta: string
 ): TranscriptTurn[] {
   if (!delta) return turns
   const last = turns[turns.length - 1]
@@ -68,7 +68,11 @@ function appendDelta(
       break
     }
   }
-  if (idx >= 0 && blocks[idx].type === blockType && (blocks[idx] as { streaming: boolean }).streaming) {
+  if (
+    idx >= 0 &&
+    blocks[idx].type === blockType &&
+    (blocks[idx] as { streaming: boolean }).streaming
+  ) {
     const block = blocks[idx] as Extract<TranscriptBlock, { type: "text" | "thinking" }>
     const updated: TranscriptBlock = { ...block, content: block.content + delta }
     const nextBlocks = blocks.slice()
@@ -89,7 +93,7 @@ function appendDelta(
 function finalizeBlock(
   turns: TranscriptTurn[],
   blockType: "text" | "thinking",
-  content: string,
+  content: string
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
@@ -112,10 +116,7 @@ function finalizeBlock(
   if (!content) return turns
   return replaceLast(turns, {
     ...last,
-    blocks: [
-      ...last.blocks,
-      { type: blockType, id: newBlockId(), content, streaming: false },
-    ],
+    blocks: [...last.blocks, { type: blockType, id: newBlockId(), content, streaming: false }],
   })
 }
 
@@ -153,14 +154,16 @@ function appendToolCallDelta(turns: TranscriptTurn[], delta: string): Transcript
 
 function finalizeToolCall(
   turns: TranscriptTurn[],
-  toolCall: { id: string; name: string; arguments: unknown },
+  toolCall: { id: string; name: string; arguments: unknown }
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
   const blocks = last.blocks
   // First, try to find a block with the matching toolCall.id
   let idx = blocks.findIndex(
-    (b) => b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === toolCall.id,
+    (b) =>
+      b.type === "tool_call" &&
+      (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === toolCall.id
   )
   const args =
     typeof toolCall.arguments === "string"
@@ -169,18 +172,30 @@ function finalizeToolCall(
   if (idx >= 0) {
     const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
     const nextBlocks = blocks.slice()
-    nextBlocks[idx] = { ...tc, id: toolCall.id, name: toolCall.name || tc.name, input: args || tc.input, status: "running" }
+    nextBlocks[idx] = {
+      ...tc,
+      id: toolCall.id,
+      name: toolCall.name || tc.name,
+      input: args || tc.input,
+      status: "running",
+    }
     return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   // Not found by id — look for a placeholder block created by appendToolCallDelta
   // (which uses newBlockId() and has an empty name). Update it with the real id.
   idx = blocks.findIndex(
-    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name,
+    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name
   )
   if (idx >= 0) {
     const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
     const nextBlocks = blocks.slice()
-    nextBlocks[idx] = { ...tc, id: toolCall.id, name: toolCall.name, input: args || tc.input, status: "running" }
+    nextBlocks[idx] = {
+      ...tc,
+      id: toolCall.id,
+      name: toolCall.name,
+      input: args || tc.input,
+      status: "running",
+    }
     return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   return replaceLast(turns, {
@@ -195,13 +210,14 @@ function finalizeToolCall(
 function updateToolCall(
   turns: TranscriptTurn[],
   id: string,
-  patch: Partial<Extract<TranscriptBlock, { type: "tool_call" }>>,
+  patch: Partial<Extract<TranscriptBlock, { type: "tool_call" }>>
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") return turns
   const blocks = last.blocks
   const idx = blocks.findIndex(
-    (b) => b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === id,
+    (b) =>
+      b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === id
   )
   if (idx < 0) return turns
   const tc = blocks[idx] as Extract<TranscriptBlock, { type: "tool_call" }>
@@ -221,10 +237,7 @@ function replaceLast(turns: TranscriptTurn[], turn: TranscriptTurn): TranscriptT
 }
 
 function startTurn(turns: TranscriptTurn[]): TranscriptTurn[] {
-  return [
-    ...turns,
-    { id: newTurnId(), role: "assistant", status: "in_progress", blocks: [] },
-  ]
+  return [...turns, { id: newTurnId(), role: "assistant", status: "in_progress", blocks: [] }]
 }
 
 /** Mark all streaming blocks + the turn itself as complete. */
@@ -244,7 +257,7 @@ function appendSystemNotice(
   turns: TranscriptTurn[],
   kind: "compaction" | "retry" | "turn" | "notice",
   detail: string,
-  extra: Partial<Extract<TranscriptBlock, { type: "system_notice" }>> = {},
+  extra: Partial<Extract<TranscriptBlock, { type: "system_notice" }>> = {}
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") {
@@ -272,7 +285,7 @@ function appendSystemNotice(
 function updateSystemNotice(
   turns: TranscriptTurn[],
   kind: "compaction" | "retry",
-  patch: Partial<Extract<TranscriptBlock, { type: "system_notice" }>>,
+  patch: Partial<Extract<TranscriptBlock, { type: "system_notice" }>>
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last) return turns
@@ -281,7 +294,10 @@ function updateSystemNotice(
   let idx = -1
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]
-    if (b.type === "system_notice" && (b as Extract<TranscriptBlock, { type: "system_notice" }>).kind === kind) {
+    if (
+      b.type === "system_notice" &&
+      (b as Extract<TranscriptBlock, { type: "system_notice" }>).kind === kind
+    ) {
       idx = i
       break
     }
@@ -300,7 +316,7 @@ function addToolCall(
   turns: TranscriptTurn[],
   id: string,
   name: string,
-  input: string,
+  input: string
 ): TranscriptTurn[] {
   const last = turns[turns.length - 1]
   if (!last || last.status === "complete") {
@@ -319,18 +335,24 @@ function addToolCall(
   // If so, update it instead of adding a duplicate.
   const blocks = last.blocks
   const existing = blocks.findIndex(
-    (b) => b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === id,
+    (b) =>
+      b.type === "tool_call" && (b as Extract<TranscriptBlock, { type: "tool_call" }>).id === id
   )
   if (existing >= 0) {
     const tc = blocks[existing] as Extract<TranscriptBlock, { type: "tool_call" }>
     const nextBlocks = blocks.slice()
-    nextBlocks[existing] = { ...tc, name: name || tc.name, input: input || tc.input, status: "running" }
+    nextBlocks[existing] = {
+      ...tc,
+      name: name || tc.name,
+      input: input || tc.input,
+      status: "running",
+    }
     return replaceLast(turns, { ...last, blocks: nextBlocks })
   }
   // Not found by id — look for a placeholder block created by appendToolCallDelta
   // (which uses newBlockId() and has an empty name). Update it with the real id.
   const placeholder = blocks.findIndex(
-    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name,
+    (b) => b.type === "tool_call" && !(b as Extract<TranscriptBlock, { type: "tool_call" }>).name
   )
   if (placeholder >= 0) {
     const tc = blocks[placeholder] as Extract<TranscriptBlock, { type: "tool_call" }>
@@ -353,7 +375,10 @@ function startTurnIfIdle(turns: TranscriptTurn[]): TranscriptTurn[] {
 // ── Session (AgentSessionEvent) handling ──────────────────────────────────
 
 /** @returns `true` when the event is terminal (agent turn fully ended, no retry). */
-export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
+export function applySessionEvent(
+  turns: TranscriptTurn[],
+  e: SessionEvent
+): {
   turns: TranscriptTurn[]
   terminal: boolean
 } {
@@ -392,11 +417,18 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
           return { turns, terminal: false }
         case "error": {
           const msg = sub.error?.errorMessage ?? "unknown error"
-          return { turns: appendSystemNotice(turns, "notice", msg, { isError: true, status: "error" }), terminal: false }
+          return {
+            turns: appendSystemNotice(turns, "notice", msg, { isError: true, status: "error" }),
+            terminal: false,
+          }
         }
         case "done": {
           const err = sub.message?.errorMessage
-          if (err) return { turns: appendSystemNotice(turns, "notice", err, { isError: true, status: "error" }), terminal: false }
+          if (err)
+            return {
+              turns: appendSystemNotice(turns, "notice", err, { isError: true, status: "error" }),
+              terminal: false,
+            }
           if (sub.content) {
             return { turns: finalizeBlock(turns, "text", sub.content), terminal: false }
           }
@@ -407,17 +439,26 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
       }
     }
     case "tool_execution_start":
-      return { turns: addToolCall(turns, e.tool_call_id ?? "", e.tool_name ?? "", asResultString(e.args)), terminal: false }
+      return {
+        turns: addToolCall(turns, e.tool_call_id ?? "", e.tool_name ?? "", asResultString(e.args)),
+        terminal: false,
+      }
     case "tool_execution_update":
-      return { turns: updateToolCall(turns, e.tool_call_id ?? "", {
-        partialResult: asResultString(e.partial_result),
-        status: "running",
-      }), terminal: false }
+      return {
+        turns: updateToolCall(turns, e.tool_call_id ?? "", {
+          partialResult: asResultString(e.partial_result),
+          status: "running",
+        }),
+        terminal: false,
+      }
     case "tool_execution_end":
-      return { turns: updateToolCall(turns, e.tool_call_id ?? "", {
-        result: asResultString(e.result),
-        status: e.is_error ? "error" : "done",
-      }), terminal: false }
+      return {
+        turns: updateToolCall(turns, e.tool_call_id ?? "", {
+          result: asResultString(e.result),
+          status: e.is_error ? "error" : "done",
+        }),
+        terminal: false,
+      }
     case "message_start":
     case "message_end":
       // Message boundaries are handled via message_update sub-types; no
@@ -508,7 +549,8 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
     case "notice": {
       let next = turns
       if (e.is_error) {
-        if (e.text) next = appendSystemNotice(next, "notice", e.text, { isError: true, status: "error" })
+        if (e.text)
+          next = appendSystemNotice(next, "notice", e.text, { isError: true, status: "error" })
       } else {
         if (e.text) next = appendSystemNotice(next, "notice", e.text, { status: "done" })
       }
@@ -528,13 +570,12 @@ export function applySessionEvent(turns: TranscriptTurn[], e: SessionEvent): {
 /** @returns `{ turns, terminal }` — `terminal` signals the transport can close. */
 export function applyEvent(
   turns: TranscriptTurn[],
-  event: TranscriptEvent,
+  event: TranscriptEvent
 ): { turns: TranscriptTurn[]; terminal: boolean } {
   if (event.kind === "session") {
     return applySessionEvent(turns, event as SessionEvent)
   }
   // Unknown event kind — log but never break rendering (§16.1).
-  // eslint-disable-next-line no-console
   console.warn("unknown event kind, ignored:", event)
   return { turns, terminal: false }
 }
@@ -542,9 +583,7 @@ export function applyEvent(
 // ── History → turns (one-shot snapshot, §7.2) ─────────────────────────────
 
 /** Convert a persisted structured content block into a renderable block. */
-function historyBlockToTranscriptBlock(
-  block: HistoryBlock,
-): TranscriptBlock | null {
+function historyBlockToTranscriptBlock(block: HistoryBlock): TranscriptBlock | null {
   switch (block.type) {
     case "text":
       return {
@@ -565,10 +604,7 @@ function historyBlockToTranscriptBlock(
         type: "tool_call",
         id: block.id,
         name: block.name,
-        input:
-          typeof block.input === "string"
-            ? block.input
-            : JSON.stringify(block.input ?? ""),
+        input: typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? ""),
         status: block.is_error ? "error" : "done",
         result: block.result,
       }
@@ -591,9 +627,7 @@ export function historyToTurns(messages: HistoryMessage[]): TranscriptTurn[] {
     // tool_use blocks); fall back to the flat text content for user turns
     // (finding #10).
     const blocks: TranscriptBlock[] = m.blocks
-      ? m.blocks
-          .map(historyBlockToTranscriptBlock)
-          .filter((b): b is TranscriptBlock => b !== null)
+      ? m.blocks.map(historyBlockToTranscriptBlock).filter((b): b is TranscriptBlock => b !== null)
       : m.content
         ? [{ type: "text", id: newBlockId(), content: m.content, streaming: false }]
         : []

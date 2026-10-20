@@ -1,4 +1,5 @@
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
+import { motionTransition } from "@/lib/motion"
 
 interface KpiCardsProps {
   overview: {
@@ -122,25 +123,21 @@ export default function KpiCards({ overview, riskLevel, decisionSummary }: KpiCa
         {cards.map((card) => (
           <motion.div
             key={card.label}
-            className={`p-card-inner rounded-lg border-hairline bg-surface border ${card.borderClass}`}
+            className={`p-card-inner border-hairline bg-surface rounded-lg border ${card.borderClass}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: card.delay }}
+            transition={{ ...motionTransition.normal, delay: card.delay }}
           >
             <p className="text-caption text-secondary mb-2">{card.label}</p>
-            <p className={`text-h1 font-number font-semibold ${card.valueClass}`}>
-              {card.value}
-            </p>
+            <p className={`text-h1 font-number font-semibold ${card.valueClass}`}>{card.value}</p>
             <p className="text-caption text-secondary mt-1">{card.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {decisionSummary && (
-        <div className="bg-surface border-hairline rounded-lg flex items-center gap-4 border px-5 py-4">
-          <span
-            className={`text-caption rounded-full px-3 py-1 font-number ${riskBadgeClass}`}
-          >
+        <div className="bg-surface border-hairline flex items-center gap-4 rounded-lg border px-5 py-4">
+          <span className={`text-caption font-number rounded-full px-3 py-1 ${riskBadgeClass}`}>
             {riskLevel}
           </span>
           <span className="text-body text-secondary">{decisionSummary}</span>

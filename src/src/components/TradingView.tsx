@@ -1,5 +1,6 @@
 import { useMemo } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence } from "motion/react"
+import { Button } from "@/components/ui/button"
 import type { IndexQuote } from "@/stores/data"
 import { useOverview } from "@/hooks/query/useOverview"
 import { useIndexQuotes } from "@/hooks/query/useIndexQuotes"
@@ -33,21 +34,23 @@ export default function TradingView() {
 
   return (
     <div className="bg-canvas min-h-screen pt-14">
-      <div className="mx-auto max-w-data px-6 py-4">
+      <div className="max-w-data mx-auto px-6 py-4">
         {/* 错误状态 */}
         {ovError && (
           <div className="py-4">
-            <div className="bg-up/5 border-up/20 rounded-lg flex items-center justify-between border px-5 py-3">
+            <div className="bg-up/5 border-up/20 flex items-center justify-between rounded-lg border px-5 py-3">
               <div className="flex items-center gap-3">
                 <span className="text-up text-body">⚠</span>
                 <span className="text-caption text-up">{ovError.message}</span>
               </div>
-              <button
+              <Button
+                variant="link"
+                size="xs"
+                className="text-up h-auto p-0 underline"
                 onClick={() => refetchOverview()}
-                className="text-caption text-up cursor-pointer underline"
               >
                 重试
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -64,14 +67,14 @@ export default function TradingView() {
           <>
             {/* 指数加载状态 */}
             {idxLoading && !indexQuotes.length && (
-              <div className="bg-surface border-hairline p-card-inner rounded-lg flex items-center justify-center border py-6">
+              <div className="bg-surface border-hairline p-card-inner flex items-center justify-center rounded-lg border py-6">
                 <span className="text-caption text-secondary font-number">加载指数数据...</span>
               </div>
             )}
 
             {/* 指数错误状态 */}
             {!idxLoading && idxError && (
-              <div className="bg-surface border-hairline p-card-inner rounded-lg flex items-center justify-center border py-6">
+              <div className="bg-surface border-hairline p-card-inner flex items-center justify-center rounded-lg border py-6">
                 <span className="text-caption text-up">{idxError.message}</span>
               </div>
             )}
@@ -81,7 +84,7 @@ export default function TradingView() {
                 {indexCards.map((idx) => (
                   <div
                     key={idx.name}
-                    className="bg-surface border-hairline p-card-inner rounded-lg flex flex-col gap-1 border"
+                    className="bg-surface border-hairline p-card-inner flex flex-col gap-1 rounded-lg border"
                   >
                     <span className="text-caption text-secondary font-number">{idx.name}</span>
                     <span className="font-number text-h1 text-primary tabular-nums">
@@ -119,13 +122,15 @@ export default function TradingView() {
                 { label: "时间线", view: "timeline" as const },
                 { label: "市场情报", view: "market-intel" as const },
               ].map((item) => (
-                <button
+                <Button
                   key={item.view}
+                  variant="outline"
+                  size="sm"
+                  className="text-caption px-4"
                   onClick={() => setActiveView(item.view)}
-                  className="bg-surface border-hairline hover:border-brand/40 rounded-lg border px-4 py-2 text-caption text-primary transition-colors"
                 >
                   {item.label} →
-                </button>
+                </Button>
               ))}
             </div>
           </>

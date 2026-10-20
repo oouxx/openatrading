@@ -1,6 +1,12 @@
 import type { ReactNode } from "react"
-import { ChevronDownIcon } from "lucide-react"
-import { cn } from "src/lib/utils"
+import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 /**
  * Codex 风格设置行：标题 + 描述 在左，控件 在右。
@@ -54,23 +60,19 @@ export function SelectField({
   disabled?: boolean
 }) {
   return (
-    <div className="relative">
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "border-input bg-surface hover:bg-hover text-primary focus:border-ring h-8 w-[200px] cursor-pointer appearance-none rounded-lg border px-2.5 pr-7 text-xs transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        className={cn("bg-surface hover:bg-hover text-primary h-8 w-[200px] text-xs", className)}
       >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <SelectItem key={o.value} value={o.value} className="text-xs">
             {o.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-      <ChevronDownIcon className="text-secondary pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2" />
-    </div>
+      </SelectContent>
+    </Select>
   )
 }

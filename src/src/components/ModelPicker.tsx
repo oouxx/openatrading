@@ -175,15 +175,16 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
           ) : (
             <Popover open={open} onOpenChange={setOpen}>
               <PopoverTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   aria-haspopup="listbox"
                   disabled={disabled || noModels}
                   className={triggerClass}
                 >
                   <span className="truncate">{triggerLabel}</span>
                   <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
-                </button>
+                </Button>
               </PopoverTrigger>
               <PopoverContent
                 align="start"

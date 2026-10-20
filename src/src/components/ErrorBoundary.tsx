@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
+import { Button } from "@/components/ui/button"
 
 interface Props {
   children: ReactNode
@@ -30,17 +31,14 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-secondary flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-body">
+        <div className="text-secondary text-body flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
           <p>该区域渲染出错。</p>
-          <pre className="bg-hover max-h-48 w-full max-w-xl overflow-auto rounded-md p-2 text-left font-number text-caption">
+          <pre className="bg-hover font-number text-caption max-h-48 w-full max-w-xl overflow-auto rounded-md p-2 text-left">
             {this.state.error?.message ?? "Unknown error"}
           </pre>
-          <button
-            className="bg-brand hover:bg-brand/90 rounded-md px-3 py-2 text-caption font-medium text-primary transition-colors"
-            onClick={() => this.setState({ hasError: false, error: undefined })}
-          >
+          <Button size="sm" onClick={() => this.setState({ hasError: false, error: undefined })}>
             重试
-          </button>
+          </Button>
         </div>
       )
     }

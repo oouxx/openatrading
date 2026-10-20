@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Switch as SwitchPrimitive } from "radix-ui"
 
-import { cn } from "src/lib/utils"
+import { cn } from "@/lib/utils"
 
 /**
  * iOS/Codex 风格开关：36×20px 轨道 + 16px 滑块，选中态使用品牌色。

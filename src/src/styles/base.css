@@ -1,15 +1,5 @@
 /* base.css — Reset、body、scrollbar、selection */
 @layer base {
-  *,
-  *::before,
-  *::after {
-    transition:
-      background-color 0.3s,
-      color 0.3s,
-      border-color 0.3s,
-      box-shadow 0.3s;
-  }
-
   * {
     box-sizing: border-box;
     margin: 0;

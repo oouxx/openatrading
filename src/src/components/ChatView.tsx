@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
-  Search,
-  Square,
-  ArrowDown,
-  ArrowUp,
-  Paperclip,
-  X,
-} from "lucide-react"
-import TextBlock from "@/components/chat/TextBlock"
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
+import { Search, Square, ArrowDown, ArrowUp, Paperclip, X } from "lucide-react"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityTimeline"
-import { summarizeTool } from "@/components/chat/ToolCallList"
+import { summarizeTool } from "@/lib/tool-summary"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import type { HistoryMessage } from "@/agents/types"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Command,
@@ -28,21 +30,29 @@ import {
 
 import { fetchJson } from "@/stores/data"
 import { fetchCommands } from "@/hooks/useChatThreads"
-import KlineDrawer from "@/components/KlineDrawer"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { applyEvent, historyToTurns } from "@/agents/reducer"
-import type {
-  PromptImage,
-  TranscriptBlock,
-  TranscriptTurn,
-} from "@/agents/types"
+import type { PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
+
+const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
+const KlineDrawer = lazy(() => import("@/components/KlineDrawer"))
 
 interface SlashCommand {
   name: string
   description: string
   command_type: string
+}
+
+interface StockSearchHit {
+  code: string
+  name: string
+}
+
+interface StockSearchResponse {
+  results?: StockSearchHit[]
 }
 
 interface AiCopilotProps {
@@ -114,6 +124,7 @@ export default function AiCopilot({
   const searchRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchSeqRef = useRef(0)
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const slashMenuRef = useRef<HTMLDivElement | null>(null)
@@ -149,7 +160,7 @@ export default function AiCopilot({
   useEffect(() => {
     fetchCommands()
       .then(setCommands)
-      .catch(() => {})
+      .catch((error) => console.warn("[chat] 加载 slash commands 失败", error))
   }, [])
 
   // Tear down the live transport when the active thread changes or on unmount.
@@ -168,10 +179,12 @@ export default function AiCopilot({
   // on connect. Idle sessions don't need a live socket — their history is
   // loaded on demand when the user switches to them.
   const allSessionIds = !isTauri
-    ? [...new Set([
-        ...(activeThreadId ? [activeThreadId] : []),
-        ...(streamThreadId ? [streamThreadId] : []),
-      ])].filter(Boolean)
+    ? [
+        ...new Set([
+          ...(activeThreadId ? [activeThreadId] : []),
+          ...(streamThreadId ? [streamThreadId] : []),
+        ]),
+      ].filter(Boolean)
     : []
 
   const wsAgent = useMultiAgentWebSocket(allSessionIds, {
@@ -184,7 +197,7 @@ export default function AiCopilot({
           scrollDown()
         }
       },
-      [activeThreadId, scrollDown],
+      [activeThreadId, scrollDown]
     ),
     onTerminal: useCallback(
       (sessionId: string) => {
@@ -196,7 +209,7 @@ export default function AiCopilot({
         }
         onReload?.()
       },
-      [onReload],
+      [onReload]
     ),
   })
 
@@ -214,11 +227,11 @@ export default function AiCopilot({
           setThreadTurns(new Map(threadTurnsRef.current))
           scrollToBottomForced()
         })
-        .catch(() => {})
+        .catch((error) => console.warn("[chat] 加载历史消息失败", error))
     } else {
       wsAgent.loadHistory(activeThreadId).then(scrollToBottomForced)
     }
-  }, [activeThreadId, wsAgent.loadHistory, scrollToBottomForced])
+  }, [activeThreadId, wsAgent, scrollToBottomForced])
 
   // ── Tauri transport ──────────────────────────────────────────────────
   const startTauriTransport = useCallback(
@@ -244,7 +257,7 @@ export default function AiCopilot({
       })
       await transport.ready()
     },
-    [scrollDown],
+    [scrollDown, onReload]
   )
 
   // ── Send ──────────────────────────────────────────────────────────────
@@ -264,12 +277,14 @@ export default function AiCopilot({
           mimeType: img.mimeType,
         })),
         ...(text
-          ? [{
-              type: "text" as const,
-              id: `${sessionId}-user-${now}`,
-              content: text,
-              streaming: false,
-            }]
+          ? [
+              {
+                type: "text" as const,
+                id: `${sessionId}-user-${now}`,
+                content: text,
+                streaming: false,
+              },
+            ]
           : []),
       ]
       const next = [
@@ -287,94 +302,94 @@ export default function AiCopilot({
       setThreadTurns(updated)
       scrollDown()
     },
-    [scrollDown],
+    [scrollDown]
   )
 
-  const send = useCallback(async (override?: string) => {
-    const text = (override ?? input).trim()
-    const images = attachments
-    if (!text && images.length === 0) return
+  const send = useCallback(
+    async (override?: string) => {
+      const text = (override ?? input).trim()
+      const images = attachments
+      if (!text && images.length === 0) return
 
-    // If no active session, generate a client-side ID and use it directly.
-    // The WebSocket endpoint will create the session if it doesn't exist.
-    let sessionId = activeThreadId
-    if (!sessionId) {
-      sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      onActiveThreadChange(sessionId)
-      // Yield to React so the re-render triggers useMultiAgentWebSocket
-      // to create the WebSocket connection before we try to send.
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    }
+      // If no active session, generate a client-side ID and use it directly.
+      // The WebSocket endpoint will create the session if it doesn't exist.
+      let sessionId = activeThreadId
+      if (!sessionId) {
+        sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        onActiveThreadChange(sessionId)
+        // Yield to React so the re-render triggers useMultiAgentWebSocket
+        // to create the WebSocket connection before we try to send.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
 
-    // Optimistically render the user's own message (text + image thumbnails)
-    // so there's immediate feedback while the turn streams. History reload
-    // replaces this turn once the agent settles.
-    if (sessionId) {
-      appendLocalUserTurn(sessionId, text, images)
-    }
+      // Optimistically render the user's own message (text + image thumbnails)
+      // so there's immediate feedback while the turn streams. History reload
+      // replaces this turn once the agent settles.
+      if (sessionId) {
+        appendLocalUserTurn(sessionId, text, images)
+      }
 
-    setInput("")
-    setAttachments([])
-    setShowSlash(false)
-    setStreaming(true)
-    streamThreadRef.current = sessionId
-    setStreamThreadId(sessionId)
+      setInput("")
+      setAttachments([])
+      setShowSlash(false)
+      setStreaming(true)
+      streamThreadRef.current = sessionId
+      setStreamThreadId(sessionId)
 
-    if (isTauri) {
-      await startTauriTransport(sessionId)
-      transportRef.current?.sendPrompt(text, images)
-    } else {
-      // Use wsAgent directly with the resolved sessionId so we don't
-      // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
-      try {
-        await wsAgent.sendPrompt(sessionId, text, images)
-      } catch (e) {
-        // Connection couldn't be established — restore the input and stop
-        // the streaming state so the user can retry instead of losing text.
-        console.error("发送失败:", e)
-        setInput(text)
-        setAttachments(images)
-        setStreaming(false)
-        if (streamThreadRef.current === sessionId) {
-          streamThreadRef.current = null
-          setStreamThreadId(null)
+      if (isTauri) {
+        await startTauriTransport(sessionId)
+        transportRef.current?.sendPrompt(text, images)
+      } else {
+        // Use wsAgent directly with the resolved sessionId so we don't
+        // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
+        try {
+          await wsAgent.sendPrompt(sessionId, text, images)
+        } catch (e) {
+          // Connection couldn't be established — restore the input and stop
+          // the streaming state so the user can retry instead of losing text.
+          console.error("发送失败:", e)
+          setInput(text)
+          setAttachments(images)
+          setStreaming(false)
+          if (streamThreadRef.current === sessionId) {
+            streamThreadRef.current = null
+            setStreamThreadId(null)
+          }
         }
       }
-    }
-  }, [
-    input,
-    attachments,
-    activeThreadId,
-    onActiveThreadChange,
-    startTauriTransport,
-    wsAgent.sendPrompt,
-    appendLocalUserTurn,
-  ])
+    },
+    [
+      input,
+      attachments,
+      activeThreadId,
+      onActiveThreadChange,
+      startTauriTransport,
+      wsAgent,
+      appendLocalUserTurn,
+    ]
+  )
 
   // ── Attachment handlers (multimodal) ─────────────────────────────────
-  const handleAttachFiles = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? [])
-      e.target.value = ""
-      if (files.length === 0) return
-      const imgs: PromptImage[] = []
-      for (const file of files) {
-        if (!file.type.startsWith("image/")) continue
-        try {
-          const dataUrl = await readFileAsDataURL(file)
-          const idx = dataUrl.indexOf(",")
-          imgs.push({
-            data: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
-            mimeType: file.type || "image/png",
-          })
-        } catch {
-          // Skip unreadable files.
-        }
+  const handleAttachFiles = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ""
+    if (files.length === 0) return
+    const imgs: PromptImage[] = []
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue
+      try {
+        const dataUrl = await readFileAsDataURL(file)
+        const idx = dataUrl.indexOf(",")
+        imgs.push({
+          data: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
+          mimeType: file.type || "image/png",
+        })
+      } catch {
+        // Skip unreadable files.
       }
-      if (imgs.length > 0) setAttachments((prev) => [...prev, ...imgs])
-    },
-    [],
-  )
+    }
+    if (imgs.length > 0) setAttachments((prev) => [...prev, ...imgs])
+  }, [])
 
   const removeAttachment = useCallback((index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
@@ -388,23 +403,20 @@ export default function AiCopilot({
     } else {
       await wsAgent.interrupt(activeThreadId)
     }
-  }, [wsAgent.interrupt, activeThreadId])
+  }, [wsAgent, activeThreadId])
 
   // ── Input handlers ────────────────────────────────────────────────────
-  const onInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value
-      setInput(value)
+  const onInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setInput(value)
 
-      // Slash command detection
-      if (value.startsWith("/") && !value.includes(" ")) {
-        setShowSlash(true)
-      } else {
-        setShowSlash(false)
-      }
-    },
-    [],
-  )
+    // Slash command detection
+    if (value.startsWith("/") && !value.includes(" ")) {
+      setShowSlash(true)
+    } else {
+      setShowSlash(false)
+    }
+  }, [])
 
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -425,7 +437,7 @@ export default function AiCopilot({
         send()
       }
     },
-    [send, showSlash],
+    [send, showSlash]
   )
 
   // Pre-select the first command when the slash menu opens, so Enter works
@@ -439,30 +451,44 @@ export default function AiCopilot({
   }, [showSlash])
 
   // ── Stock search ──────────────────────────────────────────────────────
-  const onSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const q = e.target.value
-      setSearchQuery(q)
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (q.length < 1) {
-        setShowDropdown(false)
+  const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value
+    setSearchQuery(q)
+    const seq = ++searchSeqRef.current
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (q.length < 1) {
+      setShowDropdown(false)
+      setSearchResults([])
+      setSearchLoading(false)
+      return
+    }
+    debounceRef.current = setTimeout(async () => {
+      if (seq !== searchSeqRef.current) return
+      setSearchLoading(true)
+      try {
+        const data = await fetchJson<StockSearchResponse | StockSearchHit[]>(
+          `/api/search-stocks?q=${encodeURIComponent(q)}`
+        )
+        if (seq !== searchSeqRef.current) return
+        setSearchResults(Array.isArray(data) ? data : (data?.results ?? []))
+        setShowDropdown(true)
+      } catch (error) {
+        if (seq !== searchSeqRef.current) return
+        console.warn("[stock-search] 搜索失败", error)
         setSearchResults([])
-        return
+      } finally {
+        if (seq === searchSeqRef.current) setSearchLoading(false)
       }
-      debounceRef.current = setTimeout(async () => {
-        setSearchLoading(true)
-        try {
-          const data = await fetchJson<any>(`/api/search-stocks?q=${encodeURIComponent(q)}`)
-          setSearchResults(data?.results ?? data ?? [])
-          setShowDropdown(true)
-        } catch {
-          setSearchResults([])
-        } finally {
-          setSearchLoading(false)
-        }
-      }, 200)
+    }, 200)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      // Invalidate any in-flight search so it cannot update an unmounted view.
+      searchSeqRef.current++
     },
-    [],
+    []
   )
 
   const selectStock = useCallback(
@@ -471,7 +497,7 @@ export default function AiCopilot({
       setShowDropdown(false)
       setSearchQuery("")
     },
-    [openTab],
+    [openTab]
   )
 
   // Close dropdown on outside click
@@ -486,7 +512,10 @@ export default function AiCopilot({
   }, [])
 
   // ── Derived state ─────────────────────────────────────────────────────
-  const currentTurns = activeThreadId ? threadTurns.get(activeThreadId) ?? [] : []
+  const currentTurns = useMemo(
+    () => (activeThreadId ? (threadTurns.get(activeThreadId) ?? []) : []),
+    [activeThreadId, threadTurns]
+  )
   const isEmpty = currentTurns.length === 0 && !(streaming && streamThreadId === activeThreadId)
   // True only when the *active* thread is streaming — controls the Stop
   // button and disables Send for the active thread.
@@ -532,23 +561,25 @@ export default function AiCopilot({
               <img
                 src={`data:${img.mimeType};base64,${img.data}`}
                 alt={`附件 ${i + 1}`}
-                className="h-16 w-16 rounded-lg border border-border object-cover shadow-sm"
+                className="border-border h-16 w-16 rounded-lg border object-cover shadow-sm"
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => removeAttachment(i)}
-                className="bg-black/60 hover:bg-black/80 absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full text-white transition-colors"
+                className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
                 aria-label="移除附件"
               >
-                <X className="size-3" />
-              </button>
+                <X />
+              </Button>
             </div>
           ))}
         </div>
       )}
       <Textarea
         ref={textareaRef}
-        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 min-h-[56px] max-h-[200px] w-full resize-none rounded-[24px] border border-border pl-16 py-4 pr-16 text-body text-primary shadow-[0_2px_16px_rgba(0,0,0,0.07)] outline-none transition-all placeholder:text-tertiary focus:ring-3`}
+        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 border-border text-body text-primary placeholder:text-tertiary max-h-[200px] min-h-[56px] w-full resize-none rounded-[24px] border py-4 pr-16 pl-16 shadow-[0_2px_16px_rgba(0,0,0,0.07)] transition-all outline-none focus:ring-3`}
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -556,7 +587,7 @@ export default function AiCopilot({
         onKeyDown={onInputKeyDown}
       />
       {showSlash && (
-        <div className="absolute bottom-full left-0 right-0 mb-1">
+        <div className="absolute right-0 bottom-full left-0 mb-1">
           <SlashCommandMenu
             commands={commands}
             filter={input.startsWith("/") ? input.slice(1) : ""}
@@ -581,13 +612,14 @@ export default function AiCopilot({
         </Button>
       ) : (
         (input.trim() || attachments.length > 0) && (
-          <button
+          <Button
+            size="icon-lg"
             onClick={() => send()}
-            className="bg-brand hover:bg-brand-hover absolute right-2 bottom-2 flex size-9 items-center justify-center rounded-full text-white shadow-card transition-colors"
+            className="shadow-card absolute right-2 bottom-2 rounded-full"
             aria-label="发送"
           >
-            <ArrowUp className="size-4" />
-          </button>
+            <ArrowUp />
+          </Button>
         )
       )}
       {/* Image attach (multimodal) — hidden input opened by the paperclip button. */}
@@ -599,15 +631,17 @@ export default function AiCopilot({
         className="hidden"
         onChange={handleAttachFiles}
       />
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-lg"
         onClick={() => fileInputRef.current?.click()}
-        className="text-secondary hover:text-brand hover:bg-hover disabled:pointer-events-none disabled:opacity-40 absolute left-2 bottom-2 flex size-9 items-center justify-center rounded-full transition-colors"
+        className="text-secondary hover:text-brand hover:bg-hover absolute bottom-2 left-2 rounded-full"
         aria-label="添加图片"
         disabled={isStreamingActive}
       >
         <Paperclip className="size-4.5" />
-      </button>
+      </Button>
     </div>
   )
 
@@ -619,32 +653,41 @@ export default function AiCopilot({
         <SidebarTrigger />
         <div className="flex flex-1 items-center gap-2">
           <div ref={searchContainerRef} className="relative flex-1">
-            <Search className="text-secondary absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-            <input
+            <Search className="text-secondary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <Input
               ref={searchRef}
-              className="bg-canvas border-hairline focus:border-brand w-full rounded-lg border py-2 pl-9 pr-3 text-caption text-primary outline-none transition-colors placeholder:text-tertiary"
+              className="bg-canvas border-hairline focus-visible:border-brand text-caption h-9 pl-9"
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
             />
             {showDropdown && (
-              <div className="bg-surface border-hairline absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-modal">
-                {searchLoading ? (
-                  <div className="text-secondary px-3 py-2 text-caption">搜索中...</div>
-                ) : searchResults.length === 0 ? (
-                  <div className="text-secondary px-3 py-2 text-caption">未找到结果</div>
-                ) : (
-                  searchResults.map((stock) => (
-                    <button
-                      key={stock.code}
-                      className="hover:bg-hover flex w-full items-center gap-2 px-3 py-2 text-left text-caption transition-colors"
-                      onClick={() => selectStock(stock.code, stock.name)}
-                    >
-                      <span className="text-secondary font-number">{stock.code}</span>
-                      <span className="text-primary">{stock.name}</span>
-                    </button>
-                  ))
-                )}
+              <div className="absolute top-full right-0 left-0 z-50 mt-1">
+                <Command className="bg-surface border-hairline shadow-modal rounded-lg border">
+                  <CommandList className="max-h-48">
+                    {searchLoading ? (
+                      <div className="text-secondary text-caption px-3 py-2">搜索中...</div>
+                    ) : searchResults.length === 0 ? (
+                      <CommandEmpty className="text-secondary text-caption py-3 text-center">
+                        未找到结果
+                      </CommandEmpty>
+                    ) : (
+                      <CommandGroup>
+                        {searchResults.map((stock) => (
+                          <CommandItem
+                            key={stock.code}
+                            value={`${stock.code} ${stock.name}`}
+                            onSelect={() => selectStock(stock.code, stock.name)}
+                            className="text-caption"
+                          >
+                            <span className="text-secondary font-number">{stock.code}</span>
+                            <span className="text-primary">{stock.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
               </div>
             )}
           </div>
@@ -652,26 +695,36 @@ export default function AiCopilot({
           {stockTabs.length > 0 && (
             <div className="flex items-center gap-1">
               {stockTabs.map((tab) => (
-                <button
+                <div
                   key={tab.id}
-                  className={`rounded-md px-2 py-1 text-caption transition-colors ${
-                    activeStockTab === tab.id
-                      ? "bg-brand/15 text-brand"
-                      : "text-secondary hover:bg-hover"
+                  className={`flex items-center rounded-md ${
+                    activeStockTab === tab.id ? "bg-brand/15" : ""
                   }`}
-                  onClick={() => setActiveStockTab(tab.id)}
                 >
-                  {tab.name}
-                  <span
-                    className="ml-1.5 text-caption opacity-50 hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      closeTab(tab.id)
-                    }}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className={`text-caption rounded-r-none ${
+                      activeStockTab === tab.id
+                        ? "text-brand hover:bg-brand/15 hover:text-brand"
+                        : "text-secondary hover:bg-hover"
+                    }`}
+                    onClick={() => setActiveStockTab(tab.id)}
+                  >
+                    {tab.name}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`关闭 ${tab.name}`}
+                    className="text-secondary hover:bg-hover rounded-l-none opacity-60 hover:opacity-100"
+                    onClick={() => closeTab(tab.id)}
                   >
                     ×
-                  </span>
-                </button>
+                  </Button>
+                </div>
               ))}
             </div>
           )}
@@ -680,16 +733,24 @@ export default function AiCopilot({
 
       {/* ── Body ────────────────────────────────────────────────────── */}
       {activeStockTab ? (
-        <KlineDrawer
-          symbol={activeStockTab}
-          name={stockTabs.find((t) => t.id === activeStockTab)?.name ?? activeStockTab}
-          onClose={() => setActiveStockTab(null)}
-        />
+        <Suspense
+          fallback={
+            <div className="p-4">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          }
+        >
+          <KlineDrawer
+            symbol={activeStockTab}
+            name={stockTabs.find((t) => t.id === activeStockTab)?.name ?? activeStockTab}
+            onClose={() => setActiveStockTab(null)}
+          />
+        </Suspense>
       ) : isEmpty ? (
         // ── Centered new-session hero (Claude.ai 样式) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
           <div className="w-full max-w-[48rem]">
-            <h2 className="mb-6 text-center text-hero font-semibold text-primary">AI 行情助手</h2>
+            <h2 className="text-hero text-primary mb-6 text-center font-semibold">AI 行情助手</h2>
             {renderInputField()}
           </div>
         </div>
@@ -710,7 +771,7 @@ export default function AiCopilot({
                     {turn.role === "user" ? (
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
-                        <div className="bg-surface text-primary max-w-[85%] rounded-2xl px-4 py-2.5 shadow-card">
+                        <div className="bg-surface text-primary shadow-card max-w-[85%] rounded-2xl px-4 py-2.5">
                           {turn.blocks.some((b) => b.type === "image") && (
                             <div className="mb-2 flex flex-wrap gap-2">
                               {turn.blocks.map((b) =>
@@ -719,9 +780,9 @@ export default function AiCopilot({
                                     key={b.id}
                                     src={`data:${b.mimeType};base64,${b.data}`}
                                     alt="图片"
-                                    className="h-24 w-24 rounded-lg border border-border object-cover"
+                                    className="border-border h-24 w-24 rounded-lg border object-cover"
                                   />
-                                ) : null,
+                                ) : null
                               )}
                             </div>
                           )}
@@ -738,9 +799,7 @@ export default function AiCopilot({
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}
-                            isStreaming={
-                              isLastAi && streaming && streamThreadId === activeThreadId
-                            }
+                            isStreaming={isLastAi && streaming && streamThreadId === activeThreadId}
                             respondToPermission={
                               isTauri
                                 ? (id: string, approved: boolean) =>
@@ -763,27 +822,28 @@ export default function AiCopilot({
 
           {/* ── Jump to latest ──────────────────────────────────────────── */}
           {showJumpBottom && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 const el = msgContainerRef.current
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-surface border-hairline hover:border-brand/40 hover:text-brand absolute bottom-32 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border px-3 py-2 text-caption text-secondary shadow-modal transition-colors"
+              className="bg-surface border-hairline shadow-modal hover:border-brand/40 hover:text-brand text-secondary absolute bottom-32 left-1/2 z-20 -translate-x-1/2 rounded-full"
             >
               <ArrowDown className="size-3" />
               回到最新
-            </button>
+            </Button>
           )}
 
           {/* ── Floating input (Claude style) ─────────────────────────── */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-canvas via-canvas/90 to-transparent px-6 pt-12 pb-4">
+          <div className="from-canvas via-canvas/90 pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t to-transparent px-6 pt-12 pb-4">
             <div className="pointer-events-auto mx-auto flex w-full max-w-[48rem] items-end gap-2">
               {renderInputField()}
             </div>
           </div>
         </div>
-
       )}
     </div>
   )
@@ -828,14 +888,14 @@ function SlashCommandMenu({
   return (
     <Command
       ref={ref}
-      className="bg-popover text-popover-foreground border-hairline rounded-lg! max-h-48 overflow-hidden border p-0 shadow-modal"
+      className="bg-popover text-popover-foreground border-hairline shadow-modal max-h-48 overflow-hidden rounded-lg! border p-0"
     >
       {/* Hidden input drives cmdk's built-in filtering from the textarea value. */}
       <div className="hidden">
         <CommandInput value={filter} onValueChange={() => {}} />
       </div>
       <CommandList className="max-h-48 p-0">
-        <CommandEmpty className="text-secondary py-3 text-caption">无匹配命令</CommandEmpty>
+        <CommandEmpty className="text-secondary text-caption py-3">无匹配命令</CommandEmpty>
         {groups.map(([type, cmds]) => (
           <CommandGroup key={type} heading={groupLabel(type)} className="p-0">
             {cmds.map((cmd) => (
@@ -843,7 +903,7 @@ function SlashCommandMenu({
                 key={cmd.name}
                 value={cmd.name}
                 onSelect={() => onSelect(cmd)}
-                className="hover:bg-hover data-selected:bg-hover data-selected:text-primary flex w-full items-center gap-2 rounded-none px-3 py-2 text-left text-caption transition-colors [&>svg]:hidden"
+                className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption flex w-full items-center gap-2 rounded-none px-3 py-2 text-left transition-colors [&>svg]:hidden"
               >
                 <span className="font-number text-brand">/{cmd.name}</span>
                 <span className="text-secondary">{cmd.description}</span>
@@ -915,11 +975,9 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
 
     if (block.type === "text") {
       nodes.push(
-        <TextBlock
-          key={`t-${idx++}`}
-          content={block.content}
-          isStreaming={isStreaming && block.streaming}
-        />
+        <Suspense key={`t-${idx++}`} fallback={<Skeleton className="my-2 h-4 w-2/3" />}>
+          <TextBlock content={block.content} isStreaming={isStreaming && block.streaming} />
+        </Suspense>
       )
     } else if (block.type === "system_notice" && block.kind !== "turn") {
       // Only non-turn system notices (compaction / retry / error) render in
@@ -989,23 +1047,22 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
         </span>
       </div>
       <div className="border-hairline border-t px-3 py-2">
-        <pre className="text-secondary mt-1 overflow-x-auto font-number text-caption whitespace-pre-wrap">
+        <pre className="text-secondary font-number text-caption mt-1 overflow-x-auto whitespace-pre-wrap">
           {JSON.stringify(block.toolInput, null, 2)}
         </pre>
       </div>
       <div className="border-hairline flex items-center justify-end gap-2 border-t px-3 py-2">
-        <button
-          className="rounded-md bg-danger/10 px-3 py-1 text-caption text-danger transition-colors hover:bg-danger/20"
-          onClick={handleReject}
-        >
+        <Button variant="destructive" size="sm" onClick={handleReject}>
           拒绝
-        </button>
-        <button
-          className="rounded-md bg-success/10 px-3 py-1 text-caption text-success transition-colors hover:bg-success/20"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="bg-success/10 text-success hover:bg-success/20 hover:text-success"
           onClick={handleApprove}
         >
           允许
-        </button>
+        </Button>
       </div>
     </div>
   )

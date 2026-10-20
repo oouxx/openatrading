@@ -1,4 +1,6 @@
 import { chartColors, withAlpha } from "@/lib/chartColors"
+import { formatCompactNumber } from "@/lib/format"
+import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
 
 import { useRef, useEffect, useCallback, useState } from "react"
 import {
@@ -8,6 +10,7 @@ import {
   LineSeries,
   LineStyle,
   CrosshairMode,
+  ColorType,
   type IChartApi,
   type ISeriesApi,
   type Time,
@@ -165,13 +168,6 @@ function buildSessionGrid(refTime: number): number[] {
   return grid
 }
 
-function formatVolume(v: number): string {
-  if (!v) return "-"
-  if (v > 1e8) return (v / 1e8).toFixed(2) + "亿"
-  if (v > 1e4) return (v / 1e4).toFixed(2) + "万"
-  return v.toFixed(0)
-}
-
 function getLimitPct(symbol: string): number {
   const raw = symbol.trim()
   // 去掉后缀 (.SZ/.sh/.BJ 等，大小写都要匹配)
@@ -201,7 +197,7 @@ const roundTick = (p: number) => Math.round(p * 100) / 100
  *  现价线与 ±10% 网格线相差 0.004 元，视觉上“没贴到 10% 上”。 */
 function getLimitPrices(
   preclose: number,
-  limitPct: number,
+  limitPct: number
 ): { up: number; down: number; upPct: number; downPct: number } {
   const up = roundTick(preclose * (1 + limitPct / 100))
   const down = roundTick(preclose * (1 - limitPct / 100))
@@ -211,17 +207,6 @@ function getLimitPrices(
     upPct: (up / preclose - 1) * 100,
     downPct: (down / preclose - 1) * 100,
   }
-}
-
-export interface CrosshairInfo {
-  time: string
-  open: string
-  high: string
-  low: string
-  close: string
-  volume: string
-  change: string
-  changeNum: number
 }
 
 export default function KlineChart({ data, period, preclose, symbol }: KlineChartProps) {
@@ -245,13 +230,15 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   // K 线最新价虚线（同花顺右轴黄色虚线 + 价格标签）
   const lastPriceLineRef = useRef<IPriceLine | null>(null)
   // K 线主图左上角 MA 图例（同花顺 MA5/MA10/MA20/MA30）
-  const [maLegend, setMaLegend] = useState<{ label: string; color: string; value: string }[] | null>(
-    null
-  )
+  const [maLegend, setMaLegend] = useState<
+    { label: string; color: string; value: string }[] | null
+  >(null)
   // 分时横轴布局（HTML 标签定位用）：左/右价格轴宽 + 容器宽
-  const [tickLayout, setTickLayout] = useState<{ leftW: number; rightW: number; width: number } | null>(
-    null
-  )
+  const [tickLayout, setTickLayout] = useState<{
+    leftW: number
+    rightW: number
+    width: number
+  } | null>(null)
   // 会话网格长度（渲染期读取 ref 被 React 19 禁止，故镜像为 state）
   const [gridLen, setGridLen] = useState(0)
   // Mirrors of props read inside the long-lived crosshair handler / data fill,
@@ -297,7 +284,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       height: 420,
       layout: {
         attributionLogo: false,
-        background: { type: "solid", color: "transparent" } as any,
+        background: { type: ColorType.Solid, color: "transparent" },
         textColor: chartColors.tertiary(),
         fontSize: INTRADAY_FONT_SIZE,
         panes: {
@@ -332,8 +319,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       localization: {
         // Crosshair vertical-line label on the time axis uses timeFormatter,
         // not tickMarkFormatter — keep them consistent for the custom time axis.
-        timeFormatter: (time: Time) =>
-          formatIntradayLabel(time as number, timeLabelMapRef.current),
+        timeFormatter: (time: Time) => formatIntradayLabel(time as number, timeLabelMapRef.current),
         // 隐藏 LWC 自动价格刻度（位置由 nice-tick 决定，不保证落在网格线上）：
         // 网格线位置的价格/百分比标签由 priceLine 的 axisLabel 提供。
         tickmarksPriceFormatter: (prices: readonly number[]) => prices.map(() => " "),
@@ -465,7 +451,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         high: c.high?.toFixed(2) || "-",
         low: c.low?.toFixed(2) || "-",
         close: c.close?.toFixed(2) || "-",
-        volume: formatVolume(c.volume || 0),
+        volume: formatCompactNumber(c.volume || 0),
         change: chgRate >= 0 ? `+${chgRate.toFixed(2)}%` : `${chgRate.toFixed(2)}%`,
         changeNum: chgRate,
       })
@@ -483,7 +469,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       height: 420,
       layout: {
         attributionLogo: false,
-        background: { type: "solid", color: "transparent" } as any,
+        background: { type: ColorType.Solid, color: "transparent" },
         textColor: chartColors.tertiary(),
         fontSize: 12,
         panes: {
@@ -604,7 +590,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         high: c.high?.toFixed(2) || "-",
         low: c.low?.toFixed(2) || "-",
         close: c.close?.toFixed(2) || "-",
-        volume: formatVolume(c.volume || 0),
+        volume: formatCompactNumber(c.volume || 0),
         change: chgRate >= 0 ? `+${chgRate.toFixed(2)}%` : `${chgRate.toFixed(2)}%`,
         changeNum: chgRate,
       })
@@ -731,7 +717,6 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       if (gridDayRef.current !== lastDay) {
         gridRef.current = buildSessionGrid(dayCandles[dayCandles.length - 1].time)
         gridDayRef.current = lastDay
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setGridLen(gridRef.current.length)
         timeLabelMapRef.current = buildTimeLabels(
           gridRef.current.map((t) => ({ time: t, close: 0 }))
@@ -923,14 +908,8 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       }
 
       // 同花顺主图左上角 MA 图例：MA5/MA10/MA20/MA30 最新值（品牌 MA 调色板）
-      const legendColors = [
-        chartColors.ma5,
-        chartColors.ma10,
-        chartColors.ma20,
-        chartColors.ma30,
-      ]
+      const legendColors = [chartColors.ma5, chartColors.ma10, chartColors.ma20, chartColors.ma30]
       const n = closes.length
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMaLegend(
         [5, 10, 20, 30].map((p, i) => {
           let sum = 0
@@ -955,14 +934,15 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
 
   // Expose crosshair ref + listener for KlineDrawer (in effect to avoid modifying during render)
   useEffect(() => {
-    ;(KlineChart as any).__crosshairRef = onCrosshairRef
-    ;(KlineChart as any).setCrosshairListener = setCrosshairListener
-    ;(KlineChart as any).chartRef = chartRef
+    const statics = getKlineChartStatics()
+    statics.__crosshairRef = onCrosshairRef
+    statics.setCrosshairListener = setCrosshairListener
+    statics.chartRef = chartRef
   }, [onCrosshairRef, setCrosshairListener, chartRef])
 
   // Auto-restore external crosshair listener on mount (handles HMR remount)
   useEffect(() => {
-    const pending = (KlineChart as any).__pendingCrosshairListener
+    const pending = getKlineChartStatics().__pendingCrosshairListener
     if (pending) {
       onCrosshairRef.current = pending
     }
@@ -972,7 +952,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     <div className="relative w-full" style={{ height: period === "minute" ? 436 : 420 }}>
       {/* K 线主图左上角 MA 图例（同花顺样式：整行与均线同色；分时图不显示） */}
       {period !== "minute" && maLegend && (
-        <div className="absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-number text-[11px]">
+        <div className="font-number absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
           {maLegend.map((m) => (
             <span key={m.label} className="flex items-center gap-1" style={{ color: m.color }}>
               {m.label}: <span className="font-bold">{m.value}</span>
@@ -983,7 +963,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       {/* K 线 VOL 副图左上角标注（同花顺样式） */}
       {period !== "minute" && (
         <span
-          className="absolute left-1 z-10 font-number text-[11px] text-secondary"
+          className="font-number text-secondary absolute left-1 z-10 text-[11px]"
           style={{ top: 322 }}
         >
           VOL
@@ -1015,7 +995,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
             return (
               <span
                 key={idx}
-                className="absolute top-0 font-number text-[11px] text-secondary"
+                className="font-number text-secondary absolute top-0 text-[11px]"
                 style={{
                   left: x,
                   transform:

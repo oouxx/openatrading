@@ -1,20 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react"
+import { getKlineImageUrl } from "@/lib/stock-utils"
 
 interface MiniChartPreviewProps {
   symbol: string
   name: string
   children: React.ReactNode
-}
-
-function normalizeSymbol(raw: string): string {
-  const dot = raw.indexOf(".")
-  if (dot !== -1) {
-    const code = raw.substring(0, dot)
-    let suffix = raw.substring(dot + 1).toLowerCase()
-    if (suffix === "ss") suffix = "sh"
-    return suffix + code
-  }
-  return (raw.startsWith("6") ? "sh" : "sz") + raw
 }
 
 export default function MiniChartPreview({ symbol, name, children }: MiniChartPreviewProps) {
@@ -27,7 +17,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
   const baseWidth = 240
   const baseHeight = 180
 
-  const gifUrl = `https://image.sinajs.cn/newchart/min/n/${normalizeSymbol(symbol)}.gif`
+  const gifUrl = getKlineImageUrl(symbol, "minute")
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -83,36 +73,44 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="bg-surface border-hairline rounded-lg fixed z-60 border p-2"
+          className="bg-surface border-hairline fixed z-60 rounded-lg border p-2"
           style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
         >
-          <img
-            src={gifUrl}
-            width={baseWidth}
-            height={baseHeight}
-            className="block cursor-pointer rounded-md"
-            alt=""
+          <button
+            type="button"
+            aria-label={`放大 ${name} 走势图`}
+            className="block cursor-pointer"
             onClick={(e) => {
               e.stopPropagation()
               openEnlarged()
             }}
-          />
-          <p className="text-caption text-secondary mt-1 text-center font-number">
+          >
+            <img
+              src={gifUrl}
+              width={baseWidth}
+              height={baseHeight}
+              className="block rounded-md"
+              alt=""
+            />
+          </button>
+          <p className="text-caption text-secondary font-number mt-1 text-center">
             {symbol} {name}
           </p>
         </div>
       )}
 
       {enlarged && (
-        <div
-          className="fixed inset-0 z-70 flex items-center justify-center"
-          onClick={() => setEnlarged(false)}
-        >
+        <div className="fixed inset-0 z-70 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label="关闭走势图"
+            className="absolute inset-0"
+            onClick={() => setEnlarged(false)}
+          />
           <div
-            className="bg-surface border-hairline rounded-lg border p-4"
-            onClick={(e) => e.stopPropagation()}
+            className="bg-surface border-hairline relative rounded-lg border p-4"
             onWheel={(e) => {
               const step = 0.5
               setScale((s) => Math.max(0.5, Math.min(8, s + (e.deltaY < 0 ? step : -step))))
@@ -124,7 +122,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
               className="block rounded-md"
               alt=""
             />
-            <p className="text-caption text-secondary mt-2 text-center font-number">
+            <p className="text-caption text-secondary font-number mt-2 text-center">
               {symbol} {name} · {scale.toFixed(2)}x 滚轮缩放
             </p>
           </div>

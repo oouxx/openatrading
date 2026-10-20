@@ -37,6 +37,24 @@ function safeParse(raw: string, context: string): Record<string, unknown> | null
 // backend used to push (3s). Keeps no long-lived invoke/channel alive.
 const TAURI_STREAM_POLL_MS = 3000
 
+/** 实时行情（后端 RealtimeQuote）。 */
+export interface RealtimeQuote {
+  last_px?: number
+  preclose_px?: number
+  open_px?: number
+  high_px?: number
+  low_px?: number
+  px_change_rate?: number
+  amplitude?: number
+  turnover_ratio?: number
+  dyn_pe?: number
+  dyn_pb_rate?: number
+  market_value?: number
+  circulation_value?: number
+  volume_ratio?: number
+  turnover_volume?: number
+}
+
 /**
  * Subscribe to realtime quotes, updated every 3 seconds.
  *
@@ -45,9 +63,9 @@ const TAURI_STREAM_POLL_MS = 3000
  *
  * Returns a cleanup function — call it to unsubscribe.
  */
-export function subscribeRealtime(
+export function subscribeRealtime<T = unknown>(
   symbol: string,
-  onData: (data: unknown) => void,
+  onData: (data: T) => void,
   onError?: (err: string) => void
 ): () => void {
   if (!symbol) return () => {}
@@ -70,7 +88,7 @@ export function subscribeRealtime(
           } else {
             // Backend returns { "symbol": {...}, ... } — extract the one we asked for
             const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
-            if (found) onData(found)
+            if (found) onData(found as T)
           }
         }
         await invoke("api_realtime_stream", { symbol: normalized, channel })
@@ -98,7 +116,7 @@ export function subscribeRealtime(
     } else {
       // Backend returns { "symbol": {...}, ... } — extract the one we asked for
       const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
-      if (found) onData(found)
+      if (found) onData(found as T)
     }
   }
   es.onerror = () => {
@@ -119,9 +137,9 @@ export function subscribeRealtime(
  *
  * Returns a cleanup function.
  */
-export function subscribeRealtimeBatch(
+export function subscribeRealtimeBatch<T = unknown>(
   symbols: string[],
-  onData: (code: string, data: unknown) => void,
+  onData: (code: string, data: T) => void,
   onError?: (err: string) => void
 ): () => void {
   if (symbols.length === 0) return () => {}
@@ -146,7 +164,7 @@ export function subscribeRealtimeBatch(
           } else {
             for (let i = 0; i < symbols.length; i++) {
               const found = matchSymbol(parsed, normalizedSymbols[i])
-              if (found) onData(symbols[i], found)
+              if (found) onData(symbols[i], found as T)
             }
           }
         }
@@ -178,7 +196,7 @@ export function subscribeRealtimeBatch(
     } else {
       for (let i = 0; i < symbols.length; i++) {
         const found = matchSymbol(parsed, normalizedSymbols[i])
-        if (found) onData(symbols[i], found)
+        if (found) onData(symbols[i], found as T)
       }
     }
   }
@@ -223,11 +241,11 @@ function sseStream(
  *
  * Returns a cleanup function.
  */
-export function subscribeKline(
+export function subscribeKline<T = unknown>(
   symbol: string,
   period: string,
   count: number,
-  onData: (data: unknown) => void,
+  onData: (data: T) => void,
   onError?: (err: string) => void
 ): () => void {
   if (!symbol) return () => {}
@@ -247,7 +265,7 @@ export function subscribeKline(
           if (parsed.error) {
             onError?.(String(parsed.error))
           } else {
-            onData(parsed)
+            onData(parsed as T)
           }
         }
         await invoke("api_kline_stream", { symbol, period, count, channel })
@@ -267,7 +285,7 @@ export function subscribeKline(
   const wrappedOnData = (data: unknown) => {
     const map = data as Record<string, unknown>
     const found = matchSymbol(map, symbol) ?? Object.values(map)[0]
-    if (found) onData(found)
+    if (found) onData(found as T)
   }
 
   return sseStream(

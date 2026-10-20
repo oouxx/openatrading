@@ -1,7 +1,7 @@
 import { chartColors } from "@/lib/chartColors"
 
 import { useRef, useEffect, useMemo } from "react"
-import { createChart, type IChartApi, type Time, LineSeries } from "lightweight-charts"
+import { createChart, ColorType, type IChartApi, type Time, LineSeries } from "lightweight-charts"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 
 export default function SentimentHistory() {
@@ -35,7 +35,7 @@ export default function SentimentHistory() {
       height: 200,
       layout: {
         attributionLogo: false,
-        background: { type: "solid", color: "transparent" } as any,
+        background: { type: ColorType.Solid, color: "transparent" },
         textColor: chartColors.tertiary(),
         fontSize: 12,
       },

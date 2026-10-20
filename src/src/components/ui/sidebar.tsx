@@ -4,20 +4,20 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
 
-import { useIsMobile } from "src/hooks/use-mobile"
-import { cn } from "src/lib/utils"
-import { Button } from "src/components/ui/button"
-import { Input } from "src/components/ui/input"
-import { Separator } from "src/components/ui/separator"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "src/components/ui/sheet"
-import { Skeleton } from "src/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipTrigger } from "src/components/ui/tooltip"
+} from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
@@ -226,7 +226,7 @@ function Sidebar({
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-hairline group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            : "border-hairline group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
         {...props}

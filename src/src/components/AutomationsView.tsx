@@ -30,9 +30,12 @@ function formatTime(value: string): string {
   return value.replace("T", " ").slice(0, 19)
 }
 
+/** Stable fallback so useMemo dependencies don't change on every render. */
+const EMPTY_AUTOMATIONS: Automation[] = []
+
 export default function AutomationsView() {
   const { data, isLoading } = useAutomations()
-  const automations = data?.automations ?? []
+  const automations = data?.automations ?? EMPTY_AUTOMATIONS
   const nextRuns: NextRuns = data?.next_runs ?? {}
   const [runsFilter, setRunsFilter] = useState<RunQuery>({ limit: 50 })
   const { data: runs = [] } = useAutomationRuns(runsFilter)
@@ -84,7 +87,9 @@ export default function AutomationsView() {
               >
                 <Switch
                   checked={a.enabled}
-                  onCheckedChange={(v) => updateMutation.mutate({ id: a.id, patch: { enabled: v } })}
+                  onCheckedChange={(v) =>
+                    updateMutation.mutate({ id: a.id, patch: { enabled: v } })
+                  }
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
@@ -98,9 +103,7 @@ export default function AutomationsView() {
                       {describeSchedule(a.schedule)} · {describeScope(a.scope)}
                     </span>
                     {nextRuns[a.id] && (
-                      <span className="text-secondary ml-auto text-xs">
-                        下次 {nextRuns[a.id]}
-                      </span>
+                      <span className="text-secondary ml-auto text-xs">下次 {nextRuns[a.id]}</span>
                     )}
                   </div>
                   <div className="text-secondary truncate text-xs">{a.prompt}</div>
@@ -180,9 +183,10 @@ export default function AutomationsView() {
               const detail = r.status === "failed" ? (r.error ?? "") : (r.output ?? "")
               return (
                 <div key={r.id} className="border-hairline rounded-lg border px-3 py-2.5">
-                  <button
+                  <Button
                     type="button"
-                    className="flex w-full items-center gap-2 text-left"
+                    variant="ghost"
+                    className="h-auto w-full justify-start gap-2 px-0 text-left font-normal hover:bg-transparent"
                     onClick={() => {
                       setExpandedRun(expanded ? null : r.id)
                       if (r.unread) markReadMutation.mutate(r.id)
@@ -204,7 +208,7 @@ export default function AutomationsView() {
                     <span className="text-secondary ml-auto text-xs">
                       {formatTime(r.started_at)}
                     </span>
-                  </button>
+                  </Button>
                   {expanded && detail && (
                     <div className="bg-surface mt-2 rounded-md p-2 text-xs whitespace-pre-wrap">
                       {detail}
