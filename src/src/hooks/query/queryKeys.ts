@@ -103,6 +103,11 @@ export const mcpKeys = {
   all: ["mcp-servers"] as const,
 }
 
+/** 技能列表（`/api/skills`）。 */
+export const skillKeys = {
+  all: ["skills"] as const,
+}
+
 /** pi-rs 可选模型列表（`/api/agent/models`）。 */
 export const agentModelsKeys = {
   all: ["agent-models"] as const,
