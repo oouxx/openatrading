@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useCallback, useState } from "react"
+import { lazy, Suspense, useEffect, useCallback, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
 import { motion, AnimatePresence, useDragControls } from "motion/react"
-import { Panel, Separator, usePanelRef } from "react-resizable-panels"
+import { Panel, Separator, usePanelRef, type PanelSize } from "react-resizable-panels"
 import { Button } from "@/components/ui/button"
 import ErrorBoundary from "@/components/ErrorBoundary"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -41,6 +41,16 @@ const PANEL_DEFAULT_WIDTH = 400
 const PANEL_MIN_WIDTH = 300
 const PANEL_MAX_WIDTH = 700
 const PANEL_COLLAPSED_WIDTH = 48
+const PANEL_COLLAPSED_STORAGE_KEY = "right-panel-collapsed"
+
+function loadCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_COLLAPSED_STORAGE_KEY) === "true"
+  } catch {
+    // localStorage 不可用或被禁用时回退到展开状态
+    return false
+  }
+}
 
 function ViewFallback() {
   return (
@@ -83,7 +93,25 @@ export default function RightPanel() {
   const [popoutView, setPopoutView] = useState<RightPanelView | null>(null)
   const dragControls = useDragControls()
   const panelRef = usePanelRef()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(loadCollapsed)
+
+  // The Panel's imperative API is only wired up after the Group registers
+  // itself in the Group's own layout effect. Layout effects run child-first, so
+  // reading getSize()/isCollapsed() here during mount throws "Group not found".
+  // Seed the UI from storage instead and keep it in sync via onResize, which
+  // the library also fires for the initial size.
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_COLLAPSED_STORAGE_KEY, String(collapsed))
+    } catch {
+      // localStorage 写入失败时仍更新内存状态，保持交互可用
+    }
+  }, [collapsed])
+
+  const handleResize = useCallback((size: PanelSize) => {
+    if (size.inPixels <= 0) return
+    setCollapsed(size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
+  }, [])
 
   useEffect(() => {
     if (!popoutView) return
@@ -93,16 +121,6 @@ export default function RightPanel() {
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [popoutView])
-
-  // Restore the collapse state after the persisted layout is applied.
-  useLayoutEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-    const size = panel.getSize()
-    setCollapsed(
-      panel.isCollapsed() || (size.inPixels > 0 && size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
-    )
-  }, [panelRef])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -133,9 +151,7 @@ export default function RightPanel() {
         collapsible
         collapsedSize={PANEL_COLLAPSED_WIDTH}
         collapsedThreshold={PANEL_COLLAPSED_WIDTH + 32}
-        onResize={(size) => {
-          if (size.inPixels > 0) setCollapsed(size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
-        }}
+        onResize={handleResize}
         className="min-w-0"
       >
         <div className="bg-surface border-hairline flex h-full flex-col overflow-hidden border-l">
@@ -198,7 +214,7 @@ export default function RightPanel() {
               >
                 <TabsList
                   variant="line"
-                  className="border-hairline h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
+                  className="border-hairline no-scrollbar h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
                 >
                   {TABS.map((tab) => (
                     <TabsTrigger
