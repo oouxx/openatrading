@@ -27,7 +27,7 @@ export function SettingRow({
       <div className="min-w-0">
         <p className="text-primary text-sm leading-5 font-medium">{label}</p>
         {description ? (
-          <p className="text-secondary text-caption mt-0.5 leading-4">{description}</p>
+          <p className="text-body text-secondary mt-0.5 leading-4">{description}</p>
         ) : null}
       </div>
       <div className="shrink-0">{control}</div>
@@ -39,7 +39,7 @@ export function SettingRow({
 export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="text-primary mb-3 text-[13px] font-semibold">{title}</h2>
+      <h2 className="text-primary text-body mb-3 font-semibold">{title}</h2>
       <div className="divide-hairline divide-y">{children}</div>
     </section>
   )

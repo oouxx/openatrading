@@ -17,8 +17,8 @@ interface AgentStatusBarProps {
 interface PhaseVisual {
   icon: ReactNode
   label: string
-  color: string                       /* Tailwind text color */
-  barColor: string                    /* Tailwind bg for progress bar */
+  color: string /* Tailwind text color */
+  barColor: string /* Tailwind bg for progress bar */
   pulse: boolean
 }
 
@@ -26,15 +26,15 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
   switch (phase) {
     case "idle":
       return {
-        icon: <Sparkles className="size-3 text-secondary/40" />,
+        icon: <Sparkles className="text-tertiary size-3" />,
         label: "等待输入",
-        color: "text-secondary/40",
+        color: "text-tertiary",
         barColor: "bg-transparent",
         pulse: false,
       }
     case "starting":
       return {
-        icon: <Sparkles className="size-3.5 animate-pulse text-brand" />,
+        icon: <Sparkles className="text-brand size-3.5 animate-pulse" />,
         label: "开始处理",
         color: "text-brand",
         barColor: "bg-brand/40",
@@ -42,7 +42,7 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
       }
     case "processing":
       return {
-        icon: <Loader2 className="size-3.5 animate-spin text-brand" />,
+        icon: <Loader2 className="text-brand size-3.5 animate-spin" />,
         label: "处理中",
         color: "text-brand",
         barColor: "bg-brand/40",
@@ -50,7 +50,7 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
       }
     case "settled":
       return {
-        icon: <CheckCircle2 className="size-3.5 text-success" />,
+        icon: <CheckCircle2 className="text-success size-3.5" />,
         label: "处理完成",
         color: "text-success",
         barColor: "bg-success/60",
@@ -58,7 +58,7 @@ function phaseVisual(phase: AgentPhase): PhaseVisual {
       }
     case "error":
       return {
-        icon: <XCircle className="size-3.5 text-danger" />,
+        icon: <XCircle className="text-danger size-3.5" />,
         label: "处理出错",
         color: "text-danger",
         barColor: "bg-danger/60",
@@ -88,14 +88,15 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
 
       {/* Animated progress bar (during active phases) */}
       {(phase === "starting" || phase === "processing") && (
-        <div className="flex-1 h-[2px] rounded-full bg-hairline overflow-hidden">
+        <div className="bg-hairline h-[2px] flex-1 overflow-hidden rounded-full">
           <div
-            className={`h-full rounded-full ${vis.barColor} transition-all duration-1000`}
+            className={`h-full rounded-full ${vis.barColor} transition-[width,background-color] duration-1000`}
             style={{
               width: phase === "processing" ? "60%" : "20%",
-              animation: phase === "processing"
-                ? "agent-progress 2s ease-in-out infinite"
-                : "agent-progress-start 1s ease-in-out infinite",
+              animation:
+                phase === "processing"
+                  ? "agent-progress 2s ease-in-out infinite"
+                  : "agent-progress-start 1s ease-in-out infinite",
             }}
           />
         </div>
@@ -103,7 +104,7 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
 
       {/* Error message */}
       {phase === "error" && errorMessage && (
-        <span className="text-secondary/60 ml-1 truncate font-number text-caption">{errorMessage}</span>
+        <span className="text-tertiary font-number text-caption ml-1 truncate">{errorMessage}</span>
       )}
     </div>
   )

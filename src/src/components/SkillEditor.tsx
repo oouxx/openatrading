@@ -152,7 +152,7 @@ export default function SkillEditor() {
         <div className="border-hairline w-sidebar-narrow hidden shrink-0 flex-col border-r md:flex">
           <div className="border-hairline border-b px-3 py-2">
             <Input
-              className="bg-hover text-secondary text-caption placeholder:text-primary/20 h-auto border-0 px-2 py-2"
+              className="bg-hover text-secondary text-caption placeholder:text-tertiary h-auto border-0 px-2 py-2"
               placeholder="搜索技能..."
               readOnly
             />
@@ -176,9 +176,7 @@ export default function SkillEditor() {
                     <span className="text-caption truncate font-medium">{sk.name}</span>
                     <span
                       className={`text-caption rounded-full px-2 py-[1px] ${
-                        sk.scope === "project"
-                          ? "bg-brand/10 text-brand"
-                          : "text-primary/40 bg-white/5"
+                        sk.scope === "project" ? "bg-brand/10 text-brand" : "text-tertiary bg-hover"
                       }`}
                     >
                       {sk.scope === "project" ? "项目" : sk.scope === "temporary" ? "临时" : "用户"}

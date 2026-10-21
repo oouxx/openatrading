@@ -74,7 +74,7 @@ export function ToolCallItem({
 
   return (
     <div
-      className={`rounded-[10px] border transition-all duration-200 ${
+      className={`rounded-lg border transition-colors ${
         status === "error" ? "border-danger/30 bg-danger/10" : "border-hairline bg-hover/50"
       }`}
     >
@@ -88,14 +88,14 @@ export function ToolCallItem({
             <ToolIcon name={tc.name} className="size-3" />
           </span>
         )}
-        <span className="text-primary min-w-0 flex-1 truncate text-[13px] font-medium">
+        <span className="text-primary text-body min-w-0 flex-1 truncate font-medium">
           {summarizeTool(tc.name, tc.args)}
         </span>
-        <span className="text-secondary/40 font-number hidden shrink-0 text-[11px] sm:inline">
+        <span className="text-tertiary font-number text-caption hidden shrink-0 sm:inline">
           {tc.name}
         </span>
         <StatusIcon status={status} />
-        <span className="text-secondary/50 shrink-0">
+        <span className="text-tertiary shrink-0">
           {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </span>
       </Button>
@@ -158,7 +158,7 @@ export function ToolIcon({ name, className }: { name: string; className?: string
     return <FileEdit className={`${cls} text-warning shrink-0`} />
   }
   if (name.startsWith("bash") || name === "execute_command" || name === "run") {
-    return <Terminal className={`${cls} shrink-0 text-sky-500`} />
+    return <Terminal className={`${cls} text-info shrink-0`} />
   }
   return <Wrench className={`${cls} text-secondary shrink-0`} />
 }
@@ -232,7 +232,7 @@ function DiffContent({ content }: { content: string }) {
           let className = ""
           if (line.startsWith("+")) className = "text-success"
           else if (line.startsWith("-")) className = "text-danger"
-          else if (line.startsWith("@")) className = "text-secondary/50"
+          else if (line.startsWith("@")) className = "text-tertiary"
           return (
             <div key={i} className={className}>
               {line}
@@ -301,7 +301,7 @@ function ResultBlock({
         <Button
           variant="link"
           size="xs"
-          className="text-secondary/50 hover:text-secondary font-number h-auto p-0"
+          className="text-tertiary hover:text-secondary font-number h-auto p-0"
           onClick={expandFromServer}
           disabled={loading}
         >
@@ -313,7 +313,7 @@ function ResultBlock({
         <Button
           variant="link"
           size="xs"
-          className="text-secondary/50 hover:text-secondary font-number mt-1 h-auto p-0"
+          className="text-tertiary hover:text-secondary font-number mt-1 h-auto p-0"
           onClick={() => setShowFull(true)}
         >
           展开全部（{content.length} 字符）
@@ -342,7 +342,7 @@ function StatusIcon({ status }: { status: ToolCall["status"] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-secondary/70 font-number text-caption mb-1 font-medium">{title}</div>
+      <div className="text-tertiary font-number text-caption mb-1 font-medium">{title}</div>
       {children}
     </div>
   )

@@ -126,8 +126,6 @@ export default function DragonTigerView() {
     fontSize: "var(--font-size-caption)",
     fontWeight: 500,
     color: "var(--color-tertiary)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.03em",
     borderBottom: "1px solid var(--color-border)",
     background: "rgb(var(--color-fg-rgb) / 0.04)",
     position: "sticky" as const,
@@ -150,7 +148,7 @@ export default function DragonTigerView() {
               key={s.l}
               className={`bg-surface rounded-lg border px-4 py-4 text-center ${s.hl ? "border-brand bg-brand/5" : "border-hairline"}`}
             >
-              <div className="text-secondary text-caption mb-1 tracking-wider uppercase">{s.l}</div>
+              <div className="text-secondary text-caption mb-1">{s.l}</div>
               <div
                 className="font-number text-h1 text-primary font-semibold"
                 style={s.cl ? { color: s.cl } : undefined}
@@ -169,9 +167,7 @@ export default function DragonTigerView() {
             </div>
             <div className="p-3">
               <div className="mb-3">
-                <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
-                  搜索
-                </div>
+                <div className="text-secondary text-caption mb-2 font-semibold">搜索</div>
                 <Input
                   type="text"
                   placeholder="名称或代码…"
@@ -181,9 +177,7 @@ export default function DragonTigerView() {
                 />
               </div>
               <div>
-                <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
-                  净买卖
-                </div>
+                <div className="text-secondary text-caption mb-2 font-semibold">净买卖</div>
                 <div className="flex flex-wrap gap-2">
                   {(["all", "buy", "sell"] as const).map((d) => {
                     const labels = {
@@ -368,11 +362,11 @@ export default function DragonTigerView() {
                 </DialogTitle>
                 <DialogDescription className="sr-only">龙虎榜个股详情</DialogDescription>
               </DialogHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-6">
                 {selected.explanation && (
                   <div className="mb-4">
                     <h4 className="text-caption text-primary mb-2 font-medium">上榜原因</h4>
-                    <p className="text-secondary text-caption">{selected.explanation}</p>
+                    <p className="text-body text-secondary">{selected.explanation}</p>
                   </div>
                 )}
                 <div className="mb-4 grid grid-cols-2 gap-3">
@@ -441,7 +435,7 @@ export default function DragonTigerView() {
                                 <td
                                   style={{
                                     ...td,
-                                    fontFamily: "JetBrains Mono, monospace",
+                                    fontFamily: "Geist Mono Variable, monospace",
                                     color: "var(--color-up)",
                                   }}
                                 >
@@ -450,7 +444,7 @@ export default function DragonTigerView() {
                                 <td
                                   style={{
                                     ...td,
-                                    fontFamily: "JetBrains Mono, monospace",
+                                    fontFamily: "Geist Mono Variable, monospace",
                                   }}
                                 >
                                   {s.buy_ratio != null ? `${(s.buy_ratio * 100).toFixed(1)}%` : "—"}
@@ -488,7 +482,7 @@ export default function DragonTigerView() {
                                 <td
                                   style={{
                                     ...td,
-                                    fontFamily: "JetBrains Mono, monospace",
+                                    fontFamily: "Geist Mono Variable, monospace",
                                     color: "var(--color-down)",
                                   }}
                                 >
@@ -497,7 +491,7 @@ export default function DragonTigerView() {
                                 <td
                                   style={{
                                     ...td,
-                                    fontFamily: "JetBrains Mono, monospace",
+                                    fontFamily: "Geist Mono Variable, monospace",
                                   }}
                                 >
                                   {s.sell_ratio != null

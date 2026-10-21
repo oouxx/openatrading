@@ -952,7 +952,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     <div className="relative w-full" style={{ height: period === "minute" ? 436 : 420 }}>
       {/* K 线主图左上角 MA 图例（同花顺样式：整行与均线同色；分时图不显示） */}
       {period !== "minute" && maLegend && (
-        <div className="font-number absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+        <div className="font-number text-caption absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5">
           {maLegend.map((m) => (
             <span key={m.label} className="flex items-center gap-1" style={{ color: m.color }}>
               {m.label}: <span className="font-bold">{m.value}</span>
@@ -963,7 +963,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       {/* K 线 VOL 副图左上角标注（同花顺样式） */}
       {period !== "minute" && (
         <span
-          className="font-number text-secondary absolute left-1 z-10 text-[11px]"
+          className="font-number text-secondary text-caption absolute left-1 z-10"
           style={{ top: 322 }}
         >
           VOL
@@ -995,7 +995,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
             return (
               <span
                 key={idx}
-                className="font-number text-secondary absolute top-0 text-[11px]"
+                className="font-number text-secondary text-caption absolute top-0"
                 style={{
                   left: x,
                   transform:

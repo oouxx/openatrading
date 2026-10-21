@@ -19,25 +19,17 @@ interface TurnDividerProps {
 export default function TurnDivider({ label, isError }: TurnDividerProps) {
   return (
     <div className="flex items-center gap-2 px-0 py-1">
-      <div
-        className={`flex-1 border-t ${
-          isError ? "border-danger/20" : "border-hairline"
-        }`}
-      />
+      <div className={`flex-1 border-t ${isError ? "border-danger/20" : "border-hairline"}`} />
       {label && (
         <span
-          className={`shrink-0 font-number text-caption tracking-wider uppercase ${
-            isError ? "text-danger/40" : "text-secondary/30"
+          className={`font-number text-caption shrink-0 ${
+            isError ? "text-danger/40" : "text-tertiary"
           }`}
         >
           {label}
         </span>
       )}
-      <ArrowRight
-        className={`size-2.5 shrink-0 ${
-          isError ? "text-danger/30" : "text-secondary/30"
-        }`}
-      />
+      <ArrowRight className={`size-2.5 shrink-0 ${isError ? "text-danger/30" : "text-tertiary"}`} />
     </div>
   )
 }

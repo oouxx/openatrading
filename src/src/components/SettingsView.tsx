@@ -87,18 +87,24 @@ function ThemePreview({ dark }: { dark: boolean }) {
         <span className="size-[6px] rounded-full bg-[#febc2e]" />
         <span className="size-[6px] rounded-full bg-[#28c840]" />
         <span
-          className={`ml-1.5 h-[5px] w-10 rounded-full ${dark ? "bg-white/25" : "bg-black/15"}`}
+          className={`ml-1.5 h-[5px] w-10 rounded-full ${dark ? "bg-pure-white/25" : "bg-pure-black/15"}`}
         />
       </div>
       {/* 窗口内容：左侧导航条 + 内容骨架 */}
-      <div className={`flex h-11 ${dark ? "bg-[#262624]" : "bg-white"}`}>
+      <div className={`flex h-11 ${dark ? "bg-[#262624]" : "bg-pure-white"}`}>
         <div
-          className={`w-5 border-r ${dark ? "border-white/10 bg-[#1c1c1a]" : "border-black/5 bg-[#faf9f5]"}`}
+          className={`w-5 border-r ${dark ? "border-pure-white/10 bg-[#1c1c1a]" : "border-pure-black/5 bg-[#faf9f5]"}`}
         />
         <div className="flex flex-1 flex-col justify-center gap-[5px] px-1.5">
-          <div className={`h-[5px] w-2/3 rounded-full ${dark ? "bg-white/30" : "bg-black/15"}`} />
-          <div className={`h-[5px] w-full rounded-full ${dark ? "bg-white/12" : "bg-black/8"}`} />
-          <div className={`h-[5px] w-1/2 rounded-full ${dark ? "bg-white/12" : "bg-black/8"}`} />
+          <div
+            className={`h-[5px] w-2/3 rounded-full ${dark ? "bg-pure-white/30" : "bg-pure-black/15"}`}
+          />
+          <div
+            className={`h-[5px] w-full rounded-full ${dark ? "bg-pure-white/12" : "bg-pure-black/8"}`}
+          />
+          <div
+            className={`h-[5px] w-1/2 rounded-full ${dark ? "bg-pure-white/12" : "bg-pure-black/8"}`}
+          />
         </div>
       </div>
     </div>
@@ -307,7 +313,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       <div className="space-y-8">
         {activeTab === "appearance" && (
           <section>
-            <h2 className="text-primary mb-3 text-[13px] font-semibold">基础主题</h2>
+            <h2 className="text-primary text-body mb-3 font-semibold">基础主题</h2>
             <div className="flex items-start gap-3">
               <ThemeCard
                 label={THEME_LABELS.light}

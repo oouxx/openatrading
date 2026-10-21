@@ -561,14 +561,14 @@ export default function AiCopilot({
               <img
                 src={`data:${img.mimeType};base64,${img.data}`}
                 alt={`附件 ${i + 1}`}
-                className="border-border h-16 w-16 rounded-lg border object-cover shadow-sm"
+                className="border-hairline h-16 w-16 rounded-lg border object-cover shadow-sm"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => removeAttachment(i)}
-                className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                className="bg-scrim-strong text-brand-foreground hover:bg-scrim absolute -top-1.5 -right-1.5 size-5 rounded-full"
                 aria-label="移除附件"
               >
                 <X />
@@ -579,7 +579,7 @@ export default function AiCopilot({
       )}
       <Textarea
         ref={textareaRef}
-        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 border-border text-body text-primary placeholder:text-tertiary max-h-[200px] min-h-[56px] w-full resize-none rounded-[24px] border py-4 pr-16 pl-16 shadow-[0_2px_16px_rgba(0,0,0,0.07)] transition-all outline-none focus:ring-3`}
+        className={`bg-surface focus:border-brand/60 focus:ring-brand/20 border-hairline text-body text-primary placeholder:text-tertiary shadow-card max-h-[200px] min-h-[56px] w-full resize-none rounded-lg border py-4 pr-16 pl-16 transition-colors outline-none focus:ring-3`}
         placeholder="有什么可以帮你？"
         rows={1}
         value={input}
@@ -771,7 +771,7 @@ export default function AiCopilot({
                     {turn.role === "user" ? (
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
-                        <div className="bg-surface text-primary shadow-card max-w-[85%] rounded-2xl px-4 py-2.5">
+                        <div className="bg-surface text-primary shadow-card max-w-[85%] rounded-lg px-4 py-2.5">
                           {turn.blocks.some((b) => b.type === "image") && (
                             <div className="mb-2 flex flex-wrap gap-2">
                               {turn.blocks.map((b) =>
@@ -780,13 +780,13 @@ export default function AiCopilot({
                                     key={b.id}
                                     src={`data:${b.mimeType};base64,${b.data}`}
                                     alt="图片"
-                                    className="border-border h-24 w-24 rounded-lg border object-cover"
+                                    className="border-hairline h-24 w-24 rounded-lg border object-cover"
                                   />
                                 ) : null
                               )}
                             </div>
                           )}
-                          <p className="text-[15px] leading-[1.7] whitespace-pre-wrap">
+                          <p className="text-body leading-[1.7] whitespace-pre-wrap">
                             {turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}
                           </p>
                         </div>
@@ -794,8 +794,8 @@ export default function AiCopilot({
                     ) : (
                       // Claude 样式：助手消息直排 + 顶部模型名小字（无头像）
                       <div className="flex w-full flex-col">
-                        <span className="text-secondary/70 mb-1 px-1 text-[13px]">AI 行情助手</span>
-                        <div className="w-full min-w-0 text-[15px] leading-[1.7]">
+                        <span className="text-tertiary text-body mb-1 px-1">AI 行情助手</span>
+                        <div className="text-body w-full min-w-0 leading-[1.7]">
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}

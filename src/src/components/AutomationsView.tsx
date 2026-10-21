@@ -146,7 +146,7 @@ export default function AutomationsView() {
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             运行收件箱
             {unreadCount > 0 && (
-              <span className="bg-destructive text-destructive-foreground rounded-full px-2 py-0.5 text-xs text-white">
+              <span className="bg-destructive text-destructive-foreground rounded-full px-2 py-0.5 text-xs">
                 {unreadCount} 未读
               </span>
             )}
@@ -194,7 +194,7 @@ export default function AutomationsView() {
                   >
                     <span
                       className={`size-2 shrink-0 rounded-full ${
-                        r.unread ? "bg-primary" : "bg-transparent ring-1 ring-gray-400/40"
+                        r.unread ? "bg-primary" : "ring-border bg-transparent ring-1"
                       }`}
                     />
                     <span

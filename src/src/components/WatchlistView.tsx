@@ -160,10 +160,10 @@ export default function WatchlistView() {
     <div className="flex h-full">
       {/* Main content */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="max-w-wide mx-auto px-6 py-4">
+        <div className="max-w-wide mx-auto px-6 py-6">
           {/* ── Header ── */}
           <div className="mb-4 flex items-center gap-3">
-            <Star className="size-5 text-yellow-500" />
+            <Star className="text-warning size-5" />
             <h1 className="text-h1 text-primary font-bold">自选股</h1>
             <span className="text-caption text-secondary">{items.length}只</span>
 
@@ -202,7 +202,7 @@ export default function WatchlistView() {
 
           {/* ── Add-stock search ── */}
           {showAdd && (
-            <div className="border-hairline mb-4 rounded-lg border bg-white/2 p-3">
+            <div className="border-hairline bg-canvas mb-4 rounded-lg border p-3">
               <div className="relative">
                 <Search className="text-secondary absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                 <Input
@@ -214,9 +214,7 @@ export default function WatchlistView() {
                 />
               </div>
               {addSearching && (
-                <div className="text-caption text-secondary text-caption py-4 text-center">
-                  搜索中...
-                </div>
+                <div className="text-caption text-secondary py-4 text-center">搜索中...</div>
               )}
               {addResults.length > 0 && (
                 <div className="mt-2 max-h-60 space-y-1 overflow-y-auto">
@@ -263,12 +261,12 @@ export default function WatchlistView() {
             <div className="space-y-2">
               {/* Column headers — clickable sort */}
               {!showAdd && (
-                <div className="text-caption text-caption text-primary/40 flex items-center gap-4 px-3 py-2 tracking-wide uppercase">
+                <div className="text-caption text-tertiary flex items-center gap-4 px-3 py-2">
                   <span className="flex-1">名称 / 代码</span>
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
+                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
                     onClick={() => toggleSort("price")}
                   >
                     最新价 {renderSortIcon("price")}
@@ -276,7 +274,7 @@ export default function WatchlistView() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-16 justify-end px-0 font-normal uppercase hover:bg-transparent"
+                    className="text-caption text-tertiary hover:text-secondary h-auto w-16 justify-end px-0 font-normal hover:bg-transparent"
                     onClick={() => toggleSort("change")}
                   >
                     涨幅 {renderSortIcon("change")}
@@ -284,7 +282,7 @@ export default function WatchlistView() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
+                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
                     onClick={() => toggleSort("market_value")}
                   >
                     总市值 {renderSortIcon("market_value")}
@@ -292,7 +290,7 @@ export default function WatchlistView() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-caption text-primary/40 hover:text-primary/70 h-auto w-20 justify-end px-0 font-normal uppercase hover:bg-transparent"
+                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
                     onClick={() => toggleSort("circulation_value")}
                   >
                     流通市值 {renderSortIcon("circulation_value")}
@@ -374,19 +372,19 @@ function StockRow({
               {up ? "+" : ""}
               {quote.px_change_rate?.toFixed(2)}%
             </span>
-            <span className="font-number text-caption text-primary/70 w-20 text-right">
+            <span className="font-number text-caption text-secondary w-20 text-right">
               {formatCompactNumber(quote.market_value)}
             </span>
-            <span className="font-number text-caption text-primary/70 w-20 text-right">
+            <span className="font-number text-caption text-secondary w-20 text-right">
               {formatCompactNumber(quote.circulation_value)}
             </span>
           </>
         ) : (
           <>
-            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
-            <div className="text-caption text-secondary h-4 w-16 animate-pulse rounded bg-white/5" />
-            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
-            <div className="text-caption text-secondary h-4 w-20 animate-pulse rounded bg-white/5" />
+            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
+            <div className="text-caption text-secondary bg-hover h-4 w-16 animate-pulse rounded" />
+            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
+            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
           </>
         )}
       </button>

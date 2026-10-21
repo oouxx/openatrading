@@ -188,14 +188,14 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     return (
       <div className="flex items-center justify-center gap-3 py-16">
         <span className="bg-brand size-2 animate-pulse rounded-full" />
-        <span className="text-caption font-number text-primary/40">加载晋级数据...</span>
+        <span className="text-caption font-number text-tertiary">加载晋级数据...</span>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
+      <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
         {error}
       </div>
     )
@@ -203,7 +203,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
 
   if (ladder.length === 0 && firstBoard.length === 0) {
     return (
-      <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
+      <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
         今日无涨停数据
       </div>
     )
@@ -213,19 +213,19 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
     <div>
       {/* 昨日数据缺失提示 */}
       {!hasYesterdayData && (
-        <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 mb-8 rounded-lg border text-center">
+        <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary mb-8 rounded-lg border text-center">
           未获取到昨日涨停列表，断板数据可能缺失
         </div>
       )}
 
       {/* ST 过滤 */}
       <div className="mb-6 flex items-center gap-4">
-        <label className="text-primary/60 flex cursor-pointer items-center gap-2 select-none">
+        <label className="text-secondary flex cursor-pointer items-center gap-2 select-none">
           <Checkbox checked={hideST} onCheckedChange={(checked) => setHideST(checked === true)} />
           <span className="text-caption">隐藏ST</span>
         </label>
         {hideST && stFilteredCount > 0 && (
-          <span className="text-caption text-primary/40">已过滤 {stFilteredCount} 只ST</span>
+          <span className="text-caption text-tertiary">已过滤 {stFilteredCount} 只ST</span>
         )}
       </div>
 
@@ -234,16 +234,16 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
         <div className="mb-12">
           <div className="mb-6 flex items-center gap-3">
             <h3 className="text-hero text-primary">连板晋级梯队</h3>
-            <span className="text-caption text-primary/40">
+            <span className="text-caption text-tertiary">
               昨 {totalYesterday} 只 → 今 {totalToday} 只 · 综合晋级率
-              <b className={overallRate >= 0.5 ? "text-up" : "text-primary/40"}>
+              <b className={overallRate >= 0.5 ? "text-up" : "text-tertiary"}>
                 {" "}
                 {(overallRate * 100).toFixed(1)}%
               </b>
             </span>
           </div>
 
-          <div className="bg-surface border-hairline-dark p-card-inner rounded-lg border">
+          <div className="bg-surface border-hairline p-card-inner rounded-lg border">
             {ladder.map((row) => (
               <div key={row.yesterdayDays} className="mb-3 last:mb-0">
                 <button
@@ -254,26 +254,26 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                     setSelectedBoard(selectedBoard === row.yesterdayDays ? null : row.yesterdayDays)
                   }
                 >
-                  <span className="text-caption text-primary/60 min-w-14 rounded-sm bg-white/10 px-2 py-0.5 text-center">
+                  <span className="text-caption text-secondary bg-hover min-w-14 rounded-sm px-2 py-0.5 text-center">
                     昨{row.yesterdayDays}板
                   </span>
-                  <span className="text-primary/40 min-w-10">{row.yesterdayCount}只</span>
-                  <span className="text-primary/40">→</span>
+                  <span className="text-tertiary min-w-10">{row.yesterdayCount}只</span>
+                  <span className="text-tertiary">→</span>
                   <span className="text-caption min-w-14 rounded-sm px-2 py-0.5 text-center">
                     今{row.yesterdayDays + 1}板
                   </span>
                   <span className="text-primary min-w-10">{row.promotedCount}只</span>
-                  <span className="text-caption text-primary/40">晋级率</span>
-                  <b className={row.rate >= 0.5 ? "text-up" : "text-primary/40"}>
+                  <span className="text-caption text-tertiary">晋级率</span>
+                  <b className={row.rate >= 0.5 ? "text-up" : "text-tertiary"}>
                     {(row.rate * 100).toFixed(1)}%
                   </b>
-                  <div className="h-2 min-w-15 flex-1 rounded-full bg-white/10">
+                  <div className="bg-hover h-2 min-w-15 flex-1 rounded-full">
                     <div
-                      className={`h-full rounded-full transition-all ${row.rate >= 0.5 ? "bg-up" : "bg-down"}`}
+                      className={`h-full rounded-full transition-[width] duration-300 ${row.rate >= 0.5 ? "bg-up" : "bg-down"}`}
                       style={{ width: row.rate * 100 + "%" }}
                     />
                   </div>
-                  <span className="text-caption text-primary/40">断板 {row.brokenCount}只</span>
+                  <span className="text-caption text-tertiary">断板 {row.brokenCount}只</span>
                 </button>
 
                 {/* 展开详情表 */}
@@ -297,7 +297,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                               <MiniChartPreview symbol={s.symbol} name={s.name}>
                                 <button
                                   type="button"
-                                  className="cursor-pointer hover:underline"
+                                  className="cursor-pointer transition-colors hover:underline"
                                   onClick={() => handleOpenKline(s.symbol, s.name)}
                                 >
                                   {s.symbol}
@@ -311,7 +311,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                             </td>
                             <td className="font-number">
                               <span
-                                className={s.status === "promoted" ? "text-up" : "text-primary/40"}
+                                className={s.status === "promoted" ? "text-up" : "text-tertiary"}
                               >
                                 {s.yesterdayDays}板 →{" "}
                                 {s.status === "promoted" ? s.todayDays + "板" : "断板"}
@@ -328,7 +328,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                                 className={`text-caption font-number rounded-sm px-2 py-0.5 ${
                                   s.status === "promoted"
                                     ? "bg-up/15 text-up"
-                                    : "text-primary/40 bg-white/10"
+                                    : "text-tertiary bg-hover"
                                 }`}
                               >
                                 {s.status === "promoted" ? "晋级" : "断板"}
@@ -351,9 +351,9 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
         <div>
           <div className="mb-6 flex items-center gap-3">
             <h3 className="text-hero text-primary">首板新进</h3>
-            <span className="text-caption text-primary/40">共 {firstBoard.length} 只</span>
+            <span className="text-caption text-tertiary">共 {firstBoard.length} 只</span>
           </div>
-          <div className="bg-surface border-hairline-dark overflow-hidden rounded-lg border">
+          <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
             <table className="data-table">
               <thead>
                 <tr>
@@ -373,7 +373,7 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                       <MiniChartPreview symbol={s.symbol} name={s.name}>
                         <button
                           type="button"
-                          className="cursor-pointer hover:underline"
+                          className="cursor-pointer transition-colors hover:underline"
                           onClick={() => handleOpenKline(s.symbol, s.name)}
                         >
                           {s.symbol}
@@ -386,14 +386,14 @@ export default function PromotionTab({ stocks: propStocks, onOpenKline }: Promot
                       </MiniChartPreview>
                     </td>
                     <td>
-                      <span className="font-number text-primary/40">{s.price}</span>
+                      <span className="font-number text-tertiary">{s.price}</span>
                     </td>
                     <td className="text-up font-number text-right">
                       +{(s.changePercent * 100).toFixed(2)}%
                     </td>
                     <td className="font-number text-right">{(s.turnover * 100).toFixed(2)}%</td>
                     <td className="font-number text-right">{(s.capital / 1e8).toFixed(1)}亿</td>
-                    <td className="text-caption text-primary/40">{s.reason || "-"}</td>
+                    <td className="text-caption text-tertiary">{s.reason || "-"}</td>
                   </tr>
                 ))}
               </tbody>

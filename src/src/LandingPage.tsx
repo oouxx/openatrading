@@ -60,7 +60,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="mx-auto max-w-[1100px] px-8 pt-20 pb-14 text-center">
         <h1
-          className="mb-4 leading-tight font-medium text-white"
+          className="text-primary mb-4 leading-tight font-medium"
           style={{ fontSize: "clamp(2.2rem, 5vw, 3.8rem)" }}
         >
           AI<span className="text-ai">行情助手</span>
@@ -90,13 +90,13 @@ export default function LandingPage() {
         <div className="flex flex-wrap justify-center gap-3">
           <Link
             to="/app"
-            className="bg-ai inline-flex items-center gap-2 rounded-[10px] px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="bg-ai text-brand-foreground inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-medium transition-opacity hover:opacity-90"
           >
             开始使用 →
           </Link>
           <a
             href="#install"
-            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-[10px] border px-6 py-2.5 text-sm font-medium transition-colors"
+            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-medium transition-colors"
           >
             📦 下载安装
           </a>
@@ -105,38 +105,37 @@ export default function LandingPage() {
 
       {/* Features */}
       <section className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="mb-6 flex items-center gap-2.5 text-2xl font-medium text-white">核心功能</h2>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-2xl font-medium">
+          核心功能
+        </h2>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <Link
               key={f.title}
               to="/app"
-              className="bg-bg-surface border-hairline overflow-hidden rounded-[14px] border transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              className="bg-bg-surface border-hairline hover:border-brand/40 overflow-hidden rounded-lg border transition-colors"
             >
               <div className="px-[18px] py-[22px]">
-                <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
+                <h4 className="text-primary mb-1.5 flex items-center gap-2 text-base font-medium">
                   {f.title}
                   {f.badge && (
                     <span
-                      className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
+                      className="text-brand-foreground text-caption inline-block rounded-sm px-2.5 py-[3px] font-medium"
                       style={{
-                        background:
-                          f.badge === "核心"
-                            ? "var(--color-ai, oklch(62% 0.19 250))"
-                            : "oklch(55% 0.16 145)",
+                        background: f.badge === "核心" ? "var(--color-brand)" : "var(--color-info)",
                       }}
                     >
                       {f.badge}
                     </span>
                   )}
                 </h4>
-                <p className="text-ink-muted mb-2.5 text-[0.8rem] leading-relaxed">{f.desc}</p>
+                <p className="text-ink-muted text-body mb-2.5 leading-relaxed">{f.desc}</p>
                 <div className="flex flex-wrap gap-2">
                   {f.tags.map((t) => (
                     <span
                       key={t}
-                      className="rounded-badge text-ink-muted px-2.5 py-[3px] text-[11px]"
-                      style={{ background: "var(--color-tag-bg, rgba(255,255,255,0.05))" }}
+                      className="rounded-badge text-ink-muted text-caption px-2.5 py-[3px]"
+                      style={{ background: "var(--color-tag-bg)" }}
                     >
                       {t}
                     </span>
@@ -148,28 +147,28 @@ export default function LandingPage() {
 
           {/* Multi-entry card (Web + Telegram) — same chat, different entry */}
           <div
-            className="bg-bg-surface overflow-hidden rounded-[14px] transition-all hover:-translate-y-0.5 hover:shadow-lg"
-            style={{ border: "1px solid oklch(55% 0.14 240 / 0.4)" }}
+            className="bg-bg-surface border-hairline hover:border-brand/40 overflow-hidden rounded-lg border transition-colors"
+            style={{}}
           >
             <div className="px-[18px] py-[22px]">
-              <h4 className="mb-1.5 flex items-center gap-2 text-base font-medium text-white">
+              <h4 className="text-primary mb-1.5 flex items-center gap-2 text-base font-medium">
                 多端入口
                 <span
-                  className="inline-block rounded-[7px] px-2.5 py-[3px] text-[11px] font-medium text-white"
-                  style={{ background: "oklch(55% 0.14 240)" }}
+                  className="text-brand-foreground text-caption inline-block rounded-sm px-2.5 py-[3px] font-medium"
+                  style={{ background: "var(--color-info)" }}
                 >
                   Web + Telegram
                 </span>
               </h4>
-              <p className="text-ink-muted mb-2.5 text-[0.8rem] leading-relaxed">
+              <p className="text-ink-muted text-body mb-2.5 leading-relaxed">
                 Web 与 Telegram 共用同一套对话能力，会话与自选在两端实时同步。
               </p>
               <div className="flex flex-wrap gap-2">
                 {["🌐 Web", "✈️ Telegram", "🔄 实时同步"].map((t) => (
                   <span
                     key={t}
-                    className="rounded-badge text-ink-muted px-2.5 py-[3px] text-[11px]"
-                    style={{ background: "var(--color-tag-bg, rgba(255,255,255,0.05))" }}
+                    className="rounded-badge text-ink-muted text-caption px-2.5 py-[3px]"
+                    style={{ background: "var(--color-tag-bg)" }}
                   >
                     {t}
                   </span>
@@ -182,13 +181,13 @@ export default function LandingPage() {
 
       {/* Install */}
       <section id="install" className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="mb-6 flex items-center gap-2.5 text-2xl font-medium text-white">
+        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-2xl font-medium">
           📦 下载安装
         </h2>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Desktop */}
-          <div className="bg-bg-surface border-hairline rounded-[14px] border px-6 py-7">
-            <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
+          <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
+            <h4 className="text-primary mb-2 flex items-center gap-2 text-base font-medium">
               🖥️ 桌面端
             </h4>
             <p className="text-ink-muted mb-5 text-xs/relaxed">
@@ -204,14 +203,14 @@ export default function LandingPage() {
                 <a
                   key={d.label}
                   href={dl(d.platform, d.arch)}
-                  className="bg-ink-dim border-hairline hover:border-ai hover:text-ai inline-flex items-center gap-1.5 rounded-lg border px-[18px] py-2 text-xs font-medium text-white transition-colors"
+                  className="bg-ink-dim border-hairline hover:border-ai hover:text-ai text-primary inline-flex items-center gap-1.5 rounded-lg border px-[18px] py-2 text-xs font-medium transition-colors"
                 >
                   <span className="text-lg">{d.icon}</span>
                   {d.label}
                 </a>
               ))}
             </div>
-            <p className="text-ink-muted text-[11px]">
+            <p className="text-ink-muted text-caption">
               或访问{" "}
               <a href="https://github.com/oouxx/openatrading/releases" className="text-ai">
                 GitHub Releases
@@ -220,8 +219,8 @@ export default function LandingPage() {
           </div>
 
           {/* CLI */}
-          <div className="bg-bg-surface border-hairline rounded-[14px] border px-6 py-7">
-            <h4 className="mb-2 flex items-center gap-2 text-base font-medium text-white">
+          <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
+            <h4 className="text-primary mb-2 flex items-center gap-2 text-base font-medium">
               ⌨️ CLI 命令行
             </h4>
             <p className="text-ink-muted mb-5 text-xs/relaxed">
@@ -237,7 +236,7 @@ openatrading --version
 # 启动 Gateway
 openatrading gateway run`}
             />
-            <p className="text-ink-muted mt-2.5 text-[11px]">
+            <p className="text-ink-muted text-caption mt-2.5">
               完整 CLI 文档：
               <a href="https://github.com/oouxx/openatrading" className="text-ai">
                 GitHub
@@ -266,8 +265,8 @@ openatrading gateway run`}
 function CopyCodeBlock({ text }: { text: string }) {
   return (
     <div
-      className="border-hairline relative overflow-x-auto rounded-[10px] border p-[14px_18px] font-mono text-xs/relaxed whitespace-pre-wrap text-white"
-      style={{ background: "var(--color-tag-bg, rgba(255,255,255,0.05))" }}
+      className="border-hairline text-primary relative overflow-x-auto rounded-lg border p-[14px_18px] font-mono text-xs/relaxed whitespace-pre-wrap"
+      style={{ background: "var(--color-tag-bg)" }}
     >
       <Button
         variant="outline"

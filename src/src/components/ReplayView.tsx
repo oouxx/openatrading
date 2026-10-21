@@ -1,4 +1,4 @@
-import { chartColors } from "@/lib/chartColors"
+import { chartColors, withAlpha } from "@/lib/chartColors"
 
 import { useState, useEffect, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
@@ -307,7 +307,7 @@ export default function ReplayView() {
       </div>
 
       {/* Card List */}
-      <div className="flex-1 overflow-y-auto px-5 py-3">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         {filtered.map((e) => {
           const past = e.minute <= nowTs
           const now = e.minute === nowTs
@@ -317,7 +317,7 @@ export default function ReplayView() {
               key={e.id}
               type="button"
               aria-pressed={selectedId === e.id}
-              className={`bg-surface mb-1 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all ${
+              className={`bg-surface mb-1 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
                 past ? "opacity-100" : "opacity-40"
               } ${now || selectedId === e.id ? "!border-brand !opacity-100 shadow-[0_0_0_2px_var(--color-brand)]" : "border-hairline"}`}
               onClick={() => {
@@ -415,7 +415,7 @@ function PulseChart({
     ctx.clearRect(0, 0, W, H)
 
     // Grid lines
-    ctx.strokeStyle = "rgba(136, 135, 128, 0.04)"
+    ctx.strokeStyle = withAlpha(chartColors.tertiary(), 0.18)
     ctx.lineWidth = 1
     for (let i = 0; i <= 4; i++) {
       const y = pad.t + (ph * i) / 4
@@ -428,7 +428,7 @@ function PulseChart({
     }
 
     // Center axis (zero line)
-    ctx.strokeStyle = "rgba(136, 135, 128, 0.1)"
+    ctx.strokeStyle = withAlpha(chartColors.tertiary(), 0.4)
     ctx.lineWidth = 1.5
     ctx.beginPath()
     ctx.moveTo(pad.l, midY)
@@ -520,7 +520,7 @@ function PulseChart({
 
     // ── Labels ──
     ctx.fillStyle = chartColors.tertiary()
-    ctx.font = "9px Inter, system-ui, sans-serif"
+    ctx.font = "9px 'Geist Variable', system-ui, sans-serif"
 
     // X labels
     const xLabels = [
@@ -544,7 +544,7 @@ function PulseChart({
     })
 
     // Y labels
-    ctx.font = "8px Inter, system-ui, sans-serif"
+    ctx.font = "8px 'Geist Variable', system-ui, sans-serif"
     ctx.textAlign = "end"
     ctx.fillStyle = upColor
     ctx.fillText(`+${(maxAbs * 100).toFixed(1)}%`, pad.l - 8, pad.t + 12)

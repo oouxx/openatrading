@@ -11,7 +11,7 @@ export default function StrongStocksTab() {
   return (
     <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption text-secondary font-number tracking-wider uppercase">
+        <span className="text-caption text-secondary font-number">
           涨停股 · {limitUpStocks.length}
         </span>
       </div>

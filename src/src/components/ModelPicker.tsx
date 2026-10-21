@@ -74,15 +74,15 @@ function ModelItem({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="min-w-0 truncate text-[13px] font-medium">{name || id}</span>
+          <span className="text-body min-w-0 truncate font-medium">{name || id}</span>
           {reasoning && (
-            <span className="text-secondary border-hairline shrink-0 rounded border px-1 py-px text-[10px] leading-3">
+            <span className="text-secondary border-hairline text-caption shrink-0 rounded border px-1 py-px leading-3">
               推理
             </span>
           )}
           {!available && <LockKeyholeIcon className="text-secondary size-3 shrink-0" />}
         </div>
-        <p className="text-secondary font-number mt-0.5 truncate text-[11px]">
+        <p className="text-secondary font-number text-caption mt-0.5 truncate">
           {id}
           {context ? ` · ${context} 上下文` : ""}
           {!available ? " · 未配置密钥" : ""}

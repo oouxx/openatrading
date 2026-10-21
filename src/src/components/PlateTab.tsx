@@ -37,7 +37,7 @@ export default function PlateTab() {
 
   if (error) {
     return (
-      <div className="bg-surface border-hairline text-caption text-secondary rounded-lg border px-4 py-3">
+      <div className="bg-surface border-hairline text-caption text-secondary rounded-lg border px-5 py-4">
         加载失败：{error.message}
       </div>
     )
@@ -48,7 +48,7 @@ export default function PlateTab() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {plates.map((plate: FieldPlate) => (
         <PlateCard key={plate.name} plate={plate} onOpenKline={openKline} />
       ))}
@@ -73,7 +73,7 @@ function PlateCard({
         variant="ghost"
         aria-expanded={isOpen}
         onClick={() => setExpanded(isOpen ? null : plate.name)}
-        className="hover:bg-hover h-auto w-full justify-between rounded-none px-4 py-3"
+        className="hover:bg-hover h-auto w-full justify-between rounded-none px-5 py-4 transition-colors"
       >
         <span className="flex items-center gap-3">
           <span className="text-body text-primary font-semibold">{plate.name}</span>
@@ -82,13 +82,13 @@ function PlateCard({
         <span className="text-caption text-secondary">{isOpen ? "▲" : "▼"}</span>
       </Button>
       {plate.reason && (
-        <div className="px-4 pb-2">
-          <p className="text-caption text-secondary leading-relaxed">{plate.reason}</p>
+        <div className="px-5 pb-3">
+          <p className="text-body text-secondary leading-relaxed">{plate.reason}</p>
         </div>
       )}
       {isOpen && plate.list.length > 0 && (
         <div className="border-hairline border-t">
-          <div className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
             {plate.list.map((item) => (
               <StockCard key={item.code} item={item} onOpenKline={onOpenKline} />
             ))}
@@ -116,7 +116,7 @@ function StockCard({
     >
       <div className="flex items-center justify-between p-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-caption text-primary truncate font-semibold">{item.name}</span>
+          <span className="text-body text-primary truncate font-semibold">{item.name}</span>
           <span className="text-caption text-secondary font-number">
             {item.code.replace(/^(sh|sz|bj)/, "")}
           </span>

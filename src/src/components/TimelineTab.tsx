@@ -63,7 +63,7 @@ export default function TimelineTab() {
               "text-caption font-number rounded-full px-4",
               activeSubView === v.id
                 ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-                : "text-secondary hover:text-primary/80"
+                : "text-secondary hover:text-secondary"
             )}
           >
             {v.label}
@@ -76,30 +76,28 @@ export default function TimelineTab() {
           {dapanLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
               <span className="bg-brand size-2 animate-pulse rounded-full" />
-              <span className="text-caption font-number text-primary/40">加载大盘异动...</span>
+              <span className="text-caption font-number text-tertiary">加载大盘异动...</span>
             </div>
           ) : dapanError ? (
-            <div className="bg-surface border-hairline-dark p-card-inner text-caption text-primary/40 rounded-lg border text-center">
+            <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
               {dapanError.message}
             </div>
           ) : (
             <>
               <div className="text-caption mb-6 flex items-center gap-3">
-                <span className="text-primary/60">
+                <span className="text-secondary">
                   共 <b className="text-primary">{dapanList.length}</b> 条异动
                 </span>
               </div>
 
               {dapanList.length === 0 ? (
-                <div className="text-caption text-primary/40 py-12 text-center">
-                  今日暂无大盘异动
-                </div>
+                <div className="text-caption text-tertiary py-12 text-center">今日暂无大盘异动</div>
               ) : (
                 <div className="space-y-2">
                   {dapanList.map((item, idx) => (
                     <div
                       key={item.id || idx}
-                      className="bg-surface border-hairline-dark hover:bg-hover flex items-start gap-3 rounded-lg border px-4 py-3 transition-colors"
+                      className="bg-surface border-hairline hover:bg-hover flex items-start gap-3 rounded-lg border px-5 py-4 transition-colors"
                     >
                       <span className="text-caption mt-0.5 shrink-0">
                         {typeEmoji(item.bk_yi_dong_type)}
@@ -110,7 +108,7 @@ export default function TimelineTab() {
                           <span className="bg-brand/15 text-brand text-caption font-number rounded-sm px-2 py-0.5">
                             {item.bkj_info?.name || "-"}
                           </span>
-                          <span className="text-caption font-number text-primary/40">
+                          <span className="text-caption font-number text-tertiary">
                             {formatTs(item.created_at)}
                           </span>
                         </div>
@@ -129,42 +127,42 @@ export default function TimelineTab() {
           {timelineLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
               <span className="bg-brand size-2 animate-pulse rounded-full" />
-              <span className="text-caption font-number text-primary/40">加载时间线数据...</span>
+              <span className="text-caption font-number text-tertiary">加载时间线数据...</span>
             </div>
           ) : (
             <>
               <div className="text-caption mb-8 flex items-center gap-3">
-                <span className="text-primary/60">
+                <span className="text-secondary">
                   <b className="text-primary">{totalEvents}</b> 条事件 ·{" "}
                   <b className="text-primary">{timelineDays.length}</b> 天
                 </span>
               </div>
 
               {timelineDays.length === 0 ? (
-                <div className="text-caption text-primary/40 py-12 text-center">暂无时间线数据</div>
+                <div className="text-caption text-tertiary py-12 text-center">暂无时间线数据</div>
               ) : (
                 <div className="space-y-8">
                   {timelineDays.map((day) => (
                     <div key={day.date}>
                       <h3 className="text-brand text-caption font-number mb-4 px-2">{day.date}</h3>
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {day.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="bg-surface border-hairline-dark flex items-start gap-3 rounded-lg border px-4 py-3"
+                            className="bg-surface border-hairline flex items-start gap-3 rounded-lg border px-5 py-4"
                           >
                             <span className="text-caption mt-0.5 shrink-0">{item.grade_emoji}</span>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-h2 text-primary">{item.title}</span>
                                 {item.tags && (
-                                  <span className="text-caption font-number text-primary/40 rounded-sm bg-white/10 px-2 py-0.5">
+                                  <span className="text-caption font-number text-tertiary bg-hover rounded-sm px-2 py-0.5">
                                     {item.tags}
                                   </span>
                                 )}
                               </div>
                               {item.content && (
-                                <p className="text-caption text-primary/60 mt-1 leading-relaxed">
+                                <p className="text-body text-secondary mt-1 leading-relaxed">
                                   {item.content}
                                 </p>
                               )}

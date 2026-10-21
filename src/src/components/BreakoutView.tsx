@@ -100,8 +100,6 @@ const thStyle: React.CSSProperties = {
   fontSize: "var(--font-size-caption)",
   fontWeight: 500,
   color: "var(--color-tertiary)",
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
   borderBottom: "1px solid var(--color-border)",
   background: "var(--color-hover)",
   position: "sticky",
@@ -358,7 +356,7 @@ export default function BreakoutView() {
       key={idx}
       className={`bg-surface rounded-lg border px-4 py-4 text-center ${s.hl ? "border-brand bg-brand/5" : "border-hairline"}`}
     >
-      <div className="text-secondary text-caption mb-1 tracking-wider uppercase">{s.label}</div>
+      <div className="text-secondary text-caption mb-1">{s.label}</div>
       <div
         className="font-number text-h1 text-primary font-semibold"
         style={s.color ? { color: s.color } : undefined}
@@ -426,9 +424,7 @@ export default function BreakoutView() {
           </div>
           <div className="p-3">
             <div className="mb-4">
-              <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
-                结果类型
-              </div>
+              <div className="text-secondary text-caption mb-2 font-semibold">结果类型</div>
               <div className="flex flex-wrap gap-2">
                 {(["all", "promoted", "broken", "first"] as const).map((fid) => {
                   const labels = { all: "全部", promoted: "晋级", broken: "断板", first: "新进" }
@@ -469,9 +465,7 @@ export default function BreakoutView() {
               </label>
             </div>
             <div>
-              <div className="text-secondary text-caption mb-2 font-semibold tracking-wider uppercase">
-                各板级晋级率
-              </div>
+              <div className="text-secondary text-caption mb-2 font-semibold">各板级晋级率</div>
               {[1, 2, 3, 4].map((b) => {
                 const row = b < 4 ? ladder.find((r) => r.yesterdayDays === b) : null
                 const rate = b < 4 ? (row ? row.rate * 100 : 0) : l3Rate
@@ -620,7 +614,7 @@ export default function BreakoutView() {
               type="button"
               aria-label="关闭个股详情"
               className="fixed inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.4)" }}
+              style={{ background: "var(--color-scrim)" }}
               onClick={() => setSelectedStock(null)}
             />
             <motion.div
@@ -706,7 +700,7 @@ export default function BreakoutView() {
               {selectedStock.reason && (
                 <div className="border-hairline border-t px-4 py-3">
                   <p className="text-secondary text-caption mb-2">板块分析</p>
-                  <p className="text-caption text-primary/70">{selectedStock.reason}</p>
+                  <p className="text-body text-secondary">{selectedStock.reason}</p>
                 </div>
               )}
             </motion.div>

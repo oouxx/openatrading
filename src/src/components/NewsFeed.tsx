@@ -46,14 +46,14 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
       {items.map((item, idx) => (
         <div
           key={`${item.id}-${idx}`}
-          className={`border-hairline hover:bg-hover cursor-pointer border-t px-4 py-3 transition-colors ${idx === 0 ? "border-t-0" : ""}`}
+          className={`border-hairline hover:bg-hover cursor-pointer border-t px-5 py-4 transition-colors ${idx === 0 ? "border-t-0" : ""}`}
         >
           <div className="flex items-start gap-2">
             <span className="text-caption mt-0.5 shrink-0">
               {item.severity === "major" ? "🔴" : "⚪"}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-caption text-primary/80 leading-relaxed">
+              <p className="text-body text-secondary leading-relaxed">
                 <span className="text-secondary font-number mr-1">{item.time}</span>
                 {item.title}
               </p>
@@ -97,7 +97,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="text-caption mb-6 flex shrink-0 items-center gap-3">
-          <span className="text-primary/60">
+          <span className="text-secondary">
             <b className="text-primary">{items.length}</b> 条资讯
             <span className="ml-2">
               · <b className="text-up">{majorCount}</b> 重要
@@ -120,22 +120,20 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-surface border-hairline-dark group hover:bg-hover mb-2 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors"
+                  className="bg-surface border-hairline group hover:bg-hover mb-3 flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors"
                 >
                   <span className="text-caption mt-0.5 shrink-0">
                     {item.severity === "major" ? "🔴" : "⚪"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-caption text-primary/80 group-hover:text-primary leading-relaxed transition-colors">
+                    <p className="text-body text-secondary group-hover:text-primary leading-relaxed transition-colors">
                       <span className="text-secondary font-number text-caption mr-2">
                         {item.time}
                       </span>
                       {item.title}
                     </p>
                     {item.aiNote && (
-                      <p className="text-brand/70 text-caption text-caption mt-1">
-                        → {item.aiNote}
-                      </p>
+                      <p className="text-brand/70 text-caption mt-1">→ {item.aiNote}</p>
                     )}
                   </div>
                 </div>
@@ -159,9 +157,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   return (
     <div className="bg-surface border-hairline flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption text-secondary font-number tracking-wider uppercase">
-          📡 实时资讯
-        </span>
+        <span className="text-caption text-secondary font-number">📡 实时资讯</span>
         <span className="text-caption text-secondary font-number">{items.length} 条</span>
       </div>
       <div className="max-h-full min-h-0 flex-1 overflow-y-auto">

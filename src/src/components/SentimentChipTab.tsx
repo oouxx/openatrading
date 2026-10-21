@@ -112,14 +112,12 @@ export default function SentimentChipTab() {
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <motion.div
-          className="bg-surface border-hairline-dark p-card-inner rounded-lg border"
+          className="bg-surface border-hairline p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={motionTransition.slow}
         >
-          <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
-            市场情绪周期判断
-          </h3>
+          <h3 className="text-caption text-secondary mb-4">市场情绪周期判断</h3>
           {!history.length ? (
             <div className="text-caption text-secondary py-8 text-center">加载中...</div>
           ) : (
@@ -143,21 +141,19 @@ export default function SentimentChipTab() {
                 <span>正常</span>
                 <span>偏热</span>
               </div>
-              <p className="text-caption text-secondary mt-3">{phaseAdvice}</p>
+              <p className="text-body text-secondary mt-3">{phaseAdvice}</p>
             </div>
           )}
         </motion.div>
 
         {/* 市场筹码结构分析 */}
         <motion.div
-          className="bg-surface border-hairline-dark p-card-inner rounded-lg border"
+          className="bg-surface border-hairline p-card-inner rounded-lg border"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={motionTransition.slow}
         >
-          <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
-            市场筹码结构分析
-          </h3>
+          <h3 className="text-caption text-secondary mb-4">市场筹码结构分析</h3>
           {!overview ? (
             <div className="text-caption text-secondary py-8 text-center">加载中...</div>
           ) : (
@@ -178,7 +174,7 @@ export default function SentimentChipTab() {
                 <span className="text-secondary">涨跌比</span>
                 <span className={`font-number ${riseRatio.class}`}>{riseRatio.display}</span>
               </div>
-              <div className="border-hairline-dark mt-3 border-t pt-3">
+              <div className="border-hairline mt-3 border-t pt-3">
                 <div className="text-caption flex justify-between">
                   <span className="text-secondary">情绪评价</span>
                   <span className={`font-number ${sentimentEvalClass}`}>{sentimentEval}</span>
@@ -196,15 +192,13 @@ export default function SentimentChipTab() {
 
       {/* 情绪历史表格 */}
       <motion.div
-        className="bg-surface border-hairline-dark overflow-hidden rounded-lg border"
+        className="bg-surface border-hairline overflow-hidden rounded-lg border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...motionTransition.slow, delay: 0.15 }}
       >
-        <div className="border-hairline-dark p-card-inner border-b">
-          <h3 className="text-caption text-secondary tracking-wider uppercase">
-            近{history.length}日情绪数据
-          </h3>
+        <div className="border-hairline p-card-inner border-b">
+          <h3 className="text-caption text-secondary">近{history.length}日情绪数据</h3>
         </div>
         {!history.length ? (
           <div className="text-caption text-secondary py-8 text-center">暂无数据</div>

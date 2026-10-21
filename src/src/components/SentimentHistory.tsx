@@ -1,4 +1,4 @@
-import { chartColors } from "@/lib/chartColors"
+import { chartColors, withAlpha } from "@/lib/chartColors"
 
 import { useRef, useEffect, useMemo } from "react"
 import { createChart, ColorType, type IChartApi, type Time, LineSeries } from "lightweight-charts"
@@ -40,14 +40,14 @@ export default function SentimentHistory() {
         fontSize: 12,
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.06)" },
-        horzLines: { color: "rgba(255,255,255,0.06)" },
+        vertLines: { color: withAlpha(chartColors.primary(), 0.06) },
+        horzLines: { color: withAlpha(chartColors.primary(), 0.06) },
       },
-      timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: false },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.06)", autoScale: true },
+      timeScale: { borderColor: withAlpha(chartColors.primary(), 0.06), timeVisible: false },
+      rightPriceScale: { borderColor: withAlpha(chartColors.primary(), 0.06), autoScale: true },
       crosshair: {
-        vertLine: { color: "rgba(255,255,255,0.1)" },
-        horzLine: { color: "rgba(255,255,255,0.1)" },
+        vertLine: { color: withAlpha(chartColors.primary(), 0.1) },
+        horzLine: { color: withAlpha(chartColors.primary(), 0.1) },
       },
     })
 
@@ -82,15 +82,13 @@ export default function SentimentHistory() {
 
   return (
     <div className="bg-surface border-hairline p-card-inner rounded-lg">
-      <h3 className="text-caption text-secondary mb-4 tracking-wider uppercase">
-        情绪历史走势（近10日）
-      </h3>
+      <h3 className="text-caption text-secondary mb-4">情绪历史走势（近10日）</h3>
       {!chartData.length ? (
         <div className="text-caption text-secondary py-8 text-center">暂无情绪历史数据</div>
       ) : (
         <div ref={containerRef} style={{ height: 200 }} />
       )}
-      {interpretation && <p className="text-caption text-secondary mt-3">{interpretation}</p>}
+      {interpretation && <p className="text-body text-secondary mt-3">{interpretation}</p>}
     </div>
   )
 }

@@ -36,18 +36,18 @@ function KindIcon({
 }) {
   switch (kind) {
     case "compaction":
-      if (status === "active") return <Shrink className="size-3.5 animate-pulse text-info" />
-      if (status === "error") return <XCircle className="size-3.5 text-danger" />
-      return <CheckCircle2 className="size-3.5 text-info" />
+      if (status === "active") return <Shrink className="text-info size-3.5 animate-pulse" />
+      if (status === "error") return <XCircle className="text-danger size-3.5" />
+      return <CheckCircle2 className="text-info size-3.5" />
     case "retry":
-      if (status === "active") return <RefreshCw className="size-3.5 animate-spin text-warning" />
-      if (status === "error") return <XCircle className="size-3.5 text-danger" />
-      return <CheckCircle2 className="size-3.5 text-success" />
+      if (status === "active") return <RefreshCw className="text-warning size-3.5 animate-spin" />
+      if (status === "error") return <XCircle className="text-danger size-3.5" />
+      return <CheckCircle2 className="text-success size-3.5" />
     case "turn":
-      return <ArrowRight className="text-secondary/30 size-3" />
+      return <ArrowRight className="text-tertiary size-3" />
     case "notice":
-      if (status === "error") return <AlertTriangle className="size-3.5 text-danger" />
-      return <CheckCircle2 className="size-3.5 text-success" />
+      if (status === "error") return <AlertTriangle className="text-danger size-3.5" />
+      return <CheckCircle2 className="text-success size-3.5" />
   }
 }
 
@@ -97,31 +97,31 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
     const failed = status === "error"
     return (
       <div
-        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
+        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-colors duration-500`}
       >
         <div className="flex items-center gap-2 px-3 py-2">
           <KindIcon kind={kind} status={status} />
           <span
-            className={`font-number text-caption font-medium ${isActive ? "text-info" : failed ? "text-danger" : "text-secondary/70"}`}
+            className={`font-number text-caption font-medium ${isActive ? "text-info" : failed ? "text-danger" : "text-tertiary"}`}
           >
             会话压缩
           </span>
           {isActive && (
             <span className="ml-auto flex items-center gap-2">
-              <span className="size-1.5 animate-pulse rounded-full bg-info/30" />
-              <span className="text-secondary/50 font-number text-caption">压缩中…</span>
+              <span className="bg-info/30 size-1.5 animate-pulse rounded-full" />
+              <span className="text-tertiary font-number text-caption">压缩中…</span>
             </span>
           )}
           {failed && (
-            <span className="ml-auto font-number text-caption text-danger/70">压缩失败</span>
+            <span className="font-number text-caption text-danger/70 ml-auto">压缩失败</span>
           )}
           {status === "done" && (
-            <span className="ml-auto font-number text-caption text-info/50">已完成</span>
+            <span className="font-number text-caption text-info/50 ml-auto">已完成</span>
           )}
         </div>
         {detail && !isActive && (
           <div className="border-hairline border-t px-3 py-2">
-            <p className="text-secondary/60 font-number text-caption leading-relaxed">{detail}</p>
+            <p className="text-tertiary font-number text-caption leading-relaxed">{detail}</p>
           </div>
         )}
       </div>
@@ -134,7 +134,7 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
     const failed = status === "error"
     return (
       <div
-        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-all duration-500`}
+        className={`border-hairline overflow-hidden rounded-lg border ${cardStyle(kind, status)} transition-colors duration-500`}
       >
         <div className="flex items-center gap-2 px-3 py-2">
           <KindIcon kind={kind} status={status} />
@@ -144,30 +144,30 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
             自动重试
           </span>
           {attempt != null && maxAttempts != null && (
-            <span className="text-secondary/60 font-number text-caption">
+            <span className="text-tertiary font-number text-caption">
               {attempt}/{maxAttempts}
             </span>
           )}
           {isActive && (
             <span className="ml-auto flex items-center gap-2">
-              <Loader2 className="size-3 animate-spin text-warning" />
-              <span className="text-secondary/50 font-number text-caption">重试中…</span>
+              <Loader2 className="text-warning size-3 animate-spin" />
+              <span className="text-tertiary font-number text-caption">重试中…</span>
             </span>
           )}
           {status === "done" && (
-            <span className="ml-auto font-number text-caption text-success/70">重试成功</span>
+            <span className="font-number text-caption text-success/70 ml-auto">重试成功</span>
           )}
           {failed && (
-            <span className="ml-auto font-number text-caption text-danger/70">已达上限</span>
+            <span className="font-number text-caption text-danger/70 ml-auto">已达上限</span>
           )}
         </div>
         {(detail || delayMs != null) && (
           <div className="border-hairline border-t px-3 py-2">
             {detail && (
-              <p className="text-secondary/60 font-number text-caption leading-relaxed">{detail}</p>
+              <p className="text-tertiary font-number text-caption leading-relaxed">{detail}</p>
             )}
             {delayMs != null && (
-              <p className="text-secondary/40 mt-0.5 font-number text-caption">
+              <p className="text-tertiary font-number text-caption mt-0.5">
                 等待 {formatDelay(delayMs)}
               </p>
             )}
@@ -183,11 +183,9 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div className="flex items-center gap-2 px-0 py-0.5">
         <div className="border-hairline flex-1 border-t" />
         {detail && (
-          <span className="text-secondary/30 shrink-0 font-number text-caption tracking-wider uppercase">
-            {detail}
-          </span>
+          <span className="text-tertiary font-number text-caption shrink-0">{detail}</span>
         )}
-        <ArrowRight className="text-secondary/30 size-2.5 shrink-0" />
+        <ArrowRight className="text-tertiary size-2.5 shrink-0" />
       </div>
     )
   }
@@ -200,7 +198,7 @@ function NoticeCard({ notice }: { notice: SystemNotice }) {
       <div className="flex items-center gap-2 px-3 py-2">
         <KindIcon kind={kind} status={status} />
         <span
-          className={`text-secondary/70 font-number text-caption ${isError || status === "error" ? "text-danger" : ""}`}
+          className={`text-tertiary font-number text-caption ${isError || status === "error" ? "text-danger" : ""}`}
         >
           {detail || "通知"}
         </span>

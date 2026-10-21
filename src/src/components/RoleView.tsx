@@ -372,7 +372,7 @@ function StatCard({
   const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-primary"
   return (
     <div className="bg-surface border-hairline min-w-0 rounded-lg border px-4 py-4">
-      <div className="text-secondary text-caption flex items-center justify-between gap-2 tracking-wider uppercase">
+      <div className="text-secondary text-caption flex items-center justify-between gap-2">
         <span className="truncate">{label}</span>
         {action}
       </div>
@@ -501,7 +501,7 @@ function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapit
           y1={ly}
           x2={W - padR}
           y2={ly}
-          stroke="rgba(255,255,255,0.06)"
+          stroke="var(--color-hairline)"
           strokeWidth="0.5"
           strokeDasharray="3,3"
         />
@@ -1392,7 +1392,7 @@ export default function RoleView() {
         <MobileRoleSheet {...roleListProps} open={showRoleSheet} onOpenChange={setShowRoleSheet} />
 
         {/* Main Content */}
-        <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
+        <main className="readable-content flex flex-1 flex-col gap-6 overflow-y-auto px-7 py-6">
           <div className="flex items-center gap-3 md:hidden">
             <Button variant="outline" size="sm" onClick={() => setShowRoleSheet(true)}>
               <Users className="size-4" />
@@ -1419,7 +1419,7 @@ export default function RoleView() {
                     {currentDisplayName}
                   </h1>
                   {currentRole?.readonly && (
-                    <span className="text-caption text-primary/50 rounded bg-white/10 px-2 py-0.5">
+                    <span className="text-caption text-tertiary bg-hover rounded px-2 py-0.5">
                       只读
                     </span>
                   )}
@@ -1861,7 +1861,7 @@ export default function RoleView() {
             </DialogTitle>
             <DialogDescription className="sr-only">确认删除角色及其全部交易数据</DialogDescription>
           </DialogHeader>
-          <p className="text-secondary text-caption">
+          <p className="text-body text-secondary">
             删除将清空该角色的全部持仓与成交流水，历史无法恢复；角色本身与初始资金设置一并删除。
             只想清空交易记录、保留角色请用重置。
           </p>
@@ -1902,7 +1902,7 @@ export default function RoleView() {
             </DialogTitle>
             <DialogDescription className="sr-only">确认清空角色的持仓与成交流水</DialogDescription>
           </DialogHeader>
-          <p className="text-secondary text-caption">
+          <p className="text-body text-secondary">
             重置将清空该角色的全部持仓与成交流水，历史无法恢复；初始资金不变。
             要换一个本金请新建角色。
           </p>
@@ -1955,7 +1955,7 @@ export default function RoleView() {
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <th
-      className={`bg-ink-dim border-hairline text-secondary text-caption border-b px-4 py-3 text-left font-medium tracking-wider whitespace-nowrap uppercase ${
+      className={`bg-ink-dim border-hairline text-secondary text-caption border-b px-4 py-3 text-left font-medium whitespace-nowrap ${
         className ?? ""
       }`}
     >

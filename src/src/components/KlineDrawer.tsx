@@ -193,7 +193,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           title={inWatchlist ? "取消自选" : "添加自选"}
         >
           <Star
-            className={`size-4 ${inWatchlist ? "fill-yellow-500 text-yellow-500" : "text-secondary"}`}
+            className={`size-4 ${inWatchlist ? "fill-warning text-warning" : "text-secondary"}`}
           />
         </Button>
         {quote && (
@@ -220,7 +220,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             className={`text-caption h-auto rounded-full px-4 py-1 ${
               period === p.value
                 ? "border-brand bg-brand text-primary hover:bg-brand hover:text-primary"
-                : "border-hairline bg-canvas text-secondary hover:border-hairline-dark hover:text-primary"
+                : "border-hairline bg-canvas text-secondary hover:border-hairline hover:text-primary"
             }`}
           >
             {p.label}
@@ -232,7 +232,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       {currCrosshair && (
         <div className="bg-surface border-hairline font-number text-caption flex items-center justify-between border-b px-3 py-1">
           <span className="text-primary shrink-0">{currCrosshair.time}</span>
-          <div className="text-primary/40 flex shrink-0 items-center gap-2">
+          <div className="text-tertiary flex shrink-0 items-center gap-2">
             <span>
               开 <span className="text-primary">{currCrosshair.open}</span>
             </span>
@@ -272,9 +272,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 key={m.label}
                 className="bg-surface border-hairline rounded-lg border p-2.5 text-center"
               >
-                <p className="text-secondary text-caption mb-1 tracking-wide uppercase">
-                  {m.label}
-                </p>
+                <p className="text-secondary text-caption mb-1">{m.label}</p>
                 <p className="font-number text-caption text-primary">{m.value}</p>
               </div>
             ))}
@@ -293,7 +291,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 type="button"
                 disabled={!p.reason}
                 className={`bg-surface border-hairline w-full rounded-lg border p-2.5 text-left transition-colors ${
-                  p.reason ? "cursor-pointer hover:border-white/20" : "cursor-default"
+                  p.reason ? "hover:border-hairline cursor-pointer" : "cursor-default"
                 }`}
                 onClick={() => p.reason && setDialogPlate(p)}
               >
@@ -306,7 +304,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                   </span>
                 </div>
                 {p.reason && (
-                  <p className="text-secondary text-caption mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-body text-secondary mt-1 line-clamp-2 leading-relaxed">
                     {p.reason}
                   </p>
                 )}
@@ -321,7 +319,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         <div className="border-hairline mt-2 border-t px-6 py-3">
           <p className="text-secondary text-caption mb-2">AI 异动解读</p>
           <div className="bg-surface border-hairline rounded-lg border p-3">
-            <p className="text-caption text-secondary leading-relaxed whitespace-pre-line">
+            <p className="text-body text-secondary leading-relaxed whitespace-pre-line">
               {expound}
             </p>
           </div>
@@ -346,7 +344,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
               </span>
             </div>
             <DialogDescription className="sr-only">板块详情</DialogDescription>
-            <p className="text-caption text-primary/70 leading-relaxed">{dialogPlate.reason}</p>
+            <p className="text-body text-secondary leading-relaxed">{dialogPlate.reason}</p>
           </DialogContent>
         </Dialog>
       )}

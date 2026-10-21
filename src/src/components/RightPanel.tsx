@@ -44,7 +44,7 @@ const PANEL_COLLAPSED_WIDTH = 48
 
 function ViewFallback() {
   return (
-    <div className="p-4">
+    <div className="p-6">
       <Skeleton className="h-24 w-full" />
     </div>
   )
@@ -247,7 +247,7 @@ export default function RightPanel() {
         <AnimatePresence>
           {popoutView && (
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+              className="bg-scrim fixed inset-0 z-50 flex items-center justify-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -289,7 +289,7 @@ export default function RightPanel() {
                     <X className="size-4" />
                   </Button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-6">
                   <ErrorBoundary name="RightPanelPopout">
                     <Suspense fallback={<ViewFallback />}>
                       <ViewRenderer view={popoutView} />

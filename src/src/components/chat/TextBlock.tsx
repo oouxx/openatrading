@@ -63,12 +63,12 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
     <div className="bg-hover border-hairline group my-2 overflow-hidden rounded-lg border">
       {/* Header bar */}
       <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
-        <span className="text-secondary/70 font-number text-[12px]">{language || "code"}</span>
+        <span className="text-tertiary font-number text-caption">{language || "code"}</span>
         <Button
           variant="ghost"
           size="xs"
           onClick={handleCopy}
-          className="hover:text-secondary text-secondary/50 px-2 opacity-0 transition-opacity group-hover:opacity-100"
+          className="hover:text-secondary text-tertiary px-2 opacity-0 transition-opacity group-hover:opacity-100"
         >
           {copied ? (
             <>
@@ -187,9 +187,9 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   h1: ({ children }) => <h1 className="text-h1 text-primary mt-5 mb-3">{children}</h1>,
   h2: ({ children }) => <h2 className="text-h2 text-primary mt-4 mb-2">{children}</h2>,
   h3: ({ children }) => <h3 className="text-h2 text-primary mt-3 mb-1.5">{children}</h3>,
-  p: ({ children }) => <p className="my-2 text-[15px] leading-[1.7]">{children}</p>,
+  p: ({ children }) => <p className="text-body my-2 leading-[1.7]">{children}</p>,
   blockquote: ({ children }) => (
-    <blockquote className="border-brand/30 text-secondary my-2 border-l-2 pl-3 text-[15px] italic">
+    <blockquote className="border-brand/30 text-secondary text-body my-2 border-l-2 pl-3 italic">
       {children}
     </blockquote>
   ),
@@ -271,7 +271,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
   // content gracefully — incomplete constructs simply don't close until the
   // final delta arrives.
   return (
-    <div className="prose-custom text-[15px]">
+    <div className="prose-custom text-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={rehypePlugins}
