@@ -330,7 +330,7 @@ impl JiuYanSession {
             .client
             .post(&url)
             .header("timestamp", &ts.to_string())
-            .header("token", gen_jiuyan_token(ts))
+            .header("token", gen_jiuyan_token(ts)?)
             .json(&body)
             .send()
             .await;
@@ -438,7 +438,7 @@ impl JiuYanSession {
         let mut request = self
             .client
             .request(method, &url)
-            .header("token", gen_jiuyan_token(ts))
+            .header("token", gen_jiuyan_token(ts)?)
             .header("timestamp", ts.to_string())
             .header(reqwest::header::COOKIE, &creds.cookie);
         if let Some(body) = body {

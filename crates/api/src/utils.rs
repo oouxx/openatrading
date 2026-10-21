@@ -1,3 +1,4 @@
+use anyhow::Context;
 use chrono::{Datelike, FixedOffset, Utc};
 use md5;
 /// Get current datetime in Beijing timezone (UTC+8).
@@ -29,12 +30,19 @@ pub fn now_ts() -> i64 {
     now_bj.timestamp_millis()
 }
 
-pub fn gen_jiuyan_token(timestamp_ms: i64) -> String {
-    let secret = "REDACTED-JIUYAN-SECRET";
+/// 生成韭研公社接口的签名 token。
+///
+/// 签名密钥是第三方站点的客户端凭据，**不属于本项目代码**：通过环境变量
+/// `JIUYAN_SECRET` 注入，缺失时直接报错。不要回退到内置常量——公开仓库里的
+/// 常量等于把密钥交给所有人，而且上游改算法时会静默失效。
+///
+/// # Errors
+/// Returns an error if `JIUYAN_SECRET` is not set in the environment.
+pub fn gen_jiuyan_token(timestamp_ms: i64) -> anyhow::Result<String> {
+    let secret = std::env::var("JIUYAN_SECRET")
+        .context("JIUYAN_SECRET not set（韭研公社接口签名密钥，写入 ~/.atrading/.env）")?;
     let input = format!("{secret}:{timestamp_ms}");
-    // 3. MD5 计算
-    let token = format!("{:x}", md5::compute(input));
-    token
+    Ok(format!("{:x}", md5::compute(input)))
 }
 /// Convert HTML to Markdown text.
 ///
