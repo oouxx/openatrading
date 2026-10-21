@@ -3,6 +3,14 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { useUiStore } from "@/stores/ui"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { fetchJson } from "@/stores/data"
@@ -14,11 +22,17 @@ import {
 } from "@/hooks/query/useMcpServers"
 import { McpServerForm } from "./McpServerForm"
 import { McpServerCard } from "./McpServerCard"
+import { McpTemplateGrid } from "./McpTemplateGrid"
 import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
-import { CheckIcon } from "lucide-react"
-import type { McpServerPayload } from "../types/mcp"
+import { CheckIcon, Info, Plus, RefreshCw, Search, Server } from "lucide-react"
+import {
+  emptyTransport,
+  mcpTransportTarget,
+  type McpServerPayload,
+  type McpTransportType,
+} from "../types/mcp"
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
 import { isTauri } from "@/lib/env"
@@ -50,12 +64,12 @@ interface AgentSettings {
 
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
 
-const TAB_TITLES: Record<SettingsTab, string> = {
-  appearance: "外观",
-  agent: "Agent",
-  social: "通知",
-  mcp: "MCP 服务器",
-  about: "关于",
+const TAB_META: Record<SettingsTab, { title: string; description: string }> = {
+  appearance: { title: "外观", description: "选择界面主题，修改后立即生效。" },
+  agent: { title: "Agent", description: "配置默认模型、API 密钥与数据服务。" },
+  social: { title: "通知", description: "配置采集与新闻通知的推送渠道。" },
+  mcp: { title: "MCP 服务器", description: "管理 Agent 可以调用的外部工具服务器。" },
+  about: { title: "关于", description: "应用版本与运行环境信息。" },
 }
 
 const THINKING_LEVELS: { value: string; label: string }[] = [
@@ -174,6 +188,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const [editingServer, setEditingServer] = useState<McpServerPayload | null>(null)
   const [editingOriginalName, setEditingOriginalName] = useState<string | null>(null)
   const [showNewForm, setShowNewForm] = useState(false)
+  const [mcpSearch, setMcpSearch] = useState("")
   // pi-rs settings.json 默认值（provider / model / thinkingLevel）
   const [agentSettings, setAgentSettings] = useState<AgentSettings>({
     defaultProvider: "",
@@ -190,11 +205,40 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const saveMcp = useSaveMcpServer()
   const servers = mcpQuery.data ?? []
 
-  const newServerTemplate = (): McpServerPayload => ({
+  const newServerTemplate = (type: McpTransportType = "http"): McpServerPayload => ({
     name: "",
     enabled: true,
-    transport: { type: "http", url: "", headers: {} },
+    transport: emptyTransport(type),
   })
+
+  const mcpNeedle = mcpSearch.trim().toLowerCase()
+  const visibleServers = mcpNeedle
+    ? servers.filter((s) =>
+        `${s.name} ${s.transport.type} ${mcpTransportTarget(s.transport)}`
+          .toLowerCase()
+          .includes(mcpNeedle)
+      )
+    : servers
+
+  const closeServerForm = () => {
+    setShowNewForm(false)
+    setEditingServer(null)
+    setEditingOriginalName(null)
+  }
+
+  const openNewServer = () => {
+    setEditingServer(newServerTemplate())
+    setEditingOriginalName(null)
+    setShowNewForm(true)
+    setMcpSearch("")
+  }
+
+  const openTemplate = (type: McpTransportType) => {
+    setEditingServer(newServerTemplate(type))
+    setEditingOriginalName(null)
+    setShowNewForm(true)
+    setMcpSearch("")
+  }
 
   const loadAbout = useCallback(async () => {
     try {
@@ -290,348 +334,427 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         ["版本", "加载中…"],
       ]
 
+  const meta = TAB_META[activeTab]
+  const isMcp = activeTab === "mcp"
+
   return (
-    <div className="mx-auto w-full max-w-2xl px-8 pt-8 pb-16">
-      {activeTab === "mcp" ? (
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-h1 text-primary">MCP 服务器 ({servers.length})</h1>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setEditingServer(newServerTemplate())
-              setEditingOriginalName(null)
-              setShowNewForm(true)
-            }}
-          >
-            + 添加
-          </Button>
-        </div>
-      ) : (
-        <h1 className="text-h1 text-primary mb-8">{TAB_TITLES[activeTab]}</h1>
-      )}
-      <div className="space-y-8">
-        {activeTab === "appearance" && (
-          <section>
-            <h2 className="text-primary text-body mb-3 font-semibold">基础主题</h2>
-            <div className="flex items-start gap-3">
-              <ThemeCard
-                label={THEME_LABELS.light}
-                dark={false}
-                active={theme === "light"}
-                onSelect={() => setTheme("light")}
-              />
-              <ThemeCard
-                label={THEME_LABELS.dark}
-                dark
-                active={theme === "dark"}
-                onSelect={() => setTheme("dark")}
-              />
+    <div className="min-h-full">
+      <div
+        className={`mx-auto w-full px-4 pt-8 pb-16 sm:px-8 ${isMcp ? "max-w-5xl" : "max-w-3xl"}`}
+      >
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-tertiary text-caption font-medium tracking-wide">设置</p>
+            <h1 className="text-h1 text-primary mt-1">{meta.title}</h1>
+            <p className="text-secondary text-caption mt-1">{meta.description}</p>
+          </div>
+          {isMcp && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => void mcpQuery.refetch()}
+                title="刷新列表"
+                aria-label="刷新列表"
+              >
+                <RefreshCw className={mcpQuery.isFetching ? "animate-spin" : undefined} />
+              </Button>
+              <Button size="sm" onClick={openNewServer}>
+                <Plus className="size-3.5" />
+                添加服务器
+              </Button>
             </div>
-          </section>
-        )}
+          )}
+        </header>
 
-        {activeTab === "agent" && (
-          <>
-            <SettingsSection title="默认模型">
-              <ModelPicker
-                provider={agentSettings.defaultProvider}
-                model={agentSettings.defaultModel}
-                onChange={(provider, model) =>
-                  saveAgentSettings({ defaultProvider: provider, defaultModel: model })
-                }
+        <Dialog
+          open={showNewForm}
+          onOpenChange={(open) => {
+            if (!open) closeServerForm()
+          }}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader className="pr-8">
+              <DialogTitle>
+                {editingOriginalName ? "编辑 MCP 服务器" : "添加 MCP 服务器"}
+              </DialogTitle>
+              <DialogDescription>
+                {editingOriginalName
+                  ? "修改配置后，对之后新建的会话生效。"
+                  : "配置一个外部工具服务器，保存后对之后新建的会话生效。"}
+              </DialogDescription>
+            </DialogHeader>
+            {editingServer && (
+              <McpServerForm
+                key={editingOriginalName ?? "new"}
+                server={editingServer}
+                onChange={setEditingServer}
+                onCancel={closeServerForm}
+                onSave={async () => {
+                  await saveMcp.mutateAsync({
+                    config: { ...editingServer, name: editingServer.name.trim() },
+                    originalName: editingOriginalName,
+                  })
+                  closeServerForm()
+                }}
+                existingNames={servers
+                  .filter((s) => s.name !== editingOriginalName)
+                  .map((s) => s.name)}
               />
-              <SettingRow
-                label="思考级别"
-                description="控制模型推理深度，级别越高耗时越长"
-                control={
-                  <SelectField
-                    value={agentSettings.thinkingLevel}
-                    onChange={(v) => saveAgentSettings({ thinkingLevel: v })}
-                    options={THINKING_LEVELS}
-                    className="w-[140px]"
-                  />
-                }
-              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <div className="space-y-6">
+          {activeTab === "appearance" && (
+            <SettingsSection title="基础主题">
+              <div className="flex flex-wrap items-start gap-3 py-3">
+                <ThemeCard
+                  label={THEME_LABELS.light}
+                  dark={false}
+                  active={theme === "light"}
+                  onSelect={() => setTheme("light")}
+                />
+                <ThemeCard
+                  label={THEME_LABELS.dark}
+                  dark
+                  active={theme === "dark"}
+                  onSelect={() => setTheme("dark")}
+                />
+              </div>
             </SettingsSection>
+          )}
 
-            <AgentApiKeySection defaultProvider={agentSettings.defaultProvider} />
-
-            <SettingsSection title="数据源">
-              <SettingRow
-                label="API 地址"
-                description="数据服务与 Agent 网关地址"
-                control={
-                  <Input
-                    value={apiUrl}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setApiUrl(v)
-                      setConfig("agent", "api-url", v)
-                    }}
-                    placeholder="http://localhost:8081"
-                    className={inputCls}
-                  />
-                }
-              />
-            </SettingsSection>
-
-            {isTauri && (
-              <SettingsSection title="操作">
+          {activeTab === "agent" && (
+            <>
+              <SettingsSection title="默认模型">
+                <ModelPicker
+                  provider={agentSettings.defaultProvider}
+                  model={agentSettings.defaultModel}
+                  onChange={(provider, model) =>
+                    saveAgentSettings({ defaultProvider: provider, defaultModel: model })
+                  }
+                />
                 <SettingRow
-                  label="重启客户端"
-                  description="修改 Provider / Model 后重启生效"
+                  label="思考级别"
+                  description="控制模型推理深度，级别越高耗时越长"
                   control={
-                    <Button
-                      size="sm"
-                      disabled={restarting}
-                      onClick={async () => {
-                        setRestarting(true)
-                        try {
-                          const { invoke } = await import("@tauri-apps/api/core")
-                          await invoke("restart_app")
-                        } catch (e) {
-                          console.error("重启失败", e)
-                          setRestarting(false)
-                        }
-                      }}
-                    >
-                      {restarting ? "重启中…" : "重启"}
-                    </Button>
+                    <SelectField
+                      value={agentSettings.thinkingLevel}
+                      onChange={(v) => saveAgentSettings({ thinkingLevel: v })}
+                      options={THINKING_LEVELS}
+                      className="w-[140px]"
+                    />
                   }
                 />
               </SettingsSection>
-            )}
-          </>
-        )}
 
-        {activeTab === "social" && (
-          <>
-            <SettingsSection title="通知渠道">
-              <SettingRow
-                label="默认通知渠道"
-                description="选择推送消息使用的平台"
-                control={
-                  <SelectField
-                    value={social.notify_channel}
-                    onChange={async (v) => {
-                      setSocial((s) => ({ ...s, notify_channel: v }))
-                      try {
-                        await setConfig("social", "notify_channel", v)
-                      } catch (err) {
-                        console.error("保存配置失败", err)
-                      }
-                    }}
-                    options={[
-                      { value: "telegram", label: "Telegram" },
-                      { value: "discord", label: "Discord" },
-                    ]}
-                    className="w-[160px]"
-                  />
-                }
-              />
-            </SettingsSection>
+              <AgentApiKeySection defaultProvider={agentSettings.defaultProvider} />
 
-            <SettingsSection title="通知事件">
-              {NOTIFY_ITEMS.map((item) => (
+              <SettingsSection title="数据源">
                 <SettingRow
-                  key={item.key}
-                  label={item.label}
-                  description={item.description}
+                  label="API 地址"
+                  description="数据服务与 Agent 网关地址"
                   control={
-                    <Switch
-                      checked={social[`notify_on_${item.key}`] as boolean}
-                      onCheckedChange={async (v) => {
-                        setSocial((s) => ({ ...s, [`notify_on_${item.key}`]: v }))
+                    <Input
+                      value={apiUrl}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setApiUrl(v)
+                        setConfig("agent", "api-url", v)
+                      }}
+                      placeholder="http://localhost:8081"
+                      className={inputCls}
+                    />
+                  }
+                />
+              </SettingsSection>
+
+              {isTauri && (
+                <SettingsSection title="操作">
+                  <SettingRow
+                    label="重启客户端"
+                    description="修改 Provider / Model 后重启生效"
+                    control={
+                      <Button
+                        size="sm"
+                        disabled={restarting}
+                        onClick={async () => {
+                          setRestarting(true)
+                          try {
+                            const { invoke } = await import("@tauri-apps/api/core")
+                            await invoke("restart_app")
+                          } catch (e) {
+                            console.error("重启失败", e)
+                            setRestarting(false)
+                          }
+                        }}
+                      >
+                        {restarting ? "重启中…" : "重启"}
+                      </Button>
+                    }
+                  />
+                </SettingsSection>
+              )}
+            </>
+          )}
+
+          {activeTab === "social" && (
+            <>
+              <SettingsSection title="通知渠道">
+                <SettingRow
+                  label="默认通知渠道"
+                  description="选择推送消息使用的平台"
+                  control={
+                    <SelectField
+                      value={social.notify_channel}
+                      onChange={async (v) => {
+                        setSocial((s) => ({ ...s, notify_channel: v }))
                         try {
-                          await setConfig("social", `notify_on_${item.key}`, String(v))
+                          await setConfig("social", "notify_channel", v)
                         } catch (err) {
                           console.error("保存配置失败", err)
                         }
                       }}
+                      options={[
+                        { value: "telegram", label: "Telegram" },
+                        { value: "discord", label: "Discord" },
+                      ]}
+                      className="w-[160px]"
                     />
                   }
                 />
+              </SettingsSection>
+
+              <SettingsSection title="通知事件">
+                {NOTIFY_ITEMS.map((item) => (
+                  <SettingRow
+                    key={item.key}
+                    label={item.label}
+                    description={item.description}
+                    control={
+                      <Switch
+                        checked={social[`notify_on_${item.key}`] as boolean}
+                        onCheckedChange={async (v) => {
+                          setSocial((s) => ({ ...s, [`notify_on_${item.key}`]: v }))
+                          try {
+                            await setConfig("social", `notify_on_${item.key}`, String(v))
+                          } catch (err) {
+                            console.error("保存配置失败", err)
+                          }
+                        }}
+                      />
+                    }
+                  />
+                ))}
+              </SettingsSection>
+
+              <SettingsSection title="Telegram">
+                <SettingRow
+                  label="Bot Token"
+                  description="机器人令牌，用于发送消息"
+                  control={
+                    <Input
+                      type="password"
+                      value={social.telegram_bot_token}
+                      onChange={async (e) => {
+                        const v = e.target.value
+                        setSocial((s) => ({ ...s, telegram_bot_token: v }))
+                        try {
+                          await setConfig("social.telegram", "bot_token", v)
+                        } catch (err) {
+                          console.error("保存配置失败", err)
+                        }
+                      }}
+                      placeholder="123456:ABC-DEF1234gh..."
+                      className={inputCls}
+                    />
+                  }
+                />
+                <SettingRow
+                  label="Chat ID"
+                  description="接收通知的会话 ID"
+                  control={
+                    <Input
+                      value={social.telegram_chat_id}
+                      onChange={async (e) => {
+                        const v = e.target.value
+                        setSocial((s) => ({ ...s, telegram_chat_id: v }))
+                        try {
+                          await setConfig("social.telegram", "chat_id", v)
+                        } catch (err) {
+                          console.error("保存配置失败", err)
+                        }
+                      }}
+                      placeholder="-1001234567890"
+                      className={inputCls}
+                    />
+                  }
+                />
+              </SettingsSection>
+
+              <SettingsSection title="Discord">
+                <SettingRow
+                  label="Bot Token"
+                  description="机器人令牌，用于发送消息"
+                  control={
+                    <Input
+                      type="password"
+                      value={social.discord_bot_token}
+                      onChange={async (e) => {
+                        const v = e.target.value
+                        setSocial((s) => ({ ...s, discord_bot_token: v }))
+                        try {
+                          await setConfig("social.discord", "bot_token", v)
+                        } catch (err) {
+                          console.error("保存配置失败", err)
+                        }
+                      }}
+                      placeholder="MTE4..."
+                      className={inputCls}
+                    />
+                  }
+                />
+                <SettingRow
+                  label="Channel ID"
+                  description="接收通知的频道 ID"
+                  control={
+                    <Input
+                      value={social.discord_channel_id}
+                      onChange={async (e) => {
+                        const v = e.target.value
+                        setSocial((s) => ({ ...s, discord_channel_id: v }))
+                        try {
+                          await setConfig("social.discord", "channel_id", v)
+                        } catch (err) {
+                          console.error("保存配置失败", err)
+                        }
+                      }}
+                      placeholder="123456789012345678"
+                      className={inputCls}
+                    />
+                  }
+                />
+              </SettingsSection>
+            </>
+          )}
+
+          {activeTab === "mcp" && (
+            <div className="space-y-8">
+              <section>
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-primary text-body font-semibold">已安装</h2>
+                    <span className="text-tertiary font-number text-caption">
+                      {mcpNeedle ? `${visibleServers.length} / ${servers.length}` : servers.length}
+                    </span>
+                  </div>
+                  {servers.length > 0 && (
+                    <InputGroup className="bg-surface h-8 w-full sm:w-64">
+                      <InputGroupAddon>
+                        <Search className="size-3.5" />
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        value={mcpSearch}
+                        onChange={(e) => setMcpSearch(e.target.value)}
+                        placeholder="搜索名称、地址或传输方式"
+                        aria-label="搜索 MCP 服务器"
+                      />
+                    </InputGroup>
+                  )}
+                </div>
+
+                {mcpQuery.isPending ? (
+                  <div className="space-y-2.5">
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <Skeleton key={i} className="h-[76px] w-full rounded-xl" />
+                    ))}
+                  </div>
+                ) : mcpQuery.isError ? (
+                  <div className="bg-surface ring-foreground/5 flex flex-col items-center gap-2 rounded-xl px-6 py-10 text-center ring-1">
+                    <p className="text-secondary text-caption">无法加载 MCP 服务器列表</p>
+                    <Button size="xs" variant="outline" onClick={() => mcpQuery.refetch()}>
+                      重试
+                    </Button>
+                  </div>
+                ) : servers.length === 0 ? (
+                  <div className="bg-surface ring-foreground/5 flex flex-col items-center rounded-xl px-6 py-12 text-center ring-1">
+                    <span className="bg-hover text-tertiary grid size-10 place-items-center rounded-full">
+                      <Server className="size-5" />
+                    </span>
+                    <h3 className="text-primary mt-3 text-sm font-medium">还没有 MCP 服务器</h3>
+                    <p className="text-secondary text-caption mt-1 max-w-sm">
+                      连接外部工具后，Agent 可以在会话中调用它们。
+                    </p>
+                    <Button size="sm" className="mt-4" onClick={openNewServer}>
+                      <Plus className="size-3.5" />
+                      添加服务器
+                    </Button>
+                  </div>
+                ) : visibleServers.length === 0 ? (
+                  <div className="bg-surface ring-foreground/5 flex flex-col items-center gap-2 rounded-xl px-6 py-10 text-center ring-1">
+                    <p className="text-secondary text-caption">没有匹配的服务器</p>
+                    <Button size="xs" variant="ghost" onClick={() => setMcpSearch("")}>
+                      清除搜索
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {visibleServers.map((s) => (
+                      <McpServerCard
+                        key={s.name}
+                        server={s}
+                        onToggle={() => toggleMcp.mutateAsync(s.name).then(() => undefined)}
+                        onDelete={() => deleteMcp.mutateAsync(s.name).then(() => undefined)}
+                        onEdit={() => {
+                          setEditingServer({
+                            name: s.name,
+                            enabled: s.enabled,
+                            transport: s.transport,
+                          })
+                          setEditingOriginalName(s.name)
+                          setShowNewForm(true)
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {(servers.length === 0 || mcpSearch.trim() === "") && (
+                <section>
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                    <h2 className="text-primary text-body font-semibold">快速开始</h2>
+                    <p className="text-tertiary text-caption">选择一种传输方式，填入命令或 URL</p>
+                  </div>
+                  <McpTemplateGrid onUse={openTemplate} />
+                </section>
+              )}
+
+              <div className="bg-surface ring-foreground/5 text-tertiary text-caption flex items-start gap-2 rounded-xl px-3.5 py-3 ring-1">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <p className="leading-5">
+                  新增与修改写入 pi-rs 的全局{" "}
+                  <code className="text-secondary font-number">$PI_RS_HOME/agent/mcp.json</code>
+                  ，对之后新建的会话生效；项目级{" "}
+                  <code className="text-secondary font-number">{"{cwd}"}/.pi-rs/mcp.json</code>{" "}
+                  的同名条目会覆盖全局，需直接编辑该文件。
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "about" && (
+            <SettingsSection title="关于">
+              {aboutRows.map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between py-3">
+                  <span className="text-secondary text-sm">{label}</span>
+                  <span className="text-primary font-number text-caption">{value}</span>
+                </div>
               ))}
             </SettingsSection>
-
-            <SettingsSection title="Telegram">
-              <SettingRow
-                label="Bot Token"
-                description="机器人令牌，用于发送消息"
-                control={
-                  <Input
-                    type="password"
-                    value={social.telegram_bot_token}
-                    onChange={async (e) => {
-                      const v = e.target.value
-                      setSocial((s) => ({ ...s, telegram_bot_token: v }))
-                      try {
-                        await setConfig("social.telegram", "bot_token", v)
-                      } catch (err) {
-                        console.error("保存配置失败", err)
-                      }
-                    }}
-                    placeholder="123456:ABC-DEF1234gh..."
-                    className={inputCls}
-                  />
-                }
-              />
-              <SettingRow
-                label="Chat ID"
-                description="接收通知的会话 ID"
-                control={
-                  <Input
-                    value={social.telegram_chat_id}
-                    onChange={async (e) => {
-                      const v = e.target.value
-                      setSocial((s) => ({ ...s, telegram_chat_id: v }))
-                      try {
-                        await setConfig("social.telegram", "chat_id", v)
-                      } catch (err) {
-                        console.error("保存配置失败", err)
-                      }
-                    }}
-                    placeholder="-1001234567890"
-                    className={inputCls}
-                  />
-                }
-              />
-            </SettingsSection>
-
-            <SettingsSection title="Discord">
-              <SettingRow
-                label="Bot Token"
-                description="机器人令牌，用于发送消息"
-                control={
-                  <Input
-                    type="password"
-                    value={social.discord_bot_token}
-                    onChange={async (e) => {
-                      const v = e.target.value
-                      setSocial((s) => ({ ...s, discord_bot_token: v }))
-                      try {
-                        await setConfig("social.discord", "bot_token", v)
-                      } catch (err) {
-                        console.error("保存配置失败", err)
-                      }
-                    }}
-                    placeholder="MTE4..."
-                    className={inputCls}
-                  />
-                }
-              />
-              <SettingRow
-                label="Channel ID"
-                description="接收通知的频道 ID"
-                control={
-                  <Input
-                    value={social.discord_channel_id}
-                    onChange={async (e) => {
-                      const v = e.target.value
-                      setSocial((s) => ({ ...s, discord_channel_id: v }))
-                      try {
-                        await setConfig("social.discord", "channel_id", v)
-                      } catch (err) {
-                        console.error("保存配置失败", err)
-                      }
-                    }}
-                    placeholder="123456789012345678"
-                    className={inputCls}
-                  />
-                }
-              />
-            </SettingsSection>
-          </>
-        )}
-
-        {activeTab === "mcp" && (
-          <>
-            {/* ── 编辑/新建表单 ── */}
-            {editingServer && showNewForm && (
-              <div className="mt-3">
-                <McpServerForm
-                  key={editingOriginalName ?? "new"}
-                  server={editingServer}
-                  onChange={setEditingServer}
-                  onCancel={() => {
-                    setShowNewForm(false)
-                    setEditingServer(null)
-                  }}
-                  onSave={async () => {
-                    await saveMcp.mutateAsync({
-                      config: { ...editingServer, name: editingServer.name.trim() },
-                      originalName: editingOriginalName,
-                    })
-                    setShowNewForm(false)
-                    setEditingServer(null)
-                    setEditingOriginalName(null)
-                  }}
-                  existingNames={servers
-                    .filter((s) => s.name !== editingOriginalName)
-                    .map((s) => s.name)}
-                />
-              </div>
-            )}
-
-            {/* ── 已配置列表 ── */}
-            <div className="divide-hairline mt-3 divide-y">
-              {mcpQuery.isPending ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-[52px] w-full rounded-none" />
-                ))
-              ) : mcpQuery.isError ? (
-                <div className="flex flex-col items-center gap-2 py-10 text-center">
-                  <p className="text-secondary text-caption">无法加载 MCP 服务器列表</p>
-                  <Button size="xs" variant="outline" onClick={() => mcpQuery.refetch()}>
-                    重试
-                  </Button>
-                </div>
-              ) : servers.length === 0 && !showNewForm ? (
-                <div className="py-10 text-center">
-                  <p className="text-secondary text-caption">
-                    暂无 MCP 服务器配置，点击右上角「+ 添加」开始
-                  </p>
-                </div>
-              ) : (
-                servers.map((s) => (
-                  <McpServerCard
-                    key={s.name}
-                    server={s}
-                    onToggle={() => toggleMcp.mutateAsync(s.name).then(() => undefined)}
-                    onDelete={() => deleteMcp.mutateAsync(s.name).then(() => undefined)}
-                    onEdit={() => {
-                      setEditingServer({
-                        name: s.name,
-                        enabled: s.enabled,
-                        transport: s.transport,
-                      })
-                      setEditingOriginalName(s.name)
-                      setShowNewForm(true)
-                    }}
-                  />
-                ))
-              )}
-            </div>
-
-            <p className="text-secondary text-caption mt-4">
-              新增与修改写入 pi-rs 的全局 <code>$PI_RS_HOME/agent/mcp.json</code>，
-              对之后新建的会话生效；项目级 <code>{"{cwd}"}/.pi-rs/mcp.json</code>{" "}
-              的同名条目会覆盖全局，需直接编辑该文件。
-            </p>
-          </>
-        )}
-
-        {activeTab === "about" && (
-          <SettingsSection title="关于">
-            {aboutRows.map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between py-3">
-                <span className="text-secondary text-sm">{label}</span>
-                <span className="text-primary font-number text-caption">{value}</span>
-              </div>
-            ))}
-          </SettingsSection>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

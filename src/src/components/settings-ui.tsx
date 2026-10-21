@@ -35,11 +35,11 @@ export function SettingRow({
   )
 }
 
-/** Codex 风格分组：小标题（sentence-case 13px semibold）+ 行列表（hairline 分割，无卡片底） */
+/** 设置分组：白底卡片 + 小标题 + 行列表（hairline 分割） */
 export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section>
-      <h2 className="text-primary text-body mb-3 font-semibold">{title}</h2>
+    <section className="bg-surface ring-foreground/5 rounded-xl px-5 py-4 ring-1">
+      <h2 className="text-primary text-body mb-1.5 font-semibold">{title}</h2>
       <div className="divide-hairline divide-y">{children}</div>
     </section>
   )

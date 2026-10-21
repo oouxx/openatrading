@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/command"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CheckIcon, ChevronDownIcon, LockKeyholeIcon } from "lucide-react"
+import { ChevronDownIcon, LockKeyholeIcon } from "lucide-react"
 import { SettingRow, SelectField } from "./settings-ui"
 import { agentModelsKeys } from "@/hooks/query/queryKeys"
 
@@ -65,12 +65,14 @@ function ModelItem({
 }) {
   const { id, name, reasoning, contextWindow, available } = option
   const context = formatContext(contextWindow)
+  const meta = `${id}${context ? ` · ${context} 上下文` : ""}${!available ? " · 未配置密钥" : ""}`
   return (
     <CommandItem
       value={`${name} ${id}`}
       disabled={!available}
+      data-checked={selected}
       onSelect={onSelect}
-      className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+      className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption [&>svg.ml-auto]:text-brand! flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left transition-colors"
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -82,13 +84,10 @@ function ModelItem({
           )}
           {!available && <LockKeyholeIcon className="text-secondary size-3 shrink-0" />}
         </div>
-        <p className="text-secondary font-number text-caption mt-0.5 truncate">
-          {id}
-          {context ? ` · ${context} 上下文` : ""}
-          {!available ? " · 未配置密钥" : ""}
+        <p className="text-secondary font-number text-caption mt-0.5 truncate" title={meta}>
+          {meta}
         </p>
       </div>
-      {selected && <CheckIcon className="text-brand size-3.5 shrink-0" />}
     </CommandItem>
   )
 }
@@ -187,7 +186,7 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                align="start"
+                align="end"
                 className="bg-surface border-hairline shadow-modal w-80 gap-0 rounded-lg border p-0 ring-0"
               >
                 {loadFailed ? (
@@ -207,11 +206,11 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
                       {!draftProvider && model && !modelInList && (
                         <CommandItem
                           value={model}
+                          data-checked
                           onSelect={() => setOpen(false)}
-                          className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+                          className="hover:bg-hover data-selected:bg-hover data-selected:text-primary text-caption [&>svg.ml-auto]:text-brand! flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left transition-colors"
                         >
                           <span className="min-w-0 flex-1 truncate">{model}</span>
-                          <CheckIcon className="text-brand size-3.5 shrink-0" />
                         </CommandItem>
                       )}
                       {activeModels.map((m) => (

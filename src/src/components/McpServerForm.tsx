@@ -3,25 +3,18 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { KeyValueList } from "./KeyValueList"
 import { mcpErrorMessage } from "@/hooks/query/useMcpServers"
-import type { McpServerPayload, McpTransportConfig, McpTransportType } from "../types/mcp"
+import {
+  emptyTransport,
+  type McpServerPayload,
+  type McpTransportConfig,
+  type McpTransportType,
+} from "../types/mcp"
 
 const TRANSPORT_OPTIONS: { value: McpTransportType; label: string }[] = [
   { value: "http", label: "HTTP (Streamable)" },
   { value: "stdio", label: "STDIO" },
   { value: "sse", label: "SSE" },
 ]
-
-/** 切换传输类型时重置为该类型的空配置（判别联合，整体替换） */
-function emptyTransport(type: McpTransportType): McpTransportConfig {
-  switch (type) {
-    case "stdio":
-      return { type: "stdio", command: "", args: [], env: {} }
-    case "sse":
-      return { type: "sse", url: "", headers: {} }
-    default:
-      return { type: "http", url: "", headers: {} }
-  }
-}
 
 /** Map<string, string> → KeyValueList 的 `key=value` 行 */
 function toEntries(map: Record<string, string>): string[] {
@@ -98,7 +91,7 @@ export function McpServerForm({
   }
 
   return (
-    <div className="bg-surface border-hairline space-y-4 rounded-lg border p-4">
+    <div className="space-y-4">
       {/* 名称 */}
       <div>
         <label className="text-secondary text-caption mb-1 block">名称</label>
@@ -124,7 +117,7 @@ export function McpServerForm({
               onClick={() => updateTransport(emptyTransport(opt.value))}
               className={`text-caption h-auto flex-1 rounded-none px-3 py-2 ${
                 transport.type === opt.value
-                  ? "bg-brand text-primary hover:bg-brand hover:text-primary"
+                  ? "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
                   : "text-secondary hover:bg-hover hover:text-primary"
               }`}
             >
@@ -218,7 +211,7 @@ export function McpServerForm({
       )}
 
       {/* 操作按钮 */}
-      <div className="flex items-center justify-end gap-2 pt-1">
+      <div className="border-hairline flex items-center justify-end gap-2 border-t pt-4">
         {saveError && <span className="text-down text-caption mr-auto">{saveError}</span>}
         <Button variant="outline" size="sm" onClick={onCancel}>
           取消

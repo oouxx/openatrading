@@ -57,3 +57,35 @@ export interface McpServerPayload {
 export function isReadOnly(server: McpServerConfig): boolean {
   return server.scope === "project"
 }
+
+/** 切换传输类型时生成该类型的空配置（判别联合，整体替换） */
+export function emptyTransport(type: McpTransportType): McpTransportConfig {
+  switch (type) {
+    case "stdio":
+      return { type: "stdio", command: "", args: [], env: {} }
+    case "sse":
+      return { type: "sse", url: "", headers: {} }
+    default:
+      return { type: "http", url: "", headers: {} }
+  }
+}
+
+/** 传输方式的展示标签 */
+export function mcpTransportLabel(transport: McpTransportConfig): string {
+  switch (transport.type) {
+    case "stdio":
+      return "STDIO"
+    case "sse":
+      return "SSE"
+    default:
+      return "HTTP"
+  }
+}
+
+/** 列表/搜索用的目标摘要：stdio 为命令 + 参数，HTTP/SSE 为 URL */
+export function mcpTransportTarget(transport: McpTransportConfig): string {
+  if (transport.type === "stdio") {
+    return [transport.command, ...transport.args].filter(Boolean).join(" ")
+  }
+  return transport.url
+}
