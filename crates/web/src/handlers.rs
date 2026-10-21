@@ -368,8 +368,6 @@ pub async fn get_field_items_data(
     date: Option<String>,
     field_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    use openatrading_core::api::Client as ApiClient;
-
     let date = date.unwrap_or_else(|| {
         openatrading_core::utils::time::beijing_now()
             .format("%Y-%m-%d")
@@ -382,8 +380,11 @@ pub async fn get_field_items_data(
         &format!("field_items_{date}"),
         CachePolicy::realtime(),
         || async {
-            let client = ApiClient::new();
-            let data = client
+            // 复用 AppContext 里的 Jiuyan session：每次新建 client 都会重新登录，
+            // 既慢，也可能让旧会话失效。
+            let data = state
+                .ctx
+                .api
                 .jiuyan
                 .fetch_field(&date, 1)
                 .await

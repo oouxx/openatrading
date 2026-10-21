@@ -303,17 +303,18 @@ impl JiuYanSession {
             .is_err();
 
         if already_refreshing {
+            // 必须等对方登录“结束”后再读 credentials：旧凭证在登录成功前仍然保留，
+            // 先读到的是过期的那份，拿去重试只会再吃一次「登录失效」。
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 let guard = self.inner.read().await;
+                if guard.refreshing.load(Ordering::SeqCst) {
+                    continue;
+                }
                 if let Some(creds) = &guard.credentials {
                     return Ok(creds.clone());
                 }
-                if !guard.refreshing.load(Ordering::SeqCst) {
-                    anyhow::bail!(
-                        "login failed: another login attempt finished without credentials"
-                    );
-                }
+                anyhow::bail!("login failed: another login attempt finished without credentials");
             }
         }
 
@@ -400,19 +401,68 @@ impl JiuYanSession {
         Ok(creds)
     }
 
-    /// 强制刷新 token
+    /// 强制重新登录
     ///
     /// # Errors
     /// Returns an error if login fails.
     ///
-    /// TODO: 当前无调用方。`get`/`post` 未检测 HTTP 401 与响应里的 `errCode`，
-    /// 因此 session 失效后无法自愈——应在检测到失效时接入本函数重新登录。
+    /// 不先清空 `credentials`：`login()` 自己会覆盖它。若两个请求同时
+    /// 发现 session 失效，先到的登录进行中，后到的会走 `login()` 的
+    /// `refreshing` 等待分支复用同一份新凭证，不会把刚拿到的 token 清掉。
     pub async fn refresh(&self) -> Result<Credentials> {
-        {
-            let mut guard = self.inner.write().await;
-            guard.credentials = None;
-        }
         self.login().await
+    }
+
+    /// 判断响应是否表示 session 失效（需要重新登录）。
+    fn is_auth_expired(resp: &serde_json::Value) -> bool {
+        let code = resp.get("errCode").and_then(serde_json::Value::as_str);
+        if matches!(code, Some("1" | "401")) {
+            return true;
+        }
+        resp.get("msg")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|msg| msg.contains("登录失效"))
+    }
+
+    /// 发送一次带签名和 Cookie 的请求，返回原始 JSON。
+    async fn send_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let creds = self.get_credentials().await?;
+        let url = format!("{BASE_URL}{path}");
+        let ts = now_ts();
+
+        let mut request = self
+            .client
+            .request(method, &url)
+            .header("token", gen_jiuyan_token(ts))
+            .header("timestamp", ts.to_string())
+            .header(reqwest::header::COOKIE, &creds.cookie);
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+
+        Ok(request.send().await?.json::<serde_json::Value>().await?)
+    }
+
+    /// 发送请求；若 session 失效则重新登录后重试一次。
+    async fn send_with_auth_retry(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let resp = self.send_json(method.clone(), path, body).await?;
+        if !Self::is_auth_expired(&resp) {
+            return Ok(resp);
+        }
+
+        tracing::info!(path, "jiuyangongshe session expired, re-login and retry");
+        self.refresh().await?;
+        self.send_json(method, path, body).await
     }
 
     /// 发起 GET 请求，MD5 签名 + Session Cookie 认证
@@ -420,19 +470,8 @@ impl JiuYanSession {
     /// # Errors
     /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
-        let creds = self.get_credentials().await?;
-        let url = format!("{BASE_URL}{path}");
-        let ts = now_ts();
-
         let resp = self
-            .client
-            .get(&url)
-            .header("token", gen_jiuyan_token(ts))
-            .header("timestamp", &ts.to_string())
-            .header(reqwest::header::COOKIE, &creds.cookie)
-            .send()
-            .await?
-            .json::<serde_json::Value>()
+            .send_with_auth_retry(reqwest::Method::GET, path, None)
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
@@ -448,20 +487,9 @@ impl JiuYanSession {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let creds = self.get_credentials().await?;
-        let url = format!("{BASE_URL}{path}");
-        let ts = now_ts();
-
+        let body = serde_json::to_value(body)?;
         let resp = self
-            .client
-            .post(&url)
-            .header("token", gen_jiuyan_token(ts))
-            .header("timestamp", &ts.to_string())
-            .header(reqwest::header::COOKIE, &creds.cookie)
-            .json(body)
-            .send()
-            .await?
-            .json::<serde_json::Value>()
+            .send_with_auth_retry(reqwest::Method::POST, path, Some(&body))
             .await?;
 
         let json_str = serde_json::to_string(&resp)?;
