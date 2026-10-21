@@ -56,3 +56,20 @@ bun run lint:fix
 - Only `error` level must be fixed before commit
 - Never add `eslint-disable` without a comment
 - Format issues are handled by Prettier, not ESLint
+
+### 设计系统契约（`src/src/styles/theme.css` 为唯一来源）
+
+**选定风格：暖灰极简（Claude 风）—— 低饱和中性底 + 单一暖杏强调 + 细描边分层 + 克制动效。**
+不引入玻璃态大面积面板、霓虹渐变、拟物阴影。唯一例外：`SettingsView` 的主题预览图是固定明暗的设备 mock，允许写死字面色。
+
+- **色彩**：1 个品牌强调色（`brand`，兼作 `ai` 强调）+ 涨跌数据色（`up`/`down`，彩度更高）+ 状态色（`success`/`warning`/`danger`/`info`）。
+  - 禁止 Tailwind 原始调色板（`text-yellow-500`、`bg-slate-800`…）与内联 `#hex`/`rgba()`（图表除外，走 `lib/chartColors`）。
+  - 禁止 `text-white`/`bg-black`：字面色只有 `pure-white`/`pure-black`，遮罩用 `scrim`/`scrim-soft`/`scrim-strong`。
+  - 禁止用 `text-primary/40` 这类透明度叠色做层级——三级语义色 `primary`(15.8:1) / `secondary`(8.8:1) / `tertiary`(5.0:1) 已按 WCAG 标定，直接用。
+- **排版**：正文 Geist（`--font-sans`）、数字/代码 Geist Mono（`--font-number`）；字号只用 `text-hero/h1/h2/body/caption` 五级，`caption` 只给元信息（时间、计数、代码），正文段落用 `text-body`。
+  - 中文标签禁止 `uppercase` 与 `tracking-wider`（CJK 无大小写、字距会散架）。
+- **间距**：面板容器 `p-6`，卡片内容 `p-card-inner`(16px)，列表行 `px-5 py-4`，列表间距 `space-y-4`、`gap-3` 起。不要回到 `p-2`/`gap-2` 的拥挤密度。
+- **动效**：时长与缓动只有一套 token——`--default-transition-duration`(200ms) 与 `--default-transition-timing-function`(`cubic-bezier(.32,.72,0,1)`，与 `lib/motion.ts` 的 EASE 同源)。用 `transition-colors` 等显式属性，只有进度条类才用 `transition-[width]`；禁止 `transition-all` 与点击位移（`active:translate-y`），用 `active:opacity-90`。
+- **分层**：面板 = `bg-surface` + `border-hairline`；浮层/弹窗 = `shadow-modal`；卡内子块 = `bg-canvas`；hover = `bg-hover`。不要再混入 `border-border` / `hairline-dark`。
+- **圆角**：只用 `--radius-sm/md/lg`（4/6/8px），禁止 `rounded-[Npx]`。
+- 系统开启「减少动效」时全站动画自动收敛（`styles/animations.css` 的 `prefers-reduced-motion` 块）。
