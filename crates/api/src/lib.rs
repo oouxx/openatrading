@@ -1,4 +1,5 @@
 pub mod cls;
+pub mod cninfo;
 pub mod eastmoney;
 pub mod jiuyangongshe;
 pub mod sina;
@@ -7,16 +8,18 @@ pub mod utils;
 pub mod xuangubao;
 use cls::ClsClient;
 
+use cninfo::CninfoClient;
 use jiuyangongshe::JiuYanSession;
 use xuangubao::XuanguBaoClient;
 
-use crate::eastmoney::LhbClient;
+use crate::eastmoney::EastmoneyClient;
 #[derive(Clone)]
 pub struct Client {
     pub xuangubao: XuanguBaoClient,
     pub jiuyan: JiuYanSession,
     pub cls: ClsClient,
-    pub eastmoney: LhbClient,
+    pub eastmoney: EastmoneyClient,
+    pub cninfo: CninfoClient,
 }
 
 impl Client {
@@ -25,7 +28,8 @@ impl Client {
             xuangubao: XuanguBaoClient::new(),
             jiuyan: JiuYanSession::new(),
             cls: ClsClient::new(),
-            eastmoney: LhbClient::new(),
+            eastmoney: EastmoneyClient::new(),
+            cninfo: CninfoClient::new(),
         }
     }
 }

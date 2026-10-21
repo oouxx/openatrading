@@ -87,6 +87,21 @@ fn beijing_tz() -> FixedOffset {
 
 use anyhow::{bail, Result};
 
+/// 将 `YYYYMMDD` 或 `YYYY-MM-DD` 规范化为 `YYYYMMDD`。
+///
+/// # Errors
+/// Returns an error if the input does not contain a valid calendar date.
+pub fn compact_date(input: &str) -> Result<String> {
+    let digits: String = input.chars().filter(char::is_ascii_digit).collect();
+    if digits.len() != 8 {
+        bail!("日期必须是 YYYYMMDD 或 YYYY-MM-DD: {input}");
+    }
+    if let Err(error) = chrono::NaiveDate::parse_from_str(&digits, "%Y%m%d") {
+        bail!("非法日期 {input}: {error}");
+    }
+    Ok(digits)
+}
+
 /// 将 A 股股票代码规范化为 Yahoo Finance symbol
 ///
 /// # Errors
@@ -332,6 +347,14 @@ mod tests {
         assert!(to_yahoo_symbol("12_345_678").is_err()); // 超过6位
         assert!(to_yahoo_symbol("700000").is_err()); // 首位7无法推断
         assert!(to_yahoo_symbol("").is_err()); // 空字符串
+    }
+
+    #[test]
+    fn test_compact_date() {
+        assert_eq!(compact_date("20261021").unwrap_or_default(), "20261021");
+        assert_eq!(compact_date("2026-10-21").unwrap_or_default(), "20261021");
+        assert!(compact_date("2026-13-01").is_err());
+        assert!(compact_date("202610").is_err());
     }
 
     #[test]

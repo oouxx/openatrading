@@ -1,7 +1,17 @@
+//! 东方财富接口客户端。
+//!
+//! 包含龙虎榜、研报、涨停/炸板池、分钟行情、资金流向和板块 K 线。
+
 use ahash::AHashMap;
+use anyhow::{bail, Context, Result};
+use chrono::NaiveDateTime;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::str::FromStr;
 use thiserror::Error;
+
+use crate::utils::{compact_date, now_ts, to_yahoo_symbol};
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -140,12 +150,16 @@ pub enum SeatFlag {
 
 const BASE_URL: &str = "https://datacenter-web.eastmoney.com/api/data/v1/get";
 
+/// 兼容旧名称：东方财富客户端。
+pub type LhbClient = EastmoneyClient;
+
+/// 东方财富接口客户端（龙虎榜、研报、涨停股池、分钟行情、资金流、板块 K 线）。
 #[derive(Clone)]
-pub struct LhbClient {
+pub struct EastmoneyClient {
     client: Client,
 }
 
-impl Default for LhbClient {
+impl Default for EastmoneyClient {
     fn default() -> Self {
         Self::new()
     }
@@ -158,8 +172,8 @@ pub struct StockSearchItem {
     pub name: String,
 }
 
-impl LhbClient {
-    /// Create a new `LhbClient`.
+impl EastmoneyClient {
+    /// Create a new `EastmoneyClient`.
     ///
     /// # Panics
     /// Panics if the reqwest client cannot be built (should never happen).
@@ -523,11 +537,11 @@ mod tests {
     #[test]
     fn test_fmt_date_valid() {
         assert_eq!(
-            LhbClient::fmt_date("20240115").unwrap_or_else(|_| panic!("test failed")),
+            EastmoneyClient::fmt_date("20240115").unwrap_or_else(|_| panic!("test failed")),
             "2024-01-15"
         );
         assert_eq!(
-            LhbClient::fmt_date("20230101").unwrap_or_else(|_| panic!("test failed")),
+            EastmoneyClient::fmt_date("20230101").unwrap_or_else(|_| panic!("test failed")),
             "2023-01-01"
         );
     }
@@ -535,7 +549,7 @@ mod tests {
     #[test]
     fn test_fmt_date_too_short() {
         assert!(matches!(
-            LhbClient::fmt_date("202401"),
+            EastmoneyClient::fmt_date("202401"),
             Err(LhbError::InvalidDate(_))
         ));
     }
@@ -543,7 +557,7 @@ mod tests {
     #[test]
     fn test_fmt_date_non_digit() {
         assert!(matches!(
-            LhbClient::fmt_date("2024-115"),
+            EastmoneyClient::fmt_date("2024-115"),
             Err(LhbError::InvalidDate(_))
         ));
     }
@@ -551,26 +565,26 @@ mod tests {
     #[test]
     fn test_f64_field_present() {
         let v = serde_json::json!({"CLOSE_PRICE": 12.34});
-        assert_eq!(LhbClient::f64_field(&v, "CLOSE_PRICE"), Some(12.34));
+        assert_eq!(EastmoneyClient::f64_field(&v, "CLOSE_PRICE"), Some(12.34));
     }
 
     #[test]
     fn test_f64_field_missing() {
         let v = serde_json::json!({});
-        assert_eq!(LhbClient::f64_field(&v, "CLOSE_PRICE"), None);
+        assert_eq!(EastmoneyClient::f64_field(&v, "CLOSE_PRICE"), None);
     }
 
     #[test]
     fn test_f64_field_null() {
         let v = serde_json::json!({"CLOSE_PRICE": null});
-        assert_eq!(LhbClient::f64_field(&v, "CLOSE_PRICE"), None);
+        assert_eq!(EastmoneyClient::f64_field(&v, "CLOSE_PRICE"), None);
     }
 
     #[test]
     fn test_str_field() {
         let v = serde_json::json!({"SECURITY_NAME_ABBR": "东方财富"});
         assert_eq!(
-            LhbClient::str_field(&v, "SECURITY_NAME_ABBR"),
+            EastmoneyClient::str_field(&v, "SECURITY_NAME_ABBR"),
             Some("东方财富".to_string())
         );
     }
@@ -585,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_invalid_symbol_too_short() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
@@ -595,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_invalid_symbol_too_long() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
@@ -605,7 +619,7 @@ mod tests {
 
     #[test]
     fn test_invalid_symbol_empty() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
@@ -616,7 +630,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_seat_valid_symbol() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let result = client
             .lhb_stock_seat("000001", "20240115", SeatFlag::Buy)
             .await;
@@ -625,7 +639,7 @@ mod tests {
 
     #[test]
     fn test_lhb_stock_seat_invalid_date() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let result = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap_or_else(|e| panic!("failed to build reqwest client: {e}"))
@@ -639,7 +653,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_detail_returns_data() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let rows = client
             .lhb_detail("20_240_415", "20_240_417")
             .await
@@ -658,7 +672,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_seat_buy() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         // 用一个确定有龙虎榜记录的日期和股票
         let rows = client
             .lhb_stock_seat("000788", "20_220_315", SeatFlag::Buy)
@@ -674,7 +688,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_active_yyb() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let rows = client
             .lhb_active_yyb("20_240_415", "20_240_417")
             .await
@@ -688,7 +702,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_stock_statistic() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let rows = client
             .lhb_stock_statistic(StatsCycle::OneMonth)
             .await
@@ -721,23 +735,23 @@ mod tests {
             "D10_CLOSE_ADJCHRATE": 5.8
         });
         let detail = LhbDetail {
-            code: LhbClient::str_field(&raw, "SECURITY_CODE").unwrap_or_default(),
-            name: LhbClient::str_field(&raw, "SECURITY_NAME_ABBR").unwrap_or_default(),
-            trade_date: LhbClient::str_field(&raw, "TRADE_DATE").unwrap_or_default(),
-            close_price: LhbClient::f64_field(&raw, "CLOSE_PRICE"),
-            change_rate: LhbClient::f64_field(&raw, "CHANGE_RATE"),
-            billboard_net_amt: LhbClient::f64_field(&raw, "BILLBOARD_NET_AMT"),
-            billboard_buy_amt: LhbClient::f64_field(&raw, "BILLBOARD_BUY_AMT"),
-            billboard_sell_amt: LhbClient::f64_field(&raw, "BILLBOARD_SELL_AMT"),
-            billboard_deal_amt: LhbClient::f64_field(&raw, "BILLBOARD_DEAL_AMT"),
-            accum_amount: LhbClient::f64_field(&raw, "ACCUM_AMOUNT"),
-            turnover_rate: LhbClient::f64_field(&raw, "TURNOVERRATE"),
-            free_market_cap: LhbClient::f64_field(&raw, "FREE_MARKET_CAP"),
-            explanation: LhbClient::str_field(&raw, "EXPLANATION"),
-            d1_chg: LhbClient::f64_field(&raw, "D1_CLOSE_ADJCHRATE"),
-            d2_chg: LhbClient::f64_field(&raw, "D2_CLOSE_ADJCHRATE"),
-            d5_chg: LhbClient::f64_field(&raw, "D5_CLOSE_ADJCHRATE"),
-            d10_chg: LhbClient::f64_field(&raw, "D10_CLOSE_ADJCHRATE"),
+            code: EastmoneyClient::str_field(&raw, "SECURITY_CODE").unwrap_or_default(),
+            name: EastmoneyClient::str_field(&raw, "SECURITY_NAME_ABBR").unwrap_or_default(),
+            trade_date: EastmoneyClient::str_field(&raw, "TRADE_DATE").unwrap_or_default(),
+            close_price: EastmoneyClient::f64_field(&raw, "CLOSE_PRICE"),
+            change_rate: EastmoneyClient::f64_field(&raw, "CHANGE_RATE"),
+            billboard_net_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_NET_AMT"),
+            billboard_buy_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_BUY_AMT"),
+            billboard_sell_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_SELL_AMT"),
+            billboard_deal_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_DEAL_AMT"),
+            accum_amount: EastmoneyClient::f64_field(&raw, "ACCUM_AMOUNT"),
+            turnover_rate: EastmoneyClient::f64_field(&raw, "TURNOVERRATE"),
+            free_market_cap: EastmoneyClient::f64_field(&raw, "FREE_MARKET_CAP"),
+            explanation: EastmoneyClient::str_field(&raw, "EXPLANATION"),
+            d1_chg: EastmoneyClient::f64_field(&raw, "D1_CLOSE_ADJCHRATE"),
+            d2_chg: EastmoneyClient::f64_field(&raw, "D2_CLOSE_ADJCHRATE"),
+            d5_chg: EastmoneyClient::f64_field(&raw, "D5_CLOSE_ADJCHRATE"),
+            d10_chg: EastmoneyClient::f64_field(&raw, "D10_CLOSE_ADJCHRATE"),
         };
         assert_eq!(detail.code, "600519");
         assert_eq!(detail.name, "贵州茅台");
@@ -761,23 +775,23 @@ mod tests {
             "TRADE_DATE": "2025-01-20 00:00:00"
         });
         let detail = LhbDetail {
-            code: LhbClient::str_field(&raw, "SECURITY_CODE").unwrap_or_default(),
-            name: LhbClient::str_field(&raw, "SECURITY_NAME_ABBR").unwrap_or_default(),
-            trade_date: LhbClient::str_field(&raw, "TRADE_DATE").unwrap_or_default(),
-            close_price: LhbClient::f64_field(&raw, "CLOSE_PRICE"),
-            change_rate: LhbClient::f64_field(&raw, "CHANGE_RATE"),
-            billboard_net_amt: LhbClient::f64_field(&raw, "BILLBOARD_NET_AMT"),
-            billboard_buy_amt: LhbClient::f64_field(&raw, "BILLBOARD_BUY_AMT"),
-            billboard_sell_amt: LhbClient::f64_field(&raw, "BILLBOARD_SELL_AMT"),
-            billboard_deal_amt: LhbClient::f64_field(&raw, "BILLBOARD_DEAL_AMT"),
-            accum_amount: LhbClient::f64_field(&raw, "ACCUM_AMOUNT"),
-            turnover_rate: LhbClient::f64_field(&raw, "TURNOVERRATE"),
-            free_market_cap: LhbClient::f64_field(&raw, "FREE_MARKET_CAP"),
-            explanation: LhbClient::str_field(&raw, "EXPLANATION"),
-            d1_chg: LhbClient::f64_field(&raw, "D1_CLOSE_ADJCHRATE"),
-            d2_chg: LhbClient::f64_field(&raw, "D2_CLOSE_ADJCHRATE"),
-            d5_chg: LhbClient::f64_field(&raw, "D5_CLOSE_ADJCHRATE"),
-            d10_chg: LhbClient::f64_field(&raw, "D10_CLOSE_ADJCHRATE"),
+            code: EastmoneyClient::str_field(&raw, "SECURITY_CODE").unwrap_or_default(),
+            name: EastmoneyClient::str_field(&raw, "SECURITY_NAME_ABBR").unwrap_or_default(),
+            trade_date: EastmoneyClient::str_field(&raw, "TRADE_DATE").unwrap_or_default(),
+            close_price: EastmoneyClient::f64_field(&raw, "CLOSE_PRICE"),
+            change_rate: EastmoneyClient::f64_field(&raw, "CHANGE_RATE"),
+            billboard_net_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_NET_AMT"),
+            billboard_buy_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_BUY_AMT"),
+            billboard_sell_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_SELL_AMT"),
+            billboard_deal_amt: EastmoneyClient::f64_field(&raw, "BILLBOARD_DEAL_AMT"),
+            accum_amount: EastmoneyClient::f64_field(&raw, "ACCUM_AMOUNT"),
+            turnover_rate: EastmoneyClient::f64_field(&raw, "TURNOVERRATE"),
+            free_market_cap: EastmoneyClient::f64_field(&raw, "FREE_MARKET_CAP"),
+            explanation: EastmoneyClient::str_field(&raw, "EXPLANATION"),
+            d1_chg: EastmoneyClient::f64_field(&raw, "D1_CLOSE_ADJCHRATE"),
+            d2_chg: EastmoneyClient::f64_field(&raw, "D2_CLOSE_ADJCHRATE"),
+            d5_chg: EastmoneyClient::f64_field(&raw, "D5_CLOSE_ADJCHRATE"),
+            d10_chg: EastmoneyClient::f64_field(&raw, "D10_CLOSE_ADJCHRATE"),
         };
         assert_eq!(detail.code, "000001");
         assert_eq!(detail.close_price, None);
@@ -895,7 +909,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "integration test, requires network"]
     async fn integration_lhb_combined() {
-        let client = LhbClient::new();
+        let client = EastmoneyClient::new();
         let rows = client
             .lhb_combined("20_240_415", "20_240_417")
             .await
@@ -999,7 +1013,7 @@ pub struct ReportDetail {
     pub publish_date: String,
 }
 
-impl LhbClient {
+impl EastmoneyClient {
     /// 获取研报列表。
     ///
     /// `category` 研报分类，`page` 页码（从 1 开始），`size` 每页条数。
@@ -1204,4 +1218,1075 @@ fn extract_publish_date(html: &str) -> String {
         return String::new();
     };
     cap[1].to_string()
+}
+
+// ─── 行情接口（按 akshare 移植） ─────────────────────────────────────────
+
+const ZT_POOL_URL: &str = "https://push2ex.eastmoney.com/getTopicZTPool";
+const ZB_POOL_URL: &str = "https://push2ex.eastmoney.com/getTopicZBPool";
+const TREND_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/trends2/get";
+const KLINE_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
+const FUND_FLOW_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get";
+const BOARD_SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
+const UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
+const SEARCH_TOKEN: &str = "D43BF722C8E33BDC906FB84D85E326E8";
+
+// ─── Domain types ────────────────────────────────────────────────────────────
+
+/// 涨停统计：最近 `days` 个交易日内涨停 `count` 次。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LimitUpStats {
+    pub days: u32,
+    pub count: u32,
+}
+
+/// 涨停股池条目。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LimitUpStock {
+    pub code: String,
+    pub name: String,
+    pub price: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub amount: Option<f64>,
+    pub float_market_cap: Option<f64>,
+    pub total_market_cap: Option<f64>,
+    pub turnover_rate: Option<f64>,
+    pub consecutive_boards: Option<u32>,
+    /// 首次封板时间，格式 `HH:MM:SS`。
+    pub first_seal_time: Option<String>,
+    /// 最后封板时间，格式 `HH:MM:SS`。
+    pub last_seal_time: Option<String>,
+    /// 封板资金（元）。
+    pub seal_funds: Option<f64>,
+    pub broken_times: Option<u32>,
+    pub industry: Option<String>,
+    pub limit_up_stats: Option<LimitUpStats>,
+}
+
+/// 炸板股池条目（曾触及涨停但当前未封住）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokenBoardStock {
+    pub code: String,
+    pub name: String,
+    pub price: Option<f64>,
+    /// 涨停价。
+    pub limit_up_price: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub amount: Option<f64>,
+    pub float_market_cap: Option<f64>,
+    pub total_market_cap: Option<f64>,
+    pub turnover_rate: Option<f64>,
+    /// 首次封板时间，格式 `HH:MM:SS`。
+    pub first_seal_time: Option<String>,
+    pub broken_times: Option<u32>,
+    pub amplitude: Option<f64>,
+    /// 涨速。
+    pub speed: Option<f64>,
+    pub industry: Option<String>,
+    pub limit_up_stats: Option<LimitUpStats>,
+}
+
+/// 分钟周期。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MinutePeriod {
+    One,
+    Five,
+    Fifteen,
+    Thirty,
+    Sixty,
+}
+
+impl MinutePeriod {
+    const fn as_klt(self) -> &'static str {
+        match self {
+            Self::One => "1",
+            Self::Five => "5",
+            Self::Fifteen => "15",
+            Self::Thirty => "30",
+            Self::Sixty => "60",
+        }
+    }
+}
+
+impl FromStr for MinutePeriod {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "1m" | "one" => Ok(Self::One),
+            "5" | "5m" | "five" => Ok(Self::Five),
+            "15" | "15m" | "fifteen" => Ok(Self::Fifteen),
+            "30" | "30m" | "thirty" => Ok(Self::Thirty),
+            "60" | "60m" | "sixty" => Ok(Self::Sixty),
+            other => bail!("不支持的分钟周期: {other}（可选 1/5/15/30/60）"),
+        }
+    }
+}
+
+/// 复权方式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Adjust {
+    #[default]
+    None,
+    Qfq,
+    Hfq,
+}
+
+impl Adjust {
+    const fn as_code(self) -> &'static str {
+        match self {
+            Self::None => "0",
+            Self::Qfq => "1",
+            Self::Hfq => "2",
+        }
+    }
+}
+
+/// 个股分钟 K 线。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinuteCandle {
+    /// `YYYY-MM-DD HH:MM:SS`
+    pub time: String,
+    pub open: Option<f64>,
+    pub close: Option<f64>,
+    pub high: Option<f64>,
+    pub low: Option<f64>,
+    /// 成交量（手）。
+    pub volume: Option<f64>,
+    /// 成交额（元）。
+    pub amount: Option<f64>,
+    /// 均价，仅 1 分钟接口提供。
+    pub avg_price: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub change_amount: Option<f64>,
+    pub amplitude: Option<f64>,
+    pub turnover_rate: Option<f64>,
+}
+
+/// 分钟 K 线请求（可选参数较多，使用 builder）。
+#[derive(Debug, Clone)]
+pub struct MinuteHistRequest {
+    pub symbol: String,
+    pub period: MinutePeriod,
+    pub adjust: Adjust,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    /// 只保留最后 N 根 K 线；`None` 表示全部。
+    pub limit: Option<usize>,
+}
+
+impl MinuteHistRequest {
+    pub fn new(symbol: impl Into<String>) -> Self {
+        Self {
+            symbol: symbol.into(),
+            period: MinutePeriod::Five,
+            adjust: Adjust::None,
+            start_time: None,
+            end_time: None,
+            limit: None,
+        }
+    }
+
+    #[must_use]
+    pub fn period(mut self, period: MinutePeriod) -> Self {
+        self.period = period;
+        self
+    }
+
+    #[must_use]
+    pub fn adjust(mut self, adjust: Adjust) -> Self {
+        self.adjust = adjust;
+        self
+    }
+
+    #[must_use]
+    pub fn start_time(mut self, value: impl Into<String>) -> Self {
+        self.start_time = Some(value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn end_time(mut self, value: impl Into<String>) -> Self {
+        self.end_time = Some(value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+}
+
+/// 个股单日资金流向。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundFlowDay {
+    pub date: String,
+    pub close: Option<f64>,
+    pub change_percent: Option<f64>,
+    /// 主力净流入（元）。
+    pub main_net: Option<f64>,
+    /// 主力净流入占比（%）。
+    pub main_net_ratio: Option<f64>,
+    pub super_large_net: Option<f64>,
+    pub super_large_ratio: Option<f64>,
+    pub large_net: Option<f64>,
+    pub large_ratio: Option<f64>,
+    pub medium_net: Option<f64>,
+    pub medium_ratio: Option<f64>,
+    pub small_net: Option<f64>,
+    pub small_ratio: Option<f64>,
+}
+
+/// 板块 K 线周期。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BoardPeriod {
+    #[default]
+    Day,
+    Week,
+    Month,
+}
+
+impl BoardPeriod {
+    const fn as_klt(self) -> &'static str {
+        match self {
+            Self::Day => "101",
+            Self::Week => "102",
+            Self::Month => "103",
+        }
+    }
+}
+
+impl FromStr for BoardPeriod {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "day" | "daily" | "日" | "日k" => Ok(Self::Day),
+            "week" | "weekly" | "周" | "周k" => Ok(Self::Week),
+            "month" | "monthly" | "月" | "月k" => Ok(Self::Month),
+            other => bail!("不支持的板块周期: {other}（可选 day/week/month）"),
+        }
+    }
+}
+
+/// 板块历史 K 线。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardKline {
+    pub date: String,
+    pub open: Option<f64>,
+    pub close: Option<f64>,
+    pub high: Option<f64>,
+    pub low: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub change_amount: Option<f64>,
+    /// 成交量（手）。
+    pub volume: Option<f64>,
+    /// 成交额（元）。
+    pub amount: Option<f64>,
+    pub amplitude: Option<f64>,
+    pub turnover_rate: Option<f64>,
+}
+
+/// 板块历史 K 线请求。
+#[derive(Debug, Clone)]
+pub struct BoardKlineRequest {
+    /// 板块代码（`BKxxxx`）或板块名称。
+    pub board: String,
+    pub period: BoardPeriod,
+    pub adjust: Adjust,
+    /// `YYYYMMDD` 或 `YYYY-MM-DD`。
+    pub start_date: String,
+    /// `YYYYMMDD` 或 `YYYY-MM-DD`。
+    pub end_date: String,
+    /// 只保留最后 N 根 K 线；`None` 表示全部。
+    pub limit: Option<usize>,
+}
+
+impl BoardKlineRequest {
+    pub fn new(board: impl Into<String>) -> Self {
+        Self {
+            board: board.into(),
+            period: BoardPeriod::Day,
+            adjust: Adjust::None,
+            start_date: "19900101".to_string(),
+            end_date: "20500101".to_string(),
+            limit: None,
+        }
+    }
+
+    #[must_use]
+    pub fn period(mut self, period: BoardPeriod) -> Self {
+        self.period = period;
+        self
+    }
+
+    #[must_use]
+    pub fn adjust(mut self, adjust: Adjust) -> Self {
+        self.adjust = adjust;
+        self
+    }
+
+    #[must_use]
+    pub fn date_range(
+        mut self,
+        start_date: impl Into<String>,
+        end_date: impl Into<String>,
+    ) -> Self {
+        self.start_date = start_date.into();
+        self.end_date = end_date.into();
+        self
+    }
+
+    #[must_use]
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+}
+
+impl EastmoneyClient {
+    /// 涨停股池。
+    ///
+    /// `date` 使用 `YYYYMMDD` 或 `YYYY-MM-DD`，例如 `20261021`。
+    ///
+    /// # Errors
+    /// Returns an error if the date is invalid, the HTTP request fails, or the
+    /// response cannot be parsed.
+    pub async fn limit_up_pool(&self, date: &str) -> Result<Vec<LimitUpStock>> {
+        let date = compact_date(date)?;
+        let response: Value = self
+            .client
+            .get(ZT_POOL_URL)
+            .query(&[
+                ("ut", UT),
+                ("dpt", "wz.ztzt"),
+                ("Pageindex", "0"),
+                ("pagesize", "10000"),
+                ("sort", "fbt:asc"),
+                ("date", date.as_str()),
+            ])
+            .send()
+            .await
+            .context("涨停股池请求失败")?
+            .json()
+            .await
+            .context("涨停股池响应不是合法 JSON")?;
+
+        let Some(pool) = response["data"]["pool"].as_array() else {
+            return Ok(Vec::new());
+        };
+        Ok(pool.iter().filter_map(parse_limit_up_row).collect())
+    }
+
+    /// 炸板股池（曾涨停但当前未封住）。
+    ///
+    /// 东方财富只提供最近约 30 个交易日的数据。
+    ///
+    /// # Errors
+    /// Returns an error if the date is invalid, the HTTP request fails, or the
+    /// response cannot be parsed.
+    pub async fn broken_board_pool(&self, date: &str) -> Result<Vec<BrokenBoardStock>> {
+        let date = compact_date(date)?;
+        let response: Value = self
+            .client
+            .get(ZB_POOL_URL)
+            .query(&[
+                ("ut", UT),
+                ("dpt", "wz.ztzt"),
+                ("Pageindex", "0"),
+                ("pagesize", "5000"),
+                ("sort", "fbt:asc"),
+                ("date", date.as_str()),
+            ])
+            .send()
+            .await
+            .context("炸板股池请求失败")?
+            .json()
+            .await
+            .context("炸板股池响应不是合法 JSON")?;
+
+        let Some(pool) = response["data"]["pool"].as_array() else {
+            return Ok(Vec::new());
+        };
+        Ok(pool.iter().filter_map(parse_broken_board_row).collect())
+    }
+
+    /// 个股分钟 K 线。
+    ///
+    /// 1 分钟周期返回均价；5/15/30/60 分钟周期返回涨跌幅、振幅、换手率等字段。
+    ///
+    /// # Errors
+    /// Returns an error if the symbol is invalid, the HTTP request fails, or
+    /// the response cannot be parsed.
+    pub async fn minute_kline(&self, request: &MinuteHistRequest) -> Result<Vec<MinuteCandle>> {
+        let secid = stock_secid(&request.symbol)?;
+        let mut candles = if request.period == MinutePeriod::One {
+            self.fetch_one_minute(&secid).await?
+        } else {
+            self.fetch_minute_kline(&secid, request.period, request.adjust)
+                .await?
+        };
+
+        let start = request
+            .start_time
+            .as_deref()
+            .map(normalize_range_start)
+            .transpose()?;
+        let end = request
+            .end_time
+            .as_deref()
+            .map(normalize_range_end)
+            .transpose()?;
+        candles.retain(|candle| {
+            start
+                .as_deref()
+                .map_or(true, |start| candle.time.as_str() >= start)
+                && end
+                    .as_deref()
+                    .map_or(true, |end| candle.time.as_str() <= end)
+        });
+
+        if let Some(limit) = request.limit {
+            if candles.len() > limit {
+                candles.drain(..candles.len() - limit);
+            }
+        }
+        Ok(candles)
+    }
+
+    /// 个股资金流向（按日）。
+    ///
+    /// # Errors
+    /// Returns an error if the symbol is invalid, the HTTP request fails, or
+    /// the response cannot be parsed.
+    pub async fn individual_fund_flow(&self, symbol: &str) -> Result<Vec<FundFlowDay>> {
+        let secid = stock_secid(symbol)?;
+        let cache_buster = now_ts().to_string();
+        let response: Value = self
+            .client
+            .get(FUND_FLOW_URL)
+            .query(&[
+                ("lmt", "0"),
+                ("klt", "101"),
+                ("secid", secid.as_str()),
+                ("fields1", "f1,f2,f3,f7"),
+                (
+                    "fields2",
+                    "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+                ),
+                ("ut", "b2884a393a59ad64002292a3e90d46a5"),
+                ("_", cache_buster.as_str()),
+            ])
+            .send()
+            .await
+            .context("个股资金流请求失败")?
+            .json()
+            .await
+            .context("个股资金流响应不是合法 JSON")?;
+
+        let klines = response["data"]["klines"]
+            .as_array()
+            .context("个股资金流缺少 data.klines")?;
+        Ok(klines
+            .iter()
+            .filter_map(|line| line.as_str().and_then(parse_fund_flow_line))
+            .collect())
+    }
+
+    /// 概念板块历史 K 线。
+    ///
+    /// `board` 可以是板块名称（如 `绿色电力`）或 `BK` 代码。
+    ///
+    /// # Errors
+    /// Returns an error if the board cannot be resolved, the date is invalid,
+    /// the HTTP request fails, or the response cannot be parsed.
+    pub async fn concept_kline(&self, request: &BoardKlineRequest) -> Result<Vec<BoardKline>> {
+        self.board_kline(request).await
+    }
+
+    /// 行业板块历史 K 线。
+    ///
+    /// `board` 可以是板块名称（如 `小金属`）或 `BK` 代码。
+    ///
+    /// # Errors
+    /// Returns an error if the board cannot be resolved, the date is invalid,
+    /// the HTTP request fails, or the response cannot be parsed.
+    pub async fn industry_kline(&self, request: &BoardKlineRequest) -> Result<Vec<BoardKline>> {
+        self.board_kline(request).await
+    }
+
+    async fn fetch_one_minute(&self, secid: &str) -> Result<Vec<MinuteCandle>> {
+        let response: Value = self
+            .client
+            .get(TREND_URL)
+            .query(&[
+                ("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13"),
+                ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58"),
+                ("ut", UT),
+                ("ndays", "5"),
+                ("iscr", "0"),
+                ("secid", secid),
+            ])
+            .send()
+            .await
+            .context("分钟行情请求失败")?
+            .json()
+            .await
+            .context("分钟行情响应不是合法 JSON")?;
+
+        let trends = response["data"]["trends"]
+            .as_array()
+            .context("分钟行情缺少 data.trends")?;
+        Ok(trends
+            .iter()
+            .filter_map(|line| line.as_str().and_then(parse_one_minute_line))
+            .collect())
+    }
+
+    async fn fetch_minute_kline(
+        &self,
+        secid: &str,
+        period: MinutePeriod,
+        adjust: Adjust,
+    ) -> Result<Vec<MinuteCandle>> {
+        let response: Value = self
+            .client
+            .get(KLINE_URL)
+            .query(&[
+                ("fields1", "f1,f2,f3,f4,f5,f6"),
+                ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"),
+                ("ut", UT),
+                ("klt", period.as_klt()),
+                ("fqt", adjust.as_code()),
+                ("secid", secid),
+                ("beg", "0"),
+                ("end", "20500000"),
+            ])
+            .send()
+            .await
+            .context("分钟 K 线请求失败")?
+            .json()
+            .await
+            .context("分钟 K 线响应不是合法 JSON")?;
+
+        let klines = response["data"]["klines"]
+            .as_array()
+            .context("分钟 K 线缺少 data.klines")?;
+        Ok(klines
+            .iter()
+            .filter_map(|line| line.as_str().and_then(parse_minute_kline_line))
+            .collect())
+    }
+
+    async fn board_kline(&self, request: &BoardKlineRequest) -> Result<Vec<BoardKline>> {
+        let board_code = self.resolve_board_code(&request.board).await?;
+        let secid = format!("90.{board_code}");
+        let start = compact_date(&request.start_date)?;
+        let end = compact_date(&request.end_date)?;
+        let response: Value = self
+            .client
+            .get(KLINE_URL)
+            .query(&[
+                ("secid", secid.as_str()),
+                ("fields1", "f1,f2,f3,f4,f5,f6"),
+                ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"),
+                ("klt", request.period.as_klt()),
+                ("fqt", request.adjust.as_code()),
+                ("beg", start.as_str()),
+                ("end", end.as_str()),
+                ("smplmt", "10000"),
+                ("lmt", "1000000"),
+            ])
+            .send()
+            .await
+            .context("板块 K 线请求失败")?
+            .json()
+            .await
+            .context("板块 K 线响应不是合法 JSON")?;
+
+        let klines = response["data"]["klines"]
+            .as_array()
+            .context("板块 K 线缺少 data.klines")?;
+        let mut candles: Vec<BoardKline> = klines
+            .iter()
+            .filter_map(|line| line.as_str().and_then(parse_board_kline_line))
+            .collect();
+        if let Some(limit) = request.limit {
+            if candles.len() > limit {
+                candles.drain(..candles.len() - limit);
+            }
+        }
+        Ok(candles)
+    }
+
+    async fn resolve_board_code(&self, board: &str) -> Result<String> {
+        let board = board.trim();
+        if board.is_empty() {
+            bail!("板块名称或代码不能为空");
+        }
+        let upper = board.to_ascii_uppercase();
+        if let Some(rest) = upper.strip_prefix("BK") {
+            if !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Ok(upper);
+            }
+        }
+
+        let response: Value = self
+            .client
+            .get(BOARD_SEARCH_URL)
+            .query(&[
+                ("input", board),
+                ("type", "14"),
+                ("token", SEARCH_TOKEN),
+                ("count", "20"),
+            ])
+            .send()
+            .await
+            .context("板块搜索请求失败")?
+            .json()
+            .await
+            .context("板块搜索响应不是合法 JSON")?;
+        let rows = response["QuotationCodeTable"]["Data"]
+            .as_array()
+            .context("板块搜索缺少 QuotationCodeTable.Data")?;
+
+        for row in rows {
+            let Some(code) = row["Code"].as_str() else {
+                continue;
+            };
+            let Some(name) = row["Name"].as_str() else {
+                continue;
+            };
+            if row["Classify"].as_str().is_some_and(|value| value == "BK")
+                && code.to_ascii_uppercase().starts_with("BK")
+                && name == board
+            {
+                return Ok(code.to_ascii_uppercase());
+            }
+        }
+        bail!("未找到板块: {board}（可改用 BK 代码）")
+    }
+}
+
+// ─── Parsing helpers ─────────────────────────────────────────────────────────
+
+fn parse_limit_up_row(row: &Value) -> Option<LimitUpStock> {
+    Some(LimitUpStock {
+        code: row["c"].as_str()?.to_string(),
+        name: row["n"].as_str()?.to_string(),
+        price: json_f64(row, "p").map(|value| value / 1000.0),
+        change_percent: json_f64(row, "zdp"),
+        amount: json_f64(row, "amount"),
+        float_market_cap: json_f64(row, "ltsz"),
+        total_market_cap: json_f64(row, "tshare"),
+        turnover_rate: json_f64(row, "hs"),
+        consecutive_boards: json_u32(row, "lbc"),
+        first_seal_time: format_seal_time(json_u64(row, "fbt")),
+        last_seal_time: format_seal_time(json_u64(row, "lbt")),
+        seal_funds: json_f64(row, "fund"),
+        broken_times: json_u32(row, "zbc"),
+        industry: row["hybk"].as_str().map(std::string::ToString::to_string),
+        limit_up_stats: parse_limit_up_stats(&row["zttj"]),
+    })
+}
+
+fn parse_broken_board_row(row: &Value) -> Option<BrokenBoardStock> {
+    Some(BrokenBoardStock {
+        code: row["c"].as_str()?.to_string(),
+        name: row["n"].as_str()?.to_string(),
+        price: json_f64(row, "p").map(|value| value / 1000.0),
+        limit_up_price: json_f64(row, "ztp").map(|value| value / 1000.0),
+        change_percent: json_f64(row, "zdp"),
+        amount: json_f64(row, "amount"),
+        float_market_cap: json_f64(row, "ltsz"),
+        total_market_cap: json_f64(row, "tshare"),
+        turnover_rate: json_f64(row, "hs"),
+        first_seal_time: format_seal_time(json_u64(row, "fbt")),
+        broken_times: json_u32(row, "zbc"),
+        amplitude: json_f64(row, "zf"),
+        speed: json_f64(row, "zs"),
+        industry: row["hybk"].as_str().map(std::string::ToString::to_string),
+        limit_up_stats: parse_limit_up_stats(&row["zttj"]),
+    })
+}
+
+fn parse_limit_up_stats(value: &Value) -> Option<LimitUpStats> {
+    Some(LimitUpStats {
+        days: u32::try_from(value["days"].as_u64()?).ok()?,
+        count: u32::try_from(value["ct"].as_u64()?).ok()?,
+    })
+}
+
+fn parse_one_minute_line(line: &str) -> Option<MinuteCandle> {
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 8 {
+        return None;
+    }
+    Some(MinuteCandle {
+        time: normalize_minute_time(parts[0]),
+        open: parse_number(parts[1]),
+        close: parse_number(parts[2]),
+        high: parse_number(parts[3]),
+        low: parse_number(parts[4]),
+        volume: parse_number(parts[5]),
+        amount: parse_number(parts[6]),
+        avg_price: parse_number(parts[7]),
+        change_percent: None,
+        change_amount: None,
+        amplitude: None,
+        turnover_rate: None,
+    })
+}
+
+fn parse_minute_kline_line(line: &str) -> Option<MinuteCandle> {
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 11 {
+        return None;
+    }
+    Some(MinuteCandle {
+        time: normalize_minute_time(parts[0]),
+        open: parse_number(parts[1]),
+        close: parse_number(parts[2]),
+        high: parse_number(parts[3]),
+        low: parse_number(parts[4]),
+        volume: parse_number(parts[5]),
+        amount: parse_number(parts[6]),
+        avg_price: None,
+        change_percent: parse_number(parts[8]),
+        change_amount: parse_number(parts[9]),
+        amplitude: parse_number(parts[7]),
+        turnover_rate: parse_number(parts[10]),
+    })
+}
+
+fn parse_fund_flow_line(line: &str) -> Option<FundFlowDay> {
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 13 {
+        return None;
+    }
+    Some(FundFlowDay {
+        date: parts[0].to_string(),
+        main_net: parse_number(parts[1]),
+        small_net: parse_number(parts[2]),
+        medium_net: parse_number(parts[3]),
+        large_net: parse_number(parts[4]),
+        super_large_net: parse_number(parts[5]),
+        main_net_ratio: parse_number(parts[6]),
+        small_ratio: parse_number(parts[7]),
+        medium_ratio: parse_number(parts[8]),
+        large_ratio: parse_number(parts[9]),
+        super_large_ratio: parse_number(parts[10]),
+        close: parse_number(parts[11]),
+        change_percent: parse_number(parts[12]),
+    })
+}
+
+fn parse_board_kline_line(line: &str) -> Option<BoardKline> {
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 11 {
+        return None;
+    }
+    Some(BoardKline {
+        date: parts[0].to_string(),
+        open: parse_number(parts[1]),
+        close: parse_number(parts[2]),
+        high: parse_number(parts[3]),
+        low: parse_number(parts[4]),
+        volume: parse_number(parts[5]),
+        amount: parse_number(parts[6]),
+        amplitude: parse_number(parts[7]),
+        change_percent: parse_number(parts[8]),
+        change_amount: parse_number(parts[9]),
+        turnover_rate: parse_number(parts[10]),
+    })
+}
+
+fn parse_number(value: &str) -> Option<f64> {
+    value.trim().parse().ok()
+}
+
+fn json_f64(value: &Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(|value| {
+        value
+            .as_f64()
+            .or_else(|| value.as_str().and_then(parse_number))
+    })
+}
+
+fn json_u64(value: &Value, key: &str) -> Option<u64> {
+    value
+        .get(key)
+        .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse().ok()))
+}
+
+fn json_u32(value: &Value, key: &str) -> Option<u32> {
+    u32::try_from(json_u64(value, key)?).ok()
+}
+
+fn format_seal_time(value: Option<u64>) -> Option<String> {
+    let value = value?;
+    if value == 0 || value > 235_959 {
+        return None;
+    }
+    let text = format!("{value:06}");
+    Some(format!("{}:{}:{}", &text[0..2], &text[2..4], &text[4..6]))
+}
+
+fn stock_secid(symbol: &str) -> Result<String> {
+    let normalized = to_yahoo_symbol(symbol)?;
+    let (code, suffix) = normalized
+        .split_once('.')
+        .with_context(|| format!("无法识别股票代码: {symbol}"))?;
+    let market = match suffix {
+        "SS" => "1",
+        "SZ" | "BJ" => "0",
+        other => bail!("不支持的股票市场后缀: {other}"),
+    };
+    Ok(format!("{market}.{code}"))
+}
+
+fn normalize_minute_time(value: &str) -> String {
+    let value = value.trim();
+    if value.len() == 16 {
+        format!("{value}:00")
+    } else {
+        value.to_string()
+    }
+}
+
+fn normalize_range_start(value: &str) -> Result<String> {
+    normalize_range(value, false)
+}
+
+fn normalize_range_end(value: &str) -> Result<String> {
+    normalize_range(value, true)
+}
+
+fn normalize_range(value: &str, end: bool) -> Result<String> {
+    let value = value.trim();
+    if value.len() == 10 {
+        return Ok(format!(
+            "{value} {}",
+            if end { "23:59:59" } else { "00:00:00" }
+        ));
+    }
+    if value.len() == 16 {
+        return Ok(format!("{value}:{}", if end { "59" } else { "00" }));
+    }
+    if value.len() == 19 {
+        NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+            .with_context(|| format!("非法时间: {value}"))?;
+        return Ok(value.to_string());
+    }
+    bail!("时间格式应为 YYYY-MM-DD、YYYY-MM-DD HH:MM 或 YYYY-MM-DD HH:MM:SS: {value}")
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod market_tests {
+    use super::*;
+
+    #[test]
+    fn parses_limit_up_pool_row() {
+        let row = serde_json::json!({
+            "c": "002313",
+            "n": "日海智能",
+            "p": 9680,
+            "zdp": 10.0,
+            "amount": 64_604_320,
+            "ltsz": 3_623_991_624.0,
+            "tshare": 3_624_192_000.0,
+            "hs": 1.7826,
+            "lbc": 2,
+            "fbt": 92500,
+            "lbt": 92500,
+            "fund": 95_359_616,
+            "zbc": 0,
+            "hybk": "通信设备",
+            "zttj": { "days": 2, "ct": 2 }
+        });
+        let row = parse_limit_up_row(&row).unwrap_or_else(|| panic!("row should parse"));
+        assert_eq!(row.code, "002313");
+        assert_eq!(row.price, Some(9.68));
+        assert_eq!(row.consecutive_boards, Some(2));
+        assert_eq!(row.first_seal_time.as_deref(), Some("09:25:00"));
+        assert_eq!(row.seal_funds, Some(95_359_616.0));
+        assert_eq!(row.industry.as_deref(), Some("通信设备"));
+        assert_eq!(row.limit_up_stats, Some(LimitUpStats { days: 2, count: 2 }));
+    }
+
+    #[test]
+    fn parses_broken_board_row() {
+        let row = serde_json::json!({
+            "c": "000032",
+            "n": "深桑达Ａ",
+            "p": 13200,
+            "ztp": 13950,
+            "zdp": 4.1009,
+            "amount": 1_709_858_160,
+            "ltsz": 16_040_366_905.2,
+            "tshare": 16_040_366_918.4,
+            "hs": 10.4745,
+            "fbt": 92500,
+            "zbc": 1,
+            "zf": 7.4921,
+            "zs": 0.0,
+            "hybk": "专业工程",
+            "zttj": { "days": 0, "ct": 0 }
+        });
+        let row = parse_broken_board_row(&row).unwrap_or_else(|| panic!("row should parse"));
+        assert_eq!(row.code, "000032");
+        assert_eq!(row.limit_up_price, Some(13.95));
+        assert_eq!(row.first_seal_time.as_deref(), Some("09:25:00"));
+        assert_eq!(row.broken_times, Some(1));
+        assert_eq!(row.industry.as_deref(), Some("专业工程"));
+    }
+
+    #[test]
+    fn parses_one_minute_line() {
+        let candle = parse_one_minute_line(
+            "2026-10-21 09:31,1330.88,1323.36,1331.98,1323.33,721,95668150.00,1328.633",
+        )
+        .unwrap_or_else(|| panic!("line should parse"));
+        assert_eq!(candle.time, "2026-10-21 09:31:00");
+        assert_eq!(candle.open, Some(1330.88));
+        assert_eq!(candle.close, Some(1323.36));
+        assert_eq!(candle.volume, Some(721.0));
+        assert_eq!(candle.avg_price, Some(1328.633));
+    }
+
+    #[test]
+    fn parses_five_minute_line() {
+        let candle = parse_minute_kline_line(
+            "2026-08-31 09:35,1297.99,1297.01,1305.00,1293.70,2046,265829477.00,0.87,-0.03,-0.39,0.02",
+        )
+        .unwrap_or_else(|| panic!("line should parse"));
+        assert_eq!(candle.time, "2026-08-31 09:35:00");
+        assert_eq!(candle.close, Some(1297.01));
+        assert_eq!(candle.amplitude, Some(0.87));
+        assert_eq!(candle.change_percent, Some(-0.03));
+        assert_eq!(candle.turnover_rate, Some(0.02));
+        assert_eq!(candle.avg_price, None);
+    }
+
+    #[test]
+    fn parses_fund_flow_line() {
+        let row = parse_fund_flow_line(
+            "2026-04-22,-28038096.0,-2637216.0,30675328.0,-152804032.0,124765936.0,-0.74,-0.07,0.81,-4.03,3.29,1381.48,-0.18,0.00,0.00",
+        )
+        .unwrap_or_else(|| panic!("line should parse"));
+        assert_eq!(row.date, "2026-04-22");
+        assert_eq!(row.main_net, Some(-28_038_096.0));
+        assert_eq!(row.super_large_net, Some(124_765_936.0));
+        assert_eq!(row.main_net_ratio, Some(-0.74));
+        assert_eq!(row.close, Some(1381.48));
+    }
+
+    #[test]
+    fn parses_board_kline_line() {
+        let row = parse_board_kline_line(
+            "2026-01-05,1097.74,1103.80,1108.63,1081.81,19318555,44360341030.00,2.47,1.77,19.17,3.02",
+        )
+        .unwrap_or_else(|| panic!("line should parse"));
+        assert_eq!(row.date, "2026-01-05");
+        assert_eq!(row.close, Some(1103.80));
+        assert_eq!(row.amount, Some(44_360_341_030.0));
+        assert_eq!(row.change_percent, Some(1.77));
+    }
+
+    #[test]
+    fn formats_seal_times() {
+        assert_eq!(format_seal_time(Some(92500)).as_deref(), Some("09:25:00"));
+        assert_eq!(format_seal_time(Some(150000)).as_deref(), Some("15:00:00"));
+        assert_eq!(format_seal_time(Some(0)), None);
+        assert_eq!(format_seal_time(None), None);
+    }
+
+    #[test]
+    fn normalizes_time_ranges() {
+        assert_eq!(
+            normalize_range_start("2026-10-21").unwrap_or_default(),
+            "2026-10-21 00:00:00"
+        );
+        assert_eq!(
+            normalize_range_end("2026-10-21").unwrap_or_default(),
+            "2026-10-21 23:59:59"
+        );
+        assert_eq!(
+            normalize_range_start("2026-10-21 09:30").unwrap_or_default(),
+            "2026-10-21 09:30:00"
+        );
+    }
+
+    #[test]
+    fn infers_stock_secid() {
+        assert_eq!(stock_secid("600519.SS").unwrap_or_default(), "1.600519");
+        assert_eq!(stock_secid("000001").unwrap_or_default(), "0.000001");
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_limit_up_pool() {
+        let rows = EastmoneyClient::new()
+            .limit_up_pool("20261021")
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert!(!rows.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_broken_board_pool() {
+        let rows = EastmoneyClient::new()
+            .broken_board_pool("20261021")
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert!(!rows.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_minute_and_fund_flow() {
+        let client = EastmoneyClient::new();
+        let request = MinuteHistRequest::new("600519.SS")
+            .period(MinutePeriod::One)
+            .limit(10);
+        let candles = client
+            .minute_kline(&request)
+            .await
+            .unwrap_or_else(|error| panic!("minute request failed: {error}"));
+        assert!(!candles.is_empty());
+        assert!(candles[0].avg_price.is_some());
+
+        let flow = client
+            .individual_fund_flow("600519")
+            .await
+            .unwrap_or_else(|error| panic!("fund flow request failed: {error}"));
+        assert!(!flow.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_board_kline() {
+        let client = EastmoneyClient::new();
+        let request = BoardKlineRequest::new("绿色电力")
+            .date_range("20260101", "20261021")
+            .limit(20);
+        let concept_rows = client
+            .concept_kline(&request)
+            .await
+            .unwrap_or_else(|error| panic!("concept board request failed: {error}"));
+        assert!(!concept_rows.is_empty());
+
+        let request = BoardKlineRequest::new("小金属")
+            .date_range("20260101", "20261021")
+            .limit(20);
+        let industry_rows = client
+            .industry_kline(&request)
+            .await
+            .unwrap_or_else(|error| panic!("industry board request failed: {error}"));
+        assert!(!industry_rows.is_empty());
+    }
 }
