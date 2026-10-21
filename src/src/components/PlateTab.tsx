@@ -24,12 +24,32 @@ function hasActionInfo(ai: ActionInfo | undefined): ai is ActionInfo {
 }
 
 export default function PlateTab() {
-  const { data: fieldItems = [] } = useFieldItems()
+  const { data: fieldItems = [], isLoading, error } = useFieldItems()
   const openKline = useRightPanelStore((s) => s.openKline)
+
+  // 上游会返回「简图」这类 count=0、list=[] 的占位分组，展开后是空卡片，
+  // 没有展示意义。
+  const plates = fieldItems.filter((plate) => plate.count > 0 || plate.list.length > 0)
+
+  if (isLoading) {
+    return <div className="text-caption text-secondary py-12 text-center">加载板块异动...</div>
+  }
+
+  if (error) {
+    return (
+      <div className="bg-surface border-hairline text-caption text-secondary rounded-lg border px-4 py-3">
+        加载失败：{error.message}
+      </div>
+    )
+  }
+
+  if (plates.length === 0) {
+    return <div className="text-caption text-secondary py-12 text-center">暂无板块异动数据</div>
+  }
 
   return (
     <div className="space-y-3">
-      {fieldItems.map((plate: FieldPlate) => (
+      {plates.map((plate: FieldPlate) => (
         <PlateCard key={plate.name} plate={plate} onOpenKline={openKline} />
       ))}
     </div>
