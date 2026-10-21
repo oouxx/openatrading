@@ -2,8 +2,12 @@
 
 @layer base {
   @keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   @keyframes reasoning-slide-down {
@@ -29,19 +33,31 @@
   }
 
   @keyframes reasoning-shimmer {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
   }
 
   @keyframes compaction-progress {
-    0% { transform: translateX(-100%); }
-    50% { transform: translateX(0%); }
-    100% { transform: translateX(100%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
   }
 
   /* Claude-style pulsating dots for loading state */
   @keyframes pulsating-dot {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 0.2;
       transform: scale(0.8);
     }
@@ -55,24 +71,49 @@
    * Used by AgentStatusBar for the animated progress indicator during
    * "starting" and "processing" phases. */
   @keyframes agent-progress {
-    0% { transform: translateX(-100%); width: 20%; }
-    25% { width: 30%; }
-    50% { transform: translateX(0%); width: 50%; }
-    75% { width: 30%; }
-    100% { transform: translateX(100%); width: 20%; }
+    0% {
+      transform: translateX(-100%);
+      width: 20%;
+    }
+    25% {
+      width: 30%;
+    }
+    50% {
+      transform: translateX(0%);
+      width: 50%;
+    }
+    75% {
+      width: 30%;
+    }
+    100% {
+      transform: translateX(100%);
+      width: 20%;
+    }
   }
 
   @keyframes agent-progress-start {
-    0% { transform: translateX(-100%); width: 10%; }
-    100% { transform: translateX(0%); width: 30%; }
+    0% {
+      transform: translateX(-100%);
+      width: 10%;
+    }
+    100% {
+      transform: translateX(0%);
+      width: 30%;
+    }
   }
 
   /* ── Notice fade-in ────────────────────────────────────────────────
    * Used by SystemNoticeBlock and ToolCallList result sections
    * for a subtle entrance animation. */
   @keyframes notice-fade-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* ── Utility animation classes ────────────────────────────────────── */
@@ -86,5 +127,19 @@
 
   .animate-notice-fade-in {
     animation: notice-fade-in 0.3s ease-out;
+  }
+}
+
+/* ── 减少动效：尊重系统设置 ──────────────────────────────────────────
+ * 站内有 3 个无限循环动画（骨架 shimmer、agent 进度条、脉动亮点），
+ * 前庭敏感用户需要能一键关掉；过渡时长同时压到接近 0 但保留终态。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

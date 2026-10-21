@@ -29,11 +29,12 @@
 
   /* --- skeleton --- */
   .skeleton {
+    /* 用主题前景色推导：字面 white 在浅色模式下几乎不可见 */
     background: linear-gradient(
       90deg,
-      oklch(1 0 0 / 0.04) 25%,
-      oklch(1 0 0 / 0.08) 50%,
-      oklch(1 0 0 / 0.04) 75%
+      var(--color-ink-dim) 25%,
+      color-mix(in oklch, var(--color-primary) 12%, transparent) 50%,
+      var(--color-ink-dim) 75%
     );
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.5s ease-in-out infinite;
@@ -47,11 +48,9 @@
     animation: reasoning-slide-up 200ms ease-out;
   }
 
-  /* --- Dialog --- */
-  [data-slot="dialog-overlay"] {
-    background: rgba(0, 0, 0, 0.4) !important;
-    backdrop-filter: blur(4px) !important;
-  }
+  /* --- Dialog ---
+   * 遮罩层不再单独覆盖：dialog / sheet 共用 `bg-scrim` + shadcn 的
+   * `backdrop-blur-xs`，避免两个浮层的压暗程度与模糊半径不一致。 */
   [data-slot="dialog-content"] {
     background: var(--color-surface) !important;
     color: var(--color-primary) !important;
@@ -124,15 +123,11 @@
 /* ── 卡片组件类 — ring shadow 替代 border ── */
 @utility card {
   background: var(--color-surface);
-  border-radius: var(--radius-md);
-  padding: 12px;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-card-inner);
   box-shadow: var(--shadow-card);
-  transition: box-shadow 200ms;
+  transition: box-shadow var(--duration-base) var(--ease-out-brand);
 }
-@utility card-hover {
-  box-shadow: 0 0 0 1px oklch(0.92 0 0 / 0.14);
-}
-
 /* ── 表格固定操作列 ──
  *
  * 持仓表 9 列在 1280px 级窗口下横向溢出，最后一列（操作/卖出）被推到视口外，
@@ -162,7 +157,7 @@ th.col-sticky-actions {
   background: transparent;
 }
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 0.1);
+  background: var(--color-border);
   border-radius: 2px;
 }
 

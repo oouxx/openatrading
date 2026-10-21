@@ -23,7 +23,7 @@
   --card-foreground: 0.2357 0.0024 67.7;
   --popover: 1 0 0;
   --popover-foreground: 0.2357 0.0024 67.7;
-  --primary: 0.6724 0.1308 38.8;
+  --primary: 0.56 0.115 44;
   --primary-foreground: 0.985 0 0;
   --secondary: 0.9818 0.0054 95.1;
   --secondary-foreground: 0.2357 0.0024 67.7;
@@ -34,23 +34,26 @@
   --destructive: 0.577 0.245 27.325;
   --border: 0.35 0.008 85 / 0.12;
   --input: 0.35 0.008 85 / 0.15;
-  --ring: 0.6724 0.1308 38.8;
+  --ring: 0.56 0.115 44;
   --radius: 0.5rem;
   --sidebar: 0.9818 0.0054 95.1;
   --sidebar-foreground: 0.2357 0.0024 67.7;
-  --sidebar-primary: 0.6724 0.1308 38.8;
+  --sidebar-primary: 0.56 0.115 44;
   --sidebar-primary-foreground: 0.985 0 0;
   --sidebar-accent: 0.9818 0.0054 95.1;
   --sidebar-accent-foreground: 0.2357 0.0024 67.7;
   --sidebar-border: 0 0 0 / 0;
-  --sidebar-ring: 0.6724 0.1308 38.8;
+  --sidebar-ring: 0.56 0.115 44;
 }
 
 @theme {
-  /* ── 语义色板 — 前景层级（暖灰） ── */
+  /* ── 语义色板 — 前景层级（暖灰，三级均满足 WCAG 4.5:1） ──
+   * 对比度实测（canvas #FAF9F5 上）：primary 15.8:1 / secondary 8.8:1 / tertiary 5.0:1。
+   * 需要更淡的观感时请用 text-tertiary，不要再用 text-primary/40 这类透明度叠色 ——
+   * 那会把 15.8:1 稀释到 2.4:1，既破层级又不可读。 */
   --color-primary: oklch(0.2357 0.0024 67.7); /* 主文字 — 暖近黑 */
-  --color-secondary: oklch(0.5312 0.0095 91.6); /* 次要文字 — 暖中灰 */
-  --color-tertiary: oklch(0.7124 0.0119 89.8); /* 辅助信息 — 暖浅灰 */
+  --color-secondary: oklch(0.4 0.008 88); /* 次要文字 — 暖深灰 8.8:1 */
+  --color-tertiary: oklch(0.5312 0.0095 91.6); /* 辅助信息 — 暖中灰 */
   --color-disabled: oklch(0.8205 0.0115 89.7); /* 禁用状态 */
 
   /* ── 语义色板 — 背景层级（暖奶油） ── */
@@ -64,19 +67,34 @@
   /* ── 语义色板 — 边框层级（暖灰） ── */
   --color-border: oklch(0.35 0.008 85 / 0.12); /* 默认边框 */
   --color-input: oklch(0.35 0.008 85 / 0.15);
-  --color-ring: oklch(0.6724 0.1308 38.8);
+  --color-ring: oklch(0.56 0.115 44);
   --color-hairline: oklch(0.35 0.008 85 / 0.06); /* 极淡分割线 */
   --color-hairline-dark: oklch(0.35 0.008 85 / 0.04);
 
-  /* ── 品牌色 — Claude 风格暖珊瑚 #D97757 ── */
-  --color-brand: oklch(0.6724 0.1308 38.8);
-  --color-brand-hover: oklch(0.6171 0.1375 39);
+  /* ── 绝对色 + 遮罩 — 只给「必须与主题无关」的场景用 ──
+   * 旧 token 曾把 white/black 反过来映射成墨色/奶油底（bg-white 实际是深色块），
+   * 作者与审阅者都看不出错。这里只保留字面义，语义色请用 surface/canvas/hover。 */
+  --color-pure-white: #ffffff;
+  --color-pure-black: #000000;
+  /* 遮罩层：两种主题下都必须是「压暗」，不能用 primary/black 取反值 */
+  --color-scrim: oklch(0.22 0.008 80 / 0.55);
+  --color-scrim-soft: oklch(0.22 0.008 80 / 0.12);
+  --color-scrim-strong: oklch(0.22 0.008 80 / 0.78);
+
+  /* ── 品牌色 — 暖杏珊瑚（唯一交互强调色） ──
+   * 色彩契约（不要再破）：
+   *   1) 品牌色 = 交互强调：链接、选中态、关键数字、细描边。禁止大面积填充；
+   *   2) 涨/跌 = 数据色，只出现在行情数值与涨跌标签上，彩度更高、与品牌色分开；
+   *   3) 状态色（success/warning/danger/info）只在系统反馈里出现，不用于装饰。
+   * 品牌色色相刻意远离 `--color-up` 的 27°：色相差 + 彩度差双重区分。 */
+  --color-brand: oklch(0.56 0.115 44);
+  --color-brand-hover: oklch(0.5 0.12 43);
   --color-brand-foreground: oklch(0.985 0 0);
   --color-brand-muted: oklch(0.6724 0.1308 38.8 / 0.15);
 
   /* shadcn accent alias */
-  --color-accent: oklch(0.6724 0.1308 38.8);
-  --color-accent-hover: oklch(0.6171 0.1375 39);
+  --color-accent: var(--color-brand);
+  --color-accent-hover: var(--color-brand-hover);
   --color-accent-foreground: oklch(0.985 0 0);
 
   /*
@@ -92,34 +110,36 @@
   --color-card-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
   --color-secondary-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
   --color-muted: oklch(0.9463 0.007 88.6); /* = hover，浅暖灰底 */
-  --color-muted-foreground: oklch(0.5312 0.0095 91.6); /* = secondary */
+  --color-muted-foreground: oklch(0.5312 0.0095 91.6); /* = tertiary */
   --color-destructive: oklch(0.55 0.18 25); /* = danger */
   --color-destructive-foreground: oklch(0.985 0 0);
   --color-sidebar: oklch(0.9818 0.0054 95.1); /* = canvas */
   --color-sidebar-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
-  --color-sidebar-primary: oklch(0.6724 0.1308 38.8); /* = brand */
+  --color-sidebar-primary: oklch(0.56 0.115 44); /* = brand */
   --color-sidebar-primary-foreground: oklch(0.985 0 0);
   --color-sidebar-accent: oklch(0.9463 0.007 88.6); /* = hover */
   --color-sidebar-accent-foreground: oklch(0.2357 0.0024 67.7); /* = primary */
   --color-sidebar-border: oklch(0.35 0.008 85 / 0.06); /* = hairline */
-  --color-sidebar-ring: oklch(0.6724 0.1308 38.8); /* = ring */
+  --color-sidebar-ring: oklch(0.56 0.115 44); /* = ring */
 
-  /* ── 交易语义色（市场规则，不随品牌变更） ── */
-  --color-up: oklch(0.48 0.18 30); /* 涨 — 暖红 */
-  --color-up-bg: oklch(0.48 0.18 30 / 0.12);
-  --color-down: oklch(0.55 0.12 160); /* 跌 — 冷绿 */
-  --color-down-bg: oklch(0.55 0.12 160 / 0.12);
-  --color-data-green: oklch(0.55 0.12 160);
-  --color-data-red: oklch(0.48 0.18 30);
+  /* ── 交易语义色（市场规则，不随品牌变更） ──
+   * 彩度高于品牌色，确保「这是行情数据」和「这是可点击」不会被看混。 */
+  --color-up: oklch(0.55 0.2 27); /* 涨 — 数据红 */
+  --color-up-bg: oklch(0.55 0.2 27 / 0.12);
+  --color-down: oklch(0.52 0.13 158); /* 跌 — 数据绿 */
+  --color-down-bg: oklch(0.52 0.13 158 / 0.12);
+  --color-data-green: oklch(0.52 0.13 158);
+  --color-data-red: oklch(0.55 0.2 27);
   /* ── 状态语义色 ── */
-  --color-success: oklch(0.55 0.12 160); /* 成功 — 同 down 冷绿 */
-  --color-success-bg: oklch(0.55 0.12 160 / 0.12);
+  --color-success: oklch(0.55 0.12 152); /* 成功 — 略偏冷的绿，与跌分开 */
+  --color-success-bg: oklch(0.55 0.12 152 / 0.12);
   --color-danger: oklch(0.55 0.18 25); /* 危险 — 暖红 */
   --color-danger-bg: oklch(0.55 0.18 25 / 0.12);
   --color-warning: oklch(0.7 0.15 65); /* 警告 — 琥珀 */
   --color-warning-bg: oklch(0.7 0.15 65 / 0.12);
-  --color-info: oklch(0.6724 0.1308 38.8); /* 信息 — 同 brand */
-  --color-info-bg: oklch(0.6724 0.1308 38.8 / 0.12);
+  /* 信息/进行中：低彩度冷中性，避免与品牌珊瑚色撞语义 */
+  --color-info: oklch(0.55 0.05 245);
+  --color-info-bg: oklch(0.55 0.05 245 / 0.12);
 
   /* Legacy aliases (过渡，逐步迁移) */
   --color-foreground: oklch(0.2357 0.0024 67.7);
@@ -128,20 +148,24 @@
   --color-bg-surface: oklch(1 0 0);
   --color-bg-hover: oklch(0.9463 0.007 88.6);
   --color-bg-tertiary: oklch(0.9703 0.007 88.6);
-  --color-white: oklch(0.2357 0.0024 67.7);
-  --color-black: oklch(0.9818 0.0054 95.1);
   --color-ink: oklch(0.2357 0.0024 67.7);
-  --color-ink-muted: oklch(0.5312 0.0095 91.6);
+  --color-ink-muted: oklch(0.4 0.008 88); /* = secondary */
   --color-ink-dim: oklch(0.2357 0.0024 67.7 / 0.06);
-  --color-ai: oklch(0.6724 0.1308 38.8);
-  --color-ai-hover: oklch(0.6171 0.1375 39);
-  --color-ai-muted: oklch(0.6724 0.1308 38.8 / 0.15);
-  --color-ai-focus: oklch(0.6171 0.1375 39);
+  /* AI 强调 = 品牌色的别名（同一视觉语言，不是第三个色相） */
+  --color-ai: oklch(0.56 0.115 44);
+  --color-ai-hover: oklch(0.5 0.12 43);
+  --color-ai-muted: oklch(0.56 0.115 44 / 0.15);
+  --color-ai-focus: oklch(0.5 0.12 43);
 
-  /* ── 字体系统 — 单一字族 + 清晰 weight/size 层级 ── */
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", monospace;
-  --font-number: "JetBrains Mono", monospace;
+  /* ── 字体系统 — 单一字族 + 清晰 weight/size 层级 ──
+   * 只允许引用实际装载的字族：Geist（正文）+ Geist Mono（数字/代码）。
+   * 曾声明 Inter / JetBrains Mono 但从未加载，实际全部回退到 system-ui，
+   * 导致 macOS / Windows 数字字宽不一致、表格列与 KPI 对不齐。 */
+  --font-sans:
+    "Geist Variable", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-number: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* 5 级类型层级 */
   --font-size-hero: 28px;
@@ -161,8 +185,19 @@
   --shadow-modal: 0 0 0 1px oklch(0.3 0.01 75 / 0.14), 0 4px 16px rgba(70, 60, 45, 0.15);
   --shadow-tooltip: 0 0 0 1px oklch(0.3 0.01 75 / 0.14), 0 8px 24px rgba(70, 60, 45, 0.2);
 
-  /* ── 卡片内边距 token — 统一面板内容密度 ── */
-  --spacing-card-inner: 12px;
+  /* ── 动效 token ──
+   * 与 src/lib/motion.ts 的 EASE = [0.32, 0.72, 0, 1]、duration 0.2/0.35/0.4 对齐：
+   * JS 动画与 CSS 过渡必须是同一套节奏，否则同一屏里点击和展开的手感会打架。 */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 350ms;
+  --ease-out-brand: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* ── 卡片内边距 token — 统一面板内容密度 ──
+   * 12px 过于拥挤（全站 p-2/p-3 占主导），放宽到 16px，配合面板级 p-6。 */
+  --spacing-card-inner: 16px;
 
   /* ── 布局宽度 token ── */
   --width-sidebar: 260px;
@@ -202,7 +237,7 @@
   --card-foreground: 0.9251 0.0071 88.6;
   --popover: 0.3085 0.0035 106.6;
   --popover-foreground: 0.9251 0.0071 88.6;
-  --primary: 0.717 0.1131 38.8;
+  --primary: 0.75 0.1 46;
   --primary-foreground: 0.985 0 0;
   --secondary: 0.3474 0.0051 106.7;
   --secondary-foreground: 0.9251 0.0071 88.6;
@@ -213,20 +248,20 @@
   --destructive: 0.58 0.22 25;
   --border: 0.9 0.008 85 / 0.12;
   --input: 0.9 0.008 85 / 0.15;
-  --ring: 0.717 0.1131 38.8;
+  --ring: 0.75 0.1 46;
   --sidebar: 0.2679 0.0036 106.6;
   --sidebar-foreground: 0.9251 0.0071 88.6;
-  --sidebar-primary: 0.717 0.1131 38.8;
+  --sidebar-primary: 0.75 0.1 46;
   --sidebar-primary-foreground: 0.985 0 0;
   --sidebar-accent: 0.3474 0.0051 106.7;
   --sidebar-accent-foreground: 0.9251 0.0071 88.6;
   --sidebar-border: 0.92 0 0 / 0;
-  --sidebar-ring: 0.717 0.1131 38.8;
+  --sidebar-ring: 0.75 0.1 46;
 
   /* @theme 颜色变量覆盖 */
   --color-primary: oklch(0.9251 0.0071 88.6);
-  --color-secondary: oklch(0.7124 0.0119 89.8);
-  --color-tertiary: oklch(0.6406 0.0109 87.5);
+  --color-secondary: oklch(0.82 0.009 89);
+  --color-tertiary: oklch(0.7124 0.0119 89.8);
   --color-disabled: oklch(0.5207 0.0096 91.6);
 
   --color-canvas: oklch(0.2679 0.0036 106.6);
@@ -240,14 +275,14 @@
   --color-input: oklch(0.9 0.008 85 / 0.15);
   --color-hairline: oklch(0.9 0.008 85 / 0.06);
   --color-hairline-dark: oklch(0.9 0.008 85 / 0.04);
-  --color-ring: oklch(0.717 0.1131 38.8);
+  --color-ring: oklch(0.75 0.1 46);
 
-  --color-brand: oklch(0.717 0.1131 38.8);
-  --color-brand-hover: oklch(0.7622 0.1018 38.3);
+  --color-brand: oklch(0.75 0.1 46);
+  --color-brand-hover: oklch(0.79 0.09 46);
   --color-brand-foreground: oklch(0.985 0 0);
   --color-brand-muted: oklch(0.717 0.1131 38.8 / 0.15);
-  --color-accent: oklch(0.717 0.1131 38.8);
-  --color-accent-hover: oklch(0.7622 0.1018 38.3);
+  --color-accent: oklch(0.75 0.1 46);
+  --color-accent-hover: oklch(0.79 0.09 46);
   --color-accent-foreground: oklch(0.985 0 0);
 
   /* shadcn 组件语义色（dark）—— 与 light 段同构 */
@@ -256,36 +291,36 @@
   --color-card-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
   --color-secondary-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
   --color-muted: oklch(0.3474 0.0051 106.7); /* = hover */
-  --color-muted-foreground: oklch(0.7124 0.0119 89.8); /* = secondary */
+  --color-muted-foreground: oklch(0.7124 0.0119 89.8); /* = tertiary */
   --color-destructive: oklch(0.65 0.18 25); /* = danger */
   --color-destructive-foreground: oklch(0.985 0 0);
   --color-sidebar: oklch(0.2679 0.0036 106.6); /* = canvas */
   --color-sidebar-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
-  --color-sidebar-primary: oklch(0.717 0.1131 38.8); /* = brand */
+  --color-sidebar-primary: oklch(0.75 0.1 46); /* = brand */
   --color-sidebar-primary-foreground: oklch(0.985 0 0);
   --color-sidebar-accent: oklch(0.3474 0.0051 106.7); /* = hover */
   --color-sidebar-accent-foreground: oklch(0.9251 0.0071 88.6); /* = primary */
   --color-sidebar-border: oklch(0.9 0.008 85 / 0.06); /* = hairline */
-  --color-sidebar-ring: oklch(0.717 0.1131 38.8); /* = ring */
+  --color-sidebar-ring: oklch(0.75 0.1 46); /* = ring */
 
-  --color-up: oklch(0.65 0.18 30);
-  --color-up-bg: oklch(0.65 0.18 30 / 0.12);
-  --color-up-muted: oklch(0.65 0.18 30 / 0.15);
-  --color-down: oklch(0.6 0.12 160);
-  --color-down-bg: oklch(0.6 0.12 160 / 0.12);
-  --color-down-muted: oklch(0.6 0.12 160 / 0.15);
-  --color-data-green: oklch(0.6 0.12 160);
-  --color-data-red: oklch(0.65 0.18 30);
+  --color-up: oklch(0.72 0.19 27);
+  --color-up-bg: oklch(0.72 0.19 27 / 0.12);
+  --color-up-muted: oklch(0.72 0.19 27 / 0.15);
+  --color-down: oklch(0.68 0.13 158);
+  --color-down-bg: oklch(0.68 0.13 158 / 0.12);
+  --color-down-muted: oklch(0.68 0.13 158 / 0.15);
+  --color-data-green: oklch(0.68 0.13 158);
+  --color-data-red: oklch(0.72 0.19 27);
 
   /* ── 状态语义色 dark ── */
-  --color-success: oklch(0.6 0.12 160);
-  --color-success-bg: oklch(0.6 0.12 160 / 0.12);
+  --color-success: oklch(0.68 0.12 152);
+  --color-success-bg: oklch(0.68 0.12 152 / 0.12);
   --color-danger: oklch(0.65 0.18 25);
   --color-danger-bg: oklch(0.65 0.18 25 / 0.12);
   --color-warning: oklch(0.75 0.15 65);
   --color-warning-bg: oklch(0.75 0.15 65 / 0.12);
-  --color-info: oklch(0.717 0.1131 38.8);
-  --color-info-bg: oklch(0.717 0.1131 38.8 / 0.12);
+  --color-info: oklch(0.74 0.04 245);
+  --color-info-bg: oklch(0.74 0.04 245 / 0.12);
 
   /* Legacy aliases dark override */
   --color-foreground: oklch(0.9251 0.0071 88.6);
@@ -294,13 +329,11 @@
   --color-bg-surface: oklch(0.3085 0.0035 106.6);
   --color-bg-hover: oklch(0.3474 0.0051 106.7);
   --color-bg-tertiary: oklch(0.3743 0.005 106.6);
-  --color-white: oklch(0.9251 0.0071 88.6);
-  --color-black: oklch(0.2679 0.0036 106.6);
   --color-ink: oklch(0.9251 0.0071 88.6);
-  --color-ink-muted: oklch(0.7124 0.0119 89.8);
+  --color-ink-muted: oklch(0.82 0.009 89); /* = secondary */
   --color-ink-dim: oklch(0.9251 0.0071 88.6 / 0.06);
-  --color-ai: oklch(0.717 0.1131 38.8);
-  --color-ai-hover: oklch(0.7622 0.1018 38.3);
-  --color-ai-muted: oklch(0.717 0.1131 38.8 / 0.15);
-  --color-ai-focus: oklch(0.7622 0.1018 38.3);
+  --color-ai: oklch(0.75 0.1 46);
+  --color-ai-hover: oklch(0.79 0.09 46);
+  --color-ai-muted: oklch(0.75 0.1 46 / 0.15);
+  --color-ai-focus: oklch(0.79 0.09 46);
 }
