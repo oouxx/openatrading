@@ -19,9 +19,9 @@ export default defineConfig(async ({ mode }) => {
     },
     plugins,
     define: {
-      __OPENROUTER_KEY__: JSON.stringify(rootEnv.OPENROUTER_API_KEY || ""),
-      __JIUYAN_PHONE__: JSON.stringify(rootEnv.JIUYAN_PHONE || ""),
-      __JIUYAN_PASSWORD__: JSON.stringify(rootEnv.JIUYAN_PASSWORD || ""),
+      // 注意：不要把任何凭据（API key / 手机号 / 密码）注入 __XXX__ 常量。
+      // vite 的 define 会在构建时把值**字面量内联**进产物，任何人打开
+      // dist/assets/*.js 就能读到。凭据一律留在服务端，前端只调本地 /api。
       __API_BASE_URL__: JSON.stringify(
         rootEnv.VITE_API_BASE_URL ??
           (mode === "production" && isTauri ? "http://localhost:8080" : "")

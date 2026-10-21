@@ -36,11 +36,26 @@ import {
 import type { SettingsTab } from "@/components/SettingsSidebar"
 
 import { isTauri } from "@/lib/env"
+
+/**
+ * 凭据类字段永远不写 localStorage。
+ *
+ * localStorage 是持久化的明文存储：同机其他用户、浏览器扩展、任何 XSS
+ * 都能读到，而且退出登录后依然留在磁盘上。bot token / chat id / 密码这类
+ * 东西只留在服务端配置（`~/.atrading/config.toml` + `.env`），前端只负责
+ * 提交，不负责持久化。
+ *
+ * 读回来的路径同样跳过（见下方 loadConfig），因此这些输入框在刷新后是空的：
+ * 拿不到值就不显示——留空即不修改，服务端现值保留。
+ */
+const SENSITIVE_KEY_RE = /(token|secret|password|passwd|api[-_]?key|chat_id|channel_id|phone)/i
+
 async function setConfig(section: string, key: string, value: string) {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core")
     await invoke("update_config", { section, key, value })
   }
+  if (SENSITIVE_KEY_RE.test(key)) return
   // localStorage key 包含 section 信息避免冲突（social.telegram + bot_token → telegram_bot_token）
   const lsKey = section.includes(".") ? `${section.split(".").pop()}_${key}` : key
   localStorage.setItem(`openatrading-${lsKey}`, value)
@@ -301,16 +316,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         }
       })()
     } else {
-      // ponytail: load social settings from localStorage (written by setConfig)
-      const keys = [
-        "notify_channel",
-        "notify_on_collect",
-        "notify_on_news",
-        "telegram_bot_token",
-        "telegram_chat_id",
-        "discord_bot_token",
-        "discord_channel_id",
-      ] as const
+      // ponytail: 非敏感项从 localStorage 读回（由 setConfig 写入）。
+      // 凭据类（bot_token / chat_id）不读——它们不该有本地副本。
+      const keys = ["notify_channel", "notify_on_collect", "notify_on_news"] as const
       const stored: Record<string, string | boolean> = {}
       for (const key of keys) {
         const val = localStorage.getItem(`openatrading-${key}`)
@@ -321,6 +329,20 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       if (Object.keys(stored).length > 0) setSocial((s) => ({ ...s, ...stored }))
     }
   }, [loadAbout, loadAgentSettings])
+
+  // 一次性清除旧版本在浏览器里留下的凭据副本（旧版 setConfig 什么都往
+  // localStorage 写）。发现即删，不需要用户操作。
+  useEffect(() => {
+    if (isTauri) return
+    try {
+      const prefix = "openatrading-"
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith(prefix) && SENSITIVE_KEY_RE.test(k.slice(prefix.length)))
+        .forEach((k) => localStorage.removeItem(k))
+    } catch {
+      /* localStorage 被禁用时无需清理 */
+    }
+  }, [])
 
   const aboutRows: [string, string][] = aboutInfo
     ? [
