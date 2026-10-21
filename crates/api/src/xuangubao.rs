@@ -326,11 +326,55 @@ impl ApiField {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-
 pub struct MarketTrend {
     pub symbol: String,
     pub candles: Vec<KlineCandle>,
 }
+
+/// Parse the trend endpoint response using the field order declared by the API.
+///
+/// The trend endpoint returns `data.fields` plus parallel `data.candle.<symbol>.lines`
+/// arrays. Parsing by field name avoids depending on a fixed column order.
+fn parse_market_trend(symbol: &str, resp: &serde_json::Value) -> Result<MarketTrend> {
+    let candle_data = resp["data"]["candle"]
+        .get(symbol)
+        .with_context(|| format!("missing trend data for {symbol}"))?;
+    let lines = candle_data["lines"]
+        .as_array()
+        .with_context(|| format!("missing trend lines for {symbol}"))?;
+    let fields: Vec<String> = resp["data"]["fields"]
+        .as_array()
+        .context("missing trend fields array")?
+        .iter()
+        .filter_map(|value| value.as_str().map(String::from))
+        .collect();
+
+    let candles: Vec<KlineCandle> = lines
+        .iter()
+        .filter_map(|line| {
+            let arr = line.as_array()?;
+            let get = |name: &str| -> Option<f64> {
+                let idx = fields.iter().position(|field| field == name)?;
+                arr.get(idx)?.as_f64()
+            };
+            Some(KlineCandle {
+                time: get("tick_at").map(f64_to_i64)?,
+                open: get("open_px"),
+                close: get("close_px")?,
+                high: get("high_px"),
+                low: get("low_px"),
+                volume: get("turnover_volume"),
+                change_rate: get("px_change_rate"),
+            })
+        })
+        .collect();
+
+    Ok(MarketTrend {
+        symbol: symbol.to_string(),
+        candles,
+    })
+}
+
 #[derive(Clone)]
 pub struct XuanguBaoClient {
     client: reqwest::Client,
@@ -520,10 +564,21 @@ impl XuanguBaoClient {
     /// # Errors
     /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn fetch_market_trend(&self, symbol: &str) -> Result<MarketTrend> {
+        // 与实时行情/K 线保持一致：允许 600519、sh600519、600519.SH 等输入，
+        // 统一成接口实际使用的 600519.SS 形式。
+        let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
             "{}/market/trend?fields={}&prod_code={symbol}",
             "https://api-ddc-wscn.xuangubao.com.cn",
-            ApiField::join(&[ApiField::TickAt, ApiField::ClosePx]),
+            ApiField::join(&[
+                ApiField::TickAt,
+                ApiField::ClosePx,
+                ApiField::OpenPx,
+                ApiField::HighPx,
+                ApiField::LowPx,
+                ApiField::TurnoverVolume,
+                ApiField::PxChangeRate,
+            ]),
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
         anyhow::ensure!(
@@ -531,42 +586,7 @@ impl XuanguBaoClient {
             "Trend API error: {}",
             resp["message"]
         );
-        let candle_data = &resp["data"]["candle"][symbol];
-        let lines = candle_data["lines"]
-            .as_array()
-            .context("missing kline lines array")?;
-        // API 返回的字段顺序以 data.fields 为准，需要动态映射
-        let fields: Vec<String> = resp["data"]["fields"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let candles: Vec<KlineCandle> = lines
-            .iter()
-            .filter_map(|line| {
-                let arr = line.as_array()?;
-                let get = |name: &str| -> Option<f64> {
-                    let idx = fields.iter().position(|f| f == name)?;
-                    arr.get(idx)?.as_f64()
-                };
-                Some(KlineCandle {
-                    time: get("tick_at").map(f64_to_i64)?,
-                    open: get("open_px"),
-                    close: get("close_px")?,
-                    high: get("high_px"),
-                    low: get("low_px"),
-                    volume: get("turnover_volume"),
-                    change_rate: get("px_change_rate"),
-                })
-            })
-            .collect();
-        Ok(MarketTrend {
-            symbol: symbol.to_string(),
-            candles,
-        })
+        parse_market_trend(&symbol, &resp)
     }
     /// Fetch real-time market data for multiple symbols.
     ///
@@ -1705,4 +1725,62 @@ pub struct NewsItem {
     #[serde(default)]
     pub content: String,
     pub summary: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_market_trend_ohlcv_fields() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "data": {
+                "fields": [
+                    "tick_at",
+                    "close_px",
+                    "open_px",
+                    "high_px",
+                    "low_px",
+                    "turnover_volume",
+                    "px_change_rate"
+                ],
+                "candle": {
+                    "600519.SS": {
+                        "lines": [[
+                            1792546200.0,
+                            1331.88,
+                            1341.0,
+                            1342.0,
+                            1327.88,
+                            28170.0,
+                            -1.3439
+                        ]]
+                    }
+                }
+            }
+        });
+
+        let trend = parse_market_trend("600519.SS", &response)
+            .unwrap_or_else(|error| panic!("trend should parse: {error}"));
+        assert_eq!(trend.symbol, "600519.SS");
+        assert_eq!(trend.candles.len(), 1);
+        let candle = &trend.candles[0];
+        assert_eq!(candle.time, 1_792_546_200);
+        assert_eq!(candle.close, 1331.88);
+        assert_eq!(candle.open, Some(1341.0));
+        assert_eq!(candle.high, Some(1342.0));
+        assert_eq!(candle.low, Some(1327.88));
+        assert_eq!(candle.volume, Some(28170.0));
+        assert_eq!(candle.change_rate, Some(-1.3439));
+    }
+
+    #[test]
+    fn market_trend_missing_symbol_is_an_error() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "data": { "fields": [], "candle": {} }
+        });
+        assert!(parse_market_trend("600519.SS", &response).is_err());
+    }
 }
