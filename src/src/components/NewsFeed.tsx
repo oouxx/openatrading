@@ -1,13 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 interface NewsFeedProps {
   variant?: "default" | "tab"
@@ -19,7 +12,6 @@ interface NewsItem {
   time: string
   title: string
   aiNote: string
-  source: string
 }
 
 function formatTime(ts?: number | string): string {
@@ -39,7 +31,6 @@ function toNewsItem(item: TelegraphItem, idx: number): NewsItem {
     time: formatTime(item.ctime || item.modified_time),
     title: item.brief || item.title || (item.content || "").substring(0, 60),
     aiNote: item.title || "",
-    source: "cls",
   }
 }
 
@@ -95,42 +86,23 @@ function Sentry({ onVisible }: { onVisible: () => void }) {
 }
 
 export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
-  const [source, setSource] = useState("all")
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error, refetch } =
     useTelegraphInfinite()
 
-  const allItems: NewsItem[] = data
-    ? data.pages.flat().map((item, idx) => toNewsItem(item, idx))
-    : []
-
-  const filteredNews = source === "all" ? allItems : allItems.filter((n) => n.source === source)
-  const majorCount = allItems.filter((n) => n.severity === "major").length
+  // 资讯只有财联社一个源（/api/telegraph 后端固定走 cls），不再做来源筛选。
+  const items: NewsItem[] = data ? data.pages.flat().map((item, idx) => toNewsItem(item, idx)) : []
+  const majorCount = items.filter((n) => n.severity === "major").length
 
   if (variant === "tab") {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="text-caption mb-6 flex shrink-0 items-center gap-3">
           <span className="text-primary/60">
-            <b className="text-primary">{filteredNews.length}</b> 条资讯
-            {source === "all" && (
-              <span className="ml-2">
-                · <b className="text-up">{majorCount}</b> 重要
-              </span>
-            )}
+            <b className="text-primary">{items.length}</b> 条资讯
+            <span className="ml-2">
+              · <b className="text-up">{majorCount}</b> 重要
+            </span>
           </span>
-          <Select value={source} onValueChange={setSource}>
-            <SelectTrigger
-              size="sm"
-              className="bg-canvas border-hairline text-caption font-number text-secondary"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部来源</SelectItem>
-              <SelectItem value="cls">财联社</SelectItem>
-              <SelectItem value="jiuyan">韭研公社</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         {error && (
@@ -143,9 +115,9 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         )}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {error ? null : filteredNews.length > 0 ? (
+          {error ? null : items.length > 0 ? (
             <>
-              {filteredNews.map((item) => (
+              {items.map((item) => (
                 <div
                   key={item.id}
                   className="bg-surface border-hairline-dark group hover:bg-hover mb-2 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors"
@@ -187,30 +159,15 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   return (
     <div className="bg-surface border-hairline flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-caption text-secondary font-number tracking-wider uppercase">
-            📡 实时资讯
-          </span>
-          <Select value={source} onValueChange={setSource}>
-            <SelectTrigger
-              size="sm"
-              className="bg-canvas border-hairline text-caption font-number text-secondary"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="cls">财联社</SelectItem>
-              <SelectItem value="jiuyan">韭研公社</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <span className="text-caption text-secondary font-number">{filteredNews.length} 条</span>
+        <span className="text-caption text-secondary font-number tracking-wider uppercase">
+          📡 实时资讯
+        </span>
+        <span className="text-caption text-secondary font-number">{items.length} 条</span>
       </div>
       <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
-        {isLoading && !allItems.length ? (
+        {isLoading && !items.length ? (
           <div className="text-caption text-secondary py-8 text-center">加载中...</div>
-        ) : error && !allItems.length ? (
+        ) : error && !items.length ? (
           <div className="py-8 text-center">
             <p className="text-caption text-up mb-3">资讯加载失败</p>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -219,7 +176,7 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
           </div>
         ) : (
           <>
-            <NewsList items={filteredNews} isLoading={isLoading} />
+            <NewsList items={items} isLoading={isLoading} />
             {isFetchingNextPage && (
               <div className="text-caption text-secondary py-3 text-center">加载更多...</div>
             )}
