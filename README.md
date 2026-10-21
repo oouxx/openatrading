@@ -143,10 +143,26 @@ bind    = "0.0.0.0:8082"
 |------|------|
 | `OPENATRADING_HOME` | 自定义品牌根目录 |
 | `JIUYAN_PHONE` / `JIUYAN_PASSWORD` | 韭研公社登录 |
+| `JIUYAN_SECRET` | 韭研公社接口签名密钥（必填，代码内不内置） |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram |
 | `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` | Discord |
 | `SLACK_BOT_TOKEN` / `SLACK_CHANNEL` | Slack |
 | `LARK_APP_ID` / `LARK_APP_SECRET` / `LARK_RECEIVE_ID` | Lark |
+| `OPENATRADING_DL_SERVER` | 自建下载源（默认走 GitHub Releases） |
+
+完整模板见 [`.env.example`](.env.example)，复制为 `.env` 后填写。
+
+### 约定：仓库里不存个人/部署环境信息
+
+下面这些一律走环境变量或本机配置，**不要写回仓库**：
+
+| 项 | 怎么传 |
+|----|--------|
+| 部署主机 | `DEPLOY_HOST=<user@host>`（写在 `.env` 或 `~/.ssh/config` alias） |
+| 下载服务器 | `DL_SERVER=https://...`（`install.sh`）或 `OPENATRADING_DL_SERVER`（CLI 自更新） |
+| 对外域名 | 部署端 nginx/证书层决定，`nginx.conf` 默认 `server_name _` |
+| 前端 API 地址 | 默认同源；需要跨域时 `--build-arg VITE_API_BASE_URL=...` 或面板里设置 |
+| Vercel 反代目标 | 部署前把 `src/public/vercel.json` 的 `YOUR_API_HOST` 换成自己的 |
 
 ## Data Sources
 
