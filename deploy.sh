@@ -2,21 +2,25 @@
 set -e
 
 SERVICE="${1:-all}"
-SERVER="root@203.0.113.10"
-REMOTE_DIR="/root/openatrading"
-SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 usage() {
-  echo "Usage: ./deploy.sh [gateway|web|all]"
+  echo "Usage: DEPLOY_HOST=<user@host> ./deploy.sh [gateway|web|all]"
   echo "  gateway     Build & deploy gateway container only"
   echo "  web         Build & deploy frontend container only"
   echo "  all         Build & deploy everything (default)"
+  echo ""
+  echo "环境变量:"
+  echo "  DEPLOY_HOST        目标主机 user@host（必填，也可写在 .env 里）"
+  echo "  DEPLOY_REMOTE_DIR  远端目录（默认 /root/openatrading）"
+  echo "  DEPLOY_REPO_URL    远端要 clone 的仓库（默认读本地 git remote）"
+  echo "  DEPLOY_BRANCH      部署分支（默认 main）"
   exit 1
 }
 
 case "$SERVICE" in
   gateway|web|all) ;;
   *) usage ;;
+  --help|-h) usage ;;
 esac
 
 if [ ! -f ".env" ]; then
@@ -24,17 +28,22 @@ if [ ! -f ".env" ]; then
   exit 1
 fi
 
-# Source .env to get GITHUB_TOKEN (fallback to existing env var)
+# 先加载 .env（GITHUB_TOKEN、DEPLOY_HOST 等都住这里），再解析下面的部署参数。
 set -a
 source .env
 set +a
+
+# 部署目标从环境变量读（不写死在仓库里），因此可以放在 ~/.ssh/config 或 .env。
+SERVER="${DEPLOY_HOST:?DEPLOY_HOST not set — 在 .env 里写 DEPLOY_HOST=<user@host>，不要把它提交进仓库}"
+REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/root/openatrading}"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 # Default deploy branch is main; override with DEPLOY_BRANCH=<branch>.
 BRANCH="${DEPLOY_BRANCH:-main}"
 
 echo "=== Deploying: $SERVICE → $SERVER (branch: $BRANCH) ==="
 
-REPO_URL="git@github.com:oouxx/openatrading.git"
+REPO_URL="${DEPLOY_REPO_URL:-$(git config --get remote.origin.url 2>/dev/null || echo 'git@github.com:oouxx/openatrading.git')}"
 
 clone_or_pull() {
   echo ""

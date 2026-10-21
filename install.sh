@@ -1,8 +1,17 @@
 #!/bin/bash
 set -e
 
-DL_SERVER="${DL_SERVER:-https://trading.example.com}"
+# 下载源由环境变量提供（仓库里不写死具体域名）：
+#   DL_SERVER=https://your-domain ./install.sh
+DL_SERVER="${DL_SERVER:-}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+
+if [ -z "$DL_SERVER" ] && [ "${1:-}" != "--uninstall" ] && [ "${1:-}" != "-u" ] && [ "${1:-}" != "--help" ] && [ "${1:-}" != "-h" ]; then
+  echo "❌ 未指定下载服务器。请设置环境变量后再运行："
+  echo "     DL_SERVER=https://<your-domain> ./install.sh"
+  exit 1
+fi
+DL_SERVER="${DL_SERVER%/}"
 
 # ── Usage ─────────────────────────────────────────────────
 
@@ -13,7 +22,7 @@ usage() {
   echo "  ./install.sh --uninstall  卸载 openatrading"
   echo ""
   echo "环境变量:"
-  echo "  DL_SERVER   下载服务器地址 (默认: https://trading.example.com)"
+  echo "  DL_SERVER   下载服务器地址 (必填，例: https://dl.example.com)"
   echo "  INSTALL_DIR CLI 安装目录 (默认: /usr/local/bin)"
   exit 0
 }

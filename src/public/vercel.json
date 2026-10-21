@@ -1,16 +1,18 @@
 {
+  "//": "部署到 Vercel 时把下面的 YOUR_API_HOST 换成你自己的后端地址（需带协议，不带尾斜杠）。",
+  "//2": "仓库里不写死任何具体域名：这是部署者的环境信息，不是代码。",
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://trading.example.com/api/:path*"
+      "destination": "https://YOUR_API_HOST/api/:path*"
     },
     {
       "source": "/install.sh",
-      "destination": "https://trading.example.com/install.sh"
+      "destination": "https://YOUR_API_HOST/install.sh"
     },
     {
       "source": "/downloads/:path*",
-      "destination": "https://trading.example.com/downloads/:path*"
+      "destination": "https://YOUR_API_HOST/downloads/:path*"
     },
     {
       "source": "/(.*)",

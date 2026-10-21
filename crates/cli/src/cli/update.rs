@@ -1,7 +1,22 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
-const DL_SERVER: &str = "https://trading.example.com";
+/// 默认下载源：GitHub Releases（每个 tag 的 CLI 产物都传到那里，见
+/// `.github/workflows/release-cli.yml`）。自建下载服务器可覆盖：
+///   OPENATRADING_DL_SERVER=https://your-domain/downloads
+const DEFAULT_DL_SERVER: &str =
+    "https://github.com/oouxx/openatrading/releases/latest/download";
+
+/// 解析下载源（去掉尾部斜杠，避免拼出 `//`）。
+fn dl_server() -> String {
+    std::env::var("OPENATRADING_DL_SERVER")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| DEFAULT_DL_SERVER.to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
 
 const fn asset_name() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -32,14 +47,14 @@ const fn asset_name() -> Option<&'static str> {
 /// 检查更新，返回 (最新版本描述, 当前版本, 是否需要更新)
 pub async fn cmd_update_check() -> Result<(String, String, bool)> {
     let current = env!("GIT_VERSION").to_string();
-    let latest = format!("服务器 ({DL_SERVER}/downloads/)");
+    let latest = format!("下载源 ({})", dl_server());
     Ok((latest, current, true))
 }
 
 /// 从静态服务器下载并替换当前二进制
 pub async fn cmd_update() -> Result<()> {
     let name = asset_name().context("当前平台不支持更新，仅支持 Linux/macOS x86_64 和 aarch64")?;
-    let url = format!("{DL_SERVER}/downloads/{name}");
+    let url = format!("{}/{name}", dl_server());
 
     println!("⬇ 正在从服务器下载...");
     println!("   下载地址: {url}");

@@ -28,7 +28,7 @@ src.sub!(/^  version "[^"]*"/, %(  version "#{version}"))
 src.sub!(/^  sha256 :no_check\n/, "")
 
 # 兼容旧版：自建服务器 URL → GitHub Releases
-src.gsub!(%r{https://trading\.example\.com/downloads}, base)
+src.gsub!(%r{https://[^/"\s]+/downloads}, base)   # 任意旧自建下载源 → GitHub Releases
 
 sha_value = ->(sha) { sha.empty? ? ":no_check" : %("#{sha}") }
 
@@ -42,7 +42,7 @@ block = "  if Hardware::CPU.intel?\n" \
         "  end\n"
 unless src.sub!(/  if Hardware::CPU\.intel\?\n.*?  end\n/m, block)
   # 找不到标准架构分支时至少兜底替换 URL 基底
-  src.gsub!(%r{https://trading\.example\.com/downloads}, base)
+  src.gsub!(%r{https://[^/"\s]+/downloads}, base)   # 任意旧自建下载源 → GitHub Releases
 end
 
 # livecheck：GitHub Releases 策略

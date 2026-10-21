@@ -1,7 +1,11 @@
 # Stage 1: Build React frontend
 FROM oven/bun:1 AS builder
 WORKDIR /app
-ENV VITE_API_BASE_URL=https://trading.example.com
+# 前端只需要知道“自己从哪里拿 API”。默认空 = 同源（nginx 把 /api/ 反代到 gateway）。
+# 不要把具体域名写死在仓库里：
+#   docker compose build --build-arg VITE_API_BASE_URL=https://your-domain frontend
+ARG VITE_API_BASE_URL=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 COPY src/package.json src/bun.lock ./
 RUN bun install --frozen-lockfile
