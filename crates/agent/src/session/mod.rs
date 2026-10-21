@@ -3,8 +3,8 @@
 //! This module groups the pi-coding-agent session glue that is independent of
 //! the openatrading domain (no `TradeManager` / `MemoryStore` coupling):
 //!
-//! - [`actor`] — the per-session actor task (owns the session, turn queue,
-//!   event fan-out; mirrors pi-rs' ACP `SessionTask` design).
+//! - [`actor`] — the per-session actor task (owns the session, prompt
+//!   steering/queueing, event fan-out; mirrors pi-rs' ACP `SessionTask` design).
 //! - [`factory`] — builds [`factory::CreatedSession`] instances via a reusable
 //!   closure (owned `Arc<AgentSession>` + keep-alive services).
 //! - [`pool`] — supervisor: LRU map of session handles, resume-from-disk,

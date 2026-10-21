@@ -395,7 +395,14 @@ async fn execute(automation: &Automation, pool: &SessionPool, timeout_secs: u64)
 }
 
 async fn run_prompt(handle: &SessionHandle, prompt: &str) -> std::result::Result<String, String> {
-    handle.prompt(prompt, PromptOptions::default()).await?;
+    // Automation must wait for a complete turn before reading the assistant
+    // text. If the target thread is already streaming, queue a follow-up
+    // instead of steering the interactive run and returning early.
+    let opts = PromptOptions {
+        streaming_behavior: Some("followUp".to_string()),
+        ..Default::default()
+    };
+    handle.prompt(prompt, opts).await?;
     handle
         .last_assistant_text()
         .await

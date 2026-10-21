@@ -10,20 +10,23 @@
 //! instead of `tokio::spawn`).
 //!
 //! The command mailbox is *unbounded* (matching pi-acp, which uses
-//! `mpsc::unbounded_channel`): commands are never rejected for "busy" — only
-//! prompts queue (inside the actor, in the turn queue), everything else is
-//! handled immediately. Backpressure lives at the event layer instead (each
+//! `mpsc::unbounded_channel`): commands are never rejected for "busy" —
+//! steering prompts are injected into the active run, follow-up prompts queue
+//! inside the actor, and everything else is handled immediately. Backpressure
+//! lives at the event layer instead (each
 //! subscriber channel is bounded; a slow consumer stalls the turn's
 //! completion, never the command loop).
 //!
-//! Turn queue semantics match pi-acp: prompts arriving mid-turn are queued
-//! and started in order after the current turn settles; a *failed* turn
-//! rejects the remaining queue (pi may be unhealthy — we don't auto-proceed).
+//! Prompts arriving mid-turn are steered into the active run by default,
+//! matching pi-rs' own default `streaming_behavior`. Callers can explicitly
+//! request `streaming_behavior = "followUp"` to queue a separate turn; a
+//! *failed* turn rejects the remaining follow-up queue (pi may be unhealthy —
+//! we don't auto-proceed).
 //! Event backpressure also matches ACP: the turn subscribes an unbounded
 //! event channel, serializes each event with a `seq` + ring entry, forwards
-//! it to subscribers with an ack, and only replies to the prompt once all
-//! forwarded events have been delivered (no event is lost before the turn
-//! result is reported).
+//! it to subscribers with an ack, and for a newly started turn only replies
+//! once all forwarded events have been delivered (no event is lost before the
+//! turn result is reported).
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -48,26 +51,39 @@ pub const SUBSCRIBER_CHANNEL_CAPACITY: usize = 256;
 /// Actor thread stack size (2 MiB is plenty for the pi agent loop).
 const ACTOR_STACK_SIZE: usize = 2 * 1024 * 1024;
 
-/// A prompt queued while another prompt was running (pi-acp turn queue).
+/// A follow-up prompt queued while another prompt is running.
 struct QueuedPrompt {
     text: String,
     opts: PromptOptions,
     reply: oneshot::Sender<Result<(), String>>,
 }
 
+/// `followUp` is the only streaming behavior that waits for the current turn.
+/// Everything else (including the unset default) steers the active run,
+/// matching pi-rs' `PromptOptions` semantics.
+fn is_follow_up(opts: &PromptOptions) -> bool {
+    matches!(
+        opts.streaming_behavior.as_deref(),
+        Some("follow_up" | "followUp")
+    )
+}
+
 /// A command sent to a session actor.
 #[allow(clippy::large_enum_variant)]
 pub enum SessionMsg {
-    /// Run a full prompt turn. The reply resolves when the turn has fully
-    /// settled (all events delivered to subscribers), matching pi-acp's
-    /// prompt-until-agent_settled semantics.
+    /// Run a prompt. If another turn is in flight, the actor either steers it
+    /// (default) or queues a follow-up turn (`streaming_behavior =
+    /// "followUp"`). For a new turn the reply resolves when it has fully
+    /// settled; for a steered prompt it resolves once the message has been
+    /// accepted into the active run.
     Prompt {
         text: String,
         opts: PromptOptions,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    /// Cancel the in-flight turn and clear the queued prompts (pi-acp
-    /// `session/cancel`). Never blocks — unbounded mailbox, immediate send.
+    /// Cancel the in-flight turn and clear queued prompts (actor follow-ups
+    /// plus pi steering/follow-up queues; pi-acp `session/cancel`). Never
+    /// blocks — unbounded mailbox, immediate send.
     Cancel,
     /// Run a session-level slash command (model / name / compact / …).
     Slash {
@@ -120,7 +136,12 @@ impl SessionHandle {
         &self.cwd
     }
 
-    /// Run a full prompt turn; resolves when the turn has fully settled.
+    /// Send a prompt to the actor.
+    ///
+    /// With no active turn, resolves when the new turn has fully settled.
+    /// With an active turn, steers by default and resolves once the message
+    /// has been accepted; `streaming_behavior = "followUp"` queues a separate
+    /// turn instead.
     pub async fn prompt(&self, text: &str, opts: PromptOptions) -> Result<(), String> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.cmd_tx
@@ -333,7 +354,7 @@ struct SessionActor {
 impl SessionActor {
     /// The actor loop (mirrors pi-rs ACP `SessionTask::run`): process
     /// commands, and when the in-flight turn settles, start the next queued
-    /// prompt. Commands are never rejected for "busy" — only prompts queue.
+    /// follow-up prompt. Commands are never rejected for "busy".
     async fn run(mut self) {
         loop {
             match self.next_event().await {
@@ -384,10 +405,10 @@ impl SessionActor {
                     break;
                 }
                 NextEvent::TurnDone(outcome) => {
-                    // The turn settled. Start the next queued prompt, or (on
-                    // failure) reject the rest of the queue — pi may be
-                    // unhealthy, so we don't auto-proceed after a failure
-                    // (mirrors pi-acp).
+                    // The turn settled. Start the next queued follow-up
+                    // prompt, or (on failure) reject the rest of the queue —
+                    // pi may be unhealthy, so we don't auto-proceed after a
+                    // failure (mirrors pi-acp).
                     self.turn_done_rx = None;
                     if outcome.is_err() {
                         while let Some(queued) = self.prompt_queue.pop_front() {
@@ -422,8 +443,10 @@ impl SessionActor {
         }
     }
 
-    /// Handle a prompt command: if a turn is already running, queue it
-    /// (pi-acp turn queue); otherwise start it immediately.
+    /// Handle a prompt command. If a turn is already running, inject the
+    /// prompt into that run as a steering message by default; an explicit
+    /// `followUp` request queues a separate turn instead. With no active turn,
+    /// start the prompt immediately.
     async fn on_prompt(
         &mut self,
         text: String,
@@ -431,8 +454,17 @@ impl SessionActor {
         reply: oneshot::Sender<Result<(), String>>,
     ) {
         if self.turn_done_rx.is_some() {
-            self.prompt_queue
-                .push_back(QueuedPrompt { text, opts, reply });
+            // The turn task can finish just before the actor processes its
+            // `TurnDone`. Only steer while pi still considers the run active;
+            // otherwise queue a normal turn so the message cannot be left in
+            // an idle steering queue.
+            if is_follow_up(&opts) || !self.session.is_streaming().await {
+                self.prompt_queue
+                    .push_back(QueuedPrompt { text, opts, reply });
+                return;
+            }
+            let result = self.session.steer(&text, opts.images).await;
+            let _ = reply.send(result);
             return;
         }
         self.start_prompt_turn(QueuedPrompt { text, opts, reply });
@@ -441,7 +473,7 @@ impl SessionActor {
     /// Spawn the LLM turn as a task on the actor's executor. The task streams
     /// events to subscribers, replies with the turn outcome, and reports the
     /// outcome on a fresh `turn_done_rx` channel so the actor can start the
-    /// next queued prompt (mirrors pi-rs ACP `start_prompt_turn`).
+    /// next queued follow-up prompt (mirrors pi-rs ACP `start_prompt_turn`).
     fn start_prompt_turn(&mut self, prompt: QueuedPrompt) {
         let (turn_done_tx, turn_done_rx) = mpsc::channel::<Result<(), String>>(1);
         self.turn_done_rx = Some(turn_done_rx);
@@ -470,9 +502,12 @@ impl SessionActor {
         self.cancelled.store(true, Ordering::SeqCst);
         // `abort()` waits for the agent to become idle, so it runs as a
         // separate task; the turn task observes the abort, settles, and
-        // replies. The actor loop stays responsive meanwhile.
+        // replies. The actor loop stays responsive meanwhile. Clear pi's
+        // steering/follow-up queues first so a steered message cannot revive
+        // the aborted run during the settled-continuation check.
         let session = Arc::clone(&self.session);
         let fut: LocalBoxFuture<'static, ()> = Box::pin(async move {
+            let _ = session.clear_all_queues().await;
             session.abort().await;
         });
         (self.spawn)(fut);
@@ -651,4 +686,30 @@ async fn run_single_prompt(
 
     handle.unsubscribe();
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streaming_defaults_to_steer() {
+        assert!(!is_follow_up(&PromptOptions::default()));
+        assert!(!is_follow_up(&PromptOptions {
+            streaming_behavior: Some("steer".to_string()),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn follow_up_values_queue_a_separate_turn() {
+        assert!(is_follow_up(&PromptOptions {
+            streaming_behavior: Some("followUp".to_string()),
+            ..Default::default()
+        }));
+        assert!(is_follow_up(&PromptOptions {
+            streaming_behavior: Some("follow_up".to_string()),
+            ..Default::default()
+        }));
+    }
 }

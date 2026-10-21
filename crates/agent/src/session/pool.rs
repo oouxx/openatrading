@@ -217,9 +217,10 @@ impl SessionPool {
 
     /// Send a prompt with full options.
     ///
-    /// The actor queues the prompt if another turn is in flight (pi-acp turn
-    /// queue) and resolves once the turn has fully settled — the terminal
-    /// `AgentEnd` event is emitted before this returns.
+    /// If another turn is in flight, the prompt steers that run by default;
+    /// `streaming_behavior = "followUp"` queues a separate turn. A new turn
+    /// resolves once it has fully settled — the terminal `AgentEnd` event is
+    /// emitted before this returns.
     pub async fn prompt_with_opts(
         &self,
         session_id: &str,

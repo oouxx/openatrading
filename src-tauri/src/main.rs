@@ -609,10 +609,10 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up by ensure_session_tauri.
     //
-    // pi-rs `prompt()` checks `is_streaming()` internally and uses
-    // `streaming_behavior` only to choose steer vs followUp. We pass a fixed
-    // policy (followUp = queue as a new turn when streaming) and let pi-rs
-    // decide, avoiding a racy `is_stream()` TOCTOU check on our side.
+    // Default to steering: a prompt submitted while a turn is active is
+    // injected into that run instead of waiting for a separate follow-up turn.
+    // The actor checks its own active-turn state, avoiding a racy
+    // `is_streaming()` TOCTOU check on our side.
     let image_blocks: Vec<pi_coding_agent::pi_ai_types::ContentBlock> = images
         .unwrap_or_default()
         .iter()
@@ -622,7 +622,7 @@ async fn send_prompt(
         })
         .collect();
     let opts = pi_coding_agent::core::agent_session::PromptOptions {
-        streaming_behavior: Some("followUp".to_string()),
+        streaming_behavior: Some("steer".to_string()),
         images: (!image_blocks.is_empty()).then_some(image_blocks),
         ..Default::default()
     };

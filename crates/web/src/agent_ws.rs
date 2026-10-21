@@ -198,26 +198,34 @@ async fn forward_events(
                                     .map(ClientImage::to_content_block)
                                     .collect();
                                 let worker = tokio::spawn(async move {
-                                    log::info!("ws: agent turn started for {sid}");
-                                    // The actor serializes turns (pi-acp turn queue), so a
-                                    // concurrent prompt is queued rather than raced.
+                                    log::info!("ws: agent prompt received for {sid}");
+                                    // Default to steering: a prompt submitted while a
+                                    // turn is active is injected into that run instead
+                                    // of waiting for a separate follow-up turn.
                                     let opts = PromptOptions {
-                                        streaming_behavior: Some("followUp".to_string()),
+                                        streaming_behavior: Some("steer".to_string()),
                                         images: (!image_blocks.is_empty()).then_some(image_blocks),
                                         ..Default::default()
                                     };
-                                    if let Err(e) = handle.prompt(&text, opts).await {
-                                        log::warn!("ws: prompt failed for {sid}: {e}");
-                                        // Route the error through the session's event state so it
-                                        // gets a seq + lands in the ring (recoverable on reconnect).
-                                        let event_state =
-                                            prompt_state.ctx.pool.event_state(&sid).await;
-                                        let json = event_state.emit(TranscriptEvent::Session(
-                                            SessionEventPayload::Notice { text: e, is_error: true },
-                                        ));
-                                        let _ = prompt_tx.send(json).await;
+                                    match handle.prompt(&text, opts).await {
+                                        Ok(()) => {
+                                            log::info!("ws: agent prompt accepted for {sid}");
+                                        }
+                                        Err(e) => {
+                                            log::warn!("ws: prompt failed for {sid}: {e}");
+                                            // Route the error through the session's event state so it
+                                            // gets a seq + lands in the ring (recoverable on reconnect).
+                                            let event_state =
+                                                prompt_state.ctx.pool.event_state(&sid).await;
+                                            let json = event_state.emit(TranscriptEvent::Session(
+                                                SessionEventPayload::Notice {
+                                                    text: e,
+                                                    is_error: true,
+                                                },
+                                            ));
+                                            let _ = prompt_tx.send(json).await;
+                                        }
                                     }
-                                    log::info!("ws: agent turn completed for {sid}");
                                 });
                                 // Observe the spawned task so a panic is never silently
                                 // swallowed (project rule: no fire-and-forget JoinHandles).
