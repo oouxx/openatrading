@@ -130,6 +130,15 @@
   --color-down-bg: oklch(0.52 0.13 158 / 0.12);
   --color-data-green: oklch(0.52 0.13 158);
   --color-data-red: oklch(0.55 0.2 27);
+
+  /* ── 图表专用色 — MA 均线 ──
+   * 与涨跌红绿、品牌珊瑚分离：中性炭灰 / 赭石 / 钢蓝 / 灰紫，
+   * 彩度压在 0.08–0.10 内与暖灰主题同调；canvas 上对比度 ≥5.5:1，
+   * 图例 12px 彩色文字和线条都清晰。深色主题在下方提亮覆盖。 */
+  --color-chart-ma5: oklch(0.42 0.012 85);
+  --color-chart-ma10: oklch(0.5 0.1 70);
+  --color-chart-ma20: oklch(0.5 0.08 250);
+  --color-chart-ma30: oklch(0.5 0.09 330);
   /* ── 状态语义色 ── */
   --color-success: oklch(0.55 0.12 152); /* 成功 — 略偏冷的绿，与跌分开 */
   --color-success-bg: oklch(0.55 0.12 152 / 0.12);
@@ -279,7 +288,9 @@
 
   --color-brand: oklch(0.75 0.1 46);
   --color-brand-hover: oklch(0.79 0.09 46);
-  --color-brand-foreground: oklch(0.985 0 0);
+  /* 深色主题下品牌色是浅珊瑚，前景必须用深墨色（与 shadcn primary-foreground 同理），
+   * 否则 bg-brand + brand-foreground 的对比度只有 ~2.4:1。 */
+  --color-brand-foreground: oklch(0.2357 0.0024 67.7);
   --color-brand-muted: oklch(0.717 0.1131 38.8 / 0.15);
   --color-accent: oklch(0.75 0.1 46);
   --color-accent-hover: oklch(0.79 0.09 46);
@@ -311,6 +322,12 @@
   --color-down-muted: oklch(0.68 0.13 158 / 0.15);
   --color-data-green: oklch(0.68 0.13 158);
   --color-data-red: oklch(0.72 0.19 27);
+
+  /* 图表 MA（dark）：提亮到与 surface 对比度 ≥5.5:1 */
+  --color-chart-ma5: oklch(0.78 0.012 85);
+  --color-chart-ma10: oklch(0.78 0.11 72);
+  --color-chart-ma20: oklch(0.74 0.08 250);
+  --color-chart-ma30: oklch(0.74 0.09 330);
 
   /* ── 状态语义色 dark ── */
   --color-success: oklch(0.68 0.12 152);

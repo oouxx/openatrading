@@ -219,7 +219,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             onClick={() => setPeriod(p.value)}
             className={`text-caption h-auto rounded-full px-4 py-1 ${
               period === p.value
-                ? "border-brand bg-brand text-primary hover:bg-brand hover:text-primary"
+                ? "border-brand bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
                 : "border-hairline bg-canvas text-secondary hover:border-hairline hover:text-primary"
             }`}
           >

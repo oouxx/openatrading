@@ -45,7 +45,8 @@ const hex2 = (n: number) => n.toString(16).padStart(2, "0")
  *  Returns `{ r, g, b, alpha }` (0-255 channels, alpha 0..1) or `null`. */
 function parseColor(v: string): { r: number; g: number; b: number; alpha: number } | null {
   const s = v.trim().toLowerCase()
-  let m = /^oklch\(\s*([\d.]+%?)\s+([\d.]+%?)\s+(-?[\d.]+(?:deg)?)(?:\s*\/\s*([\d.]+%?))?\s*\)$/.exec(s)
+  let m =
+    /^oklch\(\s*([\d.]+%?)\s+([\d.]+%?)\s+(-?[\d.]+(?:deg)?)(?:\s*\/\s*([\d.]+%?))?\s*\)$/.exec(s)
   if (m) {
     const l = m[1].endsWith("%") ? parseFloat(m[1]) / 100 : parseFloat(m[1])
     const c = m[2].endsWith("%") ? (parseFloat(m[2]) / 100) * 0.4 : parseFloat(m[2])
@@ -93,11 +94,12 @@ export const chartColors = {
   warning: () => resolveVar("--color-warning", "#F5A623"),
   primary: () => resolveVar("--color-primary", "#FFFFFF"),
   tertiary: () => resolveVar("--color-tertiary", "#888780"),
-  // MA line colors — chart-specific palette, not theme tokens
-  ma5: "#F5A623",
-  ma10: "#4A90D9",
-  ma20: "#D0021B",
-  ma30: "#7ED321",
+  // MA line colors — chart-specific palette resolved per theme. Kept away from
+  // up/down (red/green) and brand so the lines can't be misread as price color.
+  ma5: () => resolveVar("--color-chart-ma5", "#6E6B63"),
+  ma10: () => resolveVar("--color-chart-ma10", "#875814"),
+  ma20: () => resolveVar("--color-chart-ma20", "#3E668F"),
+  ma30: () => resolveVar("--color-chart-ma30", "#804F7C"),
 }
 
 /** Convert a color to rgba() with the given alpha. Accepts `#rrggbb`,

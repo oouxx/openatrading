@@ -523,14 +523,18 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       wickDownColor: chartColors.down(),
       priceScaleId: "right",
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      // 最新价虚线/标签由下方 createPriceLine 统一绘制（同花顺式，
+      // priceLineVisible 默认 true 会多画一条同价位的绿色标签）。
+      lastValueVisible: false,
+      priceLineVisible: false,
     })
 
     // Moving averages
     const maConfig = [
-      { ref: ma5SeriesRef, color: chartColors.ma5, label: "MA5" },
-      { ref: ma10SeriesRef, color: chartColors.ma10, label: "MA10" },
-      { ref: ma20SeriesRef, color: chartColors.ma20, label: "MA20" },
-      { ref: ma30SeriesRef, color: chartColors.ma30, label: "MA30" },
+      { ref: ma5SeriesRef, color: chartColors.ma5(), label: "MA5" },
+      { ref: ma10SeriesRef, color: chartColors.ma10(), label: "MA10" },
+      { ref: ma20SeriesRef, color: chartColors.ma20(), label: "MA20" },
+      { ref: ma30SeriesRef, color: chartColors.ma30(), label: "MA30" },
     ] as const
     seriesRefs.current = maConfig.map(({ ref, color }) => {
       const series = chart.addSeries(LineSeries, {
@@ -758,20 +762,24 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         })
       )
 
-      // Volume, colored vs previous close (同花顺：红涨绿跌，对比昨收)；
-      // whitespace for future minutes.
-      const pc = precloseRef.current
+      // 分时量柱配色（同花顺/东方财富口径）：与上一分钟收盘价比较，
+      // 上涨红、下跌绿、持平中性灰。首根量柱没有上一分钟，用昨收兜底。
+      // 不能整场都对比昨收，否则单边下跌日所有量柱都是绿色，丢失分钟级多空变化。
+      // 未来分钟保持 whitespace。
+      let prevMinuteClose: number | undefined
       volume.setData(
         grid.map((t) => {
           const c = candleMap.get(t)
           if (!c) return { time: t as Time, value: undefined as unknown as number }
-          const isUp = pc ? c.close >= pc : c.close >= (c.open ?? c.close)
-          return {
-            time: t as Time,
-            value: c.volume || 0,
-            // 同花顺量柱比 K 线副图更实（不透明度更高）
-            color: isUp ? withAlpha(chartColors.up(), 0.55) : withAlpha(chartColors.down(), 0.55),
-          }
+          const baseline = prevMinuteClose ?? precloseRef.current ?? c.close
+          prevMinuteClose = c.close
+          const color =
+            c.close > baseline
+              ? withAlpha(chartColors.up(), 0.55)
+              : c.close < baseline
+                ? withAlpha(chartColors.down(), 0.55)
+                : withAlpha(chartColors.tertiary(), 0.35)
+          return { time: t as Time, value: c.volume || 0, color }
         })
       )
 
@@ -908,7 +916,12 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       }
 
       // 同花顺主图左上角 MA 图例：MA5/MA10/MA20/MA30 最新值（品牌 MA 调色板）
-      const legendColors = [chartColors.ma5, chartColors.ma10, chartColors.ma20, chartColors.ma30]
+      const legendColors = [
+        chartColors.ma5(),
+        chartColors.ma10(),
+        chartColors.ma20(),
+        chartColors.ma30(),
+      ]
       const n = closes.length
       setMaLegend(
         [5, 10, 20, 30].map((p, i) => {
