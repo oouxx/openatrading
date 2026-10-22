@@ -227,17 +227,20 @@ function CurveChart({
 function CalendarGrid({
   month,
   points,
+  tradingDates,
   metric,
   from,
   to,
 }: {
   month: string
   points: PnlCalendarPoint[]
+  tradingDates: string[]
   metric: Metric
   from: string
   to: string
 }) {
   const byDate = useMemo(() => new Map(points.map((p) => [p.date, p])), [points])
+  const tradingSet = useMemo(() => new Set(tradingDates), [tradingDates])
   const [year, mon] = month.split("-").map(Number)
   const firstWeekday = new Date(Date.UTC(year, mon - 1, 1)).getUTCDay()
   const daysInMonth = new Date(Date.UTC(year, mon, 0)).getUTCDate()
@@ -251,7 +254,7 @@ function CalendarGrid({
 
   return (
     <div className="px-5 py-4">
-      <div className="text-tertiary mb-2 grid grid-cols-7 gap-1 text-center text-[11px]">
+      <div className="text-tertiary mb-1 grid grid-cols-7 gap-1 text-center text-[11px]">
         {["日", "一", "二", "三", "四", "五", "六"].map((w) => (
           <span key={w}>{w}</span>
         ))}
@@ -278,17 +281,27 @@ function CalendarGrid({
 
           if (!inRange || isFuture) {
             return (
-              <div key={cell.date} className="flex flex-col items-center gap-0.5 py-1.5 opacity-40">
+              <div key={cell.date} className="flex flex-col items-center gap-0.5 py-1 opacity-40">
                 {dayLabel}
               </div>
             )
           }
 
           if (!point) {
+            // 开市但空仓：收益为 0（和同花顺一致）；只有真正的非交易日才显示「休」
+            const isTradingDay = tradingSet.has(cell.date)
             return (
-              <div key={cell.date} className="flex flex-col items-center gap-0.5 py-1.5">
+              <div
+                key={cell.date}
+                className="flex flex-col items-center gap-0.5 py-1"
+                title={isTradingDay ? `${cell.date} · 无持仓，当日收益 0` : `${cell.date} · 休市`}
+              >
                 {dayLabel}
-                <span className="text-warning text-[10px]">休</span>
+                {isTradingDay ? (
+                  <span className="text-tertiary text-[10px] tabular-nums">0</span>
+                ) : (
+                  <span className="text-warning text-[10px]">休</span>
+                )}
               </div>
             )
           }
@@ -297,7 +310,7 @@ function CalendarGrid({
           return (
             <div
               key={cell.date}
-              className="flex flex-col items-center gap-0.5 rounded-md py-1.5 hover:bg-[var(--color-ink-dim)]"
+              className="flex flex-col items-center gap-0.5 rounded-md py-1 hover:bg-[var(--color-ink-dim)]"
               title={`${cell.date}  当日盈亏 ${signedMoney(point.pnl)}（${formatPct(point.pct)}）\n累计 ${signedMoney(point.cum_pnl)}（${formatPct(point.cum_pct)}）\n权益 ¥${money(point.equity)}`}
             >
               {dayLabel}
@@ -512,6 +525,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
           <CalendarGrid
             month={displayMonth}
             points={calendar.points}
+            tradingDates={calendar.trading_dates}
             metric={metric}
             from={from}
             to={to}
@@ -528,7 +542,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
           上涨 <span className="text-up tabular-nums">{summary.win_days}</span> 天 / 下跌{" "}
           <span className="text-down tabular-nums">{summary.lose_days}</span> 天
         </span>
-        <span className="text-tertiary">共 {summary.trading_days} 个交易日</span>
+        <span className="text-tertiary">有持仓 {summary.trading_days} 个交易日</span>
       </div>
 
       {calendar.incomplete && (

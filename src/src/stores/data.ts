@@ -281,6 +281,8 @@ export interface PnlCalendarSummary {
 export interface PnlCalendar {
   from: string
   to: string
+  /** 区间内所有交易日（含空仓日），用来区分「休市」与「开市但没持仓」。 */
+  trading_dates: string[]
   points: PnlCalendarPoint[]
   summary: PnlCalendarSummary
   benchmarks: PnlBenchmark[]

@@ -104,6 +104,11 @@ pub struct PnlSummary {
 pub struct PnlCalendar {
     pub from: String,
     pub to: String,
+    /// 区间内的**所有**交易日（含无持仓、无成交的日子）。
+    ///
+    /// 日历视图要靠它区分「休市」和「开市但没持仓（当日收益为 0）」——
+    /// 只看 `points` 的话，空仓的交易日会被误标成休市。
+    pub trading_dates: Vec<String>,
     pub points: Vec<PnlPointView>,
     pub summary: PnlSummary,
     pub benchmarks: Vec<BenchmarkView>,
@@ -226,9 +231,16 @@ pub fn build_calendar(input: CalendarInput<'_>) -> PnlCalendar {
     let summary = summarize(&points, input.initial_capital);
     let benchmarks = benchmark_views(input.closes, input.from, input.to);
 
+    let trading_dates: Vec<String> = dates
+        .iter()
+        .filter(|d| d.as_str() >= input.from && d.as_str() <= input.to)
+        .cloned()
+        .collect();
+
     PnlCalendar {
         from: input.from.to_string(),
         to: input.to.to_string(),
+        trading_dates,
         points,
         summary,
         benchmarks,
@@ -480,6 +492,7 @@ mod tests {
         });
         // 10-21、10-22 不在日历里（无日线），10-23 用当日价
         assert_eq!(cal.points.len(), 2);
+        assert_eq!(cal.trading_dates, vec!["2026-10-20", "2026-10-23"]);
         assert_eq!(cal.points[1].equity, 102_000.0);
         assert!(!cal.incomplete);
     }

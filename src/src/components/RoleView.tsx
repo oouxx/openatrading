@@ -368,7 +368,7 @@ function StatCard({
 }) {
   const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-primary"
   return (
-    <div className="bg-surface border-hairline min-w-0 rounded-lg border px-4 py-4">
+    <div className="bg-surface border-hairline min-w-0 rounded-lg border px-3 py-2.5">
       <div className="text-secondary text-caption flex items-center justify-between gap-2">
         <span className="truncate">{label}</span>
         {action}
@@ -378,7 +378,7 @@ function StatCard({
         在本页任何常见窗口宽度都会顶出卡片边框。降到 text-h2（16px）并配合
         truncate 收口——仍放不下时截断而不是溢出，完整值保留在 title 里。
       */}
-      <div className={`font-number text-h2 mt-1 truncate font-semibold ${toneCls}`} title={value}>
+      <div className={`font-number mt-0.5 truncate text-[15px] leading-tight font-semibold ${toneCls}`} title={value}>
         {value}
       </div>
       {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}
@@ -428,7 +428,8 @@ function AccountOverview({
         </div>
       )}
       {/* 列数按「金额放得下」定：5 列只在 2xl 起用，窄窗口退到 3/2 列 */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
+      {/* 金额卡片只做概览，视觉上让位给下方的曲线/日历 */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="初始资金" value={`¥${formatMoney(account.initial_capital)}`} />
         <StatCard label="现金" value={`¥${formatMoney(account.cash)}`} />
         <StatCard label="持仓市值" value={`¥${formatMoney(account.market_value)}`} />
