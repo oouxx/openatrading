@@ -50,14 +50,14 @@ jobs:
       - name: 挂载源与关键文件
         run: |
           echo "### 挂载源与关键文件"
-          for f in /etc/openatrading/.env /root/openatrading/.env "$HOME/.env"; do
+          for f in /opt/openatrading/.env /etc/openatrading/.env /root/openatrading/.env; do
             if [ -f "$f" ]; then
               printf '%-32s ✅ 存在  权限=%s  变量数=%s\n' "$f" "$(stat -c '%a %U:%G' "$f")" "$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' "$f" || true)"
             else
               printf '%-32s ❌ 不存在\n' "$f"
             fi
           done
-          for d in /root/.atrading /root/.atrading/agent /root/openatrading/downloads "$HOME/.atrading"; do
+          for d in /opt/openatrading /opt/openatrading/atrading /opt/openatrading/atrading/agent /opt/openatrading/downloads /opt/openatrading/certs; do
             if [ -d "$d" ]; then
               printf '%-32s ✅ 目录  %s 个条目  可读=%s 可写=%s\n' "$d" \
                 "$(find "$d" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')" \
@@ -66,7 +66,8 @@ jobs:
               printf '%-32s ❌ 不存在\n' "$d"
             fi
           done
-          [ -f /root/.atrading/agent/AGENTS.md ] && echo "   agent/AGENTS.md ✅" || echo "   agent/AGENTS.md ❌（deploy.sh 的 sync_agent_config 需要先跑一次）"
+          su -s /bin/bash github-runner -c 'docker info >/dev/null 2>&1' 2>/dev/null \
+            && echo "   github-runner 可用 docker ✅" || echo "   github-runner 不可用 docker ❌（不在 docker 组？）"
 
       - name: 资源
         run: |

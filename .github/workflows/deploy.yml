@@ -128,6 +128,7 @@ jobs:
           ENV_FILE_VAR: ${{ vars.ATRADING_ENV_FILE }}
           ATRADING_HOME_VAR: ${{ vars.ATRADING_HOST_HOME }}
           DOWNLOADS_VAR: ${{ vars.ATRADING_DOWNLOADS_DIR }}
+          CERTS_VAR: ${{ vars.ATRADING_CERTS_DIR }}
         run: |
           set -euo pipefail
           echo "host=$(hostname) user=$(id -un) uid=$(id -u)"
@@ -144,16 +145,11 @@ jobs:
             exit 1; }
 
           # ── .env ────────────────────────────────────────────────
-          ENV_FILE="${ENV_FILE_VAR:-/etc/openatrading/.env}"
-          if [ ! -f "$ENV_FILE" ] && [ -f /root/openatrading/.env ]; then
-            ENV_FILE=/root/openatrading/.env
-            echo "::warning::仍在用旧 deploy.sh 留在 /root/openatrading/.env 的副本，建议迁到 /etc/openatrading/.env（chmod 600）"
-          fi
+          ENV_FILE="${ENV_FILE_VAR:-/opt/openatrading/.env}"
           if [ ! -f "$ENV_FILE" ]; then
-            echo "::error::找不到 .env（已查找 ${ENV_FILE_VAR:-/etc/openatrading/.env}）"
-            echo "  修法：sudo mkdir -p /etc/openatrading"
-            echo "        sudo install -m 640 -o root -g $(id -un) <你的.env> /etc/openatrading/.env"
-            echo "  （/root 是 700，非 root runner 读不到 /root/openatrading/.env，必须放到 runner 可达的位置）"
+            echo "::error::找不到 .env（已查找 ${ENV_FILE_VAR:-/opt/openatrading/.env}）"
+            echo "  修法：sudo install -m 640 -o root -g $(id -un) <你的.env> /opt/openatrading/.env"
+            echo "  （.env 必须放在 runner 可读的位置；/root 是 700，runner 读不到）"
             exit 1
           fi
           echo "ENV_FILE=$ENV_FILE" >> "$GITHUB_ENV"
@@ -162,13 +158,11 @@ jobs:
           # ── agent home（compose 里写的是 ~/.atrading）────────────────
           HOST_HOME="${ATRADING_HOME_VAR:-}"
           if [ -z "$HOST_HOME" ]; then
-            # 默认与现有部署保持一致（实测 openatrading-gateway-1 挂的就是它）。
-            # 注意：/root 通常是 700，非 root runner「看不到」这个目录是正常的——
-            # 挂载由 docker daemon(root) 执行，runner 不需要读权限。
-            # 绝不能在这里 fallback 到 $HOME/.atrading：那会静默新建空目录，
+            # 默认 /opt/openatrading/atrading（原 /root/.atrading 已迁过来）。
+            # 该目录 700 root，runner 读不到属正常——挂载由 docker daemon(root) 执行。
+            # 绝不能 fallback 到 $HOME/.atrading：那会静默新建空目录，
             # 容器起来后 agent 的 settings/auth/sessions 全丢。
-            HOST_HOME=/root/.atrading
-            [ "$(id -u)" = "0" ] || echo "    （非 root runner 看不到 /root 属正常，挂载由 daemon 完成）"
+            HOST_HOME=/opt/openatrading/atrading
           fi
           echo "ATRADING_HOST_HOME=$HOST_HOME" >> "$GITHUB_ENV"
           # 挂载由 docker daemon（root）执行，runner 用户不需要写权限。
@@ -195,7 +189,7 @@ jobs:
           DL_DIR="${DOWNLOADS_VAR:-}"
           if [ -z "$DL_DIR" ]; then
             # 同样不 fallback 到 $PWD/downloads：那会让 /downloads 静默变空
-            DL_DIR=/root/openatrading/downloads
+            DL_DIR=/opt/openatrading/downloads
           fi
           echo "ATRADING_DOWNLOADS_DIR=$DL_DIR" >> "$GITHUB_ENV"
           if [ -r "$DL_DIR" ]; then
@@ -205,6 +199,20 @@ jobs:
           else
             echo "  downloads: $DL_DIR（runner 不可读，无法计数；挂载由 docker daemon 完成）"
           fi
+
+          # ── TLS 证书（base compose 里写的是 /root/certs）──────────────
+          CERTS_DIR="${CERTS_VAR:-/opt/openatrading/certs}"
+          if [ ! -d "$CERTS_DIR" ]; then
+            echo "::warning::$CERTS_DIR 不存在，回退到 /root/certs"
+            CERTS_DIR=/root/certs
+          fi
+          echo "ATRADING_CERTS_DIR=$CERTS_DIR" >> "$GITHUB_ENV"
+          if [ -r "$CERTS_DIR/cert.pem" ] && [ -r "$CERTS_DIR/key.pem" ]; then
+            echo "  certs: $CERTS_DIR ✅"
+          else
+            echo "::warning::$CERTS_DIR 里 cert.pem/key.pem 缺失或不可读 —— 443 可能起不来"
+          fi
+
 
           df -h "$PWD" | tail -1 | awk '{print "  磁盘可用: "$4}'
 
@@ -231,7 +239,9 @@ jobs:
           IMAGE_TAG="sha-${GITHUB_SHA:0:7}"
           install -m 600 "$ENV_FILE" .env
 
-          # 钉三件事：镜像用不可变 tag、agent home 与 downloads 用绝对路径
+          # 钉四件事：镜像用不可变 tag、agent home / downloads / certs 用绝对路径。
+          # compose 的 volumes 按 target 合并，同 target 的条目会覆盖 base 里的
+          # ~/.atrading、./downloads、/root/certs —— 下面用断言确认，不靠猜。
           base="$REGISTRY/$IMAGE_NAME"
           cat > "$COMPOSE_CI" <<EOF
           # 由 .github/workflows/deploy.yml 生成，不要提交
@@ -244,6 +254,7 @@ jobs:
               image: ${base}-frontend:${IMAGE_TAG}
               volumes:
                 - ${ATRADING_DOWNLOADS_DIR}:/app/downloads
+                - ${ATRADING_CERTS_DIR}:/etc/ssl/cloudflare:ro
             akshare-mcp:
               image: ${base}-akshare-mcp:${IMAGE_TAG}
           EOF
@@ -268,7 +279,8 @@ jobs:
             echo "  ✅ $source -> $target"
           }
           assert_one /root/.atrading "$ATRADING_HOST_HOME"
-          assert_one /app/downloads "$ATRADING_DOWNLOADS_DIR"
+          assert_one /app/downloads      "$ATRADING_DOWNLOADS_DIR"
+          assert_one /etc/ssl/cloudflare "$ATRADING_CERTS_DIR"
           echo "  ✅ 镜像 tag: ${IMAGE_TAG}（不可变）"
 
       - name: 拉镜像
@@ -347,5 +359,6 @@ jobs:
             echo "| 主机 | \`$(hostname)\` |"
             echo "| agent home | \`${ATRADING_HOST_HOME:-?}\` |"
             echo "| downloads | \`${ATRADING_DOWNLOADS_DIR:-?}\` |"
+            echo "| certs | \`${ATRADING_CERTS_DIR:-?}\` |"
             echo "| 触发 | ${{ github.event_name }} by ${{ github.actor }} |"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -11,7 +11,7 @@ usage() {
   echo ""
   echo "环境变量:"
   echo "  DEPLOY_HOST        目标主机 user@host（必填，也可写在 .env 里）"
-  echo "  DEPLOY_REMOTE_DIR  远端目录（默认 /root/openatrading）"
+  echo "  DEPLOY_REMOTE_DIR  远端目录（默认 /opt/openatrading）"
   echo "  DEPLOY_REPO_URL    远端要 clone 的仓库（默认读本地 git remote）"
   echo "  DEPLOY_BRANCH      部署分支（默认 main）"
   exit 1
@@ -35,7 +35,7 @@ set +a
 
 # 部署目标从环境变量读（不写死在仓库里），因此可以放在 ~/.ssh/config 或 .env。
 SERVER="${DEPLOY_HOST:?DEPLOY_HOST not set — 在 .env 里写 DEPLOY_HOST=<user@host>，不要把它提交进仓库}"
-REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/root/openatrading}"
+REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/openatrading}"
 SSH_OPTS="-o StrictHostKeyChecking=accept-new"
 
 # Default deploy branch is main; override with DEPLOY_BRANCH=<branch>.
