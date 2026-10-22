@@ -1,0 +1,353 @@
+name: Release
+
+# 一次发版 = 一次 workflow。合并了原 release-cli / release-tauri / release-brew：
+#   1. 每个平台一个 job，**CLI 与桌面端在同一 job 内构建**，共享 target/ 目录，
+#      第二个产物的依赖编译直接命中增量（原来同平台要冷编两遍）
+#   2. 前端每个平台只 build 一次（tauri 的 beforeBuildCommand 也会跑，已去掉重复步骤）
+#   3. tauri CLI 改用 npm 预编译包（bunx），不再 cargo install 编 4 遍
+#   4. macOS 只构建一次，同时供「本仓库 release」和「Homebrew tap cask」使用
+#
+# 产物去向：
+#   本仓库 release ← 全部 CLI 二进制 + 全平台安装包（含 .dmg）
+#   tap 仓库 release ← 仅 DMG（cask 的 url 指向那里）+ 更新 cask
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      linux:
+        description: 构建 Linux（deb/rpm/AppImage + CLI）
+        type: boolean
+        default: true
+      macos:
+        description: 构建 macOS（dmg + CLI）
+        type: boolean
+        default: true
+      windows:
+        description: 构建 Windows（msi/exe）
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  TAP_REPO: oouxx/homebrew-openatrading
+  # CI 上增量编译只会把 target/ 撑大（缓存体积↑、命中率↓）
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  # ── 版本号只解析一次 ──────────────────────────────────────────────
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          V=$(grep '^version' Cargo.toml | head -1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          [ -n "$V" ] || { echo "::error::无法从 Cargo.toml 解析版本号"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V"     >> "$GITHUB_OUTPUT"
+          echo "版本：v$V"
+
+  # ── Linux x86_64：CLI + deb/rpm/AppImage ─────────────────────────
+  build-linux-amd64:
+    needs: meta
+    if: github.event_name == 'push' || inputs.linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: bun-
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: linux-amd64
+      - name: 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: 构建 CLI（先编依赖）
+        env:
+          GIT_VERSION: ${{ github.ref_name }}
+        run: cargo build --release -p openatrading-cli --target x86_64-unknown-linux-gnu
+      - name: 构建桌面端（复用上面的 target/）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx @tauri-apps/cli@^2 build --target x86_64-unknown-linux-gnu
+      - name: 收集产物
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-gnu/release/openatrading dist/openatrading-x86_64-unknown-linux-gnu
+          find target/x86_64-unknown-linux-gnu/release/bundle \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: dist/*
+          if-no-files-found: error
+
+  # ── Linux aarch64 ────────────────────────────────────────────────
+  build-linux-arm64:
+    needs: meta
+    if: github.event_name == 'push' || inputs.linux
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: bun-
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: linux-arm64
+      - name: 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: 构建 CLI
+        env:
+          GIT_VERSION: ${{ github.ref_name }}
+        run: cargo build --release -p openatrading-cli --target aarch64-unknown-linux-gnu
+      - name: 构建桌面端
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx @tauri-apps/cli@^2 build --target aarch64-unknown-linux-gnu
+      - name: 收集产物
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/aarch64-unknown-linux-gnu/release/openatrading dist/openatrading-aarch64-unknown-linux-gnu
+          find target/aarch64-unknown-linux-gnu/release/bundle \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  # ── macOS：native aarch64 + cross x86_64，CLI 与 dmg 都在这一个 job ──
+  build-macos:
+    needs: meta
+    if: github.event_name == 'push' || inputs.macos
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: bun-
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: macos
+      - name: 加 x86_64 target
+        run: rustup target add x86_64-apple-darwin
+      - name: 构建 CLI（两个架构）
+        env:
+          GIT_VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cargo build --release -p openatrading-cli --target aarch64-apple-darwin
+          cargo build --release -p openatrading-cli --target x86_64-apple-darwin
+      - name: 构建桌面端（aarch64 native）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx @tauri-apps/cli@^2 build --target aarch64-apple-darwin
+      - name: 验证 aarch64 签名
+        run: bash scripts/verify-macos-signature.sh target/aarch64-apple-darwin/release/bundle/macos/openatrading.app
+      - name: 构建桌面端（x86_64 cross）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx @tauri-apps/cli@^2 build --target x86_64-apple-darwin
+      - name: 验证 x64 签名
+        run: bash scripts/verify-macos-signature.sh target/x86_64-apple-darwin/release/bundle/macos/openatrading.app
+      - name: 收集产物
+        env:
+          V: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/aarch64-apple-darwin/release/openatrading dist/openatrading-aarch64-apple-darwin
+          cp target/x86_64-apple-darwin/release/openatrading  dist/openatrading-x86_64-apple-darwin
+          # dmg 里会有一个挂载用的 rw.*.dmg，必须排除
+          find target -type f -name "openatrading_${V}_*.dmg" ! -name 'rw.*' -exec cp {} dist/ \;
+          ls -l dist
+          for a in x64 aarch64; do
+            [ -f "dist/openatrading_${V}_${a}.dmg" ] || { echo "::error::缺少 ${a} DMG"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+          if-no-files-found: error
+
+  # ── Windows：只有桌面端（CLI 不发布 Windows） ─────────────────────
+  build-windows:
+    needs: meta
+    if: inputs.windows || (github.event_name == 'push' && vars.WINDOWS_BUILD == 'true')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ hashFiles('src/bun.lock') }}
+          restore-keys: bun-
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: windows
+      - name: 构建桌面端
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx @tauri-apps/cli@^2 build
+      - name: 收集产物
+        run: |
+          mkdir dist
+          Copy-Item "target/release/bundle/msi/*.msi" dist/
+          Copy-Item "target/release/bundle/nsis/*.exe" dist/
+          Get-ChildItem dist
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  # ── 发布：全部产物 → 本仓库 release ──────────────────────────────
+  publish-release:
+    needs: [meta, build-linux-amd64, build-linux-arm64, build-macos, build-windows]
+    # 任一平台成功就发布（方便只跑单平台做验证）；有失败则整体不发
+    if: |
+      always() && !failure() && !cancelled() &&
+      (needs.build-linux-amd64.result == 'success' ||
+       needs.build-linux-arm64.result == 'success' ||
+       needs.build-macos.result == 'success' ||
+       needs.build-windows.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 恢复可执行位（artifact 打包会丢权限）
+        run: |
+          set -euo pipefail
+          ls -l dist
+          chmod +x dist/openatrading-* || true
+      - name: 创建/复用 release 并上传
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          V: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --repo "$REPO" --clobber
+          echo "--- 已上传 ---"
+          gh release view "$TAG" --repo "$REPO" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size/1024/1024|floor)MB"' | sed 's/^/  /'
+
+  # ── 发布：DMG → tap 仓库 + 更新 cask ─────────────────────────────
+  publish-cask:
+    needs: [meta, build-macos]
+    if: always() && !failure() && !cancelled() && needs.build-macos.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: dist
+      - name: 计算 sha256
+        id: sha
+        env:
+          V: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "x64=$(sha256sum "dist/openatrading_${V}_x64.dmg" | awk '{print $1}')"      >> "$GITHUB_OUTPUT"
+          echo "aarch64=$(sha256sum "dist/openatrading_${V}_aarch64.dmg" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+      - name: 上传 DMG 到 tap release
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          V: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${V}"
+          gh release create "$TAG" --repo "$TAP_REPO" --title "$TAG" \
+            --notes "OpenATrading $V" 2>/dev/null || echo "ℹ Release $TAG 已存在，复用"
+          gh release upload "$TAG" dist/*.dmg --repo "$TAP_REPO" --clobber
+      - name: Checkout tap 仓库
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+      - name: 更新 cask
+        env:
+          BREW_CASK: tap/Casks/openatrading.rb
+          BREW_VERSION: ${{ needs.meta.outputs.version }}
+          BREW_SHA_X64: ${{ steps.sha.outputs.x64 }}
+          BREW_SHA_AARCH64: ${{ steps.sha.outputs.aarch64 }}
+        run: ruby scripts/update-cask.rb
+      - name: 提交并推送 cask
+        working-directory: tap
+        env:
+          V: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Casks/openatrading.rb; then
+            echo "ℹ Cask 无变化（已是 $V）"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/openatrading.rb
+          git commit -m "openatrading $V"
+          git push
+          echo "✅ 已推送 cask $V → $TAP_REPO"
