@@ -1260,7 +1260,9 @@ export default function RoleView() {
         <MobileRoleSheet {...roleListProps} open={showRoleSheet} onOpenChange={setShowRoleSheet} />
 
         {/* Main Content */}
-        <main className="readable-content flex flex-1 flex-col gap-6 overflow-y-auto px-7 py-6">
+        {/* 子项必须 shrink-0：卡片带 overflow-hidden，作为列向 flex item 会被压缩到
+            低于内容高度，导致曲线底部（日期横轴）和脚注被裁掉，页面却不滚动。 */}
+        <main className="readable-content flex flex-1 flex-col gap-6 overflow-y-auto px-7 py-6 [&>*]:shrink-0">
           <div className="flex items-center gap-3 md:hidden">
             <Button variant="outline" size="sm" onClick={() => setShowRoleSheet(true)}>
               <Users className="size-4" />
