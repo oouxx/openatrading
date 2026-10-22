@@ -29,6 +29,39 @@ src-tauri/      Tauri 桌面端
 
 ## Quick Start
 
+### 安装
+
+CLI 与服务端二进制从 [GitHub Releases](https://github.com/oouxx/openatrading/releases/latest) 分发。
+
+一行安装（Linux / macOS）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash
+```
+
+不想走管道就先看脚本再执行（更稳妥）：
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh
+less install.sh && bash install.sh
+
+INSTALL_DIR=~/.local/bin bash install.sh   # 指定安装目录
+```
+
+脚本默认从 Releases 取对应平台的二进制；要改用自建镜像源时
+`DL_SERVER=https://<your-domain> bash install.sh`。
+
+也可以直接下载二进制放进 `PATH`：
+
+| 平台 | 资产名 |
+|------|--------|
+| Linux x86_64 | `openatrading-x86_64-unknown-linux-gnu` |
+| Linux aarch64 | `openatrading-aarch64-unknown-linux-gnu` |
+| macOS Intel | `openatrading-x86_64-apple-darwin` |
+| macOS Apple Silicon | `openatrading-aarch64-apple-darwin` |
+
+升级：`openatrading update`（同样走 Releases；`OPENATRADING_DL_SERVER` 可覆盖下载源）。
+
 ### 初始化
 
 ```bash
@@ -78,8 +111,12 @@ cd src && bun install && bun run dev
 ### Docker
 
 ```bash
-docker compose up -d
+cp .env.example .env      # 填 JIUYAN_* / 通知渠道等，至少 JIUYAN_SECRET
+docker compose pull       # 从 GHCR 拉已发布镜像
+docker compose up -d --no-build
 ```
+
+本地改代码需要重新构建时用 `docker compose up -d --build`。
 
 ### 桌面端（Tauri）
 
@@ -92,7 +129,10 @@ brew install --cask openatrading
 
 cask 安装时会自动清除 macOS 隔离属性，装完直接双击打开即可。
 
-自行编译则在 `src-tauri/target/release/bundle/` 获取安装包。
+不用 Homebrew 的话，直接到
+[Releases](https://github.com/oouxx/openatrading/releases/latest) 下载对应平台的
+`.dmg` / `.deb` / `.AppImage` / `.msi` / `.exe`。自行编译则在
+`src-tauri/target/release/bundle/` 获取安装包。
 
 > **从网页下载 DMG 的用户注意**：Release 页面的安装包是 ad-hoc 签名（未经 Apple 公证），首次打开会被 Gatekeeper 拦下。先清除隔离属性再打开：
 >
@@ -159,7 +199,7 @@ bind    = "0.0.0.0:8082"
 | 项 | 怎么传 |
 |----|--------|
 | 部署 | 走 GitHub Actions，服务器路径用仓库变量 `ATRADING_*` 指定（见下） |
-| 下载服务器 | `DL_SERVER=https://...`（`install.sh`）或 `OPENATRADING_DL_SERVER`（CLI 自更新） |
+| 下载源 | 默认 GitHub Releases；自建镜像用 `DL_SERVER`（`install.sh`）或 `OPENATRADING_DL_SERVER`（CLI 自更新） |
 | 对外域名 | 部署端 nginx/证书层决定，`nginx.conf` 默认 `server_name _` |
 | 前端 API 地址 | 默认同源；需要跨域时 `--build-arg VITE_API_BASE_URL=...` 或面板里设置 |
 | Vercel 反代目标 | 部署前把 `src/public/vercel.json` 的 `YOUR_API_HOST` 换成自己的 |
