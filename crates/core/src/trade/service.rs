@@ -12,24 +12,113 @@ use std::sync::Arc;
 use super::order::{
     round_money, Account, ClosedTrade, OrderRequest, PnlPoint, Position, PositionView, Side, Trade,
 };
+use super::history::{ApiDailyCloseSource, DailyCloseSource};
+use super::pnl::{build_calendar, CalendarInput, Granularity, PnlCalendar};
 use super::quote::QuoteSource;
 use super::store::{OrderOutcome, PlaceOrderCtx, TradeStore};
 use super::{OrderError, Result};
 use crate::types::StockCode;
 
+/// 区间收益分析请求。
+///
+/// `initial_capital` 由调用方从角色配置解析后传入，与 `place_order` 一致。
+pub struct PnlCalendarRequest {
+    pub role: String,
+    pub initial_capital: f64,
+    /// 含当天的起始日期 `YYYY-MM-DD`。
+    pub from: String,
+    /// 含当天的结束日期 `YYYY-MM-DD`。
+    pub to: String,
+    pub granularity: Granularity,
+}
+
 /// 模拟盘交易服务。
 pub struct TradeService {
     store: Arc<TradeStore>,
     quote_source: Arc<dyn QuoteSource>,
+    daily_closes: Arc<dyn DailyCloseSource>,
 }
 
 impl TradeService {
+    /// 用默认的历史日线源（选股宝日线接口）构造。
     #[must_use]
     pub fn new(store: Arc<TradeStore>, quote_source: Arc<dyn QuoteSource>) -> Self {
+        Self::with_daily_closes(
+            store,
+            quote_source,
+            Arc::new(ApiDailyCloseSource::new()),
+        )
+    }
+
+    /// 注入自定义历史日线源——测试用假数据替换网络依赖。
+    #[must_use]
+    pub fn with_daily_closes(
+        store: Arc<TradeStore>,
+        quote_source: Arc<dyn QuoteSource>,
+        daily_closes: Arc<dyn DailyCloseSource>,
+    ) -> Self {
         Self {
             store,
             quote_source,
+            daily_closes,
         }
+    }
+
+    /// 区间收益分析（曲线 / 日历视图共用）。
+    ///
+    /// 与 [`Self::pnl_history`] 的区别见 [`super::pnl`] 模块文档：这里用**当日收盘价**
+    /// 估值，因此能按天切分「日收益」，代价是需要额外拉一批历史日线。
+    ///
+    /// # Errors
+    /// 读库或历史行情失败返回错误——不静默返回空曲线，否则用户会以为「没赚钱」。
+    pub async fn pnl_calendar(
+        &self,
+        req: &PnlCalendarRequest,
+    ) -> Result<PnlCalendar> {
+        let trades = self.store.all_trades(&req.role)?;
+
+        // 只需要「首笔成交日 → 区间末」的日线：比首笔更早的日子没有任何持仓可估值。
+        // 区间起点比首笔更早时（例如「全部」用 2000-01-01）也不能按起点算，
+        // 否则会向接口要几十年的数据。基准线的「前一日收盘」由日线源自带的缓冲覆盖。
+        let data_start = trades
+            .first()
+            .map_or_else(|| req.from.clone(), |t| t.traded_at.chars().take(10).collect());
+        let needed_days = trading_days_between(&data_start, &req.to);
+
+        let mut codes: Vec<String> = Vec::new();
+        let mut yahoo_of: HashMap<String, String> = HashMap::new();
+        for trade in &trades {
+            let bare = trade.symbol.0.clone();
+            if yahoo_of.contains_key(&bare) {
+                continue;
+            }
+            if let Ok(yahoo) = crate::api::utils::to_yahoo_symbol(&bare) {
+                yahoo_of.insert(bare, yahoo.clone());
+                codes.push(yahoo);
+            }
+        }
+        // 指数既是基准，也用来推导交易日历
+        codes.extend(
+            super::pnl::BENCHMARKS
+                .iter()
+                .map(|(code, _)| (*code).to_string()),
+        );
+
+        let closes = self
+            .daily_closes
+            .daily_closes(&codes, needed_days)
+            .await
+            .map_err(|e| OrderError::Store(format!("历史日线获取失败: {e}")))?;
+
+        Ok(build_calendar(CalendarInput {
+            initial_capital: req.initial_capital,
+            from: &req.from,
+            to: &req.to,
+            granularity: req.granularity,
+            trades: &trades,
+            closes: &closes,
+            yahoo_of: &yahoo_of,
+        }))
     }
 
     /// 下一笔手动单。
@@ -279,6 +368,22 @@ fn normalize_symbol(raw: &str) -> Result<StockCode> {
     crate::api::utils::to_yahoo_symbol(trimmed)
         .map(StockCode::new)
         .map_err(|e| OrderError::InvalidSymbol(format!("{trimmed}（{e}）")))
+}
+
+/// 两个日期之间的自然日数，按 ~5/7 折算成交易日估算。
+///
+/// 只是给日线接口一个够用的 `tick_count`，多要无害、少要会缺数据，所以向上取。
+fn trading_days_between(from: &str, to: &str) -> u32 {
+    use chrono::NaiveDate;
+
+    let parse = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+    let (Some(start), Some(end)) = (parse(from), parse(to)) else {
+        // 日期解析不了就退到一个足够大的默认值（约三年交易日）
+        return 750;
+    };
+    let calendar_days = (end - start).num_days().max(0);
+    let estimate = (calendar_days * 5).div_euclid(7) + 10;
+    u32::try_from(estimate).unwrap_or(750).max(10)
 }
 
 fn day_of(timestamp: &str) -> String {

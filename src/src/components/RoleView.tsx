@@ -3,6 +3,7 @@ import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
 import { AlertTriangle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PnlPanel } from "@/components/PnlPanel"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -28,7 +29,6 @@ import {
   type RoleAccount,
   type RoleTrade,
   type ClosedPosition,
-  type PnlPoint,
   type StockSearchItem,
 } from "@/stores/data"
 import { searchStocks } from "@/lib/stock-utils"
@@ -40,7 +40,6 @@ import {
   useRoleAccount,
   useRoleTrades,
   useRoleHistory,
-  useRolePnlHistory,
   ROLE_LIVE_REFRESH_MS,
   ROLE_SIDEBAR_REFRESH_MS,
 } from "@/hooks/query/useRoleQueries"
@@ -76,8 +75,6 @@ function FieldError({ children }: { children: string }) {
 /** A 股整手股数。买入必须是它的整数倍（与后端 `Shares::require_board_lot` 一致）。 */
 const BOARD_LOT = 100
 
-/** 盈利曲线默认展示的交易日数量，与 hook 默认值保持一致。 */
-const PNL_HISTORY_DAYS = 30
 
 /**
  * 只接受不会被后端 `normalize_code` 误解析的输入：
@@ -447,134 +444,6 @@ function AccountOverview({
   )
 }
 
-// ── P&L Chart (SVG) — uses backend pnl-history endpoint ──
-
-function PnlChart({ points, initialCapital }: { points: PnlPoint[]; initialCapital: number }) {
-  if (points.length === 0) {
-    return (
-      <div className="text-secondary text-caption py-12 text-center">
-        暂无交易数据，无法生成盈利曲线
-      </div>
-    )
-  }
-  const W = 700
-  const H = 260
-  const padL = 50
-  const padR = 20
-  const padT = 20
-  const padB = 30
-  const plotW = W - padL - padR
-  const plotH = H - padT - padB
-
-  // Map each point to equity delta from initial capital
-  const values = points.map((p) => (p.equity ?? initialCapital) - initialCapital)
-  const minVal = Math.min(0, ...values) - 100
-  const maxVal = Math.max(0, ...values) + 100
-  const range = maxVal - minVal || 1
-  const x = (i: number) => padL + (i / Math.max(points.length - 1, 1)) * plotW
-  const y = (v: number) => padT + (1 - (v - minVal) / range) * plotH
-  const zeroY = y(0)
-
-  let pathD = ""
-  let areaD = ""
-  points.forEach((p, i) => {
-    const cmd = i === 0 ? "M" : "L"
-    const val = (p.equity ?? initialCapital) - initialCapital
-    const xv = x(i).toFixed(1)
-    const yv = y(val).toFixed(1)
-    pathD += `${cmd}${xv},${yv} `
-    areaD += `${cmd}${xv},${yv} `
-  })
-  areaD += `L${x(points.length - 1).toFixed(1)},${zeroY} L${x(0).toFixed(1)},${zeroY} Z`
-
-  // Y labels
-  const yLabels = Array.from({ length: 5 }, (_, i) => {
-    const val = minVal + (range * i) / 4
-    const ly = y(val)
-    return (
-      <g key={`y-${i}`}>
-        <text x={padL - 8} y={ly + 3} textAnchor="end" fontSize="9" fill="var(--color-tertiary)">
-          ¥{val.toFixed(0)}
-        </text>
-        <line
-          x1={padL}
-          y1={ly}
-          x2={W - padR}
-          y2={ly}
-          stroke="var(--color-hairline)"
-          strokeWidth="0.5"
-          strokeDasharray="3,3"
-        />
-      </g>
-    )
-  })
-
-  // X labels — show MM-DD
-  const labelStep = Math.max(1, Math.floor(points.length / 5))
-  const xLabels = points
-    .map((p, i) => ({ p, i }))
-    .filter(({ i }) => i % labelStep === 0 || i === points.length - 1)
-    .map(({ p, i }) => (
-      <text
-        key={`x-${p.date}-${i}`}
-        x={x(i)}
-        y={H - 8}
-        textAnchor="middle"
-        fontSize="9"
-        fill="var(--color-tertiary)"
-      >
-        {p.date.slice(5)}
-      </text>
-    ))
-
-  // Highlight final point with a larger circle if it reflects live mark-to-market
-  const circles = points.map((p, i) => {
-    const isLast = i === points.length - 1
-    const val = (p.equity ?? initialCapital) - initialCapital
-    return (
-      <circle
-        key={`c-${i}`}
-        cx={x(i)}
-        cy={y(val)}
-        r={isLast ? "4.5" : "3"}
-        fill="var(--color-accent)"
-        stroke="var(--color-primary)"
-        strokeWidth="1.5"
-      />
-    )
-  })
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      style={{ width: "100%", height: 280 }}
-      role="img"
-      aria-label="角色收益曲线"
-    >
-      {yLabels}
-      <line
-        x1={padL}
-        y1={zeroY}
-        x2={W - padR}
-        y2={zeroY}
-        stroke="var(--color-hairline)"
-        strokeWidth="1"
-        strokeDasharray="6,4"
-      />
-      <path d={areaD} fill="var(--color-accent)" opacity="0.08" />
-      <path
-        d={pathD}
-        fill="none"
-        stroke="var(--color-accent)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {circles}
-      {xLabels}
-    </svg>
-  )
-}
 
 // ── 买入 Dialog ────────────────────────────────────────
 
@@ -1188,13 +1057,11 @@ export default function RoleView() {
   const accountQuery = useRoleAccount(activeRole ?? "")
   const tradesQuery = useRoleTrades(activeRole ?? "")
   const historyQuery = useRoleHistory(activeRole ?? "")
-  const pnlQuery = useRolePnlHistory(activeRole ?? "", PNL_HISTORY_DAYS)
 
   const positions = positionsQuery.data ?? []
   const account = accountQuery.data
   const trades = tradesQuery.data ?? []
   const history = historyQuery.data ?? []
-  const pnlPoints = pnlQuery.data ?? []
 
   const createRoleMutation = useCreateRole()
   const deleteRoleMutation = useDeleteRole()
@@ -1702,56 +1569,14 @@ export default function RoleView() {
                   <div className="border-hairline flex flex-wrap items-baseline justify-between gap-2 border-b px-5 py-4">
                     <h3 className="text-h2 text-primary font-medium">累计盈利曲线</h3>
                     <span className="text-tertiary text-caption">
-                      最近 {PNL_HISTORY_DAYS} 个交易日
+                      按当日收盘价估值，支持曲线与日历视图
                     </span>
                   </div>
-                  {/* 基准线取自账户的初始资金，账户未就绪时先占位，避免用 0 画出一条错误曲线 */}
-                  {accountQuery.isPending ? (
-                    <div className="px-5 py-6">
-                      <Skeleton className="h-[280px] w-full" />
-                    </div>
-                  ) : accountQuery.error ? (
-                    <TableStatus
-                      kind="error"
-                      message={`账户信息加载失败：${errorText(accountQuery.error)}`}
-                      onRetry={() => void accountQuery.refetch()}
-                    />
-                  ) : pnlQuery.isPending ? (
-                    <div className="px-5 py-6">
-                      <Skeleton className="h-[280px] w-full" />
-                    </div>
-                  ) : pnlQuery.isError ? (
-                    <TableStatus
-                      kind="error"
-                      message={`盈利曲线加载失败：${errorText(pnlQuery.error)}`}
-                      onRetry={() => void pnlQuery.refetch()}
-                    />
-                  ) : account ? (
-                    <PnlChart points={pnlPoints} initialCapital={account.initial_capital} />
+                  {activeRole ? (
+                    <PnlPanel roleName={activeRole} />
                   ) : (
-                    <TableStatus
-                      kind="error"
-                      message="账户信息不可用，无法生成盈利曲线"
-                      onRetry={() => void accountQuery.refetch()}
-                    />
+                    <TableStatus kind="error" message="未选择角色" />
                   )}
-                  <div className="border-hairline text-secondary text-caption flex flex-wrap gap-x-5 gap-y-2 border-t px-5 py-3">
-                    <span className="flex items-center gap-2">
-                      <span className="bg-brand inline-block size-2 rounded-full" />
-                      累计盈亏
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="inline-block size-2 rounded-full"
-                        style={{ background: "var(--color-hairline)" }}
-                      />
-                      基准线
-                    </span>
-                    <span className="text-tertiary ml-auto">末点含实时行情</span>
-                  </div>
-                  <p className="text-tertiary text-caption border-hairline border-t px-5 py-2.5">
-                    历史点按当日持仓成本估算，最后一点按实时行情估值；行情缺失时末点可能不完整。
-                  </p>
                 </div>
               )}
 

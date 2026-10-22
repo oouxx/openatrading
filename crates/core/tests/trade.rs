@@ -648,3 +648,77 @@ async fn concurrent_orders_never_overdraw_cash() {
         "成功的单数应与落库流水数一致（失败的不得留痕）"
     );
 }
+
+// ── 区间收益分析（pnl_calendar） ──────────────────────────────────────────
+
+/// 可控的假日线源。
+struct FakeDailyCloses {
+    map: openatrading_core::trade::history::DailyCloseMap,
+}
+
+#[async_trait]
+impl openatrading_core::trade::DailyCloseSource for FakeDailyCloses {
+    async fn daily_closes(
+        &self,
+        _codes: &[String],
+        _trading_days: u32,
+    ) -> anyhow::Result<openatrading_core::trade::history::DailyCloseMap> {
+        Ok(self.map.clone())
+    }
+}
+
+/// 建一个「有成交 + 有日线」的服务：10 元买入 1000 股，随后两天收盘 12 / 9。
+fn calendar_service(dir: &tempfile::TempDir) -> TradeService {
+    use std::collections::BTreeMap;
+
+    let store = must(TradeStore::open(&dir.path().join("trade.db")), "打开交易库");
+    let mut series = BTreeMap::new();
+    let day = openatrading_core::utils::time::beijing_now()
+        .format("%Y-%m-%d")
+        .to_string();
+    series.insert(day.clone(), 12.0);
+    let mut map = openatrading_core::trade::history::DailyCloseMap::new();
+    map.insert("600000.SS".to_string(), series);
+    map.insert("000001.SS".to_string(), BTreeMap::from([(day, 3000.0)]));
+
+    TradeService::with_daily_closes(
+        Arc::new(store),
+        Arc::new(FakeQuotes::new(&[("600000", 12.0)])),
+        Arc::new(FakeDailyCloses { map }),
+    )
+}
+
+/// 区间分析用当日收盘价给持仓估值：买入价 10、当日收盘 12，
+/// 权益应为「现金 90000 + 1000×12 = 102000」，收益率 +2%。
+#[tokio::test]
+async fn pnl_calendar_uses_daily_close() {
+    use openatrading_core::trade::{Granularity, PnlCalendarRequest};
+
+    let dir = temp();
+    let svc = calendar_service(&dir);
+    must(svc.place_order("r", CAPITAL, &order(Side::Buy, "600000", 1000, 10.0)).await, "下单");
+
+    let today = openatrading_core::utils::time::beijing_now().format("%Y-%m-%d").to_string();
+    let cal = must(
+        svc.pnl_calendar(&PnlCalendarRequest {
+            role: "r".into(),
+            initial_capital: CAPITAL,
+            from: today.clone(),
+            to: today,
+            granularity: Granularity::Day,
+        })
+        .await,
+        "区间分析",
+    );
+
+    assert_eq!(cal.points.len(), 1);
+    assert_close(cal.points[0].equity, 102_000.0, "当日权益");
+    assert_close(cal.summary.total_pnl, 2_000.0, "区间盈亏");
+    assert_close(cal.summary.total_pct, 2.0, "区间收益率");
+    // 基准确认：上证同日收盘 3000，区间内无量价变化，涨跌幅为 0
+    let sh = must(
+        cal.benchmarks.iter().find(|b| b.name == "上证").ok_or("缺上证基准"),
+        "找上证基准",
+    );
+    assert_close(sh.pct.unwrap_or(f64::NAN), 0.0, "上证涨跌幅");
+}

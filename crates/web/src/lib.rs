@@ -110,6 +110,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/roles/:name/pnl-history",
             get(web::get_role_pnl_history),
         )
+        .route(
+            "/api/roles/:name/pnl-calendar",
+            get(web::get_role_pnl_calendar),
+        )
         .route("/api/roles/:name/history", get(web::get_role_history))
         .route("/api/replay/events", get(web::get_replay_events))
         .route("/api/replay/index", get(web::get_replay_index))

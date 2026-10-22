@@ -242,6 +242,57 @@ export interface PnlHistoryResponse {
   initial_capital: number
 }
 
+/** 区间收益分析的粒度。 */
+export type PnlGranularity = "day" | "month" | "year"
+
+/** 区间收益曲线上的一点（与后端 `PnlPointView` 对齐）。 */
+export interface PnlCalendarPoint {
+  date: string
+  equity: number
+  cash: number
+  market_value: number
+  /** 本期盈亏金额。 */
+  pnl: number
+  /** 本期收益率（百分数，1.5 表示 +1.5%）。 */
+  pct: number
+  /** 区间累计盈亏金额。 */
+  cum_pnl: number
+  /** 区间累计收益率（百分数）。 */
+  cum_pct: number
+}
+
+export interface PnlBenchmark {
+  code: string
+  name: string
+  /** 拿不到数据时为 null，UI 显示 —。 */
+  pct: number | null
+}
+
+export interface PnlCalendarSummary {
+  total_pnl: number
+  total_pct: number
+  /** 日粒度是交易日数，月/年粒度是月/年数。 */
+  trading_days: number
+  win_days: number
+  lose_days: number
+  max_drawdown_pct: number
+}
+
+export interface PnlCalendar {
+  from: string
+  to: string
+  points: PnlCalendarPoint[]
+  summary: PnlCalendarSummary
+  benchmarks: PnlBenchmark[]
+  /** 有持仓在某天拿不到收盘价，退化为成本价估值。 */
+  incomplete: boolean
+}
+
+export interface PnlCalendarResponse {
+  initial_capital: number
+  calendar: PnlCalendar
+}
+
 /** 已平仓记录 —— GET /api/roles/:name/history（只包含卖出成交） */
 export interface ClosedPosition {
   id: number

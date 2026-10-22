@@ -79,6 +79,7 @@ export const platesByStockKeys = {
 const roleTradesScope = (name: string) => ["roles", "trades", name] as const
 const roleHistoryScope = (name: string) => ["roles", "history", name] as const
 const rolePnlHistoryScope = (name: string) => ["roles", "pnl-history", name] as const
+const rolePnlCalendarScope = (name: string) => ["roles", "pnl-calendar", name] as const
 
 export const roleKeys = {
   all: ["roles"] as const,
@@ -88,6 +89,8 @@ export const roleKeys = {
   account: (name: string) => [...roleKeys.all, "account", name] as const,
   logs: (name: string) => [...roleKeys.all, "logs", name] as const,
   trades: (name: string, limit: number) => [...roleTradesScope(name), limit] as const,
+  pnlCalendar: (name: string, from: string, to: string, granularity: string) =>
+    [...rolePnlCalendarScope(name), from, to, granularity] as const,
   tradesScope: roleTradesScope,
   pnlHistory: (name: string, days: number) => [...rolePnlHistoryScope(name), days] as const,
   pnlHistoryScope: rolePnlHistoryScope,

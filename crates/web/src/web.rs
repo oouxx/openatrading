@@ -595,6 +595,36 @@ pub async fn reset_role(
     role_action_response(crate::handlers::reset_role_data(&state, &name).await)
 }
 
+/// GET /api/roles/:name/pnl-calendar — 区间收益分析（日历/曲线）
+#[derive(serde::Deserialize)]
+pub struct PnlCalendarQuery {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub granularity: Option<String>,
+}
+
+/// GET /api/roles/:name/pnl-calendar?from=&to=&granularity=
+pub async fn get_role_pnl_calendar(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(q): Query<PnlCalendarQuery>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    match crate::handlers::get_role_pnl_calendar_data(
+        &state,
+        &name,
+        q.from.as_deref(),
+        q.to.as_deref(),
+        q.granularity.as_deref(),
+    )
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err((status, msg)) => (status, Json(serde_json::json!({ "error": msg }))).into_response(),
+    }
+}
+
 /// GET /api/roles/:name/pnl-history?days=30 — P&L curve data
 pub async fn get_role_pnl_history(
     State(state): State<Arc<AppState>>,

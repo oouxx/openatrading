@@ -11,7 +11,9 @@
 //!
 //! 因此不存在「现金列与流水不一致」的可能。
 
+pub mod history;
 pub mod order;
+pub mod pnl;
 pub mod quote;
 pub mod service;
 pub mod store;
@@ -20,8 +22,10 @@ pub use order::{
     round_money, Account, ClosedTrade, OrderRequest, PnlPoint, Position, PositionView, Price,
     Shares, Side, Trade,
 };
+pub use history::{ApiDailyCloseSource, DailyCloseSource};
+pub use pnl::{BenchmarkView, Granularity, PnlCalendar, PnlPointView, PnlSummary};
 pub use quote::{ApiQuoteSource, Quote, QuoteSource};
-pub use service::TradeService;
+pub use service::{PnlCalendarRequest, TradeService};
 pub use store::{OrderOutcome, PlaceOrderCtx, TradeStore};
 
 /// 交易账户的错误类型。

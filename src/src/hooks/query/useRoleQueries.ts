@@ -8,6 +8,7 @@ import type {
   RoleTrade,
   RoleLog,
   PnlHistoryResponse,
+  PnlCalendarResponse,
   ClosedPosition,
 } from "@/stores/data"
 
@@ -79,6 +80,29 @@ export function useRolePnlHistory(name: string, days = 30) {
     },
     staleTime: 30_000,
     // 曲线末点用实时行情估值，和持仓/账户保持同一量级的刷新频率。
+    refetchInterval: ROLE_SIDEBAR_REFRESH_MS,
+    refetchOnWindowFocus: true,
+    enabled: !!name,
+  })
+}
+
+/**
+ * 区间收益分析（曲线 + 日历共用同一次请求）。
+ *
+ * 固定按 `day` 粒度取：日历需要逐日数据，曲线在月/年维度由前端聚合，
+ * 这样切换视图不会触发新请求。
+ */
+export function usePnlCalendar(name: string, from: string, to: string) {
+  return useQuery({
+    queryKey: roleKeys.pnlCalendar(name, from, to, "day"),
+    queryFn: async () => {
+      const res = await fetchJson<PnlCalendarResponse>(
+        `/api/roles/${encodeURIComponent(name)}/pnl-calendar?from=${from}&to=${to}&granularity=day`,
+      )
+      return res.calendar
+    },
+    // 末点是实时估值，和账户/持仓保持同一刷新频率
+    staleTime: 30_000,
     refetchInterval: ROLE_SIDEBAR_REFRESH_MS,
     refetchOnWindowFocus: true,
     enabled: !!name,

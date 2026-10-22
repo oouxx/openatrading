@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use axum::http::StatusCode;
+
 use crate::cache::{self, CachePolicy};
 use crate::AppState;
 
@@ -596,6 +598,86 @@ pub async fn get_role_pnl_history_data(
         .await
         .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({"points": points, "initial_capital": capital}))
+}
+
+/// GET /api/roles/:name/pnl-calendar?from=&to=&granularity=
+///
+/// `granularity` 取 `day` / `month` / `year`；`from`/`to` 为 `YYYY-MM-DD`（含当天）。
+/// 缺省时返回「本月」，与前端默认维度一致。
+pub async fn get_role_pnl_calendar_data(
+    state: &Arc<AppState>,
+    name: &str,
+    from: Option<&str>,
+    to: Option<&str>,
+    granularity: Option<&str>,
+) -> Result<serde_json::Value, (StatusCode, String)> {
+    use openatrading_core::trade::{Granularity, PnlCalendarRequest};
+
+    let today = openatrading_core::utils::time::beijing_now()
+        .format("%Y-%m-%d")
+        .to_string();
+    let to = to.map_or(today.clone(), str::to_string);
+    let from = from.map_or_else(|| month_start(&today), str::to_string);
+    let granularity = granularity
+        .map_or(Some(Granularity::Day), Granularity::parse)
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "granularity 只支持 day / month / year".to_string(),
+            )
+        })?;
+
+    for (label, date) in [("from", &from), ("to", &to)] {
+        if !is_iso_date(date) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("{label} 需要 YYYY-MM-DD 格式，收到 {date}"),
+            ));
+        }
+    }
+    if from > to {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("起始日期 {from} 晚于结束日期 {to}"),
+        ));
+    }
+
+    let capital = initial_capital_of(state, name).await;
+    let calendar = state
+        .ctx
+        .trade
+        .pnl_calendar(&PnlCalendarRequest {
+            role: name.to_string(),
+            initial_capital: capital,
+            from,
+            to,
+            granularity,
+        })
+        .await
+        .map_err(|e| {
+            openatrading_core::log::error!("区间收益分析失败: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "区间收益分析失败，请查看服务端日志".to_string(),
+            )
+        })?;
+
+    Ok(serde_json::json!({
+        "initial_capital": capital,
+        "calendar": calendar,
+    }))
+}
+
+/// `2026-10-21` → `2026-10-01`
+fn month_start(date: &str) -> String {
+    format!("{}-01", date.get(..7).unwrap_or(date))
+}
+
+fn is_iso_date(value: &str) -> bool {
+    value.len() == 10
+        && value.as_bytes()[4] == b'-'
+        && value.as_bytes()[7] == b'-'
+        && chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
 }
 
 /// GET /api/roles/:name/history
