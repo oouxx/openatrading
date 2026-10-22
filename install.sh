@@ -1,17 +1,8 @@
 #!/bin/bash
 set -e
 
-# 下载源由环境变量提供（仓库里不写死具体域名）：
-#   DL_SERVER=https://your-domain ./install.sh
-DL_SERVER="${DL_SERVER:-}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-
-if [ -z "$DL_SERVER" ] && [ "${1:-}" != "--uninstall" ] && [ "${1:-}" != "-u" ] && [ "${1:-}" != "--help" ] && [ "${1:-}" != "-h" ]; then
-  echo "❌ 未指定下载服务器。请设置环境变量后再运行："
-  echo "     DL_SERVER=https://<your-domain> ./install.sh"
-  exit 1
-fi
-DL_SERVER="${DL_SERVER%/}"
+RELEASES_LATEST="https://github.com/oouxx/openatrading/releases/latest"
 
 # ── Usage ─────────────────────────────────────────────────
 
@@ -22,7 +13,8 @@ usage() {
   echo "  ./install.sh --uninstall  卸载 openatrading"
   echo ""
   echo "环境变量:"
-  echo "  DL_SERVER   下载服务器地址 (必填，例: https://dl.example.com)"
+  echo "  DL_SERVER   自建下载服务器根地址（可选，例: https://dl.example.com）"
+  echo "              不设置时 CLI 走 GitHub Releases"
   echo "  INSTALL_DIR CLI 安装目录 (默认: /usr/local/bin)"
   exit 0
 }
@@ -33,6 +25,27 @@ case "${1:-}" in
   --uninstall|-u) MODE="uninstall" ;;
   --help|-h)      usage ;;
 esac
+
+# ── 下载基地址 ────────────────────────────────────────────
+# CLI 资产在 GitHub Releases 上是固定文件名（openatrading-x86_64-unknown-linux-gnu），
+# 可以直接拼 URL；桌面包名带版本号（openatrading_0.15.14_amd64.deb），走 Releases
+# 需要额外解析，所以 --desktop 仍要求自建下载服务器（或直接去 Releases 页面下）。
+if [ -n "${DL_SERVER:-}" ]; then
+  DL_BASE="${DL_SERVER%/}/downloads"
+else
+  case "$MODE" in
+    uninstall) DL_BASE="" ;;
+    desktop)
+      echo "❌ --desktop 需要 DL_SERVER（Releases 上的桌面包名带版本号，无法直接拼 URL）"
+      echo "   直接从 ${RELEASES_LATEST} 下载即可；"
+      echo "   或设置 DL_SERVER=https://<your-domain> 使用自建下载目录。"
+      exit 1 ;;
+    *)
+      DL_BASE="${RELEASES_LATEST}/download"
+      echo "⬇ 未指定 DL_SERVER，CLI 从 GitHub Releases 下载"
+      ;;
+  esac
+fi
 
 # ── Detect platform ────────────────────────────────────
 
@@ -58,7 +71,7 @@ fi
 download_file() {
   local filename="$1"
   local out="$2"
-  local url="${DL_SERVER}/downloads/${filename}"
+  local url="${DL_BASE}/${filename}"
   echo "⬇ 正在下载 ${filename}..."
   local http_code
   http_code=$(curl -fsSL -w "%{http_code}" -o "$out" "$url")
@@ -131,7 +144,7 @@ if [ "$MODE" = "desktop" ]; then
     if ! try_download "$ASSET_NAME" "$TMP_DIR/$ASSET_NAME"; then
       echo ""
       echo "❌ 未找到 macOS 桌面客户端 (${ARCH})"
-      echo "   请访问 ${DL_SERVER} 查看可用版本"
+      echo "   请访问 ${RELEASES_LATEST} 查看可用版本"
       exit 1
     fi
 
@@ -171,7 +184,7 @@ if [ "$MODE" = "desktop" ]; then
     else
       echo ""
       echo "❌ 未找到 Linux 桌面客户端 (${ARCH})"
-      echo "   请访问 ${DL_SERVER} 查看可用版本"
+      echo "   请访问 ${RELEASES_LATEST} 查看可用版本"
       exit 1
     fi
 
@@ -192,7 +205,7 @@ if [ "$MODE" = "desktop" ]; then
     else
       echo ""
       echo "❌ 未找到 Windows 桌面客户端"
-      echo "   请访问 ${DL_SERVER} 查看可用版本"
+      echo "   请访问 ${RELEASES_LATEST} 查看可用版本"
       exit 1
     fi
   else
@@ -220,7 +233,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 if ! try_download "$CLI_ASSET" "$TMP_DIR/openatrading"; then
   echo ""
   echo "❌ 未找到 CLI 二进制: $CLI_ASSET"
-  echo "   请访问 ${DL_SERVER} 查看可用版本"
+  echo "   请访问 ${RELEASES_LATEST} 查看可用版本"
   exit 1
 fi
 

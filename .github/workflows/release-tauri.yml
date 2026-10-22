@@ -18,9 +18,6 @@ permissions:
   contents: write
 
 env:
-  UPLOAD_SERVER_HOST: ${{ secrets.UPLOAD_SERVER_HOST }}
-  UPLOAD_SERVER_USER: ${{ secrets.UPLOAD_SERVER_USER }}
-  UPLOAD_SERVER_PATH: ${{ secrets.UPLOAD_SERVER_PATH }}
 
 jobs:
   create-release:
