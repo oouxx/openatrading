@@ -760,78 +760,291 @@ pub async fn get_replay_news_data(
 
 // ── Dragon Tiger ─────────────────────────────────────────────────────────
 
+/// GET /api/dragon-tiger/detail 的查询参数
+#[derive(Debug, Clone, Default)]
+pub struct DragonTigerDetailParams {
+    pub page: usize,
+    pub page_size: usize,
+    pub dept: Option<String>,
+}
+
+/// 合并后的龙虎榜个股（近 3 个交易日）
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DragonTigerStock {
+    #[serde(flatten)]
+    pub detail: openatrading_core::api::eastmoney::LhbDetail,
+    /// 该股在窗口内上榜的交易日，倒序
+    pub trade_dates: Vec<String>,
+    /// 去重后的上榜原因
+    pub reasons: Vec<String>,
+    /// 参与过该股的营业部（买卖席位合并）
+    pub dept_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct DragonTigerDataset {
+    items: Vec<DragonTigerStock>,
+    depts: Vec<String>,
+}
+
+#[derive(Debug)]
+struct DragonTigerDay {
+    date: String,
+    detail: openatrading_core::api::eastmoney::LhbDetail,
+    reasons: Vec<String>,
+}
+
+/// `2026-10-21 00:00:00` → `2026-10-21`
+fn dragon_tiger_day(value: &str) -> String {
+    value.split(' ').next().unwrap_or(value).to_string()
+}
+
+/// 「连续 N 个交易日」「累计」属于跨日口径，和当日口径的净买入不是同一个数。
+fn is_multi_day_reason(reason: &str) -> bool {
+    reason.contains("连续") || reason.contains("累计")
+}
+
+/// 同一天同一只股票可能有多条上榜原因，金额字段可能重复。
+/// 优先取当日口径的那条，避免把跨日累计金额和当日金额混在一起。
+fn pick_daily_detail(
+    rows: &[openatrading_core::api::eastmoney::LhbDetail],
+) -> Option<&openatrading_core::api::eastmoney::LhbDetail> {
+    rows.iter()
+        .find(|row| {
+            row.explanation
+                .as_deref()
+                .map_or(true, |reason| !is_multi_day_reason(reason))
+        })
+        .or_else(|| rows.first())
+}
+
+fn split_reasons(explanation: Option<&str>) -> impl Iterator<Item = &str> {
+    explanation
+        .into_iter()
+        .flat_map(|text| text.split([';', '；']))
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+}
+
+fn sum_days(
+    days: &[DragonTigerDay],
+    get: impl Fn(&openatrading_core::api::eastmoney::LhbDetail) -> Option<f64>,
+) -> Option<f64> {
+    let mut total = 0.0;
+    let mut found = false;
+    for day in days {
+        if let Some(value) = get(&day.detail) {
+            total += value;
+            found = true;
+        }
+    }
+    found.then_some(total)
+}
+
+/// 把近 3 个交易日的明细和席位合并成「一只股票一行」。
+///
+/// 同一天同一只股票的多条上榜原因会去重合并；金额只取当日口径，
+/// 避免同一天重复行把净买入翻倍。
+fn build_dragon_tiger_dataset(
+    details: Vec<openatrading_core::api::eastmoney::LhbDetail>,
+    seats: Vec<openatrading_core::api::eastmoney::LhbSeatRecord>,
+) -> DragonTigerDataset {
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+    // (code, date) → 参与该股的营业部
+    let mut seats_by_day: HashMap<String, HashMap<String, BTreeSet<String>>> = HashMap::new();
+    for seat in seats {
+        if seat.dept_name.is_empty() {
+            continue;
+        }
+        seats_by_day
+            .entry(seat.code)
+            .or_default()
+            .entry(seat.trade_date)
+            .or_default()
+            .insert(seat.dept_name);
+    }
+
+    // 先按 (code, date) 归组，再按 code 合并
+    let mut by_day: BTreeMap<(String, String), Vec<_>> = BTreeMap::new();
+    for item in details {
+        let date = dragon_tiger_day(&item.trade_date);
+        by_day
+            .entry((item.code.clone(), date))
+            .or_default()
+            .push(item);
+    }
+
+    let mut by_stock: BTreeMap<String, Vec<DragonTigerDay>> = BTreeMap::new();
+    for ((code, date), rows) in by_day {
+        let Some(canonical) = pick_daily_detail(&rows) else {
+            continue;
+        };
+        let mut reasons: Vec<String> = Vec::new();
+        for row in &rows {
+            for reason in split_reasons(row.explanation.as_deref()) {
+                if !reasons.iter().any(|existing| existing == reason) {
+                    reasons.push(reason.to_string());
+                }
+            }
+        }
+        by_stock.entry(code).or_default().push(DragonTigerDay {
+            date,
+            detail: canonical.clone(),
+            reasons,
+        });
+    }
+
+    let mut items: Vec<DragonTigerStock> = by_stock
+        .into_iter()
+        .filter_map(|(code, mut days)| {
+            days.sort_by(|a, b| b.date.cmp(&a.date));
+            let latest = days.first()?;
+            let mut detail = latest.detail.clone();
+            detail.trade_date.clone_from(&latest.date);
+            detail.billboard_net_amt = sum_days(&days, |d| d.billboard_net_amt);
+            detail.billboard_buy_amt = sum_days(&days, |d| d.billboard_buy_amt);
+            detail.billboard_sell_amt = sum_days(&days, |d| d.billboard_sell_amt);
+            detail.billboard_deal_amt = sum_days(&days, |d| d.billboard_deal_amt);
+
+            let mut reasons: Vec<String> = Vec::new();
+            let mut dept_names: BTreeSet<String> = BTreeSet::new();
+            for day in &days {
+                for reason in &day.reasons {
+                    if !reasons.contains(reason) {
+                        reasons.push(reason.clone());
+                    }
+                }
+                if let Some(depts) = seats_by_day.get(&code).and_then(|m| m.get(&day.date)) {
+                    dept_names.extend(depts.iter().cloned());
+                }
+            }
+            detail.explanation = if reasons.is_empty() {
+                None
+            } else {
+                Some(reasons.join("；"))
+            };
+
+            Some(DragonTigerStock {
+                detail,
+                trade_dates: days.iter().map(|day| day.date.clone()).collect(),
+                reasons,
+                dept_names: dept_names.into_iter().collect(),
+            })
+        })
+        .collect();
+
+    items.sort_by(|a, b| {
+        b.detail
+            .trade_date
+            .cmp(&a.detail.trade_date)
+            .then_with(|| {
+                b.detail
+                    .billboard_net_amt
+                    .unwrap_or(0.0)
+                    .total_cmp(&a.detail.billboard_net_amt.unwrap_or(0.0))
+            })
+            .then_with(|| a.detail.code.cmp(&b.detail.code))
+    });
+
+    let mut dept_counts: HashMap<String, usize> = HashMap::new();
+    for item in &items {
+        for dept in &item.dept_names {
+            *dept_counts.entry(dept.clone()).or_default() += 1;
+        }
+    }
+    let mut depts: Vec<String> = dept_counts.keys().cloned().collect();
+    depts.sort_by(|a, b| {
+        dept_counts
+            .get(b.as_str())
+            .copied()
+            .unwrap_or(0)
+            .cmp(&dept_counts.get(a.as_str()).copied().unwrap_or(0))
+            .then_with(|| a.cmp(b))
+    });
+
+    DragonTigerDataset { items, depts }
+}
+
+async fn fetch_dragon_tiger_dataset(state: &Arc<AppState>) -> Result<DragonTigerDataset, String> {
+    use openatrading_core::api::eastmoney::SeatFlag;
+    use openatrading_core::api::utils::last_n_trading_days;
+
+    let dates = last_n_trading_days(3);
+    let start = dates.last().ok_or_else(|| "no trading days".to_string())?;
+    let end = dates.first().ok_or_else(|| "no trading days".to_string())?;
+    let client = &state.ctx.api.eastmoney;
+
+    let (details, buy_seats, sell_seats) = tokio::try_join!(
+        client.lhb_detail(start, end),
+        client.lhb_seats_range(start, end, SeatFlag::Buy),
+        client.lhb_seats_range(start, end, SeatFlag::Sell),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut seats = buy_seats;
+    seats.extend(sell_seats);
+    Ok(build_dragon_tiger_dataset(details, seats))
+}
+
 /// GET /api/dragon-tiger/detail
 pub async fn get_dragon_tiger_detail_data(
     state: &Arc<AppState>,
-    page: usize,
-    page_size: usize,
+    params: DragonTigerDetailParams,
 ) -> Result<serde_json::Value, String> {
-    use openatrading_core::api::utils::last_n_trading_days;
-    use std::collections::HashMap;
+    let cached = get_or_fetch_json_tauri(
+        &state.cache,
+        "dragon_tiger_dataset_v2",
+        CachePolicy::daily(),
+        || fetch_dragon_tiger_dataset(state),
+    )
+    .await?;
+    let mut dataset: DragonTigerDataset = serde_json::from_value(cached)
+        .map_err(|e| format!("dragon tiger cache decode error: {e}"))?;
 
-    let dates = last_n_trading_days(3);
-    let raw = state
-        .ctx
-        .api
-        .eastmoney
-        .lhb_detail(
-            dates.last().map(|s| s.as_str()).unwrap_or(""),
-            dates.first().map(|s| s.as_str()).unwrap_or(""),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let mut merged: HashMap<(String, String), openatrading_core::api::eastmoney::LhbDetail> =
-        HashMap::new();
-    for item in raw {
-        let key = (item.code.clone(), item.trade_date.clone());
-        match merged.get_mut(&key) {
-            Some(existing) => {
-                existing.billboard_net_amt = existing
-                    .billboard_net_amt
-                    .zip(item.billboard_net_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_buy_amt = existing
-                    .billboard_buy_amt
-                    .zip(item.billboard_buy_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_sell_amt = existing
-                    .billboard_sell_amt
-                    .zip(item.billboard_sell_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_deal_amt = existing
-                    .billboard_deal_amt
-                    .zip(item.billboard_deal_amt)
-                    .map(|(a, b)| a + b);
-                if let Some(ref exp) = item.explanation {
-                    if !exp.is_empty() {
-                        let prefix = existing.explanation.as_deref().unwrap_or("");
-                        let sep = if prefix.is_empty() { "" } else { "; " };
-                        existing.explanation = Some(format!("{prefix}{sep}{exp}"));
-                    }
-                }
-            }
-            None => {
-                merged.insert(key, item);
-            }
-        }
+    if let Some(dept) = params
+        .dept
+        .as_deref()
+        .map(str::trim)
+        .filter(|dept| !dept.is_empty())
+    {
+        dataset
+            .items
+            .retain(|item| item.dept_names.iter().any(|name| name == dept));
     }
-    let merged_all: Vec<_> = merged.into_values().collect();
-    let total = merged_all.len();
-    let total_net_amt: f64 = merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
-    let net_buy_count = merged_all
+
+    let total = dataset.items.len();
+    let total_net_amt: f64 = dataset
+        .items
         .iter()
-        .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
-        .count();
-    let net_sell_count = merged_all
+        .filter_map(|item| item.detail.billboard_net_amt)
+        .sum();
+    let net_buy_count = dataset
+        .items
         .iter()
-        .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
+        .filter(|item| item.detail.billboard_net_amt.is_some_and(|v| v > 0.0))
         .count();
-    let start = page.saturating_sub(1) * page_size;
-    let data: Vec<_> = merged_all.into_iter().skip(start).take(page_size).collect();
+    let net_sell_count = dataset
+        .items
+        .iter()
+        .filter(|item| item.detail.billboard_net_amt.is_some_and(|v| v < 0.0))
+        .count();
+
+    let page_size = params.page_size.clamp(1, 100);
+    let page_count = total.div_ceil(page_size).max(1);
+    let page = params.page.max(1).min(page_count);
+    let start = page.saturating_sub(1).saturating_mul(page_size);
+    let data: Vec<_> = dataset.items.iter().skip(start).take(page_size).collect();
+
     Ok(serde_json::json!({
-        "data": data, "total": total, "page": page, "page_size": page_size,
-        "total_net_amt": total_net_amt, "net_buy_count": net_buy_count, "net_sell_count": net_sell_count,
+        "data": data,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_net_amt": total_net_amt,
+        "net_buy_count": net_buy_count,
+        "net_sell_count": net_sell_count,
+        "depts": dataset.depts,
     }))
 }
 
@@ -1421,6 +1634,106 @@ mod tests {
         // 非 A 股 / 无法推断交易所的输入回退原样，不破坏已有条目
         assert_eq!(normalize_watchlist_code("AAPL"), "AAPL");
         assert_eq!(normalize_watchlist_code("600000.SS"), "600000.SS");
+    }
+
+    fn lhb_detail(
+        code: &str,
+        date: &str,
+        reason: &str,
+        net: f64,
+    ) -> openatrading_core::api::eastmoney::LhbDetail {
+        openatrading_core::api::eastmoney::LhbDetail {
+            code: code.into(),
+            name: "测试股".into(),
+            trade_date: format!("{date} 00:00:00"),
+            close_price: Some(10.0),
+            change_rate: Some(1.0),
+            billboard_net_amt: Some(net),
+            billboard_buy_amt: Some(net + 10.0),
+            billboard_sell_amt: Some(10.0),
+            billboard_deal_amt: Some(net.abs() + 20.0),
+            accum_amount: Some(1000.0),
+            turnover_rate: Some(1.0),
+            free_market_cap: Some(100.0),
+            explanation: Some(reason.into()),
+            d1_chg: None,
+            d2_chg: None,
+            d5_chg: None,
+            d10_chg: None,
+        }
+    }
+
+    fn lhb_seat(
+        code: &str,
+        date: &str,
+        dept: &str,
+    ) -> openatrading_core::api::eastmoney::LhbSeatRecord {
+        openatrading_core::api::eastmoney::LhbSeatRecord {
+            code: code.into(),
+            trade_date: date.into(),
+            dept_name: dept.into(),
+        }
+    }
+
+    #[test]
+    fn dragon_tiger_merges_stock_reasons_and_amounts() {
+        let details = vec![
+            // 10-20：当日口径 + 跨日累计口径，金额只能取当日口径
+            lhb_detail("600241", "2026-10-20", "日换手率达到20%的前5只证券", 100.0),
+            lhb_detail(
+                "600241",
+                "2026-10-20",
+                "连续三个交易日内，涨幅偏离值累计达到20%的证券",
+                999.0,
+            ),
+            // 10-21：两条当日原因金额相同，不能相加；换手原因与 10-20 重复，需要去重
+            lhb_detail("600241", "2026-10-21", "日换手率达到20%的前5只证券", 50.0),
+            lhb_detail(
+                "600241",
+                "2026-10-21",
+                "日涨幅偏离值达到7%的前5只证券",
+                50.0,
+            ),
+            lhb_detail(
+                "000001",
+                "2026-10-21",
+                "日涨幅偏离值达到7%的前5只证券",
+                -30.0,
+            ),
+        ];
+        let seats = vec![
+            lhb_seat("600241", "2026-10-20", "机构专用"),
+            lhb_seat("600241", "2026-10-21", "华鑫证券上海分公司"),
+            lhb_seat("600241", "2026-10-21", "机构专用"),
+            lhb_seat("000001", "2026-10-21", "机构专用"),
+        ];
+
+        let dataset = build_dragon_tiger_dataset(details, seats);
+        assert_eq!(dataset.items.len(), 2, "同一只股票应合并成一行");
+
+        let item = dataset
+            .items
+            .iter()
+            .find(|item| item.detail.code == "600241")
+            .unwrap_or_else(|| panic!("600241 should exist"));
+        assert_eq!(item.trade_dates, vec!["2026-10-21", "2026-10-20"]);
+        assert_eq!(item.detail.trade_date, "2026-10-21");
+        assert_eq!(
+            item.detail.billboard_net_amt,
+            Some(150.0),
+            "跨日累计行不能参与同日金额相加"
+        );
+        assert_eq!(item.reasons.len(), 3, "重复原因需要去重");
+        assert!(item
+            .reasons
+            .contains(&"日涨幅偏离值达到7%的前5只证券".to_string()));
+        assert_eq!(
+            item.dept_names,
+            vec!["华鑫证券上海分公司".to_string(), "机构专用".to_string()],
+            "买卖席位里的营业部应合并到个股上"
+        );
+
+        assert_eq!(dataset.depts.first().map(String::as_str), Some("机构专用"));
     }
 
     #[test]

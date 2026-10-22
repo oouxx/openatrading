@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from "react"
+import { ChevronDownIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import {
   Dialog,
   DialogContent,
@@ -8,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   useDragonTigerDetail,
   useDragonTigerStockSeat,
@@ -18,25 +27,35 @@ import { formatCompactNumber } from "@/lib/format"
 export default function DragonTigerView() {
   const [page, setPage] = useState(1)
   const pageSize = 20
-  const { data: resp, isLoading, error } = useDragonTigerDetail(page, pageSize)
-  const [dirFilter, setDirFilter] = useState<"all" | "buy" | "sell">("all")
+  const [dept, setDept] = useState<string | null>(null)
+  const { data: resp, isLoading, isFetching, error } = useDragonTigerDetail(
+    page,
+    pageSize,
+    dept ?? undefined
+  )
+  const [deptOpen, setDeptOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<DragonTigerDetailItem | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
+  const seatDate = selectedDate ?? selected?.trade_date ?? null
   const { data: buySeats = [], isLoading: buyLoading } = useDragonTigerStockSeat(
     selected?.code ?? null,
-    selected?.trade_date ? selected.trade_date.slice(0, 10).replace(/-/g, "") : null,
+    seatDate ? seatDate.slice(0, 10).replace(/-/g, "") : null,
     "buy"
   )
   const { data: sellSeats = [], isLoading: sellLoading } = useDragonTigerStockSeat(
     selected?.code ?? null,
-    selected?.trade_date ? selected.trade_date.slice(0, 10).replace(/-/g, "") : null,
+    seatDate ? seatDate.slice(0, 10).replace(/-/g, "") : null,
     "sell"
   )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelected(null)
+      if (e.key === "Escape") {
+        setSelected(null)
+        setSelectedDate(null)
+      }
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
@@ -47,30 +66,58 @@ export default function DragonTigerView() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const filtered = items.filter((s) => {
-    if (dirFilter === "buy" && (s.billboard_net_amt ?? 0) <= 0) return false
-    if (dirFilter === "sell" && (s.billboard_net_amt ?? 0) >= 0) return false
-    if (
-      search &&
-      !s.name.toLowerCase().includes(search.toLowerCase()) &&
-      !s.code.toLowerCase().includes(search.toLowerCase())
-    ) {
-      return false
-    }
-    return true
+    if (!search) return true
+    const query = search.toLowerCase()
+    return s.name.toLowerCase().includes(query) || s.code.toLowerCase().includes(query)
   })
+
+  const selectedReasons = selected?.reasons?.length
+    ? selected.reasons
+    : selected?.explanation
+      ? [selected.explanation]
+      : []
+
+  const closeSelected = useCallback(() => {
+    setSelected(null)
+    setSelectedDate(null)
+  }, [])
+
+  const toggleSelected = useCallback(
+    (item: DragonTigerDetailItem) => {
+      if (selected?.code === item.code) {
+        closeSelected()
+        return
+      }
+      setSelected(item)
+      setSelectedDate(item.trade_date)
+    },
+    [selected?.code, closeSelected]
+  )
+
+  const handleDeptChange = useCallback(
+    (next: string | null) => {
+      setDept(next)
+      setPage(1)
+      closeSelected()
+    },
+    [closeSelected]
+  )
 
   const goPrev = useCallback(() => {
     setPage((p) => Math.max(1, p - 1))
-    setSelected(null)
-  }, [])
+    closeSelected()
+  }, [closeSelected])
   const goNext = useCallback(() => {
     setPage((p) => Math.min(totalPages, p + 1))
-    setSelected(null)
-  }, [totalPages])
-  const goPage = useCallback((p: number) => {
-    setPage(p)
-    setSelected(null)
-  }, [])
+    closeSelected()
+  }, [closeSelected, totalPages])
+  const goPage = useCallback(
+    (p: number) => {
+      setPage(p)
+      closeSelected()
+    },
+    [closeSelected]
+  )
 
   if (isLoading) {
     return (
@@ -177,40 +224,81 @@ export default function DragonTigerView() {
                 />
               </div>
               <div>
-                <div className="text-secondary text-caption mb-2 font-semibold">净买卖</div>
-                <div className="flex flex-wrap gap-2">
-                  {(["all", "buy", "sell"] as const).map((d) => {
-                    const labels = {
-                      all: "全部",
-                      buy: "净买入",
-                      sell: "净卖出",
-                    }
-                    const activeCls =
-                      d === "buy"
-                        ? "bg-up border-up text-primary"
-                        : d === "sell"
-                          ? "bg-down border-down text-primary"
-                          : "bg-brand border-brand text-primary"
-                    return (
-                      <Button
-                        key={d}
-                        variant="outline"
-                        size="xs"
-                        onClick={() => setDirFilter(d)}
-                        className={`text-caption h-auto px-3 py-1 ${dirFilter === d ? activeCls : "border-hairline text-secondary hover:text-primary"}`}
-                      >
-                        {labels[d]}
-                      </Button>
-                    )
-                  })}
+                <div className="text-secondary text-caption mb-2 flex items-center justify-between font-semibold">
+                  <span>营业部</span>
+                  {isFetching && <span className="font-normal">更新中…</span>}
                 </div>
+                <Popover open={deptOpen} onOpenChange={setDeptOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-haspopup="listbox"
+                      className="bg-canvas border-hairline text-caption hover:bg-hover h-8 w-full justify-between px-2.5 font-normal"
+                    >
+                      <span className="truncate" title={dept ?? "全部营业部"}>
+                        {dept ?? "全部营业部"}
+                      </span>
+                      <ChevronDownIcon className="size-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="bg-surface border-hairline shadow-modal w-80 max-w-[calc(100vw-2rem)] gap-0 rounded-lg border p-0 ring-0"
+                  >
+                    <Command className="rounded-lg!">
+                      <CommandInput placeholder="搜索营业部…" />
+                      <CommandList className="max-h-72">
+                        <CommandEmpty className="text-secondary text-caption py-4">
+                          无匹配营业部
+                        </CommandEmpty>
+                        <CommandItem
+                          value="全部营业部"
+                          data-checked={dept === null}
+                          onSelect={() => {
+                            handleDeptChange(null)
+                            setDeptOpen(false)
+                          }}
+                          className="text-caption"
+                        >
+                          <span className="truncate">全部营业部</span>
+                        </CommandItem>
+                        {(resp?.depts ?? []).map((name) => (
+                          <CommandItem
+                            key={name}
+                            value={name}
+                            data-checked={dept === name}
+                            onSelect={() => {
+                              handleDeptChange(name)
+                              setDeptOpen(false)
+                            }}
+                            className="text-caption"
+                          >
+                            <span className="truncate">{name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {dept && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => handleDeptChange(null)}
+                    className="text-caption text-secondary hover:text-primary mt-2 h-auto px-0"
+                  >
+                    清除营业部筛选
+                  </Button>
+                )}
               </div>
             </div>
           </div>
 
           <div className="bg-surface border-hairline order-1 overflow-hidden rounded-lg border md:order-0">
             <div className="border-hairline flex items-center justify-between gap-3 border-b px-4 py-3">
-              <h3 className="text-caption text-primary font-medium">龙虎榜上榜个股</h3>
+              <h3 className="text-caption text-primary font-medium">龙虎榜上榜个股 · 近3日</h3>
               <span className="text-secondary text-caption">
                 第{page}/{totalPages}页 · {total} 只
               </span>
@@ -220,7 +308,7 @@ export default function DragonTigerView() {
                 <thead>
                   <tr>
                     <th style={th}>名称</th>
-                    <th style={th}>净买入(万)</th>
+                    <th style={th}>净买入(亿)</th>
                     <th style={th}>涨跌幅</th>
                     <th style={th}>上榜原因</th>
                   </tr>
@@ -240,13 +328,24 @@ export default function DragonTigerView() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((s, i) => {
+                    filtered.map((s) => {
                       const up = (s.billboard_net_amt ?? 0) >= 0
+                      const dateLabel = (s.trade_dates?.length
+                        ? [...s.trade_dates].reverse()
+                        : [s.trade_date.slice(0, 10)]
+                      )
+                        .map((date) => date.slice(5))
+                        .join("、")
+                      const reasons = s.reasons?.length
+                        ? s.reasons
+                        : s.explanation
+                          ? [s.explanation]
+                          : []
                       return (
                         <tr
-                          key={`${s.code}-${i}`}
+                          key={s.code}
                           className={`[&>td]:hover:bg-hover cursor-pointer transition-colors ${selected?.code === s.code ? "[&>td]:!bg-brand/10" : ""}`}
-                          onClick={() => setSelected(selected?.code === s.code ? null : s)}
+                          onClick={() => toggleSelected(s)}
                         >
                           <td style={td}>
                             <button
@@ -255,33 +354,50 @@ export default function DragonTigerView() {
                               className="text-brand cursor-pointer font-medium hover:underline"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setSelected(selected?.code === s.code ? null : s)
+                                toggleSelected(s)
                               }}
                             >
                               {s.name}
                             </button>
                             <span className="text-secondary text-caption ml-1">{s.code}</span>
+                            <div className="text-secondary text-caption font-number mt-0.5">
+                              {dateLabel}
+                            </div>
                           </td>
                           <td style={td}>
-                            <span
-                              className={`font-number text-caption font-semibold ${up ? "text-up" : "text-down"}`}
-                            >
-                              {up ? "+" : ""}
-                              {((s.billboard_net_amt ?? 0) / 1e8).toFixed(2)}亿
-                            </span>
+                            {s.billboard_net_amt == null ? (
+                              <span className="text-secondary text-caption">—</span>
+                            ) : (
+                              <span
+                                className={`font-number text-caption font-semibold ${up ? "text-up" : "text-down"}`}
+                              >
+                                {up ? "+" : ""}
+                                {(s.billboard_net_amt / 1e8).toFixed(2)}亿
+                              </span>
+                            )}
                           </td>
                           <td style={td}>
-                            <span
-                              className={`font-number text-caption font-semibold ${(s.change_rate ?? 0) >= 0 ? "text-up" : "text-down"}`}
-                            >
-                              {(s.change_rate ?? 0) >= 0 ? "+" : ""}
-                              {s.change_rate?.toFixed(2) ?? "—"}%
-                            </span>
+                            {s.change_rate == null ? (
+                              <span className="text-secondary text-caption">—</span>
+                            ) : (
+                              <span
+                                className={`font-number text-caption font-semibold ${s.change_rate >= 0 ? "text-up" : "text-down"}`}
+                              >
+                                {s.change_rate >= 0 ? "+" : ""}
+                                {s.change_rate.toFixed(2)}%
+                              </span>
+                            )}
                           </td>
                           <td style={td}>
-                            <span className="text-secondary text-caption inline-block max-w-[200px] whitespace-normal">
-                              {s.explanation || "—"}
-                            </span>
+                            {reasons.length === 0 ? (
+                              <span className="text-secondary text-caption">—</span>
+                            ) : (
+                              <div className="text-secondary text-caption flex max-w-[260px] flex-col gap-0.5 leading-snug whitespace-normal">
+                                {reasons.map((reason) => (
+                                  <span key={reason}>{reason}</span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       )
@@ -352,21 +468,45 @@ export default function DragonTigerView() {
           <Dialog
             open
             onOpenChange={(open) => {
-              if (!open) setSelected(null)
+              if (!open) closeSelected()
             }}
           >
             <DialogContent className="bg-surface border-hairline w-modal-lg shadow-modal flex max-h-[90vh] max-w-[95vw] flex-col gap-0 overflow-hidden rounded-lg border p-0 sm:max-w-[95vw]">
               <DialogHeader className="border-hairline flex shrink-0 flex-row items-center border-b px-5 py-4">
                 <DialogTitle className="text-h2 text-primary pr-10 font-medium">
                   {selected.name} ({selected.code})
+                  <span className="text-secondary text-caption font-number ml-2 font-normal">
+                    {seatDate?.slice(0, 10)}
+                  </span>
                 </DialogTitle>
                 <DialogDescription className="sr-only">龙虎榜个股详情</DialogDescription>
               </DialogHeader>
               <div className="min-h-0 flex-1 overflow-y-auto p-6">
-                {selected.explanation && (
+                {(selected.trade_dates?.length ?? 0) > 1 && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <span className="text-secondary text-caption">席位日期</span>
+                    {selected.trade_dates?.map((date) => (
+                      <Button
+                        key={date}
+                        type="button"
+                        variant={selectedDate === date ? "secondary" : "ghost"}
+                        size="xs"
+                        onClick={() => setSelectedDate(date)}
+                        className="text-caption font-number h-auto px-2 py-0.5"
+                      >
+                        {date.slice(5)}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {selectedReasons.length > 0 && (
                   <div className="mb-4">
                     <h4 className="text-caption text-primary mb-2 font-medium">上榜原因</h4>
-                    <p className="text-body text-secondary">{selected.explanation}</p>
+                    <ul className="text-body text-secondary space-y-1">
+                      {selectedReasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 <div className="mb-4 grid grid-cols-2 gap-3">

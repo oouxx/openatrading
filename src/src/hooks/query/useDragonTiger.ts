@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
 import { dragonTigerKeys } from "./queryKeys"
 
@@ -30,6 +30,12 @@ export interface DragonTigerDetailItem {
   d2_chg: number | null
   d5_chg: number | null
   d10_chg: number | null
+  /** 近 3 日上榜日期，倒序 */
+  trade_dates?: string[]
+  /** 去重后的上榜原因 */
+  reasons?: string[]
+  /** 参与过该股的营业部 */
+  dept_names?: string[]
 }
 
 export interface DragonTigerDetailResponse {
@@ -40,15 +46,22 @@ export interface DragonTigerDetailResponse {
   total_net_amt: number
   net_buy_count: number
   net_sell_count: number
+  /** 近 3 日出现过的全部营业部，按个股覆盖数倒序 */
+  depts: string[]
 }
 
-export function useDragonTigerDetail(page: number, pageSize: number) {
+export function useDragonTigerDetail(page: number, pageSize: number, dept?: string) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  if (dept) params.set("dept", dept)
+
   return useQuery({
-    queryKey: dragonTigerKeys.detail(page, pageSize),
+    queryKey: dragonTigerKeys.detail(page, pageSize, dept ?? ""),
     queryFn: () =>
-      fetchJson<DragonTigerDetailResponse>(
-        `/api/dragon-tiger/detail?page=${page}&page_size=${pageSize}`
-      ),
+      fetchJson<DragonTigerDetailResponse>(`/api/dragon-tiger/detail?${params.toString()}`),
+    placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
   })
 }

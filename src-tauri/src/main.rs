@@ -242,8 +242,16 @@ async fn dispatch_get_fallback(
         let page_size: usize = extract_query(path, "page_size")
             .and_then(|s| s.parse().ok())
             .unwrap_or(20);
-        return openatrading_web::handlers::get_dragon_tiger_detail_data(state, page, page_size)
-            .await;
+        let dept = extract_query(path, "dept");
+        return openatrading_web::handlers::get_dragon_tiger_detail_data(
+            state,
+            openatrading_web::handlers::DragonTigerDetailParams {
+                page,
+                page_size,
+                dept,
+            },
+        )
+        .await;
     }
     if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
         let code = extract_query(path, "code").unwrap_or_default();

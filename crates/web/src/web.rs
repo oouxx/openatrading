@@ -18,8 +18,6 @@ use crate::AppState;
 
 use crate::cache::{self, CachePolicy};
 use crate::market_stream::{FetchFn, StreamSpec};
-use openatrading_core::api::eastmoney::LhbDetail;
-use openatrading_core::api::utils::last_n_trading_days;
 use openatrading_core::api::utils::to_yahoo_symbol;
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
@@ -710,13 +708,14 @@ pub async fn get_replay_snapshots(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// GET /api/dragon-tiger/detail?page=1&page_size=20
+/// GET /api/dragon-tiger/detail?page=1&page_size=20&dept=...
 #[derive(Deserialize)]
 pub struct DragonTigerDetailQuery {
     #[serde(default = "default_page")]
     pub page: usize,
     #[serde(default = "default_page_size")]
     pub page_size: usize,
+    pub dept: Option<String>,
 }
 
 const fn default_page() -> usize {
@@ -730,96 +729,20 @@ pub async fn get_dragon_tiger_detail(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DragonTigerDetailQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let cached = cache::get_or_fetch(
-        &state.cache,
-        "dragon_tiger_detail",
-        CachePolicy::daily(),
-        || async {
-            let dates = last_n_trading_days(3);
-            let data = state
-                .ctx
-                .api
-                .eastmoney
-                .lhb_detail(
-                    dates.last().ok_or(StatusCode::BAD_REQUEST)?.as_str(),
-                    dates.first().ok_or(StatusCode::BAD_REQUEST)?.as_str(),
-                )
-                .await
-                .map_err(|e| {
-                    openatrading_core::log::error!("[dragon-tiger] detail fetch error: {:#}", e);
-                    StatusCode::SERVICE_UNAVAILABLE
-                })?;
-            Ok(serde_json::to_string(&data).unwrap_or_default())
+    crate::handlers::get_dragon_tiger_detail_data(
+        &state,
+        crate::handlers::DragonTigerDetailParams {
+            page: query.page,
+            page_size: query.page_size,
+            dept: query.dept,
         },
     )
-    .await?;
-    let all: Vec<LhbDetail> = serde_json::from_str(&cached).unwrap_or_default();
-
-    // Merge same-stock entries with multiple billboard reasons
-    let mut merged: std::collections::HashMap<(String, String), LhbDetail> =
-        std::collections::HashMap::new();
-    for item in all {
-        let key = (item.code.clone(), item.trade_date.clone());
-        match merged.get_mut(&key) {
-            Some(existing) => {
-                // Sum monetary fields
-                existing.billboard_net_amt = existing
-                    .billboard_net_amt
-                    .zip(item.billboard_net_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_buy_amt = existing
-                    .billboard_buy_amt
-                    .zip(item.billboard_buy_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_sell_amt = existing
-                    .billboard_sell_amt
-                    .zip(item.billboard_sell_amt)
-                    .map(|(a, b)| a + b);
-                existing.billboard_deal_amt = existing
-                    .billboard_deal_amt
-                    .zip(item.billboard_deal_amt)
-                    .map(|(a, b)| a + b);
-                // Append explanation
-                if let Some(ref exp) = item.explanation {
-                    if !exp.is_empty() {
-                        let prefix = existing.explanation.as_deref().unwrap_or("");
-                        let sep = if prefix.is_empty() { "" } else { "; " };
-                        existing.explanation = Some(format!("{prefix}{sep}{exp}"));
-                    }
-                }
-            }
-            None => {
-                merged.insert(key, item);
-            }
-        }
-    }
-    let merged_all: Vec<LhbDetail> = merged.into_values().collect();
-
-    let total = merged_all.len();
-    let total_net_amt: f64 = merged_all.iter().filter_map(|d| d.billboard_net_amt).sum();
-    let net_buy_count = merged_all
-        .iter()
-        .filter(|d| d.billboard_net_amt.is_some_and(|v| v > 0.0))
-        .count();
-    let net_sell_count = merged_all
-        .iter()
-        .filter(|d| d.billboard_net_amt.is_some_and(|v| v < 0.0))
-        .count();
-    let start = (query.page.saturating_sub(1)) * query.page_size;
-    let data: Vec<LhbDetail> = merged_all
-        .into_iter()
-        .skip(start)
-        .take(query.page_size)
-        .collect();
-    Ok(Json(serde_json::json!({
-        "data": data,
-        "total": total,
-        "page": query.page,
-        "page_size": query.page_size,
-        "total_net_amt": total_net_amt,
-        "net_buy_count": net_buy_count,
-        "net_sell_count": net_sell_count,
-    })))
+    .await
+    .map(Json)
+    .map_err(|e| {
+        openatrading_core::log::error!("[dragon-tiger] detail error: {e}");
+        StatusCode::SERVICE_UNAVAILABLE
+    })
 }
 
 /// GET /api/dragon-tiger/stock-seat?code=000001&date=20240101&flag=buy

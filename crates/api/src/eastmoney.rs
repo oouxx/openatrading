@@ -106,6 +106,14 @@ pub struct LhbSeatDetail {
     pub net_amt: Option<f64>,
 }
 
+/// 龙虎榜席位所属营业部（用于按营业部筛选个股）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LhbSeatRecord {
+    pub code: String,
+    pub trade_date: String,
+    pub dept_name: String,
+}
+
 /// 营业部活跃记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LhbActiveYyb {
@@ -338,6 +346,62 @@ impl EastmoneyClient {
                 sell_amt: Self::f64_field(v, "SELL"),
                 sell_ratio: Self::f64_field(v, "SELL_RATIO"),
                 net_amt: Self::f64_field(v, "NET"),
+            })
+            .collect())
+    }
+
+    /// 日期范围内的全部龙虎榜席位记录（买入 or 卖出）
+    ///
+    /// 与 [`Self::lhb_stock_seat`] 的区别是不按个股过滤，用于把「营业部」
+    /// 映射回它参与过的股票，从而支持按营业部筛选整个榜单。
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
+    pub async fn lhb_seats_range(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        flag: SeatFlag,
+    ) -> Result<Vec<LhbSeatRecord>, LhbError> {
+        let s = Self::fmt_date(start_date)?;
+        let e = Self::fmt_date(end_date)?;
+        let (report_name, sort_col) = match flag {
+            SeatFlag::Buy => ("RPT_BILLBOARD_DAILYDETAILSBUY", "BUY"),
+            SeatFlag::Sell => ("RPT_BILLBOARD_DAILYDETAILSSELL", "SELL"),
+        };
+        let mut params: AHashMap<&str, String> = [
+            ("reportName", report_name.into()),
+            (
+                "columns",
+                "SECURITY_CODE,TRADE_DATE,OPERATEDEPT_NAME".into(),
+            ),
+            ("filter", format!("(TRADE_DATE>='{s}')(TRADE_DATE<='{e}')")),
+            ("pageSize", "500".into()),
+            ("pageNumber", "1".into()),
+            ("sortTypes", "-1".into()),
+            ("sortColumns", sort_col.into()),
+            ("source", "WEB".into()),
+            ("client", "WEB".into()),
+        ]
+        .into();
+
+        let rows = self.fetch_all_pages(&mut params).await?;
+        Ok(rows
+            .iter()
+            .filter_map(|v| {
+                let code = Self::str_field(v, "SECURITY_CODE")?;
+                let dept_name = Self::str_field(v, "OPERATEDEPT_NAME")?;
+                if code.is_empty() || dept_name.is_empty() {
+                    return None;
+                }
+                let trade_date = Self::str_field(v, "TRADE_DATE")
+                    .and_then(|d| d.split(' ').next().map(str::to_string))
+                    .unwrap_or_default();
+                Some(LhbSeatRecord {
+                    code,
+                    trade_date,
+                    dept_name,
+                })
             })
             .collect())
     }

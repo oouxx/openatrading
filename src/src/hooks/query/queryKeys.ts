@@ -45,7 +45,8 @@ export const yesterdayLimitUpKeys = {
 }
 
 export const dragonTigerKeys = {
-  detail: (page: number, pageSize: number) => ["dragon-tiger", "detail", page, pageSize] as const,
+  detail: (page: number, pageSize: number, dept: string) =>
+    ["dragon-tiger", "detail", page, pageSize, dept] as const,
   stockSeat: (code: string, date: string, flag: string) =>
     ["dragon-tiger", "stock-seat", code, date, flag] as const,
 }
