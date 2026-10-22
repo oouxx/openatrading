@@ -326,14 +326,33 @@ jobs:
             *) echo "::warning::前端 :80 -> $code，检查 frontend 容器日志" ;;
           esac
 
-      - name: 清理
-        if: always()
+      - name: 清理旧镜像（保留当前 + 上一版）
+        if: success()
         shell: bash
         run: |
           set -uo pipefail
-          docker logout "$REGISTRY" || true      # 不留下过期的 job token
+          # 每次部署都会 pull 三个新 tag，不清理的话每天几十次部署能吃掉几十 GB。
+          # 保留「当前」和「上一版」用于回滚，其余 sha-* 删掉。
+          current="sha-${GITHUB_SHA:0:7}"
+          for repo in "$REGISTRY/$IMAGE_NAME" "$REGISTRY/$IMAGE_NAME-frontend" "$REGISTRY/$IMAGE_NAME-akshare-mcp"; do
+            tags=$(docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | grep ':sha-' || true)
+            [ -n "$tags" ] || continue
+            keep="$current"
+            prev=$(printf '%s\n' "$tags" | grep -v ":$current\$" | head -1 || true)
+            [ -n "$prev" ] && keep="$keep ${prev##*:}"
+            printf '%s\n' "$tags" | while read -r img; do
+              case " $keep " in *" ${img##*:} "*) continue ;; esac
+              docker rmi "$img" >/dev/null 2>&1 && echo "  removed $img" || true
+            done
+            echo "  保留 $repo: $keep"
+          done
           docker image prune -f | tail -1 || true
           df -h / | tail -1 | awk '{print "根分区可用: "$4}'
+
+      - name: 登出 GHCR
+        if: always()
+        shell: bash
+        run: docker logout "$REGISTRY" || true   # 不留下过期的 job token
 
       - name: 失败诊断
         if: failure()
