@@ -349,10 +349,14 @@ jobs:
           docker image prune -f | tail -1 || true
           df -h / | tail -1 | awk '{print "根分区可用: "$4}'
 
-      - name: 登出 GHCR
+      - name: 收尾（登出 + 清理工作区临时文件）
         if: always()
         shell: bash
-        run: docker logout "$REGISTRY" || true   # 不留下过期的 job token
+        run: |
+          set -uo pipefail
+          # 生产密钥不该留在 CI 工作区里过夜（下次部署会重新生成）
+          rm -f .env "$COMPOSE_CI"
+          docker logout "$REGISTRY" || true   # 不留下过期的 job token
 
       - name: 失败诊断
         if: failure()
