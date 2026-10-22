@@ -58,11 +58,25 @@ function yearStart(date: string): string {
   return `${date.slice(0, 4)}-01-01`
 }
 
-/** `2026-10-22` 加/减月份，跨年自动进位。 */
+/** `2026-10-22` 加/减月份，跨年自动进位；月末溢出的日子夹到目标月最后一天。 */
 function addMonths(date: string, delta: number): string {
   const [y, m, d] = date.split("-").map(Number)
-  const shifted = new Date(Date.UTC(y, m - 1 + delta, d))
+  const targetMonth = m - 1 + delta
+  const lastDay = new Date(Date.UTC(y, targetMonth + 1, 0)).getUTCDate()
+  const shifted = new Date(Date.UTC(y, targetMonth, Math.min(d, lastDay)))
   return shifted.toISOString().slice(0, 10)
+}
+
+/** 某月的最后一天（`2026-02` → `2026-02-28`）。 */
+function monthEnd(month: string): string {
+  const [y, m] = month.split("-").map(Number)
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${month}-${String(lastDay).padStart(2, "0")}`
+}
+
+/** `2026-10-22` → `2026-10` */
+function monthOf(date: string): string {
+  return date.slice(0, 7)
 }
 
 function rangeOf(dim: Dimension, custom: { from: string; to: string }) {
@@ -340,17 +354,24 @@ export function PnlPanel({ roleName }: { roleName: string }) {
   const [metric, setMetric] = useState<Metric>("pct")
   const [customFrom, setCustomFrom] = useState(() => monthStart(todayStr()))
   const [customTo, setCustomTo] = useState(() => todayStr())
-  // 日历默认展示区间末点所在的月份
-  const [monthOffset, setMonthOffset] = useState(0)
+  // 日历**按月独立取数**：维度只决定曲线和汇总的区间，不该限制日历能翻哪些月。
+  // 之前把日历绑在维度区间上，选「本月」时前后箭头全被禁用，看起来像切换坏了。
+  const [browsedMonth, setBrowsedMonth] = useState(() => monthOf(todayStr()))
 
-  const { from, to } = rangeOf(dimension, { from: customFrom, to: customTo })
-  const query = usePnlCalendar(roleName, from, to)
+  const dimensionRange = rangeOf(dimension, { from: customFrom, to: customTo })
+  // 曲线看维度区间；日历看当前浏览的整月（不超过今天）
+  const queryRange =
+    view === "calendar"
+      ? {
+          from: `${browsedMonth}-01`,
+          to: monthEnd(browsedMonth) > todayStr() ? todayStr() : monthEnd(browsedMonth),
+        }
+      : dimensionRange
+
+  const query = usePnlCalendar(roleName, queryRange.from, queryRange.to)
   const calendar = query.data
-
-  const displayMonth = useMemo(() => {
-    const anchor = monthOffset === 0 ? to : addMonths(`${to.slice(0, 7)}-01`, monthOffset)
-    return anchor.slice(0, 7)
-  }, [to, monthOffset])
+  const { from, to } = queryRange
+  const displayMonth = browsedMonth
 
   const curvePoints = useMemo(
     () => bucketPoints(calendar?.points ?? [], dimension),
@@ -382,6 +403,15 @@ export function PnlPanel({ roleName }: { roleName: string }) {
 
   if (!calendar) return null
 
+  // 往前翻到「首笔成交月」；账户还没有成交时给 11 个月的回看窗口，
+  // 否则箭头一开始就是灰的，看着像坏了。往后不越过当前月。
+  const currentMonth = monthOf(todayStr())
+  const windowFloor = monthOf(addMonths(`${currentMonth}-01`, -11))
+  const tradeFloor = calendar.first_trade_date ? monthOf(calendar.first_trade_date) : windowFloor
+  const earliestMonth = tradeFloor < windowFloor ? tradeFloor : windowFloor
+  const canGoPrev = browsedMonth > earliestMonth
+  const canGoNext = browsedMonth < currentMonth
+
   const summary = calendar.summary
   const shanghai = calendar.benchmarks.find((b) => b.name === "上证")
   const excess = shanghai?.pct != null ? summary.total_pct - shanghai.pct : null
@@ -396,7 +426,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
             type="button"
             onClick={() => {
               setDimension(d.key)
-              setMonthOffset(0)
+              setBrowsedMonth(monthOf(todayStr()))
             }}
             className={`rounded-md px-3 py-1 text-xs transition-colors ${
               dimension === d.key
@@ -503,9 +533,9 @@ export function PnlPanel({ roleName }: { roleName: string }) {
             <button
               type="button"
               aria-label="上个月"
-              onClick={() => setMonthOffset((v) => v - 1)}
+              onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, -1)))}
               className="text-tertiary hover:text-primary p-1 disabled:opacity-30"
-              disabled={addMonths(`${to.slice(0, 7)}-01`, monthOffset - 1) < monthStart(from)}
+              disabled={!canGoPrev}
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -515,9 +545,9 @@ export function PnlPanel({ roleName }: { roleName: string }) {
             <button
               type="button"
               aria-label="下个月"
-              onClick={() => setMonthOffset((v) => v + 1)}
+              onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, 1)))}
               className="text-tertiary hover:text-primary p-1 disabled:opacity-30"
-              disabled={monthOffset >= 0}
+              disabled={!canGoNext}
             >
               <ChevronRight className="size-4" />
             </button>

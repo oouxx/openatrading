@@ -104,6 +104,10 @@ pub struct PnlSummary {
 pub struct PnlCalendar {
     pub from: String,
     pub to: String,
+    /// 账户的首笔成交日；没有任何成交时为 `None`。
+    ///
+    /// 日历视图用它当往前翻的下界——比这更早的月份不可能有收益。
+    pub first_trade_date: Option<String>,
     /// 区间内的**所有**交易日（含无持仓、无成交的日子）。
     ///
     /// 日历视图要靠它区分「休市」和「开市但没持仓（当日收益为 0）」——
@@ -231,6 +235,8 @@ pub fn build_calendar(input: CalendarInput<'_>) -> PnlCalendar {
     let summary = summarize(&points, input.initial_capital);
     let benchmarks = benchmark_views(input.closes, input.from, input.to);
 
+    let first_trade_date = input.trades.first().map(|t| day_of(&t.traded_at));
+
     let trading_dates: Vec<String> = dates
         .iter()
         .filter(|d| d.as_str() >= input.from && d.as_str() <= input.to)
@@ -240,6 +246,7 @@ pub fn build_calendar(input: CalendarInput<'_>) -> PnlCalendar {
     PnlCalendar {
         from: input.from.to_string(),
         to: input.to.to_string(),
+        first_trade_date,
         trading_dates,
         points,
         summary,

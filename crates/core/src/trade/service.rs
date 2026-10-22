@@ -77,13 +77,18 @@ impl TradeService {
     ) -> Result<PnlCalendar> {
         let trades = self.store.all_trades(&req.role)?;
 
-        // 只需要「首笔成交日 → 区间末」的日线：比首笔更早的日子没有任何持仓可估值。
-        // 区间起点比首笔更早时（例如「全部」用 2000-01-01）也不能按起点算，
-        // 否则会向接口要几十年的数据。基准线的「前一日收盘」由日线源自带的缓冲覆盖。
+        // 需要覆盖「区间起点」和「首笔成交日」里更早的那个：
+        //   - 日历视图会翻到首笔成交之前的月份，那些月要能取到交易日历；
+        //   - 曲线只需要有持仓的区间。
+        // 但「全部」传的是 2000-01-01 这类哨兵值，直接照算会向接口要几十年数据，
+        // 所以对 tick 数设上限（约 6 年交易日）；更早的日子退化为成本价估值。
         let data_start = trades
             .first()
-            .map_or_else(|| req.from.clone(), |t| t.traded_at.chars().take(10).collect());
-        let needed_days = trading_days_between(&data_start, &req.to);
+            .map_or_else(|| req.from.clone(), |t| {
+                let first = t.traded_at.chars().take(10).collect::<String>();
+                if first < req.from { first } else { req.from.clone() }
+            });
+        let needed_days = trading_days_between(&data_start, &req.to).min(MAX_DAILY_TICKS);
 
         let mut codes: Vec<String> = Vec::new();
         let mut yahoo_of: HashMap<String, String> = HashMap::new();
@@ -369,6 +374,11 @@ fn normalize_symbol(raw: &str) -> Result<StockCode> {
         .map(StockCode::new)
         .map_err(|e| OrderError::InvalidSymbol(format!("{trimmed}（{e}）")))
 }
+
+/// 单次日线请求的 tick 上限（约 6 年交易日）。
+///
+/// 「全部」维度用 2000-01-01 当哨兵起点，不设上限会向接口要上万根 K 线。
+const MAX_DAILY_TICKS: u32 = 1_500;
 
 /// 两个日期之间的自然日数，按 ~5/7 折算成交易日估算。
 ///
