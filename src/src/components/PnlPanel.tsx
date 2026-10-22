@@ -9,14 +9,19 @@
  * 数据全部来自 `/api/roles/:name/pnl-calendar`，后端已用**当日收盘价**给历史
  * 持仓估值，所以每一天都是真实浮动盈亏，而不是只在成交日跳变的阶梯。
  */
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatPct, pctClass } from "@/lib/format"
-import { usePnlCalendar } from "@/hooks/query/useRoleQueries"
+import {
+  PNL_CALENDAR_STALE_MS,
+  pnlCalendarQueryOptions,
+  usePnlCalendar,
+} from "@/hooks/query/useRoleQueries"
 import type { PnlCalendarPoint } from "@/stores/data"
 
 type Dimension = "today" | "month" | "quarter" | "year" | "all" | "custom"
@@ -72,6 +77,13 @@ function monthEnd(month: string): string {
   const [y, m] = month.split("-").map(Number)
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
   return `${month}-${String(lastDay).padStart(2, "0")}`
+}
+
+/** 某月的查询区间：月初到月末，但不超过今天。 */
+function monthRange(month: string): { from: string; to: string } {
+  const end = monthEnd(month)
+  const today = todayStr()
+  return { from: `${month}-01`, to: end > today ? today : end }
 }
 
 /** `2026-10-22` → `2026-10` */
@@ -360,13 +372,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
 
   const dimensionRange = rangeOf(dimension, { from: customFrom, to: customTo })
   // 曲线看维度区间；日历看当前浏览的整月（不超过今天）
-  const queryRange =
-    view === "calendar"
-      ? {
-          from: `${browsedMonth}-01`,
-          to: monthEnd(browsedMonth) > todayStr() ? todayStr() : monthEnd(browsedMonth),
-        }
-      : dimensionRange
+  const queryRange = view === "calendar" ? monthRange(browsedMonth) : dimensionRange
 
   const query = usePnlCalendar(roleName, queryRange.from, queryRange.to)
   const calendar = query.data
@@ -377,6 +383,39 @@ export function PnlPanel({ roleName }: { roleName: string }) {
     () => bucketPoints(calendar?.points ?? [], dimension),
     [calendar, dimension],
   )
+
+  // 往前翻到「首笔成交月」；账户还没有成交时给 11 个月的回看窗口，
+  // 否则箭头一开始就是灰的，看着像坏了。往后不越过当前月。
+  const currentMonth = monthOf(todayStr())
+  const windowFloor = monthOf(addMonths(`${currentMonth}-01`, -11))
+  const tradeFloor = calendar?.first_trade_date ? monthOf(calendar.first_trade_date) : windowFloor
+  const earliestMonth = tradeFloor < windowFloor ? tradeFloor : windowFloor
+  const canGoPrev = browsedMonth > earliestMonth
+  const canGoNext = browsedMonth < currentMonth
+
+  // 预取前后各一个月：切月时命中缓存，不会因为新 query key 的 isPending
+  // 把整个面板替换成骨架屏。月份边界与翻页按钮保持一致。
+  const queryClient = useQueryClient()
+  const calendarReady = calendar != null
+  const prefetchMonths = useMemo(() => {
+    if (view !== "calendar" || !calendarReady) return []
+    const months: string[] = []
+    if (canGoPrev) months.push(monthOf(addMonths(`${browsedMonth}-01`, -1)))
+    if (canGoNext) months.push(monthOf(addMonths(`${browsedMonth}-01`, 1)))
+    return months
+  }, [view, calendarReady, browsedMonth, canGoPrev, canGoNext])
+
+  useEffect(() => {
+    for (const month of prefetchMonths) {
+      const range = monthRange(month)
+      void queryClient.prefetchQuery({
+        ...pnlCalendarQueryOptions(roleName, range.from, range.to),
+        staleTime: PNL_CALENDAR_STALE_MS,
+        // 面板常开时当前月会轮询，但相邻月无人观察；默认 5 分钟 GC 会让预取失效。
+        gcTime: 30 * 60_000,
+      })
+    }
+  }, [prefetchMonths, queryClient, roleName])
 
   if (query.isPending) {
     return (
@@ -402,15 +441,6 @@ export function PnlPanel({ roleName }: { roleName: string }) {
   }
 
   if (!calendar) return null
-
-  // 往前翻到「首笔成交月」；账户还没有成交时给 11 个月的回看窗口，
-  // 否则箭头一开始就是灰的，看着像坏了。往后不越过当前月。
-  const currentMonth = monthOf(todayStr())
-  const windowFloor = monthOf(addMonths(`${currentMonth}-01`, -11))
-  const tradeFloor = calendar.first_trade_date ? monthOf(calendar.first_trade_date) : windowFloor
-  const earliestMonth = tradeFloor < windowFloor ? tradeFloor : windowFloor
-  const canGoPrev = browsedMonth > earliestMonth
-  const canGoNext = browsedMonth < currentMonth
 
   const summary = calendar.summary
   const shanghai = calendar.benchmarks.find((b) => b.name === "上证")

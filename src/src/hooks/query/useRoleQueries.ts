@@ -21,6 +21,9 @@ export const ROLE_LIVE_REFRESH_MS = 30_000
 /** 侧边栏需要同时刷新所有角色，频率降一档，避免 N 个角色放大行情请求。 */
 export const ROLE_SIDEBAR_REFRESH_MS = 60_000
 
+/** 收益曲线/日历的末点是实时估值，缓存 30 秒；预取相邻月份时复用同一口径。 */
+export const PNL_CALENDAR_STALE_MS = 30_000
+
 export function useRoleList() {
   return useQuery({
     queryKey: roleKeys.list(),
@@ -87,13 +90,11 @@ export function useRolePnlHistory(name: string, days = 30) {
 }
 
 /**
- * 区间收益分析（曲线 + 日历共用同一次请求）。
- *
- * 固定按 `day` 粒度取：日历需要逐日数据，曲线在月/年维度由前端聚合，
- * 这样切换视图不会触发新请求。
+ * 区间收益查询的 key/请求定义。单独导出是为了让日历的相邻月份预取
+ * 和正常查询共用同一份 key，避免两处手写导致缓存命中不上。
  */
-export function usePnlCalendar(name: string, from: string, to: string) {
-  return useQuery({
+export function pnlCalendarQueryOptions(name: string, from: string, to: string) {
+  return {
     queryKey: roleKeys.pnlCalendar(name, from, to, "day"),
     queryFn: async () => {
       const res = await fetchJson<PnlCalendarResponse>(
@@ -101,8 +102,19 @@ export function usePnlCalendar(name: string, from: string, to: string) {
       )
       return res.calendar
     },
+  }
+}
+
+/**
+ * 区间收益分析（曲线 + 日历共用同一次请求）。
+ *
+ * 固定按 `day` 粒度取：日历需要逐日数据，曲线在月/年维度由前端聚合。
+ */
+export function usePnlCalendar(name: string, from: string, to: string) {
+  return useQuery({
+    ...pnlCalendarQueryOptions(name, from, to),
     // 末点是实时估值，和账户/持仓保持同一刷新频率
-    staleTime: 30_000,
+    staleTime: PNL_CALENDAR_STALE_MS,
     refetchInterval: ROLE_SIDEBAR_REFRESH_MS,
     refetchOnWindowFocus: true,
     enabled: !!name,
