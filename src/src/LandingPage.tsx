@@ -1,21 +1,10 @@
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { getApiBaseUrl } from "@/stores/data"
 
-const DL_BASE = `${getApiBaseUrl()}/downloads`
-
-function dl(platform: string, arch: string): string {
-  switch (platform) {
-    case "macos":
-      return `${DL_BASE}/openatrading_${arch}.dmg`
-    case "linux":
-      return `${DL_BASE}/openatrading_${arch === "x86_64" ? "amd64" : arch}.deb`
-    case "windows":
-      return `${DL_BASE}/openatrading_x64-setup.exe`
-    default:
-      return "#"
-  }
-}
+// 安装包与 CLI 二进制统一走 GitHub Releases（自建下载目录已下线）。
+const RELEASES = "https://github.com/oouxx/openatrading/releases/latest"
+const INSTALL_SH =
+  "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh"
 
 const features = [
   {
@@ -53,8 +42,6 @@ const features = [
 ]
 
 export default function LandingPage() {
-  const apiBase = getApiBaseUrl()
-
   return (
     <div className="bg-bg min-h-screen">
       {/* Hero */}
@@ -191,29 +178,36 @@ export default function LandingPage() {
               🖥️ 桌面端
             </h4>
             <p className="text-ink-muted mb-5 text-xs/relaxed">
-              支持 macOS / Windows / Linux
-              三大平台，原生桌面体验，内置行情数据引擎。从官网下载对应安装包。
+              支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。
+              安装包随每个版本发布在 GitHub Releases，按平台选择即可。
             </p>
             <div className="mb-3.5 flex flex-wrap gap-2">
+              <a
+                href={RELEASES}
+                className="bg-ai text-brand-foreground inline-flex items-center gap-1.5 rounded-lg px-[18px] py-2 text-xs font-medium transition-opacity hover:opacity-90"
+              >
+                <span className="text-lg">⬇</span> 前往 Releases 下载
+              </a>
               {[
-                { icon: "🍎", label: "macOS .dmg", platform: "macos", arch: "x86_64" },
-                { icon: "🪟", label: "Windows .exe", platform: "windows", arch: "x86_64" },
-                { icon: "🐧", label: "Linux .deb", platform: "linux", arch: "x86_64" },
+                { icon: "🍎", label: "macOS .dmg" },
+                { icon: "🪟", label: "Windows .exe" },
+                { icon: "🐧", label: "Linux .deb / .AppImage" },
               ].map((d) => (
-                <a
+                <span
                   key={d.label}
-                  href={dl(d.platform, d.arch)}
-                  className="bg-ink-dim border-hairline hover:border-ai hover:text-ai text-primary inline-flex items-center gap-1.5 rounded-lg border px-[18px] py-2 text-xs font-medium transition-colors"
+                  className="bg-ink-dim border-hairline text-ink-muted inline-flex items-center gap-1.5 rounded-lg border px-[14px] py-2 text-xs"
                 >
                   <span className="text-lg">{d.icon}</span>
                   {d.label}
-                </a>
+                </span>
               ))}
             </div>
             <p className="text-ink-muted text-caption">
-              或访问{" "}
-              <a href="https://github.com/oouxx/openatrading/releases" className="text-ai">
-                GitHub Releases
+              macOS 安装包是 ad-hoc 签名，首次打开需先
+              <code className="bg-ink-dim mx-1 rounded px-1">xattr -dr com.apple.quarantine /Applications/OpenATrading.app</code>
+              ；或使用 Homebrew：{" "}
+              <a href="https://github.com/oouxx/homebrew-openatrading" className="text-ai">
+                brew install --cask openatrading
               </a>
             </p>
           </div>
@@ -227,8 +221,8 @@ export default function LandingPage() {
               适用于 Linux/macOS 环境，可启动 Gateway 服务、跑行情数据 pipeline 与定时新闻推送。
             </p>
             <CopyCodeBlock
-              text={`# 下载 CLI 二进制
-curl -fsSL ${apiBase}/install.sh | bash
+              text={`# 安装 CLI（二进制从 GitHub Releases 获取）
+curl -fsSL ${INSTALL_SH} | bash
 
 # 验证安装
 openatrading --version
@@ -252,8 +246,8 @@ openatrading gateway run`}
           <a href="https://github.com/oouxx/openatrading" className="text-ai">
             GitHub
           </a>
-          <a href="#install" className="text-ai">
-            下载
+          <a href={RELEASES} className="text-ai">
+            Releases
           </a>
         </div>
         openatrading · AI 行情助手
