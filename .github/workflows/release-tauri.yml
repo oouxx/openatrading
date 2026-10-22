@@ -17,8 +17,6 @@ on:
 permissions:
   contents: write
 
-env:
-
 jobs:
   create-release:
     runs-on: ubuntu-latest
