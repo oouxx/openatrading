@@ -1,0 +1,26 @@
+# 构建上下文只该有源码。这些是本地/CI 的运行时数据，绝不能进 docker build 上下文：
+# .env 在 CI 里会被复制到检出目录，若不在 ignore 列表，secret 会随上下文发给 docker daemon。
+.env
+.env.*
+!.env.example
+.atrading/
+*.db
+*.db-shm
+*.db-wal
+certs/
+downloads/
+reports/
+dist/
+src/dist/
+src/node_modules/
+node_modules/
+target/
+.git/
+.github/
+.claude/
+.codex/
+.agents/
+.pi-rs/
+.gitignore
+docker-compose.ci.yaml
+*.log

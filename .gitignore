@@ -56,3 +56,6 @@ deploy-*.sh.local
 .codegraph/
 .atrading
 .superpowers
+
+# CI 生成的 compose override（含服务器绝对路径，不入库）
+docker-compose.ci.yaml
