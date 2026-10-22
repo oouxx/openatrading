@@ -6,8 +6,10 @@ name: Deploy
 # 这样 VPS 上不需要 Rust/bun 工具链，部署从"十几分钟编译"变成"拉几十 MB 镜像"，
 # 而且部署的是不可变镜像（sha-xxxxxxx tag），回滚只是换个 tag 再 up。
 #
-# 与本地 deploy.sh 的关系：deploy.sh 是"在服务器上编译"，本 workflow 是"在 GitHub
-# 上编译、服务器上只运行"。两者最终都落到同一个 compose 项目（openatrading）。
+# 这是唯一的部署入口（原 deploy.sh 已删除）。触发方式：
+#   push 到 main → 自动部署 all
+#   Actions → Deploy → Run workflow → 可选 all / gateway / web
+# 注意：**.md、docs/**、.github/** 的改动不会触发部署。
 
 on:
   workflow_dispatch:

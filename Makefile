@@ -59,17 +59,22 @@ uninstall:
 
 # ─── Deploy ──────────────────────────────────────────
 
+# 部署已改为 GitHub Actions：build 在托管 runner 出镜像，self-hosted runner 只 pull+up。
+# 这些 target 只是触发 workflow（需要 gh CLI 且已 gh auth login）。
 deploy:
-	@echo "🚀 Deploying all (gateway + web)..."
-	@bash deploy.sh all
+	@echo "🚀 Triggering deploy: all (gateway + frontend + akshare-mcp)..."
+	@gh workflow run deploy.yml -f service=all
+	@gh run list -w Deploy -L 1
 
 deploy-gateway:
-	@echo "🚀 Deploying gateway..."
-	@bash deploy.sh gateway
+	@echo "🚀 Triggering deploy: gateway..."
+	@gh workflow run deploy.yml -f service=gateway
+	@gh run list -w Deploy -L 1
 
 deploy-web:
-	@echo "🚀 Deploying web (frontend only)..."
-	@bash deploy.sh web
+	@echo "🚀 Triggering deploy: frontend..."
+	@gh workflow run deploy.yml -f service=web
+	@gh run list -w Deploy -L 1
 
 # ─── Release ──────────────────────────────────────────
 

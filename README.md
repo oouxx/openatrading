@@ -158,11 +158,20 @@ bind    = "0.0.0.0:8082"
 
 | 项 | 怎么传 |
 |----|--------|
-| 部署主机 | `DEPLOY_HOST=<user@host>`（写在 `.env` 或 `~/.ssh/config` alias） |
+| 部署 | 走 GitHub Actions，服务器路径用仓库变量 `ATRADING_*` 指定（见下） |
 | 下载服务器 | `DL_SERVER=https://...`（`install.sh`）或 `OPENATRADING_DL_SERVER`（CLI 自更新） |
 | 对外域名 | 部署端 nginx/证书层决定，`nginx.conf` 默认 `server_name _` |
 | 前端 API 地址 | 默认同源；需要跨域时 `--build-arg VITE_API_BASE_URL=...` 或面板里设置 |
 | Vercel 反代目标 | 部署前把 `src/public/vercel.json` 的 `YOUR_API_HOST` 换成自己的 |
+
+部署由 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) 负责：
+
+- **构建**跑在 GitHub 托管 runner 上，镜像推到 GHCR
+- **部署**跑在 self-hosted runner（目标服务器）上，只做 `docker compose pull` + `up -d --no-build`
+- 触发：push 到 `main` 自动部署；或 Actions → Deploy → Run workflow 选择 `all`/`gateway`/`web`
+- 服务器侧状态放在 `/opt/openatrading/`（`.env`、`downloads/`、`atrading/`、`certs/`），
+  路径可用仓库变量 `ATRADING_ENV_FILE` / `ATRADING_HOST_HOME` /
+  `ATRADING_DOWNLOADS_DIR` / `ATRADING_CERTS_DIR` 覆盖
 
 ## Data Sources
 
