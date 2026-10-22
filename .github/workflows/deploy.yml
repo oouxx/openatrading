@@ -66,7 +66,10 @@ jobs:
           docker compose version >/dev/null 2>&1 || {
             echo "::error::缺少 docker compose 插件（docker-compose-plugin）"; exit 1; }
           docker info >/dev/null 2>&1 || {
-            echo "::error::当前用户无法访问 docker daemon —— 把 runner 用户加入 docker 组，或用 root 跑 runner"
+            echo "::error::当前用户（$(id -un)）无法访问 docker daemon"
+            echo "  修法（在服务器上）："
+            echo "    sudo usermod -aG docker $(id -un)"
+            echo "    sudo systemctl restart 'actions.runner.*.service'   # 让 runner 服务重新读取组"
             exit 1; }
 
           # ── .env ────────────────────────────────────────────────
@@ -97,11 +100,27 @@ jobs:
               HOST_HOME="$HOME/.atrading"
             fi
           fi
-          mkdir -p "$HOST_HOME/agent"
           echo "ATRADING_HOST_HOME=$HOST_HOME" >> "$GITHUB_ENV"
-          echo "  agent home: $HOST_HOME"
-          [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
-            echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令（deploy.sh 的 sync_agent_config 需要人工跑一次）"
+          # 挂载由 docker daemon（root）执行，runner 用户不需要写权限 —— 非 root runner
+          # 读不到 /root/** 是正常的，不能因此 mkdir 失败或误报。
+          if [ -d "$HOST_HOME" ]; then
+            echo "  agent home: $HOST_HOME（已存在）"
+            if [ -r "$HOST_HOME" ]; then
+              [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
+                echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令（deploy.sh 的 sync_agent_config 需要人工跑一次）"
+            else
+              echo "::warning::$HOST_HOME 对 runner 用户不可读，跳过内容检查（不影响容器挂载）"
+            fi
+          else
+            if mkdir -p "$HOST_HOME/agent" 2>/dev/null; then
+              echo "::warning::新建了空目录 $HOST_HOME —— agent 将没有历史配置/会话"
+            else
+              echo "::error::$HOST_HOME 不存在且无法创建。"
+              echo "  非 root runner 请用仓库变量 ATRADING_HOST_HOME 指向一个 runer 可访问的绝对路径，"
+              echo "  且注意：换路径等于丢掉现有 agent 的 settings/auth/sessions。"
+              exit 1
+            fi
+          fi
 
           # ── 下载目录（compose 里写的是 ./downloads，相对 compose 文件所在目录）──
           DL_DIR="${DOWNLOADS_VAR:-}"
@@ -111,9 +130,17 @@ jobs:
               echo "::warning::没有找到旧的下载目录，使用了 $DL_DIR（install.sh 的 /downloads 会是空的）"
             fi
           fi
-          mkdir -p "$DL_DIR"
           echo "ATRADING_DOWNLOADS_DIR=$DL_DIR" >> "$GITHUB_ENV"
-          echo "  downloads: $DL_DIR（$(find "$DL_DIR" -maxdepth 1 -type f | wc -l | tr -d ' ') 个文件）"
+          if [ -d "$DL_DIR" ] && [ -r "$DL_DIR" ]; then
+            echo "  downloads: $DL_DIR（$(find "$DL_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ') 个文件）"
+          elif [ -d "$DL_DIR" ]; then
+            echo "  downloads: $DL_DIR（存在，但对 runner 用户不可读，跳过文件计数）"
+          elif mkdir -p "$DL_DIR" 2>/dev/null; then
+            echo "::warning::新建了空目录 $DL_DIR —— /downloads 一开始会是空的"
+          else
+            echo "::error::$DL_DIR 不存在且无法创建，请用 ATRADING_DOWNLOADS_DIR 指定可访问路径"
+            exit 1
+          fi
 
           df -h "$PWD" | tail -1 | awk '{print "  磁盘可用: "$4}'
 
