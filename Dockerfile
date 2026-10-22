@@ -60,6 +60,9 @@ COPY src-tauri/Cargo.toml src-tauri/
 # Default is unset — build.rs falls back to the version in Cargo.toml.
 # Override with: docker build --build-arg GIT_VERSION=v0.x.x ...
 ARG GIT_VERSION
+# /api/about 里的 git_version 来自 crates/web/build.rs（option_env!），
+# 构建上下文无 .git，必须由这里注入。
+ARG GIT_COMMIT_SHORT
 RUN cargo build --release -p openatrading-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
 

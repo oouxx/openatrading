@@ -112,6 +112,7 @@ jobs:
           # 这样每次部署都能打上真实 commit 且不吃掉 cargo chef 缓存。
           build-args: |
             GIT_VERSION=sha-${{ github.sha }}
+            GIT_COMMIT_SHORT=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 

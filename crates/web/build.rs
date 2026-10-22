@@ -2,17 +2,21 @@ fn main() {
     // ── Git commit short hash ──────────────────────────────────────────
     // Get the short hash of the commit that the current tag points to.
     // Falls back to HEAD short hash if not on a tag.
-    let commit_short = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .output()
+    // 优先读 GIT_COMMIT_SHORT：Docker/CI 的构建上下文里没有 .git（也不该 COPY 进去，
+    // 否则每次 commit 都会击穿层缓存），只靠 `git rev-parse` 会永远得到 "unknown"。
+    let commit_short = std::env::var("GIT_COMMIT_SHORT")
         .ok()
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s)
-            }
+        .map(|v| v.trim().chars().take(7).collect::<String>())
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            std::process::Command::new("git")
+                .args(["rev-parse", "--short", "HEAD"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if s.is_empty() { None } else { Some(s) }
+                })
         })
         .unwrap_or_else(|| "unknown".to_string());
 
