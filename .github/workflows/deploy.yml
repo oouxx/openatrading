@@ -151,7 +151,9 @@ jobs:
           fi
           if [ ! -f "$ENV_FILE" ]; then
             echo "::error::找不到 .env（已查找 ${ENV_FILE_VAR:-/etc/openatrading/.env}）"
-            echo "  修法：mkdir -p /etc/openatrading && install -m 600 <你的.env> /etc/openatrading/.env"
+            echo "  修法：sudo mkdir -p /etc/openatrading"
+            echo "        sudo install -m 640 -o root -g $(id -un) <你的.env> /etc/openatrading/.env"
+            echo "  （/root 是 700，非 root runner 读不到 /root/openatrading/.env，必须放到 runner 可达的位置）"
             exit 1
           fi
           echo "ENV_FILE=$ENV_FILE" >> "$GITHUB_ENV"
@@ -160,45 +162,48 @@ jobs:
           # ── agent home（compose 里写的是 ~/.atrading）────────────────
           HOST_HOME="${ATRADING_HOME_VAR:-}"
           if [ -z "$HOST_HOME" ]; then
-            if [ "$(id -u)" = "0" ]; then HOST_HOME=/root/.atrading
-            elif [ -d /root/.atrading ]; then
-              HOST_HOME=/root/.atrading
-              echo "::warning::runner 是非 root 用户：~/.atrading 会展开成 $HOME/.atrading，已改用 /root/.atrading"
-            else HOST_HOME="$HOME/.atrading"; fi
+            # 默认与现有部署保持一致（实测 openatrading-gateway-1 挂的就是它）。
+            # 注意：/root 通常是 700，非 root runner「看不到」这个目录是正常的——
+            # 挂载由 docker daemon(root) 执行，runner 不需要读权限。
+            # 绝不能在这里 fallback 到 $HOME/.atrading：那会静默新建空目录，
+            # 容器起来后 agent 的 settings/auth/sessions 全丢。
+            HOST_HOME=/root/.atrading
+            [ "$(id -u)" = "0" ] || echo "    （非 root runner 看不到 /root 属正常，挂载由 daemon 完成）"
           fi
           echo "ATRADING_HOST_HOME=$HOST_HOME" >> "$GITHUB_ENV"
-          # 挂载由 docker daemon（root）执行，runner 用户不需要写权限
-          if [ -d "$HOST_HOME" ]; then
-            echo "  agent home: $HOST_HOME（已存在）"
-            if [ -r "$HOST_HOME" ]; then
-              [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
-                echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令"
-            else
-              echo "::warning::$HOST_HOME 对 runner 用户不可读，跳过内容检查（不影响挂载）"
+          # 挂载由 docker daemon（root）执行，runner 用户不需要写权限。
+          # 因此：能看就校验，看不到就只警告并继续——绝不能因为「看不到」而报错退出，
+          # 也不能因为「看不到」就改用一个 runner 家目录下的新路径（那等于静默丢状态）。
+          if [ "$(id -u)" = "0" ]; then
+            if [ ! -d "$HOST_HOME" ]; then
+              mkdir -p "$HOST_HOME/agent" 2>/dev/null || {
+                echo "::error::无法创建 $HOST_HOME"; exit 1; }
+              echo "::warning::新建了空目录 $HOST_HOME —— agent 将没有历史配置/会话"
             fi
-          elif mkdir -p "$HOST_HOME/agent" 2>/dev/null; then
-            echo "::warning::新建了空目录 $HOST_HOME —— agent 将没有历史配置/会话"
+            [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
+              echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令"
+            echo "  agent home: $HOST_HOME ✅"
+          elif [ -r "$HOST_HOME" ]; then
+            [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
+              echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令"
+            echo "  agent home: $HOST_HOME ✅"
           else
-            echo "::error::$HOST_HOME 不存在且无法创建，用仓库变量 ATRADING_HOST_HOME 指定可访问路径"
-            exit 1
+            echo "  agent home: $HOST_HOME（runner 不可读，无法校验；挂载由 docker daemon 完成）"
           fi
 
           # ── 下载目录（compose 里写的是 ./downloads）──────────────────
           DL_DIR="${DOWNLOADS_VAR:-}"
           if [ -z "$DL_DIR" ]; then
-            if [ -d /root/openatrading/downloads ]; then DL_DIR=/root/openatrading/downloads
-            else DL_DIR="$PWD/downloads"; fi
+            # 同样不 fallback 到 $PWD/downloads：那会让 /downloads 静默变空
+            DL_DIR=/root/openatrading/downloads
           fi
           echo "ATRADING_DOWNLOADS_DIR=$DL_DIR" >> "$GITHUB_ENV"
-          if [ -d "$DL_DIR" ] && [ -r "$DL_DIR" ]; then
+          if [ -r "$DL_DIR" ]; then
             echo "  downloads: $DL_DIR（$(find "$DL_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ') 个文件）"
-          elif [ -d "$DL_DIR" ]; then
-            echo "  downloads: $DL_DIR（存在，但对 runner 不可读）"
-          elif mkdir -p "$DL_DIR" 2>/dev/null; then
+          elif [ "$(id -u)" = "0" ] && mkdir -p "$DL_DIR" 2>/dev/null; then
             echo "::warning::新建了空目录 $DL_DIR —— /downloads 会是空的"
           else
-            echo "::error::$DL_DIR 不存在且无法创建，用 ATRADING_DOWNLOADS_DIR 指定"
-            exit 1
+            echo "  downloads: $DL_DIR（runner 不可读，无法计数；挂载由 docker daemon 完成）"
           fi
 
           df -h "$PWD" | tail -1 | awk '{print "  磁盘可用: "$4}'
