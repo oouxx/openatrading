@@ -37,10 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         mold \
     && rm -rf /var/lib/apt/lists/*
 
-# Default is unset — build.rs will read the version from Cargo.toml.
-# Override with: docker build --build-arg GIT_VERSION=v0.x.x ...
-ARG GIT_VERSION
-
+# 注意：GIT_VERSION 刻意不在此声明。它每次部署都会变，声明在依赖层之前会让
+# cargo chef 的依赖缓存整段失效（全量重编 ~10min）。放到最终 cargo build 之前。
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 
 WORKDIR /app
@@ -59,6 +57,9 @@ COPY crates/ crates/
 # resolution, but we never build it here (only openatrading-cli).
 COPY src-tauri/Cargo.toml src-tauri/
 
+# Default is unset — build.rs falls back to the version in Cargo.toml.
+# Override with: docker build --build-arg GIT_VERSION=v0.x.x ...
+ARG GIT_VERSION
 RUN cargo build --release -p openatrading-cli && \
     cp target/release/openatrading /usr/local/bin/openatrading
 

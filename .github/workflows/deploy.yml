@@ -1,13 +1,13 @@
 name: Deploy
 
-# 等价于本地 ./deploy.sh [gateway|web|all]，但跑在服务器上的 self-hosted runner 里。
+# 构建在 GitHub 托管 runner 上完成，镜像推到 ghcr；
+# self-hosted runner（就在目标服务器上）只做 pull + docker compose up，不编译。
 #
-# 与 deploy.sh 的差异（不是偷工减料，是 runner 就在目标机上的必然结果）：
-#   1. 不再 ssh/scp —— 代码由 actions/checkout 直接拉到 runner 工作区
-#   2. .env 由服务器上的固定路径提供（它已 gitignore），不从仓库上传
-#   3. ~/.atrading 与 ./downloads 这两个"仓库外的东西"用绝对路径钉死，
-#      否则 compose 会把 ~ 展开成 runner 用户的 HOME、把 ./ 展开成 runner 工作区
-#   4. .atrading/agent 配置不从仓库同步（同样已 gitignore），靠服务器上的常驻副本
+# 这样 VPS 上不需要 Rust/bun 工具链，部署从"十几分钟编译"变成"拉几十 MB 镜像"，
+# 而且部署的是不可变镜像（sha-xxxxxxx tag），回滚只是换个 tag 再 up。
+#
+# 与本地 deploy.sh 的关系：deploy.sh 是"在服务器上编译"，本 workflow 是"在 GitHub
+# 上编译、服务器上只运行"。两者最终都落到同一个 compose 项目（openatrading）。
 
 on:
   workflow_dispatch:
@@ -28,28 +28,99 @@ on:
       - "docs/**"
       - ".github/**"
 
-# 部署不能并发：两个 compose 同时 up 会互相打架。也不取消进行中的，避免半完成状态。
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
+  packages: write
 
 env:
-  # 固定项目名，保证与旧 deploy.sh（在 /root/openatrading 下执行）创建的容器是同一套。
-  # 否则会新建一份 openatrading-xxx-1，旧容器继续占着 80/443/8080。
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
   COMPOSE_PROJECT_NAME: openatrading
   COMPOSE_BASE: docker-compose.yaml
   COMPOSE_CI: docker-compose.ci.yaml
 
 jobs:
-  deploy:
-    name: deploy / ${{ inputs.service || 'all' }}
-    # 要求 runner 上装了 docker + compose 插件，且该用户能访问 docker daemon
-    runs-on: [self-hosted, linux]
-    timeout-minutes: 45
+  # 决定这次要构建/部署哪几个镜像
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      targets: ${{ steps.m.outputs.targets }}
+    steps:
+      - id: m
+        env:
+          SERVICE: ${{ inputs.service || 'all' }}
+        run: |
+          set -euo pipefail
+          gw='{"name":"gateway","dockerfile":"Dockerfile","suffix":""}'
+          fe='{"name":"frontend","dockerfile":"Dockerfile.frontend","suffix":"-frontend"}'
+          ak='{"name":"akshare-mcp","dockerfile":"docker/akshare-mcp/Dockerfile","suffix":"-akshare-mcp"}'
+          case "$SERVICE" in
+            gateway) m="[$gw]";               t="gateway" ;;
+            web)     m="[$fe]";               t="frontend" ;;
+            all)     m="[$gw,$fe,$ak]";       t="gateway frontend akshare-mcp" ;;
+            *) echo "::error::未知 service: $SERVICE"; exit 1 ;;
+          esac
+          echo "matrix=$m"   >> "$GITHUB_OUTPUT"
+          echo "targets=$t"  >> "$GITHUB_OUTPUT"
+          echo "构建矩阵: $m"
+          echo "部署目标: $t"
 
+  # 在 GitHub 托管 runner 上编译并推镜像（VPS 全程不参与编译）
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.suffix }}
+          tags: |
+            type=raw,value=sha-{{sha}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: 构建并推送 ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GIT_VERSION 只影响最终编译层（Dockerfile 里已下移到依赖缓存之后），
+          # 这样每次部署都能打上真实 commit 且不吃掉 cargo chef 缓存。
+          build-args: |
+            GIT_VERSION=sha-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # 在 self-hosted runner（目标服务器）上只做 pull + up
+  deploy:
+    needs: [prepare, build]
+    name: deploy / ${{ inputs.service || 'all' }}
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
     steps:
       - name: 预检（fail fast）
         shell: bash
@@ -69,7 +140,7 @@ jobs:
             echo "::error::当前用户（$(id -un)）无法访问 docker daemon"
             echo "  修法（在服务器上）："
             echo "    sudo usermod -aG docker $(id -un)"
-            echo "    sudo systemctl restart 'actions.runner.*.service'   # 让 runner 服务重新读取组"
+            echo "    sudo systemctl restart 'actions.runner.*.service'   # 让 runner 重新读组"
             exit 1; }
 
           # ── .env ────────────────────────────────────────────────
@@ -81,108 +152,106 @@ jobs:
           if [ ! -f "$ENV_FILE" ]; then
             echo "::error::找不到 .env（已查找 ${ENV_FILE_VAR:-/etc/openatrading/.env}）"
             echo "  修法：mkdir -p /etc/openatrading && install -m 600 <你的.env> /etc/openatrading/.env"
-            echo "  或设置仓库变量 ATRADING_ENV_FILE 指向真实路径"
             exit 1
           fi
           echo "ENV_FILE=$ENV_FILE" >> "$GITHUB_ENV"
-          # 绝不打印内容，只报变量个数
           echo "  .env: $ENV_FILE（$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" || true) 个变量）"
 
           # ── agent home（compose 里写的是 ~/.atrading）────────────────
           HOST_HOME="${ATRADING_HOME_VAR:-}"
           if [ -z "$HOST_HOME" ]; then
-            if [ "$(id -u)" = "0" ]; then
-              HOST_HOME=/root/.atrading
+            if [ "$(id -u)" = "0" ]; then HOST_HOME=/root/.atrading
             elif [ -d /root/.atrading ]; then
               HOST_HOME=/root/.atrading
-              echo "::warning::runner 是非 root 用户：~/.atrading 会展开成 $HOME/.atrading，已改用 /root/.atrading（见 override）"
-            else
-              HOST_HOME="$HOME/.atrading"
-            fi
+              echo "::warning::runner 是非 root 用户：~/.atrading 会展开成 $HOME/.atrading，已改用 /root/.atrading"
+            else HOST_HOME="$HOME/.atrading"; fi
           fi
           echo "ATRADING_HOST_HOME=$HOST_HOME" >> "$GITHUB_ENV"
-          # 挂载由 docker daemon（root）执行，runner 用户不需要写权限 —— 非 root runner
-          # 读不到 /root/** 是正常的，不能因此 mkdir 失败或误报。
+          # 挂载由 docker daemon（root）执行，runner 用户不需要写权限
           if [ -d "$HOST_HOME" ]; then
             echo "  agent home: $HOST_HOME（已存在）"
             if [ -r "$HOST_HOME" ]; then
               [ -f "$HOST_HOME/agent/AGENTS.md" ] || \
-                echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令（deploy.sh 的 sync_agent_config 需要人工跑一次）"
+                echo "::warning::$HOST_HOME/agent/AGENTS.md 不存在，agent 会缺指令"
             else
-              echo "::warning::$HOST_HOME 对 runner 用户不可读，跳过内容检查（不影响容器挂载）"
+              echo "::warning::$HOST_HOME 对 runner 用户不可读，跳过内容检查（不影响挂载）"
             fi
+          elif mkdir -p "$HOST_HOME/agent" 2>/dev/null; then
+            echo "::warning::新建了空目录 $HOST_HOME —— agent 将没有历史配置/会话"
           else
-            if mkdir -p "$HOST_HOME/agent" 2>/dev/null; then
-              echo "::warning::新建了空目录 $HOST_HOME —— agent 将没有历史配置/会话"
-            else
-              echo "::error::$HOST_HOME 不存在且无法创建。"
-              echo "  非 root runner 请用仓库变量 ATRADING_HOST_HOME 指向一个 runer 可访问的绝对路径，"
-              echo "  且注意：换路径等于丢掉现有 agent 的 settings/auth/sessions。"
-              exit 1
-            fi
+            echo "::error::$HOST_HOME 不存在且无法创建，用仓库变量 ATRADING_HOST_HOME 指定可访问路径"
+            exit 1
           fi
 
-          # ── 下载目录（compose 里写的是 ./downloads，相对 compose 文件所在目录）──
+          # ── 下载目录（compose 里写的是 ./downloads）──────────────────
           DL_DIR="${DOWNLOADS_VAR:-}"
           if [ -z "$DL_DIR" ]; then
             if [ -d /root/openatrading/downloads ]; then DL_DIR=/root/openatrading/downloads
-            else DL_DIR="$PWD/downloads"; mkdir -p "$DL_DIR"
-              echo "::warning::没有找到旧的下载目录，使用了 $DL_DIR（install.sh 的 /downloads 会是空的）"
-            fi
+            else DL_DIR="$PWD/downloads"; fi
           fi
           echo "ATRADING_DOWNLOADS_DIR=$DL_DIR" >> "$GITHUB_ENV"
           if [ -d "$DL_DIR" ] && [ -r "$DL_DIR" ]; then
             echo "  downloads: $DL_DIR（$(find "$DL_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ') 个文件）"
           elif [ -d "$DL_DIR" ]; then
-            echo "  downloads: $DL_DIR（存在，但对 runner 用户不可读，跳过文件计数）"
+            echo "  downloads: $DL_DIR（存在，但对 runner 不可读）"
           elif mkdir -p "$DL_DIR" 2>/dev/null; then
-            echo "::warning::新建了空目录 $DL_DIR —— /downloads 一开始会是空的"
+            echo "::warning::新建了空目录 $DL_DIR —— /downloads 会是空的"
           else
-            echo "::error::$DL_DIR 不存在且无法创建，请用 ATRADING_DOWNLOADS_DIR 指定可访问路径"
+            echo "::error::$DL_DIR 不存在且无法创建，用 ATRADING_DOWNLOADS_DIR 指定"
             exit 1
           fi
 
           df -h "$PWD" | tail -1 | awk '{print "  磁盘可用: "$4}'
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 1
-          clean: true
+
+      - name: 登录 GHCR（拉镜像用）
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 准备 .env 与 compose override（并断言路径解析正确）
         shell: bash
+        env:
+          TARGETS: ${{ needs.prepare.outputs.targets }}
         run: |
           set -euo pipefail
           umask 077
+          # metadata-action 的 {{sha}} 是短 sha(7)，这里必须一致，否则 pull 404
+          IMAGE_TAG="sha-${GITHUB_SHA:0:7}"
           install -m 600 "$ENV_FILE" .env
 
-          # 只覆盖"会被 runner 身份/工作区位置影响"的部分，其余沿用 docker-compose.yaml
+          # 钉三件事：镜像用不可变 tag、agent home 与 downloads 用绝对路径
+          base="$REGISTRY/$IMAGE_NAME"
           cat > "$COMPOSE_CI" <<EOF
           # 由 .github/workflows/deploy.yml 生成，不要提交
           services:
             gateway:
-              build:
-                labels:
-                  org.opencontainers.image.revision: "${{ github.sha }}"
-                  org.opencontainers.image.source: "${{ github.server_url }}/${{ github.repository }}"
+              image: ${base}:${IMAGE_TAG}
               volumes:
                 - ${ATRADING_HOST_HOME}:/root/.atrading
             frontend:
+              image: ${base}-frontend:${IMAGE_TAG}
               volumes:
                 - ${ATRADING_DOWNLOADS_DIR}:/app/downloads
+            akshare-mcp:
+              image: ${base}-akshare-mcp:${IMAGE_TAG}
           EOF
 
           args=(-f "$COMPOSE_BASE" -f "$COMPOSE_CI")
           docker compose "${args[@]}" config --quiet
           rendered=$(docker compose "${args[@]}" config)
 
-          # 断言而不是假设：compose 的 volumes 按 target 合并，若行为不符就会变成两个
-          # 同名挂载点（容器直接起不来）。这里提前炸掉，给出可读的原因。
+          echo "--- 镜像与挂载（生效值）---"
+          printf '%s\n' "$rendered" | grep -E "^ *image: |^ *target: |^ *source: " | sed 's/^ */  /'
+
           assert_one() {
-            local target="$1" source="$2"
-            local n
+            local target="$1" source="$2" n
             n=$(printf '%s\n' "$rendered" | grep -c "^ *target: $target\$" || true)
             if [ "$n" != "1" ]; then
               echo "::error::挂载点 $target 期望 1 个，实际 $n 个 —— compose 合并行为不符合预期"
@@ -195,65 +264,55 @@ jobs:
           }
           assert_one /root/.atrading "$ATRADING_HOST_HOME"
           assert_one /app/downloads "$ATRADING_DOWNLOADS_DIR"
+          echo "  ✅ 镜像 tag: ${IMAGE_TAG}（不可变）"
 
-      - name: 构建
+      - name: 拉镜像
         shell: bash
         env:
-          SERVICE: ${{ inputs.service || 'all' }}
+          TARGETS: ${{ needs.prepare.outputs.targets }}
         run: |
           set -euo pipefail
-          case "$SERVICE" in
-            gateway) target=gateway ;;
-            web)     target=frontend ;;
-            all)     target= ;;
-          esac
-          echo "构建 $SERVICE ..."
           # shellcheck disable=SC2086
-          docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" build $target
+          docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" pull $TARGETS
 
-      - name: 启动
+      - name: 启动（不构建）
         shell: bash
         env:
-          SERVICE: ${{ inputs.service || 'all' }}
+          TARGETS: ${{ needs.prepare.outputs.targets }}
         run: |
           set -euo pipefail
-          case "$SERVICE" in
-            gateway) target=gateway ;;
-            web)     target=frontend ;;
-            all)     target= ;;
-          esac
+          # --no-build：镜像已在本地，任何触发构建的路径都视为配置错误
+          # --remove-orphans：compose 文件里删掉的旧服务一并清掉
           # shellcheck disable=SC2086
-          docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" up -d --remove-orphans $target
+          docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" up -d --no-build --remove-orphans $TARGETS
           docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" ps
 
       - name: 健康检查
         shell: bash
         run: |
           set -euo pipefail
-          # 直连 gateway 的 8080，绕开 nginx/证书/域名，避免误判
           ok=0
           for i in $(seq 1 30); do
             if body=$(curl -fsS --max-time 3 http://127.0.0.1:8080/api/about 2>/dev/null); then
-              echo "第 ${i} 次探测成功: $body"
-              ok=1; break
+              echo "第 ${i} 次探测成功: $body"; ok=1; break
             fi
             sleep 2
           done
           [ "$ok" = "1" ] || { echo "::error::gateway 60s 内未就绪（http://127.0.0.1:8080/api/about）"; exit 1; }
 
-          # 前端：200 正常，301/302 是配了证书跳 https
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1/ || true)
           case "$code" in
             200|301|302) echo "前端 :80 -> $code ✅" ;;
             *) echo "::warning::前端 :80 -> $code，检查 frontend 容器日志" ;;
           esac
 
-      - name: 清理悬空镜像
-        if: success()
+      - name: 清理
+        if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          docker image prune -f | tail -1
+          set -uo pipefail
+          docker logout "$REGISTRY" || true      # 不留下过期的 job token
+          docker image prune -f | tail -1 || true
           df -h / | tail -1 | awk '{print "根分区可用: "$4}'
 
       - name: 失败诊断
@@ -267,9 +326,6 @@ jobs:
           echo
           echo "=== 最近日志（每服务 80 行）==="
           docker compose -f "$COMPOSE_BASE" -f "$COMPOSE_CI" logs --tail=80 --no-color || true
-          echo
-          echo "=== 磁盘 ==="
-          df -h / | tail -1 || true
 
       - name: 汇总
         if: always()
@@ -282,9 +338,9 @@ jobs:
             echo "|---|---|"
             echo "| 服务 | \`${{ inputs.service || 'all' }}\` |"
             echo "| 提交 | [\`${GITHUB_SHA:0:8}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |"
-            echo "| 分支/tag | \`${{ inputs.ref || github.ref_name }}\` |"
+            echo "| 镜像 tag | \`sha-${GITHUB_SHA:0:7}\` |"
             echo "| 主机 | \`$(hostname)\` |"
-            echo "| agent home | \`${ATRADING_HOST_HOME}\` |"
-            echo "| downloads | \`${ATRADING_DOWNLOADS_DIR}\` |"
+            echo "| agent home | \`${ATRADING_HOST_HOME:-?}\` |"
+            echo "| downloads | \`${ATRADING_DOWNLOADS_DIR:-?}\` |"
             echo "| 触发 | ${{ github.event_name }} by ${{ github.actor }} |"
           } >> "$GITHUB_STEP_SUMMARY"
