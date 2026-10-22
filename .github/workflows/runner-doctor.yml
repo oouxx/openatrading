@@ -1,0 +1,104 @@
+name: Runner Doctor
+
+# ⚠️ 只读诊断：不构建、不重启任何服务。用来确认 self-hosted runner 具备
+# deploy.yml 需要的前提条件（docker 权限、.env 位置、挂载源、构建期网络）。
+# 只在手动触发，不随 push 运行。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    steps:
+      - name: 环境
+        run: |
+          echo "### 环境"
+          echo "hostname : $(hostname)"
+          echo "user     : $(id -un) (uid=$(id -u), gid=$(id -g))"
+          echo "HOME     : ${HOME:-<未设置>}"
+          echo "pwd      : $PWD"
+          echo "runner   : ${RUNNER_NAME:-?} / labels=${RUNNER_LABELS:-?} / os=${RUNNER_OS:-?} ${RUNNER_ARCH:-?}"
+          echo "groups   : $(id -Gn)"
+          echo "kernel   : $(uname -sr)"
+
+      - name: Docker
+        run: |
+          echo "### Docker"
+          if ! command -v docker >/dev/null; then echo "::error::没有 docker 可执行文件"; exit 1; fi
+          docker --version
+          docker compose version || echo "::error::没有 docker compose 插件"
+          if docker info >/dev/null 2>&1; then
+            echo "✅ 当前用户可以访问 docker daemon"
+            docker info --format 'server={{.ServerVersion}} storage={{.Driver}} root={{.DockerRootDir}}'
+          else
+            echo "::error::当前用户无法访问 docker daemon（runner 用户不在 docker 组？）"
+            exit 1
+          fi
+          echo
+          echo "--- 现有容器（含 compose 项目与工作目录，用来核对路径）---"
+          docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}'
+          echo
+          docker ps --format '{{.Names}} | project={{.Label "com.docker.compose.project"}} | workdir={{.Label "com.docker.compose.project.working_dir"}} | config={{.Label "com.docker.compose.project.config_files"}}'
+          echo
+          echo "--- compose 项目 ---"
+          docker compose ls -a || true
+
+      - name: 挂载源与关键文件
+        run: |
+          echo "### 挂载源与关键文件"
+          for f in /etc/openatrading/.env /root/openatrading/.env "$HOME/.env"; do
+            if [ -f "$f" ]; then
+              printf '%-32s ✅ 存在  权限=%s  变量数=%s\n' "$f" "$(stat -c '%a %U:%G' "$f")" "$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' "$f" || true)"
+            else
+              printf '%-32s ❌ 不存在\n' "$f"
+            fi
+          done
+          for d in /root/.atrading /root/.atrading/agent /root/openatrading/downloads "$HOME/.atrading"; do
+            if [ -d "$d" ]; then
+              printf '%-32s ✅ 目录  %s 个条目  可读=%s 可写=%s\n' "$d" \
+                "$(find "$d" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')" \
+                "$([ -r "$d" ] && echo yes || echo NO)" "$([ -w "$d" ] && echo yes || echo NO)"
+            else
+              printf '%-32s ❌ 不存在\n' "$d"
+            fi
+          done
+          [ -f /root/.atrading/agent/AGENTS.md ] && echo "   agent/AGENTS.md ✅" || echo "   agent/AGENTS.md ❌（deploy.sh 的 sync_agent_config 需要先跑一次）"
+
+      - name: 资源
+        run: |
+          echo "### 资源"
+          df -h / | tail -1
+          echo
+          free -h 2>/dev/null | head -2 || true
+          echo
+          echo "docker 占用："
+          docker system df || true
+
+      - name: 构建期网络（pull 基础镜像 / apt）
+        run: |
+          echo "### 网络"
+          for u in https://registry-1.docker.io/v2/ https://ghcr.io/v2/ https://github.com https://deb.debian.org; do
+            code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$u" || echo "timeout")
+            printf '%-34s %s\n' "$u" "$code"
+          done
+          echo
+          echo "（401/403 也算通；只关心是否连得上）"
+          echo "代理环境变量: HTTP_PROXY=${HTTP_PROXY:-<空>} HTTPS_PROXY=${HTTPS_PROXY:-<空>}"
+
+      - name: 汇总
+        if: always()
+        run: |
+          {
+            echo "## Runner Doctor"
+            echo
+            echo "- host: \`$(hostname)\`"
+            echo "- runner: \`${RUNNER_NAME:-?}\`"
+            echo "- user: \`$(id -un)\`"
+            echo "- docker: \`$(docker --version 2>/dev/null | cut -d, -f1)\`"
+            echo "- compose: \`$(docker compose version --short 2>/dev/null)\`"
+            echo "- 磁盘可用: \`$(df -h / | tail -1 | awk '{print $4}')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
