@@ -2,7 +2,6 @@ import { create } from "zustand"
 
 export type RightPanelView =
   | "dragon-tiger"
-  | "breakout"
   | "replay"
   | "strong-stocks"
   | "promotion"
@@ -17,7 +16,6 @@ const DEFAULT_VIEW: RightPanelView = "dragon-tiger"
 
 const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
   "dragon-tiger",
-  "breakout",
   "replay",
   "strong-stocks",
   "promotion",
@@ -31,6 +29,8 @@ const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
 function loadActiveView(): RightPanelView {
   try {
     const stored = localStorage.getItem(ACTIVE_VIEW_KEY)
+    // 旧版 breakout 入口合并后迁移到 promotion
+    if (stored === "breakout") return "promotion"
     if (stored && ALL_VIEWS.has(stored as RightPanelView)) {
       return stored as RightPanelView
     }

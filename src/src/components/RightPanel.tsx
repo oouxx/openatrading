@@ -12,22 +12,18 @@ import { motionTransition } from "@/lib/motion"
 
 const KlineDrawer = lazy(() => import("./KlineDrawer"))
 const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
-const BreakoutView = lazy(() => import("@/components/BreakoutView"))
 const ReplayView = lazy(() => import("@/components/ReplayView"))
 const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
-const PromotionTab = lazy(() => import("@/components/PromotionTab"))
+const PromotionView = lazy(() => import("@/components/PromotionView"))
 const PlateTab = lazy(() => import("@/components/PlateTab"))
 const TimelineTab = lazy(() => import("@/components/TimelineTab"))
 const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
 const MarketIntelTab = lazy(() => import("@/components/MarketIntelTab"))
 const NewsFeed = lazy(() => import("@/components/NewsFeed"))
 
-const NOOP = () => {}
-
 const TABS: { id: RightPanelView; label: string }[] = [
   { id: "strong-stocks", label: "强势股" },
-  { id: "breakout", label: "晋级分析1" },
-  { id: "promotion", label: "晋级分析2" },
+  { id: "promotion", label: "晋级分析" },
   { id: "plate", label: "板块异动" },
   { id: "dragon-tiger", label: "龙虎榜" },
   { id: "timeline", label: "时间线" },
@@ -64,14 +60,12 @@ function ViewRenderer({ view }: { view: RightPanelView }) {
   switch (view) {
     case "dragon-tiger":
       return <DragonTigerView />
-    case "breakout":
-      return <BreakoutView />
     case "replay":
       return <ReplayView />
     case "strong-stocks":
       return <StrongStocksTab />
     case "promotion":
-      return <PromotionTab stocks={[]} onOpenKline={NOOP} />
+      return <PromotionView />
     case "plate":
       return <PlateTab />
     case "timeline":
