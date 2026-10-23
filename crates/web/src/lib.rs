@@ -120,6 +120,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(web::get_role_pnl_calendar),
         )
         .route("/api/roles/:name/history", get(web::get_role_history))
+        .route("/api/replay/days", get(web::get_replay_days))
+        .route("/api/replay/day", get(web::get_replay_day))
+        .route("/api/replay/refresh", post(web::refresh_replay_day))
         .route("/api/replay/events", get(web::get_replay_events))
         .route("/api/replay/index", get(web::get_replay_index))
         .route("/api/replay/news", get(web::get_replay_news))

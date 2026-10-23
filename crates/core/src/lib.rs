@@ -9,6 +9,7 @@ pub mod log;
 pub mod memory;
 // pub mod platform;
 pub mod prompts;
+pub mod replay;
 pub mod roles;
 pub mod skills;
 pub mod social;

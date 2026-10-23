@@ -1,31 +1,42 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use super::replay::ReplayStore;
 use super::MarketSnapshot;
 
 pub struct MemoryStore {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
+    replay: ReplayStore,
 }
 
 impl MemoryStore {
     pub fn open(db_path: &Path) -> Result<Self> {
-        let conn = Connection::open(db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS market_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                captured_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-                data_source TEXT NOT NULL,
-                raw_json TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_snapshots_date ON market_snapshots(captured_at);
-            CREATE INDEX IF NOT EXISTS idx_snapshots_source ON market_snapshots(data_source);",
-        )?;
-        Ok(Self {
-            conn: Mutex::new(conn),
-        })
+        let conn = Arc::new(Mutex::new(Connection::open(db_path)?));
+        {
+            let guard = conn
+                .lock()
+                .map_err(|e| anyhow::anyhow!("mutex poisoned: {e}"))?;
+            guard.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
+            guard.execute_batch(
+                "CREATE TABLE IF NOT EXISTS market_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    captured_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                    data_source TEXT NOT NULL,
+                    raw_json TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_snapshots_date ON market_snapshots(captured_at);
+                CREATE INDEX IF NOT EXISTS idx_snapshots_source ON market_snapshots(data_source);",
+            )?;
+        }
+        let replay = ReplayStore::new(Arc::clone(&conn))?;
+        Ok(Self { conn, replay })
+    }
+
+    /// 行情回放事件的持久化入口。
+    pub fn replay(&self) -> &ReplayStore {
+        &self.replay
     }
 
     pub fn save_snapshot(&self, source: &str, json: &str) -> Result<i64> {

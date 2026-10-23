@@ -16,6 +16,29 @@ fn f64_to_i64(v: f64) -> i64 {
     v as i64
 }
 
+/// 板块事件取板块涨幅，个股事件取个股涨幅。
+fn event_pcp(event: &PlateOrStockAbnormalEvent) -> Option<f64> {
+    event
+        .plate_abnormal_event_data
+        .as_ref()
+        .and_then(|data| data.pcp)
+        .or_else(|| {
+            event
+                .stock_abnormal_event_data
+                .as_ref()
+                .and_then(|data| data.pcp)
+        })
+}
+
+/// 按事件 id 去重，保留第一次出现的事件。
+///
+/// 上游在同一秒可能重复返回同一个事件，且两条记录之间夹着别的事件；
+/// 这类重复不是相邻的，不能用 `Vec::dedup_by_key`。
+fn dedup_events_by_id(events: &mut Vec<PlateOrStockAbnormalEvent>) {
+    let mut seen = std::collections::HashSet::with_capacity(events.len());
+    events.retain(|event| seen.insert(event.id));
+}
+
 const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -715,7 +738,80 @@ impl XuanguBaoClient {
         Ok(events)
     }
 
-    /// Fetch all abnormal events for the current trading day.
+    /// 拉取指定交易日 09:30–15:00 的异动事件。
+    ///
+    /// 盘中调用时结束时间取当前时间，收盘后取 15:00。`min_pcp` 只做粗过滤，
+    /// 建议传一个较低阈值（例如 0.005），把细粒度数据留给回放页面做二次筛选。
+    ///
+    /// # Errors
+    /// 日期非法、HTTP 请求失败或响应无法解析时返回错误。
+    pub async fn fetch_events_for_date(&self, date: &str, min_pcp: f64) -> Result<DayEventBatch> {
+        let close_ts = Self::trade_date_close_ts(date)?;
+        let open_ts = close_ts - 5 * 3600 - 30 * 60;
+        let end_ts = Self::effective_event_end_ts(date, close_ts);
+        if end_ts <= open_ts {
+            return Ok(DayEventBatch {
+                events: Vec::new(),
+                window_start: open_ts,
+                window_end: end_ts,
+                reached_open: true,
+            });
+        }
+
+        let mut all_events: Vec<PlateOrStockAbnormalEvent> = Vec::new();
+        let page_size: u32 = 1000;
+        let mut cursor = end_ts + 1;
+        let mut reached_open = false;
+
+        loop {
+            let page = self
+                .fetch_events_page(cursor, page_size, "11001,11000")
+                .await?;
+            if page.is_empty() {
+                // 没有更早的事件 —— 分页已经走到当天起点。
+                reached_open = true;
+                break;
+            }
+            // API 返回 cursor 之前的事件（新→旧）；用最小时间戳作为下一页游标。
+            let earliest = page
+                .iter()
+                .map(|e| e.event_timestamp)
+                .min()
+                .unwrap_or(cursor);
+            all_events.extend(
+                page.into_iter()
+                    .filter(|e| e.event_timestamp >= open_ts && e.event_timestamp <= end_ts),
+            );
+            if earliest <= open_ts {
+                reached_open = true;
+                break;
+            }
+            if earliest >= cursor {
+                // 上游返回了不在游标之前的数据，避免死循环。
+                break;
+            }
+            cursor = earliest;
+        }
+
+        all_events.sort_by_key(|e| e.event_timestamp);
+        dedup_events_by_id(&mut all_events);
+        all_events.retain(|e| event_pcp(e).is_some_and(|pcp| pcp.abs() > min_pcp));
+
+        tracing::debug!(
+            date,
+            count = all_events.len(),
+            reached_open,
+            "xuangubao::fetch_events_for_date done"
+        );
+        Ok(DayEventBatch {
+            events: all_events,
+            window_start: open_ts,
+            window_end: end_ts,
+            reached_open,
+        })
+    }
+
+    /// Fetch all abnormal events for the latest completed trading day.
     ///
     /// # Errors
     /// Returns an error if the HTTP request fails or the response cannot be parsed.
@@ -723,82 +819,61 @@ impl XuanguBaoClient {
         &self,
         min_pcp: f64,
     ) -> Result<Vec<PlateOrStockAbnormalEvent>> {
-        let day_close_ts = Self::latest_trading_day_close_ts();
-        let day_open_ts = day_close_ts - 5 * 3600 - 30 * 60;
+        let date = Self::latest_completed_trade_date();
+        Ok(self.fetch_events_for_date(&date, min_pcp).await?.events)
+    }
 
-        let mut all_events: Vec<PlateOrStockAbnormalEvent> = Vec::new();
-        let page_size: u32 = 1000;
-        let mut cursor = day_close_ts;
-
-        // Paginate backwards until we cross day_open_ts
-        loop {
-            let page = self
-                .fetch_events_page(cursor, page_size, "11001,11000")
-                .await?;
-            if page.is_empty() {
-                break;
-            }
-            // The API returns events before `cursor`, newest first
-            // The last event in the page is the earliest
-            let earliest_in_page = page.last().map_or(cursor, |e| e.event_timestamp);
-            let keep: Vec<_> = page
-                .into_iter()
-                .filter(|e| e.event_timestamp >= day_open_ts)
-                .collect();
-            all_events.extend(keep);
-
-            if earliest_in_page <= day_open_ts {
-                break;
-            }
-            cursor = earliest_in_page;
+    /// 最近一个已收盘的交易日（YYYY-MM-DD）。
+    ///
+    /// 只跳过周末，不含节假日日历；节假日会取到空数据，调用方需自行回退。
+    pub fn latest_completed_trade_date() -> String {
+        let now = chrono::Utc::now().with_timezone(&beijing_tz());
+        let close = chrono::NaiveTime::from_hms_opt(15, 0, 0)
+            .unwrap_or_else(|| panic!("15:00:00 is a valid time"));
+        let mut date = now.date_naive();
+        if now.time() < close {
+            date = date.pred_opt().unwrap_or(date);
         }
+        while matches!(date.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+            date = date.pred_opt().unwrap_or(date);
+        }
+        date.format("%Y-%m-%d").to_string()
+    }
 
-        all_events.sort_by_key(|e| e.event_timestamp);
-        all_events.dedup_by_key(|e| e.id);
-        all_events.retain(|e| {
-            e.plate_abnormal_event_data
-                .as_ref()
-                .and_then(|d| d.pcp)
-                .is_some_and(|pcp| pcp.abs() > min_pcp)
-        });
+    /// 指定交易日 15:00（北京时间）的 Unix 时间戳。
+    ///
+    /// # Errors
+    /// 日期不是 `YYYY-MM-DD` 时返回错误。
+    pub fn trade_date_close_ts(date: &str) -> Result<i64> {
+        let naive = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+            .with_context(|| format!("非法交易日: {date}"))?
+            .and_hms_opt(15, 0, 0)
+            .with_context(|| format!("非法收盘时间: {date}"))?;
+        Ok(naive.and_local_timezone(beijing_tz()).single().map_or_else(
+            || panic!("fixed offset always resolves to a single local time"),
+            |dt| dt.timestamp(),
+        ))
+    }
 
-        tracing::debug!(
-            count = all_events.len(),
-            "xuangubao::fetch_all_day_events done"
-        );
-        Ok(all_events)
+    /// 当天盘中只回放到当前时刻，收盘后回放到 15:00。
+    fn effective_event_end_ts(date: &str, close_ts: i64) -> i64 {
+        let now = chrono::Utc::now().with_timezone(&beijing_tz());
+        if date == now.format("%Y-%m-%d").to_string() {
+            now.timestamp().min(close_ts)
+        } else {
+            close_ts
+        }
     }
 
     /// Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     /// If today's market hasn't closed yet, returns the previous trading day's close.
-    /// Returns the Unix timestamp for 15:00 on the latest completed trading day (Beijing time).
     ///
     /// # Panics
-    /// Panics if the date string cannot be parsed or the time 15:00:00 is invalid (should never happen).
+    /// Panics if the computed date is invalid (should never happen).
     pub fn latest_trading_day_close_ts() -> i64 {
-        let days = Self::last_n_trading_days(2);
-        let now_beijing = chrono::Utc::now().with_timezone(&beijing_tz());
-        let today_str = now_beijing.format("%Y-%m-%d").to_string();
-
-        // If today is a trading day and it's before 15:00, use yesterday's close
-        let date_str = if days.first().map(std::string::String::as_str) == Some(&today_str)
-            && now_beijing.time()
-                < chrono::NaiveTime::from_hms_opt(15, 0, 0)
-                    .unwrap_or_else(|| panic!("15,0,0 is a valid time"))
-        {
-            days.get(1)
-                .map_or("2026-01-01", std::string::String::as_str)
-        } else {
-            days.first()
-                .map_or("2026-01-01", std::string::String::as_str)
-        };
-
-        let naive = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .unwrap_or_else(|e| panic!("failed to parse date {date_str}: {e}"))
-            .and_hms_opt(15, 0, 0)
-            .unwrap_or_else(|| panic!("15:00:00 is a valid time"));
-        let dt = naive.and_local_timezone(beijing_tz()).unwrap();
-        dt.timestamp()
+        let date = Self::latest_completed_trade_date();
+        Self::trade_date_close_ts(&date)
+            .unwrap_or_else(|e| panic!("latest trading day close timestamp: {e}"))
     }
 
     // ---大盘异动---------------------------------------
@@ -1400,6 +1475,16 @@ pub struct PlateAndReason {
 
 // ─── 行情回放 ────────────────────────────────────────────
 
+/// 某一天的完整事件批次。`reached_open` 表示分页已经覆盖到 09:30 或
+/// 确认没有更早的事件，收盘对账时用它判断数据是否完整。
+#[derive(Debug, Clone)]
+pub struct DayEventBatch {
+    pub events: Vec<PlateOrStockAbnormalEvent>,
+    pub window_start: i64,
+    pub window_end: i64,
+    pub reached_open: bool,
+}
+
 /// Lightweight event for the replay frontend — strips unused `PlateAbnormalEvent` fields.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReplayEvent {
@@ -1407,8 +1492,15 @@ pub struct ReplayEvent {
     pub event_type: i32,
     pub event_timestamp: i64,
     pub good_or_bad: i32,
+    /// 事件原始目标（板块名或股票代码），作为展示名的兜底。
+    #[serde(default)]
+    pub target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stock_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pcp: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1417,17 +1509,34 @@ pub struct ReplayEvent {
 
 impl From<&PlateOrStockAbnormalEvent> for ReplayEvent {
     fn from(ev: &PlateOrStockAbnormalEvent) -> Self {
-        let (plate_name, pcp, related_stocks) = ev
-            .plate_abnormal_event_data
+        // 上游对不适用的字段会返回 `{}`，反序列化后是 `Some(默认值)`。
+        // 不能只看 `is_some()`，否则空的板块载荷会吞掉真正的个股载荷。
+        let plate = ev.plate_abnormal_event_data.as_ref().filter(|plate| {
+            plate.plate_name.is_some() || plate.pcp.is_some() || !plate.related_stocks.is_empty()
+        });
+        let stock = ev
+            .stock_abnormal_event_data
             .as_ref()
-            .map(|p| (p.plate_name.clone(), p.pcp, p.related_stocks.clone()))
+            .filter(|stock| stock.name.is_some() || stock.symbol.is_some() || stock.pcp.is_some());
+        let plate_name = plate.and_then(|plate| plate.plate_name.clone());
+        let stock_name = stock.and_then(|stock| stock.name.clone());
+        let symbol = stock.and_then(|stock| stock.symbol.clone());
+        // 少数板块事件只带关联股票、不带自身 pcp，这时用个股 pcp 兜底。
+        let pcp = plate
+            .and_then(|plate| plate.pcp)
+            .or_else(|| stock.and_then(|stock| stock.pcp));
+        let related_stocks = plate
+            .map(|plate| plate.related_stocks.clone())
             .unwrap_or_default();
         Self {
             id: ev.id,
             event_type: ev.event_type,
             event_timestamp: ev.event_timestamp,
             good_or_bad: ev.good_or_bad,
+            target: ev.target.clone(),
             plate_name,
+            stock_name,
+            symbol,
             pcp,
             related_stocks,
         }
@@ -1512,24 +1621,21 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
                 2 => bucket_bear += 1,
                 _ => {}
             }
-            if ev.event_type == 11001 {
-                if let Some(ref pd) = ev.plate_abnormal_event_data {
-                    if let (Some(ref name), Some(pcp)) = (&pd.plate_name, pd.pcp) {
-                        let acc =
-                            plate_map
-                                .entry(name.clone())
-                                .or_insert_with(|| PlateAccumulator {
-                                    pcp,
-                                    good_or_bad: ev.good_or_bad,
-                                    related_stocks: pd.related_stocks.clone(),
-                                });
-                        if pcp.abs() > acc.pcp.abs() {
-                            acc.pcp = pcp;
-                            acc.good_or_bad = ev.good_or_bad;
-                        }
-                        if acc.related_stocks.len() < pd.related_stocks.len() {
-                            acc.related_stocks.clone_from(&pd.related_stocks);
-                        }
+            if let Some(ref pd) = ev.plate_abnormal_event_data {
+                if let (Some(ref name), Some(pcp)) = (&pd.plate_name, pd.pcp) {
+                    let acc = plate_map
+                        .entry(name.clone())
+                        .or_insert_with(|| PlateAccumulator {
+                            pcp,
+                            good_or_bad: ev.good_or_bad,
+                            related_stocks: pd.related_stocks.clone(),
+                        });
+                    if pcp.abs() > acc.pcp.abs() {
+                        acc.pcp = pcp;
+                        acc.good_or_bad = ev.good_or_bad;
+                    }
+                    if acc.related_stocks.len() < pd.related_stocks.len() {
+                        acc.related_stocks.clone_from(&pd.related_stocks);
                     }
                 }
             }
@@ -1580,7 +1686,8 @@ pub fn build_replay_snapshots(events: &[PlateOrStockAbnormalEvent]) -> Vec<TimeS
 }
 
 fn unix_to_hhmm(ts: i64) -> String {
-    let secs_since_midnight = ts.rem_euclid(86400);
+    // 时间戳是 UTC，展示统一用北京时间。
+    let secs_since_midnight = (ts + 8 * 3600).rem_euclid(86400);
     let h = secs_since_midnight / 3600;
     let m = (secs_since_midnight % 3600) / 60;
     format!("{h:02}:{m:02}")
@@ -1588,14 +1695,14 @@ fn unix_to_hhmm(ts: i64) -> String {
 
 // ─── 指数走势（三指数并发） ──────────────────────────────
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexTrendData {
     pub sh: Vec<IndexTick>,
     pub sz: Vec<IndexTick>,
     pub cyb: Vec<IndexTick>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexTick {
     pub tick_at: i64,
     pub close_px: f64,
@@ -1773,6 +1880,79 @@ mod tests {
         assert_eq!(candle.low, Some(1327.88));
         assert_eq!(candle.volume, Some(28170.0));
         assert_eq!(candle.change_rate, Some(-1.3439));
+    }
+
+    #[test]
+    fn replay_event_keeps_stock_fields() {
+        let event = PlateOrStockAbnormalEvent {
+            id: 7,
+            target: "300750.SZ".to_string(),
+            event_type: 11_001,
+            event_timestamp: 1_792_546_200,
+            stock_abnormal_event_data: Some(StockAbnormalEventData {
+                symbol: Some("300750.SZ".to_string()),
+                name: Some("宁德时代".to_string()),
+                pcp: Some(-0.018),
+                mtm: Some(1.0),
+            }),
+            plate_abnormal_event_data: Some(PlateAbnormalEventData::default()),
+            good_or_bad: 2,
+        };
+        let replay = ReplayEvent::from(&event);
+        assert_eq!(replay.stock_name.as_deref(), Some("宁德时代"));
+        assert_eq!(replay.symbol.as_deref(), Some("300750.SZ"));
+        assert_eq!(replay.pcp, Some(-0.018));
+        assert!(replay.plate_name.is_none());
+    }
+
+    #[test]
+    fn replay_event_uses_stock_pcp_when_plate_pcp_missing() {
+        let event = PlateOrStockAbnormalEvent {
+            id: 8,
+            target: "64".to_string(),
+            event_type: 11_000,
+            event_timestamp: 1_792_546_200,
+            stock_abnormal_event_data: Some(StockAbnormalEventData {
+                symbol: Some("300750.SZ".to_string()),
+                name: Some("宁德时代".to_string()),
+                pcp: Some(0.021),
+                mtm: Some(1.0),
+            }),
+            plate_abnormal_event_data: Some(PlateAbnormalEventData {
+                plate_name: Some("机器人".to_string()),
+                related_stocks: vec![RelatedStock {
+                    symbol: "300750.SZ".to_string(),
+                    name: "宁德时代".to_string(),
+                    mtm: 1.0,
+                    pcp: 0.021,
+                }],
+                ..PlateAbnormalEventData::default()
+            }),
+            good_or_bad: 1,
+        };
+        let replay = ReplayEvent::from(&event);
+        assert_eq!(replay.plate_name.as_deref(), Some("机器人"));
+        assert_eq!(replay.pcp, Some(0.021));
+        assert_eq!(replay.related_stocks.len(), 1);
+    }
+
+    #[test]
+    fn replay_duplicate_ids_are_removed_even_when_not_adjacent() {
+        let make = |id| PlateOrStockAbnormalEvent {
+            id,
+            target: id.to_string(),
+            event_type: 11_000,
+            event_timestamp: 1_792_546_200,
+            stock_abnormal_event_data: None,
+            plate_abnormal_event_data: None,
+            good_or_bad: 1,
+        };
+        let mut events = vec![make(1), make(2), make(1)];
+        dedup_events_by_id(&mut events);
+        assert_eq!(
+            events.iter().map(|event| event.id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
     }
 
     #[test]

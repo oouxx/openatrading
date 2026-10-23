@@ -52,7 +52,8 @@ export const dragonTigerKeys = {
 
 export const replayKeys = {
   all: ["replay"] as const,
-  events: (minPct?: number) => [...replayKeys.all, "events", minPct ?? 2] as const,
+  days: () => [...replayKeys.all, "days"] as const,
+  day: (date?: string) => [...replayKeys.all, "day", date ?? "latest"] as const,
 }
 
 export const telegraphKeys = {

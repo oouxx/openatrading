@@ -696,6 +696,115 @@ pub async fn get_role_history_data(
 
 // ── Replay ────────────────────────────────────────────────────────────────
 
+/// GET /api/replay/days
+pub async fn get_replay_days_data(
+    state: &Arc<AppState>,
+    limit: u32,
+) -> Result<serde_json::Value, String> {
+    let days = state
+        .ctx
+        .memory
+        .replay()
+        .days(limit)
+        .map_err(|e| format!("读取回放日列表失败: {e}"))?;
+    Ok(serde_json::to_value(days).unwrap_or_default())
+}
+
+/// GET /api/replay/day
+pub async fn get_replay_day_data(
+    state: &Arc<AppState>,
+    date: Option<&str>,
+    min_pcp: f64,
+) -> Result<serde_json::Value, String> {
+    if let Some(date) = date {
+        validate_replay_date(date)?;
+    }
+    let data = if let Some(date) = date {
+        openatrading_core::replay::ensure_day(&state.ctx, date).await
+    } else {
+        openatrading_core::replay::ensure_latest_day(&state.ctx).await
+    }
+    .map_err(|e| format!("加载回放数据失败: {e}"))?;
+
+    let events: Vec<_> = data
+        .events
+        .into_iter()
+        .filter(|event| event.pcp.is_some_and(|pcp| pcp.abs() >= min_pcp))
+        .collect();
+    let returned_count = events.len();
+
+    Ok(serde_json::json!({
+        "date": data.day.date,
+        "status": data.day.status,
+        "event_count": data.day.event_count,
+        "returned_count": returned_count,
+        "first_event_timestamp": data.day.first_event_timestamp,
+        "last_event_timestamp": data.day.last_event_timestamp,
+        "events": events,
+        "index": data.index,
+    }))
+}
+
+/// POST /api/replay/refresh
+pub async fn refresh_replay_day_data(
+    state: &Arc<AppState>,
+    date: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let date = date.map_or_else(
+        openatrading_core::api::xuangubao::XuanguBaoClient::latest_completed_trade_date,
+        std::string::ToString::to_string,
+    );
+    validate_replay_date(&date)?;
+    let request = openatrading_core::replay::CaptureRequest {
+        date,
+        min_pcp: openatrading_core::replay::PERSIST_MIN_PCP,
+        finalize: true,
+    };
+    let day = openatrading_core::replay::capture_day(&state.ctx, &request)
+        .await
+        .map_err(|e| format!("刷新回放数据失败: {e}"))?;
+    Ok(serde_json::to_value(day).unwrap_or_default())
+}
+
+/// GET /api/replay/index
+pub async fn get_replay_index_data(
+    state: &Arc<AppState>,
+    date: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    if let Some(date) = date {
+        validate_replay_date(date)?;
+    }
+    let data = if let Some(date) = date {
+        openatrading_core::replay::ensure_day(&state.ctx, date).await
+    } else {
+        openatrading_core::replay::ensure_latest_day(&state.ctx).await
+    }
+    .map_err(|e| format!("加载回放指数失败: {e}"))?;
+    Ok(data.index.unwrap_or(serde_json::Value::Null))
+}
+
+fn validate_replay_date(date: &str) -> Result<(), String> {
+    if !is_iso_date(date) {
+        return Err(format!("非法交易日: {date}"));
+    }
+    let today = openatrading_core::utils::time::beijing_now()
+        .format("%Y-%m-%d")
+        .to_string();
+    if date > today.as_str() {
+        return Err(format!("{date} 不在可回放范围内"));
+    }
+    Ok(())
+}
+
+/// GET /api/replay/events — 兼容旧调用，返回按幅度过滤后的事件列表。
+pub async fn get_replay_events_data(
+    state: &Arc<AppState>,
+    date: Option<&str>,
+    min_pcp: f64,
+) -> Result<serde_json::Value, String> {
+    get_replay_day_data(state, date, min_pcp).await
+}
+
 /// GET /api/replay/snapshots
 pub async fn get_replay_snapshots_data() -> Result<serde_json::Value, String> {
     use openatrading_core::api::xuangubao::XuanguBaoClient;
@@ -706,38 +815,6 @@ pub async fn get_replay_snapshots_data() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())?;
     let snapshots = openatrading_core::api::xuangubao::build_replay_snapshots(&events);
     Ok(serde_json::to_value(snapshots).unwrap_or_default())
-}
-
-/// GET /api/replay/index
-pub async fn get_replay_index_data() -> Result<serde_json::Value, String> {
-    use openatrading_core::api::xuangubao::{fetch_index_trends, XuanguBaoClient};
-    let client = XuanguBaoClient::new();
-    let data = fetch_index_trends(&client)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(serde_json::to_value(data).unwrap_or_default())
-}
-
-/// GET /api/replay/events
-pub async fn get_replay_events_data(min_pcp: f64) -> Result<serde_json::Value, String> {
-    use openatrading_core::api::xuangubao::{ReplayEvent, XuanguBaoClient};
-    let client = XuanguBaoClient::new();
-    let all_events = client
-        .fetch_all_day_events(min_pcp)
-        .await
-        .map_err(|e| e.to_string())?;
-    let events: Vec<ReplayEvent> = all_events.iter().map(ReplayEvent::from).collect();
-    let date = XuanguBaoClient::last_n_trading_days(1)
-        .first()
-        .cloned()
-        .unwrap_or_default();
-    let page = openatrading_core::api::xuangubao::ReplayPage {
-        date,
-        market_phase: String::new(),
-        events,
-        next_cursor: None,
-    };
-    Ok(serde_json::to_value(page).unwrap_or_default())
 }
 
 /// GET /api/replay/news

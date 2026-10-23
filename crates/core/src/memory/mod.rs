@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub mod replay;
 pub mod sqlite;
 
+pub use replay::{ReplayDay, ReplayDayStatus, ReplayStore};
 pub use sqlite::MemoryStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

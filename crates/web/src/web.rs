@@ -654,29 +654,71 @@ pub async fn get_role_history(
 
 // ── Replay handlers ────────────────────────────────────
 
-/// GET /api/replay/events — fetch all events for latest trading day
-pub async fn get_replay_events(
-    State(_state): State<Arc<AppState>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let min_pcp: f64 = params
-        .get("min_pcp")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.03);
-    crate::handlers::get_replay_events_data(min_pcp)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+#[derive(serde::Deserialize)]
+pub struct ReplayDayQuery {
+    date: Option<String>,
+    #[serde(default)]
+    min_pcp: f64,
 }
 
-/// GET /api/replay/index — three-index trend data
+/// 回放接口失败时把可读原因返回给前端，避免只看到光秃秃的 500。
+fn replay_response(result: Result<serde_json::Value, String>) -> axum::response::Response {
+    match result {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(error) => {
+            openatrading_core::log::warn!("[replay] {error}");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": error })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/replay/days — 已采集的回放日列表
+pub async fn get_replay_days(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    let limit = parse_u32(&params, "limit", 30);
+    replay_response(crate::handlers::get_replay_days_data(&state, limit).await)
+}
+
+/// GET /api/replay/day — 某日的事件 + 指数分时
+pub async fn get_replay_day(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReplayDayQuery>,
+) -> axum::response::Response {
+    replay_response(
+        crate::handlers::get_replay_day_data(&state, q.date.as_deref(), q.min_pcp).await,
+    )
+}
+
+/// POST /api/replay/refresh — 强制重拉并做收盘对账
+pub async fn refresh_replay_day(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReplayDayQuery>,
+) -> axum::response::Response {
+    replay_response(crate::handlers::refresh_replay_day_data(&state, q.date.as_deref()).await)
+}
+
+/// GET /api/replay/events — 兼容旧调用
+pub async fn get_replay_events(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReplayDayQuery>,
+) -> axum::response::Response {
+    replay_response(
+        crate::handlers::get_replay_events_data(&state, q.date.as_deref(), q.min_pcp).await,
+    )
+}
+
+/// GET /api/replay/index — 三大指数分时
 pub async fn get_replay_index(
-    State(_state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::get_replay_index_data()
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReplayDayQuery>,
+) -> axum::response::Response {
+    replay_response(crate::handlers::get_replay_index_data(&state, q.date.as_deref()).await)
 }
 
 /// GET /api/replay/news — cursor-paginated 7×24 news

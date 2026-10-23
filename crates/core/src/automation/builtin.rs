@@ -105,7 +105,92 @@ pub(super) async fn register_builtin(hub: &AutomationHub, config: CronConfig) ->
         );
     }
 
-    crate::log::info!("[automation] builtin jobs registered (collection + news push)");
+    // ── Replay events: intraday incremental capture ──
+    {
+        let ctx = ctx.clone();
+        let schedule = String::from("0 */10 9-15 * * 1-5");
+        add_job!(
+            scheduler,
+            schedule,
+            "builtin_replay_intraday",
+            move |_uuid, _lock| {
+                let ctx = ctx.clone();
+                Box::pin(async move {
+                    if let Err(e) = run_replay_intraday(&ctx).await {
+                        crate::log::warn!("[automation] builtin replay intraday error: {e}");
+                    }
+                })
+            }
+        );
+    }
+
+    // ── Replay events: post-close reconcile (with one retry) ──
+    {
+        let ctx = ctx.clone();
+        let schedule = String::from("0 20,40 15 * * 1-5");
+        add_job!(
+            scheduler,
+            schedule,
+            "builtin_replay_close",
+            move |_uuid, _lock| {
+                let ctx = ctx.clone();
+                Box::pin(async move {
+                    if let Err(e) = run_replay_close(&ctx).await {
+                        crate::log::warn!("[automation] builtin replay close error: {e}");
+                    }
+                })
+            }
+        );
+    }
+
+    crate::log::info!(
+        "[automation] builtin jobs registered (collection + news push + replay capture)"
+    );
+    Ok(())
+}
+
+/// 盘中每 10 分钟落一次当天事件，防止收盘任务失败丢数据。
+async fn run_replay_intraday(ctx: &AppContext) -> Result<()> {
+    let now = crate::utils::time::beijing_now();
+    let open = chrono::NaiveTime::from_hms_opt(9, 30, 0)
+        .unwrap_or_else(|| panic!("09:30:00 is a valid time"));
+    let finalize_at = chrono::NaiveTime::from_hms_opt(15, 5, 0)
+        .unwrap_or_else(|| panic!("15:05:00 is a valid time"));
+    if now.time() < open || now.time() >= finalize_at {
+        return Ok(());
+    }
+    let request = crate::replay::CaptureRequest {
+        date: now.format("%Y-%m-%d").to_string(),
+        min_pcp: crate::replay::PERSIST_MIN_PCP,
+        finalize: false,
+    };
+    match crate::replay::capture_day(ctx, &request).await {
+        Ok(day) => crate::log::debug!(
+            "[automation] replay intraday captured {} ({} events)",
+            day.date,
+            day.event_count
+        ),
+        // 开盘初期/节假日没有事件是正常情况，不按错误处理。
+        Err(error) => crate::log::debug!("[automation] replay intraday skipped: {error}"),
+    }
+    Ok(())
+}
+
+/// 收盘后全量对账，把当日标记为完整日。
+async fn run_replay_close(ctx: &AppContext) -> Result<()> {
+    let date = crate::api::xuangubao::XuanguBaoClient::latest_completed_trade_date();
+    let request = crate::replay::CaptureRequest {
+        date,
+        min_pcp: crate::replay::PERSIST_MIN_PCP,
+        finalize: true,
+    };
+    let day = crate::replay::capture_day(ctx, &request).await?;
+    crate::log::info!(
+        "[automation] replay close finalized {} ({} events, {:?})",
+        day.date,
+        day.event_count,
+        day.status
+    );
     Ok(())
 }
 
