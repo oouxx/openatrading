@@ -1,6 +1,6 @@
 -include .env
 export
-.PHONY: build run run-web watch-web test fmt lint check run-frontend run-tauri deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version build-tauri release-tauri-local release-brew
+.PHONY: build run run-web watch-web test fmt lint check run-frontend run-tauri deploy deploy-gateway deploy-web clean help release release-patch release-minor release-major release-set version build-tauri
 
 # ─── Debug ────────────────────────────────────────────
 
@@ -133,40 +133,10 @@ _release:
 	echo "✅ 已推送 $$tag 到 $$BRANCH，等待 GitHub Actions 构建"
 
 
-# ─── Release Tauri (local build + gh upload) ─────────
-
-# gh 优先读 GH_TOKEN/GITHUB_TOKEN 环境变量；Makefile 顶部 `-include .env` + `export`
-# 会把 .env 的 GITHUB_TOKEN（fine-grained PAT，无 release 权限）注入环境导致 403。
-# 本地发布用 keyring 凭据（gh auth login）；CI 场景用 RELEASE_GH_TOKEN 显式指定。
-GH_AUTH := if [ -n "$${RELEASE_GH_TOKEN:-}" ]; then export GH_TOKEN="$$RELEASE_GH_TOKEN"; unset GITHUB_TOKEN; else unset GH_TOKEN GITHUB_TOKEN; fi
+# ─── Tauri ───────────────────────────────────────────
 
 build-tauri:
 	cd src-tauri && cargo tauri build
-
-release-tauri-local: build-tauri
-	@if ! which gh >/dev/null 2>&1; then echo "❌ 需要 gh CLI（brew install gh）"; exit 1; fi
-	$(eval V := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'))
-	$(eval TAG := v$(V))
-	@echo "🚀 发布 OpenATrading $(V) → 公开 tap 仓库"
-	@$(GH_AUTH); gh release create "$(TAG)" \
-		--repo oouxx/homebrew-openatrading \
-		--title "$(TAG)" \
-		--notes "OpenATrading $(V)" \
-		--notes-start-tag "" 2>/dev/null || echo "⚠ Release $(TAG) 已存在"
-	@found=0; \
-	for f in $$(find target/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.msi' -o -name '*.exe' \) ! -name 'rw.*' 2>/dev/null); do \
-		found=1; \
-		echo "📤 上传 $$(basename "$$f")"; \
-		$(GH_AUTH); gh release upload "$(TAG)" "$$f" --repo oouxx/homebrew-openatrading --clobber; \
-	done; \
-	if [ "$$found" -eq 0 ]; then \
-		echo "❌ 未找到编译产物，请先运行 make build-tauri"; \
-		exit 1; \
-	fi
-	@echo "✅ 已上传本机构建产物到 oouxx/homebrew-openatrading"
-
-release-brew: build-tauri
-	@bash release-brew.sh
 
 # ─── Help ────────────────────────────────────────────
 
@@ -181,6 +151,7 @@ help:
 	@echo "  watch-web      Web server with auto-reload"
 	@echo "  run-frontend   Vue dev server"
 	@echo "  run-tauri      Tauri desktop dev"
+	@echo "  build-tauri    Tauri desktop bundle"
 	@echo ""
 	@echo "Quality:"
 	@echo "  test           cargo test (all crates)"
@@ -195,10 +166,6 @@ help:
 	@echo "  release-major  发版 major (0.1.0 -> 1.0.0)"
 	@echo "  release-set    指定版本发版 (make release-set VERSION=0.6.0)"
 	@echo "  release        用当前版本号发版 (不 bump)"
-	@echo ""
-	@echo "Release Tauri:"
-	@echo "  release-tauri-local  本地编译 Tauri 并 gh 上传到 GitHub Release"
-	@echo "  release-brew         本地编译 DMG + gh 上传 GitHub Release + 更新 brew cask"
 	@echo ""
 	@echo "Deploy:"
 	@echo "  deploy         deploy all (gateway + web)"

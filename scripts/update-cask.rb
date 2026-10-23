@@ -3,8 +3,7 @@
 
 # 更新 Homebrew cask 的 version / 下载 URL / 双架构 sha256 / livecheck。
 #
-# 本地单架构发布（release-brew.sh）与 CI 双架构发布（release-brew.yml）共用本脚本，
-# 保证两条路径改写结果一致。
+# 由 CI 双架构发布（.github/workflows/release.yml）调用。
 #
 # 环境变量：
 #   BREW_CASK          cask 文件路径（必填）
