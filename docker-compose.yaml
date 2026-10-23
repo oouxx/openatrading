@@ -29,7 +29,6 @@ services:
       - "443:443"
     volumes:
       - /root/certs:/etc/ssl/cloudflare:ro
-      - ./downloads:/app/downloads
       - ./install.sh:/app/install.sh
     restart: unless-stopped
 
