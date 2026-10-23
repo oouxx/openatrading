@@ -760,24 +760,16 @@ pub async fn get_replay_news_data(
 
 // ── Dragon Tiger ─────────────────────────────────────────────────────────
 
-/// GET /api/dragon-tiger/detail 的查询参数
-#[derive(Debug, Clone, Default)]
-pub struct DragonTigerDetailParams {
-    pub page: usize,
-    pub page_size: usize,
-    pub dept: Option<String>,
-}
-
-/// 合并后的龙虎榜个股（近 3 个交易日）
+/// 单个交易日的龙虎榜个股
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DragonTigerStock {
     #[serde(flatten)]
     pub detail: openatrading_core::api::eastmoney::LhbDetail,
-    /// 该股在窗口内上榜的交易日，倒序
+    /// 该股上榜的交易日（单日接口下只有一个）
     pub trade_dates: Vec<String>,
     /// 去重后的上榜原因
     pub reasons: Vec<String>,
-    /// 参与过该股的营业部（买卖席位合并）
+    /// 当日参与该股的营业部（买卖席位合并）
     pub dept_names: Vec<String>,
 }
 
@@ -841,10 +833,10 @@ fn sum_days(
     found.then_some(total)
 }
 
-/// 把近 3 个交易日的明细和席位合并成「一只股票一行」。
+/// 把龙虎榜明细和席位合并成「一只股票一行」。
 ///
-/// 同一天同一只股票的多条上榜原因会去重合并；金额只取当日口径，
-/// 避免同一天重复行把净买入翻倍。
+/// 同一只股票在同一交易日的多条上榜原因会去重合并；金额只取当日口径，
+/// 避免同日重复行把净买入翻倍。
 fn build_dragon_tiger_dataset(
     details: Vec<openatrading_core::api::eastmoney::LhbDetail>,
     seats: Vec<openatrading_core::api::eastmoney::LhbSeatRecord>,
@@ -966,19 +958,18 @@ fn build_dragon_tiger_dataset(
     DragonTigerDataset { items, depts }
 }
 
-async fn fetch_dragon_tiger_dataset(state: &Arc<AppState>) -> Result<DragonTigerDataset, String> {
+async fn fetch_dragon_tiger_dataset(
+    state: &Arc<AppState>,
+    date: &str,
+) -> Result<DragonTigerDataset, String> {
     use openatrading_core::api::eastmoney::SeatFlag;
-    use openatrading_core::api::utils::last_n_trading_days;
 
-    let dates = last_n_trading_days(3);
-    let start = dates.last().ok_or_else(|| "no trading days".to_string())?;
-    let end = dates.first().ok_or_else(|| "no trading days".to_string())?;
     let client = &state.ctx.api.eastmoney;
 
     let (details, buy_seats, sell_seats) = tokio::try_join!(
-        client.lhb_detail(start, end),
-        client.lhb_seats_range(start, end, SeatFlag::Buy),
-        client.lhb_seats_range(start, end, SeatFlag::Sell),
+        client.lhb_detail(date, date),
+        client.lhb_seats_range(date, date, SeatFlag::Buy),
+        client.lhb_seats_range(date, date, SeatFlag::Sell),
     )
     .map_err(|e| e.to_string())?;
 
@@ -987,63 +978,45 @@ async fn fetch_dragon_tiger_dataset(state: &Arc<AppState>) -> Result<DragonTiger
     Ok(build_dragon_tiger_dataset(details, seats))
 }
 
-/// GET /api/dragon-tiger/detail
+/// GET /api/dragon-tiger/detail?date=YYYY-MM-DD
+///
+/// 只返回指定交易日的龙虎榜数据；不传 `date` 时使用最近一个交易日。
 pub async fn get_dragon_tiger_detail_data(
     state: &Arc<AppState>,
-    params: DragonTigerDetailParams,
+    date: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let cached = get_or_fetch_json_tauri(
-        &state.cache,
-        "dragon_tiger_dataset_v2",
-        CachePolicy::daily(),
-        || fetch_dragon_tiger_dataset(state),
-    )
+    use openatrading_core::api::utils::{compact_date, last_n_trading_days};
+
+    let latest = last_n_trading_days(1);
+    let latest = latest
+        .first()
+        .cloned()
+        .ok_or_else(|| "no trading days".to_string())?;
+    let date = match date.map(str::trim).filter(|date| !date.is_empty()) {
+        Some(date) => compact_date(date).map_err(|e| e.to_string())?,
+        None => latest.clone(),
+    };
+
+    // 当日龙虎榜在收盘后才会陆续发布：短 TTL 避免盘中把空结果缓存 6 小时。
+    // 历史日期数据稳定，沿用 daily 缓存。
+    let policy = if date == latest {
+        CachePolicy::Always(std::time::Duration::from_secs(60))
+    } else {
+        CachePolicy::daily()
+    };
+
+    let cache_key = format!("dragon_tiger_dataset_v3_{date}");
+    let cached = get_or_fetch_json_tauri(&state.cache, &cache_key, policy, || {
+        fetch_dragon_tiger_dataset(state, &date)
+    })
     .await?;
-    let mut dataset: DragonTigerDataset = serde_json::from_value(cached)
+    let dataset: DragonTigerDataset = serde_json::from_value(cached)
         .map_err(|e| format!("dragon tiger cache decode error: {e}"))?;
 
-    if let Some(dept) = params
-        .dept
-        .as_deref()
-        .map(str::trim)
-        .filter(|dept| !dept.is_empty())
-    {
-        dataset
-            .items
-            .retain(|item| item.dept_names.iter().any(|name| name == dept));
-    }
-
-    let total = dataset.items.len();
-    let total_net_amt: f64 = dataset
-        .items
-        .iter()
-        .filter_map(|item| item.detail.billboard_net_amt)
-        .sum();
-    let net_buy_count = dataset
-        .items
-        .iter()
-        .filter(|item| item.detail.billboard_net_amt.is_some_and(|v| v > 0.0))
-        .count();
-    let net_sell_count = dataset
-        .items
-        .iter()
-        .filter(|item| item.detail.billboard_net_amt.is_some_and(|v| v < 0.0))
-        .count();
-
-    let page_size = params.page_size.clamp(1, 100);
-    let page_count = total.div_ceil(page_size).max(1);
-    let page = params.page.max(1).min(page_count);
-    let start = page.saturating_sub(1).saturating_mul(page_size);
-    let data: Vec<_> = dataset.items.iter().skip(start).take(page_size).collect();
-
+    let date_label = format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]);
     Ok(serde_json::json!({
-        "data": data,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_net_amt": total_net_amt,
-        "net_buy_count": net_buy_count,
-        "net_sell_count": net_sell_count,
+        "date": date_label,
+        "data": dataset.items,
         "depts": dataset.depts,
     }))
 }
@@ -1676,17 +1649,15 @@ mod tests {
     }
 
     #[test]
-    fn dragon_tiger_merges_stock_reasons_and_amounts() {
+    fn dragon_tiger_merges_same_day_reasons_and_amounts() {
         let details = vec![
-            // 10-20：当日口径 + 跨日累计口径，金额只能取当日口径
-            lhb_detail("600241", "2026-10-20", "日换手率达到20%的前5只证券", 100.0),
+            // 同一只股票同一天多条原因：金额取当日口径，不能把多行金额相加
             lhb_detail(
                 "600241",
-                "2026-10-20",
+                "2026-10-21",
                 "连续三个交易日内，涨幅偏离值累计达到20%的证券",
                 999.0,
             ),
-            // 10-21：两条当日原因金额相同，不能相加；换手原因与 10-20 重复，需要去重
             lhb_detail("600241", "2026-10-21", "日换手率达到20%的前5只证券", 50.0),
             lhb_detail(
                 "600241",
@@ -1702,7 +1673,6 @@ mod tests {
             ),
         ];
         let seats = vec![
-            lhb_seat("600241", "2026-10-20", "机构专用"),
             lhb_seat("600241", "2026-10-21", "华鑫证券上海分公司"),
             lhb_seat("600241", "2026-10-21", "机构专用"),
             lhb_seat("000001", "2026-10-21", "机构专用"),
@@ -1716,12 +1686,12 @@ mod tests {
             .iter()
             .find(|item| item.detail.code == "600241")
             .unwrap_or_else(|| panic!("600241 should exist"));
-        assert_eq!(item.trade_dates, vec!["2026-10-21", "2026-10-20"]);
+        assert_eq!(item.trade_dates, vec!["2026-10-21"]);
         assert_eq!(item.detail.trade_date, "2026-10-21");
         assert_eq!(
             item.detail.billboard_net_amt,
-            Some(150.0),
-            "跨日累计行不能参与同日金额相加"
+            Some(50.0),
+            "同日重复行不能把净买入相加，且不能取跨日累计口径的金额"
         );
         assert_eq!(item.reasons.len(), 3, "重复原因需要去重");
         assert!(item

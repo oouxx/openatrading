@@ -26,41 +26,27 @@ export interface DragonTigerDetailItem {
   turnover_rate: number | null
   free_market_cap: number | null
   explanation: string | null
-  d1_chg: number | null
-  d2_chg: number | null
-  d5_chg: number | null
-  d10_chg: number | null
-  /** 近 3 日上榜日期，倒序 */
+  /** 上榜交易日，单日接口下只有一个 */
   trade_dates?: string[]
   /** 去重后的上榜原因 */
   reasons?: string[]
-  /** 参与过该股的营业部 */
+  /** 当日参与该股的营业部 */
   dept_names?: string[]
 }
 
 export interface DragonTigerDetailResponse {
+  /** 后端实际返回数据的交易日（不传 date 时为最近交易日） */
+  date: string
   data: DragonTigerDetailItem[]
-  total: number
-  page: number
-  page_size: number
-  total_net_amt: number
-  net_buy_count: number
-  net_sell_count: number
-  /** 近 3 日出现过的全部营业部，按个股覆盖数倒序 */
+  /** 当日出现过的全部营业部，按个股覆盖数倒序 */
   depts: string[]
 }
 
-export function useDragonTigerDetail(page: number, pageSize: number, dept?: string) {
-  const params = new URLSearchParams({
-    page: String(page),
-    page_size: String(pageSize),
-  })
-  if (dept) params.set("dept", dept)
-
+export function useDragonTigerDetail(date?: string) {
+  const query = date ? `?date=${encodeURIComponent(date)}` : ""
   return useQuery({
-    queryKey: dragonTigerKeys.detail(page, pageSize, dept ?? ""),
-    queryFn: () =>
-      fetchJson<DragonTigerDetailResponse>(`/api/dragon-tiger/detail?${params.toString()}`),
+    queryKey: dragonTigerKeys.detail(date ?? ""),
+    queryFn: () => fetchJson<DragonTigerDetailResponse>(`/api/dragon-tiger/detail${query}`),
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
   })

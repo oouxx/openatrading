@@ -708,41 +708,23 @@ pub async fn get_replay_snapshots(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// GET /api/dragon-tiger/detail?page=1&page_size=20&dept=...
+/// GET /api/dragon-tiger/detail?date=YYYY-MM-DD
 #[derive(Deserialize)]
 pub struct DragonTigerDetailQuery {
-    #[serde(default = "default_page")]
-    pub page: usize,
-    #[serde(default = "default_page_size")]
-    pub page_size: usize,
-    pub dept: Option<String>,
-}
-
-const fn default_page() -> usize {
-    1
-}
-const fn default_page_size() -> usize {
-    20
+    pub date: Option<String>,
 }
 
 pub async fn get_dragon_tiger_detail(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DragonTigerDetailQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    crate::handlers::get_dragon_tiger_detail_data(
-        &state,
-        crate::handlers::DragonTigerDetailParams {
-            page: query.page,
-            page_size: query.page_size,
-            dept: query.dept,
-        },
-    )
-    .await
-    .map(Json)
-    .map_err(|e| {
-        openatrading_core::log::error!("[dragon-tiger] detail error: {e}");
-        StatusCode::SERVICE_UNAVAILABLE
-    })
+    crate::handlers::get_dragon_tiger_detail_data(&state, query.date.as_deref())
+        .await
+        .map(Json)
+        .map_err(|e| {
+            openatrading_core::log::error!("[dragon-tiger] detail error: {e}");
+            StatusCode::SERVICE_UNAVAILABLE
+        })
 }
 
 /// GET /api/dragon-tiger/stock-seat?code=000001&date=20240101&flag=buy
