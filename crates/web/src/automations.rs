@@ -132,7 +132,7 @@ pub async fn archive_run(
     }
 }
 
-// ── Tauri IPC 包装(dispatch_get/dispatch_post 调用,签名与 axum handler 解耦)──
+// ── 纯逻辑包装（axum handler 调用，与 HTTP 签名解耦）──────────────────────
 
 fn ipc_error(e: impl std::fmt::Display) -> String {
     e.to_string()

@@ -45,6 +45,11 @@ pub struct AppState {
     pub forward_tasks: std::sync::Mutex<std::collections::HashMap<String, ()>>,
 }
 
+/// 唯一的 API 路由表。
+///
+/// Web 模式由 `Gateway` 直接 serve 这个 Router；Tauri 桌面端通过
+/// `api_request` 命令在进程内 `oneshot` 同一个 Router。新增/修改接口只改这里，
+/// 不要再去 `src-tauri` 里维护第二份路径匹配。
 pub fn build_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)

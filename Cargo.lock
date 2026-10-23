@@ -4055,6 +4055,7 @@ dependencies = [
 name = "openatrading-tauri"
 version = "0.15.15"
 dependencies = [
+ "axum",
  "chrono",
  "dotenvy",
  "futures-util",
@@ -4068,6 +4069,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "toml 0.8.23",
+ "tower",
 ]
 
 [[package]]

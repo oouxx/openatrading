@@ -80,495 +80,58 @@ fn build_roles() -> Vec<RoleEntry> {
     roles
 }
 
-#[tauri::command]
-async fn api_fetch(
-    path: String,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
-    dispatch_get(&path, &state).await
-}
-
-#[tauri::command]
-async fn api_post(
-    path: String,
-    body: serde_json::Value,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
-    dispatch_post(&path, &body, &state).await
-}
-
-#[tauri::command]
-async fn api_patch(
-    path: String,
-    body: serde_json::Value,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
-    dispatch_patch(&path, &body, &state).await
-}
-
-async fn dispatch_get(path: &str, state: &Arc<AppState>) -> Result<serde_json::Value, String> {
-    // Delegate to tauri_handlers for all known paths
-    match path {
-        "/api/overview" => openatrading_web::handlers::get_overview_data(state).await,
-        "/api/limit-up" => openatrading_web::handlers::get_limit_up_data(state).await,
-        "/api/limit-down" => openatrading_web::handlers::get_limit_down_data(state).await,
-        "/api/super-stock" => openatrading_web::handlers::get_super_stock_data(state).await,
-        "/api/yesterday-limit-up" => {
-            openatrading_web::handlers::get_yesterday_limit_up_data(state).await
-        }
-        "/api/index-quotes" => openatrading_web::handlers::get_index_quotes_data(state).await,
-        "/api/dapan-abnormal" => openatrading_web::handlers::get_dapan_abnormal_data(state).await,
-        "/api/timeline" => openatrading_web::handlers::get_timeline_data(state).await,
-        "/api/telegraph" => {
-            openatrading_web::handlers::get_telegraph_all_data(state, None, None).await
-        }
-        "/api/ai/roles" => openatrading_web::handlers::get_ai_roles_data(state).await,
-        "/api/ai/commands" => openatrading_web::handlers::get_ai_commands_data().await,
-        "/api/agent/settings" => openatrading_web::handlers::get_pi_agent_settings_data(),
-        "/api/agent/models" => openatrading_web::handlers::get_pi_agent_models_data(),
-        "/api/agent/auth" => openatrading_web::handlers::get_pi_agent_auth_data(),
-        "/api/ai/sessions" => openatrading_web::handlers::list_sessions_data(state).await,
-        "/api/roles" => openatrading_web::handlers::get_roles_data(state).await,
-        "/api/watchlist" => openatrading_web::handlers::get_watchlist_data().await,
-        "/api/about" => Ok(openatrading_web::web::get_about().await.0),
-        "/api/automations" => {
-            openatrading_web::automations::list_automations_data(&state.automation).await
-        }
-        "/api/replay/snapshots" => openatrading_web::handlers::get_replay_snapshots_data().await,
-        "/api/replay/index" => openatrading_web::handlers::get_replay_index_data().await,
-        "/api/sentiment-history" => {
-            openatrading_web::handlers::get_sentiment_history_data(state).await
-        }
-        "/api/skills" => Ok(
-            serde_json::to_value(openatrading_web::handlers::get_skills_data()).unwrap_or_default(),
-        ),
-        "/api/mcp/servers" => Ok(serde_json::to_value(
-            openatrading_web::mcp::list_mcp_servers_data(state),
-        )
-        .unwrap_or_default()),
-        _ => dispatch_get_fallback(path, state).await,
-    }
-}
-
-async fn dispatch_get_fallback(
-    path: &str,
-    state: &Arc<AppState>,
-) -> Result<serde_json::Value, String> {
-    // Paths with query parameters or path parameters
-    if let Some(rest) = path.strip_prefix("/api/kline/") {
-        let parts: Vec<&str> = rest.split('?').collect();
-        let symbol = parts[0];
-        let period = extract_query(path, "period").unwrap_or_else(|| "day".into());
-        let count: u32 = extract_query(path, "count")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(256);
-        return openatrading_web::handlers::get_kline_data(state, symbol, &period, count).await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/realtime/") {
-        let symbol = rest.split('?').next().unwrap_or("");
-        return openatrading_web::handlers::get_realtime_data(state, symbol).await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/telegraph/") {
-        let category = rest.split('?').next().unwrap_or("");
-        return openatrading_web::handlers::get_telegraph_data(state, category).await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/automations/runs") {
-        let automation_id = extract_query(path, "automation_id")
-            .filter(|v| !v.is_empty())
-            .map(openatrading_core::automation::AutomationId);
-        let query = openatrading_core::automation::RunListQuery {
-            automation_id,
-            unread_only: extract_query(path, "unread").is_some_and(|v| v == "true"),
-            active_only: extract_query(path, "active").is_some_and(|v| v == "true"),
-            limit: extract_query(path, "limit")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(50),
-        };
-        let _ = rest;
-        return openatrading_web::automations::list_runs_data(&state.automation, &query).await;
-    }
-    // /api/telegraph?last_time=...&count=20 — infinite-scroll pagination.
-    // The exact-match arm in dispatch_get only covers the bare path; with a
-    // query string the path no longer equals "/api/telegraph", so it lands
-    // here. Without this, the Tauri app could load page 1 but never page 2+.
-    if path == "/api/telegraph" || path.starts_with("/api/telegraph?") {
-        let last_time = extract_query(path, "last_time").and_then(|s| s.parse::<i64>().ok());
-        let count = extract_query(path, "count").and_then(|s| s.parse::<u32>().ok());
-        return openatrading_web::handlers::get_telegraph_all_data(state, last_time, count).await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/market-trend/") {
-        let symbol = rest.split('?').next().unwrap_or("");
-        return openatrading_web::handlers::get_market_trend_data(state, symbol).await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/plates-by-any-stock/") {
-        let symbol = rest.split('?').next().unwrap_or("");
-        return openatrading_web::handlers::get_plates_by_any_stock_data(state, symbol).await;
-    }
-    if path.strip_prefix("/api/replay/events").is_some() {
-        let min_pcp: f64 = extract_query(path, "min_pcp")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.03);
-        return openatrading_web::handlers::get_replay_events_data(min_pcp).await;
-    }
-    if path.strip_prefix("/api/replay/news").is_some() {
-        let tailmark = extract_query(path, "tailmark").and_then(|s| s.parse().ok());
-        let msg_id_mark = extract_query(path, "msgIdMark");
-        return openatrading_web::handlers::get_replay_news_data(tailmark, msg_id_mark).await;
-    }
-    if path.strip_prefix("/api/search-stocks").is_some() {
-        let q = extract_query(path, "q").unwrap_or_default();
-        return openatrading_web::handlers::search_stocks_data(&q).await;
-    }
-    if path.strip_prefix("/api/field-items").is_some() {
-        let date = extract_query(path, "date");
-        return openatrading_web::handlers::get_field_items_data(state, date, None).await;
-    }
-    if path.strip_prefix("/api/plate-abnormal").is_some() {
-        let date = extract_query(path, "count").unwrap_or_else(|| {
-            openatrading_core::api::utils::last_n_trading_days(1)
-                .first()
-                .cloned()
-                .unwrap_or_default()
-        });
-        return openatrading_web::handlers::get_plate_abnormal_data(state, Some(date)).await;
-    }
-    if path.strip_prefix("/api/sentiment-history").is_some() {
-        return openatrading_web::handlers::get_sentiment_history_data(state).await;
-    }
-    if path.strip_prefix("/api/dragon-tiger/detail").is_some() {
-        let page: usize = extract_query(path, "page")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
-        let page_size: usize = extract_query(path, "page_size")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(20);
-        let dept = extract_query(path, "dept");
-        return openatrading_web::handlers::get_dragon_tiger_detail_data(
-            state,
-            openatrading_web::handlers::DragonTigerDetailParams {
-                page,
-                page_size,
-                dept,
-            },
-        )
-        .await;
-    }
-    if path.strip_prefix("/api/dragon-tiger/stock-seat").is_some() {
-        let code = extract_query(path, "code").unwrap_or_default();
-        let date = extract_query(path, "date").unwrap_or_default();
-        let flag = extract_query(path, "flag").unwrap_or_default();
-        return openatrading_web::handlers::get_dragon_tiger_stock_seat_data(
-            state, &code, &date, &flag,
-        )
-        .await;
-    }
-    if let Some(rest) = path.strip_prefix("/api/ai/sessions/") {
-        if let Some(msg_id) = rest.strip_suffix("/messages") {
-            return openatrading_web::handlers::get_session_messages_data(state, msg_id).await;
-        }
-        if let Some((sid, tail)) = rest.split_once("/tool-results/") {
-            return openatrading_web::chat::get_tool_result_data(sid, tail);
-        }
-    }
-    if let Some(rest) = path.strip_prefix("/api/mcp/servers/") {
-        if let Some(name) = rest.strip_suffix("/toggle") {
-            openatrading_web::mcp::toggle_mcp_server_data(state, &decode_path_segment(name))
-                .map_err(|e| e.to_string())?;
-            return Ok(serde_json::Value::Null);
-        }
-    }
-    if let Some(rest) = path.strip_prefix("/api/roles/") {
-        return dispatch_roles_get(rest, state).await;
-    }
-    if path.strip_prefix("/api/dragon-tiger/combined").is_some() {
-        let date = XuanguBaoClient::last_n_trading_days(1)
-            .first()
-            .cloned()
-            .unwrap_or_default();
-        let data = state
-            .ctx
-            .api
-            .eastmoney
-            .lhb_combined(&date, &date)
-            .await
-            .map_err(|e| format!("{e}"))?;
-        return Ok(serde_json::to_value(data).unwrap_or_default());
-    }
-    Err(format!("unknown path: {path}"))
-}
-
-async fn dispatch_roles_get(
-    rest: &str,
-    state: &Arc<AppState>,
-) -> Result<serde_json::Value, String> {
-    let parts: Vec<&str> = rest.split('/').collect();
-    if parts.len() < 2 {
-        return Err("invalid roles path".to_string());
-    }
-    let name = parts[0];
-    let action = parts[1].split('?').next().unwrap_or("");
-    match action {
-        "positions" => openatrading_web::handlers::get_role_positions_data(state, name).await,
-        "account" => openatrading_web::handlers::get_role_account_data(state, name).await,
-        "trades" => {
-            let limit: u32 = extract_query(rest, "limit")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(100);
-            openatrading_web::handlers::get_role_trades_data(state, name, limit).await
-        }
-        "pnl-history" => {
-            let days: usize = extract_query(rest, "days")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(30);
-            openatrading_web::handlers::get_role_pnl_history_data(state, name, days).await
-        }
-        "history" => {
-            let limit: u32 = extract_query(rest, "limit")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(100);
-            openatrading_web::handlers::get_role_history_data(state, name, limit).await
-        }
-        _ => Err(format!("unknown roles action: {action}")),
-    }
-}
-
-async fn dispatch_post(
-    path: &str,
-    body: &serde_json::Value,
-    state: &Arc<AppState>,
-) -> Result<serde_json::Value, String> {
-    match path {
-        "/api/ai/sessions" => {
-            let name = body.get("name").and_then(|v| v.as_str());
-            let session_id = body.get("session_id").and_then(|v| v.as_str());
-            let message = body.get("message").and_then(|v| v.as_str()).unwrap_or("");
-            openatrading_web::handlers::create_session_data(state, name, session_id, message).await
-        }
-        "/api/roles" => {
-            let name = body
-                .get("name")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| "角色名不能为空".to_string())?
-                .to_string();
-            let display_name = body
-                .get("display_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let initial_capital = body
-                .get("initial_capital")
-                .and_then(serde_json::Value::as_f64);
-            openatrading_web::handlers::create_role_data(
-                state,
-                &name,
-                &display_name,
-                initial_capital,
-            )
-            .await
-        }
-        "/api/skills" => {
-            let req: openatrading_core::skills::SkillRequest = serde_json::from_value(body.clone())
-                .map_err(|e| format!("invalid skill payload: {e}"))?;
-            serde_json::to_value(openatrading_web::handlers::save_skill_data(req)?)
-                .map_err(|e| format!("serialize error: {e}"))
-        }
-        "/api/mcp/servers" => {
-            let payload: openatrading_core::llm::McpServerPayload =
-                serde_json::from_value(body.clone())
-                    .map_err(|e| format!("invalid MCP server payload: {e}"))?;
-            openatrading_web::mcp::add_mcp_server_data(state, payload)
-                .map_err(|e| e.to_string())?;
-            Ok(serde_json::Value::Null)
-        }
-        "/api/automations" => {
-            openatrading_web::automations::create_automation_data(&state.automation, body).await
-        }
-        "/api/agent/settings" => {
-            let provider = body.get("defaultProvider").and_then(|v| v.as_str());
-            let model = body.get("defaultModel").and_then(|v| v.as_str());
-            let thinking_level = body.get("thinkingLevel").and_then(|v| v.as_str());
-            openatrading_web::handlers::update_pi_agent_settings_data(
-                provider,
-                model,
-                thinking_level,
-            )?;
-            Ok(serde_json::Value::Null)
-        }
-        // POST /api/agent/auth — 写入 provider 的 API Key（`auth.json`）。
-        "/api/agent/auth" => {
-            let provider = body
-                .get("provider")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "缺少 provider".to_string())?;
-            let key = body
-                .get("key")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "缺少 key".to_string())?;
-            openatrading_web::handlers::set_pi_agent_api_key_data(provider, key)
-                .map_err(|e| e.to_string())?;
-            Ok(serde_json::Value::Null)
-        }
-        _ => {
-            if let Some(rest) = path.strip_prefix("/api/roles/") {
-                let parts: Vec<&str> = rest.split('/').collect();
-                let name = parts[0];
-                if parts.len() < 2 {
-                    // DELETE /api/roles/{name} — no action suffix → delete
-                    return openatrading_web::handlers::delete_role_data(state, name).await;
-                }
-                let action = parts[1];
-                match action {
-                    "reset" => openatrading_web::handlers::reset_role_data(state, name).await,
-                    "delete" => openatrading_web::handlers::delete_role_data(state, name).await,
-                    "orders" => {
-                        // 下单失败要带可读原因回前端，这里保留 OrderError 的中文描述。
-                        openatrading_web::handlers::place_order_data(state, name, body.clone())
-                            .await
-                            .map_err(|e| e.to_string())
-                    }
-                    "capital" => {
-                        Err("初始资金不可修改；要重新开始请用重置（会清空全部历史）".to_string())
-                    }
-                    _ => Err(format!("unknown roles action: {action}")),
-                }
-            } else if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
-                openatrading_web::handlers::delete_session_data(state, sid).await
-            } else if let Some(code) = path.strip_prefix("/api/watchlist/") {
-                // DELETE /api/watchlist/CODE
-                let code = decode_path_segment(code);
-                openatrading_web::handlers::delete_watchlist_data(&code).await
-            } else if path == "/api/watchlist" {
-                // POST /api/watchlist
-                let code = body
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| "missing code".to_string())?
-                    .to_string();
-                let name = body
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| "missing name".to_string())?
-                    .to_string();
-                openatrading_web::handlers::add_watchlist_data(&code, &name).await
-            } else if let Some(rest) = path.strip_prefix("/api/automations/") {
-                let parts: Vec<&str> = rest.split('/').collect();
-                match parts[..] {
-                    [id] if body.as_object().is_some_and(|m| !m.is_empty()) => {
-                        openatrading_web::automations::update_automation_data(
-                            &state.automation,
-                            id,
-                            Some(body),
-                        )
-                        .await
-                    }
-                    [id] => {
-                        // 空 body → DELETE /api/automations/{id}
-                        openatrading_web::automations::delete_automation_data(&state.automation, id)
-                            .await
-                    }
-                    [id, "trigger"] => {
-                        openatrading_web::automations::trigger_automation_data(
-                            &state.automation,
-                            id,
-                        )
-                        .await
-                    }
-                    [run_id, "runs", "read" | "archive"] => {
-                        let parsed: i64 =
-                            run_id.parse().map_err(|_| "invalid run id".to_string())?;
-                        if parts[2] == "read" {
-                            openatrading_web::automations::mark_run_read_data(
-                                &state.automation,
-                                parsed,
-                            )
-                            .await
-                        } else {
-                            openatrading_web::automations::archive_run_data(
-                                &state.automation,
-                                parsed,
-                                body,
-                            )
-                            .await
-                        }
-                    }
-                    _ => Err(format!("unknown automations path: {path}")),
-                }
-            } else if let Some(name) = path.strip_prefix("/api/skills/") {
-                // DELETE /api/skills/{name}
-                openatrading_web::handlers::delete_skill_data(name)?;
-                Ok(serde_json::Value::Null)
-            } else if let Some(name) = path.strip_prefix("/api/mcp/servers/") {
-                // PUT /api/mcp/servers/{name} (edit, has body) or
-                // DELETE /api/mcp/servers/{name} (no body) — the frontend
-                // routes both through `api_post`.
-                let name = decode_path_segment(name);
-                if body.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
-                    let payload: openatrading_core::llm::McpServerPayload =
-                        serde_json::from_value(body.clone())
-                            .map_err(|e| format!("invalid MCP server payload: {e}"))?;
-                    openatrading_web::mcp::update_mcp_server_data(state, &name, payload)
-                        .map_err(|e| e.to_string())?;
-                } else {
-                    openatrading_web::mcp::delete_mcp_server_data(state, &name)
-                        .map_err(|e| e.to_string())?;
-                }
-                Ok(serde_json::Value::Null)
-            } else if let Some(provider) = path.strip_prefix("/api/agent/auth/") {
-                // DELETE /api/agent/auth/{provider} — 前端把 DELETE 也走 `api_post`。
-                openatrading_web::handlers::delete_pi_agent_api_key_data(&decode_path_segment(
-                    provider,
-                ))
-                .map_err(|e| e.to_string())?;
-                Ok(serde_json::Value::Null)
-            } else {
-                Err(format!("unknown path: {path}"))
-            }
-        }
-    }
-}
-
-async fn dispatch_patch(
-    path: &str,
-    body: &serde_json::Value,
-    _state: &Arc<AppState>,
-) -> Result<serde_json::Value, String> {
-    // PATCH /api/ai/sessions/:id — rename session
-    if let Some(sid) = path.strip_prefix("/api/ai/sessions/") {
-        let name = body
-            .get("name")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| "missing name".to_string())?;
-        return openatrading_web::handlers::rename_session_data(sid, name).await;
-    }
-    Err(format!("unknown patch path: {path}"))
-}
-
-/// 百分号解码（`%XX`）—— 仅用于 **path 片段**：`+` 在这里是普通字符，
-/// 不能当空格处理（MCP server 名字里带 `+` 会被解成 `+ `）。
-/// query 组件（`extract_query`）另走一步 `+` → 空格转换。
-fn decode_path_segment(s: &str) -> String {
-    openatrading_core::utils::percent_decode(s)
-}
-
-/// 解码一个 query 组件（`application/x-www-form-urlencoded`）：`+` 表示空格。
+/// 桌面端的统一 HTTP 入口。
 ///
-/// 中文搜索词（`q=%E5%BC%80%E8%83%BD`）必须按 UTF-8 整体还原，
-/// 否则搜索接口收到乱码，永远返回空结果。
-fn decode_query_component(raw: &str) -> String {
-    openatrading_core::utils::percent_decode(&raw.replace('+', " "))
-}
+/// 直接把请求交给 `openatrading_web::build_router` 生成的同一个 Axum Router
+/// 处理（进程内 `oneshot`，不经过网络），因此 Web 与 Tauri 共用同一份路由表、
+/// 参数解析和错误响应，不会再出现「Web 加了接口、桌面端忘记加 dispatch」。
+#[tauri::command]
+async fn api_request(
+    method: String,
+    path: String,
+    body: Option<serde_json::Value>,
+    router: tauri::State<'_, axum::Router>,
+) -> Result<serde_json::Value, String> {
+    use tower::ServiceExt;
 
-fn extract_query(path: &str, key: &str) -> Option<String> {
-    let query_part = path.split('?').nth(1)?;
-    for pair in query_part.split('&') {
-        let mut kv = pair.splitn(2, '=');
-        if kv.next() == Some(key) {
-            return Some(decode_query_component(kv.next()?));
+    let method = axum::http::Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("invalid method {method}: {e}"))?;
+    let mut builder = axum::http::Request::builder().method(method).uri(&path);
+    let body = match body {
+        Some(value) => {
+            builder = builder.header(axum::http::header::CONTENT_TYPE, "application/json");
+            axum::body::Body::from(
+                serde_json::to_vec(&value).map_err(|e| format!("serialize body: {e}"))?,
+            )
         }
+        None => axum::body::Body::empty(),
+    };
+    let request = builder
+        .body(body)
+        .map_err(|e| format!("invalid request {path}: {e}"))?;
+
+    let response = router
+        .inner()
+        .clone()
+        .oneshot(request)
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .map_err(|e| format!("read response: {e}"))?;
+
+    if !status.is_success() {
+        let message = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
+            .unwrap_or_else(|| status.to_string());
+        return Err(message);
     }
-    None
+    if bytes.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_slice(&bytes).map_err(|e| format!("invalid JSON response: {e}"))
 }
 
 /// An image attachment sent via Tauri IPC (mirrors the frontend `PromptImage`).
@@ -951,12 +514,15 @@ fn main() {
         automation: automation_hub,
     });
 
+    // Web 与桌面端共用同一份 Axum Router：桌面端 `api_request` 进程内 oneshot
+    // 到这个 Router，新增/修改接口只需改 `crates/web/src/lib.rs` 一处。
+    let api_router = openatrading_web::build_router(app_state.clone());
+
     tauri::Builder::default()
         .manage(app_state)
+        .manage(api_router)
         .invoke_handler(tauri::generate_handler![
-            api_fetch,
-            api_post,
-            api_patch,
+            api_request,
             send_prompt,
             interrupt_session,
             respond_permission,

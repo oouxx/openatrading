@@ -57,14 +57,14 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   }
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core")
+    const method = (init?.method ?? "GET").toUpperCase()
     try {
-      if (init?.method === "POST" || init?.method === "PUT" || init?.method === "DELETE") {
-        return (await invoke("api_post", { path, body: parseBody() })) as T
-      }
-      if (init?.method === "PATCH") {
-        return (await invoke("api_patch", { path, body: parseBody() })) as T
-      }
-      return (await invoke("api_fetch", { path })) as T
+      return (await invoke("api_request", {
+        method,
+        path,
+        // GET 不传 body；其余方法保持原来的行为，没有 body 时传空对象
+        body: method === "GET" || method === "HEAD" ? null : parseBody(),
+      })) as T
     } catch (e) {
       // Tauri 端把后端错误直接作为字符串 reject（可能带 `{ "error": ... }` 结构）
       throw new Error(toErrorMessage(e, e instanceof Error ? e.message : "请求失败"), { cause: e })
@@ -84,7 +84,6 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   if (resp.status === 204) return undefined as T
   return resp.json()
 }
-
 
 // ── Types ──────────────────────────────────────────────
 
