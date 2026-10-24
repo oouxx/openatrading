@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { SafeHtml } from "@/components/SafeHtml"
 import { cn } from "@/lib/utils"
 import { StatusBanner } from "@/components/status-banner"
+import { MessageSquare, Repeat2, ThumbsUp } from "lucide-react"
 import { useSentiment } from "@/hooks/query/useSentiment"
 
 const subSections = [
@@ -135,9 +136,18 @@ export default function MarketIntelTab() {
                             </div>
                             <div className="text-caption text-tertiary flex items-center gap-3">
                               <span>{a.nickname}</span>
-                              <span>👍 {a.like_count}</span>
-                              <span>💬 {a.comment_count}</span>
-                              <span>🔄 {a.forward_count}</span>
+                              <span className="flex items-center gap-1">
+                                <ThumbsUp className="size-3" />
+                                {a.like_count}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageSquare className="size-3" />
+                                {a.comment_count}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Repeat2 className="size-3" />
+                                {a.forward_count}
+                              </span>
                               <span className="bg-brand/15 text-brand text-caption font-number rounded-sm px-1 py-0.5">
                                 {a.heat_score}热度
                               </span>

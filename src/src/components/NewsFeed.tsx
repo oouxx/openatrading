@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
 import { Button } from "@/components/ui/button"
 import { StatusBanner } from "@/components/status-banner"
+import { Radio } from "lucide-react"
 
 interface NewsFeedProps {
   variant?: "default" | "tab"
@@ -50,9 +51,12 @@ function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean 
           className={`border-hairline hover:bg-hover cursor-pointer border-t px-5 py-4 transition-colors ${idx === 0 ? "border-t-0" : ""}`}
         >
           <div className="flex items-start gap-2">
-            <span className="text-caption mt-0.5 shrink-0">
-              {item.severity === "major" ? "🔴" : "⚪"}
-            </span>
+            <span
+              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
+                item.severity === "major" ? "bg-up" : "bg-tertiary/40"
+              }`}
+              aria-label={item.severity === "major" ? "重要" : undefined}
+            />
             <div className="min-w-0 flex-1">
               <p className="text-body text-secondary leading-relaxed">
                 <span className="text-secondary font-number mr-1">{item.time}</span>
@@ -129,9 +133,12 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
                   key={item.id}
                   className="bg-surface border-hairline group hover:bg-hover mb-3 flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors"
                 >
-                  <span className="text-caption mt-0.5 shrink-0">
-                    {item.severity === "major" ? "🔴" : "⚪"}
-                  </span>
+                  <span
+                    className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
+                      item.severity === "major" ? "bg-up" : "bg-tertiary/40"
+                    }`}
+                    aria-label={item.severity === "major" ? "重要" : undefined}
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-body text-secondary group-hover:text-primary leading-relaxed transition-colors">
                       <span className="text-secondary font-number text-caption mr-2">
@@ -164,18 +171,27 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   return (
     <div className="bg-surface border-hairline flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
       <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption text-secondary font-number">📡 实时资讯</span>
+        <span className="text-caption text-secondary flex items-center gap-1.5">
+          <Radio className="size-3" />
+          实时资讯
+        </span>
         <span className="text-caption text-secondary font-number">{items.length} 条</span>
       </div>
       <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
         {isLoading && !items.length ? (
           <div className="text-caption text-secondary py-8 text-center">加载中...</div>
         ) : error && !items.length ? (
-          <div className="py-8 text-center">
-            <p className="text-caption text-up mb-3">资讯加载失败</p>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              重试
-            </Button>
+          <div className="p-3">
+            <StatusBanner
+              tone="danger"
+              action={
+                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => refetch()}>
+                  重试
+                </Button>
+              }
+            >
+              资讯加载失败
+            </StatusBanner>
           </div>
         ) : (
           <>

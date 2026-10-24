@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { X } from "lucide-react"
 
 export function KeyValueList({
   items,
@@ -71,7 +72,7 @@ export function KeyValueList({
                 onClick={() => commit(display.filter((_, j) => j !== i))}
                 title="删除"
               >
-                ✕
+                <X className="size-3" />
               </Button>
             )}
           </div>
