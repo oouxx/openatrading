@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
 import { Button } from "@/components/ui/button"
+import { StatusBanner } from "@/components/status-banner"
 
 interface NewsFeedProps {
   variant?: "default" | "tab"
@@ -106,11 +107,17 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
         </div>
 
         {error && (
-          <div className="shrink-0 py-12 text-center">
-            <p className="text-caption text-up mb-3">资讯加载失败</p>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              重试
-            </Button>
+          <div className="shrink-0 py-4">
+            <StatusBanner
+              tone="danger"
+              action={
+                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => refetch()}>
+                  重试
+                </Button>
+              }
+            >
+              资讯加载失败
+            </StatusBanner>
           </div>
         )}
 

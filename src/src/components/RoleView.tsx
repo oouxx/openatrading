@@ -4,6 +4,7 @@ import { useQueries } from "@tanstack/react-query"
 import { AlertTriangle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PnlPanel } from "@/components/PnlPanel"
+import { StatusBanner } from "@/components/status-banner"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -396,11 +397,7 @@ function AccountOverview({
   error: string | null
 }) {
   if (error) {
-    return (
-      <div className="border-danger/30 bg-danger/10 text-danger text-caption rounded-lg border px-3 py-2">
-        账户信息加载失败：{error}
-      </div>
-    )
+    return <StatusBanner tone="danger">账户信息加载失败：{error}</StatusBanner>
   }
 
   if (loading || !account) {
@@ -422,10 +419,9 @@ function AccountOverview({
     <div className="flex flex-col gap-2">
       {/* 行情不完整时账户数字是残缺值，必须显式提示，避免用户当成准确值 */}
       {!account.valuation_complete && (
-        <div className="border-warning/30 bg-warning/10 text-warning text-caption flex items-center gap-2 rounded-lg border px-3 py-2">
-          <AlertTriangle className="size-3.5 shrink-0" />
+        <StatusBanner tone="warning">
           部分持仓行情获取失败，持仓市值与权益为不完整值，仅供参考
-        </div>
+        </StatusBanner>
       )}
       {/* 列数按「金额放得下」定：5 列只在 2xl 起用，窄窗口退到 3/2 列 */}
       {/* 金额卡片只做概览，视觉上让位给下方的曲线/日历 */}

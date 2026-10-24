@@ -157,22 +157,6 @@ export default function DragonTigerView() {
     },
   ]
 
-  const th = {
-    textAlign: "left" as const,
-    padding: "9px 10px",
-    fontSize: "var(--font-size-caption)",
-    fontWeight: 500,
-    color: "var(--color-tertiary)",
-    borderBottom: "1px solid var(--color-border)",
-    background: "rgb(var(--color-fg-rgb) / 0.04)",
-    whiteSpace: "nowrap" as const,
-  }
-  const td = {
-    padding: "7px 10px",
-    borderBottom: "1px solid rgb(var(--color-fg-rgb) / 0.04)",
-    whiteSpace: "nowrap" as const,
-  }
-
   return (
     <>
       <div className="min-h-full w-full p-4">
@@ -287,26 +271,19 @@ export default function DragonTigerView() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th style={th}>名称</th>
-                  <th style={th}>净买入(亿)</th>
-                  <th style={th}>涨跌幅</th>
-                  <th style={th}>上榜原因</th>
+                  <th>名称</th>
+                  <th>净买入(亿)</th>
+                  <th>涨跌幅</th>
+                  <th>上榜原因</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={4}
-                      style={{
-                        textAlign: "center",
-                        padding: "36px",
-                        color: "var(--color-tertiary)",
-                      }}
-                    >
+                    <td colSpan={4} className="text-tertiary py-9 text-center">
                       无匹配数据
                     </td>
                   </tr>
@@ -331,7 +308,7 @@ export default function DragonTigerView() {
                         className={`[&>td]:hover:bg-hover cursor-pointer transition-colors ${selected?.code === s.code ? "[&>td]:!bg-brand/10" : ""}`}
                         onClick={() => toggleSelected(s)}
                       >
-                        <td style={td}>
+                        <td>
                           <button
                             type="button"
                             aria-expanded={selected?.code === s.code}
@@ -348,7 +325,7 @@ export default function DragonTigerView() {
                             {dateLabel}
                           </div>
                         </td>
-                        <td style={td}>
+                        <td>
                           {s.billboard_net_amt == null ? (
                             <span className="text-secondary text-caption">—</span>
                           ) : (
@@ -360,7 +337,7 @@ export default function DragonTigerView() {
                             </span>
                           )}
                         </td>
-                        <td style={td}>
+                        <td>
                           {s.change_rate == null ? (
                             <span className="text-secondary text-caption">—</span>
                           ) : (
@@ -372,7 +349,7 @@ export default function DragonTigerView() {
                             </span>
                           )}
                         </td>
-                        <td style={td}>
+                        <td>
                           {reasons.length === 0 ? (
                             <span className="text-secondary text-caption">—</span>
                           ) : (
@@ -482,18 +459,18 @@ export default function DragonTigerView() {
                         <h4 className="text-up text-caption mb-2 font-medium">
                           买方席位 ({buySeats.length})
                         </h4>
-                        <table className="text-caption w-full border-collapse">
+                        <table className="data-table">
                           <thead>
                             <tr>
-                              <th style={th}>营业部</th>
-                              <th style={th}>买入(万)</th>
-                              <th style={th}>买入占比</th>
+                              <th>营业部</th>
+                              <th>买入(万)</th>
+                              <th>买入占比</th>
                             </tr>
                           </thead>
                           <tbody>
                             {buySeats.map((s, i) => (
                               <tr key={i}>
-                                <td style={td}>
+                                <td>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
                                     <span className="bg-up/10 text-up text-caption ml-1 rounded px-2 py-0.5">
@@ -501,21 +478,10 @@ export default function DragonTigerView() {
                                     </span>
                                   ) : null}
                                 </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    fontFamily: "Geist Mono Variable, monospace",
-                                    color: "var(--color-up)",
-                                  }}
-                                >
+                                <td className="text-up font-number">
                                   {s.buy_amt ? (s.buy_amt / 1e4).toFixed(0) : "—"}
                                 </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    fontFamily: "Geist Mono Variable, monospace",
-                                  }}
-                                >
+                                <td className="font-number">
                                   {s.buy_ratio != null ? `${(s.buy_ratio * 100).toFixed(1)}%` : "—"}
                                 </td>
                               </tr>
@@ -529,18 +495,18 @@ export default function DragonTigerView() {
                         <h4 className="text-down text-caption mb-2 font-medium">
                           卖方席位 ({sellSeats.length})
                         </h4>
-                        <table className="text-caption w-full border-collapse">
+                        <table className="data-table">
                           <thead>
                             <tr>
-                              <th style={th}>营业部</th>
-                              <th style={th}>卖出(万)</th>
-                              <th style={th}>卖出占比</th>
+                              <th>营业部</th>
+                              <th>卖出(万)</th>
+                              <th>卖出占比</th>
                             </tr>
                           </thead>
                           <tbody>
                             {sellSeats.map((s, i) => (
                               <tr key={i}>
-                                <td style={td}>
+                                <td>
                                   {s.dept_name}
                                   {s.seat_type === "机构" ? (
                                     <span className="bg-up/10 text-up text-caption ml-1 rounded px-2 py-0.5">
@@ -548,21 +514,10 @@ export default function DragonTigerView() {
                                     </span>
                                   ) : null}
                                 </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    fontFamily: "Geist Mono Variable, monospace",
-                                    color: "var(--color-down)",
-                                  }}
-                                >
+                                <td className="text-down font-number">
                                   {s.sell_amt ? (s.sell_amt / 1e4).toFixed(0) : "—"}
                                 </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    fontFamily: "Geist Mono Variable, monospace",
-                                  }}
-                                >
+                                <td className="font-number">
                                   {s.sell_ratio != null
                                     ? `${(s.sell_ratio * 100).toFixed(1)}%`
                                     : "—"}

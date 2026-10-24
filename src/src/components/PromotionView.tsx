@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import MiniChartPreview from "@/components/MiniChartPreview"
+import { StatusBanner } from "@/components/status-banner"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
 import { formatCompactNumber } from "@/lib/format"
@@ -425,35 +426,39 @@ export default function PromotionView() {
       </div>
 
       {todayError && (
-        <div className="bg-surface border-hairline p-card-inner text-caption text-danger rounded-lg border text-center">
+        <StatusBanner
+          tone="danger"
+          action={
+            <Button variant="link" size="xs" className="h-auto p-0" onClick={retry}>
+              重试
+            </Button>
+          }
+        >
           今日涨停数据刷新失败：{todayError.message}
-          <Button
-            variant="link"
-            size="xs"
-            className="ml-1 h-auto p-0 align-baseline"
-            onClick={retry}
-          >
-            重试
-          </Button>
-        </div>
+        </StatusBanner>
       )}
 
+      {/* 昨日数据缺失会让「晋级/断板」结论不可信，必须是 warning 而非灰字空态 */}
       {!hasYesterdayData && (
-        <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
+        <StatusBanner
+          tone="warning"
+          action={
+            yesterdayError ? (
+              <Button
+                variant="link"
+                size="xs"
+                className="h-auto p-0"
+                onClick={() => void refetchYesterday()}
+              >
+                重试
+              </Button>
+            ) : undefined
+          }
+        >
           {yesterdayError
             ? "昨日涨停数据加载失败，晋级/断板统计可能不完整"
             : "未获取到昨日涨停列表，断板数据可能缺失"}
-          {yesterdayError && (
-            <Button
-              variant="link"
-              size="xs"
-              className="ml-1 h-auto p-0 align-baseline"
-              onClick={() => void refetchYesterday()}
-            >
-              重试
-            </Button>
-          )}
-        </div>
+        </StatusBanner>
       )}
 
       <div className="space-y-3">

@@ -1,21 +1,8 @@
 import { useMemo } from "react"
-import { motion } from "motion/react"
-import { motionTransition } from "@/lib/motion"
 import { type SentimentHistoryDay } from "@/stores/data"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { useOverview } from "@/hooks/query/useOverview"
 import SentimentHistory from "./SentimentHistory"
-
-function getFeature(row: SentimentHistoryDay): string {
-  const s = row.sentiment
-  const b = row.bomb_rate
-  if (s >= 75 && b < 20) return "偏热，情绪好"
-  if (s >= 75) return "偏热，炸板偏高"
-  if (s >= 60) return "正常偏暖"
-  if (s >= 50) return "正常"
-  if (s >= 40) return "偏冷"
-  return "冰点"
-}
 
 export default function SentimentChipTab() {
   const { data: overview } = useOverview()
@@ -95,12 +82,7 @@ export default function SentimentChipTab() {
     <div>
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
-        <motion.div
-          className="bg-surface border-hairline p-card-inner rounded-lg border"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={motionTransition.slow}
-        >
+        <div className="bg-surface border-hairline p-card-inner rounded-lg border">
           <h3 className="text-caption text-secondary mb-4">市场情绪周期判断</h3>
           {!history.length ? (
             <div className="text-caption text-secondary py-8 text-center">加载中...</div>
@@ -127,15 +109,10 @@ export default function SentimentChipTab() {
               <p className="text-body text-secondary mt-3">{phaseAdvice}</p>
             </div>
           )}
-        </motion.div>
+        </div>
 
         {/* 市场筹码结构分析 */}
-        <motion.div
-          className="bg-surface border-hairline p-card-inner rounded-lg border"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={motionTransition.slow}
-        >
+        <div className="bg-surface border-hairline p-card-inner rounded-lg border">
           <h3 className="text-caption text-secondary mb-4">市场筹码结构分析</h3>
           {!overview ? (
             <div className="text-caption text-secondary py-8 text-center">加载中...</div>
@@ -160,58 +137,14 @@ export default function SentimentChipTab() {
               <div className="border-hairline mt-3 border-t pt-3">
                 <div className="text-caption flex justify-between">
                   <span className="text-secondary">风险提示</span>
-                  <span className="text-up font-number">{riskHint}</span>
+                  <span className="text-warning font-number">{riskHint}</span>
                 </div>
               </div>
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
       <SentimentHistory />
-
-      {/* 情绪历史表格 */}
-      <motion.div
-        className="bg-surface border-hairline overflow-hidden rounded-lg border"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...motionTransition.slow, delay: 0.15 }}
-      >
-        <div className="border-hairline p-card-inner border-b">
-          <h3 className="text-caption text-secondary">近{history.length}日情绪数据</h3>
-        </div>
-        {!history.length ? (
-          <div className="text-caption text-secondary py-8 text-center">暂无数据</div>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th className="text-right">情绪值</th>
-                <th className="text-right">涨停数</th>
-                <th className="text-right">炸板率</th>
-                <th className="text-right">涨跌比</th>
-                <th>市场特征</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((row) => (
-                <tr key={row.date}>
-                  <td className="font-number">{row.date}</td>
-                  <td
-                    className={`font-number text-right ${row.sentiment >= 75 ? "text-up" : row.sentiment >= 60 ? "text-brand" : "text-down"}`}
-                  >
-                    {row.sentiment.toFixed(1)}
-                  </td>
-                  <td className="font-number text-right">{row.limit_up_count}</td>
-                  <td className="font-number text-right">{row.bomb_rate.toFixed(1)}%</td>
-                  <td className="font-number text-right">{row.rise_ratio.toFixed(2)}</td>
-                  <td>{getFeature(row)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </motion.div>
     </div>
   )
 }

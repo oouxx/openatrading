@@ -336,7 +336,7 @@ function CalendarGrid({
           return (
             <div
               key={cell.date}
-              className="flex flex-col items-center gap-0.5 rounded-md py-1 hover:bg-[var(--color-ink-dim)]"
+              className="flex flex-col items-center gap-0.5 rounded-md py-1 hover:bg-hover"
               title={`${cell.date}  当日盈亏 ${signedMoney(point.pnl)}（${formatPct(point.pct)}）\n累计 ${signedMoney(point.cum_pnl)}（${formatPct(point.cum_pct)}）\n权益 ¥${money(point.equity)}`}
             >
               {dayLabel}

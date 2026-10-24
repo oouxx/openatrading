@@ -80,7 +80,6 @@ export function McpServerCard({
               全局
             </span>
           )}
-          {!s.enabled && <span className="text-tertiary text-caption">已停用</span>}
         </div>
         <p
           className="text-tertiary font-number text-caption mt-1 truncate"

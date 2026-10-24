@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SafeHtml } from "@/components/SafeHtml"
 import { cn } from "@/lib/utils"
+import { StatusBanner } from "@/components/status-banner"
 import { useSentiment } from "@/hooks/query/useSentiment"
 
 const subSections = [
@@ -60,9 +61,9 @@ export default function MarketIntelTab() {
           </div>
 
           {!hasData ? (
-            <div className="text-caption text-tertiary py-12 text-center">
-              暂无语情数据 — 需配置 JIUYAN_PHONE
-            </div>
+            <StatusBanner tone="info">
+              暂无语情数据：需要先在 ~/.atrading/.env 配置 JIUYAN_PHONE 才抓取韭研公社
+            </StatusBanner>
           ) : (
             <>
               {/* 热门股票 */}
