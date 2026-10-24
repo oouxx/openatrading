@@ -32,7 +32,7 @@ export function ReasoningRoot({
     <Collapsible.Root
       open={isOpen}
       onOpenChange={handleOpenChange}
-      className={`my-2 w-full overflow-hidden rounded-xl border transition-all duration-200 ${
+      className={`my-2 w-full overflow-hidden rounded-lg border transition-all duration-200 ${
         isOpen ? "border-ai/15 bg-ai/[0.03]" : "border-hairline bg-transparent"
       } ${className}`}
     >
@@ -58,7 +58,7 @@ export function ReasoningTrigger({ active = false }: { active?: boolean }) {
       >
         <path d="M8 1C8 1 8.5 3.5 10.5 5.5C12.5 7.5 15 8 15 8C15 8 12.5 8.5 10.5 10.5C8.5 12.5 8 15 8 15C8 15 7.5 12.5 5.5 10.5C3.5 8.5 1 8 1 8C1 8 3.5 7.5 5.5 5.5C7.5 3.5 8 1 8 1Z" />
       </svg>
-      <span className="text-ink-muted text-caption font-mono font-medium tracking-wide">
+      <span className="text-ink-muted text-caption font-number font-medium tracking-wide">
         思考过程
       </span>
       {active && (
@@ -118,7 +118,7 @@ export interface ReasoningTextProps {
 export function ReasoningText({ className = "", children }: ReasoningTextProps) {
   return (
     <div className={`relative ${className}`}>
-      <div className="text-ink-muted text-caption max-h-48 overflow-y-auto px-3 pb-3 font-[family-name:var(--font-mono)] leading-relaxed whitespace-pre-wrap">
+      <div className="text-ink-muted text-caption font-number max-h-48 overflow-y-auto px-3 pb-3 leading-relaxed whitespace-pre-wrap">
         {children}
       </div>
       <div
