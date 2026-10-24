@@ -9,19 +9,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { ArrowLeft, Bell, Cpu, Info, Palette, Plug } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { useAppMode } from "@/contexts/useAppMode"
 import { useSettingsStore } from "@/stores/settingsStore"
-
-type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
-
-const TAB_META: Record<SettingsTab, { label: string; icon: typeof Palette }> = {
-  appearance: { label: "外观", icon: Palette },
-  agent: { label: "Agent", icon: Cpu },
-  social: { label: "通知", icon: Bell },
-  mcp: { label: "MCP 服务器", icon: Plug },
-  about: { label: "关于", icon: Info },
-}
+import { SETTINGS_TABS } from "@/lib/settings-tabs"
+import type { SettingsTab } from "@/stores/ui"
 
 const NAV_GROUPS: { label: string; tabs: SettingsTab[] }[] = [
   { label: "偏好", tabs: ["appearance", "social"] },
@@ -59,7 +51,7 @@ export default function SettingsSidebar({ activeTab, onTabChange }: SettingsSide
             </SidebarGroupLabel>
             <SidebarMenu>
               {group.tabs.map((tab) => {
-                const { label, icon: Icon } = TAB_META[tab]
+                const { label, icon: Icon } = SETTINGS_TABS[tab]
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton

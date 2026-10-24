@@ -82,22 +82,6 @@ export default function SentimentChipTab() {
     }
   }, [overview])
 
-  const sentimentEval = useMemo(() => {
-    const s = currentSentiment
-    if (s >= 75) return "过热"
-    if (s >= 60) return "偏暖"
-    if (s >= 50) return "正常"
-    if (s >= 40) return "偏冷"
-    return "冰点"
-  }, [currentSentiment])
-
-  const sentimentEvalClass = useMemo(() => {
-    const s = currentSentiment
-    if (s >= 75) return "text-up"
-    if (s >= 50) return "text-brand"
-    return "text-down"
-  }, [currentSentiment])
-
   const riskHint = useMemo(() => {
     const s = currentSentiment
     if (s >= 75 && bombRate > 25) return "情绪过热+炸板率高，注意风险"
@@ -123,7 +107,6 @@ export default function SentimentChipTab() {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <span className="text-caption text-secondary">当前：</span>
                 <span
                   className={`text-caption font-number rounded-full px-3 py-1 ${currentPhaseClass}`}
                 >
@@ -176,10 +159,6 @@ export default function SentimentChipTab() {
               </div>
               <div className="border-hairline mt-3 border-t pt-3">
                 <div className="text-caption flex justify-between">
-                  <span className="text-secondary">情绪评价</span>
-                  <span className={`font-number ${sentimentEvalClass}`}>{sentimentEval}</span>
-                </div>
-                <div className="text-caption mt-1 flex justify-between">
                   <span className="text-secondary">风险提示</span>
                   <span className="text-up font-number">{riskHint}</span>
                 </div>

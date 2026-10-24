@@ -406,9 +406,8 @@ export default function PromotionView() {
   return (
     <div className="space-y-4 p-6">
       <div className="@container">
-        <div className="text-caption text-tertiary mb-3">
-          全市场晋级概览（{hideST ? "不含ST" : "含ST"}）
-        </div>
+        {/* ST 是否计入由下方「隐藏ST」勾选框表达，标题不再复述 */}
+        <div className="text-caption text-tertiary mb-3">全市场晋级概览</div>
         <div className="grid grid-cols-2 gap-3 @sm:grid-cols-3">
           {statCards.map((card) => (
             <div

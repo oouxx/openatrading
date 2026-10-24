@@ -9,26 +9,28 @@ import {
 } from "@/components/ui/select"
 
 /**
- * Codex 风格设置行：标题 + 描述 在左，控件 在右。
+ * Codex 风格设置行：标题 + 可选提示 在左，控件 在右。
  * 行高与 Codex 设置页一致（min-h-[52px]，py-3），行与行之间由
  * 外层 SettingsSection 的 divide-y hairline 分割。
+ *
+ * `hint` 只写 label 表达不了的东西：前置条件、副作用、风险。
+ * 禁止写 label 的同义词或翻译（`Bot Token` + “机器人令牌”）——
+ * 那只会把每行变成两行字，层级交给分组和控件自己解释。
  */
 export function SettingRow({
   label,
-  description,
+  hint,
   control,
 }: {
   label: string
-  description?: string
+  hint?: string
   control: ReactNode
 }) {
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-8 py-3">
       <div className="min-w-0">
         <p className="text-primary text-sm leading-5 font-medium">{label}</p>
-        {description ? (
-          <p className="text-body text-secondary mt-0.5 leading-4">{description}</p>
-        ) : null}
+        {hint ? <p className="text-body text-secondary mt-0.5 leading-4">{hint}</p> : null}
       </div>
       <div className="shrink-0">{control}</div>
     </div>

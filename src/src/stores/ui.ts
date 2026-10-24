@@ -3,7 +3,7 @@ import { create } from "zustand"
 const PREFIX = "openatrading-"
 
 export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles" | "automations"
-type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
+export type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
 
 interface UiState {
   /** 当前主题: 'dark' | 'light'，默认跟随系统或 localStorage */

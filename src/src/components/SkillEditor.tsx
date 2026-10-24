@@ -825,13 +825,9 @@ export default function SkillEditor() {
                   </section>
 
                   <section className="bg-surface ring-foreground/5 rounded-xl p-5 ring-1">
-                    <div className="flex items-start justify-between gap-6">
-                      <div>
-                        <h3 className="text-body text-primary font-semibold">调用行为</h3>
-                        <p className="text-tertiary text-caption mt-1">
-                          控制模型是否可以自动选择这个技能。
-                        </p>
-                      </div>
+                    <h3 className="text-body text-primary font-semibold">调用行为</h3>
+                    <div className="mt-3 flex items-center justify-between gap-6">
+                      <span className="text-body text-secondary">允许模型自动调用</span>
                       <Switch
                         checked={!draft.disableModelInvocation}
                         onCheckedChange={(checked) =>
@@ -841,17 +837,16 @@ export default function SkillEditor() {
                         aria-label="允许模型自动调用"
                       />
                     </div>
-                    <p className="text-secondary text-caption bg-canvas mt-4 rounded-lg px-3 py-2.5 leading-5">
-                      {draft.disableModelInvocation
-                        ? "已关闭自动调用：只有用户输入 /skill:"
-                        : "已允许自动调用：模型可以根据描述主动加载这个技能。"}
-                      {draft.disableModelInvocation && (
+                    {/* 开关自身的状态由 Switch 表达；只在关闭时补充「关闭后怎么触发」这个副作用 */}
+                    {draft.disableModelInvocation && (
+                      <p className="text-secondary text-caption bg-canvas mt-3 rounded-lg px-3 py-2.5 leading-5">
+                        已关闭自动调用，只能用{" "}
                         <span className="font-number text-primary">
-                          {trimmedName || "skill-name"}
-                        </span>
-                      )}
-                      {draft.disableModelInvocation && " 时才会执行。"}
-                    </p>
+                          /skill:{trimmedName || "skill-name"}
+                        </span>{" "}
+                        手动触发。
+                      </p>
+                    )}
                   </section>
                 </div>
               </TabsContent>

@@ -491,9 +491,8 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       {/* 汇总：区间收益 + 跑赢大盘 */}
       <div className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5">
         <div>
-          <div className="text-tertiary text-caption">
-            {from === to ? `${from} 当日收益` : `${from} ~ ${to} 累计收益`}
-          </div>
+          {/* 区间由上方维度 chip（当日/本月/近三月/…）的选中态给出，这里只说这个数字是什么 */}
+          <div className="text-tertiary text-caption">{from === to ? "当日收益" : "区间累计收益"}</div>
           <div className={`text-[28px] leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}>
             {formatPct(summary.total_pct)}
           </div>

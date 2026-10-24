@@ -150,7 +150,6 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
     <>
       <SettingRow
         label="Provider"
-        description="模型供应商"
         control={
           loading ? (
             <Skeleton className="h-8 w-[200px] rounded-lg" />
@@ -167,7 +166,6 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
       />
       <SettingRow
         label="Model"
-        description="默认使用的模型"
         control={
           loading ? (
             <Skeleton className="h-8 w-[220px] rounded-lg" />

@@ -792,9 +792,8 @@ export default function AiCopilot({
                         </div>
                       </div>
                     ) : (
-                      // Claude 样式：助手消息直排 + 顶部模型名小字（无头像）
+                      // 助手消息直排、无头像；角色靠左右版式区分，不再逐条打「AI 助手」标签
                       <div className="flex w-full flex-col">
-                        <span className="text-tertiary text-body mb-1 px-1">AI 行情助手</span>
                         <div className="text-body w-full min-w-0 leading-[1.7]">
                           <TurnRenderer
                             sessionId={activeThreadId}

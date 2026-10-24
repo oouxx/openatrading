@@ -82,11 +82,7 @@ export function AgentApiKeySection({ defaultProvider }: { defaultProvider: strin
   if (authQuery.isPending) {
     return (
       <SettingsSection title="API Key">
-        <SettingRow
-          label="Provider"
-          description="模型供应商"
-          control={<Skeleton className="h-8 w-[200px] rounded-lg" />}
-        />
+        <SettingRow label="Provider" control={<Skeleton className="h-8 w-[200px] rounded-lg" />} />
       </SettingsSection>
     )
   }
@@ -96,7 +92,7 @@ export function AgentApiKeySection({ defaultProvider }: { defaultProvider: strin
       <SettingsSection title="API Key">
         <SettingRow
           label="Provider"
-          description="无法读取凭据状态"
+          hint="无法读取凭据状态"
           control={
             <Button size="default" variant="outline" onClick={() => authQuery.refetch()}>
               重试
@@ -111,7 +107,7 @@ export function AgentApiKeySection({ defaultProvider }: { defaultProvider: strin
     <SettingsSection title="API Key">
       <SettingRow
         label="Provider"
-        description={sourceHint(current)}
+        hint={sourceHint(current)}
         control={
           <SelectField
             value={active}
@@ -123,7 +119,7 @@ export function AgentApiKeySection({ defaultProvider }: { defaultProvider: strin
       />
       <SettingRow
         label="API Key"
-        description="保存到 pi-rs auth.json，立即对模型列表生效"
+        hint="保存到 pi-rs auth.json，立即对模型列表生效"
         control={
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-2">

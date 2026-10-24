@@ -33,7 +33,8 @@ import {
   type McpServerPayload,
   type McpTransportType,
 } from "../types/mcp"
-import type { SettingsTab } from "@/components/SettingsSidebar"
+import { SETTINGS_TABS } from "@/lib/settings-tabs"
+import type { SettingsTab } from "@/stores/ui"
 
 import { isTauri } from "@/lib/env"
 
@@ -79,14 +80,6 @@ interface AgentSettings {
 
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
 
-const TAB_META: Record<SettingsTab, { title: string; description: string }> = {
-  appearance: { title: "外观", description: "选择界面主题，修改后立即生效。" },
-  agent: { title: "Agent", description: "配置默认模型、API 密钥与数据服务。" },
-  social: { title: "通知", description: "配置采集与新闻通知的推送渠道。" },
-  mcp: { title: "MCP 服务器", description: "管理 Agent 可以调用的外部工具服务器。" },
-  about: { title: "关于", description: "应用版本与运行环境信息。" },
-}
-
 const THINKING_LEVELS: { value: string; label: string }[] = [
   { value: "off", label: "关闭" },
   { value: "minimal", label: "极简" },
@@ -97,9 +90,9 @@ const THINKING_LEVELS: { value: string; label: string }[] = [
 
 type NotifyKey = "collect" | "news"
 
-const NOTIFY_ITEMS: { key: NotifyKey; label: string; description: string }[] = [
-  { key: "collect", label: "采集", description: "数据采集完成时发送通知" },
-  { key: "news", label: "新闻", description: "收到重要新闻时发送通知" },
+const NOTIFY_ITEMS: { key: NotifyKey; label: string }[] = [
+  { key: "collect", label: "采集" },
+  { key: "news", label: "新闻" },
 ]
 
 /* ── 主题选择卡片（Codex 外观页：带预览的明/暗卡片） ── */
@@ -356,7 +349,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         ["版本", "加载中…"],
       ]
 
-  const meta = TAB_META[activeTab]
+  const { label: pageTitle } = SETTINGS_TABS[activeTab]
   const isMcp = activeTab === "mcp"
 
   return (
@@ -367,8 +360,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-tertiary text-caption font-medium tracking-wide">设置</p>
-            <h1 className="text-h1 text-primary mt-1">{meta.title}</h1>
-            <p className="text-secondary text-caption mt-1">{meta.description}</p>
+            <h1 className="text-h1 text-primary mt-1">{pageTitle}</h1>
           </div>
           {isMcp && (
             <div className="flex items-center gap-1.5">
@@ -459,7 +451,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 />
                 <SettingRow
                   label="思考级别"
-                  description="控制模型推理深度，级别越高耗时越长"
                   control={
                     <SelectField
                       value={agentSettings.thinkingLevel}
@@ -476,7 +467,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <SettingsSection title="数据源">
                 <SettingRow
                   label="API 地址"
-                  description="数据服务与 Agent 网关地址"
+                  hint="数据服务与 Agent 网关地址"
                   control={
                     <Input
                       value={apiUrl}
@@ -496,7 +487,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 <SettingsSection title="操作">
                   <SettingRow
                     label="重启客户端"
-                    description="修改 Provider / Model 后重启生效"
+                    hint="修改 Provider / Model 后重启生效"
                     control={
                       <Button
                         size="sm"
@@ -526,7 +517,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <SettingsSection title="通知渠道">
                 <SettingRow
                   label="默认通知渠道"
-                  description="选择推送消息使用的平台"
                   control={
                     <SelectField
                       value={social.notify_channel}
@@ -553,7 +543,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   <SettingRow
                     key={item.key}
                     label={item.label}
-                    description={item.description}
                     control={
                       <Switch
                         checked={social[`notify_on_${item.key}`] as boolean}
@@ -574,7 +563,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <SettingsSection title="Telegram">
                 <SettingRow
                   label="Bot Token"
-                  description="机器人令牌，用于发送消息"
                   control={
                     <Input
                       type="password"
@@ -595,7 +583,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 />
                 <SettingRow
                   label="Chat ID"
-                  description="接收通知的会话 ID"
                   control={
                     <Input
                       value={social.telegram_chat_id}
@@ -618,7 +605,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <SettingsSection title="Discord">
                 <SettingRow
                   label="Bot Token"
-                  description="机器人令牌，用于发送消息"
                   control={
                     <Input
                       type="password"
@@ -639,7 +625,6 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 />
                 <SettingRow
                   label="Channel ID"
-                  description="接收通知的频道 ID"
                   control={
                     <Input
                       value={social.discord_channel_id}

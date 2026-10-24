@@ -162,21 +162,17 @@ export default function RightPanel() {
             >
               {collapsed ? <ChevronLeft /> : <ChevronRight />}
             </Button>
+            {/* 当前视图名由下方 TabsList 的选中态表达，头部不再重复一遍 */}
             {!collapsed && (
-              <>
-                <span className="text-caption text-primary flex-1 truncate font-medium">
-                  {TABS.find((t) => t.id === activeView)?.label}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-1"
-                  onClick={() => setPopoutView(activeView)}
-                  title="弹出到独立窗口"
-                >
-                  <Maximize2 />
-                </Button>
-              </>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="ml-auto"
+                onClick={() => setPopoutView(activeView)}
+                title="弹出到独立窗口"
+              >
+                <Maximize2 />
+              </Button>
             )}
           </div>
 
