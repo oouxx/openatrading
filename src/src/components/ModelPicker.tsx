@@ -38,7 +38,7 @@ interface ModelPickerProps {
 
 /** Model 触发按钮：Codex 风格下拉（右对齐、固定宽度 220px） */
 const triggerClass =
-  "bg-surface border-input hover:bg-hover text-primary flex h-8 w-[220px] items-center justify-between gap-2 rounded-lg border px-2.5 text-xs transition-colors focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+  "bg-surface border-input hover:bg-hover text-primary flex h-8 w-[220px] items-center justify-between gap-2 rounded-lg border px-2.5 text-caption transition-colors focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 
 /** 上下文窗口格式化：128000 → "128K"、1000000 → "1M" */
 function formatContext(n: number): string {

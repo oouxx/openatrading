@@ -119,15 +119,13 @@
   font-weight: 400;
   line-height: 1.5;
 }
+@utility text-micro {
+  font-size: var(--font-size-micro);
+  font-weight: 400;
+  line-height: 1.4;
+}
 
 /* ── 卡片组件类 — ring shadow 替代 border ── */
-@utility card {
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-card-inner);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--duration-base) var(--ease-out-brand);
-}
 /* ── 表格固定操作列 ──
  *
  * 持仓表 9 列在 1280px 级窗口下横向溢出，最后一列（操作/卖出）被推到视口外，

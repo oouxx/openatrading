@@ -750,7 +750,7 @@ export default function SkillEditor() {
 
               <TabsContent value="manifest" className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mx-auto w-full max-w-2xl space-y-4 px-5 py-5">
-                  <section className="bg-surface ring-foreground/5 rounded-xl p-5 ring-1">
+                  <section className="bg-surface border-hairline rounded-lg border p-5">
                     <div>
                       <h3 className="text-body text-primary font-semibold">基本信息</h3>
                       <p className="text-tertiary text-caption mt-1">
@@ -824,7 +824,7 @@ export default function SkillEditor() {
                     </div>
                   </section>
 
-                  <section className="bg-surface ring-foreground/5 rounded-xl p-5 ring-1">
+                  <section className="bg-surface border-hairline rounded-lg border p-5">
                     <h3 className="text-body text-primary font-semibold">调用行为</h3>
                     <div className="mt-3 flex items-center justify-between gap-6">
                       <span className="text-body text-secondary">允许模型自动调用</span>
@@ -861,7 +861,7 @@ export default function SkillEditor() {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-surface ring-foreground/5 flex min-h-0 flex-1 flex-col rounded-xl p-4 ring-1">
+                  <div className="bg-surface border-hairline flex min-h-0 flex-1 flex-col rounded-lg border p-4">
                     <Textarea
                       value={draft.content}
                       onChange={(event) => updateDraft({ content: event.target.value })}

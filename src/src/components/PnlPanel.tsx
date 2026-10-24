@@ -280,7 +280,7 @@ function CalendarGrid({
 
   return (
     <div className="px-5 py-4">
-      <div className="text-tertiary mb-1 grid grid-cols-7 gap-1 text-center text-[11px]">
+      <div className="text-tertiary mb-1 grid grid-cols-7 gap-1 text-center text-micro">
         {["日", "一", "二", "三", "四", "五", "六"].map((w) => (
           <span key={w}>{w}</span>
         ))}
@@ -297,8 +297,8 @@ function CalendarGrid({
             <span
               className={
                 isToday
-                  ? "bg-brand text-brand-foreground inline-flex size-5 items-center justify-center rounded-full text-[10px]"
-                  : "text-tertiary text-[11px]"
+                  ? "bg-brand text-brand-foreground inline-flex size-5 items-center justify-center rounded-full text-micro"
+                  : "text-tertiary text-micro"
               }
             >
               {isToday ? "今" : cell.day}
@@ -324,9 +324,9 @@ function CalendarGrid({
               >
                 {dayLabel}
                 {isTradingDay ? (
-                  <span className="text-tertiary text-[10px] tabular-nums">0</span>
+                  <span className="text-tertiary text-micro tabular-nums">0</span>
                 ) : (
-                  <span className="text-warning text-[10px]">休</span>
+                  <span className="text-warning text-micro">休</span>
                 )}
               </div>
             )
@@ -340,7 +340,7 @@ function CalendarGrid({
               title={`${cell.date}  当日盈亏 ${signedMoney(point.pnl)}（${formatPct(point.pct)}）\n累计 ${signedMoney(point.cum_pnl)}（${formatPct(point.cum_pct)}）\n权益 ¥${money(point.equity)}`}
             >
               {dayLabel}
-              <span className={`text-[10px] tabular-nums ${metricClass(value, metric)}`}>
+              <span className={`text-micro tabular-nums ${metricClass(value, metric)}`}>
                 {metric === "equity"
                   ? money(value).split(".")[0]
                   : metric === "pct"
@@ -458,7 +458,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
               setDimension(d.key)
               setBrowsedMonth(monthOf(todayStr()))
             }}
-            className={`rounded-md px-3 py-1 text-xs transition-colors ${
+            className={`rounded-md px-3 py-1 text-caption transition-colors ${
               dimension === d.key
                 ? "bg-brand text-brand-foreground"
                 : "text-secondary hover:bg-ink-dim hover:text-primary"
@@ -474,15 +474,15 @@ export function PnlPanel({ roleName }: { roleName: string }) {
               value={customFrom}
               max={customTo}
               onChange={(e) => setCustomFrom(e.target.value)}
-              className="h-7 w-[130px] text-xs"
+              className="h-7 w-[130px] text-caption"
             />
-            <span className="text-tertiary text-xs">至</span>
+            <span className="text-tertiary text-caption">至</span>
             <Input
               type="date"
               value={customTo}
               min={customFrom}
               onChange={(e) => setCustomTo(e.target.value)}
-              className="h-7 w-[130px] text-xs"
+              className="h-7 w-[130px] text-caption"
             />
           </div>
         )}
@@ -493,7 +493,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
         <div>
           {/* 区间由上方维度 chip（当日/本月/近三月/…）的选中态给出，这里只说这个数字是什么 */}
           <div className="text-tertiary text-caption">{from === to ? "当日收益" : "区间累计收益"}</div>
-          <div className={`text-[28px] leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}>
+          <div className={`text-hero leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}>
             {formatPct(summary.total_pct)}
           </div>
           <div className={`text-caption tabular-nums ${pctClass(summary.total_pnl)}`}>
@@ -524,7 +524,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
               key={v}
               type="button"
               onClick={() => setView(v)}
-              className={`px-3 py-1 text-xs ${
+              className={`px-3 py-1 text-caption ${
                 view === v ? "bg-ink-dim text-primary" : "text-secondary hover:text-primary"
               }`}
             >
@@ -538,7 +538,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
               key={m.key}
               type="button"
               onClick={() => setMetric(m.key)}
-              className={`px-3 py-1 text-xs ${
+              className={`px-3 py-1 text-caption ${
                 metric === m.key ? "bg-ink-dim text-primary" : "text-secondary hover:text-primary"
               }`}
             >
@@ -568,7 +568,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
             >
               <ChevronLeft className="size-4" />
             </button>
-            <span className="text-primary text-sm font-medium tabular-nums">
+            <span className="text-primary text-body font-medium tabular-nums">
               {displayMonth.replace("-", " 年 ")} 月
             </span>
             <button
@@ -605,7 +605,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       </div>
 
       {calendar.incomplete && (
-        <p className="text-warning border-hairline border-t px-5 py-2.5 text-[11px]">
+        <p className="text-warning border-hairline border-t px-5 py-2.5 text-micro">
           部分持仓在某日拿不到收盘价，已按成本价估算，该日收益仅供参考
         </p>
       )}

@@ -158,7 +158,7 @@ function ThemeCard({
     >
       <ThemePreview dark={dark} />
       <span
-        className={`mt-1.5 block px-0.5 text-xs ${
+        className={`text-caption mt-1.5 block px-0.5 ${
           active ? "text-primary font-medium" : "text-secondary"
         }`}
       >
@@ -678,18 +678,18 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     ))}
                   </div>
                 ) : mcpQuery.isError ? (
-                  <div className="bg-surface ring-foreground/5 flex flex-col items-center gap-2 rounded-xl px-6 py-10 text-center ring-1">
+                  <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
                     <p className="text-secondary text-caption">无法加载 MCP 服务器列表</p>
                     <Button size="xs" variant="outline" onClick={() => mcpQuery.refetch()}>
                       重试
                     </Button>
                   </div>
                 ) : servers.length === 0 ? (
-                  <div className="bg-surface ring-foreground/5 flex flex-col items-center rounded-xl px-6 py-12 text-center ring-1">
+                  <div className="bg-surface border-hairline flex flex-col items-center rounded-lg border px-6 py-12 text-center">
                     <span className="bg-hover text-tertiary grid size-10 place-items-center rounded-full">
                       <Server className="size-5" />
                     </span>
-                    <h3 className="text-primary mt-3 text-sm font-medium">还没有 MCP 服务器</h3>
+                    <h3 className="text-primary text-body mt-3 font-medium">还没有 MCP 服务器</h3>
                     <p className="text-secondary text-caption mt-1 max-w-sm">
                       连接外部工具后，Agent 可以在会话中调用它们。
                     </p>
@@ -699,7 +699,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                     </Button>
                   </div>
                 ) : visibleServers.length === 0 ? (
-                  <div className="bg-surface ring-foreground/5 flex flex-col items-center gap-2 rounded-xl px-6 py-10 text-center ring-1">
+                  <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
                     <p className="text-secondary text-caption">没有匹配的服务器</p>
                     <Button size="xs" variant="ghost" onClick={() => setMcpSearch("")}>
                       清除搜索
@@ -738,7 +738,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 </section>
               )}
 
-              <div className="bg-surface ring-foreground/5 text-tertiary text-caption flex items-start gap-2 rounded-xl px-3.5 py-3 ring-1">
+              <div className="bg-surface border-hairline text-tertiary text-caption flex items-start gap-2 rounded-lg border px-3.5 py-3">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 <p className="leading-5">
                   新增与修改写入 pi-rs 的全局{" "}
@@ -755,7 +755,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
             <SettingsSection title="关于">
               {aboutRows.map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between py-3">
-                  <span className="text-secondary text-sm">{label}</span>
+                  <span className="text-secondary text-body">{label}</span>
                   <span className="text-primary font-number text-caption">{value}</span>
                 </div>
               ))}

@@ -379,7 +379,7 @@ function StatCard({
         在本页任何常见窗口宽度都会顶出卡片边框。降到 text-h2（16px）并配合
         truncate 收口——仍放不下时截断而不是溢出，完整值保留在 title 里。
       */}
-      <div className={`font-number mt-0.5 truncate text-[15px] leading-tight font-semibold ${toneCls}`} title={value}>
+      <div className={`font-number mt-0.5 truncate text-h2 leading-tight font-semibold ${toneCls}`} title={value}>
         {value}
       </div>
       {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}

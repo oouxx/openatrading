@@ -29,7 +29,7 @@ export function SettingRow({
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-8 py-3">
       <div className="min-w-0">
-        <p className="text-primary text-sm leading-5 font-medium">{label}</p>
+        <p className="text-primary text-body leading-5 font-medium">{label}</p>
         {hint ? <p className="text-body text-secondary mt-0.5 leading-4">{hint}</p> : null}
       </div>
       <div className="shrink-0">{control}</div>
@@ -40,7 +40,7 @@ export function SettingRow({
 /** 设置分组：白底卡片 + 小标题 + 行列表（hairline 分割） */
 export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="bg-surface ring-foreground/5 rounded-xl px-5 py-4 ring-1">
+    <section className="bg-surface border-hairline rounded-lg border px-5 py-4">
       <h2 className="text-primary text-body mb-1.5 font-semibold">{title}</h2>
       <div className="divide-hairline divide-y">{children}</div>
     </section>
@@ -64,13 +64,16 @@ export function SelectField({
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger
-        className={cn("bg-surface hover:bg-hover text-primary h-8 w-[200px] text-xs", className)}
+        className={cn(
+          "bg-surface hover:bg-hover text-primary text-caption h-8 w-[200px]",
+          className
+        )}
       >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => (
-          <SelectItem key={o.value} value={o.value} className="text-xs">
+          <SelectItem key={o.value} value={o.value} className="text-caption">
             {o.label}
           </SelectItem>
         ))}

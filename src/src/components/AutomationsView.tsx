@@ -62,7 +62,7 @@ export default function AutomationsView() {
       {/* ── 自动化任务列表 ── */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">自动化任务</h2>
+          <h2 className="text-h1 font-semibold">自动化任务</h2>
           <Button size="sm" onClick={() => setDialogTarget({ automation: null })}>
             <Plus className="size-4" />
             新建
@@ -70,12 +70,12 @@ export default function AutomationsView() {
         </div>
 
         {isLoading ? (
-          <div className="text-secondary flex items-center gap-2 py-8 text-sm">
+          <div className="text-secondary text-body flex items-center gap-2 py-8">
             <RotateCw className="size-4 animate-spin" />
             加载中…
           </div>
         ) : automations.length === 0 ? (
-          <div className="border-hairline text-secondary rounded-lg border border-dashed p-8 text-center text-sm">
+          <div className="border-hairline text-secondary text-body rounded-lg border border-dashed p-8 text-center">
             还没有自动化任务。点击「新建」让 agent 按计划在后台巡检行情、生成简报。
           </div>
         ) : (
@@ -92,21 +92,23 @@ export default function AutomationsView() {
                   }
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                  <div className="text-body flex flex-wrap items-center gap-2 font-medium">
                     {a.name}
                     {a.read_only && (
-                      <span className="border-hairline text-secondary rounded border px-1.5 py-0.5 text-xs">
+                      <span className="border-hairline text-secondary text-caption rounded border px-1.5 py-0.5">
                         只读
                       </span>
                     )}
-                    <span className="text-secondary text-xs font-normal">
+                    <span className="text-secondary text-caption font-normal">
                       {describeSchedule(a.schedule)} · {describeScope(a.scope)}
                     </span>
                     {nextRuns[a.id] && (
-                      <span className="text-secondary ml-auto text-xs">下次 {nextRuns[a.id]}</span>
+                      <span className="text-secondary text-caption ml-auto">
+                        下次 {nextRuns[a.id]}
+                      </span>
                     )}
                   </div>
-                  <div className="text-secondary truncate text-xs">{a.prompt}</div>
+                  <div className="text-secondary text-caption truncate">{a.prompt}</div>
                 </div>
                 <Button
                   size="icon"
@@ -143,15 +145,15 @@ export default function AutomationsView() {
       {/* ── 收件箱(Triage)── */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <h2 className="text-h1 flex items-center gap-2 font-semibold">
             运行收件箱
             {unreadCount > 0 && (
-              <span className="bg-destructive text-destructive-foreground rounded-full px-2 py-0.5 text-xs">
+              <span className="bg-destructive text-destructive-foreground text-caption rounded-full px-2 py-0.5">
                 {unreadCount} 未读
               </span>
             )}
           </h2>
-          <div className="text-secondary flex items-center gap-1 text-xs">
+          <div className="text-secondary text-caption flex items-center gap-1">
             <Button
               size="sm"
               variant={runsFilter.unread ? "default" : "ghost"}
@@ -172,7 +174,7 @@ export default function AutomationsView() {
         </div>
 
         {runs.length === 0 ? (
-          <div className="border-hairline text-secondary rounded-lg border border-dashed p-8 text-center text-sm">
+          <div className="border-hairline text-secondary text-body rounded-lg border border-dashed p-8 text-center">
             暂无运行记录。任务到点自动运行后,有发现的结果会出现在这里。
           </div>
         ) : (
@@ -198,19 +200,19 @@ export default function AutomationsView() {
                       }`}
                     />
                     <span
-                      className={`text-sm ${
+                      className={`text-body ${
                         r.status === "failed" ? "text-destructive" : "font-medium"
                       }`}
                     >
                       {auto?.name ?? r.automation_id.slice(0, 8)}
                     </span>
-                    <span className="text-secondary text-xs">{statusBadge(r)}</span>
-                    <span className="text-secondary ml-auto text-xs">
+                    <span className="text-secondary text-caption">{statusBadge(r)}</span>
+                    <span className="text-secondary text-caption ml-auto">
                       {formatTime(r.started_at)}
                     </span>
                   </Button>
                   {expanded && detail && (
-                    <div className="bg-surface mt-2 rounded-md p-2 text-xs whitespace-pre-wrap">
+                    <div className="bg-surface text-caption mt-2 rounded-md p-2 whitespace-pre-wrap">
                       {detail}
                     </div>
                   )}

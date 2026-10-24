@@ -52,12 +52,12 @@ export default function LandingPage() {
         >
           AI<span className="text-ai">行情助手</span>
         </h1>
-        <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-lg/relaxed">
+        <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-h1/relaxed">
           通过对话复盘 A 股行情，把选股口径和复盘清单写成 Skill 复用。
           模拟盘账户独立记账，行情实时估值，盈亏随时可查。
         </p>
 
-        <div className="text-ink-muted mb-10 flex flex-wrap items-center justify-center gap-4 text-sm">
+        <div className="text-ink-muted mb-10 flex flex-wrap items-center justify-center gap-4 text-body">
           {[
             { icon: "💬", label: "行情对话" },
             { icon: "🧩", label: "Skill 编排" },
@@ -65,9 +65,9 @@ export default function LandingPage() {
             { icon: "📊", label: "复盘追踪" },
           ].map((node, i) => (
             <span key={node.label} className="flex items-center gap-4">
-              {i > 0 && <span className="text-ai text-lg font-bold">→</span>}
+              {i > 0 && <span className="text-ai text-h1 font-bold">→</span>}
               <span className="bg-bg-surface border-hairline flex items-center gap-2 rounded-xl border px-5 py-3.5 font-medium">
-                <span className="text-xl">{node.icon}</span>
+                <span className="text-h1">{node.icon}</span>
                 {node.label}
               </span>
             </span>
@@ -77,13 +77,13 @@ export default function LandingPage() {
         <div className="flex flex-wrap justify-center gap-3">
           <Link
             to="/app"
-            className="bg-ai text-brand-foreground inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-medium transition-opacity hover:opacity-90"
+            className="bg-ai text-brand-foreground inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-body font-medium transition-opacity hover:opacity-90"
           >
             开始使用 →
           </Link>
           <a
             href="#install"
-            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-medium transition-colors"
+            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-lg border px-6 py-2.5 text-body font-medium transition-colors"
           >
             📦 下载安装
           </a>
@@ -92,7 +92,7 @@ export default function LandingPage() {
 
       {/* Features */}
       <section className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-2xl font-medium">
+        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-hero font-medium">
           核心功能
         </h2>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -103,7 +103,7 @@ export default function LandingPage() {
               className="bg-bg-surface border-hairline hover:border-brand/40 overflow-hidden rounded-lg border transition-colors"
             >
               <div className="px-[18px] py-[22px]">
-                <h4 className="text-primary mb-1.5 flex items-center gap-2 text-base font-medium">
+                <h4 className="text-primary mb-1.5 flex items-center gap-2 text-h2">
                   {f.title}
                   {f.badge && (
                     <span
@@ -138,7 +138,7 @@ export default function LandingPage() {
             style={{}}
           >
             <div className="px-[18px] py-[22px]">
-              <h4 className="text-primary mb-1.5 flex items-center gap-2 text-base font-medium">
+              <h4 className="text-primary mb-1.5 flex items-center gap-2 text-h2">
                 多端入口
                 <span
                   className="text-brand-foreground text-caption inline-block rounded-sm px-2.5 py-[3px] font-medium"
@@ -168,25 +168,25 @@ export default function LandingPage() {
 
       {/* Install */}
       <section id="install" className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-2xl font-medium">
+        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-hero font-medium">
           📦 下载安装
         </h2>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Desktop */}
           <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
-            <h4 className="text-primary mb-2 flex items-center gap-2 text-base font-medium">
+            <h4 className="text-primary mb-2 flex items-center gap-2 text-h2">
               🖥️ 桌面端
             </h4>
-            <p className="text-ink-muted mb-5 text-xs/relaxed">
+            <p className="text-ink-muted mb-5 text-caption/relaxed">
               支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。
               安装包随每个版本发布在 GitHub Releases，按平台选择即可。
             </p>
             <div className="mb-3.5 flex flex-wrap gap-2">
               <a
                 href={RELEASES}
-                className="bg-ai text-brand-foreground inline-flex items-center gap-1.5 rounded-lg px-[18px] py-2 text-xs font-medium transition-opacity hover:opacity-90"
+                className="bg-ai text-brand-foreground inline-flex items-center gap-1.5 rounded-lg px-[18px] py-2 text-caption font-medium transition-opacity hover:opacity-90"
               >
-                <span className="text-lg">⬇</span> 前往 Releases 下载
+                <span className="text-h1">⬇</span> 前往 Releases 下载
               </a>
               {[
                 { icon: "🍎", label: "macOS .dmg" },
@@ -195,9 +195,9 @@ export default function LandingPage() {
               ].map((d) => (
                 <span
                   key={d.label}
-                  className="bg-ink-dim border-hairline text-ink-muted inline-flex items-center gap-1.5 rounded-lg border px-[14px] py-2 text-xs"
+                  className="bg-ink-dim border-hairline text-ink-muted inline-flex items-center gap-1.5 rounded-lg border px-[14px] py-2 text-caption"
                 >
-                  <span className="text-lg">{d.icon}</span>
+                  <span className="text-h1">{d.icon}</span>
                   {d.label}
                 </span>
               ))}
@@ -214,10 +214,10 @@ export default function LandingPage() {
 
           {/* CLI */}
           <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
-            <h4 className="text-primary mb-2 flex items-center gap-2 text-base font-medium">
+            <h4 className="text-primary mb-2 flex items-center gap-2 text-h2">
               ⌨️ CLI 命令行
             </h4>
-            <p className="text-ink-muted mb-5 text-xs/relaxed">
+            <p className="text-ink-muted mb-5 text-caption/relaxed">
               适用于 Linux/macOS 环境，可启动 Gateway 服务、跑行情数据 pipeline 与定时新闻推送。
             </p>
             <CopyCodeBlock
@@ -241,7 +241,7 @@ openatrading gateway run`}
       </section>
 
       {/* Footer */}
-      <footer className="border-hairline text-ink-muted border-t px-8 py-10 text-center text-xs">
+      <footer className="border-hairline text-ink-muted border-t px-8 py-10 text-center text-caption">
         <div className="mb-3 flex flex-wrap justify-center gap-6">
           <a href="https://github.com/oouxx/openatrading" className="text-ai">
             GitHub
@@ -259,7 +259,7 @@ openatrading gateway run`}
 function CopyCodeBlock({ text }: { text: string }) {
   return (
     <div
-      className="border-hairline text-primary relative overflow-x-auto rounded-lg border p-[14px_18px] font-mono text-xs/relaxed whitespace-pre-wrap"
+      className="border-hairline text-primary relative overflow-x-auto rounded-lg border p-[14px_18px] font-mono text-caption/relaxed whitespace-pre-wrap"
       style={{ background: "var(--color-tag-bg)" }}
     >
       <Button

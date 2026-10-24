@@ -387,7 +387,7 @@ export default function AutomationFormDialog({
         >
           {!automation && (
             <div className="flex flex-col gap-2">
-              <div className="text-secondary text-xs">
+              <div className="text-secondary text-caption">
                 选一个模板就能直接创建，也可以把指令改成自己的需求
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -410,9 +410,9 @@ export default function AutomationFormDialog({
                         className={`mt-0.5 size-4 shrink-0 ${active ? "text-brand" : "text-secondary"}`}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="text-primary block text-sm font-medium">{t.title}</span>
-                        <span className="text-secondary block truncate text-xs">{t.desc}</span>
-                        <span className="text-tertiary block truncate text-xs">
+                        <span className="text-primary text-body block font-medium">{t.title}</span>
+                        <span className="text-secondary text-caption block truncate">{t.desc}</span>
+                        <span className="text-tertiary text-caption block truncate">
                           {describeSchedule(t.schedule)}
                           {t.read_only && " · 只读"}
                         </span>
@@ -466,7 +466,7 @@ export default function AutomationFormDialog({
                   onChange={(e) => update({ time: e.target.value })}
                   className="w-32"
                 />
-                <span className="text-secondary text-xs">运行</span>
+                <span className="text-secondary text-caption">运行</span>
               </div>
             )}
 
@@ -501,14 +501,14 @@ export default function AutomationFormDialog({
                     onChange={(e) => update({ time: e.target.value })}
                     className="w-32"
                   />
-                  <span className="text-secondary text-xs">运行</span>
+                  <span className="text-secondary text-caption">运行</span>
                 </div>
               </div>
             )}
 
             {(form.frequency === "every_minutes" || form.frequency === "trading_hours") && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-secondary text-xs">
+                <span className="text-secondary text-caption">
                   {form.frequency === "trading_hours" ? "交易时段每" : "每"}
                 </span>
                 <Input
@@ -519,7 +519,7 @@ export default function AutomationFormDialog({
                   onChange={(e) => update({ minutes: e.target.value })}
                   className="w-20"
                 />
-                <span className="text-secondary text-xs">分钟</span>
+                <span className="text-secondary text-caption">分钟</span>
                 {MINUTE_PRESETS.map((m) => (
                   <Button
                     key={m}
@@ -546,13 +546,13 @@ export default function AutomationFormDialog({
                   onChange={(e) => update({ cronExpr: e.target.value })}
                   placeholder="0 30 8 * * 1-5（秒 分 时 日 月 周）"
                 />
-                <span className="text-tertiary text-xs">
+                <span className="text-tertiary text-caption">
                   5–7 个字段；周字段 1 = 周日（Quartz 语义）
                 </span>
               </div>
             )}
 
-            <div className="text-secondary mt-2 flex items-center gap-1.5 text-xs">
+            <div className="text-secondary text-caption mt-2 flex items-center gap-1.5">
               <Repeat className="size-3.5 shrink-0" />
               {schedulePreview}
             </div>
@@ -565,8 +565,8 @@ export default function AutomationFormDialog({
                 variant="outline"
                 className="border-hairline hover:bg-hover h-auto w-full justify-start gap-2 px-3 py-2 text-left font-normal whitespace-normal"
               >
-                <span className="text-sm font-medium">高级设置</span>
-                <span className="text-secondary min-w-0 flex-1 truncate text-xs">
+                <span className="text-body font-medium">高级设置</span>
+                <span className="text-secondary text-caption min-w-0 flex-1 truncate">
                   {advancedSummary}
                 </span>
                 <ChevronDown
@@ -610,7 +610,7 @@ export default function AutomationFormDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-tertiary text-xs">
+                    <span className="text-tertiary text-caption">
                       定时把这条指令插进该会话，保留之前的上下文
                     </span>
                   </div>
@@ -627,8 +627,8 @@ export default function AutomationFormDialog({
 
               <div className="border-hairline flex items-center justify-between rounded-lg border px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium">只读模式</div>
-                  <div className="text-secondary text-xs">
+                  <div className="text-body font-medium">只读模式</div>
+                  <div className="text-secondary text-caption">
                     禁用 bash/edit/write（巡检类任务推荐开启）
                   </div>
                 </div>
@@ -652,7 +652,7 @@ export default function AutomationFormDialog({
             </CollapsibleContent>
           </Collapsible>
 
-          {error && <div className="text-destructive text-xs">{error}</div>}
+          {error && <div className="text-destructive text-caption">{error}</div>}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -681,8 +681,8 @@ function Field({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <label className="text-sm font-medium">{label}</label>
-        {hint && <span className="text-tertiary text-xs">{hint}</span>}
+        <label className="text-body font-medium">{label}</label>
+        {hint && <span className="text-tertiary text-caption">{hint}</span>}
       </div>
       {children}
     </div>

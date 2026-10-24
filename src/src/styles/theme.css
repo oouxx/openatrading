@@ -182,6 +182,8 @@
   --font-size-h2: 16px;
   --font-size-body: 14px;
   --font-size-caption: 12px;
+  /* 密集数据格（盈亏日历、窄面板表格）用的微字档；正文不得低于 caption */
+  --font-size-micro: 11px;
 
   /* ── 圆角契约 — 3 级，适合工具类 UI ── */
   --radius-sm: 4px; /* 标签、小徽章、输入框 */

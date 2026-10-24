@@ -42,7 +42,7 @@ export function McpTemplateGrid({ onUse }: { onUse: (type: McpTransportType) => 
         return (
           <div
             key={t.type}
-            className="bg-surface ring-foreground/5 flex flex-col rounded-xl p-4 ring-1"
+            className="bg-surface border-hairline flex flex-col rounded-lg border p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <span className="bg-hover text-secondary grid size-9 place-items-center rounded-lg">
@@ -52,7 +52,7 @@ export function McpTemplateGrid({ onUse }: { onUse: (type: McpTransportType) => 
                 {t.label}
               </span>
             </div>
-            <h3 className="text-primary mt-3 text-sm font-medium">{t.title}</h3>
+            <h3 className="text-primary text-body mt-3 font-medium">{t.title}</h3>
             <p className="text-secondary text-caption mt-1 flex-1 leading-5">{t.description}</p>
             <Button
               type="button"

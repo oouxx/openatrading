@@ -170,7 +170,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         <Button
           variant="ghost"
           size="icon-xs"
-          className="text-lg leading-none"
+          className="text-h1 leading-none"
           onClick={onClose}
           title="关闭"
         >

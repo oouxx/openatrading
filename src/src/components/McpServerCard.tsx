@@ -53,14 +53,14 @@ export function McpServerCard({
   const readOnlyTip = `定义在 ${s.source}，请直接编辑该文件`
 
   return (
-    <div className="bg-surface ring-foreground/5 flex items-start gap-3 rounded-xl p-3.5 ring-1">
+    <div className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-3.5">
       <span className="bg-hover text-secondary grid size-9 shrink-0 place-items-center rounded-lg">
         <Icon className="size-4" />
       </span>
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-primary max-w-full truncate text-sm font-medium">{s.name}</span>
+          <span className="text-primary text-body max-w-full truncate font-medium">{s.name}</span>
           <span className="text-tertiary border-hairline font-number text-caption rounded-md border px-1.5 py-0.5 leading-none">
             {transportLabel}
           </span>
@@ -135,7 +135,7 @@ export function McpServerCard({
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-3">
-            <p className="text-primary text-sm font-medium">删除「{s.name}」？</p>
+            <p className="text-primary text-body font-medium">删除「{s.name}」？</p>
             <p className="text-secondary text-caption mt-1">
               此操作不可撤销，之后新建的会话将无法再使用该服务器。
             </p>
