@@ -114,6 +114,7 @@ export default function AutomationsView() {
                   size="icon"
                   variant="ghost"
                   title="立即运行"
+                  aria-label="立即运行"
                   onClick={() => triggerMutation.mutate(a.id)}
                   disabled={triggerMutation.isPending}
                 >
@@ -123,6 +124,7 @@ export default function AutomationsView() {
                   size="icon"
                   variant="ghost"
                   title="编辑"
+                  aria-label="编辑"
                   onClick={() => setDialogTarget({ automation: a })}
                 >
                   <Pencil className="size-4" />
@@ -131,6 +133,7 @@ export default function AutomationsView() {
                   size="icon"
                   variant="ghost"
                   title="删除"
+                  aria-label="删除"
                   onClick={() => deleteMutation.mutate(a.id)}
                   disabled={deleteMutation.isPending}
                 >

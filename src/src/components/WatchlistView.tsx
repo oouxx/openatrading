@@ -183,6 +183,7 @@ export default function WatchlistView() {
                   className="absolute top-1/2 right-2 -translate-y-1/2"
                   onClick={() => setLocalSearch("")}
                   title="清空搜索"
+                  aria-label="清空搜索"
                 >
                   <X />
                 </Button>

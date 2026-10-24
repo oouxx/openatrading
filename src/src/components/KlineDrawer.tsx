@@ -173,6 +173,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           className="text-h1 leading-none"
           onClick={onClose}
           title="关闭"
+          aria-label="关闭行情详情"
         >
           &times;
         </Button>

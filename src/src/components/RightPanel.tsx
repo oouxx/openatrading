@@ -1,6 +1,20 @@
 import { lazy, Suspense, useEffect, useCallback, useState } from "react"
 import { createPortal } from "react-dom"
-import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  CirclePlay,
+  Clock,
+  Gauge,
+  Layers,
+  LayoutGrid,
+  Maximize2,
+  Radar,
+  Rss,
+  TrendingUp,
+  Trophy,
+  X,
+} from "lucide-react"
 import { motion, AnimatePresence, useDragControls } from "motion/react"
 import { Panel, Separator, usePanelRef, type PanelSize } from "react-resizable-panels"
 import { Button } from "@/components/ui/button"
@@ -21,16 +35,16 @@ const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
 const MarketIntelTab = lazy(() => import("@/components/MarketIntelTab"))
 const NewsFeed = lazy(() => import("@/components/NewsFeed"))
 
-const TABS: { id: RightPanelView; label: string }[] = [
-  { id: "strong-stocks", label: "强势股" },
-  { id: "promotion", label: "晋级分析" },
-  { id: "plate", label: "板块异动" },
-  { id: "dragon-tiger", label: "龙虎榜" },
-  { id: "timeline", label: "时间线" },
-  { id: "sentiment-chip", label: "情绪筹码" },
-  { id: "market-intel", label: "市场情报" },
-  { id: "news", label: "资讯" },
-  { id: "replay", label: "行情回放" },
+const TABS: { id: RightPanelView; label: string; icon: typeof TrendingUp }[] = [
+  { id: "strong-stocks", label: "强势股", icon: TrendingUp },
+  { id: "promotion", label: "晋级分析", icon: Layers },
+  { id: "plate", label: "板块异动", icon: LayoutGrid },
+  { id: "dragon-tiger", label: "龙虎榜", icon: Trophy },
+  { id: "timeline", label: "时间线", icon: Clock },
+  { id: "sentiment-chip", label: "情绪筹码", icon: Gauge },
+  { id: "market-intel", label: "市场情报", icon: Radar },
+  { id: "news", label: "资讯", icon: Rss },
+  { id: "replay", label: "行情回放", icon: CirclePlay },
 ]
 
 const PANEL_DEFAULT_WIDTH = 400
@@ -159,6 +173,7 @@ export default function RightPanel() {
               size="icon-xs"
               onClick={toggleCollapse}
               title={collapsed ? "展开面板" : "折叠面板"}
+              aria-label={collapsed ? "展开面板" : "折叠面板"}
             >
               {collapsed ? <ChevronLeft /> : <ChevronRight />}
             </Button>
@@ -170,6 +185,7 @@ export default function RightPanel() {
                 className="ml-auto"
                 onClick={() => setPopoutView(activeView)}
                 title="弹出到独立窗口"
+                aria-label="弹出到独立窗口"
               >
                 <Maximize2 />
               </Button>
@@ -178,20 +194,21 @@ export default function RightPanel() {
 
           {collapsed ? (
             <div className="border-hairline flex flex-1 flex-col items-center gap-1 overflow-y-auto border-t py-2">
-              {TABS.map((tab) => (
+              {TABS.map(({ id, label, icon: Icon }) => (
                 <Button
-                  key={tab.id}
+                  key={id}
                   variant="ghost"
                   size="icon"
-                  className="data-[active=true]:text-brand hover:bg-hover text-caption size-10 rounded-lg"
-                  data-active={activeView === tab.id}
-                  title={tab.label}
+                  className="data-[active=true]:text-brand hover:bg-hover size-10 rounded-lg"
+                  data-active={activeView === id}
+                  title={label}
+                  aria-label={label}
                   onClick={() => {
-                    setActiveView(tab.id)
+                    setActiveView(id)
                     toggleCollapse()
                   }}
                 >
-                  {tab.label.slice(0, 2)}
+                  <Icon className="size-4" />
                 </Button>
               ))}
             </div>
