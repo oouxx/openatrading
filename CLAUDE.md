@@ -1,72 +1,8 @@
 # CLAUDE.md
 
-## 架构约束
+## 后端架构约束
 
-### 函数签名
-
-- **单个函数参数不超过 3 个**（`ctx` / `state` 类参数不计入）
-- 超过 2 个同类型参数（如多个 `String`、多个 `f64`）**必须定义 struct**
-- 可选配置参数多时使用 **Builder Pattern**，不要用 `Option<T>` 参数堆砌
-
-```rust
-// ❌ 禁止
-fn analyze(code: &str, name: &str, price: f64, volume: i64, date: NaiveDate) -> Result<Report>
-
-// ✅ 必须
-fn analyze(snapshot: &StockSnapshot) -> Result<Report>
-```
-
-### 领域类型（Domain Types）
-
-- 新概念先定义类型，再写业务逻辑
-- 禁止用裸 `String` / `f64` 表示有业务含义的值（股票代码、价格、日期等）
-- 使用 newtype pattern：`struct StockCode(String)`、`struct Price(Decimal)`
-
-### 跨层上下文
-
-- 基础设施（db、cache、config）通过 `AppContext` / `State` 传递，不走函数参数
-- 函数签名只包含业务参数，横切关注点走 `ctx`
-
-### 模块边界
-
-- 跨模块交互**必须先定义 trait 接口**，实现在后
-- 不允许跨模块直接访问内部字段，通过公开方法或事件交互
-- 保持低耦合：修改一个模块不应触发另一个不相关模块的改动
-
-### 并发与异步
-
-- 不在 async 上下文中持有跨 `await` 点的锁
-- 不用 unbounded channel 替代有界 channel 掩盖背压问题
-- 不忽略 `spawn` 任务的 `JoinHandle` 错误，panic 必须有可观测的传播路径，不允许被静默吞掉
-
----
-
-## 前端技术栈
-
-### 选型原则
-
-- **优先复用成熟库**：组件、图标、动画、布局、拖拽、状态等通用能力一律使用既定方案，不手写已有可靠实现的轮子
-- **组件源代码可控**：组件以源码形式进入仓库（shadcn/ui 为 copy-in 模式），可直接审查、修改、调试；不引入黑盒组件包
-- **统一设计语言**：颜色、间距、圆角、字体、动效曲线统一取自设计 token，禁止写一次性魔法值
-- **严格限制重复依赖**：同一能力只允许一个库，禁止并行引入第二套组件库 / 图标库 / 动画库 / 状态库；新增依赖若与下表能力重叠，先确认再动手
-
-### 既定方案
-
-| 能力 | 方案 | 约束 |
-| --- | --- | --- |
-| UI 组件 | shadcn/ui（Nova 风格） | 统一按 Nova 主题与 token 通过 CLI 添加；不手写替代基础组件 |
-| 图标 | Lucide | 唯一图标来源；品牌等特殊图标需说明原因 |
-| 动画 | Motion | 唯一动画方案；统一走项目预设的 duration / easing token |
-| 布局 | react-resizable-panels | 分栏、可拖拽分隔等布局一律使用，不手写 resize 逻辑 |
-| 拖拽 | dnd-kit | 排序、跨区拖放一律使用，不引入其他 DnD 实现 |
-| 状态管理 | Zustand | 全局 / 跨组件状态唯一方案；组件内局部状态仍用 React 自身 state |
-
-### 落地要求
-
-- 新页面先套既有 shadcn/ui 组件与布局壳，再写业务逻辑
-- 不为单个局部需求引入新的 UI / 动画 / 状态库，也不允许新旧方案并存
-- 自定义组件只组合上述库，不复制其内部实现另起一套
-- 同类操作的组件、图标语义、动效节奏保持一致
+按照社区最佳实践来实现
 
 ---
 
@@ -75,6 +11,19 @@ fn analyze(snapshot: &StockSnapshot) -> Result<Report>
 - 生产路径禁止 `unwrap()` / `expect()`；要么传播错误，要么在注释中说明该 panic 不可能发生的不变量
 - 使用项目统一的 `Error` 类型，禁止随意 `.map_err(|e| anyhow!(e))`
 - 错误信息面向调用者，不暴露内部实现细节
+
+---
+
+## 缺陷修复
+
+Fix a bug at its cause, reasoning from first principles and established best practice. Do not patch over the symptom.
+
+- 先拿出根因结论（哪个不变量被谁在什么前提下破坏），再动代码；没定位到就继续查，不先打补丁
+- 从第一性原理推：正确数据的约束是什么、哪一层最先创造了非法状态；修复放在破坏点，不放在症状出现的调用点
+- 修复方式是补齐通用正确路径（补全分支、显式错误、类型约束、挡住非法输入），不是加特判
+- 不用重试、超时、默认值、降级或 `try/except` 静默吞错来掩盖问题
+- 不为了"先让它不报错"加 if 特例、空实现或注释掉校验
+- 修复后补一条能锁住该根因的回归测试；只在看了症状消失的自测不算完成
 
 ---
 
@@ -163,3 +112,31 @@ fn analyze(snapshot: &StockSnapshot) -> Result<Report>
 ## token节约
 
 - 禁止使用playwright等浏览器自动化工具调试bug
+
+## Frontend Architecture & Design System Guidelines
+
+Prioritize mature, battle-tested libraries, keep component source code accessible and under control, maintain a consistent design language, and strictly limit duplicate dependencies.
+
+With the right libraries and clear constraints in place, even a one-shot implementation can produce excellent frontend results.
+
+Use the following libraries consistently across the project:
+
+- **UI components and design system:** shadcn/ui (Nova style)
+- **Icons:** Lucide
+- **Animations:** Motion
+- **Resizable layouts:** react-resizable-panels
+- **Drag and drop:** dnd-kit
+- **State management:** Zustand
+
+
+## UI/UX Design Principles
+- Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+- Prefer clarity and simplicity over information density.
+- Do not repeat information that is already clear from the page context, navigation, or surrounding components.
+- Every label, icon, badge, card, and description must serve a clear user purpose.
+- Prioritize essential information and use progressive disclosure for secondary details.
+- Preserve visual consistency across existing screens, including typography, spacing, colors, and component styles.
+- Avoid decorative UI elements, excessive borders, nested cards, and unnecessary status indicators.
+- For industrial monitoring interfaces, make critical states immediately recognizable without adding visual noise.
+- Show additional explanations only when they help users understand an abnormal state or take action.
+- Before adding a new UI element, consider whether removing or simplifying an existing element would achieve the same goal.
