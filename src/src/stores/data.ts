@@ -318,15 +318,6 @@ export interface StockSearchItem {
   name: string
 }
 
-export interface IndexQuote {
-  symbol: string
-  name: string
-  last_px: number
-  px_change: number
-  px_change_rate: number
-  trade_status: string
-}
-
 /**
  * 单只股票的实时行情 —— GET /api/realtime/:symbol
  *

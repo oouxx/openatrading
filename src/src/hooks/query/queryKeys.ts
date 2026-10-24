@@ -11,10 +11,6 @@ export const fieldItemsKeys = {
   byDate: (date: string) => ["field-items", date] as const,
 }
 
-export const plateAbnormalKeys = {
-  all: ["plate-abnormal"] as const,
-}
-
 export const timelineKeys = {
   all: ["timeline"] as const,
 }
@@ -29,10 +25,6 @@ export const dapanAbnormalKeys = {
 
 export const sentimentKeys = {
   all: ["sentiment"] as const,
-}
-
-export const indexQuotesKeys = {
-  all: ["index-quotes"] as const,
 }
 
 export const sentimentHistoryKeys = {
@@ -58,10 +50,6 @@ export const replayKeys = {
 
 export const telegraphKeys = {
   all: ["telegraph"] as const,
-}
-
-export const aiRolesKeys = {
-  all: ["ai", "roles"] as const,
 }
 
 export const realtimeKeys = {
