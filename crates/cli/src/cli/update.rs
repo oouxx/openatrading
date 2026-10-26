@@ -4,8 +4,7 @@ use std::process::Command;
 /// 默认下载源：GitHub Releases（每个 tag 的 CLI 产物都传到那里，见
 /// `.github/workflows/release-cli.yml`）。自建下载服务器可覆盖：
 ///   OPENATRADING_DL_SERVER=https://your-domain/downloads
-const DEFAULT_DL_SERVER: &str =
-    "https://github.com/oouxx/openatrading/releases/latest/download";
+const DEFAULT_DL_SERVER: &str = "https://github.com/oouxx/openatrading/releases/latest/download";
 
 /// 解析下载源（去掉尾部斜杠，避免拼出 `//`）。
 fn dl_server() -> String {

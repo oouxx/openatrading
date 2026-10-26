@@ -158,7 +158,11 @@ pub fn build_calendar(input: CalendarInput<'_>) -> PnlCalendar {
             continue;
         }
         // 先应用当天的成交，再按当天收盘价估值——当日买入当天就算浮盈浮亏
-        for trade in input.trades.iter().filter(|t| day_of(&t.traded_at) == *date) {
+        for trade in input
+            .trades
+            .iter()
+            .filter(|t| day_of(&t.traded_at) == *date)
+        {
             let amount = trade.price * trade.shares as f64;
             match trade.side {
                 Side::Buy => {
@@ -397,8 +401,14 @@ fn benchmark_views(closes: &DailyCloseMap, from: &str, to: &str) -> Vec<Benchmar
 /// 指数在区间内的涨跌幅：起点取 `from` 之前最后一个收盘价（含当天）。
 fn range_pct(closes: &DailyCloseMap, code: &str, from: &str, to: &str) -> Option<f64> {
     let series = closes.get(code)?;
-    let start = series.range(..=from.to_string()).next_back().map(|(_, v)| *v)?;
-    let end = series.range(..=to.to_string()).next_back().map(|(_, v)| *v)?;
+    let start = series
+        .range(..=from.to_string())
+        .next_back()
+        .map(|(_, v)| *v)?;
+    let end = series
+        .range(..=to.to_string())
+        .next_back()
+        .map(|(_, v)| *v)?;
     if start <= 0.0 {
         return None;
     }

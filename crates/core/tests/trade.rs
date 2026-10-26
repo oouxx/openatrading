@@ -696,9 +696,15 @@ async fn pnl_calendar_uses_daily_close() {
 
     let dir = temp();
     let svc = calendar_service(&dir);
-    must(svc.place_order("r", CAPITAL, &order(Side::Buy, "600000", 1000, 10.0)).await, "下单");
+    must(
+        svc.place_order("r", CAPITAL, &order(Side::Buy, "600000", 1000, 10.0))
+            .await,
+        "下单",
+    );
 
-    let today = openatrading_core::utils::time::beijing_now().format("%Y-%m-%d").to_string();
+    let today = openatrading_core::utils::time::beijing_now()
+        .format("%Y-%m-%d")
+        .to_string();
     let cal = must(
         svc.pnl_calendar(&PnlCalendarRequest {
             role: "r".into(),
@@ -717,7 +723,10 @@ async fn pnl_calendar_uses_daily_close() {
     assert_close(cal.summary.total_pct, 2.0, "区间收益率");
     // 基准确认：上证同日收盘 3000，区间内无量价变化，涨跌幅为 0
     let sh = must(
-        cal.benchmarks.iter().find(|b| b.name == "上证").ok_or("缺上证基准"),
+        cal.benchmarks
+            .iter()
+            .find(|b| b.name == "上证")
+            .ok_or("缺上证基准"),
         "找上证基准",
     );
     assert_close(sh.pct.unwrap_or(f64::NAN), 0.0, "上证涨跌幅");

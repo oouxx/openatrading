@@ -9,10 +9,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::history::{ApiDailyCloseSource, DailyCloseSource};
 use super::order::{
     round_money, Account, ClosedTrade, OrderRequest, PnlPoint, Position, PositionView, Side, Trade,
 };
-use super::history::{ApiDailyCloseSource, DailyCloseSource};
 use super::pnl::{build_calendar, CalendarInput, Granularity, PnlCalendar};
 use super::quote::QuoteSource;
 use super::store::{OrderOutcome, PlaceOrderCtx, TradeStore};
@@ -43,11 +43,7 @@ impl TradeService {
     /// 用默认的历史日线源（选股宝日线接口）构造。
     #[must_use]
     pub fn new(store: Arc<TradeStore>, quote_source: Arc<dyn QuoteSource>) -> Self {
-        Self::with_daily_closes(
-            store,
-            quote_source,
-            Arc::new(ApiDailyCloseSource::new()),
-        )
+        Self::with_daily_closes(store, quote_source, Arc::new(ApiDailyCloseSource::new()))
     }
 
     /// 注入自定义历史日线源——测试用假数据替换网络依赖。
@@ -71,10 +67,7 @@ impl TradeService {
     ///
     /// # Errors
     /// 读库或历史行情失败返回错误——不静默返回空曲线，否则用户会以为「没赚钱」。
-    pub async fn pnl_calendar(
-        &self,
-        req: &PnlCalendarRequest,
-    ) -> Result<PnlCalendar> {
+    pub async fn pnl_calendar(&self, req: &PnlCalendarRequest) -> Result<PnlCalendar> {
         let trades = self.store.all_trades(&req.role)?;
 
         // 需要覆盖「区间起点」和「首笔成交日」里更早的那个：
@@ -82,12 +75,17 @@ impl TradeService {
         //   - 曲线只需要有持仓的区间。
         // 但「全部」传的是 2000-01-01 这类哨兵值，直接照算会向接口要几十年数据，
         // 所以对 tick 数设上限（约 6 年交易日）；更早的日子退化为成本价估值。
-        let data_start = trades
-            .first()
-            .map_or_else(|| req.from.clone(), |t| {
+        let data_start = trades.first().map_or_else(
+            || req.from.clone(),
+            |t| {
                 let first = t.traded_at.chars().take(10).collect::<String>();
-                if first < req.from { first } else { req.from.clone() }
-            });
+                if first < req.from {
+                    first
+                } else {
+                    req.from.clone()
+                }
+            },
+        );
         let needed_days = trading_days_between(&data_start, &req.to).min(MAX_DAILY_TICKS);
 
         let mut codes: Vec<String> = Vec::new();

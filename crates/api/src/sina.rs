@@ -137,6 +137,7 @@ mod tests {
     use std::time::Instant;
 
     #[tokio::test]
+    #[ignore = "integration test, requires network and live auction data"]
     async fn test_fetch_single_stock() {
         let client = SinaQuoteClient::new().unwrap_or_else(|e| panic!("test setup failed: {e}"));
         let start = Instant::now();

@@ -18,11 +18,11 @@ pub mod quote;
 pub mod service;
 pub mod store;
 
+pub use history::{ApiDailyCloseSource, DailyCloseSource};
 pub use order::{
     round_money, Account, ClosedTrade, OrderRequest, PnlPoint, Position, PositionView, Price,
     Shares, Side, Trade,
 };
-pub use history::{ApiDailyCloseSource, DailyCloseSource};
 pub use pnl::{BenchmarkView, Granularity, PnlCalendar, PnlPointView, PnlSummary};
 pub use quote::{ApiQuoteSource, Quote, QuoteSource};
 pub use service::{PnlCalendarRequest, TradeService};
