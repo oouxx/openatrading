@@ -335,9 +335,12 @@ export function useMultiAgentWebSocket(
       ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
-      if (conn?.ws && conn.ws.readyState === WebSocket.OPEN) {
-        conn.ws.send(JSON.stringify({ type: "prompt", text, images: images ?? [] }))
+      // socket 在 ready 之后又被关掉时不能静默返回：调用方会以为消息发出去了，
+      // 输入框已清空、聊天记录里也插了一条「已发送」，而服务端什么都没收到。
+      if (!conn?.ws || conn.ws.readyState !== WebSocket.OPEN) {
+        throw new Error("连接已断开")
       }
+      conn.ws.send(JSON.stringify({ type: "prompt", text, images: images ?? [] }))
     },
     [ensureConnection, waitForReady]
   )
