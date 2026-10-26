@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
 import type {
   Automation,
@@ -46,6 +46,8 @@ export function useAutomationRuns(query: RunQuery = { limit: 100 }) {
       fetchJson<{ runs: AutomationRun[] }>(`/api/automations/runs${toSearchParams(query)}`),
     select: (d) => d.runs,
     staleTime: 5_000,
+    // 切换「未读 / 未归档」筛选时保留上一份列表，否则每次都会闪一遍骨架屏
+    placeholderData: keepPreviousData,
   })
 }
 

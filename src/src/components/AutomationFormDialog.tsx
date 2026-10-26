@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import {
   ChevronDown,
   ClipboardCheck,
@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -320,7 +321,8 @@ export default function AutomationFormDialog({
     }))
 
   const pending = createMutation.isPending || updateMutation.isPending
-  const schedulePreview = describeSchedule(buildSchedule(form))
+  const uid = useId()
+  const fieldId = (name: string) => `${uid}-${name}`
   /** 复用会话的候选：打开弹窗就拉一次会话列表（与侧边栏同一接口），不再要求用户手抄会话 ID */
   const sessionOptions = useMemo(() => {
     const options = sessions.map((s) => ({
@@ -376,6 +378,15 @@ export default function AutomationFormDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{automation ? "编辑自动化" : "新建自动化"}</DialogTitle>
+          {automation ? (
+            <DialogDescription className="sr-only">
+              修改该定时任务的指令、运行频率与运行范围。
+            </DialogDescription>
+          ) : (
+            <DialogDescription className="text-secondary text-caption">
+              选一个模板就能直接创建，也可以把指令改成自己的需求
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         <form
@@ -387,9 +398,6 @@ export default function AutomationFormDialog({
         >
           {!automation && (
             <div className="flex flex-col gap-2">
-              <div className="text-secondary text-caption">
-                选一个模板就能直接创建，也可以把指令改成自己的需求
-              </div>
               <div className="grid grid-cols-2 gap-2">
                 {TASK_TEMPLATES.map((t) => {
                   const active = templateId === t.id
@@ -399,6 +407,7 @@ export default function AutomationFormDialog({
                       key={t.id}
                       type="button"
                       variant="outline"
+                      aria-pressed={active}
                       onClick={() => applyTemplate(t)}
                       className={`h-auto w-full items-start justify-start gap-2 px-3 py-2 text-left font-normal whitespace-normal ${
                         active
@@ -412,10 +421,6 @@ export default function AutomationFormDialog({
                       <span className="min-w-0 flex-1">
                         <span className="text-primary text-body block font-medium">{t.title}</span>
                         <span className="text-secondary text-caption block truncate">{t.desc}</span>
-                        <span className="text-tertiary text-caption block truncate">
-                          {describeSchedule(t.schedule)}
-                          {t.read_only && " · 只读"}
-                        </span>
                       </span>
                     </Button>
                   )
@@ -424,8 +429,9 @@ export default function AutomationFormDialog({
             </div>
           )}
 
-          <Field label="任务名称">
+          <Field label="任务名称" htmlFor={fieldId("name")}>
             <Input
+              id={fieldId("name")}
               value={form.name}
               onChange={(e) => update({ name: e.target.value })}
               placeholder="例如：每日盘前简报"
@@ -434,6 +440,7 @@ export default function AutomationFormDialog({
 
           <Field label="运行指令" hint="写清做什么、什么算有发现、没有发现时怎么回复">
             <Textarea
+              aria-label="运行指令"
               value={form.prompt}
               onChange={(e) => update({ prompt: e.target.value })}
               rows={5}
@@ -441,12 +448,12 @@ export default function AutomationFormDialog({
             />
           </Field>
 
-          <Field label="运行频率">
+          <Field label="运行频率" htmlFor={fieldId("frequency")}>
             <Select
               value={form.frequency}
               onValueChange={(v) => update({ frequency: v as Frequency })}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={fieldId("frequency")} aria-label="运行频率" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -462,6 +469,7 @@ export default function AutomationFormDialog({
               <div className="mt-2 flex items-center gap-2">
                 <Input
                   type="time"
+                  aria-label="运行时间"
                   value={form.time}
                   onChange={(e) => update({ time: e.target.value })}
                   className="w-32"
@@ -482,6 +490,8 @@ export default function AutomationFormDialog({
                         type="button"
                         variant="outline"
                         size="icon-xs"
+                        aria-pressed={active}
+                        aria-label={`周${label}`}
                         onClick={() => toggleDay(day)}
                         className={`size-7 ${
                           active
@@ -497,6 +507,7 @@ export default function AutomationFormDialog({
                 <div className="flex items-center gap-2">
                   <Input
                     type="time"
+                    aria-label="运行时间"
                     value={form.time}
                     onChange={(e) => update({ time: e.target.value })}
                     className="w-32"
@@ -515,6 +526,7 @@ export default function AutomationFormDialog({
                   type="number"
                   min={1}
                   max={1440}
+                  aria-label="间隔分钟数"
                   value={form.minutes}
                   onChange={(e) => update({ minutes: e.target.value })}
                   className="w-20"
@@ -526,8 +538,9 @@ export default function AutomationFormDialog({
                     type="button"
                     variant="outline"
                     size="xs"
+                    aria-pressed={form.minutes === String(m)}
                     onClick={() => update({ minutes: String(m) })}
-                    className={`h-auto px-2 py-0.5 ${
+                    className={`h-7 px-2.5 ${
                       form.minutes === String(m)
                         ? "border-brand text-brand hover:border-brand hover:text-brand"
                         : "border-hairline text-secondary hover:bg-hover"
@@ -542,6 +555,7 @@ export default function AutomationFormDialog({
             {form.frequency === "cron" && (
               <div className="mt-2 flex flex-col gap-1">
                 <Input
+                  aria-label="cron 表达式"
                   value={form.cronExpr}
                   onChange={(e) => update({ cronExpr: e.target.value })}
                   placeholder="0 30 8 * * 1-5（秒 分 时 日 月 周）"
@@ -552,10 +566,14 @@ export default function AutomationFormDialog({
               </div>
             )}
 
-            <div className="text-secondary text-caption mt-2 flex items-center gap-1.5">
-              <Repeat className="size-3.5 shrink-0" />
-              {schedulePreview}
-            </div>
+            {/* 只有「交易时段每 N 分钟」会在背后生成一条带时段限制的 cron，
+                其余形态的时间/间隔在上面的控件里已经写清楚了，再复述一遍是噪音。 */}
+            {form.frequency === "trading_hours" && (
+              <div className="text-tertiary text-caption mt-2 flex items-center gap-1.5">
+                <Repeat className="size-3.5 shrink-0" />
+                {describeSchedule(buildSchedule(form))}（交易日 9–15 点）
+              </div>
+            )}
           </Field>
 
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
@@ -577,12 +595,12 @@ export default function AutomationFormDialog({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3 flex flex-col gap-3 px-1">
-              <Field label="运行范围">
+              <Field label="运行范围" htmlFor={fieldId("scope")}>
                 <Select
                   value={form.scopeKind}
                   onValueChange={(v) => update({ scopeKind: v as FormState["scopeKind"] })}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id={fieldId("scope")} aria-label="运行范围" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -593,7 +611,7 @@ export default function AutomationFormDialog({
                 {form.scopeKind === "existing_thread" && (
                   <div className="mt-1.5 flex flex-col gap-1">
                     <Select value={form.sessionId} onValueChange={(v) => update({ sessionId: v })}>
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger aria-label="目标会话" className="w-full">
                         <SelectValue
                           placeholder={
                             sessionOptions.length === 0
@@ -617,29 +635,32 @@ export default function AutomationFormDialog({
                 )}
               </Field>
 
-              <Field label="工作目录">
+              <Field label="工作目录" htmlFor={fieldId("cwd")}>
                 <Input
+                  id={fieldId("cwd")}
                   value={form.cwd}
                   onChange={(e) => update({ cwd: e.target.value })}
                   placeholder="留空 = 当前工作区"
                 />
               </Field>
 
-              <div className="border-hairline flex items-center justify-between rounded-lg border px-3 py-2">
-                <div>
+              <div className="flex items-center justify-between gap-3 px-1">
+                <div className="min-w-0">
                   <div className="text-body font-medium">只读模式</div>
-                  <div className="text-secondary text-caption">
+                  <div className="text-tertiary text-caption">
                     禁用 bash/edit/write（巡检类任务推荐开启）
                   </div>
                 </div>
                 <Switch
                   checked={form.read_only}
                   onCheckedChange={(v) => update({ read_only: v })}
+                  aria-label="只读模式"
                 />
               </div>
 
-              <Field label="单次运行超时（秒）">
+              <Field label="单次运行超时（秒）" htmlFor={fieldId("timeout")}>
                 <Input
+                  id={fieldId("timeout")}
                   type="number"
                   min={1}
                   max={MAX_TIMEOUT_SECS}
@@ -652,7 +673,11 @@ export default function AutomationFormDialog({
             </CollapsibleContent>
           </Collapsible>
 
-          {error && <div className="text-destructive text-caption">{error}</div>}
+          {error && (
+            <p role="alert" className="text-danger text-caption">
+              {error}
+            </p>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -668,22 +693,29 @@ export default function AutomationFormDialog({
   )
 }
 
-/** 表单字段壳：统一 label / 提示 / 控件的间距 */
+/**
+ * 表单字段壳：统一 label / 提示 / 控件的间距。
+ *
+ * 提示放在 label 下方而不是右侧——右侧在窄弹窗里会把 label 挤掉，且离控件更远；
+ * 设置页的 `SettingRow` 也是「标题上、说明下」。
+ */
 function Field({
   label,
   hint,
+  htmlFor,
   children,
 }: {
   label: string
   hint?: string
+  htmlFor?: string
   children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="text-body font-medium">{label}</label>
-        {hint && <span className="text-tertiary text-caption">{hint}</span>}
-      </div>
+      <label htmlFor={htmlFor} className="text-body font-medium">
+        {label}
+      </label>
+      {hint && <span className="text-tertiary text-caption -mt-1">{hint}</span>}
       {children}
     </div>
   )

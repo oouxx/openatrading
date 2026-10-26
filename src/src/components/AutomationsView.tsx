@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react"
-import { Archive, Bell, BellOff, Pencil, Play, Plus, RotateCw, Trash2, Zap } from "lucide-react"
+import { AlertTriangle, Archive, Bell, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
+import { Skeleton } from "@/components/ui/skeleton"
 import AutomationFormDialog from "@/components/AutomationFormDialog"
+import { AutomationRow } from "@/components/AutomationRow"
+import { AutomationRunRow } from "@/components/AutomationRunRow"
 import {
   useArchiveRun,
   useAutomationRuns,
@@ -12,33 +14,28 @@ import {
   useTriggerAutomation,
   useUpdateAutomation,
 } from "@/hooks/query/useAutomations"
-import {
-  describeSchedule,
-  describeScope,
-  type Automation,
-  type NextRuns,
-  type RunQuery,
-} from "@/types/automation"
-
-function statusBadge(run: { status: string; output: string | null }): string {
-  if (run.status === "running") return "运行中"
-  if (run.status === "failed") return "失败"
-  return run.output && run.output.trim() ? "有发现" : "无产出"
-}
-
-function formatTime(value: string): string {
-  return value.replace("T", " ").slice(0, 19)
-}
+import type { Automation, NextRuns, RunQuery } from "@/types/automation"
 
 /** Stable fallback so useMemo dependencies don't change on every render. */
 const EMPTY_AUTOMATIONS: Automation[] = []
 
+/** 后端错误 → 用户能理解的一句话（web 端只带状态码，Tauri 端带原始文本） */
+function actionErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  if (raw === "404" || raw.includes("not found")) return "任务或运行记录已不存在，列表已刷新"
+  if (/^5\d{2}$/.test(raw)) return "服务端处理失败，请稍后重试"
+  if (/^\d{3}$/.test(raw)) return `请求被拒绝（HTTP ${raw}）`
+  return raw
+}
+
 export default function AutomationsView() {
-  const { data, isLoading } = useAutomations()
-  const automations = data?.automations ?? EMPTY_AUTOMATIONS
-  const nextRuns: NextRuns = data?.next_runs ?? {}
+  const automationsQuery = useAutomations()
+  const automations = automationsQuery.data?.automations ?? EMPTY_AUTOMATIONS
+  const nextRuns: NextRuns = automationsQuery.data?.next_runs ?? {}
   const [runsFilter, setRunsFilter] = useState<RunQuery>({ limit: 50 })
-  const { data: runs = [] } = useAutomationRuns(runsFilter)
+  const runsQuery = useAutomationRuns(runsFilter)
+  const runs = runsQuery.data ?? []
+
   const updateMutation = useUpdateAutomation()
   const deleteMutation = useDeleteAutomation()
   const triggerMutation = useTriggerAutomation()
@@ -56,23 +53,76 @@ export default function AutomationsView() {
   }, [automations])
 
   const unreadCount = runs.filter((r) => r.unread).length
+  const filtered = Boolean(runsFilter.unread || runsFilter.active)
+
+  // 所有写操作共用一个错误位：动作失败必须可见，否则用户看到的就是「点了没反应」。
+  const failed = [
+    updateMutation.error,
+    deleteMutation.error,
+    triggerMutation.error,
+    markReadMutation.error,
+    archiveMutation.error,
+  ].find(Boolean)
+  const dismissError = () => {
+    updateMutation.reset()
+    deleteMutation.reset()
+    triggerMutation.reset()
+    markReadMutation.reset()
+    archiveMutation.reset()
+  }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      {/* ── 自动化任务列表 ── */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-h1 font-semibold">自动化任务</h2>
-          <Button size="sm" onClick={() => setDialogTarget({ automation: null })}>
-            <Plus className="size-4" />
-            新建
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="text-h1 text-primary font-semibold">自动化</h1>
+        <Button size="sm" onClick={() => setDialogTarget({ automation: null })}>
+          <Plus className="size-4" />
+          新建
+        </Button>
+      </header>
+
+      {failed && (
+        <div
+          role="alert"
+          className="border-danger/25 bg-danger-bg flex items-start gap-2 rounded-lg border px-3 py-2"
+        >
+          <AlertTriangle className="text-danger mt-0.5 size-3.5 shrink-0" />
+          <p className="text-danger text-caption flex-1 leading-5">{actionErrorMessage(failed)}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={dismissError}
+            aria-label="关闭错误提示"
+            className="text-danger/70 hover:text-danger -my-0.5"
+          >
+            <X />
           </Button>
         </div>
+      )}
 
-        {isLoading ? (
-          <div className="text-secondary text-body flex items-center gap-2 py-8">
-            <RotateCw className="size-4 animate-spin" />
-            加载中…
+      {/* ── 定时任务 ── */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-h2 text-primary flex items-baseline gap-2 font-medium">
+          定时任务
+          {/* 加载中/失败时不显示数字：0 会被读成「一个任务都没有」 */}
+          {!automationsQuery.isPending && !automationsQuery.isError && automations.length > 0 && (
+            <span className="text-tertiary text-caption font-normal">{automations.length}</span>
+          )}
+        </h2>
+
+        {automationsQuery.isPending ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-[84px] w-full rounded-lg" />
+            ))}
+          </div>
+        ) : automationsQuery.isError ? (
+          <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
+            <p className="text-secondary text-caption">无法加载自动化任务</p>
+            <Button size="xs" variant="outline" onClick={() => automationsQuery.refetch()}>
+              重试
+            </Button>
           </div>
         ) : automations.length === 0 ? (
           <div className="border-hairline text-secondary text-body rounded-lg border border-dashed p-8 text-center">
@@ -81,167 +131,106 @@ export default function AutomationsView() {
         ) : (
           <div className="flex flex-col gap-2">
             {automations.map((a) => (
-              <div
+              <AutomationRow
                 key={a.id}
-                className="border-hairline flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              >
-                <Switch
-                  checked={a.enabled}
-                  onCheckedChange={(v) =>
-                    updateMutation.mutate({ id: a.id, patch: { enabled: v } })
-                  }
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-body flex flex-wrap items-center gap-2 font-medium">
-                    {a.name}
-                    {a.read_only && (
-                      <span className="border-hairline text-secondary text-caption rounded border px-1.5 py-0.5">
-                        只读
-                      </span>
-                    )}
-                    <span className="text-secondary text-caption font-normal">
-                      {describeSchedule(a.schedule)} · {describeScope(a.scope)}
-                    </span>
-                    {nextRuns[a.id] && (
-                      <span className="text-secondary text-caption ml-auto">
-                        下次 {nextRuns[a.id]}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-secondary text-caption truncate">{a.prompt}</div>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="立即运行"
-                  aria-label="立即运行"
-                  onClick={() => triggerMutation.mutate(a.id)}
-                  disabled={triggerMutation.isPending}
-                >
-                  <Play className="size-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="编辑"
-                  aria-label="编辑"
-                  onClick={() => setDialogTarget({ automation: a })}
-                >
-                  <Pencil className="size-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="删除"
-                  aria-label="删除"
-                  onClick={() => deleteMutation.mutate(a.id)}
-                  disabled={deleteMutation.isPending}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
+                automation={a}
+                nextRun={nextRuns[a.id]}
+                togglePending={updateMutation.isPending && updateMutation.variables?.id === a.id}
+                triggerPending={triggerMutation.isPending && triggerMutation.variables === a.id}
+                deletePending={deleteMutation.isPending && deleteMutation.variables === a.id}
+                onToggle={(enabled) => updateMutation.mutate({ id: a.id, patch: { enabled } })}
+                onTrigger={() => triggerMutation.mutate(a.id)}
+                onEdit={() => setDialogTarget({ automation: a })}
+                onDelete={() => deleteMutation.mutate(a.id)}
+              />
             ))}
           </div>
         )}
       </section>
 
-      {/* ── 收件箱(Triage)── */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-h1 flex items-center gap-2 font-semibold">
-            运行收件箱
+      {/* ── 运行记录（未读 / 归档 triage）── */}
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-h2 text-primary flex items-baseline gap-2 font-medium">
+            运行记录
             {unreadCount > 0 && (
-              <span className="bg-destructive text-destructive-foreground text-caption rounded-full px-2 py-0.5">
+              <span className="bg-brand/15 text-brand text-caption rounded-full px-2 py-0.5 leading-none">
                 {unreadCount} 未读
               </span>
             )}
           </h2>
-          <div className="text-secondary text-caption flex items-center gap-1">
+          <div className="flex items-center gap-1">
             <Button
               size="sm"
-              variant={runsFilter.unread ? "default" : "ghost"}
+              variant={runsFilter.unread ? "secondary" : "ghost"}
+              aria-pressed={Boolean(runsFilter.unread)}
               onClick={() => setRunsFilter((f) => ({ ...f, unread: !f.unread }))}
+              className={runsFilter.unread ? "text-primary" : "text-secondary"}
             >
               <Bell className="size-3.5" />
-              仅未读
+              未读
             </Button>
             <Button
               size="sm"
-              variant={runsFilter.active ? "default" : "ghost"}
+              variant={runsFilter.active ? "secondary" : "ghost"}
+              aria-pressed={Boolean(runsFilter.active)}
               onClick={() => setRunsFilter((f) => ({ ...f, active: !f.active }))}
+              className={runsFilter.active ? "text-primary" : "text-secondary"}
             >
-              <BellOff className="size-3.5" />
-              隐藏归档
+              <Archive className="size-3.5" />
+              未归档
             </Button>
           </div>
         </div>
 
-        {runs.length === 0 ? (
+        {runsQuery.isPending ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : runsQuery.isError ? (
+          <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
+            <p className="text-secondary text-caption">无法加载运行记录</p>
+            <Button size="xs" variant="outline" onClick={() => runsQuery.refetch()}>
+              重试
+            </Button>
+          </div>
+        ) : runs.length === 0 ? (
           <div className="border-hairline text-secondary text-body rounded-lg border border-dashed p-8 text-center">
-            暂无运行记录。任务到点自动运行后,有发现的结果会出现在这里。
+            {filtered ? (
+              <>
+                没有符合筛选条件的记录。
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-brand ml-1"
+                  onClick={() => setRunsFilter({ limit: 50 })}
+                >
+                  清除筛选
+                </Button>
+              </>
+            ) : (
+              "暂无运行记录。任务到点自动运行后，有发现的结果会出现在这里。"
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {runs.map((r) => {
-              const auto = automationById.get(r.automation_id)
-              const expanded = expandedRun === r.id
-              const detail = r.status === "failed" ? (r.error ?? "") : (r.output ?? "")
-              return (
-                <div key={r.id} className="border-hairline rounded-lg border px-3 py-2.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-auto w-full justify-start gap-2 px-0 text-left font-normal hover:bg-transparent"
-                    onClick={() => {
-                      setExpandedRun(expanded ? null : r.id)
-                      if (r.unread) markReadMutation.mutate(r.id)
-                    }}
-                  >
-                    <span
-                      className={`size-2 shrink-0 rounded-full ${
-                        r.unread ? "bg-primary" : "ring-border bg-transparent ring-1"
-                      }`}
-                    />
-                    <span
-                      className={`text-body ${
-                        r.status === "failed" ? "text-destructive" : "font-medium"
-                      }`}
-                    >
-                      {auto?.name ?? r.automation_id.slice(0, 8)}
-                    </span>
-                    <span className="text-secondary text-caption">{statusBadge(r)}</span>
-                    <span className="text-secondary text-caption ml-auto">
-                      {formatTime(r.started_at)}
-                    </span>
-                  </Button>
-                  {expanded && detail && (
-                    <div className="bg-surface text-caption mt-2 rounded-md p-2 whitespace-pre-wrap">
-                      {detail}
-                    </div>
-                  )}
-                  <div className="mt-1.5 flex items-center justify-end gap-1">
-                    {r.unread && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => markReadMutation.mutate(r.id)}
-                      >
-                        <Zap className="size-3.5" />
-                        标记已读
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => archiveMutation.mutate({ runId: r.id, archived: !r.archived })}
-                    >
-                      <Archive className="size-3.5" />
-                      {r.archived ? "取消归档" : "归档"}
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+            {runs.map((r) => (
+              <AutomationRunRow
+                key={r.id}
+                run={r}
+                automationName={automationById.get(r.automation_id)?.name}
+                expanded={expandedRun === r.id}
+                onToggleExpand={() => setExpandedRun(expandedRun === r.id ? null : r.id)}
+                onMarkRead={() => markReadMutation.mutate(r.id)}
+                readPending={markReadMutation.isPending && markReadMutation.variables === r.id}
+                onArchive={() => archiveMutation.mutate({ runId: r.id, archived: !r.archived })}
+                archivePending={
+                  archiveMutation.isPending && archiveMutation.variables?.runId === r.id
+                }
+              />
+            ))}
           </div>
         )}
       </section>
