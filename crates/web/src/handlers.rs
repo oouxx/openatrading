@@ -496,6 +496,29 @@ pub async fn get_realtime_data(
     .await
 }
 
+/// GET /api/order-book/:symbol —— 盘口五档 + 涨跌停。
+pub async fn get_order_book_data(
+    state: &Arc<AppState>,
+    symbol: &str,
+) -> Result<serde_json::Value, String> {
+    let cache_key = format!("order_book_{symbol}");
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &cache_key,
+        CachePolicy::order_book(),
+        || async {
+            let data = state
+                .ctx
+                .api
+                .fetch_order_book(symbol)
+                .await
+                .map_err(|e| format!("order book error: {e}"))?;
+            serde_json::to_value(data).map_err(|e| format!("order book serialize error: {e}"))
+        },
+    )
+    .await
+}
+
 /// GET /api/telegraph/:category
 pub async fn get_telegraph_data(
     state: &Arc<AppState>,

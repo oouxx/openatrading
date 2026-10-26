@@ -158,6 +158,55 @@ pub enum SeatFlag {
 
 const BASE_URL: &str = "https://datacenter-web.eastmoney.com/api/data/v1/get";
 
+/// 盘口里的一档（价 + 挂单量）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderBookLevel {
+    /// 委托价（元）。该档无挂单时为 0。
+    pub price: f64,
+    /// 挂单量，单位**手**（东财原始口径，1 手 = 100 股）。
+    pub volume: f64,
+}
+
+/// 个股盘口快照：买卖各五档 + 涨跌停价。
+///
+/// `bids[0]` 是买一、`asks[0]` 是卖一，都按「离现价由近到远」排列；展示时
+/// 卖档通常要倒过来从卖五排到卖一。
+///
+/// 非交易时段或停牌时各档价为 0 —— 调用方必须把「档位为 0」当作「没有挂单」，
+/// 不能当成真实价格。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderBook {
+    pub symbol: String,
+    pub name: String,
+    /// 最新价（f43）。
+    pub last: f64,
+    /// 昨收（f60）。
+    pub prev_close: f64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    /// 涨跌幅 %（f170）。
+    pub change_pct: f64,
+    /// 涨停价（f51）。
+    pub limit_up: f64,
+    /// 跌停价（f52）。
+    pub limit_down: f64,
+    /// 买一 … 买五。
+    pub bids: Vec<OrderBookLevel>,
+    /// 卖一 … 卖五。
+    pub asks: Vec<OrderBookLevel>,
+    /// 这份盘口来自哪个上游。
+    pub source: OrderBookSource,
+}
+
+/// 盘口的上游来源。降级到新浪时 `limit_up`/`limit_down` 为 0。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OrderBookSource {
+    Eastmoney,
+    Sina,
+}
+
 /// 兼容旧名称：东方财富客户端。
 pub type LhbClient = EastmoneyClient;
 
@@ -1292,6 +1341,11 @@ const TREND_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/trends2/get
 const KLINE_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
 const FUND_FLOW_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get";
 const BOARD_SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
+/// 盘口五档（akshare `stock_bid_ask_em` 同源）。
+const ORDER_BOOK_URL: &str = "https://push2.eastmoney.com/api/qt/stock/get";
+/// 盘口需要的字段：现价/开高低/涨跌停/名称 + 买五档(f11..f20) + 卖五档(f31..f40)。
+const ORDER_BOOK_FIELDS: &str = "f43,f44,f45,f46,f51,f52,f57,f58,f60,f170,\
+f11,f12,f13,f14,f15,f16,f17,f18,f19,f20,f31,f32,f33,f34,f35,f36,f37,f38,f39,f40";
 const UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
 const SEARCH_TOKEN: &str = "D43BF722C8E33BDC906FB84D85E326E8";
 
@@ -1674,6 +1728,34 @@ impl EastmoneyClient {
             return Ok(Vec::new());
         };
         Ok(pool.iter().filter_map(parse_broken_board_row).collect())
+    }
+
+    /// 盘口五档 + 涨跌停价（东方财富 `push2/qt/stock/get`）。
+    ///
+    /// `fltt=2` 让价格直接是元、量是手，不需要再缩放（akshare 的
+    /// `stock_bid_ask_em` 走同一个接口，只是把量 ×100 折成股）。
+    ///
+    /// # Errors
+    /// 代码无法识别、请求失败或响应缺 `data`（停牌 / 代码无效）时返回错误。
+    pub async fn fetch_order_book(&self, symbol: &str) -> Result<OrderBook> {
+        let secid = stock_secid(symbol)?;
+        let response: Value = self
+            .client
+            .get(ORDER_BOOK_URL)
+            .query(&[
+                ("fltt", "2"),
+                ("invt", "2"),
+                ("secid", secid.as_str()),
+                ("fields", ORDER_BOOK_FIELDS),
+            ])
+            .send()
+            .await
+            .context("盘口请求失败")?
+            .json()
+            .await
+            .context("盘口响应不是合法 JSON")?;
+        parse_order_book(symbol, &response)
+            .with_context(|| format!("{symbol} 没有盘口数据（停牌或代码无效）"))
     }
 
     /// 个股分钟 K 线。
@@ -2110,6 +2192,55 @@ fn stock_secid(symbol: &str) -> Result<String> {
     Ok(format!("{market}.{code}"))
 }
 
+/// 解析盘口响应。`data` 缺失/为 null（停牌、代码无效）时返回 `None`。
+///
+/// 东财在非交易时段会把各档返回 0 而不是缺字段，所以这里不做「全 0 → 错误」
+/// 的判断：0 就是「没有挂单」，由调用方按语义处理。
+fn parse_order_book(symbol: &str, response: &Value) -> Option<OrderBook> {
+    let data = response.get("data")?;
+    if data.is_null() {
+        return None;
+    }
+    let num = |key: &str| data.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+    let level = |price: &str, volume: &str| OrderBookLevel {
+        price: num(price),
+        volume: num(volume),
+    };
+    Some(OrderBook {
+        symbol: symbol.to_string(),
+        name: data
+            .get("f58")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        last: num("f43"),
+        prev_close: num("f60"),
+        open: num("f46"),
+        high: num("f44"),
+        low: num("f45"),
+        change_pct: num("f170"),
+        limit_up: num("f51"),
+        limit_down: num("f52"),
+        // 买一 → 买五：f19/f20, f17/f18, f15/f16, f13/f14, f11/f12
+        bids: vec![
+            level("f19", "f20"),
+            level("f17", "f18"),
+            level("f15", "f16"),
+            level("f13", "f14"),
+            level("f11", "f12"),
+        ],
+        // 卖一 → 卖五：f39/f40, f37/f38, f35/f36, f33/f34, f31/f32
+        asks: vec![
+            level("f39", "f40"),
+            level("f37", "f38"),
+            level("f35", "f36"),
+            level("f33", "f34"),
+            level("f31", "f32"),
+        ],
+        source: OrderBookSource::Eastmoney,
+    })
+}
+
 fn normalize_minute_time(value: &str) -> String {
     let value = value.trim();
     if value.len() == 16 {
@@ -2151,6 +2282,58 @@ fn normalize_range(value: &str, end: bool) -> Result<String> {
 #[cfg(test)]
 mod market_tests {
     use super::*;
+
+    /// 盘口解析：买五档按「买一→买五」排列、卖五档按「卖一→卖五」排列，
+    /// 量与价都取东财原始口径（元 / 手）。
+    #[test]
+    fn parses_order_book_levels() {
+        let response = serde_json::json!({
+            "rc": 0,
+            "data": {
+                "f43": 11.3, "f44": 11.34, "f45": 11.13, "f46": 11.15,
+                "f51": 12.43, "f52": 10.17, "f58": "平安银行", "f60": 11.2, "f170": 0.89,
+                "f19": 11.29, "f20": 143, "f17": 11.28, "f18": 120,
+                "f15": 11.27, "f16": 90,  "f13": 11.26, "f14": 60, "f11": 11.25, "f12": 30,
+                "f39": 11.30, "f40": 210, "f37": 11.31, "f38": 160,
+                "f35": 11.32, "f36": 110, "f33": 11.33, "f34": 70, "f31": 11.34, "f32": 45
+            }
+        });
+
+        let book = parse_order_book("000001", &response).unwrap_or_else(|| panic!("应能解析盘口"));
+        assert_eq!(book.name, "平安银行");
+        assert!((book.last - 11.3).abs() < f64::EPSILON);
+        assert!((book.limit_up - 12.43).abs() < f64::EPSILON);
+        assert!((book.limit_down - 10.17).abs() < f64::EPSILON);
+        assert_eq!(book.bids.len(), 5);
+        assert_eq!(book.asks.len(), 5);
+        // 买一最近 → 买五最远
+        assert!((book.bids[0].price - 11.29).abs() < f64::EPSILON);
+        assert!((book.bids[0].volume - 143.0).abs() < f64::EPSILON);
+        assert!((book.bids[4].price - 11.25).abs() < f64::EPSILON);
+        // 卖一最近 → 卖五最远
+        assert!((book.asks[0].price - 11.30).abs() < f64::EPSILON);
+        assert!((book.asks[0].volume - 210.0).abs() < f64::EPSILON);
+        assert!((book.asks[4].price - 11.34).abs() < f64::EPSILON);
+    }
+
+    /// 停牌 / 代码无效时东财返回 `data: null`，必须当成「没有盘口」而不是全 0。
+    #[test]
+    fn order_book_is_none_without_data() {
+        assert!(parse_order_book("000001", &serde_json::json!({ "data": null })).is_none());
+        assert!(parse_order_book("000001", &serde_json::json!({ "rc": 0 })).is_none());
+    }
+
+    /// 非交易时段各档为 0：解析成功但档位价量为 0，由调用方决定怎么展示。
+    #[test]
+    fn order_book_keeps_zero_levels_outside_trading_hours() {
+        let response = serde_json::json!({
+            "data": { "f43": 11.3, "f58": "平安银行", "f60": 11.2,
+                      "f19": 0, "f20": 0, "f31": 0, "f32": 0 }
+        });
+        let book = parse_order_book("000001", &response).unwrap_or_else(|| panic!("应能解析盘口"));
+        assert!((book.bids[0].price - 0.0).abs() < f64::EPSILON);
+        assert!((book.asks[0].volume - 0.0).abs() < f64::EPSILON);
+    }
 
     #[test]
     fn parses_limit_up_pool_row() {

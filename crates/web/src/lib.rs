@@ -76,6 +76,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/kline/:symbol", get(web::get_kline))
         .route("/api/realtime/stream", get(web::get_realtime_stream))
         .route("/api/realtime/:symbol", get(web::get_realtime))
+        .route("/api/order-book/stream", get(web::get_order_book_stream))
+        .route("/api/order-book/:symbol", get(web::get_order_book))
         .route("/api/yesterday-limit-up", get(web::get_yesterday_limit_up))
         .route("/api/super-stock", get(web::get_super_stock))
         .route("/api/index-quotes", get(web::get_index_quotes))

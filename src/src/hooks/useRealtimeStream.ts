@@ -235,6 +235,64 @@ function sseStream(
 }
 
 /**
+ * 订阅盘口五档，与 K 线用同一条通道（交易时段每 3 秒一帧）。
+ * - Web: EventSource at `/api/order-book/stream?symbols=X`
+ * - Tauri: `api_order_book_stream` 的 Channel，按同一节奏重新 invoke
+ *
+ * 返回清理函数。
+ */
+export function subscribeOrderBook<T = unknown>(
+  symbol: string,
+  onData: (data: T) => void,
+  onError?: (err: string) => void
+): () => void {
+  if (!symbol) return () => {}
+
+  if (isTauri) {
+    let active = true
+    let timer: ReturnType<typeof setInterval> | null = null
+    const poll = async () => {
+      if (!active) return
+      try {
+        const { invoke, Channel } = await import("@tauri-apps/api/core")
+        const channel = new Channel<string>()
+        channel.onmessage = (text) => {
+          if (!active) return
+          const parsed = safeParse(text, "order-book")
+          if (!parsed) return
+          if (parsed.error) {
+            onError?.(String(parsed.error))
+          } else {
+            // 与 Web 端一致：批量形状 { "000001": OrderBook }
+            const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+            if (found) onData(found as T)
+          }
+        }
+        await invoke("api_order_book_stream", { symbol, channel })
+      } catch (e: unknown) {
+        if (active) onError?.(String(e))
+      }
+    }
+    poll()
+    timer = setInterval(poll, TAURI_STREAM_POLL_MS)
+    return () => {
+      active = false
+      if (timer) clearInterval(timer)
+    }
+  }
+
+  return sseStream(
+    `/api/order-book/stream?symbols=${encodeURIComponent(symbol)}`,
+    (data) => {
+      const map = data as Record<string, unknown>
+      const found = matchSymbol(map, symbol) ?? Object.values(map)[0]
+      if (found) onData(found as T)
+    },
+    onError
+  )
+}
+
+/**
  * Subscribe to kline data via SSE, updated every 3 seconds.
  * - Web: EventSource at /api/kline/stream?symbols=X&period=X&count=256
  * - Tauri: Channel via api_kline_stream

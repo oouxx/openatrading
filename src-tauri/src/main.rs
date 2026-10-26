@@ -343,6 +343,33 @@ async fn api_realtime_stream(
     }
 }
 
+/// 盘口五档一次性拉取。前端每 3 秒重新 invoke 一次（与 `api_kline_stream` 同一
+/// 约定：不在这里常驻轮询，否则每次订阅都会漏一个永久上游轮询任务）。
+#[tauri::command]
+async fn api_order_book_stream(
+    symbol: String,
+    channel: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    let client = openatrading_core::api::Client::new();
+    match client.fetch_order_book(&symbol).await {
+        Ok(book) => {
+            // 与 Web 端 SSE 的批量形状保持一致：{ "000001": OrderBook }
+            let value = serde_json::to_value(&book).map_err(|e| format!("serialize error: {e}"))?;
+            let json = serde_json::to_string(&serde_json::json!({ symbol.as_str(): value }))
+                .map_err(|e| format!("serialize error: {e}"))?;
+            channel
+                .send(json)
+                .map_err(|e| format!("channel error: {e}"))
+        }
+        Err(e) => {
+            eprintln!("[order-book-stream] {symbol}: {e}");
+            channel
+                .send(format!(r#"{{"error":"{e}"}}"#))
+                .map_err(|f| format!("channel error: {f}"))
+        }
+    }
+}
+
 #[tauri::command]
 async fn api_kline_stream(
     symbol: String,
@@ -528,6 +555,7 @@ fn main() {
             respond_permission,
             api_realtime_stream,
             api_kline_stream,
+            api_order_book_stream,
             get_config,
             update_config,
             restart_app

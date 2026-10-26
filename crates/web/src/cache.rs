@@ -142,6 +142,17 @@ impl CachePolicy {
         }
     }
 
+    /// 盘口/逐笔这类秒级数据：交易时段内 3 秒过期（前端 5 秒轮询一次，
+    /// 拿到的基本是新鲜数据），非交易时段直接用到下次开盘——盘口在休市时
+    /// 不会变，没必要反复请求上游。
+    pub fn order_book() -> Self {
+        if is_trading_hours() {
+            Self::TradingTtl(Duration::from_secs(3))
+        } else {
+            Self::NonTradingUntilOpen
+        }
+    }
+
     pub fn snapshot() -> Self {
         if is_trading_hours() {
             Self::TradingTtl(Duration::from_secs(60))

@@ -302,6 +302,94 @@ pub async fn get_realtime(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+/// GET /api/order-book/stream — SSE，盘口五档，交易时段每 3 秒一帧。
+///
+/// 与其他行情流同构：同一组 symbol 共用一条上游轮询，结果以
+/// `{ "000001": OrderBook }` 的批量形状广播；同时回填 `order_book_{symbol}`
+/// 缓存，供单发接口 `/api/order-book/:symbol` 读到流内新鲜数据。
+#[derive(serde::Deserialize)]
+pub struct OrderBookStreamQuery {
+    /// Comma-separated stock symbols
+    symbols: String,
+}
+
+pub async fn get_order_book_stream(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<OrderBookStreamQuery>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    let symbols: Vec<String> = q
+        .symbols
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if symbols.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let cache = Arc::clone(&state.cache);
+    let api = state.ctx.api.clone();
+    let fetch: FetchFn = Arc::new(move |syms: &[String]| {
+        let api = api.clone();
+        let cache = Arc::clone(&cache);
+        let syms: Vec<String> = syms.to_vec();
+        Box::pin(async move {
+            // 盘口只有单只接口，批量时逐个取；任何一只失败都不拖垮整帧，
+            // 只要有一只成功就照常广播（前端按 symbol 取自己那一只）。
+            let mut payload = serde_json::Map::with_capacity(syms.len());
+            let mut errors = Vec::new();
+            for sym in &syms {
+                match api.fetch_order_book(sym).await {
+                    Ok(book) => match serde_json::to_value(&book) {
+                        Ok(value) => {
+                            if let Ok(serialized) = serde_json::to_string(&value) {
+                                cache::set(
+                                    &cache,
+                                    &format!("order_book_{sym}"),
+                                    &serialized,
+                                    CachePolicy::order_book(),
+                                );
+                            }
+                            payload.insert(sym.clone(), value);
+                        }
+                        Err(e) => errors.push(format!("{sym}: {e}")),
+                    },
+                    Err(e) => errors.push(format!("{sym}: {e}")),
+                }
+            }
+            if payload.is_empty() {
+                return Err(if errors.is_empty() {
+                    "no order book data".to_string()
+                } else {
+                    errors.join("; ")
+                });
+            }
+            serde_json::to_string(&serde_json::Value::Object(payload)).map_err(|e| e.to_string())
+        })
+    });
+
+    let spec = StreamSpec {
+        key: format!("order-book:{}", symbols.join(",")),
+        // 盘口变化比 K 线快，交易时段 3 秒一帧；休市时每秒也变不出新挂单。
+        trading_interval: Duration::from_secs(3),
+        nontrading_interval: Duration::from_secs(30),
+        fetch,
+    };
+    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(rx, last))
+}
+
+/// GET /api/order-book/:symbol — 盘口五档
+pub async fn get_order_book(
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    crate::handlers::get_order_book_data(&state, &symbol)
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 /// GET /api/realtime/stream — SSE, every 3s, comma-separated symbols
 #[derive(serde::Deserialize)]
 pub struct RealtimeStreamQuery {

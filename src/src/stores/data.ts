@@ -335,3 +335,49 @@ export interface RealtimeQuote {
   trade_status: string
   update_time: number
 }
+
+/** 盘口里的一档 —— GET /api/order-book/:symbol */
+export interface OrderBookLevel {
+  /** 委托价（元）；该档没有挂单时为 0 */
+  price: number
+  /** 挂单量，单位**手**（1 手 = 100 股） */
+  volume: number
+}
+
+/**
+ * 个股盘口快照 —— GET /api/order-book/:symbol
+ *
+ * `bids[0]` 是买一、`asks[0]` 是卖一。非交易时段/停牌时各档价为 0，
+ * 不能当成真实挂单展示。
+ */
+export interface OrderBook {
+  symbol: string
+  name: string
+  last: number
+  prev_close: number
+  open: number
+  high: number
+  low: number
+  /** 涨跌幅 % */
+  change_pct: number
+  limit_up: number
+  limit_down: number
+  bids: OrderBookLevel[]
+  asks: OrderBookLevel[]
+  /** 上游来源：`eastmoney` 全量；`sina` 兜底（没有涨跌停价，档位量已换算成手） */
+  source: "eastmoney" | "sina"
+}
+
+/** K 线响应 —— GET /api/kline/:symbol */
+export interface KlineResponse {
+  symbol: string
+  period: string
+  candles: {
+    time: number
+    open?: number | null
+    close: number
+    high?: number | null
+    low?: number | null
+    volume?: number | null
+  }[]
+}
