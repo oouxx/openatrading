@@ -68,7 +68,8 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
           variant="ghost"
           size="xs"
           onClick={handleCopy}
-          className="hover:text-secondary text-tertiary px-2 opacity-0 transition-opacity group-hover:opacity-100"
+          // 触摸设备没有 hover：按钮必须常驻，否则永远不可见。
+          className="hover:text-secondary text-tertiary can-hover:opacity-0 can-hover:group-hover:opacity-100 can-hover:focus-visible:opacity-100 px-2 transition-opacity"
         >
           {copied ? (
             <>

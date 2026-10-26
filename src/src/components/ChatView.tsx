@@ -11,6 +11,7 @@ import {
 import { Search, Square, ArrowDown, ArrowUp, Paperclip, X } from "lucide-react"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
+import { TurnActions } from "@/components/chat/TurnActions"
 import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityTimeline"
 import { summarizeTool } from "@/lib/tool-summary"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
@@ -130,6 +131,9 @@ export default function AiCopilot({
   }, [threadTurns])
 
   // Agent lifecycle phase — derived from the latest turn's status.
+  //
+  // 错误态只留一个尾部标记：错误原因由上方的红色 notice 卡承载，状态条再重复
+  // 一遍同一段文本只会在同一屏里出现两次。
   const agentPhase = useMemo<AgentPhase>(() => {
     const turns = activeThreadId ? threadTurns.get(activeThreadId) : undefined
     if (!turns || turns.length === 0) return "idle"
@@ -983,7 +987,7 @@ export default function AiCopilot({
                     {turn.role === "user" ? (
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
-                        <div className="bg-surface text-primary shadow-card max-w-[85%] rounded-lg px-4 py-2.5">
+                        <div className="bg-hover text-primary max-w-[85%] rounded-lg px-4 py-2.5">
                           {turn.blocks.some((b) => b.type === "image") && (
                             <div className="mb-2 flex flex-wrap gap-2">
                               {turn.blocks.map((b) =>
@@ -998,15 +1002,15 @@ export default function AiCopilot({
                               )}
                             </div>
                           )}
-                          <p className="text-body leading-[1.7] whitespace-pre-wrap">
+                          <p className="text-body leading-[1.7] break-words whitespace-pre-wrap">
                             {turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}
                           </p>
                         </div>
                       </div>
                     ) : (
                       // 助手消息直排、无头像；角色靠左右版式区分，不再逐条打「AI 助手」标签
-                      <div className="flex w-full flex-col">
-                        <div className="text-body w-full min-w-0 leading-[1.7]">
+                      <div className="group/turn flex w-full flex-col">
+                        <div className="text-body w-full min-w-0 leading-[1.7] break-words">
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}
@@ -1020,6 +1024,9 @@ export default function AiCopilot({
                             }
                           />
                         </div>
+                        {turn.status === "complete" && (
+                          <TurnActions text={turn.blocks.map(answerText).join("\n\n")} />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1041,7 +1048,9 @@ export default function AiCopilot({
                 if (el) el.scrollTop = el.scrollHeight
                 setShowJumpBottom(false)
               }}
-              className="bg-surface border-hairline shadow-modal hover:border-brand/40 hover:text-brand text-secondary absolute bottom-32 left-1/2 z-20 -translate-x-1/2 rounded-full"
+              // 输入卡片会随内容长高，按钮位置跟着实测高度走，否则会被压住。
+              style={{ bottom: composerHeight + 72 }}
+              className="bg-surface border-hairline shadow-modal hover:border-brand/40 hover:text-brand text-secondary absolute left-1/2 z-20 -translate-x-1/2 rounded-full"
             >
               <ArrowDown className="size-3" />
               回到最新
@@ -1058,6 +1067,11 @@ export default function AiCopilot({
       )}
     </div>
   )
+}
+
+/** 一轮回答里的正文文本（跳过思考、工具调用、系统通知），供「复制」使用。 */
+function answerText(block: TranscriptBlock): string {
+  return block.type === "text" ? block.content : ""
 }
 
 // ── Slash command menu ─────────────────────────────────────────────────────

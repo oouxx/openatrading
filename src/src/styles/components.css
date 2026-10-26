@@ -1,5 +1,9 @@
 /* components.css — 全局组件覆盖，不动 shadcn 源码 */
 
+/* 只在「支持 hover」的设备上隐藏悬停动作。触摸设备没有 hover，用 md:opacity-0
+ * 会让按钮永远不可见（仍然可以误触），所以要按 hover 能力而不是屏宽来判断。 */
+@custom-variant can-hover (@media (hover: hover));
+
 @layer base {
   /* --- data-table --- */
   .data-table {
