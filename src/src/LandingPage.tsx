@@ -1,276 +1,240 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  Download,
+  Flame,
+  History,
+  MessagesSquare,
+  Monitor,
+  MonitorSmartphone,
+  Puzzle,
+  Star,
+  Terminal,
+  Timer,
+  Trophy,
+  type LucideIcon,
+} from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 
 // 安装包与 CLI 二进制统一走 GitHub Releases（自建下载目录已下线）。
 const RELEASES = "https://github.com/oouxx/openatrading/releases/latest"
-const INSTALL_SH =
-  "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh"
+const INSTALL_SH = "https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh"
+const HOMEBREW_TAP = "https://github.com/oouxx/homebrew-openatrading"
+const REPO = "https://github.com/oouxx/openatrading"
 
-const features = [
+/**
+ * 落地页是营销面，标题字号比应用内的 6 档体系大一级。
+ *
+ * 集中定义在这里而不是逐元素写 inline style：全页只有一套字号关系，
+ * 改版时只动这三个常量。
+ */
+const DISPLAY = "text-[clamp(2rem,4.5vw,3.25rem)] leading-[1.15] font-semibold tracking-tight"
+const SECTION_TITLE = "text-[1.35rem] leading-tight font-semibold"
+const CARD_TITLE = "text-body font-medium"
+
+const PRIMARY_CTA =
+  "bg-brand text-brand-foreground inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-body font-medium transition-opacity hover:opacity-90"
+const SECONDARY_CTA =
+  "border-hairline text-primary hover:border-brand/50 hover:text-brand inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-body font-medium transition-colors"
+
+interface Feature {
+  icon: LucideIcon
+  title: string
+  desc: string
+}
+
+const FEATURES: Feature[] = [
   {
+    icon: MessagesSquare,
     title: "AI 行情对话",
-    badge: "核心",
-    desc: "与 AI 流式对话复盘 A 股：大盘研判、北向资金、个股分析、板块轮动，Markdown 报告实时渲染。",
-    tags: ["💬 流式对话", "📈 个股分析", "📝 复盘报告"],
+    desc: "流式对话复盘 A 股：大盘研判、资金流向、个股与板块分析，Markdown 报告实时渲染。",
   },
   {
-    title: "Skill 编排分析",
-    badge: "模拟盘",
-    desc: "把选股口径、复盘清单写成 Skill，新建会话即生效。模拟盘账户在面板里手动记账，AI 只出报告、不下单。",
-    tags: ["🧩 Skill 编辑", "🤖 分析编排", "💹 手动记账"],
+    icon: Puzzle,
+    title: "Skill 编排",
+    desc: "把选股口径、复盘清单写成 Skill，新建会话即生效，不用每次重复交代要求。",
   },
   {
-    title: "自选行情",
-    desc: "实时行情与自选股管理，分时 / 日K / 周K / 月K，量比与涨速一览，一键关注跟踪。",
-    tags: ["📊 实时行情", "⭐ 自选股", "📈 K 线"],
+    icon: Star,
+    title: "自选与 K 线",
+    desc: "实时行情、量比与涨速一览，分时 / 日 K / 周 K / 月 K 随手切换。",
   },
   {
-    title: "龙虎榜分析",
-    desc: "机构 / 游资动向透视，营业部买卖明细，净买入排行，上榜原因归类，跟踪主力资金足迹。",
-    tags: ["🐉 龙虎榜", "🏦 营业部", "💰 净买入"],
+    icon: Trophy,
+    title: "龙虎榜",
+    desc: "机构与游资动向、营业部买卖明细、净买入排行，上榜原因归类。",
   },
   {
-    title: "涨停晋级 & 板块异动",
-    desc: "昨今对比连板晋级追踪，板块异动时间轴，涨速 / 涨幅实时排名，逐分钟捕捉盘口变化。",
-    tags: ["🔥 连板追踪", "🧭 板块异动", "⏱️ 实时排名"],
+    icon: Flame,
+    title: "涨停与异动",
+    desc: "昨今对比连板晋级，板块异动时间轴，涨速 / 涨幅实时排名。",
   },
   {
+    icon: History,
     title: "行情回放",
-    desc: "逐分钟复盘全天行情，异动信号时间轴回放，利好 / 利空事件标注，离线也能完整复盘。",
-    tags: ["⏪ 时间轴", "⚡ 异动标注", "📋 事件日志"],
+    desc: "逐分钟复盘全天行情，异动信号与事件标注按时间轴回放。",
+  },
+  {
+    icon: Timer,
+    title: "定时自动化",
+    desc: "按 cron 在后台巡检行情、推送财联社电报，结果进入收件箱。",
+  },
+  {
+    icon: MonitorSmartphone,
+    title: "多端入口",
+    desc: "Web 与 Telegram 共用同一套对话能力，会话与自选在两端实时同步。",
   },
 ]
 
 export default function LandingPage() {
   return (
-    <div className="bg-bg min-h-screen">
-      {/* Hero */}
-      <section className="mx-auto max-w-[1100px] px-8 pt-20 pb-14 text-center">
-        <h1
-          className="text-primary mb-4 leading-tight font-medium"
-          style={{ fontSize: "clamp(2.2rem, 5vw, 3.8rem)" }}
-        >
-          AI<span className="text-ai">行情助手</span>
+    <div className="bg-canvas min-h-screen">
+      {/* Hero —— 只说是什么、能做什么，导流按钮只留两个 */}
+      <section className="mx-auto max-w-3xl px-6 pt-24 pb-16 text-center">
+        <h1 className={`text-primary ${DISPLAY}`}>
+          AI <span className="text-brand">行情助手</span>
         </h1>
-        <p className="text-ink-muted mx-auto mb-10 max-w-[640px] text-h1/relaxed">
-          通过对话复盘 A 股行情，把选股口径和复盘清单写成 Skill 复用。
-          模拟盘账户独立记账，行情实时估值，盈亏随时可查。
+        <p className="text-secondary text-h2 mx-auto mt-5 max-w-xl leading-relaxed font-normal">
+          通过对话复盘 A 股行情，把选股口径与复盘清单写成 Skill 复用；
+          模拟盘独立记账、按实时行情估值。
         </p>
-
-        <div className="text-ink-muted mb-10 flex flex-wrap items-center justify-center gap-4 text-body">
-          {[
-            { icon: "💬", label: "行情对话" },
-            { icon: "🧩", label: "Skill 编排" },
-            { icon: "💹", label: "模拟盘" },
-            { icon: "📊", label: "复盘追踪" },
-          ].map((node, i) => (
-            <span key={node.label} className="flex items-center gap-4">
-              {i > 0 && <span className="text-ai text-h1 font-bold">→</span>}
-              <span className="bg-bg-surface border-hairline flex items-center gap-2 rounded-xl border px-5 py-3.5 font-medium">
-                <span className="text-h1">{node.icon}</span>
-                {node.label}
-              </span>
-            </span>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-3">
-          <Link
-            to="/app"
-            className="bg-ai text-brand-foreground inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-body font-medium transition-opacity hover:opacity-90"
-          >
-            开始使用 →
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link to="/app" className={PRIMARY_CTA}>
+            开始使用
+            <ArrowRight className="size-4" />
           </Link>
-          <a
-            href="#install"
-            className="border-hairline hover:border-ai hover:text-ai text-ink inline-flex items-center gap-2 rounded-lg border px-6 py-2.5 text-body font-medium transition-colors"
-          >
-            📦 下载安装
+          <a href="#install" className={SECONDARY_CTA}>
+            <Download className="size-4" />
+            下载安装
           </a>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-hero font-medium">
-          核心功能
-        </h2>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f) => (
-            <Link
-              key={f.title}
-              to="/app"
-              className="bg-bg-surface border-hairline hover:border-brand/40 overflow-hidden rounded-lg border transition-colors"
-            >
-              <div className="px-[18px] py-[22px]">
-                <h4 className="text-primary mb-1.5 flex items-center gap-2 text-h2">
-                  {f.title}
-                  {f.badge && (
-                    <span
-                      className="text-brand-foreground text-caption inline-block rounded-sm px-2.5 py-[3px] font-medium"
-                      style={{
-                        background: f.badge === "核心" ? "var(--color-brand)" : "var(--color-info)",
-                      }}
-                    >
-                      {f.badge}
-                    </span>
-                  )}
-                </h4>
-                <p className="text-ink-muted text-body mb-2.5 leading-relaxed">{f.desc}</p>
-                <div className="flex flex-wrap gap-2">
-                  {f.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="rounded-badge text-ink-muted text-caption px-2.5 py-[3px]"
-                      style={{ background: "var(--color-tag-bg)" }}
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </Link>
-          ))}
-
-          {/* Multi-entry card (Web + Telegram) — same chat, different entry */}
-          <div
-            className="bg-bg-surface border-hairline hover:border-brand/40 overflow-hidden rounded-lg border transition-colors"
-            style={{}}
-          >
-            <div className="px-[18px] py-[22px]">
-              <h4 className="text-primary mb-1.5 flex items-center gap-2 text-h2">
-                多端入口
-                <span
-                  className="text-brand-foreground text-caption inline-block rounded-sm px-2.5 py-[3px] font-medium"
-                  style={{ background: "var(--color-info)" }}
-                >
-                  Web + Telegram
-                </span>
-              </h4>
-              <p className="text-ink-muted text-body mb-2.5 leading-relaxed">
-                Web 与 Telegram 共用同一套对话能力，会话与自选在两端实时同步。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {["🌐 Web", "✈️ Telegram", "🔄 实时同步"].map((t) => (
-                  <span
-                    key={t}
-                    className="rounded-badge text-ink-muted text-caption px-2.5 py-[3px]"
-                    style={{ background: "var(--color-tag-bg)" }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
+      {/* 功能 —— 一项一句，不重复标题、不堆标签 */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <h2 className={`text-primary ${SECTION_TITLE}`}>功能</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="bg-surface border-hairline rounded-lg border p-4">
+              <f.icon className="text-brand size-4.5" aria-hidden />
+              <h3 className={`text-primary mt-3 ${CARD_TITLE}`}>{f.title}</h3>
+              <p className="text-secondary text-caption mt-1.5 leading-relaxed">{f.desc}</p>
             </div>
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* Install */}
-      <section id="install" className="mx-auto max-w-[1200px] px-8 pb-16">
-        <h2 className="text-primary mb-6 flex items-center gap-2.5 text-hero font-medium">
-          📦 下载安装
-        </h2>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {/* Desktop */}
-          <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
-            <h4 className="text-primary mb-2 flex items-center gap-2 text-h2">
-              🖥️ 桌面端
-            </h4>
-            <p className="text-ink-muted mb-5 text-caption/relaxed">
-              支持 macOS / Windows / Linux 三大平台，原生桌面体验，内置行情数据引擎。
-              安装包随每个版本发布在 GitHub Releases，按平台选择即可。
+      {/* 安装 */}
+      <section id="install" className="mx-auto max-w-5xl scroll-mt-6 px-6 pb-16">
+        <h2 className={`text-primary ${SECTION_TITLE}`}>安装</h2>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="bg-surface border-hairline flex flex-col rounded-lg border p-5">
+            <h3 className={`text-primary flex items-center gap-2 ${CARD_TITLE}`}>
+              <Monitor className="text-brand size-4" aria-hidden />
+              桌面端
+            </h3>
+            <p className="text-secondary text-caption mt-2 leading-relaxed">
+              macOS / Windows / Linux 安装包随每个版本发布在 GitHub Releases。
             </p>
-            <div className="mb-3.5 flex flex-wrap gap-2">
-              <a
-                href={RELEASES}
-                className="bg-ai text-brand-foreground inline-flex items-center gap-1.5 rounded-lg px-[18px] py-2 text-caption font-medium transition-opacity hover:opacity-90"
-              >
-                <span className="text-h1">⬇</span> 前往 Releases 下载
-              </a>
-              {[
-                { icon: "🍎", label: "macOS .dmg" },
-                { icon: "🪟", label: "Windows .exe" },
-                { icon: "🐧", label: "Linux .deb / .AppImage" },
-              ].map((d) => (
-                <span
-                  key={d.label}
-                  className="bg-ink-dim border-hairline text-ink-muted inline-flex items-center gap-1.5 rounded-lg border px-[14px] py-2 text-caption"
-                >
-                  <span className="text-h1">{d.icon}</span>
-                  {d.label}
-                </span>
-              ))}
-            </div>
-            <p className="text-ink-muted text-caption">
-              macOS 安装包是 ad-hoc 签名，首次打开需先
-              <code className="bg-ink-dim mx-1 rounded px-1">xattr -dr com.apple.quarantine /Applications/OpenATrading.app</code>
-              ；或使用 Homebrew：{" "}
-              <a href="https://github.com/oouxx/homebrew-openatrading" className="text-ai">
+            <a href={RELEASES} className={`${PRIMARY_CTA} mt-4 self-start`}>
+              <Download className="size-4" />
+              前往 Releases
+            </a>
+            <p className="text-tertiary text-caption mt-4">
+              macOS 包是 ad-hoc 签名，首次打开需先解除隔离：
+            </p>
+            <CopyCodeBlock
+              className="mt-1.5"
+              text="xattr -dr com.apple.quarantine /Applications/OpenATrading.app"
+            />
+            <p className="text-tertiary text-caption mt-3">
+              或用 Homebrew：
+              <a href={HOMEBREW_TAP} className="text-brand hover:underline">
                 brew install --cask openatrading
               </a>
             </p>
           </div>
 
-          {/* CLI */}
-          <div className="bg-bg-surface border-hairline rounded-lg border px-6 py-7">
-            <h4 className="text-primary mb-2 flex items-center gap-2 text-h2">
-              ⌨️ CLI 命令行
-            </h4>
-            <p className="text-ink-muted mb-5 text-caption/relaxed">
-              适用于 Linux/macOS 环境，可启动 Gateway 服务、跑行情数据 pipeline 与定时新闻推送。
+          <div className="bg-surface border-hairline flex flex-col rounded-lg border p-5">
+            <h3 className={`text-primary flex items-center gap-2 ${CARD_TITLE}`}>
+              <Terminal className="text-brand size-4" aria-hidden />
+              CLI / Gateway
+            </h3>
+            <p className="text-secondary text-caption mt-2 leading-relaxed">
+              Linux / macOS 上启动行情网关与定时任务，桌面端与 Web 都连它取数据。
             </p>
             <CopyCodeBlock
-              text={`# 安装 CLI（二进制从 GitHub Releases 获取）
+              className="mt-4"
+              text={`# 安装 CLI（二进制取自 GitHub Releases）
 curl -fsSL ${INSTALL_SH} | bash
 
-# 验证安装
-openatrading --version
-
-# 启动 Gateway
+# 启动网关
 openatrading gateway run`}
             />
-            <p className="text-ink-muted text-caption mt-2.5">
-              完整 CLI 文档：
-              <a href="https://github.com/oouxx/openatrading" className="text-ai">
-                GitHub
-              </a>
-            </p>
+            <a
+              href={REPO}
+              className="text-tertiary hover:text-brand text-caption mt-3 inline-flex items-center gap-1.5"
+            >
+              CLI 文档
+              <ArrowRight className="size-3" aria-hidden />
+            </a>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-hairline text-ink-muted border-t px-8 py-10 text-center text-caption">
-        <div className="mb-3 flex flex-wrap justify-center gap-6">
-          <a href="https://github.com/oouxx/openatrading" className="text-ai">
-            GitHub
-          </a>
-          <a href={RELEASES} className="text-ai">
-            Releases
-          </a>
-        </div>
-        openatrading · AI 行情助手
+      {/* 尾部 CTA —— 滚到底还想用的人不用再滚回去 */}
+      <section className="px-6 pb-20 text-center">
+        <Link to="/app" className={PRIMARY_CTA}>
+          在浏览器中直接使用
+          <ArrowRight className="size-4" />
+        </Link>
+      </section>
+
+      <footer className="border-hairline text-tertiary text-caption flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t px-6 py-8">
+        <a href={REPO} className="hover:text-brand">
+          GitHub
+        </a>
+        <a href={RELEASES} className="hover:text-brand">
+          Releases
+        </a>
+        <span>openatrading · AI 行情助手</span>
       </footer>
     </div>
   )
 }
 
-function CopyCodeBlock({ text }: { text: string }) {
+/** 代码块 + 复制。复制必须有反馈，否则用户不知道点没点成功。 */
+function CopyCodeBlock({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div
-      className="border-hairline text-primary relative overflow-x-auto rounded-lg border p-[14px_18px] font-mono text-caption/relaxed whitespace-pre-wrap"
-      style={{ background: "var(--color-tag-bg)" }}
+      className={`bg-canvas border-hairline relative overflow-x-auto rounded-lg border py-2.5 pr-2.5 pl-3 ${className ?? ""}`}
     >
       <Button
-        variant="outline"
+        variant="ghost"
         size="xs"
-        onClick={() => navigator.clipboard.writeText(text)}
-        className="bg-surface border-hairline text-ink-muted hover:border-ai hover:text-ai absolute top-2.5 right-3"
+        onClick={copy}
+        aria-label={copied ? "已复制" : "复制命令"}
+        className="text-tertiary hover:text-primary absolute top-1.5 right-1.5"
       >
-        复制
+        {copied ? <Check className="text-success" /> : <Copy />}
+        {copied ? "已复制" : "复制"}
       </Button>
-      <code>{text}</code>
+      <code className="text-primary font-number text-caption block pr-16 leading-relaxed whitespace-pre-wrap">
+        {text}
+      </code>
     </div>
   )
 }
