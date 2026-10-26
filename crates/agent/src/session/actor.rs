@@ -107,6 +107,16 @@ pub enum SessionMsg {
     LastAssistantText {
         reply: oneshot::Sender<Option<String>>,
     },
+    /// Apply a new built-in extension filter to this session. The actor
+    /// restores from its creation-time baseline and removes disabled tools,
+    /// then rejects future prompts for disabled extension commands.
+    ApplyExtensionToggles {
+        disabled_tools: Vec<String>,
+        disabled_commands: Vec<String>,
+        reply: oneshot::Sender<()>,
+    },
+    /// Snapshot of active tool names (调试 / 扩展开关回归测试).
+    ActiveToolNames { reply: oneshot::Sender<Vec<String>> },
     /// Stop the in-flight turn and exit the actor loop.
     Shutdown,
 }
@@ -224,6 +234,39 @@ impl SessionHandle {
         reply_rx.await.ok().flatten()
     }
 
+    /// Replace this session's built-in extension filters immediately.
+    ///
+    /// Prefer [`super::SessionPool::apply_extension_toggles`] when updating
+    /// every active session at once.
+    pub async fn apply_extension_toggles(
+        &self,
+        disabled_tools: Vec<String>,
+        disabled_commands: Vec<String>,
+    ) -> Result<(), String> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.cmd_tx
+            .send(SessionMsg::ApplyExtensionToggles {
+                disabled_tools,
+                disabled_commands,
+                reply: reply_tx,
+            })
+            .map_err(|_| "session actor closed".to_string())?;
+        reply_rx
+            .await
+            .map_err(|_| "session actor dropped reply".to_string())
+    }
+
+    /// Current active tool names (after any extension toggles).
+    ///
+    /// `None` means the actor is already gone (session closed or evicted).
+    pub async fn active_tool_names(&self) -> Option<Vec<String>> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.cmd_tx
+            .send(SessionMsg::ActiveToolNames { reply: reply_tx })
+            .ok()?;
+        reply_rx.await.ok()
+    }
+
     /// Ask the actor to stop and exit its thread.
     pub async fn shutdown(&self) {
         let _ = self.cmd_tx.send(SessionMsg::Shutdown);
@@ -246,6 +289,15 @@ pub fn spawn_session_actor(
     created: CreatedSession,
     event_state: Arc<SessionEventState>,
 ) -> SessionHandle {
+    let CreatedSession {
+        session,
+        services,
+        cwd,
+        baseline_tools,
+        disabled_tools,
+        disabled_commands,
+    } = created;
+
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionMsg>();
     let (notif_tx, notif_rx) = mpsc::unbounded_channel::<(String, oneshot::Sender<()>)>();
     let subscribers: Arc<TokioMutex<HashMap<u64, mpsc::Sender<String>>>> = Default::default();
@@ -254,7 +306,7 @@ pub fn spawn_session_actor(
 
     let handle = SessionHandle {
         cmd_tx: cmd_tx.clone(),
-        cwd: created.cwd.clone(),
+        cwd: cwd.clone(),
         streaming: streaming.clone(),
     };
 
@@ -302,8 +354,11 @@ pub fn spawn_session_actor(
                         tokio::task::spawn_local(fanout);
 
                         let actor = SessionActor {
-                            session: created.session,
-                            _services: created.services,
+                            session,
+                            _services: services,
+                            baseline_tools,
+                            disabled_tools,
+                            disabled_commands,
                             cmd_rx,
                             event_state,
                             subscribers,
@@ -339,6 +394,11 @@ struct SessionActor {
     /// Kept alive for the session's lifetime (cwd-bound services /
     /// extension registry the session depends on).
     _services: pi_coding_agent::core::agent_session_services::AgentSessionServices,
+    /// Active tools captured before extension toggles were applied; used to
+    /// restore tools when an extension is re-enabled.
+    baseline_tools: Vec<String>,
+    disabled_tools: Vec<String>,
+    disabled_commands: Vec<String>,
     cmd_rx: mpsc::UnboundedReceiver<SessionMsg>,
     event_state: Arc<SessionEventState>,
     subscribers: Arc<TokioMutex<HashMap<u64, mpsc::Sender<String>>>>,
@@ -380,6 +440,19 @@ impl SessionActor {
                 NextEvent::Command(Some(SessionMsg::LastAssistantText { reply })) => {
                     let text = self.session.get_last_assistant_text().await;
                     let _ = reply.send(text);
+                }
+                NextEvent::Command(Some(SessionMsg::ApplyExtensionToggles {
+                    disabled_tools,
+                    disabled_commands,
+                    reply,
+                })) => {
+                    self.apply_extension_toggles(disabled_tools, disabled_commands)
+                        .await;
+                    let _ = reply.send(());
+                }
+                NextEvent::Command(Some(SessionMsg::ActiveToolNames { reply })) => {
+                    let names = self.session.get_active_tool_names().await;
+                    let _ = reply.send(names);
                 }
                 NextEvent::Command(Some(SessionMsg::Shutdown)) | NextEvent::Command(None) => {
                     // Reject any queued prompts, stop the in-flight turn, and
@@ -453,6 +526,13 @@ impl SessionActor {
         opts: PromptOptions,
         reply: oneshot::Sender<Result<(), String>>,
     ) {
+        if let Some(cmd) = self.disabled_extension_command(&text) {
+            let _ = reply.send(Err(format!(
+                "扩展命令 /{cmd} 已停用，可在「设置 → 扩展」中重新开启"
+            )));
+            return;
+        }
+
         if self.turn_done_rx.is_some() {
             // The turn task can finish just before the actor processes its
             // `TurnDone`. Only steer while pi still considers the run active;
@@ -468,6 +548,36 @@ impl SessionActor {
             return;
         }
         self.start_prompt_turn(QueuedPrompt { text, opts, reply });
+    }
+
+    /// Return the disabled extension command a prompt would invoke, if any.
+    fn disabled_extension_command<'a>(&'a self, text: &str) -> Option<&'a str> {
+        super::extensions::disabled_command_in_prompt(text, &self.disabled_commands)
+    }
+
+    /// Apply extension toggles to this live session.
+    ///
+    /// Tools are always derived from the creation-time baseline, so a re-enable
+    /// restores exactly the tools that were active before the toggle and never
+    /// re-enables tools excluded by `exclude_tools` / `defaultTools`.
+    async fn apply_extension_toggles(
+        &mut self,
+        disabled_tools: Vec<String>,
+        disabled_commands: Vec<String>,
+    ) {
+        if self.disabled_tools == disabled_tools && self.disabled_commands == disabled_commands {
+            return;
+        }
+
+        self.disabled_tools = disabled_tools;
+        self.disabled_commands = disabled_commands;
+        let active: Vec<String> = self
+            .baseline_tools
+            .iter()
+            .filter(|name| !self.disabled_tools.contains(name))
+            .cloned()
+            .collect();
+        self.session.set_active_tools_by_name(&active).await;
     }
 
     /// Spawn the LLM turn as a task on the actor's executor. The task streams

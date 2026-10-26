@@ -262,6 +262,35 @@ impl SessionPool {
         }
     }
 
+    /// Apply built-in extension filters to every active session.
+    ///
+    /// The settings API calls this after persisting `extensionsEnabled`, so a
+    /// toggle takes effect on the next turn of already-open sessions without
+    /// restarting the process. Sessions resumed later read the setting when
+    /// their factory creates them. Returns the number of actors updated.
+    pub async fn apply_extension_toggles(
+        &self,
+        disabled_tools: &[String],
+        disabled_commands: &[String],
+    ) -> usize {
+        let handles: Vec<SessionHandle> = {
+            let sessions = self.sessions.lock().await;
+            sessions.iter().map(|(_, handle)| handle.clone()).collect()
+        };
+
+        let mut updated = 0;
+        for handle in handles {
+            match handle
+                .apply_extension_toggles(disabled_tools.to_vec(), disabled_commands.to_vec())
+                .await
+            {
+                Ok(()) => updated += 1,
+                Err(err) => eprintln!("[pool] failed to apply extension toggles: {err}"),
+            }
+        }
+        updated
+    }
+
     /// List all active session IDs.
     pub async fn list_session_ids(&self) -> Vec<String> {
         self.sessions

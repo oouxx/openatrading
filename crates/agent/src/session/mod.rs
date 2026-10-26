@@ -10,18 +10,24 @@
 //! - [`pool`] — supervisor: LRU map of session handles, resume-from-disk,
 //!   per-session event state.
 //! - [`slash`] — session-level slash commands executed inside the actor.
+//! - [`extensions`] — built-in extension toggles (`extensionsEnabled`).
 //! - [`runtime`] — locates session JSONL files on disk by ID.
 //!
 //! Domain-specific tool factories (positions, historical context) live in
 //! `openatrading_core::llm::tools`, since they depend on core's domain types.
 
 pub mod actor;
+pub mod extensions;
 pub mod factory;
 pub mod pool;
 pub mod runtime;
 pub mod slash;
 
 pub use actor::{spawn_session_actor, SessionHandle, SessionMsg, SessionStatus};
+pub use extensions::{
+    command_base_name, disabled_command_in_prompt, is_command_disabled, BuiltinExtension,
+    ExtensionToggles, BUILTIN_EXTENSIONS,
+};
 pub use factory::{
     create_factory, CreateSessionFactory, CreateSessionParams, CreatedSession, FactoryOptions,
 };

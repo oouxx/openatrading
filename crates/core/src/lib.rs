@@ -3,6 +3,7 @@ pub mod automation;
 pub mod commands;
 pub mod config;
 pub mod context;
+pub mod extensions;
 pub mod init;
 pub mod llm;
 pub mod log;

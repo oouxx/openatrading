@@ -11,6 +11,8 @@ use pi_coding_agent::core::session_manager::SessionManager;
 use pi_coding_agent::pi_ai_types::Model;
 use pi_extension_api::ToolDefinition;
 
+use super::extensions::ExtensionToggles;
+
 /// Options for [`create_factory`].
 ///
 /// Bundling these into a struct keeps `create_factory` to a single parameter
@@ -62,6 +64,15 @@ pub struct CreatedSession {
     pub session: Arc<AgentSession>,
     pub services: AgentSessionServices,
     pub cwd: String,
+    /// Active tool names immediately after creation, before extension toggles
+    /// were applied. The actor uses this as the restore baseline so toggling an
+    /// extension back on does not accidentally re-enable tools excluded by the
+    /// session's own configuration (automation read-only sets, `defaultTools`).
+    pub baseline_tools: Vec<String>,
+    /// Built-in extension tools currently disabled.
+    pub disabled_tools: Vec<String>,
+    /// Built-in extension slash commands currently disabled.
+    pub disabled_commands: Vec<String>,
 }
 
 /// Factory type for creating one [`CreatedSession`].
@@ -124,7 +135,19 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
                 }
             });
 
-            // Create a fresh extension registry for each session.
+            // Built-in extension toggles are read fresh for every session, so
+            // a settings change applies to sessions created afterwards without
+            // restarting the process. The live-session path is handled by the
+            // actor's `ApplyExtensionToggles` message.
+            let toggles = ExtensionToggles::from_enabled_map(
+                &services.settings_manager.get_extensions_enabled(),
+            );
+            let disabled_tools = toggles.disabled_tools();
+            let disabled_commands = toggles.disabled_commands();
+
+            // Create a fresh extension registry for each session. The registry
+            // always contains all built-ins: toggles are applied by filtering
+            // the active tool set, which keeps re-enabling possible at runtime.
             let ext_registry = openatrading_extension::create_registry();
 
             let (session, services, _result) =
@@ -147,10 +170,30 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
                 .await
                 .map_err(|e| format!("Failed to create session: {e}"))?;
 
+            // Capture the fully-resolved active set *before* removing disabled
+            // extensions. This respects built-in `defaultTools` filtering and
+            // the caller's `exclude_tools` while still allowing a later
+            // re-enable to restore every extension tool.
+            let baseline_tools = session.get_active_tool_names().await;
+            if disabled_tools
+                .iter()
+                .any(|tool| baseline_tools.contains(tool))
+            {
+                let active: Vec<String> = baseline_tools
+                    .iter()
+                    .filter(|name| !disabled_tools.contains(name))
+                    .cloned()
+                    .collect();
+                session.set_active_tools_by_name(&active).await;
+            }
+
             Ok(CreatedSession {
                 session: Arc::new(session),
                 services,
                 cwd: params.cwd,
+                baseline_tools,
+                disabled_tools,
+                disabled_commands,
             })
         })
     })

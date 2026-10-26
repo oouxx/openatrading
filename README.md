@@ -254,6 +254,24 @@ openatrading mcp serve --transport http --bind 0.0.0.0:8082  # 远程调用
 
 随 gateway 启动由 `[mcp_server] enabled` 控制。
 
+## 内置扩展
+
+pi-rs 内置的三个扩展可以在 Web 面板「设置 → 扩展」里逐个开关，开关写入 pi-rs 的 `$PI_RS_HOME/agent/settings.json`（字段 `extensionsEnabled`）：
+
+| 扩展 | id | 提供的能力 |
+|------|----|-----------|
+| Goal | `goal` | `goal_complete` / `goal_blocked` / `goal_wait` 工具与 `/goal` 命令 |
+| 子代理 | `subagent` | `subagent` 工具（独立上下文的子任务） |
+| 网页搜索 | `web_search` | `web_search` / `web_fetch` 工具 |
+
+```json
+{
+  "extensionsEnabled": { "goal": true, "subagent": false, "web_search": true }
+}
+```
+
+省略的 id 视为启用；本应用不管理的扩展 key 会原样保留。停用后 Agent 立即失去该扩展的工具，对应斜杠命令也从命令面板消失、直接发送会被拒绝并提示去设置里重新开启；已打开的会话不需要重启，下一轮就按新的工具集工作。
+
 ## Automation
 
 对话内让 agent 创建定时任务（工具 `create_automation` / `list_automations` / `update_automation`），也可用 REST `/api/automations` 或桌面端面板。任务持久化在 `data.db`，由 gateway 进程内的 cron 执行；桌面端跨进程的增删改由调度器每 60s 指纹比对 reconcile。

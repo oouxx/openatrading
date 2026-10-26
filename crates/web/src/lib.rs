@@ -89,6 +89,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/agent/settings", get(chat::get_agent_settings))
         .route("/api/agent/settings", post(chat::update_agent_settings))
         .route("/api/agent/models", get(chat::get_agent_models))
+        .route("/api/extensions", get(chat::get_extensions))
+        .route("/api/extensions/:id", put(chat::update_extension))
         .route("/api/agent/auth", get(chat::get_agent_auth))
         .route("/api/agent/auth", post(chat::set_agent_api_key))
         .route(

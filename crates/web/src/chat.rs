@@ -96,6 +96,88 @@ pub async fn update_agent_settings(
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+// ── Built-in extensions（pi-rs `settings.json` extensionsEnabled）────────
+
+use openatrading_core::extensions::{BuiltinExtension, ExtensionToggles, BUILTIN_EXTENSIONS};
+
+#[derive(Debug, Serialize)]
+pub struct ExtensionItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    pub tools: Vec<String>,
+    pub commands: Vec<String>,
+}
+
+type ExtensionErrorResponse = (StatusCode, Json<serde_json::Value>);
+
+fn extension_item(ext: &BuiltinExtension, toggles: &ExtensionToggles) -> ExtensionItem {
+    ExtensionItem {
+        id: ext.id.to_string(),
+        name: ext.name.to_string(),
+        description: ext.description.to_string(),
+        enabled: toggles.is_enabled(ext.id).unwrap_or(true),
+        tools: ext.tools.iter().map(|tool| (*tool).to_string()).collect(),
+        commands: ext
+            .commands
+            .iter()
+            .map(|command| (*command).to_string())
+            .collect(),
+    }
+}
+
+fn extension_items(toggles: &ExtensionToggles) -> Vec<ExtensionItem> {
+    BUILTIN_EXTENSIONS
+        .iter()
+        .map(|ext| extension_item(ext, toggles))
+        .collect()
+}
+
+/// GET /api/extensions — the three configurable built-ins.
+pub async fn get_extensions() -> Json<Vec<ExtensionItem>> {
+    let toggles = openatrading_core::extensions::load_extension_toggles();
+    Json(extension_items(&toggles))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateExtensionRequest {
+    pub enabled: bool,
+}
+
+/// PUT /api/extensions/:id — persist one toggle and apply it immediately to
+/// every live session. No process restart is required.
+pub async fn update_extension(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateExtensionRequest>,
+) -> Result<Json<Vec<ExtensionItem>>, ExtensionErrorResponse> {
+    let mut toggles = openatrading_core::extensions::load_extension_toggles();
+    if !toggles.set(&id, req.enabled) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": format!("未知扩展: {id}") })),
+        ));
+    }
+
+    if let Err(err) = openatrading_core::extensions::save_extension_toggles(&toggles) {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": err })),
+        ));
+    }
+
+    // Apply to already-running sessions before responding so the next turn
+    // cannot race ahead with the old tool set.
+    state
+        .ctx
+        .pool
+        .apply_extension_toggles(&toggles.disabled_tools(), &toggles.disabled_commands())
+        .await;
+
+    Ok(Json(extension_items(&toggles)))
+}
+
 // ── Provider API Key（pi-rs `auth.json`）──────────────────────────────────
 
 /// `AgentAuthError` → HTTP 状态码。
@@ -722,6 +804,16 @@ pub fn get_tool_result_data(
 
 /// Inner version of `get_ai_commands` that returns `Vec<CommandSpec>`.
 pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
+    let disabled_commands =
+        openatrading_core::extensions::load_extension_toggles().disabled_commands();
+    ai_commands(&disabled_commands)
+}
+
+/// 组装命令面板的完整列表；`disabled_commands` 里的扩展命令不出现。
+///
+/// 同步实现（不含 IO）：设置读取放在 [`get_ai_commands_inner`]，便于测试
+/// 用固定输入锁定过滤规则。
+fn ai_commands(disabled_commands: &[String]) -> Vec<CommandSpec> {
     // Only expose the session-level slash commands this GUI actually handles
     // (model/compact/name/session/help). The rest of pi-rs's builtins
     // (quit/login/trust/export/import/share/...) are CLI/TUI-only and have
@@ -746,11 +838,21 @@ pub async fn get_ai_commands_inner() -> Vec<CommandSpec> {
     let resolved = pi_coding_agent::core::slash_commands::resolve_extension_commands(
         &registry.collect_commands(),
     );
-    specs.extend(resolved.into_iter().map(|cmd| CommandSpec {
-        name: cmd.invocation_name,
-        description: cmd.description.unwrap_or_default(),
-        command_type: CommandType::Extension,
-    }));
+    specs.extend(
+        resolved
+            .into_iter()
+            .filter(|cmd| {
+                !openatrading_core::extensions::is_command_disabled(
+                    &cmd.invocation_name,
+                    disabled_commands,
+                )
+            })
+            .map(|cmd| CommandSpec {
+                name: cmd.invocation_name,
+                description: cmd.description.unwrap_or_default(),
+                command_type: CommandType::Extension,
+            }),
+    );
 
     // Skills are invoked via `/skill:<name>`; pi-rs expands them in prompt().
     for skill in openatrading_core::skills::list_skills() {
@@ -793,7 +895,7 @@ pub async fn list_sessions_inner(state: &Arc<AppState>) -> Vec<serde_json::Value
 #[cfg(test)]
 mod tests {
     use super::{
-        get_ai_commands_inner, messages_to_session_messages, HistoryBlock,
+        ai_commands, extension_items, messages_to_session_messages, HistoryBlock,
         UpdateAgentSettingsRequest,
     };
     use openatrading_core::commands::CommandType;
@@ -927,11 +1029,43 @@ mod tests {
         }
     }
 
+    /// `GET /api/extensions` 的形状是前端开关卡的唯一数据源：id / name /
+    /// description / enabled / tools / commands 都不能缺。
+    #[test]
+    fn extension_items_expose_toggle_state_and_capabilities() {
+        use openatrading_core::extensions::{ExtensionToggles, BUILTIN_EXTENSIONS};
+
+        let mut toggles = ExtensionToggles::default();
+        assert!(toggles.set("web_search", false));
+        let items = extension_items(&toggles);
+
+        assert_eq!(items.len(), BUILTIN_EXTENSIONS.len());
+        for item in &items {
+            assert!(!item.name.is_empty(), "{} 缺少名称", item.id);
+            assert!(!item.description.is_empty(), "{} 缺少说明", item.id);
+            assert!(!item.tools.is_empty(), "{} 没有工具", item.id);
+        }
+
+        let web = items
+            .iter()
+            .find(|item| item.id == "web_search")
+            .unwrap_or_else(|| panic!("缺少 web_search: {items:?}"));
+        assert!(!web.enabled);
+        assert!(web.tools.contains(&"web_fetch".to_string()));
+
+        let goal = items
+            .iter()
+            .find(|item| item.id == "goal")
+            .unwrap_or_else(|| panic!("缺少 goal: {items:?}"));
+        assert!(goal.enabled, "默认应启用");
+        assert_eq!(goal.commands, vec!["goal".to_string()]);
+    }
+
     /// Happy path: the slash-command list exposes builtin session commands,
     /// extension commands (e.g. pi-extensions `/goal`), and skills.
-    #[tokio::test]
-    async fn ai_commands_include_extension_commands() {
-        let specs = get_ai_commands_inner().await;
+    #[test]
+    fn ai_commands_include_extension_commands() {
+        let specs = ai_commands(&[]);
 
         // Builtin session-level commands keep `Slash` type. Note `help`/`?`
         // are handled locally by the session actor and are not part of
@@ -952,6 +1086,22 @@ mod tests {
             .unwrap_or_else(|| panic!("missing extension command /goal: {specs:?}"));
         assert_eq!(goal.command_type, CommandType::Extension);
         assert!(!goal.description.is_empty());
+    }
+
+    /// 停用的扩展命令不再出现在命令面板（含 pi-rs 冲突消解的 `goal:1`）。
+    #[test]
+    fn ai_commands_hide_disabled_extension_commands() {
+        let specs = ai_commands(&["goal".to_string()]);
+        assert!(
+            !specs.iter().any(|c| {
+                c.command_type == CommandType::Extension && c.name.split(':').next() == Some("goal")
+            }),
+            "停用的 /goal 不应出现在命令列表: {specs:?}"
+        );
+        // 内置命令不受影响。
+        assert!(specs
+            .iter()
+            .any(|c| c.name == "model" && c.command_type == CommandType::Slash));
     }
 
     /// 回归：前端 POST 的是 camelCase（照搬 GET 的响应字段名），
