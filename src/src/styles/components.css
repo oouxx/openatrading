@@ -58,8 +58,11 @@
     box-shadow: var(--shadow-modal) !important;
   }
 
-  /* --- Command dialog --- */
-  [data-slot="command"] {
+  /* --- Command dialog ---
+   * 只对弹窗内的 command 透明：对话框自身提供 surface 背景。
+   * 内联弹出层（斜杠命令、股票搜索）需要自带背景，否则会透出下面的
+   * 消息内容，所以不能全局抹掉 background。 */
+  [data-slot="dialog-content"] [data-slot="command"] {
     background: transparent !important;
     color: var(--color-primary) !important;
   }
@@ -76,6 +79,10 @@
   }
   [data-slot="command-group"] [cmdk-group-heading] {
     color: var(--color-tertiary) !important;
+    font-size: var(--font-size-micro) !important;
+    line-height: 1.4 !important;
+    font-weight: 500 !important;
+    padding: 8px 8px 4px !important;
   }
   [data-slot="command-separator"] {
     background: var(--color-hairline) !important;
