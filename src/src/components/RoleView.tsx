@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
-import { AlertTriangle, Users } from "lucide-react"
+import { AlertTriangle, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PnlPanel } from "@/components/PnlPanel"
 import { StatusBanner } from "@/components/status-banner"
@@ -15,13 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command"
 import {
   fetchJson,
@@ -51,10 +44,23 @@ import {
   usePlaceOrder,
 } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
+import { MiniKlineChart } from "@/components/MiniKlineChart"
+import { OrderBookLadder } from "@/components/OrderBookLadder"
+import { useIntradayCandles, useOrderBook } from "@/hooks/query/useOrderBook"
 import { formatPct, pctClass } from "@/lib/format"
 
 /** 行情不可用时的占位符 —— 后端返回 null 时用它，绝不能显示 0 */
 const DASH = "—"
+
+/**
+ * 成交/平仓时间列：统一到分钟。
+ *
+ * 后端是 `YYYY-MM-DD HH:MM:SS`（SQLite localtime），到秒的精度在流水表里只是
+ * 噪音；同一天的多笔成交看时分就够定位。
+ */
+function formatTradeTime(value: string): string {
+  return value.replace("T", " ").slice(0, 16)
+}
 
 function formatMoney(v: number): string {
   return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -75,7 +81,6 @@ function FieldError({ children }: { children: string }) {
 
 /** A 股整手股数。买入必须是它的整数倍（与后端 `Shares::require_board_lot` 一致）。 */
 const BOARD_LOT = 100
-
 
 /**
  * 只接受不会被后端 `normalize_code` 误解析的输入：
@@ -126,6 +131,16 @@ function TableStatus({
   )
 }
 
+/** 表格空态：一句「现在没有」+ 一句「什么情况下会有」，避免空表格像坏了 */
+function TableEmpty({ message, hint }: { message: string; hint?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 px-5 py-12 text-center">
+      <p className="text-secondary text-caption">{message}</p>
+      {hint && <p className="text-tertiary text-caption">{hint}</p>}
+    </div>
+  )
+}
+
 interface RoleStat {
   count: number
   pnl: number
@@ -162,193 +177,109 @@ function sellShareOptions(held: number): { label: string; shares: number }[] {
   return options
 }
 
-// ── Sidebar ───────────────────────────────────────────
+// ── Role switcher ─────────────────────────────────────
+//
+// 角色是「账户选择器」，不是第二层导航：原来用 260px 固定侧栏，在全局导航
+// 之外又吃掉一条竖向空间，数据表只能横向挤。改成一行 chip——每个 chip 带
+// 该角色的盈亏%，比侧栏更适合并排比较，且不再占宽。
 
-interface RoleListProps {
-  roles: RoleEntry[]
-  selectedRole: string | null
-  onSelect: (name: string) => void
-  onDelete: (name: string) => void
-  onCreate: () => void
-  roleStats: Record<string, RoleStat>
-  search: string
-  setSearch: (s: string) => void
-  totalCount: number
-  rolesLoading: boolean
-  rolesError: string | null
-  onRetryRoles: () => void
+/** 一个角色 chip 里的盈亏读数：加载/失败/空仓各有明确表示，不给假数字 */
+function RolePnl({ stat }: { stat: RoleStat | undefined }) {
+  if (!stat || stat.loading) return <span className="text-tertiary font-number">…</span>
+  if (stat.error) return <span className="text-tertiary font-number">—</span>
+  if (stat.count === 0) return <span className="text-tertiary">空仓</span>
+  if (stat.incomplete || Number.isNaN(stat.pnl)) {
+    return <span className="text-tertiary font-number">N/A</span>
+  }
+  return (
+    <span
+      className={`font-number ${stat.pnl > 0 ? "text-up" : stat.pnl < 0 ? "text-down" : "text-secondary"}`}
+    >
+      {stat.pnl >= 0 ? "+" : ""}
+      {stat.pnl.toFixed(1)}%
+    </span>
+  )
 }
 
-/** 侧边栏和移动端抽屉共用同一份角色列表，避免两套实现漂移。 */
-function RoleListBody({
+function RoleChips({
   roles,
   selectedRole,
-  onSelect,
-  onDelete,
-  onCreate,
   roleStats,
-  search,
-  setSearch,
-  totalCount,
-  rolesLoading,
-  rolesError,
-  onRetryRoles,
-}: RoleListProps) {
-  const filtered = roles.filter((r) => {
-    const displayName = r.display_name || r.name
-    return displayName.toLowerCase().includes(search.toLowerCase())
-  })
+  loading,
+  error,
+  onSelect,
+  onCreate,
+  onRetry,
+}: {
+  roles: RoleEntry[]
+  selectedRole: string | null
+  roleStats: Record<string, RoleStat>
+  loading: boolean
+  error: string | null
+  onSelect: (name: string) => void
+  onCreate: () => void
+  onRetry: () => void
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-7 w-28 rounded-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error && roles.length === 0) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-danger text-caption">角色列表加载失败</span>
+        <Button variant="outline" size="xs" onClick={onRetry}>
+          重试
+        </Button>
+      </div>
+    )
+  }
 
   return (
-    <>
-      <div className="border-hairline flex items-center justify-between gap-2 border-b p-4 pr-10">
-        <h2 className="text-h2 text-primary font-medium">角色列表</h2>
-        <span className="text-secondary text-caption">{totalCount} 个</span>
-      </div>
-      <div className="border-hairline border-b px-4 py-3">
-        <Input
-          type="text"
-          placeholder="搜索角色…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="bg-canvas border-hairline focus-visible:border-brand text-caption"
-        />
-      </div>
-      <div className="flex-1 overflow-y-auto py-2">
-        {rolesLoading ? (
-          <div className="space-y-2 px-4 py-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : rolesError ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
-            <p className="text-danger text-caption">角色列表加载失败</p>
-            <p className="text-tertiary text-caption break-all">{rolesError}</p>
-            <Button variant="outline" size="xs" onClick={onRetryRoles}>
-              重试
-            </Button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="text-secondary text-caption px-4 py-6 text-center">
-            {roles.length === 0 ? "暂无角色，创建一个开始模拟交易" : "没有匹配的角色"}
-          </p>
-        ) : (
-          filtered.map((role) => {
-            const displayName = role.display_name || role.name
-            const stat = roleStats[role.name]
-            const loading = stat?.loading ?? true
-            const statError = stat?.error ?? null
-            const count = stat?.count ?? 0
-            const pnl = stat?.pnl ?? Number.NaN
-            const pnlUnavailable = !!statError || !!stat?.incomplete || Number.isNaN(pnl)
-            return (
-              <div
-                key={role.name}
-                className={`group flex items-center justify-between gap-3 border-l-[3px] px-4 py-3 transition-colors ${
-                  selectedRole === role.name
-                    ? "border-l-ai bg-brand/10"
-                    : "hover:bg-hover border-l-transparent"
-                }`}
-              >
-                <button
-                  type="button"
-                  aria-pressed={selectedRole === role.name}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 text-left"
-                  onClick={() => onSelect(role.name)}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="text-caption text-primary block truncate font-medium">
-                      {displayName}
-                    </span>
-                    <span className="text-secondary text-caption mt-0.5 flex gap-3">
-                      <span>
-                        {loading ? "… 持仓" : statError ? "持仓加载失败" : `${count} 持仓`}
-                      </span>
-                      <span
-                        className={`font-number text-caption font-semibold ${
-                          loading || statError
-                            ? "text-secondary"
-                            : pnl > 0
-                              ? "text-up"
-                              : pnl < 0
-                                ? "text-down"
-                                : "text-primary"
-                        }`}
-                        title={
-                          statError ??
-                          (stat?.incomplete ? "部分持仓行情缺失，盈亏为不完整值" : undefined)
-                        }
-                      >
-                        {loading
-                          ? "…"
-                          : statError
-                            ? "—"
-                            : count === 0
-                              ? "空仓"
-                              : pnlUnavailable
-                                ? "N/A"
-                                : `${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}%`}
-                      </span>
-                    </span>
-                  </span>
-                </button>
-                {!role.readonly && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={`删除角色 ${displayName}`}
-                    onClick={() => onDelete(role.name)}
-                    className="hover:bg-up/10 hover:text-up text-secondary text-h2 size-6 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                    style={selectedRole === role.name ? { opacity: 1 } : undefined}
-                    title="删除角色"
-                  >
-                    ×
-                  </Button>
-                )}
-              </div>
-            )
-          })
-        )}
-        {!rolesLoading && (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {roles.map((role) => {
+        const displayName = role.display_name || role.name
+        const stat = roleStats[role.name]
+        const active = selectedRole === role.name
+        return (
           <Button
-            variant="ghost"
-            size="xs"
-            onClick={onCreate}
-            className="hover:text-brand text-secondary h-auto w-full justify-start rounded-none px-4 py-3"
+            key={role.name}
+            type="button"
+            variant="outline"
+            aria-pressed={active}
+            onClick={() => onSelect(role.name)}
+            title={
+              stat?.error ??
+              (stat?.incomplete ? "部分持仓行情缺失，盈亏为不完整值" : `${stat?.count ?? 0} 个持仓`)
+            }
+            className={`text-caption h-7 gap-2 rounded-full font-normal ${
+              active
+                ? "border-brand bg-brand/10 text-primary hover:border-brand hover:bg-brand/10"
+                : "border-hairline text-secondary hover:bg-hover"
+            }`}
           >
-            + 新建角色
+            <span className="max-w-32 truncate">{displayName}</span>
+            <RolePnl stat={stat} />
           </Button>
-        )}
-      </div>
-    </>
-  )
-}
-
-function Sidebar(props: RoleListProps) {
-  return (
-    <aside className="bg-surface border-hairline w-sidebar min-w-sidebar hidden flex-col overflow-y-auto border-r md:flex">
-      <RoleListBody {...props} />
-    </aside>
-  )
-}
-
-function MobileRoleSheet({
-  open,
-  onOpenChange,
-  ...props
-}: RoleListProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-80 max-w-[85vw] gap-0 p-0">
-        <SheetHeader className="sr-only">
-          <SheetTitle>角色列表</SheetTitle>
-          <SheetDescription>选择或管理模拟交易角色</SheetDescription>
-        </SheetHeader>
-        <RoleListBody {...props} />
-      </SheetContent>
-    </Sheet>
+        )
+      })}
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
+        onClick={onCreate}
+        className="border-hairline text-secondary hover:text-primary h-7 gap-1 rounded-full border-dashed px-3"
+      >
+        <Plus className="size-3.5" />
+        新建
+      </Button>
+    </div>
   )
 }
 
@@ -379,7 +310,10 @@ function StatCard({
         在本页任何常见窗口宽度都会顶出卡片边框。降到 text-h2（16px）并配合
         truncate 收口——仍放不下时截断而不是溢出，完整值保留在 title 里。
       */}
-      <div className={`font-number mt-0.5 truncate text-h2 leading-tight font-semibold ${toneCls}`} title={value}>
+      <div
+        className={`font-number text-h2 mt-0.5 truncate leading-tight font-semibold ${toneCls}`}
+        title={value}
+      >
         {value}
       </div>
       {sub && <div className={`font-number text-caption font-medium ${toneCls}`}>{sub}</div>}
@@ -402,8 +336,8 @@ function AccountOverview({
 
   if (loading || !account) {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="bg-surface border-hairline rounded-lg border px-4 py-4">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="mt-2 h-5 w-24" />
@@ -423,10 +357,9 @@ function AccountOverview({
           部分持仓行情获取失败，持仓市值与权益为不完整值，仅供参考
         </StatusBanner>
       )}
-      {/* 列数按「金额放得下」定：5 列只在 2xl 起用，窄窗口退到 3/2 列 */}
-      {/* 金额卡片只做概览，视觉上让位给下方的曲线/日历 */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="初始资金" value={`¥${formatMoney(account.initial_capital)}`} />
+      {/* 只放四个实时指标。初始资金是静态配置（在标题旁），权益 = 现金 + 持仓
+          市值，五张卡并排时最右两张会被挤到换行，读起来也不成组。 */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <StatCard label="现金" value={`¥${formatMoney(account.cash)}`} />
         <StatCard label="持仓市值" value={`¥${formatMoney(account.market_value)}`} />
         <StatCard label="权益" value={`¥${formatMoney(account.equity)}`} />
@@ -441,10 +374,124 @@ function AccountOverview({
   )
 }
 
-
 // ── 买入 Dialog ────────────────────────────────────────
 
-function BuyDialog({ roleName, onClose }: { roleName: string; onClose: () => void }) {
+/**
+ * 下单弹窗右侧的行情栏：当日走势 + 五档 + 涨跌停。
+ *
+ * 两个数据都走行情通道（`useOrderBook` / `useIntradayCandles`，后端每个 symbol
+ * 只跑一条上游轮询），所以弹窗开着的时间越长数据越新，而不是打开那一刻的快照。
+ */
+function OrderMarketPanel({ symbol, name }: { symbol: string; name?: string }) {
+  const { book, error } = useOrderBook(symbol)
+  const { candles } = useIntradayCandles(symbol)
+
+  if (!symbol) {
+    return (
+      <div className="border-hairline text-tertiary text-caption flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed px-3 text-center">
+        选择股票后显示当日走势与五档
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="border-hairline overflow-hidden rounded-lg border px-1 pt-1">
+        <MiniKlineChart candles={candles} prevClose={book?.prev_close} height={128} />
+        {book && (
+          <div className="text-tertiary text-caption flex items-center justify-between gap-2 px-1.5 pt-0.5 pb-1">
+            <span className="font-number">昨收 {book.prev_close.toFixed(2)}</span>
+            {/* 新浪兜底没有涨跌停价（为 0），这时不显示，避免出现「涨停 0.00」 */}
+            {book.limit_up > 0 && book.limit_down > 0 && (
+              <span className="font-number">
+                涨停 <span className="text-up">{book.limit_up.toFixed(2)}</span> · 跌停{" "}
+                <span className="text-down">{book.limit_down.toFixed(2)}</span>
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="border-hairline rounded-lg border px-1 py-1.5">
+        <div className="text-tertiary text-caption mb-1 px-1">五档{name ? ` · ${name}` : ""}</div>
+        <OrderBookLadder book={book} error={error} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 下单表单里的一个字段：label（关联 input）+ 右侧内联提示 + 控件 + 错误。
+ *
+ * 买/卖两个弹窗原来各写一遍这套排布，错误提示的位置、字号、间距容易漂移。
+ */
+function OrderField({
+  label,
+  id,
+  hint,
+  error,
+  children,
+}: {
+  label: string
+  id: string
+  /** 内联提示：现价、「最多可买 N 股」这类一眼要看到的补充值 */
+  hint?: React.ReactNode
+  error?: string | null
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={id} className="text-secondary text-caption">
+          {label}
+        </label>
+        {hint}
+      </div>
+      {children}
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  )
+}
+
+/**
+ * 下单摘要：金额这类「填完才敢点确认」的数字集中在一个块里。
+ *
+ * 常驻显示（字段非法时值为 —），而不是校验通过才出现——「可用资金」是决定
+ * 买不买得起的前提信息，不该在填错股数时消失。
+ */
+function OrderSummary({
+  rows,
+  warn,
+}: {
+  rows: { label: string; value: React.ReactNode; strong?: boolean }[]
+  warn?: string | null
+}) {
+  return (
+    <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-center justify-between gap-3">
+          <span className="text-secondary">{r.label}</span>
+          <span
+            className={`font-number ${r.strong ? "text-primary font-medium" : "text-secondary"}`}
+          >
+            {r.value}
+          </span>
+        </div>
+      ))}
+      {warn && <p className="text-warning">{warn}</p>}
+    </div>
+  )
+}
+
+function BuyDialog({
+  roleName,
+  accountLabel,
+  onClose,
+}: {
+  roleName: string
+  /** 账户显示名：多账户下用来确认订单记进哪个账，同时充当弹窗的可见描述 */
+  accountLabel?: string
+  onClose: () => void
+}) {
   const placeOrder = usePlaceOrder()
   const { data: account } = useRoleAccount(roleName)
   const [symbol, setSymbol] = useState("")
@@ -614,10 +661,12 @@ function BuyDialog({ roleName, onClose }: { roleName: string; onClose: () => voi
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>买入</DialogTitle>
-          <DialogDescription className="sr-only">手动记录一笔买入成交</DialogDescription>
+          <DialogDescription className="text-tertiary text-caption">
+            手动记账，不撮合{accountLabel ? ` · 记入「${accountLabel}」` : ""}
+          </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
@@ -630,161 +679,174 @@ function BuyDialog({ roleName, onClose }: { roleName: string; onClose: () => voi
             if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault()
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <label className="text-secondary text-caption">股票代码 / 名称</label>
-            <Input
-              value={symbol}
-              onChange={(e) => handleSymbolChange(e.target.value)}
-              onKeyDown={handleSymbolKeyDown}
-              placeholder="输入代码或名称，如 300272 / 开能健康"
-              autoComplete="off"
-              aria-invalid={symbolError ? true : undefined}
-              className="font-number text-caption"
-              autoFocus
-            />
-            {symbolError && <FieldError>{symbolError}</FieldError>}
-            {showSuggestions && (
-              <div className="border-hairline bg-elevated overflow-hidden rounded-lg border">
-                <Command ref={commandRef} shouldFilter={false} className="bg-transparent">
-                  <CommandList className="max-h-52">
-                    {searchError ? (
-                      <div className="text-danger text-caption px-3 py-3">
-                        股票搜索失败：{searchError}
-                      </div>
-                    ) : (
-                      <CommandEmpty className="text-secondary text-caption py-3">
-                        {searching ? "搜索中…" : "无匹配股票，可直接输入 6 位代码"}
-                      </CommandEmpty>
-                    )}
-                    {results.map((r) => (
-                      <CommandItem
-                        key={r.code}
-                        value={r.code}
-                        onSelect={() => pickStock(r)}
-                        className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
-                      >
-                        <span className="font-number text-primary">{r.code}</span>
-                        <span className="text-secondary truncate">{r.name}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandList>
-                </Command>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-secondary text-caption">股票名称（选中后自动带出）</label>
-            <Input
-              value={stockName}
-              onChange={(e) => setStockName(e.target.value)}
-              placeholder="留空则由行情自动补全"
-              className="text-caption"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-secondary text-caption">股数（100 的整数倍）</label>
-              <Input
-                ref={sharesRef}
-                value={shares}
-                onChange={(e) => setShares(e.target.value)}
-                placeholder="100"
-                inputMode="numeric"
-                aria-invalid={sharesError ? true : undefined}
-                className="font-number text-caption"
-              />
-              {sharesError && <FieldError>{sharesError}</FieldError>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-secondary text-caption">买入价格</label>
-                {livePx !== null && !suspended && (
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="xs"
-                    onClick={() => setPriceOverride(null)}
-                    title="使用现价"
-                    className="text-tertiary hover:text-brand h-auto p-0"
-                  >
-                    现价 {livePx.toFixed(2)}
-                  </Button>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
+            <div className="flex min-w-0 flex-col gap-3">
+              <OrderField label="股票" id="buy-symbol" error={symbolError}>
+                <Input
+                  id="buy-symbol"
+                  value={symbol}
+                  onChange={(e) => handleSymbolChange(e.target.value)}
+                  onKeyDown={handleSymbolKeyDown}
+                  placeholder="输入代码或名称，如 300272 / 开能健康"
+                  autoComplete="off"
+                  aria-invalid={symbolError ? true : undefined}
+                  className="font-number text-caption"
+                  autoFocus
+                />
+                {showSuggestions && (
+                  <div className="border-hairline bg-elevated overflow-hidden rounded-lg border">
+                    <Command ref={commandRef} shouldFilter={false} className="bg-transparent">
+                      <CommandList className="max-h-52">
+                        {searchError ? (
+                          <div className="text-danger text-caption px-3 py-3">
+                            股票搜索失败：{searchError}
+                          </div>
+                        ) : (
+                          <CommandEmpty className="text-secondary text-caption py-3">
+                            {searching ? "搜索中…" : "无匹配股票，可直接输入 6 位代码"}
+                          </CommandEmpty>
+                        )}
+                        {results.map((r) => (
+                          <CommandItem
+                            key={r.code}
+                            value={r.code}
+                            onSelect={() => pickStock(r)}
+                            className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
+                          >
+                            <span className="font-number text-primary">{r.code}</span>
+                            <span className="text-secondary truncate">{r.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </div>
                 )}
-              </div>
-              <Input
-                value={price}
-                onChange={(e) => setPriceOverride(e.target.value)}
-                placeholder={autoPx === null ? "10.50" : autoPx.toFixed(2)}
-                inputMode="decimal"
-                aria-invalid={priceError ? true : undefined}
-                className="font-number text-caption"
-              />
-              {priceError && <FieldError>{priceError}</FieldError>}
-              {suspended && !priceError && (
-                <p className="text-warning text-caption flex items-center gap-1">
-                  <AlertTriangle className="size-3 shrink-0" />
-                  该股票当前停牌，未自动带入现价，请手动确认成交价
-                </p>
-              )}
-              {quoteMissing && !priceError && !suspended && (
-                <p className="text-tertiary text-caption">现价获取失败，请手动填写价格</p>
-              )}
-            </div>
-          </div>
+              </OrderField>
 
-          {(quickShares.length > 0 || maxShares >= BOARD_LOT) && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {quickShares.map((o) => (
-                <Button
-                  key={o.label}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setShares(String(o.shares))}
-                  className="text-caption h-auto px-2 py-0.5"
+              {/* 名称只做确认，不再提供手填输入框：留空时后端会用行情补全，
+              手填名称只会带来拼错和前后不一致 */}
+              {/* 现价/停牌只在「价格」字段旁边说一次，这里只确认选中的是哪只股票 */}
+              {stockName && !showSuggestions && (
+                <div className="text-caption -mt-1 flex items-center gap-2">
+                  <span className="text-primary truncate font-medium">{stockName}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <OrderField
+                  label="股数"
+                  id="buy-shares"
+                  hint={
+                    cash !== null && maxShares < BOARD_LOT ? (
+                      <span className="text-warning text-caption">可用资金不足一手</span>
+                    ) : maxShares >= BOARD_LOT ? (
+                      <span className="text-tertiary text-caption">最多 {maxShares} 股</span>
+                    ) : undefined
+                  }
+                  error={sharesError}
                 >
-                  {o.label}
-                </Button>
-              ))}
-              {maxShares >= BOARD_LOT && (
-                <span className="text-tertiary text-caption ml-auto">最多可买 {maxShares} 股</span>
-              )}
-            </div>
-          )}
+                  <Input
+                    id="buy-shares"
+                    ref={sharesRef}
+                    value={shares}
+                    onChange={(e) => setShares(e.target.value)}
+                    placeholder="100"
+                    inputMode="numeric"
+                    aria-invalid={sharesError ? true : undefined}
+                    className="font-number text-caption"
+                  />
+                </OrderField>
+                <OrderField
+                  label="价格"
+                  id="buy-price"
+                  hint={
+                    /* 现价由右侧盘口面板实时给出；这里只在用户手动改过价格时给一个
+                       回到现价的动作，避免同一个数字在一屏里出现两次 */
+                    suspended ? (
+                      <span className="text-warning text-caption">停牌，需手填价格</span>
+                    ) : livePx !== null && priceOverride !== null ? (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="xs"
+                        onClick={() => setPriceOverride(null)}
+                        className="text-brand text-caption h-auto p-0"
+                      >
+                        恢复现价 {livePx.toFixed(2)}
+                      </Button>
+                    ) : quoteLoading && quoteSymbol ? (
+                      <span className="text-tertiary text-caption">行情加载中…</span>
+                    ) : quoteMissing ? (
+                      <span className="text-tertiary text-caption">取不到现价，请手动填写</span>
+                    ) : undefined
+                  }
+                  error={priceError}
+                >
+                  <Input
+                    id="buy-price"
+                    value={price}
+                    onChange={(e) => setPriceOverride(e.target.value)}
+                    placeholder={autoPx === null ? "10.50" : autoPx.toFixed(2)}
+                    inputMode="decimal"
+                    aria-invalid={priceError ? true : undefined}
+                    className="font-number text-caption"
+                  />
+                </OrderField>
+              </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-secondary text-caption">备注（可选）</label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="买入理由"
-              className="text-caption"
-            />
+              {quickShares.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {quickShares.map((o) => (
+                    <Button
+                      key={o.label}
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setShares(String(o.shares))}
+                      aria-pressed={shares === String(o.shares)}
+                      className={`h-7 px-2.5 ${
+                        shares === String(o.shares)
+                          ? "border-brand text-brand hover:border-brand hover:text-brand"
+                          : "border-hairline text-secondary hover:bg-hover"
+                      }`}
+                    >
+                      {o.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              <OrderField label="备注" id="buy-reason">
+                <Input
+                  id="buy-reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="记录买入理由（可选）"
+                  className="text-caption"
+                />
+              </OrderField>
+
+              <OrderSummary
+                rows={[
+                  {
+                    label: "预估金额",
+                    value: estimated === null ? DASH : `¥${formatMoney(estimated)}`,
+                    strong: true,
+                  },
+                  {
+                    label: "可用资金",
+                    value: cash === null ? DASH : `¥${formatMoney(cash)}`,
+                  },
+                ]}
+                warn={
+                  cash !== null && estimated !== null && estimated > cash + 0.005
+                    ? `超出可用资金 ¥${formatMoney(estimated - cash)}，下单会被拒绝`
+                    : null
+                }
+              />
+            </div>
+            <OrderMarketPanel symbol={quoteSymbol} name={stockName} />
           </div>
-
-          {estimated !== null && (
-            <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
-              <div className="flex items-center justify-between">
-                <span className="text-secondary">预估买入金额</span>
-                <span className="font-number text-primary font-medium">
-                  ¥{formatMoney(estimated)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-secondary">可用资金</span>
-                <span className="font-number text-secondary">
-                  {cash === null ? DASH : `¥${formatMoney(cash)}`}
-                </span>
-              </div>
-              {cash !== null && estimated > cash + 0.005 && (
-                <p className="text-warning">
-                  超出可用资金 ¥{formatMoney(estimated - cash)}，下单会被拒绝
-                </p>
-              )}
-            </div>
-          )}
 
           <DialogFooter>
             {formError && <span className="text-danger text-caption mr-auto">{formError}</span>}
@@ -805,10 +867,13 @@ function BuyDialog({ roleName, onClose }: { roleName: string; onClose: () => voi
 
 function SellDialog({
   roleName,
+  accountLabel,
   position,
   onClose,
 }: {
   roleName: string
+  /** 账户显示名：与买入弹窗同一处上下文，避免多账户下记错账 */
+  accountLabel?: string
   position: RolePosition
   onClose: () => void
 }) {
@@ -871,10 +936,13 @@ function SellDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>卖出 {position.stock_name || position.symbol}</DialogTitle>
-          <DialogDescription className="sr-only">手动记录一笔卖出成交</DialogDescription>
+          <DialogDescription className="text-tertiary text-caption">
+            {position.symbol} · 成本 {formatMoney(position.cost_price)} · 持仓 {position.shares} 股
+            {accountLabel ? ` · 记入「${accountLabel}」` : ""}
+          </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
@@ -887,90 +955,100 @@ function SellDialog({
             if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault()
           }}
         >
-          <div className="bg-canvas border-hairline text-caption grid grid-cols-3 gap-2 rounded-lg border px-3 py-2">
-            <div>
-              <div className="text-secondary">代码</div>
-              <div className="font-number text-primary">{position.symbol}</div>
-            </div>
-            <div>
-              <div className="text-secondary">成本价</div>
-              <div className="font-number text-primary">{formatMoney(position.cost_price)}</div>
-            </div>
-            <div>
-              <div className="text-secondary">可卖股数</div>
-              <div className="font-number text-primary">{position.shares}</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-secondary text-caption">卖出股数（可部分卖出）</label>
-              <Input
-                value={shares}
-                onChange={(e) => setShares(e.target.value)}
-                placeholder={String(position.shares)}
-                inputMode="numeric"
-                aria-invalid={sharesError ? true : undefined}
-                className="font-number text-caption"
-                autoFocus
-              />
-              {sharesError && <FieldError>{sharesError}</FieldError>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-secondary text-caption">卖出价格</label>
-              <Input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="10.50"
-                inputMode="decimal"
-                aria-invalid={priceError ? true : undefined}
-                className="font-number text-caption"
-              />
-              {priceError && <FieldError>{priceError}</FieldError>}
-            </div>
-          </div>
-
-          {sellOptions.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {sellOptions.map((o) => (
-                <Button
-                  key={o.label}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setShares(String(o.shares))}
-                  className="text-caption h-auto px-2 py-0.5"
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <OrderField
+                  label="股数"
+                  id="sell-shares"
+                  hint={
+                    <span className="text-tertiary text-caption">最多 {position.shares} 股</span>
+                  }
+                  error={sharesError}
                 >
-                  {o.label}
-                </Button>
-              ))}
-              <span className="text-tertiary text-caption ml-auto">可卖 {position.shares} 股</span>
-            </div>
-          )}
+                  <Input
+                    id="sell-shares"
+                    value={shares}
+                    onChange={(e) => setShares(e.target.value)}
+                    placeholder={String(position.shares)}
+                    inputMode="numeric"
+                    aria-invalid={sharesError ? true : undefined}
+                    className="font-number text-caption"
+                    autoFocus
+                  />
+                </OrderField>
+                <OrderField
+                  label="价格"
+                  id="sell-price"
+                  hint={<span className="text-tertiary text-caption">现价与五档见右侧</span>}
+                  error={priceError}
+                >
+                  <Input
+                    id="sell-price"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="10.50"
+                    inputMode="decimal"
+                    aria-invalid={priceError ? true : undefined}
+                    className="font-number text-caption"
+                  />
+                </OrderField>
+              </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-secondary text-caption">备注（可选）</label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="卖出理由"
-              className="text-caption"
-            />
-          </div>
+              {sellOptions.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {sellOptions.map((o) => (
+                    <Button
+                      key={o.label}
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setShares(String(o.shares))}
+                      aria-pressed={shares === String(o.shares)}
+                      className={`h-7 px-2.5 ${
+                        shares === String(o.shares)
+                          ? "border-brand text-brand hover:border-brand hover:text-brand"
+                          : "border-hairline text-secondary hover:bg-hover"
+                      }`}
+                    >
+                      {o.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
 
-          <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-secondary">预估卖出金额</span>
-              <span className="font-number text-primary">
-                {estimatedAmount === null ? DASH : `¥${formatMoney(estimatedAmount)}`}
-              </span>
+              <OrderField label="备注" id="sell-reason">
+                <Input
+                  id="sell-reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="记录卖出理由（可选）"
+                  className="text-caption"
+                />
+              </OrderField>
+
+              <OrderSummary
+                rows={[
+                  {
+                    label: "预估金额",
+                    value: estimatedAmount === null ? DASH : `¥${formatMoney(estimatedAmount)}`,
+                    strong: true,
+                  },
+                  {
+                    label: "预估已实现盈亏",
+                    value:
+                      estimatedPnl === null ? (
+                        DASH
+                      ) : (
+                        <span className={pctClass(estimatedPnl)}>
+                          {formatSignedMoney(estimatedPnl)}
+                        </span>
+                      ),
+                  },
+                ]}
+              />
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-secondary">预估已实现盈亏</span>
-              <span className={`font-number font-medium ${pctClass(estimatedPnl)}`}>
-                {estimatedPnl === null ? DASH : formatSignedMoney(estimatedPnl)}
-              </span>
-            </div>
+            <OrderMarketPanel symbol={position.symbol} name={position.stock_name} />
           </div>
 
           <DialogFooter>
@@ -990,29 +1068,36 @@ function SellDialog({
 
 // ── Main Component ────────────────────────────────────
 
-const TABS = [
-  { id: "holdings", label: "持仓管理" },
-  { id: "performance", label: "盈利分析" },
-]
+/**
+ * 单层视图切换。
+ *
+ * 原来是「持仓管理 / 盈利分析」+ 卡片内再套「当前持仓 / 成交流水 / 平仓记录」
+ * 两级 tab，两套视觉语言（segmented 与文字按钮）表达同一件事。合并成一行后
+ * 少一层嵌套，页面只有一个 segmented 控件。
+ */
+type RoleTab = "current" | "trades" | "history" | "performance"
 
-type HoldingView = "current" | "trades" | "history"
-
-const HOLDING_VIEWS: { id: HoldingView; label: string }[] = [
+const TABS: { id: RoleTab; label: string }[] = [
   { id: "current", label: "当前持仓" },
   { id: "trades", label: "成交流水" },
   { id: "history", label: "平仓记录" },
+  { id: "performance", label: "盈利分析" },
 ]
+
+/** 每个视图的表格副标题：说清这份数据的新鲜度，而不是复述 tab 名 */
+const TAB_HINTS: Record<Exclude<RoleTab, "performance">, string> = {
+  current: `行情每 ${ROLE_LIVE_REFRESH_MS / 1000} 秒自动刷新`,
+  trades: "仅显示最近 100 笔成交",
+  history: "按平仓时间倒序，仅显示最近 100 笔",
+}
 
 export default function RoleView() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
-  const [search, setSearch] = useState("")
-  const [tab, setTab] = useState("holdings")
-  const [holdingView, setHoldingView] = useState<HoldingView>("current")
+  const [tab, setTab] = useState<RoleTab>("current")
   const [showCreate, setShowCreate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState<string | null>(null)
   const [buyRole, setBuyRole] = useState<string | null>(null)
-  const [showRoleSheet, setShowRoleSheet] = useState(false)
   const [sellTarget, setSellTarget] = useState<{
     roleName: string
     position: RolePosition
@@ -1137,13 +1222,11 @@ export default function RoleView() {
   )
 
   const openCreate = useCallback(() => {
-    setShowRoleSheet(false)
     setCreateError(null)
     setShowCreate(true)
   }, [])
 
   const openDelete = useCallback((name: string) => {
-    setShowRoleSheet(false)
     setDeleteError(null)
     setShowDeleteConfirm(name)
   }, [])
@@ -1229,85 +1312,131 @@ export default function RoleView() {
     [resetRoleMutation]
   )
 
-  const roleListProps: RoleListProps = {
-    roles: visibleRoles,
-    selectedRole: activeRole,
-    onSelect: (name) => {
-      setSelectedRole(name)
-      setShowCreate(false)
-      setShowRoleSheet(false)
-    },
-    onDelete: openDelete,
-    onCreate: openCreate,
-    roleStats,
-    search,
-    setSearch,
-    totalCount: visibleRoles.length,
-    rolesLoading: rolesPending && visibleRoles.length === 0,
-    rolesError: visibleRoles.length === 0 && rolesQueryError ? errorText(rolesQueryError) : null,
-    onRetryRoles: () => void refetchRoles(),
-  }
+  /**
+   * 卡头两段文字：左边说数据新鲜度，右边说条数。条数只在数据到位后出现——
+   * 加载中显示「0 个持仓」会被读成「空仓」。
+   */
+  const tabMeta = useMemo(() => {
+    if (tab === "performance") return { hint: "按当日收盘价估值", count: null as string | null }
+    const [query, length, unit] =
+      tab === "current"
+        ? [positionsQuery, positions.length, "个持仓"]
+        : tab === "trades"
+          ? [tradesQuery, trades.length, "笔成交"]
+          : [historyQuery, history.length, "笔平仓"]
+    return {
+      hint: TAB_HINTS[tab],
+      count: query.isPending || query.isError ? null : `${length} ${unit}`,
+    }
+  }, [
+    tab,
+    positions.length,
+    trades.length,
+    history.length,
+    positionsQuery,
+    tradesQuery,
+    historyQuery,
+  ])
 
   return (
     <>
       <div className="flex h-full flex-row">
-        {/* Left sidebar — role list with search + PnL stats */}
-        <Sidebar {...roleListProps} />
-        <MobileRoleSheet {...roleListProps} open={showRoleSheet} onOpenChange={setShowRoleSheet} />
-
-        {/* Main Content */}
         {/* 子项必须 shrink-0：卡片带 overflow-hidden，作为列向 flex item 会被压缩到
             低于内容高度，导致曲线底部（日期横轴）和脚注被裁掉，页面却不滚动。 */}
-        <main className="readable-content flex flex-1 flex-col gap-6 overflow-y-auto px-7 py-6 [&>*]:shrink-0">
-          <div className="flex items-center gap-3 md:hidden">
-            <Button variant="outline" size="sm" onClick={() => setShowRoleSheet(true)}>
-              <Users className="size-4" />
-              角色列表
-            </Button>
-          </div>
+        <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6 [&>*]:shrink-0">
           {!activeRole ? (
-            <div className="text-secondary text-caption flex flex-1 items-center justify-center">
-              {rolesPending && visibleRoles.length === 0
-                ? "加载角色…"
-                : rolesQueryError && visibleRoles.length === 0
-                  ? "角色列表加载失败，请检查服务端"
-                  : "选择或创建一个角色"}
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              <p className="text-secondary text-caption">
+                {rolesPending && visibleRoles.length === 0
+                  ? "加载角色…"
+                  : rolesQueryError && visibleRoles.length === 0
+                    ? "角色列表加载失败，请检查服务端"
+                    : "还没有角色。一个角色就是一个独立的模拟账户。"}
+              </p>
+              {!rolesPending && visibleRoles.length === 0 && (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus className="size-4" />
+                  新建角色
+                </Button>
+              )}
             </div>
           ) : (
             <>
-              {/* Header + Tabs */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-baseline gap-3">
+              {/* Header + Tabs + 主操作 */}
+              <div className="group flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-baseline gap-3">
                   <h1
-                    className="text-hero text-primary min-w-0 truncate font-medium"
+                    className="text-h1 text-primary min-w-0 truncate font-semibold"
                     title={currentRole?.name ?? activeRole}
                   >
                     {currentDisplayName}
                   </h1>
                   {currentRole?.readonly && (
-                    <span className="text-caption text-tertiary bg-hover rounded px-2 py-0.5">
+                    <span className="bg-hover text-tertiary text-caption shrink-0 rounded px-2 py-0.5">
                       只读
                     </span>
                   )}
-                </div>
-                <div className="bg-hover flex gap-1 rounded-lg p-1">
-                  {TABS.map((t) => (
+                  {/* 初始资金是静态配置，不是实时指标：放在标题旁做背景信息，
+                      不再单独占一张和「权益」并排的卡片 */}
+                  {account && (
+                    <span className="text-tertiary text-caption shrink-0">
+                      初始资金 ¥{formatMoney(account.initial_capital)}
+                    </span>
+                  )}
+                  {currentRole && !currentRole.readonly && (
                     <Button
-                      key={t.id}
+                      type="button"
                       variant="ghost"
-                      size="sm"
-                      onClick={() => setTab(t.id)}
-                      className={`text-caption font-medium ${
-                        tab === t.id
-                          ? "bg-surface text-primary shadow-card hover:bg-surface hover:text-primary"
-                          : "text-secondary hover:text-primary"
-                      }`}
+                      size="icon-xs"
+                      onClick={() => activeRole && openDelete(activeRole)}
+                      aria-label={`删除角色 ${currentDisplayName}`}
+                      title="删除角色"
+                      className="hover:bg-danger-bg hover:text-danger text-tertiary can-hover:opacity-0 shrink-0 self-center transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                     >
-                      {t.label}
+                      <Trash2 className="size-3.5" />
                     </Button>
-                  ))}
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="bg-hover flex gap-1 rounded-lg p-1">
+                    {TABS.map((t) => (
+                      <Button
+                        key={t.id}
+                        variant="ghost"
+                        size="sm"
+                        aria-pressed={tab === t.id}
+                        onClick={() => setTab(t.id)}
+                        className={`text-caption font-medium ${
+                          tab === t.id
+                            ? "bg-surface text-primary shadow-card hover:bg-surface hover:text-primary"
+                            : "text-secondary hover:text-primary"
+                        }`}
+                      >
+                        {t.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button size="sm" onClick={() => activeRole && setBuyRole(activeRole)}>
+                    买入
+                  </Button>
                 </div>
               </div>
+
+              <RoleChips
+                roles={visibleRoles}
+                selectedRole={activeRole}
+                roleStats={roleStats}
+                loading={rolesPending && visibleRoles.length === 0}
+                error={
+                  visibleRoles.length === 0 && rolesQueryError ? errorText(rolesQueryError) : null
+                }
+                onSelect={(name) => {
+                  setSelectedRole(name)
+                  setShowCreate(false)
+                }}
+                onCreate={openCreate}
+                onRetry={() => void refetchRoles()}
+              />
 
               {/* Account overview */}
               <AccountOverview
@@ -1316,43 +1445,23 @@ export default function RoleView() {
                 error={accountQuery.error ? errorText(accountQuery.error) : null}
               />
 
-              {/* Tab: Holdings */}
-              {tab === "holdings" && (
-                <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
-                  <div className="border-hairline flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-                    <div>
-                      <h3 className="text-h2 text-primary font-medium">持仓明细</h3>
-                      <p className="text-tertiary text-caption mt-0.5">
-                        {holdingView === "current"
-                          ? `行情每 ${ROLE_LIVE_REFRESH_MS / 1000} 秒自动刷新`
-                          : "仅显示最近 100 条"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-2">
-                        {HOLDING_VIEWS.map((v) => (
-                          <Button
-                            key={v.id}
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => setHoldingView(v.id)}
-                            className={`text-caption font-medium ${
-                              holdingView === v.id
-                                ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-                                : "text-secondary hover:text-primary"
-                            }`}
-                          >
-                            {v.label}
-                          </Button>
-                        ))}
-                      </div>
-                      <Button size="sm" onClick={() => activeRole && setBuyRole(activeRole)}>
-                        买入
-                      </Button>
-                    </div>
-                  </div>
+              {/* 数据卡片：视图由上方 segmented 决定，卡头只说数据新鲜度与条数 */}
+              <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
+                <div className="border-hairline text-tertiary text-caption flex flex-wrap items-center justify-between gap-2 border-b px-5 py-2.5">
+                  <span>{tabMeta.hint}</span>
+                  {tabMeta.count && <span>{tabMeta.count}</span>}
+                </div>
+                {tab === "performance" ? (
+                  activeRole ? (
+                    <PnlPanel roleName={activeRole} />
+                  ) : (
+                    <TableStatus kind="error" message="未选择角色" />
+                  )
+                ) : (
+                  /* 只有表格需要横向滚动；曲线/日历不能被放进 overflow-auto，
+                     否则内部的宽度测量会按滚动容器的 min-content 计算 */
                   <div className="overflow-x-auto">
-                    {holdingView === "current" &&
+                    {tab === "current" &&
                       (positionsQuery.isPending ? (
                         <TableStatus kind="loading" />
                       ) : positionsQuery.isError ? (
@@ -1426,12 +1535,13 @@ export default function RoleView() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary text-caption py-12 text-center">
-                          当前空仓，买入后这里会出现持仓与卖出按钮
-                        </div>
+                        <TableEmpty
+                          message="当前空仓"
+                          hint="点右上角「买入」记录第一笔成交，持仓与卖出按钮会出现在这里"
+                        />
                       ))}
 
-                    {holdingView === "trades" &&
+                    {tab === "trades" &&
                       (tradesQuery.isPending ? (
                         <TableStatus kind="loading" />
                       ) : tradesQuery.isError ? (
@@ -1457,7 +1567,7 @@ export default function RoleView() {
                           <tbody>
                             {trades.map((t: RoleTrade) => (
                               <tr key={t.id}>
-                                <Td muted>{t.traded_at}</Td>
+                                <Td muted>{formatTradeTime(t.traded_at)}</Td>
                                 <Td bold>
                                   <Button
                                     variant="ghost"
@@ -1492,12 +1602,13 @@ export default function RoleView() {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary text-caption py-12 text-center">
-                          暂无成交流水
-                        </div>
+                        <TableEmpty
+                          message="暂无成交流水"
+                          hint="买入或卖出后，每一笔都会按时间倒序记在这里"
+                        />
                       ))}
 
-                    {holdingView === "history" &&
+                    {tab === "history" &&
                       (historyQuery.isPending ? (
                         <TableStatus kind="loading" />
                       ) : historyQuery.isError ? (
@@ -1547,45 +1658,30 @@ export default function RoleView() {
                                 <Td className={pctClass(h.realized_pct)}>
                                   {formatPct(h.realized_pct)}
                                 </Td>
-                                <Td muted>{h.closed_at}</Td>
+                                <Td muted>{formatTradeTime(h.closed_at)}</Td>
                                 <Td reason>{h.reason}</Td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       ) : (
-                        <div className="text-secondary text-caption py-12 text-center">
-                          暂无平仓记录
-                        </div>
+                        <TableEmpty
+                          message="暂无平仓记录"
+                          hint="卖出后，平仓结果与出场理由会归档到这里"
+                        />
                       ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Tab: Performance */}
-              {tab === "performance" && (
-                <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
-                  <div className="border-hairline flex flex-wrap items-baseline justify-between gap-2 border-b px-5 py-4">
-                    <h3 className="text-h2 text-primary font-medium">累计盈利曲线</h3>
-                    <span className="text-tertiary text-caption">
-                      按当日收盘价估值，支持曲线与日历视图
-                    </span>
-                  </div>
-                  {activeRole ? (
-                    <PnlPanel roleName={activeRole} />
-                  ) : (
-                    <TableStatus kind="error" message="未选择角色" />
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
+              {/* 危险动作留在页尾、离主操作最远；配色用危险语义色，
+                  不用 `up`（那是 A 股涨的颜色，不是「危险」）。 */}
               <div className="mt-auto flex gap-2">
                 <Button
                   variant="outline"
                   size="xs"
                   onClick={() => activeRole && openReset(activeRole)}
-                  className="hover:border-up/30 hover:text-up text-secondary"
+                  className="hover:border-danger/40 hover:text-danger text-secondary"
                 >
                   重置账户
                 </Button>
@@ -1622,8 +1718,11 @@ export default function RoleView() {
             }}
           >
             <div className="flex flex-col gap-1.5">
-              <label className="text-secondary text-caption">角色名称</label>
+              <label htmlFor="new-role-name" className="text-secondary text-caption">
+                角色名称
+              </label>
               <Input
+                id="new-role-name"
                 type="text"
                 value={newName}
                 onChange={(e) => {
@@ -1639,8 +1738,11 @@ export default function RoleView() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-secondary text-caption">初始资金（元）</label>
+              <label htmlFor="new-role-capital" className="text-secondary text-caption">
+                初始资金（元）
+              </label>
               <Input
+                id="new-role-capital"
                 type="number"
                 min="0"
                 step="0.01"
@@ -1751,10 +1853,17 @@ export default function RoleView() {
       </Dialog>
 
       {/* Buy / Sell dialogs — 关闭即卸载，表单状态自然重置 */}
-      {buyRole && <BuyDialog roleName={buyRole} onClose={() => setBuyRole(null)} />}
+      {buyRole && (
+        <BuyDialog
+          roleName={buyRole}
+          accountLabel={roleDisplayName(buyRole)}
+          onClose={() => setBuyRole(null)}
+        />
+      )}
       {sellTarget && (
         <SellDialog
           roleName={sellTarget.roleName}
+          accountLabel={roleDisplayName(sellTarget.roleName)}
           position={sellTarget.position}
           onClose={() => setSellTarget(null)}
         />
