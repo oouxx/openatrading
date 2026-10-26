@@ -109,3 +109,8 @@ export const agentModelsKeys = {
 export const agentAuthKeys = {
   all: ["agent-auth"] as const,
 }
+
+/** 内置扩展开关（`/api/extensions`）。 */
+export const extensionKeys = {
+  all: ["extensions"] as const,
+}

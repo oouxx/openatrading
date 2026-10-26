@@ -20,9 +20,11 @@ import {
   useDeleteMcpServer,
   useSaveMcpServer,
 } from "@/hooks/query/useMcpServers"
+import { useExtensions, useToggleExtension } from "@/hooks/query/useExtensions"
 import { McpServerForm } from "./McpServerForm"
 import { McpServerCard } from "./McpServerCard"
 import { McpTemplateGrid } from "./McpTemplateGrid"
+import { ExtensionCard } from "./ExtensionCard"
 import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
@@ -212,6 +214,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const deleteMcp = useDeleteMcpServer()
   const saveMcp = useSaveMcpServer()
   const servers = mcpQuery.data ?? []
+
+  // 内置扩展（goal / subagent / web_search）开关
+  const extensionsQuery = useExtensions()
+  const toggleExtension = useToggleExtension()
+  const extensions = extensionsQuery.data ?? []
 
   const newServerTemplate = (type: McpTransportType = "http"): McpServerPayload => ({
     name: "",
@@ -509,6 +516,48 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   />
                 </SettingsSection>
               )}
+            </>
+          )}
+
+          {activeTab === "extensions" && (
+            <>
+              {extensionsQuery.isPending ? (
+                <div className="space-y-2.5">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-[84px] w-full rounded-lg" />
+                  ))}
+                </div>
+              ) : extensionsQuery.isError ? (
+                <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
+                  <p className="text-secondary text-caption">无法加载扩展列表</p>
+                  <Button size="xs" variant="outline" onClick={() => extensionsQuery.refetch()}>
+                    重试
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {extensions.map((ext) => (
+                    <ExtensionCard
+                      key={ext.id}
+                      extension={ext}
+                      disabled={toggleExtension.isPending}
+                      onToggle={(enabled) => toggleExtension.mutateAsync({ id: ext.id, enabled })}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div className="bg-surface border-hairline text-tertiary text-caption mt-6 flex items-start gap-2 rounded-lg border px-3.5 py-3">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
+                <p className="leading-5">
+                  开关写入 pi-rs 的{" "}
+                  <code className="text-secondary font-number">
+                    $PI_RS_HOME/agent/settings.json
+                  </code>{" "}
+                  的 <code className="text-secondary font-number">extensionsEnabled</code>
+                  ，对已打开的会话立即生效。停用后 Agent 不再获得该扩展的工具与命令。
+                </p>
+              </div>
             </>
           )}
 

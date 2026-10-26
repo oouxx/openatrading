@@ -3,7 +3,7 @@ import { create } from "zustand"
 const PREFIX = "openatrading-"
 
 export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles" | "automations"
-export type SettingsTab = "appearance" | "agent" | "social" | "mcp" | "about"
+export type SettingsTab = "appearance" | "agent" | "extensions" | "social" | "mcp" | "about"
 
 interface UiState {
   /** 当前主题: 'dark' | 'light'，默认跟随系统或 localStorage */
@@ -35,7 +35,14 @@ function storedMode(): AppMode {
 
 function storedSettingsTab(): SettingsTab {
   const v = localStorage.getItem(`${PREFIX}settings-tab`)
-  if (v === "appearance" || v === "agent" || v === "social" || v === "mcp" || v === "about")
+  if (
+    v === "appearance" ||
+    v === "agent" ||
+    v === "extensions" ||
+    v === "social" ||
+    v === "mcp" ||
+    v === "about"
+  )
     return v
   return "appearance"
 }
