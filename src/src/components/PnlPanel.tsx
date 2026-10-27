@@ -16,7 +16,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatPct, pctClass } from "@/lib/format"
+import { formatCompactNumber, formatPct, pctClass } from "@/lib/format"
 import {
   PNL_CALENDAR_STALE_MS,
   pnlCalendarQueryOptions,
@@ -40,6 +40,13 @@ const DIMENSIONS: { key: Dimension; label: string }[] = [
 const METRICS: { key: Metric; label: string }[] = [
   { key: "pct", label: "收益率" },
   { key: "amount", label: "盈亏金额" },
+  { key: "equity", label: "总资产" },
+]
+
+/** 日历展示的是每日数据，指标名称必须和曲线视图区分开。 */
+const CALENDAR_METRICS: { key: Metric; label: string }[] = [
+  { key: "pct", label: "每日收益" },
+  { key: "amount", label: "每日盈亏" },
   { key: "equity", label: "总资产" },
 ]
 
@@ -91,6 +98,15 @@ function monthOf(date: string): string {
   return date.slice(0, 7)
 }
 
+function monthLabel(month: string): string {
+  const [year, value] = month.split("-")
+  return `${year}年${Number(value)}月`
+}
+
+function compactValue(value: number): string {
+  return value === 0 ? "0" : formatCompactNumber(value)
+}
+
 function rangeOf(dim: Dimension, custom: { from: string; to: string }) {
   const to = todayStr()
   switch (dim) {
@@ -130,6 +146,42 @@ function metricValue(point: PnlCalendarPoint, metric: Metric): number {
   }
 }
 
+/** 页面内统一的分段控件，避免维度、视图、指标出现三套选中态。 */
+function SegmentedControl<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: readonly { key: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="bg-hover flex w-fit max-w-full flex-wrap gap-0.5 rounded-md p-0.5"
+    >
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          aria-pressed={value === option.key}
+          onClick={() => onChange(option.key)}
+          className={`text-caption focus-visible:ring-brand rounded px-2.5 py-1 transition-colors focus-visible:ring-1 focus-visible:outline-none ${
+            value === option.key
+              ? "bg-surface text-primary shadow-card"
+              : "text-secondary hover:text-primary"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /**
  * 年/全部维度下按自然月聚合，避免几百个点挤在一条曲线里看不清趋势。
@@ -144,13 +196,7 @@ function bucketPoints(points: PnlCalendarPoint[], dim: Dimension): PnlCalendarPo
   return [...byMonth.entries()].map(([month, last]) => ({ ...last, date: month }))
 }
 
-function CurveChart({
-  points,
-  metric,
-}: {
-  points: PnlCalendarPoint[]
-  metric: Metric
-}) {
+function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Metric }) {
   const W = 720
   const H = 240
   const padL = 56
@@ -169,13 +215,25 @@ function CurveChart({
 
   const plotW = W - padL - padR
   const plotH = H - padT - padB
-  const x = (i: number) => padL + (points.length <= 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
+  const x = (i: number) =>
+    padL + (points.length <= 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
   const y = (v: number) => padT + (1 - (v - min) / range) * plotH
 
   const path = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(metricValue(p, metric)).toFixed(1)}`)
+    .map(
+      (p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(metricValue(p, metric)).toFixed(1)}`
+    )
     .join(" ")
   const last = points.length - 1
+  const lastValue = metricValue(points[last], metric)
+  const tone =
+    metric === "equity"
+      ? "var(--color-brand)"
+      : lastValue > 0
+        ? "var(--color-up)"
+        : lastValue < 0
+          ? "var(--color-down)"
+          : "var(--color-brand)"
   const area =
     points.length > 1
       ? `${path} L${x(last).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} L${x(0).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} Z`
@@ -185,7 +243,12 @@ function CurveChart({
   const labelStep = Math.max(1, Math.ceil(points.length / 6))
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-[260px] w-full" role="img" aria-label="区间收益曲线">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-[260px] w-full cursor-crosshair"
+      role="img"
+      aria-label="区间收益曲线"
+    >
       {gridLines.map((v) => (
         <g key={`grid-${v}`}>
           <line
@@ -197,8 +260,18 @@ function CurveChart({
             strokeWidth="0.5"
             strokeDasharray="3,3"
           />
-          <text x={padL - 8} y={y(v) + 3} textAnchor="end" fontSize="9" fill="var(--color-tertiary)">
-            {metric === "equity" ? money(v).split(".")[0] : metric === "pct" ? `${v.toFixed(1)}%` : v.toFixed(0)}
+          <text
+            x={padL - 8}
+            y={y(v) + 3}
+            textAnchor="end"
+            fontSize="9"
+            fill="var(--color-tertiary)"
+          >
+            {metric === "equity"
+              ? compactValue(v)
+              : metric === "pct"
+                ? `${v.toFixed(1)}%`
+                : compactValue(v)}
           </text>
         </g>
       ))}
@@ -214,8 +287,8 @@ function CurveChart({
         />
       )}
 
-      {area && <path d={area} fill="var(--color-brand)" opacity="0.08" />}
-      <path d={path} fill="none" stroke="var(--color-brand)" strokeWidth="1.8" strokeLinejoin="round" />
+      {area && <path d={area} fill={tone} opacity="0.08" />}
+      <path d={path} fill="none" stroke={tone} strokeWidth="1.8" strokeLinejoin="round" />
 
       {points.map((p, i) =>
         i === last || points.length <= 1 ? (
@@ -224,12 +297,27 @@ function CurveChart({
             cx={x(i)}
             cy={y(metricValue(p, metric))}
             r="3.5"
-            fill="var(--color-brand)"
+            fill={tone}
             stroke="var(--color-surface)"
             strokeWidth="1.5"
           />
-        ) : null,
+        ) : null
       )}
+
+      {/* 透明热区提供逐点原生提示，不增加折线视觉噪音。 */}
+      {points.map((p, i) => (
+        <circle
+          key={`hit-${p.date}`}
+          cx={x(i)}
+          cy={y(metricValue(p, metric))}
+          r="10"
+          fill="transparent"
+        >
+          <title>{`${p.date}
+累计 ${signedMoney(p.cum_pnl)}（${formatPct(p.cum_pct)}）
+权益 ¥${money(p.equity)}`}</title>
+        </circle>
+      ))}
 
       {points.map((p, i) =>
         i % labelStep === 0 || i === last ? (
@@ -243,7 +331,7 @@ function CurveChart({
           >
             {p.date.slice(5)}
           </text>
-        ) : null,
+        ) : null
       )}
     </svg>
   )
@@ -280,7 +368,7 @@ function CalendarGrid({
 
   return (
     <div className="px-5 py-4">
-      <div className="text-tertiary mb-1 grid grid-cols-7 gap-1 text-center text-micro">
+      <div className="text-tertiary text-micro mb-1 grid grid-cols-7 gap-1 text-center">
         {["日", "一", "二", "三", "四", "五", "六"].map((w) => (
           <span key={w}>{w}</span>
         ))}
@@ -297,7 +385,7 @@ function CalendarGrid({
             <span
               className={
                 isToday
-                  ? "bg-brand text-brand-foreground inline-flex size-5 items-center justify-center rounded-full text-micro"
+                  ? "bg-brand text-brand-foreground text-micro inline-flex size-5 items-center justify-center rounded-full"
                   : "text-tertiary text-micro"
               }
             >
@@ -332,20 +420,17 @@ function CalendarGrid({
             )
           }
 
-          const value = metric === "equity" ? point.equity : metric === "pct" ? point.pct : point.pnl
+          const value =
+            metric === "equity" ? point.equity : metric === "pct" ? point.pct : point.pnl
           return (
             <div
               key={cell.date}
-              className="flex flex-col items-center gap-0.5 rounded-md py-1 hover:bg-hover"
+              className="hover:bg-hover flex flex-col items-center gap-0.5 rounded-md py-1"
               title={`${cell.date}  当日盈亏 ${signedMoney(point.pnl)}（${formatPct(point.pct)}）\n累计 ${signedMoney(point.cum_pnl)}（${formatPct(point.cum_pct)}）\n权益 ¥${money(point.equity)}`}
             >
               {dayLabel}
               <span className={`text-micro tabular-nums ${metricClass(value, metric)}`}>
-                {metric === "equity"
-                  ? money(value).split(".")[0]
-                  : metric === "pct"
-                    ? value.toFixed(2)
-                    : value.toFixed(0)}
+                {metric === "pct" ? value.toFixed(2) : compactValue(value)}
               </span>
             </div>
           )
@@ -366,12 +451,10 @@ export function PnlPanel({ roleName }: { roleName: string }) {
   const [metric, setMetric] = useState<Metric>("pct")
   const [customFrom, setCustomFrom] = useState(() => monthStart(todayStr()))
   const [customTo, setCustomTo] = useState(() => todayStr())
-  // 日历**按月独立取数**：维度只决定曲线和汇总的区间，不该限制日历能翻哪些月。
-  // 之前把日历绑在维度区间上，选「本月」时前后箭头全被禁用，看起来像切换坏了。
+  // 日历按月独立取数；曲线和区间汇总仍由维度决定。
   const [browsedMonth, setBrowsedMonth] = useState(() => monthOf(todayStr()))
 
   const dimensionRange = rangeOf(dimension, { from: customFrom, to: customTo })
-  // 曲线看维度区间；日历看当前浏览的整月（不超过今天）
   const queryRange = view === "calendar" ? monthRange(browsedMonth) : dimensionRange
 
   const query = usePnlCalendar(roleName, queryRange.from, queryRange.to)
@@ -381,7 +464,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
 
   const curvePoints = useMemo(
     () => bucketPoints(calendar?.points ?? [], dimension),
-    [calendar, dimension],
+    [calendar, dimension]
   )
 
   // 往前翻到「首笔成交月」；账户还没有成交时给 11 个月的回看窗口，
@@ -431,7 +514,8 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
         <AlertTriangle className="text-danger size-4" />
         <p className="text-danger text-caption">
-          区间收益加载失败：{query.error instanceof Error ? query.error.message : String(query.error)}
+          区间收益加载失败：
+          {query.error instanceof Error ? query.error.message : String(query.error)}
         </p>
         <Button variant="outline" size="xs" onClick={() => void query.refetch()}>
           重试
@@ -443,108 +527,146 @@ export function PnlPanel({ roleName }: { roleName: string }) {
   if (!calendar) return null
 
   const summary = calendar.summary
+  const lastEquity = calendar.points.at(-1)?.equity ?? 0
   const shanghai = calendar.benchmarks.find((b) => b.name === "上证")
   const excess = shanghai?.pct != null ? summary.total_pct - shanghai.pct : null
+  const otherBenchmarks = calendar.benchmarks.filter((b) => b.name !== "上证")
+  const summaryLabel =
+    view === "calendar"
+      ? `${monthLabel(displayMonth)}收益`
+      : from === to
+        ? "当日收益"
+        : "区间累计收益"
+  const metricOptions = view === "calendar" ? CALENDAR_METRICS : METRICS
 
   return (
     <div>
-      {/* 维度 */}
-      <div className="border-hairline flex flex-wrap items-center gap-1 border-b px-5 py-2.5">
-        {DIMENSIONS.map((d) => (
-          <button
-            key={d.key}
-            type="button"
-            onClick={() => {
-              setDimension(d.key)
-              setBrowsedMonth(monthOf(todayStr()))
-            }}
-            className={`rounded-md px-3 py-1 text-caption transition-colors ${
-              dimension === d.key
-                ? "bg-brand text-brand-foreground"
-                : "text-secondary hover:bg-ink-dim hover:text-primary"
-            }`}
-          >
-            {d.label}
-          </button>
-        ))}
-        {dimension === "custom" && (
-          <div className="ml-2 flex items-center gap-1.5">
-            <Input
-              type="date"
-              value={customFrom}
-              max={customTo}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="h-7 w-[130px] text-caption"
-            />
-            <span className="text-tertiary text-caption">至</span>
-            <Input
-              type="date"
-              value={customTo}
-              min={customFrom}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="h-7 w-[130px] text-caption"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 汇总：区间收益 + 跑赢大盘 */}
-      <div className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5">
+      {/* 先给结论，再提供筛选与明细。 */}
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5 px-5 py-5">
         <div>
-          {/* 区间由上方维度 chip（当日/本月/近三月/…）的选中态给出，这里只说这个数字是什么 */}
-          <div className="text-tertiary text-caption">{from === to ? "当日收益" : "区间累计收益"}</div>
-          <div className={`text-hero leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}>
+          <div className="text-tertiary text-caption">{summaryLabel}</div>
+          <div
+            className={`text-hero mt-0.5 leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}
+          >
             {formatPct(summary.total_pct)}
           </div>
-          <div className={`text-caption tabular-nums ${pctClass(summary.total_pnl)}`}>
-            {signedMoney(summary.total_pnl)}  权益 ¥{money((curvePoints.at(-1)?.equity ?? 0))}
+          <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2">
+            <div>
+              <div className="text-tertiary text-micro">盈亏</div>
+              <div className={`text-body font-medium tabular-nums ${pctClass(summary.total_pnl)}`}>
+                {signedMoney(summary.total_pnl)}
+              </div>
+            </div>
+            <div>
+              <div className="text-tertiary text-micro">权益</div>
+              <div className="text-body text-primary font-medium tabular-nums">
+                ¥{money(lastEquity)}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="text-right">
+
+        <div className="flex flex-col gap-1.5 sm:items-end">
           {excess != null && (
-            <div className={`text-caption ${pctClass(excess)}`}>
-              {excess >= 0 ? "跑赢" : "跑输"}上证 {Math.abs(excess).toFixed(2)}%
+            <div className={`text-caption tabular-nums ${pctClass(excess)}`}>
+              较上证 <span className="font-medium">{formatPct(excess)}</span>
             </div>
           )}
-          <div className="text-tertiary text-caption mt-1 flex flex-wrap justify-end gap-x-3 gap-y-0.5">
-            {calendar.benchmarks.map((b) => (
-              <span key={b.code}>
-                {b.name} <span className={pctClass(b.pct ?? 0)}>{b.pct == null ? "—" : formatPct(b.pct)}</span>
-              </span>
-            ))}
-          </div>
+          {otherBenchmarks.length > 0 && (
+            <div className="text-tertiary text-caption flex flex-wrap gap-x-3 gap-y-0.5 sm:justify-end">
+              {otherBenchmarks.map((b) => (
+                <span key={b.code}>
+                  {b.name}{" "}
+                  <span className={pctClass(b.pct ?? 0)}>
+                    {b.pct == null ? "—" : formatPct(b.pct)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 视图 / 指标 */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
-        <div className="border-hairline inline-flex overflow-hidden rounded-md border">
-          {(["curve", "calendar"] as ViewMode[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              className={`px-3 py-1 text-caption ${
-                view === v ? "bg-ink-dim text-primary" : "text-secondary hover:text-primary"
-              }`}
-            >
-              {v === "curve" ? "曲线" : "日历"}
-            </button>
-          ))}
+      <div className="border-hairline space-y-2 border-y px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SegmentedControl<ViewMode>
+            label="视图"
+            value={view}
+            options={[
+              { key: "curve", label: "曲线" },
+              { key: "calendar", label: "日历" },
+            ]}
+            onChange={setView}
+          />
+          <SegmentedControl<Metric>
+            label="指标"
+            value={metric}
+            options={metricOptions}
+            onChange={setMetric}
+          />
         </div>
-        <div className="border-hairline inline-flex overflow-hidden rounded-md border">
-          {METRICS.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              onClick={() => setMetric(m.key)}
-              className={`px-3 py-1 text-caption ${
-                metric === m.key ? "bg-ink-dim text-primary" : "text-secondary hover:text-primary"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {view === "curve" ? (
+            <>
+              <SegmentedControl
+                label="时间范围"
+                value={dimension}
+                options={DIMENSIONS}
+                onChange={(value) => {
+                  setDimension(value)
+                  setBrowsedMonth(monthOf(todayStr()))
+                }}
+              />
+              {dimension === "custom" && (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="date"
+                    aria-label="开始日期"
+                    value={customFrom}
+                    max={customTo}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="text-caption h-7 w-[130px]"
+                  />
+                  <span className="text-tertiary text-caption">至</span>
+                  <Input
+                    type="date"
+                    aria-label="结束日期"
+                    value={customTo}
+                    min={customFrom}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="text-caption h-7 w-[130px]"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="上个月"
+                onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, -1)))}
+                disabled={!canGoPrev}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="text-secondary text-caption min-w-24 text-center tabular-nums">
+                {monthLabel(displayMonth)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="下个月"
+                onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, 1)))}
+                disabled={!canGoNext}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -552,50 +674,25 @@ export function PnlPanel({ roleName }: { roleName: string }) {
         curvePoints.length === 0 ? (
           <p className="text-tertiary text-caption py-14 text-center">该区间内没有收益数据</p>
         ) : (
-          <div className="px-2 pt-2">
+          <div className="px-2 pt-3">
             <CurveChart points={curvePoints} metric={metric} />
           </div>
         )
       ) : (
-        <div>
-          <div className="flex items-center justify-center gap-3 pt-3">
-            <button
-              type="button"
-              aria-label="上个月"
-              onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, -1)))}
-              className="text-tertiary hover:text-primary p-1 disabled:opacity-30"
-              disabled={!canGoPrev}
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <span className="text-primary text-body font-medium tabular-nums">
-              {displayMonth.replace("-", " 年 ")} 月
-            </span>
-            <button
-              type="button"
-              aria-label="下个月"
-              onClick={() => setBrowsedMonth((m) => monthOf(addMonths(`${m}-01`, 1)))}
-              className="text-tertiary hover:text-primary p-1 disabled:opacity-30"
-              disabled={!canGoNext}
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-          <CalendarGrid
-            month={displayMonth}
-            points={calendar.points}
-            tradingDates={calendar.trading_dates}
-            metric={metric}
-            from={from}
-            to={to}
-          />
-        </div>
+        <CalendarGrid
+          month={displayMonth}
+          points={calendar.points}
+          tradingDates={calendar.trading_dates}
+          metric={metric}
+          from={from}
+          to={to}
+        />
       )}
 
-      {/* 统计脚注 */}
       <div className="border-hairline text-secondary text-caption flex flex-wrap gap-x-5 gap-y-1 border-t px-5 py-3">
         <span>
-          最大回撤 <span className="text-primary tabular-nums">{summary.max_drawdown_pct.toFixed(2)}%</span>
+          最大回撤{" "}
+          <span className="text-primary tabular-nums">{summary.max_drawdown_pct.toFixed(2)}%</span>
         </span>
         <span>
           上涨 <span className="text-up tabular-nums">{summary.win_days}</span> 天 / 下跌{" "}
@@ -605,7 +702,7 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       </div>
 
       {calendar.incomplete && (
-        <p className="text-warning border-hairline border-t px-5 py-2.5 text-micro">
+        <p className="text-warning border-hairline text-micro border-t px-5 py-2.5">
           部分持仓在某日拿不到收盘价，已按成本价估算，该日收益仅供参考
         </p>
       )}

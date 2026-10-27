@@ -44,9 +44,8 @@ import {
   usePlaceOrder,
 } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
-import { MiniKlineChart } from "@/components/MiniKlineChart"
 import { OrderBookLadder } from "@/components/OrderBookLadder"
-import { useIntradayCandles, useOrderBook } from "@/hooks/query/useOrderBook"
+import { useOrderBook } from "@/hooks/query/useOrderBook"
 import { formatPct, pctClass } from "@/lib/format"
 
 /** 行情不可用时的占位符 —— 后端返回 null 时用它，绝不能显示 0 */
@@ -377,44 +376,26 @@ function AccountOverview({
 // ── 买入 Dialog ────────────────────────────────────────
 
 /**
- * 下单弹窗右侧的行情栏：当日走势 + 五档 + 涨跌停。
+ * 下单弹窗右侧的五档行情栏。
  *
- * 两个数据都走行情通道（`useOrderBook` / `useIntradayCandles`，后端每个 symbol
- * 只跑一条上游轮询），所以弹窗开着的时间越长数据越新，而不是打开那一刻的快照。
+ * 数据走行情通道（`useOrderBook`，后端每个 symbol 只跑一条上游轮询），
+ * 所以弹窗开着的时间越长数据越新，而不是打开那一刻的快照。
  */
 function OrderMarketPanel({ symbol, name }: { symbol: string; name?: string }) {
   const { book, error } = useOrderBook(symbol)
-  const { candles } = useIntradayCandles(symbol)
 
   if (!symbol) {
     return (
       <div className="border-hairline text-tertiary text-caption flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed px-3 text-center">
-        选择股票后显示当日走势与五档
+        选择股票后显示五档行情
       </div>
     )
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="border-hairline overflow-hidden rounded-lg border px-1 pt-1">
-        <MiniKlineChart candles={candles} prevClose={book?.prev_close} height={128} />
-        {book && (
-          <div className="text-tertiary text-caption flex items-center justify-between gap-2 px-1.5 pt-0.5 pb-1">
-            <span className="font-number">昨收 {book.prev_close.toFixed(2)}</span>
-            {/* 新浪兜底没有涨跌停价（为 0），这时不显示，避免出现「涨停 0.00」 */}
-            {book.limit_up > 0 && book.limit_down > 0 && (
-              <span className="font-number">
-                涨停 <span className="text-up">{book.limit_up.toFixed(2)}</span> · 跌停{" "}
-                <span className="text-down">{book.limit_down.toFixed(2)}</span>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="border-hairline rounded-lg border px-1 py-1.5">
-        <div className="text-tertiary text-caption mb-1 px-1">五档{name ? ` · ${name}` : ""}</div>
-        <OrderBookLadder book={book} error={error} />
-      </div>
+    <div className="border-hairline min-w-0 rounded-lg border px-1 py-1.5">
+      <div className="text-tertiary text-caption mb-1 px-1">五档{name ? ` · ${name}` : ""}</div>
+      <OrderBookLadder book={book} error={error} />
     </div>
   )
 }
@@ -1317,7 +1298,8 @@ export default function RoleView() {
    * 加载中显示「0 个持仓」会被读成「空仓」。
    */
   const tabMeta = useMemo(() => {
-    if (tab === "performance") return { hint: "按当日收盘价估值", count: null as string | null }
+    if (tab === "performance")
+      return { hint: "历史按收盘价估值，最新点实时更新", count: null as string | null }
     const [query, length, unit] =
       tab === "current"
         ? [positionsQuery, positions.length, "个持仓"]

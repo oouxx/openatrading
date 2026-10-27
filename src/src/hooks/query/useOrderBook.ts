@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
-import { subscribeKline, subscribeOrderBook } from "@/hooks/useRealtimeStream"
-import type { KlineResponse, OrderBook } from "@/stores/data"
+import { subscribeOrderBook } from "@/hooks/useRealtimeStream"
+import type { OrderBook } from "@/stores/data"
 
 type StreamSnapshot<T> = { symbol: string; data: T | null; error: string | null }
 
 /**
- * 盘口五档。与 K 线共用同一条行情通道（Web 走 SSE、桌面端走 IPC Channel），
+ * 盘口五档。走行情通道（Web 走 SSE、桌面端走 IPC Channel），
  * 交易时段每 3 秒一帧，休市时后端把节奏降到 30 秒。
  *
  * 用订阅而不是轮询：下单弹窗开着的时候盘口必须跟着走；多个客户端看同一只票时
@@ -53,27 +53,4 @@ export function useOrderBook(symbol: string) {
 
   const current = snapshot.symbol === symbol ? snapshot : null
   return { book: current?.data ?? null, error: current?.error ?? null }
-}
-
-/** 下单弹窗里的当日分时（1 分钟 × 240 根 ≈ 一个交易日），同样走行情通道。 */
-export function useIntradayCandles(symbol: string) {
-  const [snapshot, setSnapshot] = useState<StreamSnapshot<KlineResponse["candles"]>>({
-    symbol,
-    data: null,
-    error: null,
-  })
-
-  useEffect(() => {
-    if (!symbol) return
-    return subscribeKline<KlineResponse>(
-      symbol,
-      "minute",
-      240,
-      (data) => setSnapshot({ symbol, data: data.candles ?? [], error: null }),
-      (error) => setSnapshot({ symbol, data: null, error })
-    )
-  }, [symbol])
-
-  const current = snapshot.symbol === symbol ? snapshot : null
-  return { candles: current?.data ?? [], error: current?.error ?? null }
 }
