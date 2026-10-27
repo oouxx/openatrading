@@ -107,6 +107,25 @@ function compactValue(value: number): string {
   return value === 0 ? "0" : formatCompactNumber(value)
 }
 
+/** 曲线点可能按日（`YYYY-MM-DD`）或按月（`YYYY-MM`）聚合。 */
+function chartDateValue(value: string): number {
+  if (value.length === 7) {
+    const [year, month] = value.split("-").map(Number)
+    return Date.UTC(year, month, 0)
+  }
+  const [year, month, day] = value.split("-").map(Number)
+  return Date.UTC(year, month - 1, day)
+}
+
+function chartTickLabel(value: number, spanDays: number): string {
+  const date = new Date(value)
+  const month = date.getUTCMonth() + 1
+  const day = date.getUTCDate()
+  return spanDays >= 365
+    ? `${date.getUTCFullYear()}-${String(month).padStart(2, "0")}`
+    : `${month}-${day}`
+}
+
 function rangeOf(dim: Dimension, custom: { from: string; to: string }) {
   const to = todayStr()
   switch (dim) {
@@ -196,7 +215,19 @@ function bucketPoints(points: PnlCalendarPoint[], dim: Dimension): PnlCalendarPo
   return [...byMonth.entries()].map(([month, last]) => ({ ...last, date: month }))
 }
 
-function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Metric }) {
+function CurveChart({
+  points,
+  metric,
+  from,
+  to,
+  loading = false,
+}: {
+  points: PnlCalendarPoint[]
+  metric: Metric
+  from: string
+  to: string
+  loading?: boolean
+}) {
   const W = 720
   const H = 240
   const padL = 56
@@ -204,10 +235,30 @@ function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Me
   const padT = 16
   const padB = 28
 
+  // 横轴属于所选时间区间，而不是数据点本身；这样无数据时也能提前画好，
+  // 数据到达后只需按日期落到固定位置，不会因为点数变化而整条轴伸缩。
+  const domainStart = chartDateValue(from)
+  const domainEnd = Math.max(domainStart, chartDateValue(to))
+  const spanDays = Math.round((domainEnd - domainStart) / 86_400_000)
+  const tickCount = spanDays === 0 ? 1 : Math.min(6, spanDays <= 5 ? spanDays + 1 : 6)
+  const xTicks = Array.from({ length: tickCount }, (_, i) => {
+    if (tickCount === 1) return domainStart
+    return domainStart + ((domainEnd - domainStart) * i) / (tickCount - 1)
+  })
+
+  const hasData = points.length > 0
   const values = points.map((p) => metricValue(p, metric))
   const zeroBased = metric !== "equity"
-  const rawMin = Math.min(...values, zeroBased ? 0 : Number.POSITIVE_INFINITY)
-  const rawMax = Math.max(...values, zeroBased ? 0 : Number.NEGATIVE_INFINITY)
+  const rawMin = hasData
+    ? Math.min(...values, zeroBased ? 0 : Number.POSITIVE_INFINITY)
+    : zeroBased
+      ? 0
+      : Number.POSITIVE_INFINITY
+  const rawMax = hasData
+    ? Math.max(...values, zeroBased ? 0 : Number.NEGATIVE_INFINITY)
+    : zeroBased
+      ? 0
+      : Number.NEGATIVE_INFINITY
   const padding = (rawMax - rawMin || Math.abs(rawMax) || 1) * 0.08
   const min = rawMin - padding
   const max = rawMax + padding
@@ -215,17 +266,26 @@ function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Me
 
   const plotW = W - padL - padR
   const plotH = H - padT - padB
-  const x = (i: number) =>
-    padL + (points.length <= 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
+  const dateToX = (value: string) => {
+    if (domainEnd === domainStart) return padL + plotW / 2
+    const ratio = (chartDateValue(value) - domainStart) / (domainEnd - domainStart)
+    return padL + Math.min(1, Math.max(0, ratio)) * plotW
+  }
+  const x = (value: number) => {
+    if (domainEnd === domainStart) return padL + plotW / 2
+    const ratio = (value - domainStart) / (domainEnd - domainStart)
+    return padL + Math.min(1, Math.max(0, ratio)) * plotW
+  }
   const y = (v: number) => padT + (1 - (v - min) / range) * plotH
 
   const path = points
     .map(
-      (p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(metricValue(p, metric)).toFixed(1)}`
+      (p, i) =>
+        `${i === 0 ? "M" : "L"}${dateToX(p.date).toFixed(1)},${y(metricValue(p, metric)).toFixed(1)}`
     )
     .join(" ")
   const last = points.length - 1
-  const lastValue = metricValue(points[last], metric)
+  const lastValue = hasData ? metricValue(points[last], metric) : 0
   const tone =
     metric === "equity"
       ? "var(--color-brand)"
@@ -236,11 +296,10 @@ function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Me
           : "var(--color-brand)"
   const area =
     points.length > 1
-      ? `${path} L${x(last).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} L${x(0).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} Z`
+      ? `${path} L${dateToX(points[last].date).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} L${dateToX(points[0].date).toFixed(1)},${y(zeroBased ? 0 : min).toFixed(1)} Z`
       : ""
 
   const gridLines = Array.from({ length: 5 }, (_, i) => min + (range * i) / 4)
-  const labelStep = Math.max(1, Math.ceil(points.length / 6))
 
   return (
     <svg
@@ -260,23 +319,54 @@ function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Me
             strokeWidth="0.5"
             strokeDasharray="3,3"
           />
+          {hasData && (
+            <text
+              x={padL - 8}
+              y={y(v) + 3}
+              textAnchor="end"
+              fontSize="9"
+              fill="var(--color-tertiary)"
+            >
+              {metric === "pct" ? `${v.toFixed(1)}%` : compactValue(v)}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {xTicks.map((value, i) => (
+        <g key={`x-grid-${i}`}>
+          <line
+            x1={x(value)}
+            y1={padT}
+            x2={x(value)}
+            y2={H - padB}
+            stroke="var(--color-hairline)"
+            strokeWidth="0.5"
+            opacity="0.55"
+          />
           <text
-            x={padL - 8}
-            y={y(v) + 3}
-            textAnchor="end"
+            x={x(value)}
+            y={H - 8}
+            textAnchor="middle"
             fontSize="9"
             fill="var(--color-tertiary)"
           >
-            {metric === "equity"
-              ? compactValue(v)
-              : metric === "pct"
-                ? `${v.toFixed(1)}%`
-                : compactValue(v)}
+            {chartTickLabel(value, spanDays)}
           </text>
         </g>
       ))}
 
-      {zeroBased && (
+      <line
+        x1={padL}
+        y1={H - padB}
+        x2={W - padR}
+        y2={H - padB}
+        stroke="var(--color-tertiary)"
+        strokeWidth="0.6"
+        opacity="0.45"
+      />
+
+      {hasData && zeroBased && (
         <line
           x1={padL}
           y1={y(0)}
@@ -288,51 +378,51 @@ function CurveChart({ points, metric }: { points: PnlCalendarPoint[]; metric: Me
       )}
 
       {area && <path d={area} fill={tone} opacity="0.08" />}
-      <path d={path} fill="none" stroke={tone} strokeWidth="1.8" strokeLinejoin="round" />
+      {path && <path d={path} fill="none" stroke={tone} strokeWidth="1.8" strokeLinejoin="round" />}
 
-      {points.map((p, i) =>
-        i === last || points.length <= 1 ? (
-          <circle
-            key={`dot-${p.date}`}
-            cx={x(i)}
-            cy={y(metricValue(p, metric))}
-            r="3.5"
-            fill={tone}
-            stroke="var(--color-surface)"
-            strokeWidth="1.5"
-          />
-        ) : null
+      {!hasData && (
+        <text
+          x={padL + plotW / 2}
+          y={padT + plotH / 2}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="11"
+          fill="var(--color-tertiary)"
+        >
+          {loading ? "加载收益数据…" : "暂无收益数据"}
+        </text>
       )}
+
+      {hasData &&
+        points.map((p, i) =>
+          i === last || points.length <= 1 ? (
+            <circle
+              key={`dot-${p.date}`}
+              cx={dateToX(p.date)}
+              cy={y(metricValue(p, metric))}
+              r="3.5"
+              fill={tone}
+              stroke="var(--color-surface)"
+              strokeWidth="1.5"
+            />
+          ) : null
+        )}
 
       {/* 透明热区提供逐点原生提示，不增加折线视觉噪音。 */}
-      {points.map((p, i) => (
-        <circle
-          key={`hit-${p.date}`}
-          cx={x(i)}
-          cy={y(metricValue(p, metric))}
-          r="10"
-          fill="transparent"
-        >
-          <title>{`${p.date}
+      {hasData &&
+        points.map((p) => (
+          <circle
+            key={`hit-${p.date}`}
+            cx={dateToX(p.date)}
+            cy={y(metricValue(p, metric))}
+            r="10"
+            fill="transparent"
+          >
+            <title>{`${p.date}
 累计 ${signedMoney(p.cum_pnl)}（${formatPct(p.cum_pct)}）
 权益 ¥${money(p.equity)}`}</title>
-        </circle>
-      ))}
-
-      {points.map((p, i) =>
-        i % labelStep === 0 || i === last ? (
-          <text
-            key={`xt-${p.date}`}
-            x={x(i)}
-            y={H - 8}
-            textAnchor="middle"
-            fontSize="9"
-            fill="var(--color-tertiary)"
-          >
-            {p.date.slice(5)}
-          </text>
-        ) : null
-      )}
+          </circle>
+        ))}
     </svg>
   )
 }
@@ -500,15 +590,6 @@ export function PnlPanel({ roleName }: { roleName: string }) {
     }
   }, [prefetchMonths, queryClient, roleName])
 
-  if (query.isPending) {
-    return (
-      <div className="space-y-3 px-5 py-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-[240px] w-full" />
-      </div>
-    )
-  }
-
   if (query.error) {
     return (
       <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
@@ -524,13 +605,11 @@ export function PnlPanel({ roleName }: { roleName: string }) {
     )
   }
 
-  if (!calendar) return null
-
-  const summary = calendar.summary
-  const lastEquity = calendar.points.at(-1)?.equity ?? 0
-  const shanghai = calendar.benchmarks.find((b) => b.name === "上证")
-  const excess = shanghai?.pct != null ? summary.total_pct - shanghai.pct : null
-  const otherBenchmarks = calendar.benchmarks.filter((b) => b.name !== "上证")
+  const summary = calendar?.summary
+  const lastEquity = calendar?.points.at(-1)?.equity ?? 0
+  const shanghai = calendar?.benchmarks.find((b) => b.name === "上证")
+  const excess = summary && shanghai?.pct != null ? summary.total_pct - shanghai.pct : null
+  const otherBenchmarks = calendar?.benchmarks.filter((b) => b.name !== "上证") ?? []
   const summaryLabel =
     view === "calendar"
       ? `${monthLabel(displayMonth)}收益`
@@ -538,6 +617,15 @@ export function PnlPanel({ roleName }: { roleName: string }) {
         ? "当日收益"
         : "区间累计收益"
   const metricOptions = view === "calendar" ? CALENDAR_METRICS : METRICS
+  // “全部”的查询起点是 2000 年，只用于取数；横轴应从首笔成交日开始，
+  // 否则真实数据会被压缩到最右侧。无成交时用今年作为可读的默认区间。
+  const curveRange = {
+    from:
+      dimension === "all"
+        ? (calendar?.first_trade_date ?? yearStart(todayStr()))
+        : dimensionRange.from,
+    to: dimensionRange.to,
+  }
 
   return (
     <div>
@@ -545,25 +633,36 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5 px-5 py-5">
         <div>
           <div className="text-tertiary text-caption">{summaryLabel}</div>
-          <div
-            className={`text-hero mt-0.5 leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}
-          >
-            {formatPct(summary.total_pct)}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2">
-            <div>
-              <div className="text-tertiary text-micro">盈亏</div>
-              <div className={`text-body font-medium tabular-nums ${pctClass(summary.total_pnl)}`}>
-                {signedMoney(summary.total_pnl)}
+          {summary ? (
+            <>
+              <div
+                className={`text-hero mt-0.5 leading-tight font-medium tabular-nums ${pctClass(summary.total_pct)}`}
+              >
+                {formatPct(summary.total_pct)}
               </div>
-            </div>
-            <div>
-              <div className="text-tertiary text-micro">权益</div>
-              <div className="text-body text-primary font-medium tabular-nums">
-                ¥{money(lastEquity)}
+              <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2">
+                <div>
+                  <div className="text-tertiary text-micro">盈亏</div>
+                  <div
+                    className={`text-body font-medium tabular-nums ${pctClass(summary.total_pnl)}`}
+                  >
+                    {signedMoney(summary.total_pnl)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-tertiary text-micro">权益</div>
+                  <div className="text-body text-primary font-medium tabular-nums">
+                    ¥{money(lastEquity)}
+                  </div>
+                </div>
               </div>
+            </>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <Skeleton className="h-9 w-36" />
+              <Skeleton className="h-5 w-52" />
             </div>
-          </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5 sm:items-end">
@@ -671,14 +770,16 @@ export function PnlPanel({ roleName }: { roleName: string }) {
       </div>
 
       {view === "curve" ? (
-        curvePoints.length === 0 ? (
-          <p className="text-tertiary text-caption py-14 text-center">该区间内没有收益数据</p>
-        ) : (
-          <div className="px-2 pt-3">
-            <CurveChart points={curvePoints} metric={metric} />
-          </div>
-        )
-      ) : (
+        <div className="px-2 pt-3">
+          <CurveChart
+            points={curvePoints}
+            metric={metric}
+            from={curveRange.from}
+            to={curveRange.to}
+            loading={query.isPending}
+          />
+        </div>
+      ) : calendar ? (
         <CalendarGrid
           month={displayMonth}
           points={calendar.points}
@@ -687,21 +788,29 @@ export function PnlPanel({ roleName }: { roleName: string }) {
           from={from}
           to={to}
         />
+      ) : (
+        <div className="px-5 py-4">
+          <Skeleton className="h-[270px] w-full" />
+        </div>
       )}
 
-      <div className="border-hairline text-secondary text-caption flex flex-wrap gap-x-5 gap-y-1 border-t px-5 py-3">
-        <span>
-          最大回撤{" "}
-          <span className="text-primary tabular-nums">{summary.max_drawdown_pct.toFixed(2)}%</span>
-        </span>
-        <span>
-          上涨 <span className="text-up tabular-nums">{summary.win_days}</span> 天 / 下跌{" "}
-          <span className="text-down tabular-nums">{summary.lose_days}</span> 天
-        </span>
-        <span className="text-tertiary">有持仓 {summary.trading_days} 个交易日</span>
-      </div>
+      {summary && (
+        <div className="border-hairline text-secondary text-caption flex flex-wrap gap-x-5 gap-y-1 border-t px-5 py-3">
+          <span>
+            最大回撤{" "}
+            <span className="text-primary tabular-nums">
+              {summary.max_drawdown_pct.toFixed(2)}%
+            </span>
+          </span>
+          <span>
+            上涨 <span className="text-up tabular-nums">{summary.win_days}</span> 天 / 下跌{" "}
+            <span className="text-down tabular-nums">{summary.lose_days}</span> 天
+          </span>
+          <span className="text-tertiary">有持仓 {summary.trading_days} 个交易日</span>
+        </div>
+      )}
 
-      {calendar.incomplete && (
+      {calendar?.incomplete && (
         <p className="text-warning border-hairline text-micro border-t px-5 py-2.5">
           部分持仓在某日拿不到收盘价，已按成本价估算，该日收益仅供参考
         </p>
