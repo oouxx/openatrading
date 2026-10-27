@@ -364,8 +364,6 @@ export interface OrderBook {
   limit_down: number
   bids: OrderBookLevel[]
   asks: OrderBookLevel[]
-  /** 上游来源：`eastmoney` 全量；`sina` 兜底（没有涨跌停价，档位量已换算成手） */
-  source: "eastmoney" | "sina"
 }
 
 /** K 线响应 —— GET /api/kline/:symbol */

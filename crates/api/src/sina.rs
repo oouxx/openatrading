@@ -5,7 +5,7 @@ use std::time::Duration;
 
 // ── 竞价行情数据结构 ────────────────────────────────
 
-/// 盘口一档。新浪这一列给的是**股**（东财给手，注意换算）。
+/// 盘口一档。新浪这一列给的是**股**；对外盘口模型统一换算成手。
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SinaLevel {
     pub price: f64,
