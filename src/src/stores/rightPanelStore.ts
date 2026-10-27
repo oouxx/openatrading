@@ -6,6 +6,7 @@ export type RightPanelView =
   | "strong-stocks"
   | "promotion"
   | "plate"
+  | "plate-ranking"
   | "timeline"
   | "sentiment-chip"
   | "market-intel"
@@ -20,6 +21,7 @@ const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
   "strong-stocks",
   "promotion",
   "plate",
+  "plate-ranking",
   "timeline",
   "sentiment-chip",
   "market-intel",

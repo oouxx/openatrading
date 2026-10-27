@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{Datelike, FixedOffset};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use crate::utils::to_yahoo_symbol;
 
@@ -39,7 +39,21 @@ fn dedup_events_by_id(events: &mut Vec<PlateOrStockAbnormalEvent>) {
     events.retain(|event| seen.insert(event.id));
 }
 
-const BASE_URL: &str = "https://flash-api.xuangubao.cn/api";
+const BASE_URL: &str = "https://flash-api.xuangubao.com.cn/api";
+const MARKET_BASE_URL: &str = "https://api-ddc-wscn.xuangubao.com.cn";
+const PLATE_INDEX_TYPE: &str = "1";
+const PLATE_INDEX_DATA_TYPE: &str = "2";
+
+/// 前端按 200 个标的拆分资金流批量请求，避免 URL 过长和单次响应过大。
+const FUND_FLOW_BATCH_SIZE: usize = 200;
+/// 前端按 200 个标的拆分股票指标批量请求。
+const STOCK_DATA_BATCH_SIZE: usize = 200;
+/// 前端按 200 个标的拆分股票标签批量请求。
+const STOCK_LABEL_BATCH_SIZE: usize = 200;
+const PLATE_SUMMARY_BATCH_SIZE: usize = 200;
+const FUND_FLOW_METRIC_START: usize = 2;
+const FUND_FLOW_METRIC_END: usize = 19;
+const FUND_FLOW_ROW_LEN: usize = 20;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlateReason {
@@ -222,6 +236,356 @@ pub struct MarketOverviewDay {
     pub bomb_rate: f64,
     pub market_temperature: f64,
 }
+
+/// 单个证券的市场类型元数据。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityTypeMetadata {
+    pub market_type: String,
+    pub securities_type: String,
+    #[serde(default)]
+    pub sub_type: String,
+}
+
+/// 市场指标分时序列中的一个时点。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketIndicatorPoint {
+    pub timestamp: i64,
+    #[serde(default)]
+    pub rise_count: Option<u32>,
+    #[serde(default)]
+    pub fall_count: Option<u32>,
+    #[serde(default)]
+    pub limit_up_count: Option<u32>,
+    #[serde(default)]
+    pub limit_down_count: Option<u32>,
+    #[serde(default)]
+    pub limit_up_broken_count: Option<u32>,
+    #[serde(default)]
+    pub limit_up_broken_ratio: Option<f64>,
+    #[serde(default)]
+    pub market_temperature: Option<f64>,
+    #[serde(default)]
+    pub yesterday_limit_up_avg_pcp: Option<f64>,
+}
+
+/// 全市场涨跌幅分布。
+///
+/// `buckets` 的键是涨跌幅档位编码（例如 `10`、`0`、`-10`），值是股票数量。
+/// 上游没有公开档位与百分比的换算规则，因此这里保留原始编码。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MarketPcpDistribution {
+    pub buckets: BTreeMap<i32, u32>,
+    pub limit_up_count: u32,
+    pub limit_down_count: u32,
+    pub st_limit_up_count: u32,
+    pub st_limit_down_count: u32,
+    pub halt_count: u32,
+    pub total_count: u32,
+    pub timestamp: i64,
+}
+
+/// 题材摘要。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateSummary {
+    pub plate_id: i64,
+    pub plate_name: String,
+    #[serde(default)]
+    pub core_avg_pcp: Option<f64>,
+    #[serde(default)]
+    pub fund_flow: Option<f64>,
+    #[serde(default)]
+    pub rise_count: u32,
+    #[serde(default)]
+    pub fall_count: u32,
+    #[serde(default)]
+    pub stay_count: u32,
+    #[serde(default)]
+    pub limit_up_count: u32,
+    #[serde(default)]
+    pub core_avg_pcp_rank: Option<i32>,
+    #[serde(default)]
+    pub core_avg_pcp_rank_change: Option<i32>,
+    #[serde(default)]
+    pub top_n_stocks: PlateLeaderStocks,
+    #[serde(default)]
+    pub bottom_n_stocks: PlateLeaderStocks,
+    #[serde(default, rename = "jinrilongtou")]
+    pub today_leaders: Option<Vec<String>>,
+    #[serde(default, rename = "renqilongtou")]
+    pub popular_leaders: Option<Vec<String>>,
+    #[serde(default, rename = "hangyelongtou")]
+    pub industry_leaders: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateLeaderStocks {
+    #[serde(default)]
+    pub items: Vec<PlateLeaderStock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateLeaderStock {
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub stock_chi_name: String,
+    #[serde(default)]
+    pub change_percent: Option<f64>,
+    #[serde(default)]
+    pub price_change: Option<f64>,
+}
+
+/// 题材涨跌榜使用的上游类型编码。
+///
+/// 文档只确认前端使用 `1`、`2`，没有给出稳定的“上涨/下跌”语义，因此不要自行推断。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlateIncdecType {
+    One,
+    Two,
+}
+
+impl PlateIncdecType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::One => "1",
+            Self::Two => "2",
+        }
+    }
+}
+
+/// 板块涨跌幅榜分类。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PlateRankType {
+    #[default]
+    All,
+    Concept,
+    Industry,
+    Style,
+}
+
+impl PlateRankType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "0",
+            Self::Concept => "1",
+            Self::Industry => "2",
+            Self::Style => "3",
+        }
+    }
+}
+
+/// 题材涨跌榜中的代表股。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateMoverStock {
+    pub symbol: String,
+    pub name: String,
+    #[serde(default)]
+    pub mtm: Option<f64>,
+}
+
+/// 题材涨跌榜条目。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateMover {
+    pub plate_id: i64,
+    pub plate_name: String,
+    pub pcp: f64,
+    #[serde(default)]
+    pub stocks: Vec<PlateMoverStock>,
+}
+
+/// 题材指数历史 K 线。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateIndexCandle {
+    #[serde(rename = "date_time")]
+    pub timestamp: i64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+}
+
+/// 题材指数分时点。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateIndexPoint {
+    #[serde(rename = "time")]
+    pub timestamp: i64,
+    pub index: f64,
+}
+
+/// 题材指数分时序列。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateIndexRealtime {
+    pub prev_close: f64,
+    pub items: Vec<PlateIndexPoint>,
+}
+
+/// 题材成分股。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateStock {
+    pub symbol: String,
+    #[serde(default)]
+    pub core_flag: Option<i32>,
+    #[serde(default)]
+    pub desc: String,
+    #[serde(default)]
+    pub desc_url: Option<String>,
+    #[serde(default)]
+    pub industrial_chain_id: Option<i64>,
+    #[serde(default)]
+    pub is_new: bool,
+    #[serde(default)]
+    pub need_pay: bool,
+}
+
+/// 题材产业链。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateIndustrialChain {
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub order: i32,
+    #[serde(default)]
+    pub stocks: Vec<String>,
+    #[serde(default)]
+    pub stock_premium_infos: Vec<PlateStock>,
+}
+
+/// 题材常见问题。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateQuestionAnswer {
+    #[serde(default)]
+    pub question: String,
+    #[serde(default)]
+    pub html_answer: String,
+}
+
+/// 题材子集。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlateSubset {
+    pub plate_id: i64,
+    pub plate_name: String,
+}
+
+/// 题材详情及成分股。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateDetail {
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub desc: String,
+    #[serde(default)]
+    pub avg_pcp: Option<f64>,
+    #[serde(default)]
+    pub core_avg_pcp: Option<f64>,
+    /// 上游返回的题材资金流数值；公开文档没有给出单位。
+    #[serde(default)]
+    pub fund_flow: Option<f64>,
+    #[serde(default)]
+    pub rise_count: u32,
+    #[serde(default)]
+    pub fall_count: u32,
+    #[serde(default)]
+    pub stay_count: u32,
+    #[serde(default)]
+    pub core_stocks_count: u32,
+    #[serde(default)]
+    pub stocks: Vec<PlateStock>,
+    #[serde(default)]
+    pub industrial_chains: Vec<PlateIndustrialChain>,
+    #[serde(default)]
+    pub allow_comment: bool,
+    #[serde(default)]
+    pub create_name: String,
+    #[serde(default)]
+    pub display_after_at: i64,
+    #[serde(default)]
+    pub hang_ye_long_tou_stocks_count: u32,
+    #[serde(default)]
+    pub has_north: i32,
+    #[serde(default)]
+    pub hide: bool,
+    #[serde(default)]
+    pub is_fav: bool,
+    #[serde(default)]
+    pub need_pay: bool,
+    #[serde(default)]
+    pub premium_desc: String,
+    #[serde(default)]
+    pub question_answers: Vec<PlateQuestionAnswer>,
+    #[serde(default)]
+    pub seo_desc: String,
+    #[serde(default)]
+    pub seo_keywords: String,
+    #[serde(default)]
+    pub seo_title: String,
+    #[serde(default)]
+    pub sub_sets: Option<Vec<PlateSubset>>,
+    #[serde(default)]
+    pub subject_id: i64,
+    #[serde(default)]
+    pub update_name: String,
+    #[serde(default)]
+    pub whether_display_plate_stock_portfolio: bool,
+}
+
+/// 单个标的单个交易日的资金流。
+///
+/// 上游返回 20 列紧凑数组。文档只稳定定义了标的、交易日、中间指标区和末列时间戳；
+/// `metrics` 按响应原顺序保存第 2..18 列，避免把厂商内部列序误标成业务含义。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundFlowRow {
+    pub symbol: String,
+    pub trade_date: String,
+    pub metrics: Vec<f64>,
+    pub timestamp: i64,
+}
+
+/// 选股宝股票指标快照，用于补充涨停天数、最新涨停时间等字段。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StockMetrics {
+    pub symbol: String,
+    #[serde(default)]
+    pub stock_chi_name: String,
+    #[serde(default)]
+    pub change_percent: f64,
+    #[serde(default)]
+    pub price: f64,
+    #[serde(default)]
+    pub turnover_ratio: f64,
+    #[serde(default)]
+    pub non_restricted_capital: f64,
+    #[serde(default)]
+    pub total_capital: f64,
+    #[serde(default)]
+    pub per: f64,
+    #[serde(default)]
+    pub limit_up_days: u32,
+    #[serde(default)]
+    pub last_limit_up: i64,
+    #[serde(default)]
+    pub limit_status: i32,
+    #[serde(default)]
+    pub nearly_new_acc_pcp: f64,
+}
+
+/// 选股宝股票标签。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StockLabel {
+    #[serde(default)]
+    pub code: String,
+    /// 该字段在上游部分记录中存放股票名称，而不是证券代码。
+    #[serde(default)]
+    pub symbol: String,
+    #[serde(default)]
+    pub label_name: String,
+    #[serde(default)]
+    pub label_type: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub effect: i32,
+}
+
 /// 选股宝 API `fields` 请求参数中的单个字段。
 ///
 /// 通过 `ApiField::join(&[variant, ...])` 生成逗号分隔字符串，
@@ -238,12 +602,16 @@ pub enum ApiField {
     LimitDownCount,
     /// 炸板率
     LimitUpBrokenRatio,
+    /// 炸板家数
+    LimitUpBrokenCount,
     /// 市场情绪温度
     MarketTemperature,
     /// 昨日涨停股今日平均涨幅
     YesterdayLimitUpAvgPcp,
     /// 时间戳（分时/K线）
     TickAt,
+    /// 时间戳（市场指标）
+    Timestamp,
     /// 最新价（分时/K线）
     ClosePx,
     /// 开盘价
@@ -306,9 +674,11 @@ impl ApiField {
             Self::LimitUpCount => "limit_up_count",
             Self::LimitDownCount => "limit_down_count",
             Self::LimitUpBrokenRatio => "limit_up_broken_ratio",
+            Self::LimitUpBrokenCount => "limit_up_broken_count",
             Self::MarketTemperature => "market_temperature",
             Self::YesterdayLimitUpAvgPcp => "yesterday_limit_up_avg_pcp",
             Self::TickAt => "tick_at",
+            Self::Timestamp => "timestamp",
             Self::ClosePx => "close_px",
             Self::OpenPx => "open_px",
             Self::HighPx => "high_px",
@@ -398,10 +768,267 @@ fn parse_market_trend(symbol: &str, resp: &serde_json::Value) -> Result<MarketTr
     })
 }
 
+fn ensure_api_success(resp: &serde_json::Value, operation: &str) -> Result<()> {
+    let code = resp
+        .get("code")
+        .and_then(serde_json::Value::as_i64)
+        .with_context(|| format!("{operation}响应缺少业务状态码"))?;
+    if code != 20000 {
+        let message = resp
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("上游未提供错误说明");
+        anyhow::bail!("{operation}失败: {message}");
+    }
+    Ok(())
+}
+
+fn parse_security_type_metadata(
+    symbol: &str,
+    resp: &serde_json::Value,
+) -> Result<SecurityTypeMetadata> {
+    ensure_api_success(resp, "证券类型查询")?;
+    let value = resp["data"]
+        .get(symbol)
+        .with_context(|| format!("证券类型响应缺少 {symbol}"))?;
+    serde_json::from_value(value.clone()).context("证券类型字段格式异常")
+}
+
+fn parse_market_indicators(resp: &serde_json::Value) -> Result<Vec<MarketIndicatorPoint>> {
+    ensure_api_success(resp, "市场指标查询")?;
+    let data = resp["data"]
+        .as_array()
+        .context("市场指标响应缺少 data 数组")?;
+    data.iter()
+        .map(|value| serde_json::from_value(value.clone()).context("市场指标字段格式异常"))
+        .collect()
+}
+
+fn json_u32(value: Option<&serde_json::Value>, field: &str) -> Result<u32> {
+    let number = value
+        .with_context(|| format!("涨跌幅分布缺少 {field}"))?
+        .as_u64()
+        .with_context(|| format!("涨跌幅分布 {field} 不是非负整数"))?;
+    u32::try_from(number).with_context(|| format!("涨跌幅分布 {field} 超出范围"))
+}
+
+fn json_i64(value: Option<&serde_json::Value>, field: &str) -> Result<i64> {
+    value
+        .with_context(|| format!("涨跌幅分布缺少 {field}"))?
+        .as_i64()
+        .with_context(|| format!("涨跌幅分布 {field} 不是整数"))
+}
+
+fn parse_market_pcp_distribution(resp: &serde_json::Value) -> Result<MarketPcpDistribution> {
+    ensure_api_success(resp, "涨跌幅分布查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("涨跌幅分布响应缺少 data 对象")?;
+
+    let mut distribution = MarketPcpDistribution {
+        limit_up_count: json_u32(data.get("limit_up_count"), "limit_up_count")?,
+        limit_down_count: json_u32(data.get("limit_down_count"), "limit_down_count")?,
+        st_limit_up_count: json_u32(data.get("st_limit_up_count"), "st_limit_up_count")?,
+        st_limit_down_count: json_u32(data.get("st_limit_down_count"), "st_limit_down_count")?,
+        halt_count: json_u32(data.get("halt_count"), "halt_count")?,
+        total_count: json_u32(data.get("total_count"), "total_count")?,
+        timestamp: json_i64(data.get("ts"), "ts")?,
+        ..MarketPcpDistribution::default()
+    };
+
+    for (bucket, value) in data {
+        let Ok(bucket) = bucket.parse::<i32>() else {
+            continue;
+        };
+        let count = value
+            .as_u64()
+            .with_context(|| format!("涨跌幅档位 {bucket} 的股票数不是非负整数"))?;
+        distribution.buckets.insert(
+            bucket,
+            u32::try_from(count)
+                .with_context(|| format!("涨跌幅档位 {bucket} 的股票数超出范围"))?,
+        );
+    }
+
+    Ok(distribution)
+}
+
+fn parse_plate_summaries(resp: &serde_json::Value) -> Result<Vec<PlateSummary>> {
+    ensure_api_success(resp, "题材摘要查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("题材摘要响应缺少 data 对象")?;
+    data.values()
+        .map(|value| serde_json::from_value(value.clone()).context("题材摘要字段格式异常"))
+        .collect()
+}
+
+fn parse_plate_rank_ids(resp: &serde_json::Value) -> Result<Vec<i64>> {
+    ensure_api_success(resp, "板块排行榜查询")?;
+    resp["data"]
+        .as_array()
+        .context("板块排行榜响应缺少 data 数组")?
+        .iter()
+        .map(|value| value.as_i64().context("板块排行榜 ID 不是整数"))
+        .collect()
+}
+
+fn parse_plate_incdec(resp: &serde_json::Value) -> Result<Vec<PlateMover>> {
+    ensure_api_success(resp, "题材涨跌榜查询")?;
+    let items = resp["data"]["items"]
+        .as_array()
+        .context("题材涨跌榜响应缺少 data.items 数组")?;
+    items
+        .iter()
+        .map(|value| serde_json::from_value(value.clone()).context("题材涨跌榜字段格式异常"))
+        .collect()
+}
+
+fn parse_plate_index_history(resp: &serde_json::Value) -> Result<Vec<PlateIndexCandle>> {
+    ensure_api_success(resp, "题材指数历史查询")?;
+    let data = resp["data"]
+        .as_array()
+        .context("题材指数历史响应缺少 data 数组")?;
+    data.iter()
+        .map(|value| serde_json::from_value(value.clone()).context("题材指数历史字段格式异常"))
+        .collect()
+}
+
+fn parse_plate_index_realtime(resp: &serde_json::Value) -> Result<PlateIndexRealtime> {
+    ensure_api_success(resp, "题材指数分时查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("题材指数分时响应缺少 data 对象")?;
+    let prev_close = data
+        .get("prev_close_idx")
+        .and_then(serde_json::Value::as_f64)
+        .context("题材指数分时响应缺少 prev_close_idx")?;
+    let items = data
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .context("题材指数分时响应缺少 data.items 数组")?
+        .iter()
+        .map(|value| serde_json::from_value(value.clone()).context("题材指数分时字段格式异常"))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(PlateIndexRealtime { prev_close, items })
+}
+
+fn parse_plate_detail(resp: &serde_json::Value) -> Result<PlateDetail> {
+    ensure_api_success(resp, "题材详情查询")?;
+    let data = resp.get("data").context("题材详情响应缺少 data")?;
+    serde_json::from_value(data.clone()).context("题材详情字段格式异常")
+}
+
+fn parse_fund_flow_number(value: &serde_json::Value, column: usize) -> Result<f64> {
+    value
+        .as_f64()
+        .with_context(|| format!("资金流第 {column} 列不是数值"))
+}
+
+fn parse_fund_flow_row(value: &serde_json::Value) -> Result<FundFlowRow> {
+    let row = value.as_array().context("资金流行不是数组")?;
+    anyhow::ensure!(
+        row.len() == FUND_FLOW_ROW_LEN,
+        "资金流行列数异常: 期望 {FUND_FLOW_ROW_LEN}，实际 {}",
+        row.len()
+    );
+
+    let symbol = row[0].as_str().context("资金流第 0 列不是证券代码")?;
+    let trade_date = row[1].as_str().context("资金流第 1 列不是交易日期")?;
+    chrono::NaiveDate::parse_from_str(trade_date, "%Y-%m-%d")
+        .with_context(|| format!("资金流交易日期格式异常: {trade_date}"))?;
+
+    let metrics = row[FUND_FLOW_METRIC_START..FUND_FLOW_METRIC_END]
+        .iter()
+        .enumerate()
+        .map(|(offset, value)| parse_fund_flow_number(value, offset + FUND_FLOW_METRIC_START))
+        .collect::<Result<Vec<_>>>()?;
+    let timestamp = row[FUND_FLOW_METRIC_END]
+        .as_i64()
+        .context("资金流末列不是 Unix 秒时间戳")?;
+
+    Ok(FundFlowRow {
+        symbol: symbol.to_string(),
+        trade_date: trade_date.to_string(),
+        metrics,
+        timestamp,
+    })
+}
+
+fn parse_fund_flow_batch(
+    resp: &serde_json::Value,
+) -> Result<ahash::AHashMap<String, Vec<FundFlowRow>>> {
+    ensure_api_success(resp, "资金流查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("资金流响应缺少 data 对象")?;
+    let mut result = ahash::AHashMap::with_capacity(data.len());
+
+    for (key, series) in data {
+        let rows = series["fund_flow"]
+            .as_array()
+            .with_context(|| format!("资金流响应缺少 {key}.fund_flow 数组"))?
+            .iter()
+            .map(parse_fund_flow_row)
+            .collect::<Result<Vec<_>>>()?;
+        for row in &rows {
+            anyhow::ensure!(
+                row.symbol == *key,
+                "资金流响应键 {key} 与行内证券代码 {} 不一致",
+                row.symbol
+            );
+        }
+        result.insert(key.clone(), rows);
+    }
+
+    Ok(result)
+}
+
+fn parse_stock_data(resp: &serde_json::Value) -> Result<ahash::AHashMap<String, StockMetrics>> {
+    ensure_api_success(resp, "股票指标查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("股票指标响应缺少 data 对象")?;
+    data.iter()
+        .map(|(symbol, value)| {
+            let metrics: StockMetrics = serde_json::from_value(value.clone())
+                .with_context(|| format!("股票指标 {symbol} 字段格式异常"))?;
+            Ok((symbol.clone(), metrics))
+        })
+        .collect()
+}
+
+fn parse_stock_labels(
+    resp: &serde_json::Value,
+) -> Result<ahash::AHashMap<String, Vec<StockLabel>>> {
+    ensure_api_success(resp, "股票标签查询")?;
+    let data = resp["data"]
+        .as_object()
+        .context("股票标签响应缺少 data 对象")?;
+    data.iter()
+        .map(|(symbol, value)| {
+            if value.is_null() {
+                return Ok((symbol.clone(), Vec::new()));
+            }
+            let labels = value
+                .as_array()
+                .with_context(|| format!("股票标签 {symbol} 不是数组"))?
+                .iter()
+                .map(|label| {
+                    serde_json::from_value(label.clone())
+                        .with_context(|| format!("股票标签 {symbol} 字段格式异常"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok((symbol.clone(), labels))
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct XuanguBaoClient {
     client: reqwest::Client,
     base_url: String,
+    market_base_url: String,
 }
 
 impl Default for XuanguBaoClient {
@@ -412,12 +1039,20 @@ impl Default for XuanguBaoClient {
 
 impl XuanguBaoClient {
     pub fn new() -> Self {
-        Self::with_base_url(BASE_URL.to_string())
+        Self::with_urls(BASE_URL.to_string(), MARKET_BASE_URL.to_string())
     }
 
     pub fn with_base_url(base_url: String) -> Self {
+        Self::with_urls(base_url, MARKET_BASE_URL.to_string())
+    }
+
+    fn with_urls(base_url: String, market_base_url: String) -> Self {
         let client = Self::build_client();
-        Self { client, base_url }
+        Self {
+            client,
+            base_url,
+            market_base_url,
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -512,6 +1147,55 @@ impl XuanguBaoClient {
         })
     }
 
+    /// 获取市场指标分时序列（涨跌家数、涨跌停、炸板、情绪温度等）。
+    ///
+    /// # Errors
+    /// 请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_market_indicator_line(&self) -> Result<Vec<MarketIndicatorPoint>> {
+        let fields = ApiField::join(&[
+            ApiField::Timestamp,
+            ApiField::RiseCount,
+            ApiField::FallCount,
+            ApiField::LimitUpCount,
+            ApiField::LimitDownCount,
+            ApiField::LimitUpBrokenCount,
+            ApiField::LimitUpBrokenRatio,
+            ApiField::MarketTemperature,
+            ApiField::YesterdayLimitUpAvgPcp,
+        ]);
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/market_indicator/line", self.base_url))
+            .query(&[("fields", fields)])
+            .send()
+            .await
+            .context("市场指标请求失败")?
+            .json()
+            .await
+            .context("市场指标响应不是合法 JSON")?;
+        parse_market_indicators(&resp)
+    }
+
+    /// 获取全市场涨跌幅分布。
+    ///
+    /// # Errors
+    /// 请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_market_pcp_distribution(&self) -> Result<MarketPcpDistribution> {
+        let resp: serde_json::Value = self
+            .client
+            .get(format!(
+                "{}/market_indicator/pcp_distribution",
+                self.base_url
+            ))
+            .send()
+            .await
+            .context("涨跌幅分布请求失败")?
+            .json()
+            .await
+            .context("涨跌幅分布响应不是合法 JSON")?;
+        parse_market_pcp_distribution(&resp)
+    }
+
     /// Fetch intraday market overview for a specific date, returns the last (most recent) snapshot.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
     /// Generate the last `n` trading day dates (YYYY-MM-DD), skipping weekends.
@@ -592,7 +1276,7 @@ impl XuanguBaoClient {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
             "{}/market/trend?fields={}&prod_code={symbol}",
-            "https://api-ddc-wscn.xuangubao.com.cn",
+            self.market_base_url,
             ApiField::join(&[
                 ApiField::TickAt,
                 ApiField::ClosePx,
@@ -626,7 +1310,8 @@ impl XuanguBaoClient {
             ApiField::TradeStatus,
         ]);
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={fields}&prod_code={joined}",
+            "{}/market/real?fields={fields}&prod_code={joined}",
+            self.market_base_url,
         );
 
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -681,6 +1366,189 @@ impl XuanguBaoClient {
 
         Ok(results)
     }
+
+    /// 获取证券的市场类型、证券类型和子类型元数据。
+    ///
+    /// # Errors
+    /// 证券代码非法、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_security_type(&self, symbol: &str) -> Result<SecurityTypeMetadata> {
+        let symbol = to_yahoo_symbol(symbol)?;
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/market/info/type", self.market_base_url))
+            .query(&[("prod_code", symbol.as_str())])
+            .send()
+            .await
+            .context("证券类型请求失败")?
+            .json()
+            .await
+            .context("证券类型响应不是合法 JSON")?;
+        parse_security_type_metadata(&symbol, &resp)
+    }
+
+    /// 批量获取题材摘要。
+    ///
+    /// # Errors
+    /// 题材列表为空、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_summaries(&self, plate_ids: &[i64]) -> Result<Vec<PlateSummary>> {
+        anyhow::ensure!(!plate_ids.is_empty(), "至少需要一个题材 ID");
+        let mut result = Vec::with_capacity(plate_ids.len());
+        for chunk in plate_ids.chunks(PLATE_SUMMARY_BATCH_SIZE) {
+            result.extend(self.fetch_plate_summaries_chunk(chunk).await?);
+        }
+        Ok(result)
+    }
+
+    async fn fetch_plate_summaries_chunk(&self, plate_ids: &[i64]) -> Result<Vec<PlateSummary>> {
+        let plates = plate_ids
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let fields = "plate_id,plate_name,fund_flow,rise_count,fall_count,stay_count,limit_up_count,core_avg_pcp,core_avg_pcp_rank,core_avg_pcp_rank_change,top_n_stocks,bottom_n_stocks";
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/plate/data", self.base_url))
+            .query(&[("plates", plates.as_str()), ("fields", fields)])
+            .send()
+            .await
+            .context("题材摘要请求失败")?
+            .json()
+            .await
+            .context("题材摘要响应不是合法 JSON")?;
+        parse_plate_summaries(&resp)
+    }
+
+    /// 获取指定分类的板块涨跌幅排名 ID。
+    ///
+    /// # Errors
+    /// 请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_rank_ids(&self, rank_type: PlateRankType) -> Result<Vec<i64>> {
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/plate/rank", self.base_url))
+            .query(&[("field", "core_avg_pcp"), ("type", rank_type.as_str())])
+            .send()
+            .await
+            .context("板块排行榜请求失败")?
+            .json()
+            .await
+            .context("板块排行榜响应不是合法 JSON")?;
+        parse_plate_rank_ids(&resp)
+    }
+
+    /// 获取题材涨跌榜。
+    ///
+    /// `move_type` 的原生语义未公开确认，只保留文档观测到的编码。
+    ///
+    /// # Errors
+    /// `limit` 为 0、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_incdec(
+        &self,
+        move_type: PlateIncdecType,
+        limit: Option<usize>,
+    ) -> Result<Vec<PlateMover>> {
+        if let Some(limit) = limit {
+            anyhow::ensure!(limit > 0, "题材涨跌榜数量必须大于 0");
+        }
+        let mut request = self
+            .client
+            .get(format!("{}/plate/incdec", self.base_url))
+            .query(&[("move_type", move_type.as_str())]);
+        if let Some(limit) = limit {
+            request = request.query(&[("limit", limit)]);
+        }
+        let resp: serde_json::Value = request
+            .send()
+            .await
+            .context("题材涨跌榜请求失败")?
+            .json()
+            .await
+            .context("题材涨跌榜响应不是合法 JSON")?;
+        parse_plate_incdec(&resp)
+    }
+
+    /// 获取题材指数历史 K 线。
+    ///
+    /// # Errors
+    /// `data_count` 为 0、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_index_history(
+        &self,
+        plate_id: i64,
+        data_count: usize,
+        end_time: Option<i64>,
+    ) -> Result<Vec<PlateIndexCandle>> {
+        anyhow::ensure!(plate_id > 0, "题材 ID 必须大于 0");
+        anyhow::ensure!(data_count > 0, "题材指数 K 线数量必须大于 0");
+        let plate_id = plate_id.to_string();
+        let data_count = data_count.to_string();
+        let mut request = self
+            .client
+            .get(format!("{}/plate/index_history", self.base_url))
+            .query(&[
+                ("plate_id", plate_id.as_str()),
+                ("index_type", PLATE_INDEX_TYPE),
+                ("data_count", data_count.as_str()),
+            ]);
+        if let Some(end_time) = end_time {
+            request = request.query(&[("end_time", end_time)]);
+        }
+        let resp: serde_json::Value = request
+            .send()
+            .await
+            .context("题材指数历史请求失败")?
+            .json()
+            .await
+            .context("题材指数历史响应不是合法 JSON")?;
+        parse_plate_index_history(&resp)
+    }
+
+    /// 获取题材指数分时序列。
+    ///
+    /// # Errors
+    /// 题材 ID 非正、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_index_realtime(&self, plate_id: i64) -> Result<PlateIndexRealtime> {
+        anyhow::ensure!(plate_id > 0, "题材 ID 必须大于 0");
+        let plate_id = plate_id.to_string();
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/plate/index_realtime", self.base_url))
+            .query(&[
+                ("plate_id", plate_id.as_str()),
+                ("index_type", PLATE_INDEX_TYPE),
+                ("data_type", PLATE_INDEX_DATA_TYPE),
+            ])
+            .send()
+            .await
+            .context("题材指数分时请求失败")?
+            .json()
+            .await
+            .context("题材指数分时响应不是合法 JSON")?;
+        parse_plate_index_realtime(&resp)
+    }
+
+    /// 获取题材详情、产业链与成分股。
+    ///
+    /// 该接口单次响应可能达到数百 KB；调用方应缓存结果。
+    ///
+    /// # Errors
+    /// 题材 ID 非正、请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    pub async fn fetch_plate_detail(&self, plate_id: i64) -> Result<PlateDetail> {
+        anyhow::ensure!(plate_id > 0, "题材 ID 必须大于 0");
+        let plate_id = plate_id.to_string();
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/plate/plate_set", self.base_url))
+            .query(&[("id", plate_id.as_str())])
+            .send()
+            .await
+            .context("题材详情请求失败")?
+            .json()
+            .await
+            .context("题材详情响应不是合法 JSON")?;
+        parse_plate_detail(&resp)
+    }
+
     /// Fetch plate abnormal events.
     ///
     /// # Errors
@@ -916,7 +1784,8 @@ impl XuanguBaoClient {
     ) -> Result<KlineData> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            "{}/market/kline?fields={}&prod_code={symbol}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            self.market_base_url,
             ApiField::join(&[
                 ApiField::TickAt,
                 ApiField::OpenPx,
@@ -1000,7 +1869,8 @@ impl XuanguBaoClient {
             .map(std::string::String::as_str)
             .collect();
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            "{}/market/kline?fields={}&prod_code={}&period_type={period_sec}&tick_count={count}&adjust_price_type=forward",
+            self.market_base_url,
             ApiField::join(&[
                 ApiField::TickAt,
                 ApiField::OpenPx,
@@ -1072,6 +1942,133 @@ impl XuanguBaoClient {
         Ok(result)
     }
 
+    /// 批量获取股票指标（连板数、最新涨停时间、市值、换手率等）。
+    ///
+    /// # Errors
+    /// 标的列表为空、证券代码非法、请求失败或响应字段不符合约定时返回错误。
+    pub async fn fetch_stock_data(
+        &self,
+        symbols: &[&str],
+    ) -> Result<ahash::AHashMap<String, StockMetrics>> {
+        anyhow::ensure!(!symbols.is_empty(), "至少需要一个证券代码");
+        let normalized = symbols
+            .iter()
+            .map(|symbol| to_yahoo_symbol(symbol))
+            .collect::<Result<Vec<_>>>()?;
+        let mut result = ahash::AHashMap::with_capacity(normalized.len());
+        for chunk in normalized.chunks(STOCK_DATA_BATCH_SIZE) {
+            let mut partial = self.fetch_stock_data_chunk(chunk).await?;
+            result.extend(partial.drain());
+        }
+        Ok(result)
+    }
+
+    async fn fetch_stock_data_chunk(
+        &self,
+        symbols: &[String],
+    ) -> Result<ahash::AHashMap<String, StockMetrics>> {
+        let symbols = symbols.join(",");
+        let fields = "symbol,stock_chi_name,change_percent,price,turnover_ratio,non_restricted_capital,total_capital,per,limit_up_days,last_limit_up,limit_status,nearly_new_acc_pcp";
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/stock/data", self.base_url))
+            .query(&[
+                ("symbols", symbols.as_str()),
+                ("fields", fields),
+                ("strict", "true"),
+            ])
+            .send()
+            .await
+            .context("股票指标请求失败")?
+            .json()
+            .await
+            .context("股票指标响应不是合法 JSON")?;
+        parse_stock_data(&resp)
+    }
+
+    /// 批量获取股票标签。
+    ///
+    /// # Errors
+    /// 标的列表为空、证券代码非法、请求失败或响应字段不符合约定时返回错误。
+    pub async fn fetch_stock_labels(
+        &self,
+        symbols: &[&str],
+    ) -> Result<ahash::AHashMap<String, Vec<StockLabel>>> {
+        anyhow::ensure!(!symbols.is_empty(), "至少需要一个证券代码");
+        let normalized = symbols
+            .iter()
+            .map(|symbol| to_yahoo_symbol(symbol))
+            .collect::<Result<Vec<_>>>()?;
+        let mut result = ahash::AHashMap::with_capacity(normalized.len());
+        for chunk in normalized.chunks(STOCK_LABEL_BATCH_SIZE) {
+            let symbols = chunk.join(",");
+            let resp: serde_json::Value = self
+                .client
+                .get(format!("{}/stock_label/labels", self.base_url))
+                .query(&[("symbols", symbols.as_str())])
+                .send()
+                .await
+                .context("股票标签请求失败")?
+                .json()
+                .await
+                .context("股票标签响应不是合法 JSON")?;
+            let mut partial = parse_stock_labels(&resp)?;
+            result.extend(partial.drain());
+        }
+        Ok(result)
+    }
+
+    /// 批量获取证券最近若干交易日的资金流。
+    ///
+    /// 返回映射的键是规范化后的证券代码；每行中间指标保存在
+    /// [`FundFlowRow::metrics`]，不依赖未公开的列语义。超过 200 个标的时按
+    /// 前端同样的批次大小串行请求，任一批失败则整体返回错误。
+    ///
+    /// # Errors
+    /// 标的列表为空、`day_count` 为 0、证券代码非法、请求失败或响应字段
+    /// 不符合约定时返回错误。
+    pub async fn fetch_fund_flow_batch(
+        &self,
+        symbols: &[&str],
+        day_count: usize,
+    ) -> Result<ahash::AHashMap<String, Vec<FundFlowRow>>> {
+        anyhow::ensure!(!symbols.is_empty(), "至少需要一个证券代码");
+        anyhow::ensure!(day_count > 0, "资金流交易日数量必须大于 0");
+        let normalized = symbols
+            .iter()
+            .map(|symbol| to_yahoo_symbol(symbol))
+            .collect::<Result<Vec<_>>>()?;
+        let mut result = ahash::AHashMap::with_capacity(normalized.len());
+        for chunk in normalized.chunks(FUND_FLOW_BATCH_SIZE) {
+            let mut partial = self.fetch_fund_flow_chunk(chunk, day_count).await?;
+            result.extend(partial.drain());
+        }
+        Ok(result)
+    }
+
+    async fn fetch_fund_flow_chunk(
+        &self,
+        symbols: &[String],
+        day_count: usize,
+    ) -> Result<ahash::AHashMap<String, Vec<FundFlowRow>>> {
+        let prod_codes = symbols.join(",");
+        let day_count = day_count.to_string();
+        let resp: serde_json::Value = self
+            .client
+            .get(format!("{}/market/fundflow/batch", self.market_base_url))
+            .query(&[
+                ("prod_codes", prod_codes.as_str()),
+                ("day_count", day_count.as_str()),
+            ])
+            .send()
+            .await
+            .context("资金流请求失败")?
+            .json()
+            .await
+            .context("资金流响应不是合法 JSON")?;
+        parse_fund_flow_batch(&resp)
+    }
+
     /// Fetch real-time quote for a single symbol.
     ///
     /// # Errors
@@ -1079,7 +2076,8 @@ impl XuanguBaoClient {
     pub async fn fetch_realtime(&self, symbol: &str) -> Result<RealtimeQuote> {
         let symbol = to_yahoo_symbol(symbol)?;
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
+            "{}/market/real?fields={}&prod_code={}",
+            self.market_base_url,
             ApiField::join(&[
                 ApiField::ProdName,
                 ApiField::TradeStatus,
@@ -1198,7 +2196,8 @@ impl XuanguBaoClient {
             .map(std::string::String::as_str)
             .collect();
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/real?fields={}&prod_code={}",
+            "{}/market/real?fields={}&prod_code={}",
+            self.market_base_url,
             ApiField::join(&[
                 ApiField::ProdName,
                 ApiField::TradeStatus,
@@ -1724,7 +2723,8 @@ pub async fn fetch_index_trends(client: &XuanguBaoClient) -> Result<IndexTrendDa
 impl XuanguBaoClient {
     async fn fetch_index_trend(&self, prod_code: &str) -> Result<Vec<IndexTick>> {
         let url = format!(
-            "https://api-ddc-wscn.xuangubao.com.cn/market/trend?fields={}&prod_code={prod_code}",
+            "{}/market/trend?fields={}&prod_code={prod_code}",
+            self.market_base_url,
             ApiField::join(&[ApiField::TickAt, ApiField::ClosePx])
         );
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
@@ -1837,6 +2837,53 @@ pub struct NewsItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fmt::Display,
+        io::{Read, Write},
+        net::TcpListener,
+        thread::{self, JoinHandle},
+    };
+
+    fn ok_or_panic<T, E: Display>(result: std::result::Result<T, E>, context: &str) -> T {
+        result.unwrap_or_else(|error| panic!("{context}: {error}"))
+    }
+
+    fn error_or_panic<T, E>(result: std::result::Result<T, E>, context: &str) -> E {
+        match result {
+            Ok(_) => panic!("{context}: expected an error"),
+            Err(error) => error,
+        }
+    }
+
+    fn serve_json(body: serde_json::Value) -> (String, JoinHandle<String>) {
+        let listener = ok_or_panic(TcpListener::bind("127.0.0.1:0"), "bind test server");
+        let address = ok_or_panic(listener.local_addr(), "test server address");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = ok_or_panic(listener.accept(), "accept test request");
+            ok_or_panic(
+                stream.set_read_timeout(Some(Duration::from_secs(2))),
+                "set read timeout",
+            );
+            let mut request = [0_u8; 16 * 1024];
+            let read = ok_or_panic(stream.read(&mut request), "read test request");
+            let request = String::from_utf8_lossy(&request[..read]).to_string();
+            let body = body.to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            ok_or_panic(stream.write_all(response.as_bytes()), "write test response");
+            request
+        });
+        (format!("http://{address}"), handle)
+    }
+
+    fn fund_flow_row(symbol: &str, date: &str, timestamp: i64) -> Vec<serde_json::Value> {
+        let mut row = vec![serde_json::json!(symbol), serde_json::json!(date)];
+        row.extend((0..17).map(|index| serde_json::json!(index as f64 + 0.5)));
+        row.push(serde_json::json!(timestamp));
+        row
+    }
 
     #[test]
     fn parses_market_trend_ohlcv_fields() {
@@ -1962,5 +3009,416 @@ mod tests {
             "data": { "fields": [], "candle": {} }
         });
         assert!(parse_market_trend("600519.SS", &response).is_err());
+    }
+
+    #[test]
+    fn flash_api_uses_documented_host() {
+        assert_eq!(
+            BASE_URL, "https://flash-api.xuangubao.com.cn/api",
+            "短域名 flash-api.xuangubao.cn 对 plate/incdec 返回空 data，不能作为统一 base URL"
+        );
+    }
+
+    #[tokio::test]
+    async fn fund_flow_batch_round_trips_documented_compact_rows() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "message": "OK",
+            "data": {
+                "000008.SZ": {
+                    "fund_flow": [
+                        fund_flow_row("000008.SZ", "2026-10-27", 1_793_059_200_i64),
+                        fund_flow_row("000008.SZ", "2026-10-26", 1_792_972_800_i64)
+                    ]
+                },
+                "600000.SS": {
+                    "fund_flow": [
+                        fund_flow_row("600000.SS", "2026-10-27", 1_793_059_200_i64)
+                    ]
+                }
+            }
+        });
+        let (base_url, server) = serve_json(response);
+        let client = XuanguBaoClient::with_urls(format!("{base_url}/api"), base_url);
+
+        let flows = ok_or_panic(
+            client
+                .fetch_fund_flow_batch(&["000008.SZ", "600000.SS"], 5)
+                .await,
+            "fund flow should parse",
+        );
+        let request = server
+            .join()
+            .unwrap_or_else(|_| panic!("test server should finish"));
+
+        assert!(request.starts_with("GET /market/fundflow/batch?"));
+        assert!(request.contains("prod_codes=000008.SZ%2C600000.SS"));
+        assert!(request.contains("day_count=5"));
+        assert_eq!(flows["000008.SZ"].len(), 2);
+        assert_eq!(flows["000008.SZ"][0].trade_date, "2026-10-27");
+        assert_eq!(flows["000008.SZ"][0].metrics.len(), 17);
+        assert_eq!(flows["000008.SZ"][0].metrics[0], 0.5);
+        assert_eq!(flows["000008.SZ"][0].timestamp, 1_793_059_200);
+    }
+
+    #[test]
+    fn fund_flow_rejects_malformed_compact_rows() {
+        let short_row = serde_json::json!({
+            "code": 20000,
+            "data": {
+                "000008.SZ": {
+                    "fund_flow": [["000008.SZ", "2026-10-27", 1.0]]
+                }
+            }
+        });
+        let short_error =
+            error_or_panic(parse_fund_flow_batch(&short_row), "short row should fail");
+        assert!(short_error.to_string().contains("行列数异常"));
+
+        let mut row = fund_flow_row("000008.SZ", "2026-10-27", 1_793_059_200);
+        row[6] = serde_json::json!("not-a-number");
+        let invalid_metric = serde_json::json!({
+            "code": 20000,
+            "data": { "000008.SZ": { "fund_flow": [row] } }
+        });
+        assert!(parse_fund_flow_batch(&invalid_metric).is_err());
+    }
+
+    #[test]
+    fn parses_stock_data_limit_up_fields() {
+        let data = ok_or_panic(
+            parse_stock_data(&serde_json::json!({
+                "code": 20000,
+                "data": {
+                    "300539.SZ": {
+                        "symbol": "300539.SZ",
+                        "stock_chi_name": "横河精密",
+                        "change_percent": 0.2,
+                        "price": 19.68,
+                        "turnover_ratio": 0.1144,
+                        "non_restricted_capital": 4299386024.16,
+                        "total_capital": 5287566548.16,
+                        "per": 110.9983,
+                        "limit_up_days": 1,
+                        "last_limit_up": 1793066691_i64,
+                        "limit_status": 1,
+                        "nearly_new_acc_pcp": 0
+                    }
+                }
+            })),
+            "stock data should parse",
+        );
+
+        let metrics = &data["300539.SZ"];
+        assert_eq!(metrics.stock_chi_name, "横河精密");
+        assert_eq!(metrics.limit_up_days, 1);
+        assert_eq!(metrics.last_limit_up, 1_793_066_691);
+        assert_eq!(metrics.limit_status, 1);
+    }
+
+    #[test]
+    fn parses_stock_labels_by_symbol() {
+        let labels = ok_or_panic(
+            parse_stock_labels(&serde_json::json!({
+                "code": 20000,
+                "data": {
+                    "000333.SZ": [{
+                        "code": "000333.SZ",
+                        "symbol": "美的集团",
+                        "label_name": "白马",
+                        "label_type": "bai_ma",
+                        "description": "业绩稳定且优良的行业龙头公司。",
+                        "effect": 1
+                    }],
+                    "000048.SZ": null
+                }
+            })),
+            "stock labels should parse",
+        );
+
+        assert_eq!(labels["000333.SZ"][0].label_name, "白马");
+        assert_eq!(labels["000333.SZ"][0].symbol, "美的集团");
+        assert_eq!(labels["000333.SZ"][0].effect, 1);
+        assert!(labels["000048.SZ"].is_empty());
+    }
+
+    #[tokio::test]
+    async fn fund_flow_rejects_empty_request_before_network() {
+        let client = XuanguBaoClient::new();
+        assert!(client.fetch_fund_flow_batch(&[], 5).await.is_err());
+        assert!(client
+            .fetch_fund_flow_batch(&["000008.SZ"], 0)
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn parses_plate_detail_fund_flow_and_constituents() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "data": {
+                "id": 26346142_i64,
+                "name": "机器人",
+                "desc": "产业链",
+                "avg_pcp": 0.0123,
+                "core_avg_pcp": 0.0178,
+                "fund_flow": 1206444563.59,
+                "rise_count": 360,
+                "fall_count": 180,
+                "stay_count": 30,
+                "core_stocks_count": 541,
+                "stocks": [{
+                    "symbol": "603370.SS",
+                    "core_flag": 100,
+                    "desc": "核心零部件",
+                    "need_pay": false
+                }],
+                "industrial_chains": [{
+                    "id": 9488,
+                    "name": "终端应用",
+                    "order": 3,
+                    "stocks": ["000034.SZ"],
+                    "stock_premium_infos": [{
+                        "symbol": "000034.SZ",
+                        "core_flag": 100,
+                        "desc": "机器人业务",
+                        "need_pay": false
+                    }]
+                }],
+                "allow_comment": true,
+                "create_name": "编辑",
+                "display_after_at": 0,
+                "hang_ye_long_tou_stocks_count": 3,
+                "has_north": 2,
+                "hide": false,
+                "is_fav": false,
+                "need_pay": false,
+                "premium_desc": "高级内容",
+                "question_answers": [{
+                    "question": "题材是什么？",
+                    "html_answer": "<p>机器人产业链</p>"
+                }],
+                "seo_desc": "机器人题材",
+                "seo_keywords": "机器人",
+                "seo_title": "机器人",
+                "sub_sets": [{"plate_id": 1, "plate_name": "子题材"}],
+                "subject_id": 9527,
+                "update_name": "编辑二",
+                "whether_display_plate_stock_portfolio": true
+            }
+        });
+
+        let detail = ok_or_panic(parse_plate_detail(&response), "plate detail should parse");
+        assert_eq!(detail.id, 26_346_142);
+        assert_eq!(detail.fund_flow, Some(1_206_444_563.59));
+        assert_eq!(detail.hang_ye_long_tou_stocks_count, 3);
+        assert_eq!(detail.has_north, 2);
+        assert_eq!(detail.question_answers[0].question, "题材是什么？");
+        assert_eq!(
+            detail.sub_sets.as_deref().map(|subsets| subsets.len()),
+            Some(1)
+        );
+        assert!(detail.whether_display_plate_stock_portfolio);
+        assert_eq!(detail.stocks[0].symbol, "603370.SS");
+        assert_eq!(detail.industrial_chains[0].stocks, vec!["000034.SZ"]);
+        assert_eq!(
+            detail.industrial_chains[0].stock_premium_infos[0].symbol,
+            "000034.SZ"
+        );
+    }
+
+    #[test]
+    fn plate_rankings_allow_missing_stock_mtm_and_empty_items() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "data": {
+                "items": [{
+                    "plate_id": 22114510_i64,
+                    "plate_name": "玻纤",
+                    "pcp": 0.0174,
+                    "stocks": [{"symbol": "600545.SS", "name": "卓郎智能"}]
+                }]
+            }
+        });
+        let items = ok_or_panic(parse_plate_incdec(&response), "ranking should parse");
+        assert_eq!(items[0].stocks[0].mtm, None);
+
+        let empty = ok_or_panic(
+            parse_plate_incdec(&serde_json::json!({
+                "code": 20000,
+                "data": { "items": [] }
+            })),
+            "empty ranking should parse",
+        );
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn parses_plate_rank_ids_and_type_codes() {
+        let ids = ok_or_panic(
+            parse_plate_rank_ids(&serde_json::json!({
+                "code": 20000,
+                "data": [49981185_i64, 16997081_i64]
+            })),
+            "plate rank should parse",
+        );
+        assert_eq!(ids, vec![49_981_185, 16_997_081]);
+        assert_eq!(PlateRankType::All.as_str(), "0");
+        assert_eq!(PlateRankType::Concept.as_str(), "1");
+        assert_eq!(PlateRankType::Industry.as_str(), "2");
+        assert_eq!(PlateRankType::Style.as_str(), "3");
+    }
+
+    #[test]
+    fn parses_plate_index_history_and_realtime() {
+        let history = ok_or_panic(
+            parse_plate_index_history(&serde_json::json!({
+                "code": 20000,
+                "data": [{
+                    "date_time": 1_793_059_200_i64,
+                    "open": 1407.06,
+                    "high": 1420.29,
+                    "low": 1396.92,
+                    "close": 1401.71
+                }]
+            })),
+            "plate history should parse",
+        );
+        assert_eq!(history[0].timestamp, 1_793_059_200);
+        assert_eq!(history[0].close, 1401.71);
+
+        let realtime = ok_or_panic(
+            parse_plate_index_realtime(&serde_json::json!({
+                "code": 20000,
+                "data": {
+                    "items": [{"time": 1_793_064_300_i64, "index": 1665.97806}],
+                    "prev_close_idx": 1662.3212
+                }
+            })),
+            "plate realtime should parse",
+        );
+        assert_eq!(realtime.prev_close, 1662.3212);
+        assert_eq!(realtime.items[0].timestamp, 1_793_064_300);
+    }
+
+    #[test]
+    fn parses_market_indicators_distribution_and_security_metadata() {
+        let indicators = ok_or_panic(
+            parse_market_indicators(&serde_json::json!({
+                "code": 20000,
+                "data": [{
+                    "timestamp": 1_793_064_300_i64,
+                    "rise_count": 934,
+                    "fall_count": 1356,
+                    "limit_up_count": 45,
+                    "limit_down_count": 4,
+                    "limit_up_broken_count": 7,
+                    "limit_up_broken_ratio": 0.13,
+                    "market_temperature": 56.2,
+                    "yesterday_limit_up_avg_pcp": 0.008
+                }]
+            })),
+            "indicators should parse",
+        );
+        assert_eq!(indicators[0].rise_count, Some(934));
+        assert_eq!(indicators[0].limit_up_broken_count, Some(7));
+
+        let distribution = ok_or_panic(
+            parse_market_pcp_distribution(&serde_json::json!({
+                "code": 20000,
+                "data": {
+                    "0": 160,
+                    "1": 934,
+                    "-1": 1356,
+                    "limit_up_count": 45,
+                    "limit_down_count": 4,
+                    "st_limit_up_count": 1,
+                    "st_limit_down_count": 1,
+                    "halt_count": 360,
+                    "total_count": 5576,
+                    "ts": 1_793_070_587_i64
+                }
+            })),
+            "distribution should parse",
+        );
+        assert_eq!(distribution.buckets.get(&1), Some(&934));
+        assert_eq!(distribution.buckets.get(&-1), Some(&1356));
+        assert_eq!(distribution.total_count, 5576);
+
+        let metadata = ok_or_panic(
+            parse_security_type_metadata(
+                "000001.SS",
+                &serde_json::json!({
+                    "code": 20000,
+                    "data": {
+                        "000001.SS": {
+                            "market_type": "SS",
+                            "securities_type": "index",
+                            "sub_type": ""
+                        }
+                    }
+                }),
+            ),
+            "security metadata should parse",
+        );
+        assert_eq!(metadata.securities_type, "index");
+    }
+
+    #[test]
+    fn parses_null_plate_leaders_and_reports_business_errors() {
+        let summaries = ok_or_panic(
+            parse_plate_summaries(&serde_json::json!({
+                "code": 20000,
+                "data": {
+                    "26346142": {
+                        "plate_id": 26346142_i64,
+                        "plate_name": "机器人",
+                        "core_avg_pcp": -0.004164,
+                    "fund_flow": 1206444563.59,
+                    "rise_count": 360,
+                    "fall_count": 180,
+                    "stay_count": 30,
+                    "limit_up_count": 8,
+                    "core_avg_pcp_rank": 12,
+                    "core_avg_pcp_rank_change": 3,
+                    "top_n_stocks": {
+                        "items": [{
+                            "symbol": "603370.SS",
+                            "stock_chi_name": "柯力传感",
+                            "change_percent": 0.02,
+                            "price_change": 1.2
+                        }]
+                    },
+                    "bottom_n_stocks": {"items": []},
+                        "jinrilongtou": null,
+                        "renqilongtou": ["301196.SZ"],
+                        "hangyelongtou": ["300124.SZ"]
+                    }
+                }
+            })),
+            "plate summaries should parse",
+        );
+        assert_eq!(summaries[0].today_leaders, None);
+        assert_eq!(summaries[0].fund_flow, Some(1_206_444_563.59));
+        assert_eq!(summaries[0].rise_count, 360);
+        assert_eq!(summaries[0].core_avg_pcp_rank, Some(12));
+        assert_eq!(
+            summaries[0].top_n_stocks.items[0].stock_chi_name,
+            "柯力传感"
+        );
+        assert_eq!(
+            summaries[0].popular_leaders.as_deref(),
+            Some(&["301196.SZ".to_string()][..])
+        );
+
+        let error = error_or_panic(
+            parse_plate_summaries(&serde_json::json!({
+                "code": 50000,
+                "message": "参数错误",
+                "data": {}
+            })),
+            "business error should fail",
+        );
+        assert!(error.to_string().contains("参数错误"));
     }
 }

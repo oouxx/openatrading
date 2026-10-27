@@ -60,6 +60,11 @@ export const platesByStockKeys = {
   bySymbol: (symbol: string) => ["plates-by-stock", symbol] as const,
 }
 
+export const plateRankingKeys = {
+  rankings: (rankType: number) => ["plate-rankings", rankType] as const,
+  detail: (plateId: number) => ["plate-ranking-detail", plateId] as const,
+}
+
 /**
  * 尾部带可选参数（limit / days）的 key，失效时必须用对应的 `*Scope(name)` 前缀，
  * 不能复用 `roleKeys.xxx(name)`：省略参数会留下一个 `undefined` 尾元素，

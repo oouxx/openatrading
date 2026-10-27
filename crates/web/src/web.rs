@@ -126,6 +126,56 @@ pub async fn get_plate_abnormal(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+fn json_error(status: StatusCode, message: String) -> (StatusCode, Json<serde_json::Value>) {
+    (status, Json(serde_json::json!({ "error": message })))
+}
+
+/// GET /api/plate-rankings
+#[derive(serde::Deserialize)]
+pub struct PlateRankingsQuery {
+    #[serde(default, rename = "type")]
+    rank_type: u8,
+}
+
+pub async fn get_plate_rankings(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PlateRankingsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rank_type = match query.rank_type {
+        0 => openatrading_core::api::xuangubao::PlateRankType::All,
+        1 => openatrading_core::api::xuangubao::PlateRankType::Concept,
+        2 => openatrading_core::api::xuangubao::PlateRankType::Industry,
+        3 => openatrading_core::api::xuangubao::PlateRankType::Style,
+        _ => {
+            return Err(json_error(
+                StatusCode::BAD_REQUEST,
+                "板块分类必须是 0、1、2 或 3".to_string(),
+            ));
+        }
+    };
+    crate::handlers::get_plate_rankings_data(&state, rank_type)
+        .await
+        .map(Json)
+        .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
+/// GET /api/plate-details/:plate_id
+pub async fn get_plate_detail(
+    State(state): State<Arc<AppState>>,
+    Path(plate_id): Path<i64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if plate_id <= 0 {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "板块 ID 必须大于 0".to_string(),
+        ));
+    }
+    crate::handlers::get_plate_detail_data(&state, plate_id)
+        .await
+        .map(Json)
+        .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
 /// GET /api/field-items?date=YYYY-MM-DD
 #[derive(serde::Deserialize)]
 pub struct FieldItemsQuery {

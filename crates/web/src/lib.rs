@@ -70,6 +70,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/limit-up", get(web::get_limit_up))
         .route("/api/limit-down", get(web::get_limit_down))
         .route("/api/plate-abnormal", get(web::get_plate_abnormal))
+        .route("/api/plate-rankings", get(web::get_plate_rankings))
+        .route("/api/plate-details/:plate_id", get(web::get_plate_detail))
         .route("/api/field-items", get(web::get_field_items))
         .route("/api/timeline", get(web::get_timeline))
         .route("/api/kline/stream", get(web::get_kline_stream))

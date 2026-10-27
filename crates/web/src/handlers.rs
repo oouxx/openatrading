@@ -7,9 +7,229 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use openatrading_core::api::xuangubao::{
+    PlateLeaderStocks, PlateRankType, RealtimeQuote, StockLabel, StockMetrics,
+};
+use serde::Serialize;
 
 use crate::cache::{self, CachePolicy};
 use crate::AppState;
+
+const PLATE_RANKING_LIMIT: usize = 10;
+const PLATE_DETAIL_QUOTE_BATCH_SIZE: usize = 200;
+const PLATE_DETAIL_STOCK_DATA_BATCH_SIZE: usize = 200;
+const PLATE_DETAIL_STOCK_LABEL_BATCH_SIZE: usize = 200;
+
+#[derive(Debug, Serialize)]
+struct PlateRankingsResponse {
+    generated_at: i64,
+    gainers: Vec<PlateRankItem>,
+    losers: Vec<PlateRankItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PlateRankItem {
+    plate_id: i64,
+    plate_name: String,
+    pcp: f64,
+    fund_flow: Option<f64>,
+    rise_count: u32,
+    fall_count: u32,
+    stay_count: u32,
+    limit_up_count: u32,
+    core_avg_pcp_rank: Option<i32>,
+    core_avg_pcp_rank_change: Option<i32>,
+    top_n_stocks: PlateLeaderStocks,
+    bottom_n_stocks: PlateLeaderStocks,
+}
+
+fn build_plate_rankings(
+    plates: Vec<PlateRankItem>,
+    limit: usize,
+    generated_at: i64,
+) -> PlateRankingsResponse {
+    let mut seen = std::collections::HashSet::with_capacity(plates.len());
+    let mut unique: Vec<PlateRankItem> = plates
+        .into_iter()
+        .filter(|plate| seen.insert(plate.plate_id))
+        .collect();
+    unique.sort_by(|left, right| {
+        right
+            .pcp
+            .total_cmp(&left.pcp)
+            .then_with(|| left.plate_id.cmp(&right.plate_id))
+    });
+
+    let gainers = unique
+        .iter()
+        .filter(|plate| plate.pcp > 0.0)
+        .take(limit)
+        .cloned()
+        .collect();
+    let mut losers: Vec<PlateRankItem> = unique
+        .iter()
+        .filter(|plate| plate.pcp < 0.0)
+        .cloned()
+        .collect();
+    losers.sort_by(|left, right| {
+        left.pcp
+            .total_cmp(&right.pcp)
+            .then_with(|| left.plate_id.cmp(&right.plate_id))
+    });
+    losers.truncate(limit);
+
+    PlateRankingsResponse {
+        generated_at,
+        gainers,
+        losers,
+    }
+}
+
+fn ensure_positive_plate_id(plate_id: i64) -> Result<(), String> {
+    if plate_id <= 0 {
+        return Err("板块 ID 必须大于 0".to_string());
+    }
+    Ok(())
+}
+
+fn merge_realtime_quote(
+    stock: &mut serde_json::Value,
+    quote: &RealtimeQuote,
+) -> Result<(), String> {
+    let serde_json::Value::Object(fields) =
+        serde_json::to_value(quote).map_err(|error| format!("成分股行情序列化失败: {error}"))?
+    else {
+        return Err("成分股行情不是对象".to_string());
+    };
+    let stock = stock
+        .as_object_mut()
+        .ok_or_else(|| "成分股数据不是对象".to_string())?;
+    stock.extend(fields);
+    Ok(())
+}
+
+fn merge_limit_up_fields(
+    stock: &mut serde_json::Value,
+    metrics: &StockMetrics,
+) -> Result<(), String> {
+    let stock = stock
+        .as_object_mut()
+        .ok_or_else(|| "成分股数据不是对象".to_string())?;
+    stock.insert(
+        "limit_up_days".to_string(),
+        serde_json::json!(metrics.limit_up_days),
+    );
+    stock.insert(
+        "last_limit_up".to_string(),
+        serde_json::json!(metrics.last_limit_up),
+    );
+    stock.insert(
+        "limit_status".to_string(),
+        serde_json::json!(metrics.limit_status),
+    );
+    stock.insert(
+        "nearly_new_acc_pcp".to_string(),
+        serde_json::json!(metrics.nearly_new_acc_pcp),
+    );
+    Ok(())
+}
+
+fn merge_stock_labels(stock: &mut serde_json::Value, labels: &[StockLabel]) -> Result<(), String> {
+    let stock = stock
+        .as_object_mut()
+        .ok_or_else(|| "成分股数据不是对象".to_string())?;
+    stock.insert(
+        "labels".to_string(),
+        serde_json::to_value(labels).map_err(|error| format!("股票标签序列化失败: {error}"))?,
+    );
+    Ok(())
+}
+
+async fn enrich_plate_detail_with_quotes(
+    state: &Arc<AppState>,
+    detail: openatrading_core::api::xuangubao::PlateDetail,
+) -> Result<serde_json::Value, String> {
+    let symbols: Vec<String> = detail
+        .stocks
+        .iter()
+        .map(|stock| stock.symbol.clone())
+        .collect();
+    let mut quotes = std::collections::HashMap::with_capacity(symbols.len());
+    for chunk in symbols.chunks(PLATE_DETAIL_QUOTE_BATCH_SIZE) {
+        let batch = state
+            .ctx
+            .api
+            .xuangubao
+            .fetch_realtime_batch(chunk)
+            .await
+            .map_err(|error| format!("成分股行情获取失败: {error}"))?;
+        quotes.extend(batch);
+    }
+    let mut stock_metrics = std::collections::HashMap::with_capacity(symbols.len());
+    for chunk in symbols.chunks(PLATE_DETAIL_STOCK_DATA_BATCH_SIZE) {
+        let symbol_refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
+        let batch = state
+            .ctx
+            .api
+            .xuangubao
+            .fetch_stock_data(&symbol_refs)
+            .await
+            .map_err(|error| format!("成分股涨停数据获取失败: {error}"))?;
+        stock_metrics.extend(batch);
+    }
+    let mut stock_labels = std::collections::HashMap::with_capacity(symbols.len());
+    for chunk in symbols.chunks(PLATE_DETAIL_STOCK_LABEL_BATCH_SIZE) {
+        let symbol_refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
+        let batch = state
+            .ctx
+            .api
+            .xuangubao
+            .fetch_stock_labels(&symbol_refs)
+            .await
+            .map_err(|error| format!("成分股标签获取失败: {error}"))?;
+        stock_labels.extend(batch);
+    }
+    let chain_names: std::collections::HashMap<i64, String> = detail
+        .industrial_chains
+        .iter()
+        .map(|chain| (chain.id, chain.name.clone()))
+        .collect();
+
+    let mut value =
+        serde_json::to_value(detail).map_err(|error| format!("板块详情序列化失败: {error}"))?;
+    if let Some(stocks) = value
+        .get_mut("stocks")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for stock in stocks {
+            let Some(symbol) = stock
+                .get("symbol")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            if let Some(quote) = quotes.get(&symbol) {
+                merge_realtime_quote(stock, quote)?;
+            }
+            if let Some(metrics) = stock_metrics.get(&symbol) {
+                merge_limit_up_fields(stock, metrics)?;
+            }
+            if let Some(labels) = stock_labels.get(&symbol) {
+                merge_stock_labels(stock, labels)?;
+            }
+            if let Some(chain_id) = stock
+                .get("industrial_chain_id")
+                .and_then(serde_json::Value::as_i64)
+            {
+                if let Some(chain_name) = chain_names.get(&chain_id) {
+                    stock["industrial_chain_name"] = serde_json::Value::String(chain_name.clone());
+                }
+            }
+        }
+    }
+    Ok(value)
+}
 
 // ── Cache helper ──────────────────────────────────────────────────────────
 
@@ -359,6 +579,85 @@ pub async fn get_plate_abnormal_data(
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(data)
+        },
+    )
+    .await
+}
+
+/// GET /api/plate-rankings — 指定分类的当日涨幅/跌幅前 10 板块。
+pub async fn get_plate_rankings_data(
+    state: &Arc<AppState>,
+    rank_type: PlateRankType,
+) -> Result<serde_json::Value, String> {
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &format!("plate_rankings_{}", rank_type.as_str()),
+        CachePolicy::realtime(),
+        || async {
+            let plate_ids = state
+                .ctx
+                .api
+                .xuangubao
+                .fetch_plate_rank_ids(rank_type)
+                .await
+                .map_err(|e| format!("板块排行获取失败: {e}"))?;
+            let summaries = state
+                .ctx
+                .api
+                .xuangubao
+                .fetch_plate_summaries(&plate_ids)
+                .await
+                .map_err(|e| format!("板块排行详情获取失败: {e}"))?;
+            let plates = summaries
+                .into_iter()
+                .filter_map(|summary| {
+                    let pcp = summary.core_avg_pcp?;
+                    Some(PlateRankItem {
+                        plate_id: summary.plate_id,
+                        plate_name: summary.plate_name,
+                        pcp,
+                        fund_flow: summary.fund_flow,
+                        rise_count: summary.rise_count,
+                        fall_count: summary.fall_count,
+                        stay_count: summary.stay_count,
+                        limit_up_count: summary.limit_up_count,
+                        core_avg_pcp_rank: summary.core_avg_pcp_rank,
+                        core_avg_pcp_rank_change: summary.core_avg_pcp_rank_change,
+                        top_n_stocks: summary.top_n_stocks,
+                        bottom_n_stocks: summary.bottom_n_stocks,
+                    })
+                })
+                .collect();
+            let rankings = build_plate_rankings(
+                plates,
+                PLATE_RANKING_LIMIT,
+                openatrading_core::utils::time::beijing_now().timestamp(),
+            );
+            serde_json::to_value(rankings).map_err(|e| format!("板块排行序列化失败: {e}"))
+        },
+    )
+    .await
+}
+
+/// GET /api/plate-details/:plate_id — 板块详情与成分股。
+pub async fn get_plate_detail_data(
+    state: &Arc<AppState>,
+    plate_id: i64,
+) -> Result<serde_json::Value, String> {
+    ensure_positive_plate_id(plate_id)?;
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &format!("plate_detail_{plate_id}"),
+        CachePolicy::snapshot(),
+        || async {
+            let detail = state
+                .ctx
+                .api
+                .xuangubao
+                .fetch_plate_detail(plate_id)
+                .await
+                .map_err(|e| format!("板块详情获取失败: {e}"))?;
+            enrich_plate_detail_with_quotes(state, detail).await
         },
     )
     .await
@@ -1664,6 +1963,185 @@ pub fn delete_pi_agent_api_key_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plate_mover(plate_id: i64, pcp: f64) -> PlateRankItem {
+        PlateRankItem {
+            plate_id,
+            plate_name: format!("板块{plate_id}"),
+            pcp,
+            fund_flow: Some(1_000.0),
+            rise_count: 1,
+            fall_count: 2,
+            stay_count: 3,
+            limit_up_count: 4,
+            core_avg_pcp_rank: Some(5),
+            core_avg_pcp_rank_change: Some(1),
+            top_n_stocks: PlateLeaderStocks::default(),
+            bottom_n_stocks: PlateLeaderStocks::default(),
+        }
+    }
+
+    #[test]
+    fn plate_rankings_keep_top_gainers_and_losers_separate() {
+        let mut plates = Vec::new();
+        for index in 1_i32..=12 {
+            plates.push(plate_mover(i64::from(index), f64::from(index) / 100.0));
+            plates.push(plate_mover(
+                100 + i64::from(index),
+                -f64::from(index) / 100.0,
+            ));
+        }
+        plates.push(plate_mover(1, 0.99));
+        plates.push(plate_mover(999, 0.0));
+
+        let rankings = build_plate_rankings(plates, 10, 1_793_070_587);
+
+        assert_eq!(rankings.gainers.len(), 10);
+        assert_eq!(rankings.gainers[0].plate_id, 12);
+        assert_eq!(rankings.gainers[0].pcp, 0.12);
+        assert_eq!(rankings.gainers[0].fund_flow, Some(1_000.0));
+        assert_eq!(rankings.gainers[0].rise_count, 1);
+        assert_eq!(rankings.gainers[0].limit_up_count, 4);
+        assert_eq!(rankings.gainers[0].core_avg_pcp_rank, Some(5));
+        assert!(rankings.gainers.iter().all(|plate| plate.pcp > 0.0));
+        assert_eq!(rankings.losers.len(), 10);
+        assert_eq!(rankings.losers[0].plate_id, 112);
+        assert_eq!(rankings.losers[0].pcp, -0.12);
+        assert!(rankings.losers.iter().all(|plate| plate.pcp < 0.0));
+        assert_eq!(rankings.generated_at, 1_793_070_587);
+    }
+
+    #[test]
+    fn plate_rankings_return_only_available_directional_items() {
+        let rankings = build_plate_rankings(
+            vec![
+                plate_mover(2, 0.02),
+                plate_mover(1, 0.01),
+                plate_mover(3, -0.01),
+                plate_mover(4, 0.0),
+            ],
+            10,
+            10,
+        );
+
+        assert_eq!(rankings.gainers.len(), 2);
+        assert_eq!(
+            rankings
+                .gainers
+                .iter()
+                .map(|plate| plate.plate_id)
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+        assert_eq!(rankings.losers.len(), 1);
+        assert_eq!(rankings.losers[0].plate_id, 3);
+    }
+
+    #[test]
+    fn plate_id_must_be_positive() {
+        assert!(ensure_positive_plate_id(0).is_err());
+        assert!(ensure_positive_plate_id(-1).is_err());
+        assert!(ensure_positive_plate_id(1).is_ok());
+    }
+
+    #[test]
+    fn component_stock_merges_complete_realtime_quote_fields() {
+        let quote = RealtimeQuote {
+            symbol: "002080.SZ".to_string(),
+            name: "中材科技".to_string(),
+            last_px: 35.67,
+            px_change: -1.21,
+            px_change_rate: -3.2809,
+            open_px: 37.5,
+            high_px: 37.74,
+            low_px: 35.6,
+            preclose_px: 36.88,
+            amplitude: 5.8026,
+            turnover_ratio: 2.1868,
+            turnover_volume: 36_696_888.0,
+            turnover_value: 1_347_322_899.29,
+            market_value: 62_968_446_293.25,
+            circulation_value: 59_858_668_241.28,
+            pe_rate: 28.96,
+            dyn_pe: 24.728,
+            dyn_pb_rate: 2.0921,
+            volume_ratio: 0.8687,
+            circulation_shares: 1_678_123_584.0,
+            total_shares: 1_765_305_475.0,
+            trade_status: "TRADE".to_string(),
+            update_time: 1_793_084_052,
+        };
+        let mut stock = serde_json::json!({
+            "symbol": "002080.SZ",
+            "core_flag": 100,
+            "desc": "玻璃纤维"
+        });
+
+        merge_realtime_quote(&mut stock, &quote)
+            .unwrap_or_else(|error| panic!("quote should merge: {error}"));
+
+        assert_eq!(stock["name"], "中材科技");
+        assert_eq!(stock["last_px"], 35.67);
+        assert_eq!(stock["px_change_rate"], -3.2809);
+        assert_eq!(stock["open_px"], 37.5);
+        assert_eq!(stock["turnover_ratio"], 2.1868);
+        assert_eq!(stock["turnover_value"], 1_347_322_899.29);
+        assert_eq!(stock["market_value"], 62_968_446_293.25);
+        assert_eq!(stock["dyn_pe"], 24.728);
+        assert_eq!(stock["dyn_pb_rate"], 2.0921);
+        assert_eq!(stock["core_flag"], 100);
+        assert_eq!(stock["desc"], "玻璃纤维");
+    }
+
+    #[test]
+    fn component_stock_merges_limit_up_fields() {
+        let metrics = StockMetrics {
+            symbol: "300539.SZ".to_string(),
+            stock_chi_name: "横河精密".to_string(),
+            change_percent: 0.2,
+            price: 19.68,
+            turnover_ratio: 0.1144,
+            non_restricted_capital: 4_299_386_024.16,
+            total_capital: 5_287_566_548.16,
+            per: 110.9983,
+            limit_up_days: 2,
+            last_limit_up: 1_793_066_691,
+            limit_status: 1,
+            nearly_new_acc_pcp: 0.01,
+        };
+        let mut stock = serde_json::json!({"symbol": "300539.SZ"});
+
+        merge_limit_up_fields(&mut stock, &metrics)
+            .unwrap_or_else(|error| panic!("limit fields should merge: {error}"));
+
+        assert_eq!(stock["limit_up_days"], 2);
+        assert_eq!(stock["last_limit_up"], 1_793_066_691);
+        assert_eq!(stock["limit_status"], 1);
+        assert_eq!(stock["nearly_new_acc_pcp"], 0.01);
+    }
+
+    #[test]
+    fn component_stock_merges_labels() {
+        let labels = vec![StockLabel {
+            code: "000333.SZ".to_string(),
+            symbol: "美的集团".to_string(),
+            label_name: "白马".to_string(),
+            label_type: "bai_ma".to_string(),
+            description: "业绩稳定且优良的行业龙头公司。".to_string(),
+            effect: 1,
+        }];
+        let mut stock = serde_json::json!({"symbol": "000333.SZ"});
+
+        merge_stock_labels(&mut stock, &labels)
+            .unwrap_or_else(|error| panic!("labels should merge: {error}"));
+
+        assert_eq!(stock["labels"][0]["label_name"], "白马");
+        assert_eq!(stock["labels"][0]["effect"], 1);
+        assert_eq!(
+            stock["labels"][0]["description"],
+            "业绩稳定且优良的行业龙头公司。"
+        );
+    }
 
     fn item(code: &str, name: &str) -> serde_json::Value {
         serde_json::json!({ "code": code, "name": name, "added_at": "2026-01-01T00:00:00+00:00" })
