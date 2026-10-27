@@ -1,17 +1,19 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use pi_coding_agent::core::agent_session::AgentSession;
 use pi_coding_agent::core::agent_session_services::{
-    create_agent_session_from_services, create_agent_session_services, AgentSessionServices,
-    CreateAgentSessionFromServicesOptions, CreateAgentSessionServicesOptions,
+    create_agent_session_services, AgentSessionServices, CreateAgentSessionServicesOptions,
 };
 use pi_coding_agent::core::model_registry::ModelRegistry;
-use pi_coding_agent::core::sdk::SessionStartEvent;
+use pi_coding_agent::core::resource_loader::ResourceLoaderOptions;
+use pi_coding_agent::core::sdk::{CreateAgentSessionOptions, SessionStartEvent};
 use pi_coding_agent::core::session_manager::SessionManager;
 use pi_coding_agent::pi_ai_types::Model;
 use pi_extension_api::ToolDefinition;
 
 use super::extensions::ExtensionToggles;
+use crate::PROJECT_SKILLS_DIR;
 
 /// Options for [`create_factory`].
 ///
@@ -110,13 +112,25 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
             // Ensure API providers are registered before any LLM calls
             pi_coding_agent::pi_agent_core::pi_ai::providers::register_builtins::register_built_in_api_providers();
 
+            // Only configure the standard project directory here. pi-rs owns
+            // Skill discovery, parsing, prompt injection and `/skill:` expansion.
+            let resource_loader_options = ResourceLoaderOptions {
+                cwd: params.cwd.clone(),
+                agent_dir: Some(agent_dir.clone()),
+                include_defaults: true,
+                skill_paths: vec![Path::new(&params.cwd)
+                    .join(PROJECT_SKILLS_DIR)
+                    .to_string_lossy()
+                    .to_string()],
+                ..ResourceLoaderOptions::default()
+            };
             let services = create_agent_session_services(CreateAgentSessionServicesOptions {
                 cwd: params.cwd.clone(),
                 agent_dir: Some(agent_dir),
                 auth_storage: None,
                 settings_manager: None,
                 model_registry: Some(ModelRegistry::new(ModelRegistry::builtin_models_list())),
-                resource_loader_options: None,
+                resource_loader_options: Some(resource_loader_options.clone()),
             })
             .await;
 
@@ -150,20 +164,40 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
             // the active tool set, which keeps re-enabling possible at runtime.
             let ext_registry = openatrading_extension::create_registry();
 
-            let (session, services, _result) =
-                create_agent_session_from_services(CreateAgentSessionFromServicesOptions {
-                    services,
-                    session_manager: params.session_manager,
+            // pi-rs' service wrapper currently drops resource-loader options, so
+            // call its SDK entry point directly to preserve `.agents/skills`.
+            let (session, _result) =
+                pi_coding_agent::core::sdk::create_agent_session(CreateAgentSessionOptions {
+                    cwd: services.cwd.clone(),
+                    agent_dir: Some(services.agent_dir.clone()),
                     model: resolved_model,
                     thinking_level: None,
                     scoped_models: None,
-                    tools,
                     no_tools: None,
+                    tools,
                     exclude_tools: params.exclude_tools.clone(),
+                    custom_prompt: None,
+                    append_system_prompt: None,
+                    session_name: None,
+                    stream_fn: None,
+                    convert_to_llm: None,
                     custom_tools,
                     tools_options: None,
+                    extension_flags: None,
+                    extension_paths: Vec::new(),
+                    enable_extensions: false,
                     extension_registry: Some(ext_registry),
-                    fallback_message: None,
+                    cli_provider: None,
+                    cli_model: None,
+                    persist_session: false,
+                    session_file: None,
+                    fork_from: None,
+                    session_dir: None,
+                    auth_storage: None,
+                    model_registry: None,
+                    resource_loader: Some(resource_loader_options),
+                    session_manager: Some(params.session_manager),
+                    settings_manager: None,
                     session_start_event: params.session_start_event,
                     ui_context: None,
                 })

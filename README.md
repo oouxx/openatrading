@@ -4,11 +4,23 @@ A 股短线行情与舆情工作台。聚合选股宝、韭研公社、财联社
 
 ## Features
 
-- 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/板块异动/大盘异动/K 线/分时）、韭研公社（社区情绪/时间线/异动）、财联社电报、东财龙虎榜、新浪集合竞价
+- 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/大盘异动/K 线/分时）、韭研公社时间线、财联社电报、东财龙虎榜、新浪集合竞价
+- 项目 Skill：韭研板块异动与市场情报由 agent 按需获取，动态 token 和浏览器侧凭证不进入 Rust 运行链路
 - 模拟盘手动记账：在 Web 面板按角色记录买卖，你填成交价与股数，系统只记账不撮合、不计手续费，持仓按实时行情估值
 - 定时自动化：内置 cron 调度器，盘中采集数据、推送财联社 A/B 级电报
 - 多平台通知：Telegram / Discord / Slack / Lark 单向推送，双向对话仅 Telegram / Discord
 - MCP 双向：作为客户端连接外部数据源，也作为 server 对外暴露行情工具
+
+## Project Skills
+
+仓库内置两个按需执行的韭研公社 Skill：
+
+- `/skill:jiuyan-sector-movements`：盘中板块异动、题材轮动与资金主线
+- `/skill:jiuyan-market-intelligence`：社区文章、热点股票与讨论情绪
+
+Skill 的源文件放在 `.agents/skills`，可被 pi-rs 以及其他支持 Agent Skills 的工具直接读取。OpenATrading 只把标准路径交给 pi-rs，Skill 的发现、解析、系统提示注入和 `/skill:` 展开均由 pi-rs 完成。
+
+Skill 在运行时自行处理 `timestamp/token` 和 `SESSION`，Rust Gateway 不再提供这两个模块的数据接口。动态 token 通常约 10 分钟失效，执行 Skill 时应按需刷新。
 
 ## Architecture
 
@@ -184,6 +196,8 @@ bind    = "0.0.0.0:8082"
 | `OPENATRADING_HOME` | 自定义品牌根目录 |
 | `JIUYAN_PHONE` / `JIUYAN_PASSWORD` | 韭研公社登录 |
 | `JIUYAN_SECRET` | 韭研公社接口签名密钥（必填，代码内不内置） |
+| `JIUYAN_SESSION_TOKEN` | Skill 使用的韭研公社 `SESSION` token |
+| `JIUYAN_TIMESTAMP` / `JIUYAN_TOKEN` | Skill 使用的动态请求签名 |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram |
 | `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` | Discord |
 | `SLACK_BOT_TOKEN` / `SLACK_CHANNEL` | Slack |
@@ -218,7 +232,7 @@ bind    = "0.0.0.0:8082"
 | 数据源 | 内容 |
 |--------|------|
 | 选股宝 | 涨停 / 跌停 / 强势股、市场概览与涨跌分布、大盘/板块异动、板块涨跌榜与成分股、板块摘要/指数、实时行情、K 线、分时走势、个股所属板块、批量资金流 |
-| 韭研公社 | 异动、时间线、社区文章（需登录） |
+| 韭研公社 | Rust 提供时间线；板块异动和市场情报由 `.agents/skills` 中的项目 Skill 完成 |
 | 财联社 | 电报快讯（A/B 级自动推送） |
 | 东财龙虎榜 | 席位详情、个股席位、合并、活跃营业部、研报 |
 | 新浪 | 集合竞价快照 |
@@ -245,7 +259,7 @@ bind    = "0.0.0.0:8082"
 
 省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。鉴权写 `headers`（值支持 `${VAR}` 与 `!命令`），`enabled: false` 保留配置但不连接。配置在每次创建会话时读取，改动后新建会话即生效。
 
-**Server** — 把 22 个行情工具按 MCP 标准对外暴露，可被 Claude Desktop / Cursor 等 MCP 客户端消费：
+**Server** — 把 29 个行情工具按 MCP 标准对外暴露，可被 Claude Desktop / Cursor 等 MCP 客户端消费：
 
 ```bash
 openatrading mcp serve --transport stdio                     # 本地客户端

@@ -7,10 +7,8 @@ import {
   Clock,
   Gauge,
   Layers,
-  LayoutGrid,
   ListOrdered,
   Maximize2,
-  Radar,
   Rss,
   TrendingUp,
   Trophy,
@@ -30,22 +28,18 @@ const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
 const ReplayView = lazy(() => import("@/components/ReplayView"))
 const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
 const PromotionView = lazy(() => import("@/components/PromotionView"))
-const PlateTab = lazy(() => import("@/components/PlateTab"))
 const PlateRankingTab = lazy(() => import("@/components/PlateRankingTab"))
 const TimelineTab = lazy(() => import("@/components/TimelineTab"))
 const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
-const MarketIntelTab = lazy(() => import("@/components/MarketIntelTab"))
 const NewsFeed = lazy(() => import("@/components/NewsFeed"))
 
 const TABS: { id: RightPanelView; label: string; icon: typeof TrendingUp }[] = [
   { id: "strong-stocks", label: "强势股", icon: TrendingUp },
   { id: "promotion", label: "晋级分析", icon: Layers },
-  { id: "plate", label: "板块异动", icon: LayoutGrid },
   { id: "plate-ranking", label: "板块排行", icon: ListOrdered },
   { id: "dragon-tiger", label: "龙虎榜", icon: Trophy },
   { id: "timeline", label: "时间线", icon: Clock },
   { id: "sentiment-chip", label: "情绪筹码", icon: Gauge },
-  { id: "market-intel", label: "市场情报", icon: Radar },
   { id: "news", label: "资讯", icon: Rss },
   { id: "replay", label: "行情回放", icon: CirclePlay },
 ]
@@ -83,16 +77,12 @@ function ViewRenderer({ view }: { view: RightPanelView }) {
       return <StrongStocksTab />
     case "promotion":
       return <PromotionView />
-    case "plate":
-      return <PlateTab />
     case "plate-ranking":
       return <PlateRankingTab />
     case "timeline":
       return <TimelineTab />
     case "sentiment-chip":
       return <SentimentChipTab />
-    case "market-intel":
-      return <MarketIntelTab />
     case "news":
       return <NewsFeed />
   }

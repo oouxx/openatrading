@@ -71,7 +71,7 @@ const FEATURES: Feature[] = [
   {
     icon: Flame,
     title: "涨停与异动",
-    desc: "昨今对比连板晋级，板块异动时间轴，涨速 / 涨幅实时排名。",
+    desc: "昨今对比连板晋级，板块涨跌榜、成分股与资金流实时排名。",
   },
   {
     icon: History,

@@ -5,11 +5,9 @@ export type RightPanelView =
   | "replay"
   | "strong-stocks"
   | "promotion"
-  | "plate"
   | "plate-ranking"
   | "timeline"
   | "sentiment-chip"
-  | "market-intel"
   | "news"
 
 const ACTIVE_VIEW_KEY = "right-panel-active-view"
@@ -20,11 +18,9 @@ const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
   "replay",
   "strong-stocks",
   "promotion",
-  "plate",
   "plate-ranking",
   "timeline",
   "sentiment-chip",
-  "market-intel",
   "news",
 ])
 

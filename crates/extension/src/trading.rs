@@ -10,6 +10,7 @@
 //! matches a registered tool to `handle_tool_call`. The first extension that
 //! returns `Some(ToolCallOutput)` wins, so each tool name below is unique.
 
+use anyhow::Context;
 use async_trait::async_trait;
 use pi_extension_api::{
     ExtensionContext, HookHandler, ToolCallOutput, ToolDefinition, ToolRegistry,
@@ -18,14 +19,13 @@ use serde_json::{json, Value};
 
 use openatrading_api::cls::ClsClient;
 use openatrading_api::eastmoney::{LhbClient, ReportCategory};
-use openatrading_api::jiuyangongshe::{CommunityQuery, JiuYanSession};
 use openatrading_api::sina::SinaQuoteClient;
-use openatrading_api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_api::xuangubao::{KlinePeriod, PlateRankType, XuanguBaoClient};
 
 /// Market data extension providing A-share market-data tools.
 ///
 /// 交易不在 agent 侧：模拟盘改为用户在 Web/桌面端手动记录
-/// （见 `openatrading_core::trade`），因此本扩展无状态，只提供行情/舆情工具。
+/// （见 `openatrading_core::trade`），因此本扩展无状态，只提供行情/资讯工具。
 pub struct MarketDataExtension;
 
 impl MarketDataExtension {
@@ -47,10 +47,17 @@ impl MarketDataExtension {
             plates_by_stock_tool(),
             market_trend_tool(),
             plate_abnormal_tool(),
+            plate_rankings_tool(),
+            plate_detail_tool(),
             kline_tool(),
+            market_indicators_tool(),
+            market_pcp_distribution_tool(),
+            fund_flow_tool(),
+            stock_data_tool(),
+            stock_labels_tool(),
+            security_type_tool(),
             telegraph_tool(),
             telegraph_allday_tool(),
-            community_tool(),
             all_day_events_tool(),
             auction_quotes_tool(),
             lhb_detail_tool(),
@@ -109,6 +116,32 @@ impl MarketDataExtension {
                 })
                 .await
             }
+            "get_plate_rankings" => {
+                let rank_type = parse_rank_type(&str_arg(&params, "type"));
+                let limit = parse_usize_arg(&params, "limit", 10, 50);
+                match (rank_type, limit) {
+                    (Ok(rank_type), Ok(limit)) => {
+                        call(|| async move {
+                            XuanguBaoClient::new()
+                                .fetch_plate_rankings(rank_type, limit)
+                                .await
+                        })
+                        .await
+                    }
+                    (Err(error), _) | (_, Err(error)) => Err(error),
+                }
+            }
+            "get_plate_detail" => {
+                let plate_id = parse_i64_arg(&params, "plate_id");
+                match plate_id {
+                    Ok(plate_id) if plate_id > 0 => call(|| async move {
+                        XuanguBaoClient::new().fetch_plate_detail(plate_id).await
+                    })
+                    .await,
+                    Ok(_) => Err("plate_id 必须大于 0".to_string()),
+                    Err(error) => Err(error),
+                }
+            }
             "get_kline" => {
                 let symbol = str_arg(&params, "symbol");
                 let period = match str_arg(&params, "period").as_str() {
@@ -129,6 +162,72 @@ impl MarketDataExtension {
                 })
                 .await
             }
+            "get_market_indicators" => {
+                call(|| async { XuanguBaoClient::new().fetch_market_indicator_line().await }).await
+            }
+            "get_market_pcp_distribution" => {
+                call(|| async { XuanguBaoClient::new().fetch_market_pcp_distribution().await })
+                    .await
+            }
+            "get_fund_flow" => {
+                let codes = parse_codes_arg(&params, "codes");
+                let day_count = parse_usize_arg(&params, "day_count", 5, 30);
+                match (codes, day_count) {
+                    (Ok(codes), Ok(day_count)) => {
+                        call(|| async move {
+                            let refs = codes.iter().map(String::as_str).collect::<Vec<_>>();
+                            let data = XuanguBaoClient::new()
+                                .fetch_fund_flow_batch(&refs, day_count)
+                                .await?;
+                            Ok::<_, anyhow::Error>(
+                                data.into_iter()
+                                    .collect::<std::collections::BTreeMap<_, _>>(),
+                            )
+                        })
+                        .await
+                    }
+                    (Err(error), _) | (_, Err(error)) => Err(error),
+                }
+            }
+            "get_stock_data" => {
+                let codes = parse_codes_arg(&params, "codes");
+                match codes {
+                    Ok(codes) => {
+                        call(|| async move {
+                            let refs = codes.iter().map(String::as_str).collect::<Vec<_>>();
+                            let data = XuanguBaoClient::new().fetch_stock_data(&refs).await?;
+                            Ok::<_, anyhow::Error>(
+                                data.into_iter()
+                                    .collect::<std::collections::BTreeMap<_, _>>(),
+                            )
+                        })
+                        .await
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            "get_stock_labels" => {
+                let codes = parse_codes_arg(&params, "codes");
+                match codes {
+                    Ok(codes) => {
+                        call(|| async move {
+                            let refs = codes.iter().map(String::as_str).collect::<Vec<_>>();
+                            let data = XuanguBaoClient::new().fetch_stock_labels(&refs).await?;
+                            Ok::<_, anyhow::Error>(
+                                data.into_iter()
+                                    .collect::<std::collections::BTreeMap<_, _>>(),
+                            )
+                        })
+                        .await
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            "get_security_type" => {
+                let symbol = str_arg(&params, "symbol");
+                call(|| async move { XuanguBaoClient::new().fetch_security_type(&symbol).await })
+                    .await
+            }
             "get_telegraph" => {
                 let category = str_arg(&params, "category");
                 let cat = if category.is_empty() {
@@ -140,32 +239,6 @@ impl MarketDataExtension {
             }
             "get_telegraph_allday" => {
                 call(|| async { ClsClient::new().fetch_telegraph("", None, 100).await }).await
-            }
-            "get_community" => {
-                let category_id = str_arg(&params, "category_id");
-                let article_type = params
-                    .get("article_type")
-                    .and_then(serde_json::Value::as_i64)
-                    .and_then(|v| i32::try_from(v).ok())
-                    .unwrap_or(0);
-                let page = params
-                    .get("page")
-                    .and_then(serde_json::Value::as_i64)
-                    .and_then(|v| i32::try_from(v).ok())
-                    .unwrap_or(1);
-                let page_size = params
-                    .get("page_size")
-                    .and_then(serde_json::Value::as_i64)
-                    .and_then(|v| i32::try_from(v).ok())
-                    .unwrap_or(20)
-                    .min(50);
-                let query = CommunityQuery {
-                    category_id,
-                    article_type,
-                    page,
-                    page_size,
-                };
-                call(|| async move { JiuYanSession::new().fetch_community(query).await }).await
             }
             "get_all_day_events" => {
                 call(|| async { XuanguBaoClient::new().fetch_all_day_events(0.03).await }).await
@@ -445,6 +518,116 @@ fn plate_abnormal_tool() -> ToolDefinition {
     }
 }
 
+fn plate_rankings_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_plate_rankings".into(),
+        label: Some("板块涨跌榜".into()),
+        description: "获取板块涨幅榜和跌幅榜，返回资金流、上涨/下跌/平盘家数、涨停数、核心涨幅排名及变化、领涨股和领跌股。type 可选 0=全部、1=概念、2=行业、3=风格。".into(),
+        prompt_guidelines: Some(vec![
+            "分析市场主线、板块轮动与资金聚焦方向时优先使用".into(),
+            "涨幅榜和跌幅榜应分别解读，不要把 0% 板块混入任一侧".into(),
+        ]),
+        parameters: Some(mixed_str_schema(
+            &[],
+            &[
+                ("type", "板块分类：0=全部（默认）、1=概念、2=行业、3=风格"),
+                ("limit", "每侧返回数量，默认10，最大50"),
+            ],
+        )),
+        ..Default::default()
+    }
+}
+
+fn plate_detail_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_plate_detail".into(),
+        label: Some("板块详情".into()),
+        description: "获取板块详情、涨跌统计、产业链和完整成分股。返回字段包含板块描述、资金流、上涨/下跌/平盘家数、核心股数量、成分股入选原因及产业链归属。".into(),
+        prompt_guidelines: Some(vec!["从板块排行下钻到成分股时使用".into()]),
+        parameters: Some(str_schema(&[("plate_id", "板块 ID，如 22114510")])),
+        ..Default::default()
+    }
+}
+
+fn market_indicators_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_market_indicators".into(),
+        label: Some("市场指标序列".into()),
+        description:
+            "获取市场涨跌家数、涨跌停、炸板家数/比例、市场情绪温度和昨日涨停平均涨幅的分时序列。"
+                .into(),
+        prompt_guidelines: Some(vec!["分析盘中市场宽度和情绪变化时使用".into()]),
+        parameters: Some(empty_schema()),
+        ..Default::default()
+    }
+}
+
+fn market_pcp_distribution_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_market_pcp_distribution".into(),
+        label: Some("涨跌幅分布".into()),
+        description: "获取全市场涨跌幅档位分布、涨跌停数量、ST 涨跌停、停牌和总股票数。".into(),
+        prompt_guidelines: Some(vec!["判断市场赚钱效应和涨跌幅结构时使用".into()]),
+        parameters: Some(empty_schema()),
+        ..Default::default()
+    }
+}
+
+fn fund_flow_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_fund_flow".into(),
+        label: Some("资金流向".into()),
+        description: "批量获取股票最近若干交易日资金流。上游中间指标列为厂商定义，工具按原顺序返回，不臆造主力/大单等列名。".into(),
+        prompt_guidelines: Some(vec!["分析个股连续资金流变化时使用".into()]),
+        parameters: Some(mixed_str_schema(
+            &[("codes", "逗号分隔的股票代码，如 000001.SZ,600519.SS")],
+            &[("day_count", "返回交易日数量，默认5，最大30")],
+        )),
+        ..Default::default()
+    }
+}
+
+fn stock_data_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_stock_data".into(),
+        label: Some("股票指标".into()),
+        description:
+            "批量获取股票价格、涨跌幅、换手率、流通/总市值、PE、连板天数和最新涨停时间等指标。"
+                .into(),
+        prompt_guidelines: Some(vec!["补充连板、市值和涨停时间等个股指标时使用".into()]),
+        parameters: Some(str_schema(&[(
+            "codes",
+            "逗号分隔的股票代码，如 000001.SZ,600519.SS",
+        )])),
+        ..Default::default()
+    }
+}
+
+fn stock_labels_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_stock_labels".into(),
+        label: Some("股票标签".into()),
+        description: "批量获取股票标签，包含标签名称、类型、说明和 effect 方向编码。".into(),
+        prompt_guidelines: Some(vec!["识别白马、ST、破净、龙虎榜等个股特征时使用".into()]),
+        parameters: Some(str_schema(&[(
+            "codes",
+            "逗号分隔的股票代码，如 000001.SZ,600519.SS",
+        )])),
+        ..Default::default()
+    }
+}
+
+fn security_type_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_security_type".into(),
+        label: Some("证券类型".into()),
+        description: "获取证券的市场类型、证券类型和子类型元数据，例如股票、指数、ETF。".into(),
+        prompt_guidelines: Some(vec!["需要确认证券类别时使用".into()]),
+        parameters: Some(str_schema(&[("symbol", "证券代码，如 000001.SS")])),
+        ..Default::default()
+    }
+}
+
 fn kline_tool() -> ToolDefinition {
     ToolDefinition {
         name: "get_kline".into(),
@@ -488,26 +671,6 @@ fn telegraph_allday_tool() -> ToolDefinition {
         description: "获取财联社全天电报（所有分类，不限条数）。用法：盘后复盘时获取全天重要消息，按时间线梳理事件脉络。".into(),
         prompt_guidelines: Some(vec!["盘后复盘梳理全天事件".into()]),
         parameters: Some(empty_schema()),
-        ..Default::default()
-    }
-}
-
-fn community_tool() -> ToolDefinition {
-    ToolDefinition {
-        name: "get_community".into(),
-        label: Some("韭研公社".into()),
-        description: "获取韭研公社社群文章动态。包含标题、内容概要、作者、关联股票、点赞/评论/收藏/转发数、发布时间。\
-            用法：捕捉社群对特定板块/热点的讨论热度与潜在热点标的。".into(),
-        prompt_guidelines: Some(vec!["衡量社群情绪与热点讨论度".into()]),
-        parameters: Some(str_schema(&[
-            ("category_id", "文章分类ID，默认空字符串获取所有分类"),
-            (
-                "article_type",
-                "文章类型：0=所有类型、1=观点、2=资讯，默认0",
-            ),
-            ("page", "页码，从1开始，默认1"),
-            ("page_size", "每页返回条数，默认20，最大50"),
-        ])),
         ..Default::default()
     }
 }
@@ -697,6 +860,67 @@ fn str_arg(params: &Value, name: &str) -> String {
         .to_string()
 }
 
+fn parse_rank_type(value: &str) -> Result<PlateRankType, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "0" | "all" | "全部" => Ok(PlateRankType::All),
+        "1" | "concept" | "概念" => Ok(PlateRankType::Concept),
+        "2" | "industry" | "行业" => Ok(PlateRankType::Industry),
+        "3" | "style" | "风格" => Ok(PlateRankType::Style),
+        other => Err(format!(
+            "非法板块分类 {other}，可选 0=全部、1=概念、2=行业、3=风格"
+        )),
+    }
+}
+
+fn parse_usize_arg(
+    params: &Value,
+    name: &str,
+    default: usize,
+    max: usize,
+) -> Result<usize, String> {
+    let Some(value) = params.get(name) else {
+        return Ok(default);
+    };
+    let parsed = value
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())
+        .or_else(|| value.as_str()?.trim().parse::<usize>().ok())
+        .with_context(|| format!("{name} 必须是非负整数"))
+        .map_err(|error| error.to_string())?;
+    if parsed == 0 || parsed > max {
+        return Err(format!("{name} 必须在 1..={max}"));
+    }
+    Ok(parsed)
+}
+
+fn parse_i64_arg(params: &Value, name: &str) -> Result<i64, String> {
+    let value = params
+        .get(name)
+        .with_context(|| format!("缺少 {name}"))
+        .map_err(|error| error.to_string())?;
+    value
+        .as_i64()
+        .or_else(|| value.as_str()?.trim().parse::<i64>().ok())
+        .with_context(|| format!("{name} 必须是整数"))
+        .map_err(|error| error.to_string())
+}
+
+fn parse_codes_arg(params: &Value, name: &str) -> Result<Vec<String>, String> {
+    let raw = str_arg(params, name);
+    let mut seen = std::collections::HashSet::new();
+    let codes: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+        .filter(|code| seen.insert((*code).to_string()))
+        .map(str::to_string)
+        .collect();
+    if codes.is_empty() {
+        return Err(format!("{name} 不能为空"));
+    }
+    Ok(codes)
+}
+
 fn empty_schema() -> Value {
     json!({ "type": "object", "properties": {}, "required": [] })
 }
@@ -717,4 +941,86 @@ fn str_schema(params: &[(&str, &str)]) -> Value {
         "properties": properties,
         "required": required,
     })
+}
+
+fn mixed_str_schema(required: &[(&str, &str)], optional: &[(&str, &str)]) -> Value {
+    let properties: serde_json::Map<String, Value> = required
+        .iter()
+        .chain(optional)
+        .map(|(name, desc)| {
+            (
+                (*name).to_string(),
+                json!({ "type": "string", "description": desc }),
+            )
+        })
+        .collect();
+    let required: Vec<String> = required
+        .iter()
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": required,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_plate_rank_categories_and_limits() {
+        assert_eq!(
+            parse_rank_type("0").unwrap_or(PlateRankType::All),
+            PlateRankType::All
+        );
+        assert_eq!(
+            parse_rank_type("概念").unwrap_or(PlateRankType::All),
+            PlateRankType::Concept
+        );
+        assert_eq!(
+            parse_rank_type("2").unwrap_or(PlateRankType::All),
+            PlateRankType::Industry
+        );
+        assert_eq!(
+            parse_rank_type("style").unwrap_or(PlateRankType::All),
+            PlateRankType::Style
+        );
+        assert!(parse_rank_type("4").is_err());
+        assert_eq!(parse_usize_arg(&json!({}), "limit", 10, 50), Ok(10));
+        assert!(parse_usize_arg(&json!({"limit": "0"}), "limit", 10, 50).is_err());
+        assert!(parse_usize_arg(&json!({"limit": "51"}), "limit", 10, 50).is_err());
+    }
+
+    #[test]
+    fn parses_and_deduplicates_code_lists() {
+        let codes = parse_codes_arg(
+            &json!({"codes": " 600519.SS,000001.SZ,600519.SS "}),
+            "codes",
+        )
+        .unwrap_or_else(|error| panic!("codes should parse: {error}"));
+        assert_eq!(codes, vec!["600519.SS", "000001.SZ"]);
+        assert!(parse_codes_arg(&json!({"codes": " , "}), "codes").is_err());
+    }
+
+    #[test]
+    fn market_tools_include_rank_detail_and_capital_flow() {
+        let tools = MarketDataExtension::market_definitions();
+        let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
+        assert_eq!(tools.len(), 29);
+        for expected in [
+            "get_plate_rankings",
+            "get_plate_detail",
+            "get_market_indicators",
+            "get_market_pcp_distribution",
+            "get_fund_flow",
+            "get_stock_data",
+            "get_stock_labels",
+            "get_security_type",
+        ] {
+            assert!(names.contains(&expected), "missing tool: {expected}");
+        }
+        assert!(!names.contains(&"get_community"));
+    }
 }

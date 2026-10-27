@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { subscribeKline, subscribeRealtime, type RealtimeQuote } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock, type PlateByStockItem } from "@/hooks/query/usePlatesByStock"
-import { useFieldItems } from "@/hooks/query/useFieldItems"
 import KlineChart, { type KlineCandle } from "./KlineChart"
 import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
@@ -91,18 +90,6 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     })
   }, [xgSymbol, period])
   const { data: plates } = usePlatesByStock(xgSymbol)
-  const { data: fieldItems } = useFieldItems()
-  const expound = useMemo(() => {
-    if (!fieldItems) return undefined
-    for (const plate of fieldItems) {
-      for (const item of plate.list) {
-        if (item.code === symbol && item.article?.action_info?.expound) {
-          return item.article.action_info.expound
-        }
-      }
-    }
-    return undefined
-  }, [fieldItems, symbol])
   const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<PlateByStockItem | null>(null)
 
@@ -311,18 +298,6 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 )}
               </button>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI 异动解读 */}
-      {expound && (
-        <div className="border-hairline mt-2 border-t px-6 py-3">
-          <p className="text-secondary text-caption mb-2">AI 异动解读</p>
-          <div className="bg-surface border-hairline rounded-lg border p-3">
-            <p className="text-body text-secondary leading-relaxed whitespace-pre-line">
-              {expound}
-            </p>
           </div>
         </div>
       )}

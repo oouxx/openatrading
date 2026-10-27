@@ -16,61 +16,6 @@ pub struct Credentials {
     pub cookie: String,
 }
 
-// ─── action/field 响应结构 ────────────────────────────────────
-
-/// `异动详情（action_info` 字段）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionInfo {
-    /// 异动时间，如 "09:35:38"，可能为 null
-    pub time: Option<String>,
-    /// 连板信息，如 "4天4板"
-    #[serde(default)]
-    pub num: Option<String>,
-    /// 异动理由/详细描述
-    pub expound: Option<String>,
-    pub price: Option<f64>,
-    pub day: Option<i32>,
-    pub edition: Option<i32>,
-    pub shares_range: Option<f64>,
-}
-
-/// 文章信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Article {
-    pub action_info: Option<ActionInfo>,
-    /// 文章标题
-    #[serde(default)]
-    pub title: String,
-}
-
-/// 单只异动股票
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FieldStock {
-    pub code: String,
-    pub name: String,
-    pub article: Option<Article>,
-}
-
-/// 异动板块
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FieldPlate {
-    /// 板块名称，如 "公告"、"固态电池"
-    #[serde(default)]
-    pub name: String,
-    /// 板块异动原因
-    #[serde(default)]
-    pub reason: String,
-    /// 该板块异动股票数量
-    #[serde(default)]
-    pub count: u32,
-    /// 异动股票列表
-    #[serde(default)]
-    pub list: Vec<FieldStock>,
-}
-
-/// action/field 接口返回的数据结构（data 数组里的每个元素）
-pub type FieldData = Vec<FieldPlate>;
-
 // ─── Timeline 时间线数据 ───────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,64 +71,6 @@ pub struct TimelineDay {
 }
 
 pub type TimelineData = Vec<TimelineDay>;
-
-// ─── 社群文章数据 ───────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunityUser {
-    pub user_id: String,
-    pub nickname: String,
-    pub avatar: Option<String>,
-    pub style_str: Option<String>,
-    #[serde(default)]
-    pub medal_count: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunityStock {
-    pub stock_id: String,
-    pub name: String,
-    pub code: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunityArticle {
-    pub article_id: String,
-    pub is_top: i32,
-    pub user_id: String,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub cover: Option<String>,
-    #[serde(rename = "type")]
-    pub article_type: i32,
-    pub comment_count: i32,
-    pub collect_count: i32,
-    pub like_count: i32,
-    pub forward_count: i32,
-    pub create_time: String,
-    pub content: Option<String>,
-    pub user: CommunityUser,
-    #[serde(default)]
-    pub stock_list: Vec<CommunityStock>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunityData {
-    pub result: Vec<CommunityArticle>,
-    #[serde(rename = "pageNo")]
-    pub page_no: i32,
-    #[serde(rename = "pageSize")]
-    pub page_size: i32,
-}
-
-/// Query parameters for the community article API.
-pub struct CommunityQuery {
-    pub category_id: String,
-    pub article_type: i32,
-    /// 1-based page number (passed directly as `start` to the API).
-    pub page: i32,
-    pub page_size: i32,
-}
 
 // ─── 会话管理器 ───────────────────────────────────────────────
 
@@ -496,50 +383,6 @@ impl JiuYanSession {
         serde_json::from_str(&json_str).with_context(|| format!("解析响应失败: {json_str}"))
     }
 
-    /// 获取韭研公社异动数据（action/field 接口）
-    ///
-    /// # Errors
-    /// Returns an error if the HTTP request fails or the response cannot be parsed.
-    pub async fn fetch_field(&self, date: &str, pc: u32) -> Result<FieldData> {
-        #[derive(Serialize)]
-        struct FieldReq {
-            date: String,
-            pc: u32,
-        }
-
-        let body = FieldReq {
-            date: date.to_string(),
-            pc,
-        };
-
-        let resp: serde_json::Value = self.post("/action/field", &body).await?;
-
-        // 检查业务错误
-        if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
-            if err_code != "0" {
-                anyhow::bail!(
-                    "action/field 请求失败: errCode={}, msg={}",
-                    err_code,
-                    resp["msg"]
-                );
-            }
-        }
-        let field_data: FieldData =
-            serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
-                .context("解析 action/field 数据失败")?;
-
-        Ok(field_data)
-    }
-
-    /// `fetch_field` with String pc — for LLM tool use
-    ///
-    /// # Errors
-    /// Returns an error if the HTTP request fails or the response cannot be parsed.
-    pub async fn fetch_field_str(&self, date: &str, pc: &str) -> Result<FieldData> {
-        let n: u32 = pc.parse().unwrap_or(1);
-        self.fetch_field(date, n).await
-    }
-
     /// 获取时间线数据（timeline/list 接口）
     ///
     /// # Errors
@@ -569,50 +412,6 @@ impl JiuYanSession {
         let data: TimelineData =
             serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
                 .context("解析 timeline 数据失败")?;
-
-        Ok(data)
-    }
-
-    /// 获取社群文章数据（article/community 接口）
-    ///
-    /// # Errors
-    /// Returns an error if the HTTP request fails or the response cannot be parsed.
-    pub async fn fetch_community(&self, query: CommunityQuery) -> Result<CommunityData> {
-        #[derive(Serialize)]
-        struct CommunityReq {
-            category_id: String,
-            #[serde(rename = "type")]
-            r#type: i32,
-            limit: i32,
-            order: i32,
-            start: i32,
-            back_garden: i32,
-        }
-
-        let body = CommunityReq {
-            category_id: query.category_id,
-            r#type: query.article_type,
-            limit: query.page_size,
-            order: 1,
-            start: query.page,
-            back_garden: 0,
-        };
-
-        let resp: serde_json::Value = self.post("/article/community", &body).await?;
-
-        if let Some(err_code) = resp.get("errCode").and_then(|v| v.as_str()) {
-            if err_code != "0" {
-                anyhow::bail!(
-                    "article/community 请求失败: errCode={}, msg={}",
-                    err_code,
-                    resp["msg"]
-                );
-            }
-        }
-
-        let data: CommunityData =
-            serde_json::from_value(resp.get("data").cloned().unwrap_or_default())
-                .context("解析社群文章数据失败")?;
 
         Ok(data)
     }

@@ -124,27 +124,6 @@ export interface Stock {
   } | null
 }
 
-export interface FieldPlate {
-  name: string
-  count: number
-  reason: string
-  list: Array<{
-    code: string
-    name: string
-    article?: {
-      action_info?: {
-        time?: string
-        num?: string
-        expound?: string
-        shares_range?: number
-        day?: number
-        edition?: number
-        price?: number
-      }
-    }
-  }>
-}
-
 export interface RoleEntry {
   name: string
   display_name: string

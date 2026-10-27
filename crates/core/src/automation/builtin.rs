@@ -242,25 +242,6 @@ async fn run_collection(ctx: &AppContext) -> Result<()> {
         }
     }
 
-    {
-        let date = crate::utils::time::beijing_now()
-            .format("%Y-%m-%d")
-            .to_string();
-        match ctx.api.jiuyan.fetch_field_str(&date, "1").await {
-            Ok(items) => {
-                let json = serde_json::to_string(&items).unwrap_or_else(|_| "{}".into());
-                ctx.memory.save_snapshot("jiuyan_field_items", &json)?;
-                sources.push("jiuyan_field_items".into());
-                snapshot_count += 1;
-            }
-            Err(e) => {
-                crate::log::warn!(
-                    "[automation] builtin collection: fetch jiuyan field failed: {e}"
-                );
-            }
-        }
-    }
-
     let summary = CollectSummary {
         timestamp: crate::utils::time::beijing_now().naive_local(),
         sources,

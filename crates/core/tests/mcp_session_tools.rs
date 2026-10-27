@@ -99,7 +99,7 @@ async fn mcp_servers_from_mcp_json_reach_the_session() {
         .map(|t| t.name.clone())
         .collect();
 
-    // market_only 不注册交易扩展工具，故这 28 个行情工具只能来自 MCP。
+    // market_only 不注册交易扩展工具，故这些行情工具只能来自 MCP。
     assert!(
         tool_names.iter().any(|n| n == "get_limit_up"),
         "mcp.json 里配置的 MCP 工具没有进入会话: {tool_names:?}"

@@ -13,7 +13,6 @@ const REQUIRED_VARS: &[(&str, &str)] = &[
     ("JIUYAN_PHONE", "韭研公社手机号"),
     ("JIUYAN_PASSWORD", "韭研公社密码"),
     ("JIUYAN_SECRET", "韭研公社接口签名密钥"),
-    ("JIUYAN_INIT_TOKEN", "韭研公社初始 Token"),
 ];
 
 #[async_trait]

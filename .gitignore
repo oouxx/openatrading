@@ -48,7 +48,9 @@ certs/
 .mcp.json
 .tokensave
 
-.pi-rs
+.pi-rs/*
+__pycache__/
+*.pyc
 .codegraph/
 .atrading
 .superpowers

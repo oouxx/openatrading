@@ -10,5 +10,8 @@ pub mod events;
 pub mod session;
 pub mod tools;
 
+/// 项目级 Agent Skills 的标准目录，由 pi-rs 资源加载器解析。
+pub const PROJECT_SKILLS_DIR: &str = ".agents/skills";
+
 pub use pi_coding_agent::pi_agent_core::pi_ai_types;
 pub use pi_coding_agent::pi_agent_core::types;

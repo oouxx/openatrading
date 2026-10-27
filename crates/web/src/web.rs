@@ -176,25 +176,6 @@ pub async fn get_plate_detail(
         .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error))
 }
 
-/// GET /api/field-items?date=YYYY-MM-DD
-#[derive(serde::Deserialize)]
-pub struct FieldItemsQuery {
-    date: Option<String>,
-}
-
-pub async fn get_field_items(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<FieldItemsQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(serde_json::json!([])));
-    }
-    crate::handlers::get_field_items_data(&state, q.date, None)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
-
 /// GET /api/timeline
 pub async fn get_timeline(
     State(state): State<Arc<AppState>>,

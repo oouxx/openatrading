@@ -314,45 +314,6 @@ pub async fn get_ai_roles(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-pub fn build_user_message(
-    overview: &OverviewResponse,
-    field_items: Option<&str>,
-    super_stocks: Option<&str>,
-) -> String {
-    let field_section = field_items
-        .map(|s| format!("\n## 韭研公社异动数据\n{s}\n"))
-        .unwrap_or_default();
-
-    let super_section = super_stocks
-        .map(|s| format!("\n## 强势股数据（未涨停但强）\n{s}\n"))
-        .unwrap_or_default();
-
-    openatrading_core::prompts::build_web_chat_user_message(
-        &openatrading_core::prompts::WebChatMarketData {
-            date: &overview.date,
-            rise: overview.rise_count,
-            fall: overview.fall_count,
-            limit_up: overview.limit_up_count,
-            limit_down: overview.limit_down_count,
-            bomb_rate: overview.bomb_rate,
-            risk_level: &overview.risk_level,
-            summary: &overview.decision_summary,
-            field_items: &field_section,
-            super_stocks: &super_section,
-        },
-    )
-}
-
-pub async fn fetch_field_json(api: &ApiClient) -> Option<String> {
-    let date = openatrading_core::utils::time::beijing_now()
-        .format("%Y-%m-%d")
-        .to_string();
-    match api.jiuyan.fetch_field(&date, 1).await {
-        Ok(plates) if !plates.is_empty() => serde_json::to_string(&plates).ok(),
-        _ => None,
-    }
-}
-
 pub async fn fetch_super_stock_json(api: &ApiClient) -> Option<String> {
     match api.xuangubao.fetch_super_stock().await {
         Ok(stocks) if !stocks.is_empty() => serde_json::to_string(&stocks).ok(),

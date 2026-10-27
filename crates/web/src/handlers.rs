@@ -663,39 +663,6 @@ pub async fn get_plate_detail_data(
     .await
 }
 
-/// GET /api/field-items
-pub async fn get_field_items_data(
-    state: &Arc<AppState>,
-    date: Option<String>,
-    field_type: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let date = date.unwrap_or_else(|| {
-        openatrading_core::utils::time::beijing_now()
-            .format("%Y-%m-%d")
-            .to_string()
-    });
-    let _field_type = field_type.unwrap_or_else(|| "涨停板".to_string());
-
-    get_or_fetch_json_tauri(
-        &state.cache,
-        &format!("field_items_{date}"),
-        CachePolicy::realtime(),
-        || async {
-            // 复用 AppContext 里的 Jiuyan session：每次新建 client 都会重新登录，
-            // 既慢，也可能让旧会话失效。
-            let data = state
-                .ctx
-                .api
-                .jiuyan
-                .fetch_field(&date, 1)
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(data)
-        },
-    )
-    .await
-}
-
 /// GET /api/market-trend/:symbol
 pub async fn get_market_trend_data(
     state: &Arc<AppState>,

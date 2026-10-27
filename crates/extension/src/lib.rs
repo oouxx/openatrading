@@ -13,7 +13,7 @@
 //! 本项目经 `openatrading_core::llm::McpToolSet` 复用，不在本 crate 内。
 //!
 //! 交易不在扩展里：模拟盘改为用户手动记账（`openatrading_core::trade`），
-//! agent 只拿行情/舆情工具，没有任何下单或读持仓能力。
+//! agent 只拿行情/资讯工具，没有任何下单或读持仓能力；韭研专题分析由项目 Skill 负责。
 
 pub mod mcp;
 pub mod trading;

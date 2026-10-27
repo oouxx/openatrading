@@ -1,21 +1,23 @@
 //! Thin wrapper over pi-rs skill loading.
 //!
-//! Skills live in pi-rs's default scan directory (`$PI_RS_HOME/agent/skills`,
-//! i.e. `pi_coding_agent::config::get_agent_dir().join("skills")`). pi-rs
-//! discovers them, injects the `<available_skills>` catalog into the system
-//! prompt, and expands `/skill:<name>` on demand — so the model gets skills
-//! natively without any host-side prompt assembly.
+//! Project Skills live in the shared `.agents/skills` directory, while user
+//! Skills use pi-rs's default `$PI_RS_HOME/agent/skills`. Both paths are passed
+//! to pi-rs, which discovers and parses the files, injects the
+//! `<available_skills>` catalog into the system prompt, and expands
+//! `/skill:<name>` on demand — no host-side Skill parsing is involved.
 //!
 //! This module only provides:
 //! - disk CRUD (`install_skill` / `uninstall_skill`) for the web/CLI editors,
 //! - a listing helper (`list_skills`) that delegates to pi-rs `load_skills`,
 //! - a `SkillEntry` projection (pi-rs `Skill` + markdown body) for the editor.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 pub use pi_coding_agent::core::skills::{load_skills, LoadSkillsOptions, LoadSkillsResult, Skill};
+
+use openatrading_agent::PROJECT_SKILLS_DIR;
 
 /// Directory pi-rs scans for skills: `$PI_RS_HOME/agent/skills`.
 pub fn skills_dir() -> PathBuf {
@@ -28,19 +30,24 @@ pub fn skills_dir() -> PathBuf {
 /// scan paths (`include_defaults: true`), so the result matches what the
 /// model actually sees in its system prompt.
 pub fn list_skills() -> Vec<Skill> {
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    load_skills_at(&cwd).skills
+}
+
+fn load_skills_at(cwd: &Path) -> LoadSkillsResult {
+    let cwd = cwd.to_string_lossy().to_string();
     let agent_dir = pi_coding_agent::config::get_agent_dir()
         .to_string_lossy()
         .to_string();
     load_skills(&LoadSkillsOptions {
-        cwd,
+        cwd: cwd.clone(),
         agent_dir: Some(agent_dir),
-        skill_paths: Vec::new(),
+        skill_paths: vec![Path::new(&cwd)
+            .join(PROJECT_SKILLS_DIR)
+            .to_string_lossy()
+            .to_string()],
         include_defaults: true,
     })
-    .skills
 }
 
 /// Return the pi-rs `source_info.scope` as a static string (`"user"` /
@@ -162,4 +169,32 @@ pub fn uninstall_skill(name: &str) -> std::io::Result<()> {
         ));
     }
     std::fs::remove_dir_all(&dir)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    #[test]
+    fn delegates_project_agents_skills_to_pi_rs_loader() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let skill_dir = temp.path().join(PROJECT_SKILLS_DIR).join("project-skill");
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: project-skill\ndescription: Project skill\n---\n\nBody.\n",
+        )
+        .expect("write skill");
+
+        let result = load_skills_at(temp.path());
+        assert!(
+            result
+                .skills
+                .iter()
+                .any(|skill| skill.name == "project-skill"),
+            "pi-rs should load the configured `.agents/skills` path"
+        );
+    }
 }

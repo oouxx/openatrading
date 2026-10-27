@@ -6,11 +6,6 @@ export const limitUpKeys = {
   all: ["limit-up"] as const,
 }
 
-export const fieldItemsKeys = {
-  all: ["field-items"] as const,
-  byDate: (date: string) => ["field-items", date] as const,
-}
-
 export const timelineKeys = {
   all: ["timeline"] as const,
 }
@@ -21,10 +16,6 @@ export const superStockKeys = {
 
 export const dapanAbnormalKeys = {
   all: ["dapan-abnormal"] as const,
-}
-
-export const sentimentKeys = {
-  all: ["sentiment"] as const,
 }
 
 export const sentimentHistoryKeys = {

@@ -335,6 +335,13 @@ pub struct PlateLeaderStock {
     pub price_change: Option<f64>,
 }
 
+/// 按涨幅分组的板块排行。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PlateRankings {
+    pub gainers: Vec<PlateSummary>,
+    pub losers: Vec<PlateSummary>,
+}
+
 /// 题材涨跌榜使用的上游类型编码。
 ///
 /// 文档只确认前端使用 `1`、`2`，没有给出稳定的“上涨/下跌”语义，因此不要自行推断。
@@ -1435,6 +1442,51 @@ impl XuanguBaoClient {
             .await
             .context("板块排行榜响应不是合法 JSON")?;
         parse_plate_rank_ids(&resp)
+    }
+
+    /// 获取指定分类的板块涨跌榜，正涨幅和负涨幅分别排序。
+    ///
+    /// # Errors
+    /// `limit` 为 0、排行榜或板块摘要请求失败时返回错误。
+    pub async fn fetch_plate_rankings(
+        &self,
+        rank_type: PlateRankType,
+        limit: usize,
+    ) -> Result<PlateRankings> {
+        anyhow::ensure!(limit > 0, "板块排行数量必须大于 0");
+        let ids = self.fetch_plate_rank_ids(rank_type).await?;
+        let summaries = self.fetch_plate_summaries(&ids).await?;
+        let mut seen = std::collections::HashSet::with_capacity(summaries.len());
+        let mut ranked: Vec<PlateSummary> = summaries
+            .into_iter()
+            .filter(|summary| summary.core_avg_pcp.is_some())
+            .filter(|summary| seen.insert(summary.plate_id))
+            .collect();
+        ranked.sort_by(|left, right| {
+            right
+                .core_avg_pcp
+                .unwrap_or_default()
+                .total_cmp(&left.core_avg_pcp.unwrap_or_default())
+                .then_with(|| left.plate_id.cmp(&right.plate_id))
+        });
+        let gainers = ranked
+            .iter()
+            .filter(|summary| summary.core_avg_pcp.is_some_and(|pcp| pcp > 0.0))
+            .take(limit)
+            .cloned()
+            .collect();
+        let mut losers: Vec<PlateSummary> = ranked
+            .into_iter()
+            .filter(|summary| summary.core_avg_pcp.is_some_and(|pcp| pcp < 0.0))
+            .collect();
+        losers.sort_by(|left, right| {
+            left.core_avg_pcp
+                .unwrap_or_default()
+                .total_cmp(&right.core_avg_pcp.unwrap_or_default())
+                .then_with(|| left.plate_id.cmp(&right.plate_id))
+        });
+        losers.truncate(limit);
+        Ok(PlateRankings { gainers, losers })
     }
 
     /// 获取题材涨跌榜。
