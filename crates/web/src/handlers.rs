@@ -7,6 +7,9 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use openatrading_core::api::eastmoney::{
+    StockMarketFilter, StockRankingOrder, StockRankingRequest,
+};
 use openatrading_core::api::xuangubao::{
     PlateLeaderStocks, PlateRankType, RealtimeQuote, StockLabel, StockMetrics,
 };
@@ -19,6 +22,7 @@ const PLATE_RANKING_LIMIT: usize = 10;
 const PLATE_DETAIL_QUOTE_BATCH_SIZE: usize = 200;
 const PLATE_DETAIL_STOCK_DATA_BATCH_SIZE: usize = 200;
 const PLATE_DETAIL_STOCK_LABEL_BATCH_SIZE: usize = 200;
+const STOCK_RANKING_MAX_LIMIT: usize = 500;
 
 #[derive(Debug, Serialize)]
 struct PlateRankingsResponse {
@@ -88,6 +92,15 @@ fn build_plate_rankings(
 fn ensure_positive_plate_id(plate_id: i64) -> Result<(), String> {
     if plate_id <= 0 {
         return Err("板块 ID 必须大于 0".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_stock_ranking_limit(limit: usize) -> Result<(), String> {
+    if !(1..=STOCK_RANKING_MAX_LIMIT).contains(&limit) {
+        return Err(format!(
+            "个股排行数量必须在 1 到 {STOCK_RANKING_MAX_LIMIT} 之间"
+        ));
     }
     Ok(())
 }
@@ -429,24 +442,6 @@ pub async fn get_dapan_abnormal_data(state: &Arc<AppState>) -> Result<serde_json
     .await
 }
 
-/// GET /api/timeline
-pub async fn get_timeline_data(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(serde_json::json!([]));
-    }
-    let month = openatrading_core::utils::time::beijing_now()
-        .format("%Y-%m")
-        .to_string();
-    let data = state
-        .ctx
-        .api
-        .jiuyan
-        .fetch_timeline(&month)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(serde_json::to_value(data).unwrap_or_default())
-}
-
 /// GET /api/telegraph
 pub async fn get_telegraph_all_data(
     state: &Arc<AppState>,
@@ -658,6 +653,58 @@ pub async fn get_plate_detail_data(
                 .await
                 .map_err(|e| format!("板块详情获取失败: {e}"))?;
             enrich_plate_detail_with_quotes(state, detail).await
+        },
+    )
+    .await
+}
+
+/// GET /api/stock-rankings — 全市场个股涨幅/跌幅榜。
+pub async fn get_stock_rankings_data(
+    state: &Arc<AppState>,
+    order: StockRankingOrder,
+    market: StockMarketFilter,
+    exclude_st: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<serde_json::Value, String> {
+    ensure_stock_ranking_limit(limit)?;
+    let cache_key = format!(
+        "stock_rankings_{}_{}_{}_{}_{}",
+        match order {
+            StockRankingOrder::Gainers => "gainers",
+            StockRankingOrder::Losers => "losers",
+        },
+        match market {
+            StockMarketFilter::All => "all",
+            StockMarketFilter::MainBoard => "main",
+            StockMarketFilter::ChiNext => "chinext",
+            StockMarketFilter::StarMarket => "star",
+            StockMarketFilter::Beijing => "beijing",
+        },
+        u8::from(exclude_st),
+        offset,
+        limit,
+    );
+
+    get_or_fetch_json_tauri(
+        &state.cache,
+        &cache_key,
+        CachePolicy::realtime(),
+        || async {
+            let rankings = state
+                .ctx
+                .api
+                .eastmoney
+                .stock_rankings(StockRankingRequest {
+                    order,
+                    market,
+                    exclude_st,
+                    offset,
+                    limit,
+                })
+                .await
+                .map_err(|error| format!("个股排行获取失败: {error}"))?;
+            serde_json::to_value(rankings).map_err(|error| format!("个股排行序列化失败: {error}"))
         },
     )
     .await
@@ -2009,6 +2056,14 @@ mod tests {
         assert!(ensure_positive_plate_id(0).is_err());
         assert!(ensure_positive_plate_id(-1).is_err());
         assert!(ensure_positive_plate_id(1).is_ok());
+    }
+
+    #[test]
+    fn stock_ranking_limit_is_bounded() {
+        assert!(ensure_stock_ranking_limit(1).is_ok());
+        assert!(ensure_stock_ranking_limit(500).is_ok());
+        assert!(ensure_stock_ranking_limit(0).is_err());
+        assert!(ensure_stock_ranking_limit(501).is_err());
     }
 
     #[test]

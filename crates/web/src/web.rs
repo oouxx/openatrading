@@ -130,6 +130,65 @@ fn json_error(status: StatusCode, message: String) -> (StatusCode, Json<serde_js
     (status, Json(serde_json::json!({ "error": message })))
 }
 
+/// GET /api/stock-rankings
+#[derive(serde::Deserialize)]
+pub struct StockRankingsQuery {
+    #[serde(default = "default_stock_ranking_order")]
+    order: String,
+    #[serde(default = "default_stock_market")]
+    market: String,
+    #[serde(default, rename = "excludeSt")]
+    exclude_st: bool,
+    #[serde(default)]
+    offset: usize,
+    #[serde(default = "default_stock_ranking_limit")]
+    limit: usize,
+}
+
+fn default_stock_ranking_order() -> String {
+    "gainers".to_string()
+}
+
+fn default_stock_market() -> String {
+    "all".to_string()
+}
+
+fn default_stock_ranking_limit() -> usize {
+    100
+}
+
+pub async fn get_stock_rankings(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<StockRankingsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let order = query
+        .order
+        .parse()
+        .map_err(|error: anyhow::Error| json_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+    let market = query
+        .market
+        .parse()
+        .map_err(|error: anyhow::Error| json_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+    crate::handlers::get_stock_rankings_data(
+        &state,
+        order,
+        market,
+        query.exclude_st,
+        query.offset,
+        query.limit,
+    )
+    .await
+    .map(Json)
+    .map_err(|error| {
+        let status = if error.starts_with("个股排行数量") {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
+        json_error(status, error)
+    })
+}
+
 /// GET /api/plate-rankings
 #[derive(serde::Deserialize)]
 pub struct PlateRankingsQuery {
@@ -174,19 +233,6 @@ pub async fn get_plate_detail(
         .await
         .map(Json)
         .map_err(|error| json_error(StatusCode::INTERNAL_SERVER_ERROR, error))
-}
-
-/// GET /api/timeline
-pub async fn get_timeline(
-    State(state): State<Arc<AppState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if std::env::var("JIUYAN_PHONE").is_err() {
-        return Ok(Json(serde_json::json!([])));
-    }
-    crate::handlers::get_timeline_data(&state)
-        .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 /// GET /api/kline/stream — SSE, every 3s, comma-separated symbols

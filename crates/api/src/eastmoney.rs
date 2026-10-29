@@ -1292,8 +1292,11 @@ const TREND_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/trends2/get
 const KLINE_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
 const FUND_FLOW_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get";
 const BOARD_SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
+const MARKET_LIST_URL: &str = "https://82.push2.eastmoney.com/api/qt/clist/get";
 const UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
 const SEARCH_TOKEN: &str = "D43BF722C8E33BDC906FB84D85E326E8";
+const MARKET_LIST_PAGE_SIZE: u32 = 100;
+const MARKET_LIST_MAX_PAGES: u32 = 100;
 
 // ─── Domain types ────────────────────────────────────────────────────────────
 
@@ -1348,6 +1351,116 @@ pub struct BrokenBoardStock {
     pub speed: Option<f64>,
     pub industry: Option<String>,
     pub limit_up_stats: Option<LimitUpStats>,
+}
+
+/// 全市场个股行情条目。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketStock {
+    /// 东方财富原始代码（6 位）。
+    pub code: String,
+    /// 规范化代码，例如 `600519.SS`、`300750.SZ`、`920001.BJ`。
+    pub symbol: String,
+    pub name: String,
+    pub price: Option<f64>,
+    /// 涨跌幅，单位：%。
+    pub change_percent: Option<f64>,
+    pub turnover_rate: Option<f64>,
+    pub total_market_cap: Option<f64>,
+    pub float_market_cap: Option<f64>,
+}
+
+/// 个股排行榜请求。
+#[derive(Debug, Clone, Copy)]
+pub struct StockRankingRequest {
+    pub order: StockRankingOrder,
+    pub market: StockMarketFilter,
+    pub exclude_st: bool,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+impl Default for StockRankingRequest {
+    fn default() -> Self {
+        Self {
+            order: StockRankingOrder::Gainers,
+            market: StockMarketFilter::All,
+            exclude_st: false,
+            offset: 0,
+            limit: 100,
+        }
+    }
+}
+
+/// 一页个股排行。`next_offset` 为 `None` 表示已到末尾。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockRankingPage {
+    pub items: Vec<MarketStock>,
+    pub next_offset: Option<usize>,
+}
+
+/// 个股排行榜方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StockRankingOrder {
+    Gainers,
+    Losers,
+}
+
+impl StockRankingOrder {
+    const fn sort_order(self) -> &'static str {
+        match self {
+            Self::Gainers => "1",
+            Self::Losers => "0",
+        }
+    }
+}
+
+impl FromStr for StockRankingOrder {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "gainers" | "gain" | "up" | "涨幅" => Ok(Self::Gainers),
+            "losers" | "lose" | "down" | "跌幅" => Ok(Self::Losers),
+            other => bail!("不支持的个股排行方向: {other}（可选 gainers/losers）"),
+        }
+    }
+}
+
+/// 个股市场/板块过滤。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StockMarketFilter {
+    All,
+    MainBoard,
+    ChiNext,
+    StarMarket,
+    Beijing,
+}
+
+impl StockMarketFilter {
+    const fn fs(self) -> &'static str {
+        match self {
+            Self::All => "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+            Self::MainBoard => "m:1 t:2,m:0 t:6",
+            Self::ChiNext => "m:0 t:80",
+            Self::StarMarket => "m:1 t:23",
+            Self::Beijing => "m:0 t:81 s:2048",
+        }
+    }
+}
+
+impl FromStr for StockMarketFilter {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "all" | "全部" => Ok(Self::All),
+            "main" | "main-board" | "主板" => Ok(Self::MainBoard),
+            "chinext" | "cyb" | "创业板" => Ok(Self::ChiNext),
+            "star" | "star-market" | "kcb" | "科创板" => Ok(Self::StarMarket),
+            "beijing" | "bj" | "bse" | "北交所" => Ok(Self::Beijing),
+            other => bail!("不支持的个股市场: {other}"),
+        }
+    }
 }
 
 /// 分钟周期。
@@ -1610,6 +1723,99 @@ impl BoardKlineRequest {
 }
 
 impl EastmoneyClient {
+    /// 获取全市场个股涨幅/跌幅榜。
+    ///
+    /// 东方财富负责按 `f3`（涨跌幅）排序和分页；ST 使用股票名称中的
+    /// `ST`/`*ST` 标识过滤。返回值已按请求方向排序。
+    ///
+    /// # Errors
+    /// Returns an error if pagination parameters are invalid, the HTTP request
+    /// fails, or the response cannot be parsed.
+    pub async fn stock_rankings(&self, request: StockRankingRequest) -> Result<StockRankingPage> {
+        if request.limit == 0 {
+            bail!("个股排行数量必须大于 0");
+        }
+
+        let mut items = Vec::with_capacity(request.limit);
+        let mut matched = 0usize;
+        let mut page = 1u32;
+        let mut reached_end = false;
+
+        while items.len() < request.limit {
+            if page > MARKET_LIST_MAX_PAGES {
+                bail!("个股排行分页超过上限");
+            }
+            let response = self
+                .client
+                .get(MARKET_LIST_URL)
+                .query(&[
+                    ("pn", page.to_string()),
+                    ("pz", MARKET_LIST_PAGE_SIZE.to_string()),
+                    ("po", request.order.sort_order().to_string()),
+                    ("np", "1".to_string()),
+                    ("ut", UT.to_string()),
+                    ("fltt", "2".to_string()),
+                    ("invt", "2".to_string()),
+                    ("fid", "f3".to_string()),
+                    ("fs", request.market.fs().to_string()),
+                    ("fields", "f2,f3,f8,f12,f13,f14,f20,f21".to_string()),
+                ])
+                .header(
+                    "Referer",
+                    "https://quote.eastmoney.com/center/gridlist.html",
+                )
+                .send()
+                .await
+                .context("个股排行请求失败")?
+                .text()
+                .await
+                .context("个股排行响应读取失败")?;
+            let response: Value =
+                serde_json::from_str(&response).context("个股排行响应不是合法 JSON")?;
+
+            let total = response["data"]["total"].as_u64().unwrap_or_default();
+            let rows = response["data"]["diff"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            if rows.is_empty() {
+                reached_end = true;
+                break;
+            }
+
+            for row in rows {
+                let Some(stock) = parse_market_stock_row(&row) else {
+                    continue;
+                };
+                if request.exclude_st && is_st_name(&stock.name) {
+                    continue;
+                }
+                if matched < request.offset {
+                    matched += 1;
+                    continue;
+                }
+                matched += 1;
+                items.push(stock);
+                if items.len() == request.limit {
+                    break;
+                }
+            }
+
+            if page as u64 * u64::from(MARKET_LIST_PAGE_SIZE) >= total {
+                reached_end = true;
+                break;
+            }
+            page += 1;
+        }
+
+        let next_offset = if items.len() < request.limit || reached_end {
+            None
+        } else {
+            Some(request.offset.saturating_add(items.len()))
+        };
+        Ok(StockRankingPage { items, next_offset })
+    }
+
     /// 涨停股池。
     ///
     /// `date` 使用 `YYYYMMDD` 或 `YYYY-MM-DD`，例如 `20261021`。
@@ -1955,6 +2161,48 @@ fn parse_limit_up_row(row: &Value) -> Option<LimitUpStock> {
     })
 }
 
+fn parse_market_stock_row(row: &Value) -> Option<MarketStock> {
+    let code = row["f12"].as_str()?.to_string();
+    let change_percent = json_f64(row, "f3")?;
+    Some(MarketStock {
+        symbol: market_symbol_from_row(row)?,
+        code,
+        name: row["f14"].as_str()?.to_string(),
+        price: json_f64(row, "f2"),
+        change_percent: Some(change_percent),
+        turnover_rate: json_f64(row, "f8"),
+        total_market_cap: json_f64(row, "f20"),
+        float_market_cap: json_f64(row, "f21"),
+    })
+}
+
+fn market_symbol_from_row(row: &Value) -> Option<String> {
+    let code = row["f12"].as_str()?;
+    let market = row["f13"].as_u64();
+    market_suffix(code, market).map(|suffix| format!("{code}.{suffix}"))
+}
+
+fn is_st_name(name: &str) -> bool {
+    name.to_ascii_uppercase().contains("ST")
+}
+
+fn market_suffix(code: &str, market: Option<u64>) -> Option<&'static str> {
+    match market {
+        Some(1) => Some("SS"),
+        Some(0)
+            if code.starts_with("83")
+                || code.starts_with("43")
+                || code.starts_with("87")
+                || code.starts_with("88")
+                || code.starts_with("920") =>
+        {
+            Some("BJ")
+        }
+        Some(0) => Some("SZ"),
+        _ => None,
+    }
+}
+
 fn parse_broken_board_row(row: &Value) -> Option<BrokenBoardStock> {
     Some(BrokenBoardStock {
         code: row["c"].as_str()?.to_string(),
@@ -2288,6 +2536,192 @@ mod market_tests {
     fn infers_stock_secid() {
         assert_eq!(stock_secid("600519.SS").unwrap_or_default(), "1.600519");
         assert_eq!(stock_secid("000001").unwrap_or_default(), "0.000001");
+    }
+
+    #[test]
+    fn parses_market_stock_row_and_symbols() {
+        let row = serde_json::json!({
+            "f2": 12.34,
+            "f3": 5.67,
+            "f8": 2.1,
+            "f12": "920001",
+            "f13": 0,
+            "f14": "北交样本",
+            "f20": 1000000000.0,
+            "f21": 500000000.0
+        });
+        let stock = parse_market_stock_row(&row).unwrap_or_else(|| panic!("row should parse"));
+        assert_eq!(stock.symbol, "920001.BJ");
+        assert_eq!(stock.change_percent, Some(5.67));
+
+        let star = serde_json::json!({"f12":"688001","f13":1});
+        assert_eq!(market_symbol_from_row(&star).as_deref(), Some("688001.SS"));
+
+        let legacy_beijing = serde_json::json!({"f12":"430001","f13":0});
+        assert_eq!(
+            market_symbol_from_row(&legacy_beijing).as_deref(),
+            Some("430001.BJ")
+        );
+    }
+
+    #[test]
+    fn market_row_requires_exchange_id() {
+        let missing_market = serde_json::json!({
+            "f2": 12.34,
+            "f3": 5.67,
+            "f12": "600001",
+            "f14": "样本"
+        });
+        assert!(parse_market_stock_row(&missing_market).is_none());
+    }
+
+    #[test]
+    fn detects_st_names() {
+        assert!(is_st_name("ST交昂"));
+        assert!(is_st_name("*ST禾信"));
+        assert!(!is_st_name("东方财富"));
+    }
+
+    #[test]
+    fn parses_rank_order_and_market_filters() {
+        assert_eq!(
+            "gainers".parse::<StockRankingOrder>().ok(),
+            Some(StockRankingOrder::Gainers)
+        );
+        assert_eq!(
+            "跌幅".parse::<StockRankingOrder>().ok(),
+            Some(StockRankingOrder::Losers)
+        );
+        assert_eq!(
+            "创业板".parse::<StockMarketFilter>().ok(),
+            Some(StockMarketFilter::ChiNext)
+        );
+        assert_eq!(
+            "科创板".parse::<StockMarketFilter>().ok(),
+            Some(StockMarketFilter::StarMarket)
+        );
+        assert_eq!(
+            "北交所".parse::<StockMarketFilter>().ok(),
+            Some(StockMarketFilter::Beijing)
+        );
+    }
+
+    #[test]
+    fn stock_ranking_page_reports_next_offset_and_end() {
+        let stock = |code: &str| MarketStock {
+            code: code.to_string(),
+            symbol: format!("{code}.SZ"),
+            name: format!("股票{code}"),
+            price: Some(10.0),
+            change_percent: Some(1.0),
+            turnover_rate: Some(1.0),
+            total_market_cap: Some(1_000_000.0),
+            float_market_cap: Some(500_000.0),
+        };
+        let page = StockRankingPage {
+            items: vec![stock("000001"), stock("000002")],
+            next_offset: Some(102),
+        };
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.next_offset, Some(102));
+
+        let end = StockRankingPage {
+            items: vec![],
+            next_offset: None,
+        };
+        assert_eq!(end.next_offset, None);
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_stock_rankings_losers() {
+        let rows = EastmoneyClient::new()
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Losers,
+                market: StockMarketFilter::All,
+                exclude_st: true,
+                offset: 0,
+                limit: 10,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert_eq!(rows.items.len(), 10);
+        assert!(rows
+            .items
+            .windows(2)
+            .all(|window| window[0].change_percent <= window[1].change_percent));
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_stock_rankings_second_page() {
+        let client = EastmoneyClient::new();
+        let first = client
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Gainers,
+                market: StockMarketFilter::MainBoard,
+                exclude_st: true,
+                offset: 0,
+                limit: 20,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("first page failed: {error}"));
+        let second = client
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Gainers,
+                market: StockMarketFilter::MainBoard,
+                exclude_st: true,
+                offset: 20,
+                limit: 20,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("second page failed: {error}"));
+        assert_eq!(first.items.len(), 20);
+        assert_eq!(second.items.len(), 20);
+        assert!(first
+            .items
+            .iter()
+            .all(|left| second.items.iter().all(|right| left.symbol != right.symbol)));
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_stock_rankings_market_filters() {
+        let client = EastmoneyClient::new();
+        for market in [
+            StockMarketFilter::MainBoard,
+            StockMarketFilter::ChiNext,
+            StockMarketFilter::StarMarket,
+            StockMarketFilter::Beijing,
+        ] {
+            let rows = client
+                .stock_rankings(StockRankingRequest {
+                    order: StockRankingOrder::Gainers,
+                    market,
+                    exclude_st: false,
+                    offset: 0,
+                    limit: 5,
+                })
+                .await
+                .unwrap_or_else(|error| panic!("request failed for {market:?}: {error}"));
+            assert_eq!(rows.items.len(), 5, "market {market:?}");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_stock_rankings() {
+        let rows = EastmoneyClient::new()
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Gainers,
+                market: StockMarketFilter::All,
+                exclude_st: true,
+                offset: 0,
+                limit: 10,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert_eq!(rows.items.len(), 10);
     }
 
     #[tokio::test]

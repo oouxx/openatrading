@@ -72,7 +72,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/plate-abnormal", get(web::get_plate_abnormal))
         .route("/api/plate-rankings", get(web::get_plate_rankings))
         .route("/api/plate-details/:plate_id", get(web::get_plate_detail))
-        .route("/api/timeline", get(web::get_timeline))
+        .route("/api/stock-rankings", get(web::get_stock_rankings))
         .route("/api/kline/stream", get(web::get_kline_stream))
         .route("/api/kline/:symbol", get(web::get_kline))
         .route("/api/realtime/stream", get(web::get_realtime_stream))

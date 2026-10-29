@@ -5,7 +5,7 @@
 // list. Connections are created/removed as the sessionIds array changes.
 
 import { useCallback, useEffect, useMemo, useRef } from "react"
-import { applyEvent, historyToTurns } from "./reducer"
+import { appendUserTurn, applyEvent, historyToTurns } from "./reducer"
 import type { HistoryMessage, PromptImage, TranscriptEvent, TranscriptTurn } from "./types"
 import { getApiBaseUrl } from "@/stores/data"
 
@@ -38,6 +38,12 @@ interface ConnectionState {
    *  Persisted across reconnects (the same `conn` is reused) so the WS URL
    *  carries `lastSeq` on reconnect and the server replays the gap. */
   lastSeq: number
+  /** Monotonic revision of `turns`; stale REST history snapshots must not
+   *  overwrite optimistic user turns or newer live events. */
+  turnRevision: number
+  /** Latest history request; older responses are ignored even when the turn
+   *  revision did not change between overlapping requests. */
+  historyRequestSeq: number
 }
 
 function createConnectionState(): ConnectionState {
@@ -49,6 +55,8 @@ function createConnectionState(): ConnectionState {
     reconnectTimer: null,
     readyResolve: null,
     lastSeq: 0,
+    turnRevision: 0,
+    historyRequestSeq: 0,
   }
 }
 
@@ -102,11 +110,16 @@ export function useMultiAgentWebSocket(
 
   const fetchHistory = useCallback(async (sid: string, conn: ConnectionState) => {
     try {
+      const requestSeq = ++conn.historyRequestSeq
+      const revisionAtRequest = conn.turnRevision
       const base = getApiBaseUrl()
       const res = await fetch(`${base}/api/ai/sessions/${sid}/messages`)
       if (!res.ok) return
       const msgs: HistoryMessage[] = await res.json()
       if (!msgs || msgs.length === 0) return
+      if (requestSeq !== conn.historyRequestSeq || conn.turnRevision !== revisionAtRequest) {
+        return
+      }
       // Never overwrite a turn list that has an in-progress (streaming) turn —
       // live data always takes precedence over a stale history snapshot.
       // This matters when switching to a session that is still streaming in
@@ -114,6 +127,7 @@ export function useMultiAgentWebSocket(
       if (conn.turns.some((t) => t.status === "in_progress")) return
       const turns = historyToTurns(msgs)
       conn.turns = turns
+      conn.turnRevision++
       // Only notify if the connection is still alive and hasn't been
       // replaced by a newer connection.
       if (mountedRef.current) {
@@ -185,6 +199,7 @@ export function useMultiAgentWebSocket(
           // history. Advance lastSeq past this signal and bail.
           if (parsed.kind === "session" && parsed.type === "resync_required") {
             conn.turns = []
+            conn.turnRevision++
             optionsRef.current.onTurnsUpdate?.(sid, [])
             fetchHistory(sid, conn)
             const seq = Number(parsed.seq)
@@ -202,6 +217,7 @@ export function useMultiAgentWebSocket(
           const prev = conn.turns
           const { turns: newTurns, terminal } = applyEvent(prev, parsed as TranscriptEvent)
           conn.turns = newTurns
+          conn.turnRevision++
           optionsRef.current.onTurnsUpdate?.(sid, [...newTurns])
           if (terminal) {
             optionsRef.current.onTerminal?.(sid)
@@ -341,6 +357,12 @@ export function useMultiAgentWebSocket(
         throw new Error("连接已断开")
       }
       conn.ws.send(JSON.stringify({ type: "prompt", text, images: images ?? [] }))
+      // The connection owns the transcript used by live events. Append the
+      // optimistic user turn here so the first assistant delta cannot replace
+      // a user message that only existed in React component state.
+      conn.turns = appendUserTurn(conn.turns, text, images ?? [])
+      conn.turnRevision++
+      optionsRef.current.onTurnsUpdate?.(sid, [...conn.turns])
     },
     [ensureConnection, waitForReady]
   )

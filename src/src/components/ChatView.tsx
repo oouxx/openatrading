@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { applyEvent, historyToTurns } from "@/agents/reducer"
+import { appendUserTurn, applyEvent, historyToTurns } from "@/agents/reducer"
 import type { PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
@@ -305,34 +305,7 @@ export default function AiCopilot({
     (sessionId: string, text: string, images: PromptImage[]) => {
       const current = threadTurnsRef.current
       const turns = current.get(sessionId) ?? []
-      const now = Date.now()
-      const blocks: TranscriptBlock[] = [
-        ...images.map((img, i) => ({
-          type: "image" as const,
-          id: `${sessionId}-img-${now}-${i}`,
-          data: img.data,
-          mimeType: img.mimeType,
-        })),
-        ...(text
-          ? [
-              {
-                type: "text" as const,
-                id: `${sessionId}-user-${now}`,
-                content: text,
-                streaming: false,
-              },
-            ]
-          : []),
-      ]
-      const next = [
-        ...turns,
-        {
-          id: `${sessionId}-turn-${now}`,
-          role: "user" as const,
-          status: "complete" as const,
-          blocks,
-        },
-      ]
+      const next = appendUserTurn(turns, text, images)
       const updated = new Map(current)
       updated.set(sessionId, next)
       threadTurnsRef.current = updated
@@ -378,9 +351,12 @@ export default function AiCopilot({
         if (isTauri) {
           await startTauriTransport(sessionId)
           await transportRef.current?.sendPrompt(text, images)
+          appendLocalUserTurn(sessionId, text, images)
         } else {
           // Use wsAgent directly with the resolved sessionId so we don't
           // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
+          // The transport appends the optimistic user turn to its authoritative
+          // transcript so live assistant events cannot overwrite it.
           await wsAgent.sendPrompt(sessionId, text, images)
         }
       } catch (e) {
@@ -396,9 +372,6 @@ export default function AiCopilot({
         return
       }
 
-      // 发送成功后再乐观插入用户消息：失败时聊天记录里不该留下一条「发出去过」
-      // 的消息，否则恢复的输入框会和它重复。历史回放会替换这条临时消息。
-      appendLocalUserTurn(sessionId, text, images)
       // 点「发送」按钮时焦点在按钮上，按钮随即消失；把焦点还给输入框，
       // 用户可以直接接着打字。
       textareaRef.current?.focus()

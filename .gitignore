@@ -8,6 +8,8 @@ reports/
 .qwen/
 tests/
 !crates/*/tests/
+!src/tests/
+!src/tests/**
 .DS_Store
 methodology
 

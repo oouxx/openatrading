@@ -29,6 +29,7 @@ const ReplayView = lazy(() => import("@/components/ReplayView"))
 const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
 const PromotionView = lazy(() => import("@/components/PromotionView"))
 const PlateRankingTab = lazy(() => import("@/components/PlateRankingTab"))
+const StockRankingTab = lazy(() => import("@/components/StockRankingTab"))
 const TimelineTab = lazy(() => import("@/components/TimelineTab"))
 const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
 const NewsFeed = lazy(() => import("@/components/NewsFeed"))
@@ -37,6 +38,7 @@ const TABS: { id: RightPanelView; label: string; icon: typeof TrendingUp }[] = [
   { id: "strong-stocks", label: "强势股", icon: TrendingUp },
   { id: "promotion", label: "晋级分析", icon: Layers },
   { id: "plate-ranking", label: "板块排行", icon: ListOrdered },
+  { id: "stock-ranking", label: "个股排行", icon: TrendingUp },
   { id: "dragon-tiger", label: "龙虎榜", icon: Trophy },
   { id: "timeline", label: "时间线", icon: Clock },
   { id: "sentiment-chip", label: "情绪筹码", icon: Gauge },
@@ -79,6 +81,8 @@ function ViewRenderer({ view }: { view: RightPanelView }) {
       return <PromotionView />
     case "plate-ranking":
       return <PlateRankingTab />
+    case "stock-ranking":
+      return <StockRankingTab />
     case "timeline":
       return <TimelineTab />
     case "sentiment-chip":

@@ -6,6 +6,7 @@ export type RightPanelView =
   | "strong-stocks"
   | "promotion"
   | "plate-ranking"
+  | "stock-ranking"
   | "timeline"
   | "sentiment-chip"
   | "news"
@@ -19,6 +20,7 @@ const ALL_VIEWS: ReadonlySet<RightPanelView> = new Set<RightPanelView>([
   "strong-stocks",
   "promotion",
   "plate-ranking",
+  "stock-ranking",
   "timeline",
   "sentiment-chip",
   "news",
@@ -41,7 +43,13 @@ function loadActiveView(): RightPanelView {
 interface RightPanelState {
   activeView: RightPanelView
   klineTarget: { symbol: string; name: string } | null
+  stockRankingOrder: "gainers" | "losers"
+  stockRankingMarket: "all" | "main" | "chinext" | "star" | "beijing"
+  stockRankingExcludeSt: boolean
   setActiveView: (view: RightPanelView) => void
+  setStockRankingOrder: (order: "gainers" | "losers") => void
+  setStockRankingMarket: (market: "all" | "main" | "chinext" | "star" | "beijing") => void
+  setStockRankingExcludeSt: (exclude: boolean) => void
   openKline: (symbol: string, name: string) => void
   closeKline: () => void
 }
@@ -49,6 +57,9 @@ interface RightPanelState {
 export const useRightPanelStore = create<RightPanelState>((set) => ({
   activeView: loadActiveView(),
   klineTarget: null,
+  stockRankingOrder: "gainers",
+  stockRankingMarket: "all",
+  stockRankingExcludeSt: true,
 
   setActiveView: (view) => {
     try {
@@ -62,4 +73,10 @@ export const useRightPanelStore = create<RightPanelState>((set) => ({
   openKline: (symbol, name) => set({ klineTarget: { symbol, name } }),
 
   closeKline: () => set({ klineTarget: null }),
+
+  setStockRankingOrder: (stockRankingOrder) => set({ stockRankingOrder }),
+
+  setStockRankingMarket: (stockRankingMarket) => set({ stockRankingMarket }),
+
+  setStockRankingExcludeSt: (stockRankingExcludeSt) => set({ stockRankingExcludeSt }),
 }))

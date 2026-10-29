@@ -6,10 +6,6 @@ export const limitUpKeys = {
   all: ["limit-up"] as const,
 }
 
-export const timelineKeys = {
-  all: ["timeline"] as const,
-}
-
 export const superStockKeys = {
   all: ["super-stock"] as const,
 }
@@ -54,6 +50,16 @@ export const platesByStockKeys = {
 export const plateRankingKeys = {
   rankings: (rankType: number) => ["plate-rankings", rankType] as const,
   detail: (plateId: number) => ["plate-ranking-detail", plateId] as const,
+}
+
+export const stockRankingKeys = {
+  all: ["stock-rankings"] as const,
+  list: (
+    order: string,
+    market: string,
+    excludeSt: boolean,
+    limit: number
+  ) => ["stock-rankings", order, market, excludeSt, limit] as const,
 }
 
 /**

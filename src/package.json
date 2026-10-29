@@ -10,6 +10,7 @@
     "build:cloudflare": "vite build",
     "build:tauri": "vite build",
     "preview": "vite preview",
+    "test": "bun test tests",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -b --force",

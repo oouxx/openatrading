@@ -13,7 +13,6 @@ use crate::cli::config::AppConfig;
 
 mod check_config;
 mod check_cron;
-mod check_env;
 mod check_home;
 mod check_mcp;
 mod check_port;
@@ -127,7 +126,6 @@ fn all_checks() -> Vec<Box<dyn Check>> {
     vec![
         Box::new(check_home::HomeCheck),
         Box::new(check_config::ConfigCheck),
-        Box::new(check_env::EnvCheck),
         Box::new(check_sqlite::SqliteCheck),
         Box::new(check_cron::CronCheck),
         Box::new(check_telegram::TelegramCheck),

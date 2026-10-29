@@ -8,6 +8,7 @@
 import type {
   HistoryBlock,
   HistoryMessage,
+  PromptImage,
   SessionEvent,
   TranscriptBlock,
   TranscriptEvent,
@@ -234,6 +235,43 @@ function replaceLast(turns: TranscriptTurn[], turn: TranscriptTurn): TranscriptT
   const next = turns.slice()
   next[next.length - 1] = turn
   return next
+}
+
+/** Append the user's optimistic turn to the same transcript state consumed by
+ *  live assistant events. Keeping this in the reducer prevents the transport
+ *  from maintaining a second, divergent turn list. */
+export function appendUserTurn(
+  turns: TranscriptTurn[],
+  text: string,
+  images: PromptImage[]
+): TranscriptTurn[] {
+  const blocks: TranscriptBlock[] = [
+    ...images.map((img) => ({
+      type: "image" as const,
+      id: newBlockId(),
+      data: img.data,
+      mimeType: img.mimeType,
+    })),
+    ...(text
+      ? [
+          {
+            type: "text" as const,
+            id: newBlockId(),
+            content: text,
+            streaming: false,
+          },
+        ]
+      : []),
+  ]
+  return [
+    ...turns,
+    {
+      id: newTurnId(),
+      role: "user",
+      status: "complete",
+      blocks,
+    },
+  ]
 }
 
 function startTurn(turns: TranscriptTurn[]): TranscriptTurn[] {

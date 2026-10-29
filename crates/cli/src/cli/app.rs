@@ -18,9 +18,6 @@ openatrading 是一个 A 股短线行情与舆情工作台。
 模拟盘交易不走 CLI：在 Web / 桌面端面板里手动记录买卖，agent 只做行情与舆情分析。
 
 环境变量（也可写在 ~/.atrading/.env，按全局 → 项目两级加载）:
-  JIUYAN_PHONE       韭研公社登录手机号
-  JIUYAN_PASSWORD    韭研公社密码
-  JIUYAN_SECRET      韭研公社接口签名密钥（必填，代码内不再内置）
   OPENATRADING_HOME  自定义品牌根目录（默认 ~/.atrading）
 "#)]
 pub struct Cli {

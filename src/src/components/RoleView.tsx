@@ -663,45 +663,48 @@ function BuyDialog({
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
             <div className="flex min-w-0 flex-col gap-3">
               <OrderField label="股票" id="buy-symbol" error={symbolError}>
-                <Input
-                  id="buy-symbol"
-                  value={symbol}
-                  onChange={(e) => handleSymbolChange(e.target.value)}
-                  onKeyDown={handleSymbolKeyDown}
-                  placeholder="输入代码或名称，如 300272 / 开能健康"
-                  autoComplete="off"
-                  aria-invalid={symbolError ? true : undefined}
-                  className="font-number text-caption"
-                  autoFocus
-                />
-                {showSuggestions && (
-                  <div className="border-hairline bg-elevated overflow-hidden rounded-lg border">
-                    <Command ref={commandRef} shouldFilter={false} className="bg-transparent">
-                      <CommandList className="max-h-52">
-                        {searchError ? (
-                          <div className="text-danger text-caption px-3 py-3">
-                            股票搜索失败：{searchError}
-                          </div>
-                        ) : (
-                          <CommandEmpty className="text-secondary text-caption py-3">
-                            {searching ? "搜索中…" : "无匹配股票，可直接输入 6 位代码"}
-                          </CommandEmpty>
-                        )}
-                        {results.map((r) => (
-                          <CommandItem
-                            key={r.code}
-                            value={r.code}
-                            onSelect={() => pickStock(r)}
-                            className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
-                          >
-                            <span className="font-number text-primary">{r.code}</span>
-                            <span className="text-secondary truncate">{r.name}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandList>
-                    </Command>
-                  </div>
-                )}
+                <div className="relative">
+                  <Input
+                    id="buy-symbol"
+                    value={symbol}
+                    onChange={(e) => handleSymbolChange(e.target.value)}
+                    onKeyDown={handleSymbolKeyDown}
+                    placeholder="输入代码或名称，如 300272 / 开能健康"
+                    autoComplete="off"
+                    aria-invalid={symbolError ? true : undefined}
+                    className="font-number text-caption"
+                    autoFocus
+                  />
+                  {/* 搜索结果必须脱离表单文档流：列表高度不能把买入弹窗撑大。 */}
+                  {showSuggestions && (
+                    <div className="border-hairline bg-elevated shadow-modal absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border">
+                      <Command ref={commandRef} shouldFilter={false} className="bg-transparent">
+                        <CommandList className="max-h-52">
+                          {searchError ? (
+                            <div className="text-danger text-caption px-3 py-3">
+                              股票搜索失败：{searchError}
+                            </div>
+                          ) : (
+                            <CommandEmpty className="text-secondary text-caption py-3">
+                              {searching ? "搜索中…" : "无匹配股票，可直接输入 6 位代码"}
+                            </CommandEmpty>
+                          )}
+                          {results.map((r) => (
+                            <CommandItem
+                              key={r.code}
+                              value={r.code}
+                              onSelect={() => pickStock(r)}
+                              className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
+                            >
+                              <span className="font-number text-primary">{r.code}</span>
+                              <span className="text-secondary truncate">{r.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </div>
+                  )}
+                </div>
               </OrderField>
 
               {/* 名称只做确认，不再提供手填输入框：留空时后端会用行情补全，

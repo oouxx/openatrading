@@ -4,7 +4,7 @@ A 股短线行情与舆情工作台。聚合选股宝、韭研公社、财联社
 
 ## Features
 
-- 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/大盘异动/K 线/分时）、韭研公社时间线、财联社电报、东财龙虎榜、新浪集合竞价
+- 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/大盘异动/K 线/分时）、东方财富（全市场个股涨跌排行/龙虎榜）、财联社电报、新浪集合竞价
 - 项目 Skill：韭研板块异动与市场情报由 agent 按需获取，动态 token 和浏览器侧凭证不进入 Rust 运行链路
 - 模拟盘手动记账：在 Web 面板按角色记录买卖，你填成交价与股数，系统只记账不撮合、不计手续费，持仓按实时行情估值
 - 定时自动化：内置 cron 调度器，盘中采集数据、推送财联社 A/B 级电报
@@ -123,7 +123,7 @@ cd src && bun install && bun run dev
 ### Docker
 
 ```bash
-cp .env.example .env      # 填 JIUYAN_* / 通知渠道等，至少 JIUYAN_SECRET
+cp .env.example .env      # 填通知渠道、Agent 等所需变量
 docker compose pull       # 从 GHCR 拉已发布镜像
 docker compose up -d --no-build
 ```
@@ -194,8 +194,6 @@ bind    = "0.0.0.0:8082"
 | 变量 | 用途 |
 |------|------|
 | `OPENATRADING_HOME` | 自定义品牌根目录 |
-| `JIUYAN_PHONE` / `JIUYAN_PASSWORD` | 韭研公社登录 |
-| `JIUYAN_SECRET` | 韭研公社接口签名密钥（必填，代码内不内置） |
 | `JIUYAN_SESSION_TOKEN` | Skill 使用的韭研公社 `SESSION` token |
 | `JIUYAN_TIMESTAMP` / `JIUYAN_TOKEN` | Skill 使用的动态请求签名 |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram |
@@ -232,9 +230,9 @@ bind    = "0.0.0.0:8082"
 | 数据源 | 内容 |
 |--------|------|
 | 选股宝 | 涨停 / 跌停 / 强势股、市场概览与涨跌分布、大盘/板块异动、板块涨跌榜与成分股、板块摘要/指数、实时行情、K 线、分时走势、个股所属板块、批量资金流 |
-| 韭研公社 | Rust 提供时间线；板块异动和市场情报由 `.agents/skills` 中的项目 Skill 完成 |
+| 韭研公社 | 板块异动和市场情报由 `.agents/skills` 中的项目 Skill 完成，Rust 不直接请求 |
 | 财联社 | 电报快讯（A/B 级自动推送） |
-| 东财龙虎榜 | 席位详情、个股席位、合并、活跃营业部、研报 |
+| 东方财富 | 龙虎榜席位与活跃营业部、研报、全市场个股涨幅/跌幅排行 |
 | 新浪 | 集合竞价快照 |
 
 ## MCP
