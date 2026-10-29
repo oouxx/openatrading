@@ -679,17 +679,18 @@ pub async fn get_stock_rankings_data(
             StockMarketFilter::MainBoard => "main",
             StockMarketFilter::ChiNext => "chinext",
             StockMarketFilter::StarMarket => "star",
-            StockMarketFilter::Beijing => "beijing",
         },
         u8::from(exclude_st),
         offset,
         limit,
     );
 
-    get_or_fetch_json_tauri(
+    let response = cache::get_or_fetch_json_resilient(
         &state.cache,
+        &state.in_flight,
         &cache_key,
-        CachePolicy::realtime(),
+        CachePolicy::stock_ranking(),
+        std::time::Duration::from_secs(60),
         || async {
             let rankings = state
                 .ctx
@@ -703,11 +704,27 @@ pub async fn get_stock_rankings_data(
                     limit,
                 })
                 .await
-                .map_err(|error| format!("个股排行获取失败: {error}"))?;
-            serde_json::to_value(rankings).map_err(|error| format!("个股排行序列化失败: {error}"))
+                .map_err(|error| {
+                    openatrading_core::log::warn!("个股排行获取失败: {error}");
+                    StatusCode::BAD_GATEWAY
+                })?;
+            serde_json::to_value(rankings).map_err(|error| {
+                openatrading_core::log::error!("个股排行序列化失败: {error}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })
         },
     )
     .await
+    .map_err(|status| format!("个股排行获取失败: HTTP {status}"))?;
+    let axum::Json(mut value) = response;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("stale".to_string(), serde_json::Value::Bool(false));
+        object.insert(
+            "generated_at".to_string(),
+            serde_json::Value::from(openatrading_core::utils::time::beijing_now().timestamp()),
+        );
+    }
+    Ok(value)
 }
 
 /// GET /api/market-trend/:symbol

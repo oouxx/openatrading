@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import {
   type StockRankingOrder,
 } from "@/hooks/query/useStockRanking"
 import { formatCompactNumber, formatPct, pctClass } from "@/lib/format"
+import { mergeStockRankingPages } from "@/lib/stock-ranking"
 import { cn } from "@/lib/utils"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
@@ -23,7 +24,6 @@ const MARKETS: { id: StockMarketFilter; label: string }[] = [
   { id: "main", label: "沪深主板" },
   { id: "chinext", label: "创业板" },
   { id: "star", label: "科创板" },
-  { id: "beijing", label: "北交所" },
 ]
 
 function numberText(value: number | null | undefined, digits = 2): string {
@@ -47,8 +47,19 @@ export default function StockRankingTab() {
   const setExcludeSt = useRightPanelStore((state) => state.setStockRankingExcludeSt)
   const openKline = useRightPanelStore((state) => state.openKline)
   const query = useStockRanking(order, market, excludeSt)
-  const stocks = query.data?.pages.flatMap((page) => page.items) ?? []
+  const stocks = useMemo(
+    () => mergeStockRankingPages(query.data?.pages ?? []),
+    [query.data?.pages]
+  )
   const marketLabel = MARKETS.find((item) => item.id === market)?.label ?? "全部"
+  const latestPage = query.data?.pages.at(-1)
+  const updatedAt = latestPage?.generated_at
+    ? new Date(latestPage.generated_at * 1000).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : ""
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
 
@@ -127,9 +138,15 @@ export default function StockRankingTab() {
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-caption text-tertiary">
-          {marketLabel} · {stocks.length} 只
-        </span>
+        <div className="text-caption text-tertiary flex items-center gap-2">
+          <span>
+            {marketLabel} · {stocks.length} 只
+          </span>
+          {updatedAt && <span>{updatedAt} 更新</span>}
+          {query.data?.pages.some((page) => page.stale) && (
+            <span className="text-warning">上游延迟，展示最近数据</span>
+          )}
+        </div>
         <Button
           type="button"
           variant="ghost"

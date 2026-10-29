@@ -44,11 +44,11 @@ interface RightPanelState {
   activeView: RightPanelView
   klineTarget: { symbol: string; name: string } | null
   stockRankingOrder: "gainers" | "losers"
-  stockRankingMarket: "all" | "main" | "chinext" | "star" | "beijing"
+  stockRankingMarket: "all" | "main" | "chinext" | "star"
   stockRankingExcludeSt: boolean
   setActiveView: (view: RightPanelView) => void
   setStockRankingOrder: (order: "gainers" | "losers") => void
-  setStockRankingMarket: (market: "all" | "main" | "chinext" | "star" | "beijing") => void
+  setStockRankingMarket: (market: "all" | "main" | "chinext" | "star") => void
   setStockRankingExcludeSt: (exclude: boolean) => void
   openKline: (symbol: string, name: string) => void
   closeKline: () => void

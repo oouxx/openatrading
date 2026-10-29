@@ -1297,6 +1297,7 @@ const UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
 const SEARCH_TOKEN: &str = "D43BF722C8E33BDC906FB84D85E326E8";
 const MARKET_LIST_PAGE_SIZE: u32 = 100;
 const MARKET_LIST_MAX_PAGES: u32 = 100;
+const MARKET_LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 // ─── Domain types ────────────────────────────────────────────────────────────
 
@@ -1433,17 +1434,15 @@ pub enum StockMarketFilter {
     MainBoard,
     ChiNext,
     StarMarket,
-    Beijing,
 }
 
 impl StockMarketFilter {
     const fn fs(self) -> &'static str {
         match self {
-            Self::All => "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+            Self::All => "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23",
             Self::MainBoard => "m:1 t:2,m:0 t:6",
             Self::ChiNext => "m:0 t:80",
             Self::StarMarket => "m:1 t:23",
-            Self::Beijing => "m:0 t:81 s:2048",
         }
     }
 }
@@ -1457,7 +1456,6 @@ impl FromStr for StockMarketFilter {
             "main" | "main-board" | "主板" => Ok(Self::MainBoard),
             "chinext" | "cyb" | "创业板" => Ok(Self::ChiNext),
             "star" | "star-market" | "kcb" | "科创板" => Ok(Self::StarMarket),
-            "beijing" | "bj" | "bse" | "北交所" => Ok(Self::Beijing),
             other => bail!("不支持的个股市场: {other}"),
         }
     }
@@ -1764,6 +1762,7 @@ impl EastmoneyClient {
                     "Referer",
                     "https://quote.eastmoney.com/center/gridlist.html",
                 )
+                .timeout(MARKET_LIST_TIMEOUT)
                 .send()
                 .await
                 .context("个股排行请求失败")?
@@ -1787,6 +1786,9 @@ impl EastmoneyClient {
                 let Some(stock) = parse_market_stock_row(&row) else {
                     continue;
                 };
+                if stock.symbol.ends_with(".BJ") {
+                    continue;
+                }
                 if request.exclude_st && is_st_name(&stock.name) {
                     continue;
                 }
@@ -2576,6 +2578,14 @@ mod market_tests {
     }
 
     #[test]
+    fn all_market_filter_excludes_beijing() {
+        let fs = StockMarketFilter::All.fs();
+        assert!(!fs.contains("t:81"));
+        assert!(fs.contains("t:80"));
+        assert!(fs.contains("t:23"));
+    }
+
+    #[test]
     fn detects_st_names() {
         assert!(is_st_name("ST交昂"));
         assert!(is_st_name("*ST禾信"));
@@ -2600,10 +2610,7 @@ mod market_tests {
             "科创板".parse::<StockMarketFilter>().ok(),
             Some(StockMarketFilter::StarMarket)
         );
-        assert_eq!(
-            "北交所".parse::<StockMarketFilter>().ok(),
-            Some(StockMarketFilter::Beijing)
-        );
+        assert!("北交所".parse::<StockMarketFilter>().is_err());
     }
 
     #[test]
@@ -2692,7 +2699,6 @@ mod market_tests {
             StockMarketFilter::MainBoard,
             StockMarketFilter::ChiNext,
             StockMarketFilter::StarMarket,
-            StockMarketFilter::Beijing,
         ] {
             let rows = client
                 .stock_rankings(StockRankingRequest {

@@ -22,6 +22,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore"
 import { motionTransition } from "@/lib/motion"
+import { useQueryClient } from "@tanstack/react-query"
+import { stockRankingQueryOptions } from "@/hooks/query/useStockRanking"
 
 const KlineDrawer = lazy(() => import("./KlineDrawer"))
 const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
@@ -101,6 +103,20 @@ export default function RightPanel() {
   const dragControls = useDragControls()
   const panelRef = usePanelRef()
   const [collapsed, setCollapsed] = useState(loadCollapsed)
+  const queryClient = useQueryClient()
+  const stockRankingOrder = useRightPanelStore((state) => state.stockRankingOrder)
+  const stockRankingMarket = useRightPanelStore((state) => state.stockRankingMarket)
+  const stockRankingExcludeSt = useRightPanelStore((state) => state.stockRankingExcludeSt)
+
+  const prefetchStockRankings = useCallback(() => {
+    void queryClient.prefetchInfiniteQuery(
+      stockRankingQueryOptions(
+        stockRankingOrder,
+        stockRankingMarket,
+        stockRankingExcludeSt
+      )
+    )
+  }, [queryClient, stockRankingOrder, stockRankingMarket, stockRankingExcludeSt])
 
   // The Panel's imperative API is only wired up after the Group registers
   // itself in the Group's own layout effect. Layout effects run child-first, so
@@ -226,6 +242,8 @@ export default function RightPanel() {
                     <TabsTrigger
                       key={tab.id}
                       value={tab.id}
+                      onPointerEnter={tab.id === "stock-ranking" ? prefetchStockRankings : undefined}
+                      onFocus={tab.id === "stock-ranking" ? prefetchStockRankings : undefined}
                       className="text-caption data-active:border-b-brand data-active:text-brand flex-none rounded-none border-b-2 border-transparent px-3 py-2 whitespace-nowrap after:hidden"
                     >
                       {tab.label}

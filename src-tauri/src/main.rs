@@ -536,6 +536,7 @@ fn main() {
         roles: Arc::new(RwLock::new(roles)),
         mcp: mcp_config,
         cache: openatrading_web::cache::new_cache(),
+        in_flight: openatrading_web::cache::InFlightRequests::new(),
         market_hub: openatrading_web::market_stream::MarketStreamHub::new(),
         forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
         automation: automation_hub,

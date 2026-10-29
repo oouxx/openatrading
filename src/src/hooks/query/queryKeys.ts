@@ -54,12 +54,8 @@ export const plateRankingKeys = {
 
 export const stockRankingKeys = {
   all: ["stock-rankings"] as const,
-  list: (
-    order: string,
-    market: string,
-    excludeSt: boolean,
-    limit: number
-  ) => ["stock-rankings", order, market, excludeSt, limit] as const,
+  list: (order: string, market: string, excludeSt: boolean) =>
+    ["stock-rankings", order, market, excludeSt] as const,
 }
 
 /**

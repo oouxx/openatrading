@@ -62,6 +62,7 @@ impl Gateway {
             roles: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             mcp: config.mcp,
             cache: cache::new_cache(),
+            in_flight: cache::InFlightRequests::new(),
             market_hub: market_stream::MarketStreamHub::new(),
             forward_tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
             automation: config.automation,

@@ -33,6 +33,8 @@ pub struct AppState {
     /// 外部 MCP server 的配置读写入口（文件为唯一事实源）。
     pub mcp: McpConfigStore,
     pub cache: Arc<AppCache>,
+    /// 同 key 并发回源合并（single-flight），主要保护不稳定上游。
+    pub in_flight: Arc<cache::InFlightRequests>,
     /// Shared multiplexer for market SSE streams (kline/realtime). One upstream
     /// poll per symbol set, fanned out to every SSE connection.
     pub market_hub: Arc<market_stream::MarketStreamHub>,
