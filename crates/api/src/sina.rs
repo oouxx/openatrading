@@ -1,7 +1,18 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use encoding_rs::GBK;
 use reqwest::Client;
+use serde_json::Value;
 use std::time::Duration;
+
+use crate::eastmoney::{
+    MarketStock, StockMarketFilter, StockRankingOrder, StockRankingPage, StockRankingRequest,
+};
+
+const MARKET_CENTER_URL: &str =
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData";
+const MARKET_PAGE_SIZE: usize = 100;
+const MARKET_MAX_PAGES: usize = 100;
+const MARKET_CAP_UNIT: f64 = 10_000.0;
 
 // ── 竞价行情数据结构 ────────────────────────────────
 
@@ -40,18 +51,26 @@ pub struct AuctionQuote {
 
 // ── 新浪行情客户端 ────────────────────────────────────
 
+#[derive(Clone)]
 pub struct SinaQuoteClient {
-    client: Client,
+    client: Result<Client, String>,
 }
 
 impl SinaQuoteClient {
     /// Create a new `SinaQuoteClient`.
     ///
-    /// # Errors
-    /// Returns an error if the reqwest client cannot be built.
-    pub fn new() -> Result<Self> {
-        let client = Client::builder().timeout(Duration::from_secs(5)).build()?;
-        Ok(Self { client })
+    pub fn new() -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|error| error.to_string());
+        Self { client }
+    }
+
+    fn http(&self) -> Result<&Client> {
+        self.client
+            .as_ref()
+            .map_err(|error| anyhow::anyhow!("新浪 HTTP 客户端初始化失败: {error}"))
     }
 
     /// 批量获取竞价行情。
@@ -73,7 +92,7 @@ impl SinaQuoteClient {
         let url = format!("https://hq.sinajs.cn/list={list}");
 
         let bytes = self
-            .client
+            .http()?
             .get(&url)
             .header("Referer", "https://finance.sina.com.cn")
             .send()
@@ -89,6 +108,194 @@ impl SinaQuoteClient {
 
         Ok(parse_sina_response(&text, codes))
     }
+
+    /// 获取全市场个股涨幅/跌幅榜。
+    ///
+    /// 新浪是主数据源；返回值复用个股排行 API 的统一模型。`hs_a` 包含
+    /// 北交所，这里按现有接口契约过滤 `.BJ`。
+    ///
+    /// # Errors
+    /// Returns an error if pagination parameters are invalid, the HTTP request
+    /// fails, or the response cannot be parsed.
+    pub async fn stock_rankings(&self, request: StockRankingRequest) -> Result<StockRankingPage> {
+        if request.limit == 0 {
+            bail!("个股排行数量必须大于 0");
+        }
+
+        let node = sina_market_node(request.market);
+        collect_sina_ranking(request, |page| {
+            self.fetch_market_page(page, request.order, node)
+        })
+        .await
+    }
+
+    async fn fetch_market_page(
+        &self,
+        page: usize,
+        order: StockRankingOrder,
+        node: &str,
+    ) -> Result<Vec<Value>> {
+        let response = self
+            .http()?
+            .get(MARKET_CENTER_URL)
+            .query(&[
+                ("page", page.to_string()),
+                ("num", MARKET_PAGE_SIZE.to_string()),
+                ("sort", "changepercent".to_string()),
+                ("asc", sina_sort_order(order).to_string()),
+                ("node", node.to_string()),
+                ("symbol", String::new()),
+                ("_s_r_a", "page".to_string()),
+            ])
+            .header("Referer", "https://finance.sina.com.cn/")
+            .header("User-Agent", "Mozilla/5.0")
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .context("新浪个股排行请求失败")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            bail!("新浪个股排行请求失败: HTTP {status}");
+        }
+        let text = response.text().await.context("新浪个股排行响应读取失败")?;
+        let rows: Vec<Value> =
+            serde_json::from_str(&text).context("新浪个股排行响应不是合法 JSON")?;
+        Ok(rows)
+    }
+}
+
+async fn collect_sina_ranking<F, Fut>(
+    request: StockRankingRequest,
+    mut fetch_page: F,
+) -> Result<StockRankingPage>
+where
+    F: FnMut(usize) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Value>>>,
+{
+    let mut items = Vec::with_capacity(request.limit);
+    let mut matched = 0usize;
+    let mut page = 1usize;
+
+    while items.len() < request.limit {
+        if page > MARKET_MAX_PAGES {
+            bail!("新浪个股排行分页超过上限");
+        }
+
+        let rows = fetch_page(page).await?;
+        if rows.is_empty() {
+            break;
+        }
+
+        let row_count = rows.len();
+        for row in rows {
+            let Some(stock) = parse_sina_market_stock_row(&row) else {
+                continue;
+            };
+            if !sina_includes_stock(&stock, request.market, request.exclude_st) {
+                continue;
+            }
+            if matched < request.offset {
+                matched += 1;
+                continue;
+            }
+            matched += 1;
+            items.push(stock);
+            if items.len() == request.limit {
+                break;
+            }
+        }
+
+        if row_count < MARKET_PAGE_SIZE {
+            break;
+        }
+        page += 1;
+    }
+
+    if items.is_empty() && request.offset == 0 {
+        bail!("新浪个股排行返回空数据");
+    }
+    let next_offset = if items.len() < request.limit {
+        None
+    } else {
+        Some(request.offset.saturating_add(items.len()))
+    };
+    Ok(StockRankingPage { items, next_offset })
+}
+
+impl Default for SinaQuoteClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn sina_market_node(market: StockMarketFilter) -> &'static str {
+    match market {
+        StockMarketFilter::All | StockMarketFilter::MainBoard => "hs_a",
+        StockMarketFilter::ChiNext => "cyb",
+        StockMarketFilter::StarMarket => "kcb",
+    }
+}
+
+const fn sina_sort_order(order: StockRankingOrder) -> &'static str {
+    match order {
+        StockRankingOrder::Gainers => "0",
+        StockRankingOrder::Losers => "1",
+    }
+}
+
+fn sina_matches_market(stock: &MarketStock, market: StockMarketFilter) -> bool {
+    match market {
+        StockMarketFilter::All => true,
+        StockMarketFilter::MainBoard => match stock.symbol.rsplit_once('.') {
+            Some((code, "SS")) => !code.starts_with("688") && !code.starts_with("689"),
+            Some((code, "SZ")) => !code.starts_with("30"),
+            _ => false,
+        },
+        StockMarketFilter::ChiNext => stock.symbol.ends_with(".SZ") && stock.code.starts_with("30"),
+        StockMarketFilter::StarMarket => {
+            stock.symbol.ends_with(".SS") && stock.code.starts_with("68")
+        }
+    }
+}
+
+fn sina_includes_stock(stock: &MarketStock, market: StockMarketFilter, exclude_st: bool) -> bool {
+    !stock.symbol.ends_with(".BJ")
+        && sina_matches_market(stock, market)
+        && !(exclude_st && is_st_name(&stock.name))
+}
+
+fn parse_sina_market_stock_row(row: &Value) -> Option<MarketStock> {
+    let code = row["code"].as_str()?.to_string();
+    let raw_symbol = row["symbol"].as_str()?;
+    let suffix = match raw_symbol.get(..2)? {
+        "sh" => "SS",
+        "sz" => "SZ",
+        "bj" => "BJ",
+        _ => return None,
+    };
+    Some(MarketStock {
+        symbol: format!("{code}.{suffix}"),
+        code,
+        name: row["name"].as_str()?.to_string(),
+        price: json_number(row, "trade"),
+        change_percent: json_number(row, "changepercent"),
+        turnover_rate: json_number(row, "turnoverratio"),
+        total_market_cap: json_number(row, "mktcap").map(|value| value * MARKET_CAP_UNIT),
+        float_market_cap: json_number(row, "nmc").map(|value| value * MARKET_CAP_UNIT),
+    })
+}
+
+fn json_number(row: &Value, key: &str) -> Option<f64> {
+    row.get(key).and_then(|value| {
+        value
+            .as_f64()
+            .or_else(|| value.as_str()?.parse::<f64>().ok())
+    })
+}
+
+fn is_st_name(name: &str) -> bool {
+    name.to_ascii_uppercase().contains("ST")
 }
 
 fn prefix_for(code: &str) -> &'static str {
@@ -180,12 +387,187 @@ mod tests {
         assert_eq!(q.bid1_volume, 11300);
     }
 
+    #[test]
+    fn parses_ranking_rows_and_normalizes_units() {
+        let row = serde_json::json!({
+            "symbol": "sh600519",
+            "code": "600519",
+            "name": "贵州茅台",
+            "trade": "1500.50",
+            "changepercent": "1.23",
+            "turnoverratio": "0.50",
+            "mktcap": "190000000",
+            "nmc": "190000000"
+        });
+
+        let stock =
+            parse_sina_market_stock_row(&row).unwrap_or_else(|| panic!("ranking row should parse"));
+        assert_eq!(stock.symbol, "600519.SS");
+        assert_eq!(stock.code, "600519");
+        assert_eq!(stock.price, Some(1500.5));
+        assert_eq!(stock.change_percent, Some(1.23));
+        assert_eq!(stock.turnover_rate, Some(0.5));
+        assert_eq!(stock.total_market_cap, Some(1_900_000_000_000.0));
+        assert_eq!(stock.float_market_cap, Some(1_900_000_000_000.0));
+    }
+
+    #[test]
+    fn ranking_market_filters_match_existing_contract() {
+        let stock = |code: &str, suffix: &str| MarketStock {
+            code: code.to_string(),
+            symbol: format!("{code}.{suffix}"),
+            name: format!("股票{code}"),
+            price: Some(10.0),
+            change_percent: Some(1.0),
+            turnover_rate: Some(1.0),
+            total_market_cap: Some(1.0),
+            float_market_cap: Some(1.0),
+        };
+
+        assert!(sina_matches_market(
+            &stock("600519", "SS"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(sina_matches_market(
+            &stock("000001", "SZ"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(!sina_matches_market(
+            &stock("688001", "SS"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(!sina_matches_market(
+            &stock("300001", "SZ"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(sina_matches_market(
+            &stock("300001", "SZ"),
+            StockMarketFilter::ChiNext
+        ));
+        assert!(sina_matches_market(
+            &stock("302132", "SZ"),
+            StockMarketFilter::ChiNext
+        ));
+        assert!(!sina_matches_market(
+            &stock("302132", "SZ"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(sina_matches_market(
+            &stock("688001", "SS"),
+            StockMarketFilter::StarMarket
+        ));
+        assert!(!sina_matches_market(
+            &stock("920001", "BJ"),
+            StockMarketFilter::MainBoard
+        ));
+        assert!(!sina_includes_stock(
+            &stock("920001", "BJ"),
+            StockMarketFilter::All,
+            false
+        ));
+        assert!(!sina_includes_stock(
+            &MarketStock {
+                name: "*ST测试".to_string(),
+                ..stock("600001", "SS")
+            },
+            StockMarketFilter::All,
+            true
+        ));
+    }
+
+    #[test]
+    fn ranking_market_nodes_and_sort_orders_match_sina_api() {
+        assert_eq!(sina_market_node(StockMarketFilter::All), "hs_a");
+        assert_eq!(sina_market_node(StockMarketFilter::MainBoard), "hs_a");
+        assert_eq!(sina_market_node(StockMarketFilter::ChiNext), "cyb");
+        assert_eq!(sina_market_node(StockMarketFilter::StarMarket), "kcb");
+        assert_eq!(sina_sort_order(StockRankingOrder::Gainers), "0");
+        assert_eq!(sina_sort_order(StockRankingOrder::Losers), "1");
+    }
+
+    fn ranking_row(symbol: &str, code: &str, name: &str) -> Value {
+        serde_json::json!({
+            "symbol": symbol,
+            "code": code,
+            "name": name,
+            "trade": "10.00",
+            "changepercent": "1.00",
+            "turnoverratio": "1.00",
+            "mktcap": "100000",
+            "nmc": "80000"
+        })
+    }
+
+    #[tokio::test]
+    async fn ranking_filtered_offset_continues_across_pages() {
+        let mut page_one = vec![
+            ranking_row("bj920001", "920001", "北交测试"),
+            ranking_row("sh600001", "600001", "*ST测试"),
+            ranking_row("sh688001", "688001", "科创测试"),
+            ranking_row("sh600100", "600100", "主板一"),
+        ];
+        while page_one.len() < MARKET_PAGE_SIZE {
+            let index = page_one.len();
+            let code = format!("30{index:04}");
+            page_one.push(ranking_row(&format!("sz{code}"), &code, "创业板测试"));
+        }
+        let page_two = vec![
+            ranking_row("sz000001", "000001", "主板二"),
+            ranking_row("sz002001", "002001", "主板三"),
+            ranking_row("sh600200", "600200", "主板四"),
+        ];
+        let pages = std::sync::Mutex::new(std::collections::HashMap::from([
+            (1usize, page_one),
+            (2usize, page_two),
+        ]));
+
+        let result = collect_sina_ranking(
+            StockRankingRequest {
+                order: StockRankingOrder::Gainers,
+                market: StockMarketFilter::MainBoard,
+                exclude_st: true,
+                offset: 1,
+                limit: 2,
+            },
+            |page| {
+                let rows = pages
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&page)
+                    .unwrap_or_default();
+                async move { Ok(rows) }
+            },
+        )
+        .await
+        .unwrap_or_else(|error| panic!("scripted ranking should succeed: {error}"));
+
+        assert_eq!(
+            result
+                .items
+                .iter()
+                .map(|stock| stock.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["000001", "002001"]
+        );
+        assert_eq!(result.next_offset, Some(3));
+    }
+
+    #[tokio::test]
+    async fn ranking_empty_first_page_is_an_error() {
+        let result = collect_sina_ranking(StockRankingRequest::default(), |_| async {
+            Ok(Vec::<Value>::new())
+        })
+        .await;
+
+        assert!(result.is_err());
+    }
+
     use std::time::Instant;
 
     #[tokio::test]
     #[ignore = "integration test, requires network and live auction data"]
     async fn test_fetch_single_stock() {
-        let client = SinaQuoteClient::new().unwrap_or_else(|e| panic!("test setup failed: {e}"));
+        let client = SinaQuoteClient::new();
         let start = Instant::now();
         let quotes = client
             .fetch_quotes(&["000001"])
@@ -220,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_batch() {
-        let client = SinaQuoteClient::new().unwrap_or_else(|e| panic!("test setup failed: {e}"));
+        let client = SinaQuoteClient::new();
         let codes = ["000001", "600519", "300750", "000858"];
         let quotes = client
             .fetch_quotes(&codes)
@@ -234,5 +616,53 @@ mod tests {
                 q.code, q.name, q.change_pct, q.volume
             );
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network and live market data"]
+    async fn integration_stock_rankings() {
+        let client = SinaQuoteClient::new();
+        let page = client
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Gainers,
+                market: StockMarketFilter::All,
+                exclude_st: false,
+                offset: 0,
+                limit: 30,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("sina ranking request should succeed: {error}"));
+
+        assert_eq!(page.items.len(), 30);
+        assert_eq!(page.next_offset, Some(30));
+        assert!(page
+            .items
+            .iter()
+            .all(|stock| !stock.symbol.ends_with(".BJ")));
+
+        let losers = client
+            .stock_rankings(StockRankingRequest {
+                order: StockRankingOrder::Losers,
+                market: StockMarketFilter::All,
+                exclude_st: true,
+                offset: 0,
+                limit: 30,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("sina losers request should succeed: {error}"));
+        let first = losers
+            .items
+            .first()
+            .and_then(|stock| stock.change_percent)
+            .unwrap_or(0.0);
+        let last = losers
+            .items
+            .last()
+            .and_then(|stock| stock.change_percent)
+            .unwrap_or(0.0);
+        assert!(
+            first <= last,
+            "losers should be sorted ascending: {first} > {last}"
+        );
     }
 }

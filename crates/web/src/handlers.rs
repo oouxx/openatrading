@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use openatrading_core::api::eastmoney::{
-    StockMarketFilter, StockRankingOrder, StockRankingRequest,
+    StockMarketFilter, StockRankingOrder, StockRankingPage, StockRankingRequest,
 };
 use openatrading_core::api::xuangubao::{
     PlateLeaderStocks, PlateRankType, RealtimeQuote, StockLabel, StockMetrics,
@@ -23,6 +23,41 @@ const PLATE_DETAIL_QUOTE_BATCH_SIZE: usize = 200;
 const PLATE_DETAIL_STOCK_DATA_BATCH_SIZE: usize = 200;
 const PLATE_DETAIL_STOCK_LABEL_BATCH_SIZE: usize = 200;
 const STOCK_RANKING_MAX_LIMIT: usize = 500;
+
+async fn fetch_stock_rankings_with_fallback<Primary, Fallback>(
+    primary: Primary,
+    fallback: Fallback,
+) -> Result<StockRankingPage, (anyhow::Error, anyhow::Error)>
+where
+    Primary: std::future::Future<Output = anyhow::Result<StockRankingPage>>,
+    Fallback: std::future::Future<Output = anyhow::Result<StockRankingPage>>,
+{
+    match primary.await {
+        Ok(page) => Ok(page),
+        Err(primary_error) => {
+            openatrading_core::log::warn!("新浪个股排行失败，回退东方财富: {primary_error}");
+            match fallback.await {
+                Ok(page) => Ok(page),
+                Err(fallback_error) => Err((primary_error, fallback_error)),
+            }
+        }
+    }
+}
+
+fn annotate_stock_ranking_freshness(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = value.as_object_mut() {
+        if !object.contains_key("stale") {
+            object.insert("stale".to_string(), serde_json::Value::Bool(false));
+        }
+        if !object.contains_key("generated_at") {
+            object.insert(
+                "generated_at".to_string(),
+                serde_json::Value::from(openatrading_core::utils::time::beijing_now().timestamp()),
+            );
+        }
+    }
+    value
+}
 
 #[derive(Debug, Serialize)]
 struct PlateRankingsResponse {
@@ -692,22 +727,24 @@ pub async fn get_stock_rankings_data(
         CachePolicy::stock_ranking(),
         std::time::Duration::from_secs(60),
         || async {
-            let rankings = state
-                .ctx
-                .api
-                .eastmoney
-                .stock_rankings(StockRankingRequest {
-                    order,
-                    market,
-                    exclude_st,
-                    offset,
-                    limit,
-                })
-                .await
-                .map_err(|error| {
-                    openatrading_core::log::warn!("个股排行获取失败: {error}");
-                    StatusCode::BAD_GATEWAY
-                })?;
+            let request = StockRankingRequest {
+                order,
+                market,
+                exclude_st,
+                offset,
+                limit,
+            };
+            let rankings = fetch_stock_rankings_with_fallback(
+                state.ctx.api.sina.stock_rankings(request),
+                state.ctx.api.eastmoney.stock_rankings(request),
+            )
+            .await
+            .map_err(|(sina_error, eastmoney_error)| {
+                openatrading_core::log::warn!(
+                    "个股排行主备数据源均失败: 新浪={sina_error}; 东方财富={eastmoney_error}"
+                );
+                StatusCode::BAD_GATEWAY
+            })?;
             serde_json::to_value(rankings).map_err(|error| {
                 openatrading_core::log::error!("个股排行序列化失败: {error}");
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -716,14 +753,8 @@ pub async fn get_stock_rankings_data(
     )
     .await
     .map_err(|status| format!("个股排行获取失败: HTTP {status}"))?;
-    let axum::Json(mut value) = response;
-    if let Some(object) = value.as_object_mut() {
-        object.insert("stale".to_string(), serde_json::Value::Bool(false));
-        object.insert(
-            "generated_at".to_string(),
-            serde_json::Value::from(openatrading_core::utils::time::beijing_now().timestamp()),
-        );
-    }
+    let axum::Json(value) = response;
+    let value = annotate_stock_ranking_freshness(value);
     Ok(value)
 }
 
@@ -2066,6 +2097,96 @@ mod tests {
         );
         assert_eq!(rankings.losers.len(), 1);
         assert_eq!(rankings.losers[0].plate_id, 3);
+    }
+
+    fn ranking_page(code: &str) -> StockRankingPage {
+        StockRankingPage {
+            items: vec![openatrading_core::api::eastmoney::MarketStock {
+                code: code.to_string(),
+                symbol: format!("{code}.SZ"),
+                name: format!("股票{code}"),
+                price: Some(10.0),
+                change_percent: Some(1.0),
+                turnover_rate: Some(1.0),
+                total_market_cap: Some(1_000_000.0),
+                float_market_cap: Some(500_000.0),
+            }],
+            next_offset: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn stock_rankings_use_sina_without_polling_eastmoney() {
+        let fallback_calls = std::sync::atomic::AtomicUsize::new(0);
+        let result =
+            fetch_stock_rankings_with_fallback(async { Ok(ranking_page("300001")) }, async {
+                fallback_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(ranking_page("600000"))
+            })
+            .await;
+
+        let page = match result {
+            Ok(page) => page,
+            Err((sina_error, eastmoney_error)) => {
+                panic!("both sources failed: 新浪={sina_error}; 东方财富={eastmoney_error}")
+            }
+        };
+        assert_eq!(page.items[0].code, "300001");
+        assert_eq!(fallback_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn stock_rankings_fall_back_to_eastmoney_after_sina_error() {
+        let result = fetch_stock_rankings_with_fallback(
+            async { Err(anyhow::anyhow!("sina unavailable")) },
+            async { Ok(ranking_page("600000")) },
+        )
+        .await;
+
+        let page = match result {
+            Ok(page) => page,
+            Err((sina_error, eastmoney_error)) => {
+                panic!("both sources failed: 新浪={sina_error}; 东方财富={eastmoney_error}")
+            }
+        };
+        assert_eq!(page.items[0].code, "600000");
+    }
+
+    #[tokio::test]
+    async fn stock_rankings_report_when_both_sources_fail() {
+        let result = fetch_stock_rankings_with_fallback(
+            async { Err(anyhow::anyhow!("sina unavailable")) },
+            async { Err(anyhow::anyhow!("eastmoney unavailable")) },
+        )
+        .await;
+
+        let (sina_error, eastmoney_error) = match result {
+            Ok(_) => panic!("both failing sources must not report success"),
+            Err(errors) => errors,
+        };
+        assert!(sina_error.to_string().contains("sina unavailable"));
+        assert!(eastmoney_error
+            .to_string()
+            .contains("eastmoney unavailable"));
+    }
+
+    #[test]
+    fn stock_ranking_freshness_metadata_survives_stale_cache() {
+        let stale = annotate_stock_ranking_freshness(serde_json::json!({
+            "items": [],
+            "next_offset": null,
+            "stale": true,
+            "generated_at": 123
+        }));
+        assert_eq!(stale["stale"], true);
+        assert_eq!(stale["generated_at"], 123);
+
+        let fresh = annotate_stock_ranking_freshness(serde_json::json!({
+            "items": [],
+            "next_offset": null
+        }));
+        assert_eq!(fresh["stale"], false);
+        assert!(fresh["generated_at"].as_i64().unwrap_or_default() > 0);
     }
 
     #[test]

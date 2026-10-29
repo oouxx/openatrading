@@ -253,12 +253,8 @@ impl MarketDataExtension {
                 if codes.is_empty() {
                     Err("codes 不能为空".to_string())
                 } else {
-                    match SinaQuoteClient::new() {
-                        Ok(client) => {
-                            call(|| async move { client.fetch_quotes(&codes).await }).await
-                        }
-                        Err(e) => Err(e.to_string()),
-                    }
+                    let client = SinaQuoteClient::new();
+                    call(|| async move { client.fetch_quotes(&codes).await }).await
                 }
             }
             "get_lhb_detail" => {

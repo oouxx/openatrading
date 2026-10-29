@@ -9,6 +9,7 @@ pub mod xuangubao;
 use cls::ClsClient;
 
 use cninfo::CninfoClient;
+use sina::SinaQuoteClient;
 use xuangubao::XuanguBaoClient;
 
 use crate::eastmoney::EastmoneyClient;
@@ -18,6 +19,7 @@ pub struct Client {
     pub cls: ClsClient,
     pub eastmoney: EastmoneyClient,
     pub cninfo: CninfoClient,
+    pub sina: SinaQuoteClient,
 }
 
 impl Client {
@@ -27,6 +29,7 @@ impl Client {
             cls: ClsClient::new(),
             eastmoney: EastmoneyClient::new(),
             cninfo: CninfoClient::new(),
+            sina: SinaQuoteClient::new(),
         }
     }
 }
@@ -50,7 +53,7 @@ impl Client {
             anyhow::bail!("新浪盘口只支持沪深 A 股: {symbol}");
         }
 
-        let sina = crate::sina::SinaQuoteClient::new()?;
+        let sina = crate::sina::SinaQuoteClient::new();
         let quotes = sina.fetch_quotes(&[code]).await?;
         let quote = quotes
             .into_iter()

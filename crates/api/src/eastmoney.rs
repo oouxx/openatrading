@@ -1357,7 +1357,7 @@ pub struct BrokenBoardStock {
 /// 全市场个股行情条目。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketStock {
-    /// 东方财富原始代码（6 位）。
+    /// 股票原始代码（6 位）。
     pub code: String,
     /// 规范化代码，例如 `600519.SS`、`300750.SZ`、`920001.BJ`。
     pub symbol: String,
