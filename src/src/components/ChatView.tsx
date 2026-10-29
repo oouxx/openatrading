@@ -944,7 +944,7 @@ export default function AiCopilot({
           <div
             ref={msgContainerRef}
             onScroll={onContainerScroll}
-            className="flex flex-1 flex-col overflow-y-auto py-5"
+            className="scrollbar-gutter-stable flex flex-1 flex-col overflow-y-auto py-5"
           >
             {/* Claude.ai 消息列宽：固定 48rem 居中（不随宽屏放大） */}
             <div

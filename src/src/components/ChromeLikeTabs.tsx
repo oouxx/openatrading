@@ -20,7 +20,7 @@ export default function ChromeTabs({ tabs, activeTab, onSelect, onClose }: Chrom
     <div
       role="tablist"
       aria-label="股票标签页"
-      className="bg-surface border-hairline no-scrollbar flex h-9 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b"
+      className="bg-surface border-hairline flex h-9 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b"
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab

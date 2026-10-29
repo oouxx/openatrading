@@ -236,7 +236,7 @@ export default function RightPanel() {
               >
                 <TabsList
                   variant="line"
-                  className="border-hairline no-scrollbar h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
+                  className="border-hairline h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
                 >
                   {TABS.map((tab) => (
                     <TabsTrigger

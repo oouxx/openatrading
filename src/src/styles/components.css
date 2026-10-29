@@ -169,18 +169,6 @@ th.col-sticky-actions {
   background: linear-gradient(var(--color-ink-dim), var(--color-ink-dim)), var(--color-surface);
 }
 
-/* --- custom-scroll --- */
-.custom-scroll::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 2px;
-}
-
 /* --- readable-content: 阅读排版行宽约束 — clamp 流式自适应 --- */
 @utility readable-content {
   margin-left: auto;
