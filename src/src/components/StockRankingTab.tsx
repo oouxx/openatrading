@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react"
-import { RefreshCw } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmpty, DataError, DataLoading, DataStale } from "@/components/data-state"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   useStockRanking,
   type RankedStock,
@@ -80,43 +81,40 @@ export default function StockRankingTab() {
 
   return (
     <div className="space-y-3 p-4">
-      <div className="flex flex-wrap items-center gap-1">
-        {ORDERS.map((item) => (
-          <Button
-            key={item.id}
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-pressed={order === item.id}
-            onClick={() => setOrder(item.id)}
-            className={cn(
-              "text-caption rounded-full px-3",
-              order === item.id
-                ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-                : "text-secondary hover:bg-hover hover:text-primary"
-            )}
-          >
-            {item.label}
-          </Button>
-        ))}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-pressed={excludeSt}
-          onClick={() => setExcludeSt(!excludeSt)}
-          className={cn(
-            "text-caption ml-auto rounded-full px-3",
-            excludeSt
-              ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-              : "text-secondary hover:bg-hover hover:text-primary"
-          )}
-        >
+      <div className="flex items-center justify-between gap-3">
+        <div className="bg-hover/60 border-hairline inline-flex rounded-md border p-0.5">
+          {ORDERS.map((item) => {
+            const active = order === item.id
+            const Icon = item.id === "gainers" ? ArrowUpRight : ArrowDownRight
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setOrder(item.id)}
+                className={cn(
+                  "text-caption focus-visible:ring-brand/40 flex h-7 items-center gap-1 rounded-sm px-2.5 transition-colors outline-none focus-visible:ring-2",
+                  active
+                    ? "bg-surface text-primary shadow-card"
+                    : "text-tertiary hover:text-secondary"
+                )}
+              >
+                <Icon className={cn("size-3.5", item.id === "gainers" ? "text-up" : "text-down")} />
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+        <label className="text-caption text-secondary flex cursor-pointer items-center gap-1.5">
+          <Checkbox
+            checked={excludeSt}
+            onCheckedChange={(checked) => setExcludeSt(checked === true)}
+          />
           排除 ST
-        </Button>
+        </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="border-hairline flex items-center gap-0.5 border-b">
         {MARKETS.map((item) => (
           <Button
             key={item.id}
@@ -126,10 +124,10 @@ export default function StockRankingTab() {
             aria-pressed={market === item.id}
             onClick={() => setMarket(item.id)}
             className={cn(
-              "text-caption rounded-full px-2.5",
+              "text-caption h-8 rounded-none border-b-2 border-transparent px-2.5",
               market === item.id
-                ? "bg-hover text-primary"
-                : "text-tertiary hover:bg-hover hover:text-secondary"
+                ? "border-b-brand text-primary hover:bg-transparent"
+                : "text-tertiary hover:bg-transparent hover:text-secondary"
             )}
           >
             {item.label}
@@ -143,9 +141,7 @@ export default function StockRankingTab() {
             {marketLabel} · {stocks.length} 只
           </span>
           {updatedAt && <span>{updatedAt} 更新</span>}
-          {query.data?.pages.some((page) => page.stale) && (
-            <span className="text-warning">上游延迟，展示最近数据</span>
-          )}
+          {query.data?.pages.some((page) => page.stale) && <DataStale />}
         </div>
         <Button
           type="button"
@@ -160,35 +156,33 @@ export default function StockRankingTab() {
         </Button>
       </div>
 
-      {query.isPending ? (
-        <Skeleton className="h-72 w-full" />
+      {query.isPending && stocks.length === 0 ? (
+        <DataLoading label="加载个股排行…" size="table" rows={6} />
       ) : query.error ? (
-        <div className="bg-surface border-hairline rounded-lg border p-5">
-          <p className="text-caption text-danger">加载失败：{query.error.message}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => void query.refetch()}
-          >
-            重试
-          </Button>
-        </div>
+        <DataError
+          title="个股排行获取失败"
+          description={query.error.message}
+          onRetry={() => void query.refetch()}
+        />
       ) : stocks.length === 0 ? (
-        <div className="text-caption text-tertiary py-12 text-center">暂无股票</div>
+        <DataEmpty title="暂无股票" description="当前筛选条件下没有可展示的个股" size="table" />
       ) : (
-        <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
+        <div
+          className={cn(
+            "bg-surface border-hairline overflow-hidden rounded-lg border transition-opacity",
+            query.isFetching && !query.isFetchingNextPage && "opacity-75"
+          )}
+        >
           <table className="data-table">
             <thead>
               <tr>
                 <th>#</th>
                 <th>代码</th>
                 <th>名称</th>
-                <th className="text-right">最新价</th>
-                <th className="text-right">涨跌幅</th>
-                <th className="text-right">换手率</th>
-                <th className="text-right">流通市值</th>
+                <th className="num">最新价</th>
+                <th className="num">涨跌幅</th>
+                <th className="num">换手率</th>
+                <th className="num">流通市值</th>
               </tr>
             </thead>
             <tbody>
@@ -202,8 +196,15 @@ export default function StockRankingTab() {
               ))}
             </tbody>
           </table>
-          <div ref={loadMoreRef} className="text-caption text-tertiary py-3 text-center">
-            {query.isFetchingNextPage ? "加载更多…" : query.hasNextPage ? "滚动加载更多" : "已加载全部"}
+          <div
+            ref={loadMoreRef}
+            className="border-hairline text-caption text-tertiary flex min-h-9 items-center justify-center border-t px-3"
+          >
+            {query.isFetchingNextPage
+              ? "加载更多…"
+              : query.hasNextPage
+                ? "滚动加载更多"
+                : "已加载全部"}
           </div>
         </div>
       )}
@@ -225,14 +226,14 @@ function RankingRow({
       <td className="text-tertiary font-number w-8">{rank}</td>
       <td className="text-secondary font-number">{codeText(stock.symbol, stock.code)}</td>
       <td className="text-primary max-w-28 truncate">{stock.name}</td>
-      <td className="font-number text-right">{numberText(stock.price)}</td>
-      <td className={cn("font-number text-right font-medium", pctClass(stock.change_percent))}>
+      <td className="num">{numberText(stock.price)}</td>
+      <td className={cn("num font-medium", pctClass(stock.change_percent))}>
         {percentText(stock.change_percent)}
       </td>
-      <td className="font-number text-right">
+      <td className="num">
         {stock.turnover_rate != null ? `${numberText(stock.turnover_rate)}%` : "—"}
       </td>
-      <td className="font-number text-right">{formatCompactNumber(stock.float_market_cap)}</td>
+      <td className="num">{formatCompactNumber(stock.float_market_cap)}</td>
     </tr>
   )
 }

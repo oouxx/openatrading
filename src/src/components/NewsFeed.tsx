@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
-import { Button } from "@/components/ui/button"
-import { StatusBanner } from "@/components/status-banner"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { Radio } from "lucide-react"
 
 interface NewsFeedProps {
@@ -38,10 +37,10 @@ function toNewsItem(item: TelegraphItem, idx: number): NewsItem {
 
 function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean }) {
   if (items.length === 0 && isLoading) {
-    return <div className="text-caption text-secondary py-12 text-center">加载中...</div>
+    return <DataLoading label="加载资讯…" size="table" rows={5} />
   }
   if (items.length === 0) {
-    return <div className="text-caption text-secondary py-12 text-center">暂无资讯</div>
+    return <DataEmpty title="暂无资讯" size="table" />
   }
   return (
     <>
@@ -112,16 +111,12 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
 
         {error && (
           <div className="shrink-0 py-4">
-            <StatusBanner
-              tone="danger"
-              action={
-                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => refetch()}>
-                  重试
-                </Button>
-              }
-            >
-              资讯加载失败
-            </StatusBanner>
+            <DataError
+              title="资讯加载失败"
+              description={error.message}
+              size="compact"
+              onRetry={() => void refetch()}
+            />
           </div>
         )}
 
@@ -154,14 +149,14 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
               ))}
               <div className="flex-1" />
               {isFetchingNextPage && (
-                <div className="text-caption text-secondary py-4 text-center">加载更多...</div>
+                <DataLoading label="加载更多资讯…" size="compact" />
               )}
               {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
             </>
           ) : isLoading ? (
-            <div className="text-caption text-secondary py-12 text-center">加载中...</div>
+            <DataLoading label="加载资讯…" size="table" rows={5} />
           ) : (
-            <div className="text-caption text-secondary py-12 text-center">暂无资讯</div>
+            <DataEmpty title="暂无资讯" size="table" />
           )}
         </div>
       </div>
@@ -179,25 +174,21 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
       </div>
       <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
         {isLoading && !items.length ? (
-          <div className="text-caption text-secondary py-8 text-center">加载中...</div>
+          <DataLoading label="加载资讯…" size="table" rows={4} />
         ) : error && !items.length ? (
           <div className="p-3">
-            <StatusBanner
-              tone="danger"
-              action={
-                <Button variant="link" size="xs" className="h-auto p-0" onClick={() => refetch()}>
-                  重试
-                </Button>
-              }
-            >
-              资讯加载失败
-            </StatusBanner>
+            <DataError
+              title="资讯加载失败"
+              description={error.message}
+              size="compact"
+              onRetry={() => void refetch()}
+            />
           </div>
         ) : (
           <>
             <NewsList items={items} isLoading={isLoading} />
             {isFetchingNextPage && (
-              <div className="text-caption text-secondary py-3 text-center">加载更多...</div>
+              <DataLoading label="加载更多资讯…" size="compact" />
             )}
             {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
           </>

@@ -15,20 +15,31 @@
     padding: 8px 12px;
     color: var(--color-tertiary);
     font-weight: 500;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: var(--font-size-micro);
+    line-height: 1.4;
+    letter-spacing: 0;
     border-bottom: 1px solid var(--color-hairline);
+    white-space: nowrap;
   }
   .data-table td {
-    padding: 8px 12px;
+    height: 36px;
+    padding: 7px 12px;
     border-bottom: 1px solid var(--color-hairline);
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--color-primary);
+    vertical-align: middle;
+  }
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
   }
   .data-table tr:hover td {
     background: var(--color-hover);
+  }
+  .data-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   /* --- skeleton --- */

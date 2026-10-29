@@ -14,6 +14,7 @@ import {
 import { Search, Plus, Settings, Puzzle, Users, Star, Trash2, Timer } from "lucide-react"
 import { useAppMode } from "@/contexts/useAppMode"
 import type { ChatSession } from "@/hooks/useChatThreads"
+import { cn } from "@/lib/utils"
 
 interface ConversationSidebarProps {
   threads: ChatSession[]
@@ -128,6 +129,10 @@ export default function ConversationSidebar({
                       onSelectThread(t.id)
                     }}
                     tooltip={t.name || t.first_message || t.id}
+                    className={cn(
+                      "relative transition-colors",
+                      "data-[active=true]:before:bg-brand data-[active=true]:before:absolute data-[active=true]:before:inset-y-1.5 data-[active=true]:before:left-0 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full"
+                    )}
                   >
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
@@ -137,12 +142,13 @@ export default function ConversationSidebar({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="hover:text-down text-secondary absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 group-hover/item:opacity-100"
+                    className="hover:text-down text-secondary focus-visible:opacity-100 absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDeleteThread(t.id)
                     }}
                     title="删除"
+                    aria-label={`删除会话 ${t.name || t.id}`}
                   >
                     <Trash2 />
                   </Button>

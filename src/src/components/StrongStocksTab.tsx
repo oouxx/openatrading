@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useSuperStock } from "@/hooks/query/useSuperStock"
 import { cn } from "@/lib/utils"
@@ -59,31 +60,36 @@ export default function StrongStocksTab() {
             <tr>
               <th>代码</th>
               <th>名称</th>
-              <th>涨幅</th>
-              <th>连板</th>
-              <th>封板次数</th>
-              <th>换手率</th>
-              <th>市值</th>
+              <th className="num">涨幅</th>
+              <th className="num">连板</th>
+              <th className="num">封板次数</th>
+              <th className="num">换手率</th>
+              <th className="num">市值</th>
               <th>原因</th>
             </tr>
           </thead>
           <tbody>
             {activeQuery.isPending ? (
               <tr>
-                <td colSpan={8} className="text-caption text-tertiary py-10 text-center">
-                  加载中…
+                <td colSpan={8} className="p-0">
+                  <DataLoading label={`加载${pool === "limit-up" ? "涨停股" : "强势股"}…`} size="table" rows={4} />
                 </td>
               </tr>
             ) : activeQuery.error ? (
               <tr>
-                <td colSpan={8} className="text-caption text-danger py-10 text-center">
-                  加载失败：{activeQuery.error.message}
+                <td colSpan={8} className="p-0">
+                  <DataError
+                    title="股票池获取失败"
+                    description={activeQuery.error.message}
+                    size="table"
+                    onRetry={() => void activeQuery.refetch()}
+                  />
                 </td>
               </tr>
             ) : stocks.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-caption text-tertiary py-10 text-center">
-                  暂无数据
+                <td colSpan={8} className="p-0">
+                  <DataEmpty title="暂无数据" description="当前股票池为空" size="table" />
                 </td>
               </tr>
             ) : (
@@ -108,17 +114,19 @@ export default function StrongStocksTab() {
                       </button>
                     </MiniChartPreview>
                   </td>
-                  <td className={pctClass(s.change_percent)}>{formatRatioPct(s.change_percent)}</td>
-                  <td className="text-brand font-semibold">
-                    {s.limit_up_days > 1 ? s.limit_up_days + "连板" : "-"}
+                  <td className={cn("num", pctClass(s.change_percent))}>
+                    {formatRatioPct(s.change_percent)}
                   </td>
-                  <td>{s.break_limit_up_times || "-"}</td>
-                  <td>
-                    {s.turnover_ratio != null ? (s.turnover_ratio * 100).toFixed(2) + "%" : "-"}
+                  <td className="num text-brand font-semibold">
+                    {s.limit_up_days > 1 ? s.limit_up_days + "连板" : "—"}
                   </td>
-                  <td>{formatCompactNumber(s.total_capital)}</td>
+                  <td className="num">{s.break_limit_up_times || "—"}</td>
+                  <td className="num">
+                    {s.turnover_ratio != null ? (s.turnover_ratio * 100).toFixed(2) + "%" : "—"}
+                  </td>
+                  <td className="num">{formatCompactNumber(s.total_capital)}</td>
                   <td className="text-secondary text-caption max-w-[200px] truncate">
-                    {s.surge_reason?.stock_reason || "-"}
+                    {s.surge_reason?.stock_reason || "—"}
                   </td>
                 </tr>
               ))

@@ -153,7 +153,7 @@ function rateClass(rate: number | null): string {
 }
 
 function formatTurnover(value: number): string {
-  return value > 0 ? `${(value * 100).toFixed(2)}%` : "-"
+  return value > 0 ? `${(value * 100).toFixed(2)}%` : "—"
 }
 
 function filterChipClass(active: boolean): string {
@@ -690,9 +690,9 @@ export default function PromotionView() {
                           </td>
                           <td
                             className="text-caption text-tertiary max-w-40 truncate font-sans whitespace-nowrap"
-                            title={stock.reason || "-"}
+                            title={stock.reason || "—"}
                           >
-                            {stock.reason || "-"}
+                            {stock.reason || "—"}
                           </td>
                         </tr>
                       ))}

@@ -1,4 +1,5 @@
 import { useDapanAbnormal } from "@/hooks/query/useDapanAbnormal"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 
 function typeEmoji(t: number): string {
   if (t === 1) return "📈"
@@ -20,14 +21,9 @@ export default function TimelineTab() {
   return (
     <div>
       {dapanLoading ? (
-        <div className="flex items-center justify-center gap-3 py-16">
-          <span className="bg-brand size-2 animate-pulse rounded-full" />
-          <span className="text-caption font-number text-tertiary">加载大盘异动...</span>
-        </div>
+        <DataLoading label="加载大盘异动…" size="table" rows={5} />
       ) : dapanError ? (
-        <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
-          {dapanError.message}
-        </div>
+        <DataError title="大盘异动获取失败" description={dapanError.message} />
       ) : (
         <>
           <div className="text-caption mb-6 flex items-center gap-3">
@@ -37,7 +33,7 @@ export default function TimelineTab() {
           </div>
 
           {dapanList.length === 0 ? (
-            <div className="text-caption text-tertiary py-12 text-center">今日暂无大盘异动</div>
+            <DataEmpty title="今日暂无大盘异动" size="table" />
           ) : (
             <div className="space-y-2">
               {dapanList.map((item, idx) => (
@@ -52,7 +48,7 @@ export default function TimelineTab() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-h2 text-primary">{item.title}</span>
                       <span className="bg-brand/15 text-brand text-caption font-number rounded-sm px-2 py-0.5">
-                        {item.bkj_info?.name || "-"}
+                        {item.bkj_info?.name || "—"}
                       </span>
                       <span className="text-caption font-number text-tertiary">
                         {formatTs(item.created_at)}

@@ -198,22 +198,27 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       </div>
 
       {/* Period selector */}
-      <div className="bg-surface border-hairline flex gap-2 border-b px-6 py-3">
-        {periods.map((p) => (
-          <Button
-            key={p.value}
-            variant="outline"
-            size="xs"
-            onClick={() => setPeriod(p.value)}
-            className={`text-caption h-auto rounded-full px-4 py-1 ${
-              period === p.value
-                ? "border-brand bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
-                : "border-hairline bg-canvas text-secondary hover:border-hairline hover:text-primary"
-            }`}
-          >
-            {p.label}
-          </Button>
-        ))}
+      <div className="bg-surface border-hairline flex border-b px-6 py-2">
+        <div className="bg-hover/60 border-hairline inline-flex rounded-md border p-0.5">
+          {periods.map((p) => {
+            const active = period === p.value
+            return (
+              <button
+                key={p.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setPeriod(p.value)}
+                className={`text-caption focus-visible:ring-brand/40 h-7 rounded-sm px-3 transition-colors outline-none focus-visible:ring-2 ${
+                  active
+                    ? "bg-surface text-primary shadow-card"
+                    : "text-tertiary hover:text-secondary"
+                }`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Crosshair info bar */}
@@ -258,7 +263,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             {metrics.map((m) => (
               <div
                 key={m.label}
-                className="bg-surface border-hairline rounded-lg border p-2.5 text-center"
+                className="bg-surface border-hairline rounded-md border p-2.5 text-center"
               >
                 <p className="text-secondary text-caption mb-1">{m.label}</p>
                 <p className="font-number text-caption text-primary">{m.value}</p>
@@ -278,7 +283,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 key={p.plate_id}
                 type="button"
                 disabled={!p.reason}
-                className={`bg-surface border-hairline w-full rounded-lg border p-2.5 text-left transition-colors ${
+                className={`bg-surface border-hairline w-full rounded-md border p-2.5 text-left transition-colors ${
                   p.reason ? "hover:border-hairline cursor-pointer" : "cursor-default"
                 }`}
                 onClick={() => p.reason && setDialogPlate(p)}

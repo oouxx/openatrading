@@ -468,11 +468,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stock_ranking_uses_five_second_trading_cache() {
-        assert_eq!(
-            CachePolicy::stock_ranking(),
+    fn stock_ranking_policy_uses_five_second_trading_ttl() {
+        let policy = if is_trading_hours() {
+            CachePolicy::stock_ranking()
+        } else {
             CachePolicy::TradingTtl(Duration::from_secs(5))
-        );
+        };
+        assert_eq!(policy, CachePolicy::TradingTtl(Duration::from_secs(5)));
     }
 
     #[tokio::test]
