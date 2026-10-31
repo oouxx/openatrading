@@ -369,6 +369,7 @@ impl HookHandler for MarketDataExtension {
         tool_name: &str,
         params: Value,
         _ctx: &ExtensionContext,
+        _invocation: &pi_extension_api::ToolInvocation,
     ) -> Option<ToolCallOutput> {
         self.dispatch(tool_name, params).await
     }

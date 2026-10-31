@@ -6,7 +6,13 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { appendUserTurn, applyEvent, historyToTurns } from "./reducer"
-import type { HistoryMessage, PromptImage, TranscriptEvent, TranscriptTurn } from "./types"
+import type {
+  HistoryMessage,
+  PromptFile,
+  PromptImage,
+  TranscriptEvent,
+  TranscriptTurn,
+} from "./types"
 import { getApiBaseUrl } from "@/stores/data"
 
 export enum ReadyState {
@@ -347,7 +353,12 @@ export function useMultiAgentWebSocket(
   }, [])
 
   const sendPrompt = useCallback(
-    async (sid: string, text: string, images?: PromptImage[]): Promise<void> => {
+    async (
+      sid: string,
+      text: string,
+      images?: PromptImage[],
+      files?: PromptFile[]
+    ): Promise<void> => {
       ensureConnection(sid)
       await waitForReady(sid)
       const conn = connectionsRef.current.get(sid)
@@ -356,11 +367,13 @@ export function useMultiAgentWebSocket(
       if (!conn?.ws || conn.ws.readyState !== WebSocket.OPEN) {
         throw new Error("连接已断开")
       }
-      conn.ws.send(JSON.stringify({ type: "prompt", text, images: images ?? [] }))
+      conn.ws.send(
+        JSON.stringify({ type: "prompt", text, images: images ?? [], files: files ?? [] })
+      )
       // The connection owns the transcript used by live events. Append the
       // optimistic user turn here so the first assistant delta cannot replace
       // a user message that only existed in React component state.
-      conn.turns = appendUserTurn(conn.turns, text, images ?? [])
+      conn.turns = appendUserTurn(conn.turns, text, images ?? [], files ?? [])
       conn.turnRevision++
       optionsRef.current.onTurnsUpdate?.(sid, [...conn.turns])
     },

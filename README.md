@@ -5,6 +5,7 @@ A 股短线行情与舆情工作台。聚合选股宝、韭研公社、财联社
 ## Features
 
 - 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/大盘异动/K 线/分时）、东方财富（全市场个股涨跌排行/龙虎榜）、财联社电报、新浪集合竞价
+- 多模态输入：图片直接作为模型输入；PDF、.docx、.xlsx、.pptx 与文本文件在本地提取文本后随消息发送（单文件 20MB，单次最多 6 个附件）
 - 项目 Skill：韭研板块异动与市场情报由 agent 按需获取，动态 token 和浏览器侧凭证不进入 Rust 运行链路
 - 模拟盘手动记账：在 Web 面板按角色记录买卖，你填成交价与股数，系统只记账不撮合、不计手续费，持仓按实时行情估值
 - 定时自动化：内置 cron 调度器，盘中采集数据、推送财联社 A/B 级电报
@@ -270,21 +271,20 @@ openatrading mcp serve --transport http --bind 0.0.0.0:8082  # 远程调用
 
 ## 内置扩展
 
-pi-rs 内置的三个扩展可以在 Web 面板「设置 → 扩展」里逐个开关，开关写入 pi-rs 的 `$PI_RS_HOME/agent/settings.json`（字段 `extensionsEnabled`）：
+pi-rs 内置的扩展可以在 Web 面板「设置 → 扩展」里逐个开关，开关写入 pi-rs 的 `$PI_RS_HOME/agent/settings.json`（字段 `extensionsEnabled`）：
 
 | 扩展 | id | 提供的能力 |
 |------|----|-----------|
-| Goal | `goal` | `goal_complete` / `goal_blocked` / `goal_wait` 工具与 `/goal` 命令 |
 | 子代理 | `subagent` | `subagent` 工具（独立上下文的子任务） |
 | 网页搜索 | `web_search` | `web_search` / `web_fetch` 工具 |
 
 ```json
 {
-  "extensionsEnabled": { "goal": true, "subagent": false, "web_search": true }
+  "extensionsEnabled": { "subagent": false, "web_search": true }
 }
 ```
 
-省略的 id 视为启用；本应用不管理的扩展 key 会原样保留。停用后 Agent 立即失去该扩展的工具，对应斜杠命令也从命令面板消失、直接发送会被拒绝并提示去设置里重新开启；已打开的会话不需要重启，下一轮就按新的工具集工作。
+省略的 id 视为启用；本应用不管理的扩展 key 会原样保留。停用后 Agent 立即失去该扩展的工具；已打开的会话不需要重启，下一轮就按新的工具集工作。
 
 ## Automation
 

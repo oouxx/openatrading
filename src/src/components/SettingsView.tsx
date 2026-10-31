@@ -215,7 +215,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const saveMcp = useSaveMcpServer()
   const servers = mcpQuery.data ?? []
 
-  // 内置扩展（goal / subagent / web_search）开关
+  // 内置扩展（subagent / web_search）开关
   const extensionsQuery = useExtensions()
   const toggleExtension = useToggleExtension()
   const extensions = extensionsQuery.data ?? []

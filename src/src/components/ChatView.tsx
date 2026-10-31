@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Search, Square, ArrowDown, ArrowUp, Paperclip, X } from "lucide-react"
+import { Search, Square, ArrowDown, ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import { TurnActions } from "@/components/chat/TurnActions"
@@ -20,6 +20,13 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Command,
   CommandEmpty,
@@ -36,7 +43,15 @@ import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { appendUserTurn, applyEvent, historyToTurns } from "@/agents/reducer"
-import type { PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
+import type { PromptFile, PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
+import {
+  formatFileSize,
+  isFileAttachment,
+  isImageAttachment,
+  mergeComposerAttachments,
+  readComposerAttachments,
+  type ComposerAttachment,
+} from "@/lib/composer-attachments"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
 const KlineDrawer = lazy(() => import("@/components/KlineDrawer"))
@@ -62,6 +77,12 @@ interface AiCopilotProps {
   onReload?: () => void
 }
 
+interface ImagePreview {
+  src: string
+  alt: string
+  name: string
+}
+
 /** Read a File as a data URL (base64). Rejects on read error. */
 function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -74,10 +95,12 @@ function readFileAsDataURL(file: File): Promise<string> {
 
 import { isTauri } from "@/lib/env"
 
-/** 一条消息最多带几张图（请求体积与模型输入长度的折中）。 */
+/** 一条消息最多带几个附件（图片与文件共用名额）。 */
 const MAX_ATTACHMENTS = 6
 /** 单张图片上限 5MB：base64 后随一条 WebSocket 文本帧一起发出。 */
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+/** 单个文件上限 20MB，与后端 `MAX_FILE_BYTES` 一致。 */
+const MAX_FILE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 /** 输入框自动增高的上限，需与 textarea 上的 `max-h-[200px]` 保持一致。 */
 const TEXTAREA_MAX_HEIGHT = 200
 
@@ -87,7 +110,14 @@ export default function AiCopilot({
   onReload,
 }: AiCopilotProps) {
   const [input, setInput] = useState("")
-  const [attachments, setAttachments] = useState<PromptImage[]>([])
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  // 异步读取完成时必须合并到最新附件列表，而不是创建读取任务时的旧快照。
+  const attachmentsRef = useRef<ComposerAttachment[]>([])
+  const pendingAttachmentReadsRef = useRef(0)
+  // state 更新不会同步反映到下一次事件回调，发送锁必须用 ref 防止连点重复发送。
+  const sendingRef = useRef(false)
+  const [isReadingAttachments, setIsReadingAttachments] = useState(false)
+  const [previewImage, setPreviewImage] = useState<ImagePreview | null>(null)
   // 输入区的可见错误（发送失败 / 附件被拒）。输入框是唯一能重试的地方，
   // 静默失败等于把消息吞掉。
   const [composerError, setComposerError] = useState<string | null>(null)
@@ -110,6 +140,10 @@ export default function AiCopilot({
     composerObserverRef.current = observer
   }, [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const replaceAttachments = useCallback((next: ComposerAttachment[]) => {
+    attachmentsRef.current = next
+    setAttachments(next)
+  }, [])
   const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
@@ -298,14 +332,14 @@ export default function AiCopilot({
   )
 
   // ── Send ──────────────────────────────────────────────────────────────
-  /** Optimistically append the user's own turn (text + image thumbnails) so
+  /** Optimistically append the user's own turn (text + attachments) so
    *  sending has immediate visual feedback before the assistant turn streams.
    *  The turn is replaced by persisted history once the agent settles. */
   const appendLocalUserTurn = useCallback(
-    (sessionId: string, text: string, images: PromptImage[]) => {
+    (sessionId: string, text: string, images: PromptImage[], files: PromptFile[]) => {
       const current = threadTurnsRef.current
       const turns = current.get(sessionId) ?? []
-      const next = appendUserTurn(turns, text, images)
+      const next = appendUserTurn(turns, text, images, files)
       const updated = new Map(current)
       updated.set(sessionId, next)
       threadTurnsRef.current = updated
@@ -317,13 +351,35 @@ export default function AiCopilot({
 
   const send = useCallback(
     async (override?: string) => {
+      if (pendingAttachmentReadsRef.current > 0) {
+        setComposerError("附件还在读取，请稍候再发送")
+        return
+      }
       const text = (override ?? input).trim()
-      const images = attachments
-      if (!text && images.length === 0) return
+      const attachments = attachmentsRef.current
+      if (!text && attachments.length === 0) return
+      if (sendingRef.current) return
+      sendingRef.current = true
+      // 图片与文件分开走两条通道：图片进 pi-rs 的 image blocks，
+      // 文件由后端按字节提取文本。
+      const images: PromptImage[] = attachments
+        .filter(isImageAttachment)
+        .map(({ data, mimeType }) => ({ data, mimeType }))
+      const files: PromptFile[] = attachments
+        .filter(isFileAttachment)
+        .map(({ name, data, mimeType, size }) => ({ name, data, mimeType, size }))
       // 发送前是否已有回合在跑（steer）：失败回滚时要恢复这个状态，不能把
       // 仍在运行的回合当成已结束。（与 `isStreamingActive` 同义，但那是在
       // 本回调之后才声明的派生值。）
       const wasStreaming = streaming && streamThreadId === activeThreadId
+
+      // 在第一个 await 之前清空输入，确保新会话的 React 重渲染期间也无法
+      // 再次发送同一份内容。发送失败时再从快照恢复。
+      setInput("")
+      replaceAttachments([])
+      setShowSlash(false)
+      setComposerError(null)
+      setStreaming(true)
 
       // If no active session, generate a client-side ID and use it directly.
       // The WebSocket endpoint will create the session if it doesn't exist.
@@ -336,11 +392,6 @@ export default function AiCopilot({
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
 
-      setInput("")
-      setAttachments([])
-      setShowSlash(false)
-      setComposerError(null)
-      setStreaming(true)
       streamThreadRef.current = sessionId
       setStreamThreadId(sessionId)
 
@@ -350,26 +401,34 @@ export default function AiCopilot({
       try {
         if (isTauri) {
           await startTauriTransport(sessionId)
-          await transportRef.current?.sendPrompt(text, images)
-          appendLocalUserTurn(sessionId, text, images)
+          await transportRef.current?.sendPrompt(text, images, files)
+          appendLocalUserTurn(sessionId, text, images, files)
         } else {
           // Use wsAgent directly with the resolved sessionId so we don't
           // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
           // The transport appends the optimistic user turn to its authoritative
           // transcript so live assistant events cannot overwrite it.
-          await wsAgent.sendPrompt(sessionId, text, images)
+          await wsAgent.sendPrompt(sessionId, text, images, files)
         }
       } catch (e) {
         console.error("发送失败:", e)
-        setInput(text)
-        setAttachments(images)
+        // 发送期间用户可能已经输入了新内容或添加了新附件。只补回缺失的
+        // 部分，不能覆盖用户此刻正在编辑的状态。
+        setInput((current) => (current.length === 0 ? text : current))
+        // 以发送期间用户新加的附件为准，只把丢失的旧附件补到剩余容量里。
+        const restored = mergeComposerAttachments(attachmentsRef.current, attachments, MAX_ATTACHMENTS)
+        replaceAttachments(restored.attachments)
         setStreaming(wasStreaming)
         streamThreadRef.current = wasStreaming ? streamThreadId : null
         setStreamThreadId(wasStreaming ? streamThreadId : null)
         const reason = e instanceof Error && e.message ? e.message : "连接已断开"
-        setComposerError(`发送失败：${reason}。内容已保留，可重试。`)
+        const restoreWarning = restored.rejected.join("；")
+        setComposerError(
+          `发送失败：${reason}。内容已保留，可重试。${restoreWarning ? `；${restoreWarning}` : ""}`
+        )
         textareaRef.current?.focus()
-        return
+      } finally {
+        sendingRef.current = false
       }
 
       // 点「发送」按钮时焦点在按钮上，按钮随即消失；把焦点还给输入框，
@@ -378,7 +437,6 @@ export default function AiCopilot({
     },
     [
       input,
-      attachments,
       activeThreadId,
       streaming,
       streamThreadId,
@@ -386,84 +444,82 @@ export default function AiCopilot({
       startTauriTransport,
       wsAgent,
       appendLocalUserTurn,
+      replaceAttachments,
     ]
   )
 
   // ── Attachment handlers (multimodal) ─────────────────────────────────
   /**
-   * 图片的唯一入口：文件选择、粘贴、拖拽都走这里。
+   * 附件的唯一入口：文件选择、粘贴、拖拽都走这里。图片会被识别成图片块，
+   * 其余文件由后端按字节类型提取文本。
    *
    * 校验（类型 / 体积 / 数量）只写一遍，被拒的文件要给出可见原因——用户没法
-   * 从「什么都没发生」里推测出是文件太大还是不是图片。
+   * 从「什么都没发生」里推测出是文件太大还是格式不支持。
    */
-  const addImageFiles = useCallback(
+  const addAttachments = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return
-      const accepted: PromptImage[] = []
-      const rejected: string[] = []
-      let room = MAX_ATTACHMENTS - attachments.length
-
-      for (const file of files) {
-        if (room <= 0) {
-          rejected.push(`一条消息最多 ${MAX_ATTACHMENTS} 张图片`)
-          break
+      pendingAttachmentReadsRef.current += 1
+      setIsReadingAttachments(true)
+      try {
+        const result = await readComposerAttachments(files, {
+          currentCount: attachmentsRef.current.length,
+          maxAttachments: MAX_ATTACHMENTS,
+          maxImageBytes: MAX_ATTACHMENT_BYTES,
+          maxFileBytes: MAX_FILE_ATTACHMENT_BYTES,
+          readFile: readFileAsDataURL,
+          createId: () => crypto.randomUUID(),
+        })
+        const merged = mergeComposerAttachments(
+          attachmentsRef.current,
+          result.attachments,
+          MAX_ATTACHMENTS
+        )
+        if (merged.added > 0) {
+          replaceAttachments(merged.attachments)
+          setShowSlash(false)
+          textareaRef.current?.focus()
         }
-        const label = file.name || "剪贴板图片"
-        if (!file.type.startsWith("image/")) {
-          rejected.push(`「${label}」不是图片`)
-          continue
-        }
-        if (file.size > MAX_ATTACHMENT_BYTES) {
-          rejected.push(`「${label}」超过 ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB`)
-          continue
-        }
-        try {
-          const dataUrl = await readFileAsDataURL(file)
-          const idx = dataUrl.indexOf(",")
-          accepted.push({
-            data: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
-            mimeType: file.type || "image/png",
-          })
-          room -= 1
-        } catch {
-          rejected.push(`「${label}」读取失败`)
-        }
+        const rejected = [...new Set([...result.rejected, ...merged.rejected])]
+        setComposerError(rejected.length > 0 ? rejected.join("；") : null)
+      } finally {
+        pendingAttachmentReadsRef.current = Math.max(0, pendingAttachmentReadsRef.current - 1)
+        if (pendingAttachmentReadsRef.current === 0) setIsReadingAttachments(false)
       }
-
-      if (accepted.length > 0) {
-        setAttachments((prev) => [...prev, ...accepted])
-        setShowSlash(false)
-        textareaRef.current?.focus()
-      }
-      setComposerError(rejected.length > 0 ? rejected[0] : null)
     },
-    [attachments.length]
+    [replaceAttachments]
   )
 
   const handleAttachFiles = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? [])
       e.target.value = ""
-      await addImageFiles(files)
+      await addAttachments(files)
     },
-    [addImageFiles]
+    [addAttachments]
   )
 
-  /** 粘贴截图（行情截图是最常见的输入）。剪贴板同时带文字时保留默认粘贴。 */
+  /** 粘贴截图或文件。剪贴板同时带文字时保留默认粘贴。 */
   const onComposerPaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"))
+      const clipboardFiles = Array.from(e.clipboardData.items)
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null)
+      const files =
+        clipboardFiles.length > 0 ? clipboardFiles : Array.from(e.clipboardData.files)
       if (files.length === 0) return
       if (!e.clipboardData.getData("text/plain")) e.preventDefault()
-      void addImageFiles(files)
+      void addAttachments(files)
     },
-    [addImageFiles]
+    [addAttachments]
   )
 
-  // 拖拽图片进输入卡片。`types` 里没有 Files 的拖拽（选中文字等）不拦截。
+  // 拖拽文件进输入卡片。`types` 里没有 Files 的拖拽（选中文字等）不拦截。
   const onComposerDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) return
     e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
     setDraggingFiles(true)
   }, [])
 
@@ -478,14 +534,17 @@ export default function AiCopilot({
       setDraggingFiles(false)
       if (!e.dataTransfer.types.includes("Files")) return
       e.preventDefault()
-      void addImageFiles(Array.from(e.dataTransfer.files))
+      void addAttachments(Array.from(e.dataTransfer.files))
     },
-    [addImageFiles]
+    [addAttachments]
   )
 
-  const removeAttachment = useCallback((index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
-  }, [])
+  const removeAttachment = useCallback(
+    (id: string) => {
+      replaceAttachments(attachmentsRef.current.filter((attachment) => attachment.id !== id))
+    },
+    [replaceAttachments]
+  )
 
   // ── Stop / interrupt the active stream ───────────────────────────────
   const stop = useCallback(async () => {
@@ -717,32 +776,73 @@ export default function AiCopilot({
         onDragOver={onComposerDragOver}
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
-        className={`bg-surface border-hairline shadow-card focus-within:border-brand/60 focus-within:ring-brand/20 flex flex-col gap-1.5 rounded-lg border px-2 pt-2 pb-1.5 transition-colors focus-within:ring-3 ${
+        className={`bg-surface border-hairline shadow-card focus-within:border-brand/60 focus-within:ring-brand/20 relative flex flex-col gap-1.5 rounded-lg border px-2 pt-2 pb-1.5 transition-colors focus-within:ring-3 ${
           draggingFiles ? "border-brand/60 ring-brand/20 ring-3" : ""
         }`}
       >
-        {/* Attached image previews (multimodal) */}
+        {/* Attached image previews + file chips */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-0.5">
-            {attachments.map((img, i) => (
-              <div key={i} className="relative">
-                <img
-                  src={`data:${img.mimeType};base64,${img.data}`}
-                  alt={`附件 ${i + 1}`}
-                  className="border-hairline h-14 w-14 rounded-md border object-cover"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => removeAttachment(i)}
-                  className="bg-scrim-strong text-brand-foreground hover:bg-scrim absolute -top-1.5 -right-1.5 size-5 rounded-full"
-                  aria-label={`移除附件 ${i + 1}`}
+          <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+            {attachments.map((attachment, i) => {
+              if (isImageAttachment(attachment)) {
+                const src = `data:${attachment.mimeType};base64,${attachment.data}`
+                return (
+                  <div key={attachment.id} className="relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        setPreviewImage({
+                          src,
+                          alt: `附件 ${i + 1}：${attachment.name}`,
+                          name: attachment.name,
+                        })
+                      }
+                      className="border-hairline h-16 w-16 cursor-zoom-in overflow-hidden rounded-md border p-0 hover:opacity-90"
+                      aria-label={`预览附件 ${i + 1}：${attachment.name}`}
+                      title={attachment.name}
+                    >
+                      <img src={src} alt="" className="h-full w-full object-cover" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="bg-scrim-strong text-brand-foreground hover:bg-scrim absolute -top-1.5 -right-1.5 size-5 rounded-full"
+                      aria-label={`移除附件 ${i + 1}`}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                )
+              }
+
+              return (
+                <div
+                  key={attachment.id}
+                  className="border-hairline bg-canvas flex h-16 max-w-[14rem] min-w-0 items-center gap-2 rounded-md border px-2.5"
+                  title={attachment.name}
                 >
-                  <X />
-                </Button>
-              </div>
-            ))}
+                  <FileText className="text-secondary size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-caption text-primary truncate">{attachment.name}</p>
+                    <p className="text-micro text-tertiary">{formatFileSize(attachment.size)}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => removeAttachment(attachment.id)}
+                    className="text-tertiary hover:text-primary hover:bg-hover shrink-0 rounded-full"
+                    aria-label={`移除附件 ${i + 1}`}
+                  >
+                    <X />
+                  </Button>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -767,15 +867,20 @@ export default function AiCopilot({
             size="icon-sm"
             onClick={() => fileInputRef.current?.click()}
             className="text-secondary hover:text-brand hover:bg-hover rounded-md"
-            aria-label="添加图片"
-            title="添加图片（也可粘贴或拖入）"
+            aria-label="添加附件"
+            title={`添加附件（最多 ${MAX_ATTACHMENTS} 个，图片 ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB、文件 ${MAX_FILE_ATTACHMENT_BYTES / 1024 / 1024}MB；也可粘贴或拖入）`}
             disabled={isStreamingActive}
           >
             <Paperclip className="size-4" />
           </Button>
-          {isStreamingActive && (
+          {isReadingAttachments ? (
+            <span className="text-tertiary text-micro flex items-center gap-1">
+              <Loader2 className="size-3 animate-spin" />
+              正在读取附件…
+            </span>
+          ) : isStreamingActive ? (
             <span className="text-tertiary text-micro">Enter 可引导当前回答</span>
-          )}
+          ) : null}
           <div className="flex-1" />
           {isStreamingActive ? (
             <Button
@@ -794,14 +899,29 @@ export default function AiCopilot({
                 size="icon"
                 onClick={() => void send()}
                 className="rounded-full"
-                aria-label="发送"
-                title="发送（Enter）"
+                aria-label={isReadingAttachments ? "附件读取中" : "发送"}
+                title={isReadingAttachments ? "附件读取中" : "发送（Enter）"}
+                disabled={isReadingAttachments}
+                aria-busy={isReadingAttachments}
               >
-                <ArrowUp className="size-4" />
+                {isReadingAttachments ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
               </Button>
             )
           )}
         </div>
+
+        {draggingFiles && (
+          <div className="bg-surface/95 border-brand/60 pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2">
+            <span className="text-brand text-caption flex items-center gap-2 font-medium">
+              <Paperclip className="size-4" />
+              松开以添加附件
+            </span>
+          </div>
+        )}
       </div>
 
       {showSlash && (
@@ -818,11 +938,10 @@ export default function AiCopilot({
         </div>
       )}
 
-      {/* Image attach (multimodal) — hidden input opened by the paperclip button. */}
+      {/* Attachment picker — hidden input opened by the paperclip button. */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
         multiple
         className="hidden"
         onChange={handleAttachFiles}
@@ -944,7 +1063,7 @@ export default function AiCopilot({
           <div
             ref={msgContainerRef}
             onScroll={onContainerScroll}
-            className="scrollbar-gutter-stable flex flex-1 flex-col overflow-y-auto py-5"
+            className="flex flex-1 scrollbar-gutter-stable flex-col overflow-y-auto py-5"
           >
             {/* Claude.ai 消息列宽：固定 48rem 居中（不随宽屏放大） */}
             <div
@@ -961,18 +1080,48 @@ export default function AiCopilot({
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
                         <div className="bg-hover text-primary max-w-[85%] rounded-lg px-4 py-2.5">
+                          {turn.blocks.some((b) => b.type === "file") && (
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              {turn.blocks.map((b) => {
+                                if (b.type !== "file") return null
+                                return (
+                                  <span
+                                    key={b.id}
+                                    className="bg-surface border-hairline text-secondary text-caption flex max-w-[14rem] items-center gap-1.5 rounded-md border px-2 py-1"
+                                    title={b.name}
+                                  >
+                                    <FileText className="size-3.5 shrink-0" />
+                                    <span className="truncate">{b.name}</span>
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
                           {turn.blocks.some((b) => b.type === "image") && (
                             <div className="mb-2 flex flex-wrap gap-2">
-                              {turn.blocks.map((b) =>
-                                b.type === "image" ? (
-                                  <img
+                              {turn.blocks.map((b) => {
+                                if (b.type !== "image") return null
+                                const src = `data:${b.mimeType};base64,${b.data}`
+                                return (
+                                  <Button
                                     key={b.id}
-                                    src={`data:${b.mimeType};base64,${b.data}`}
-                                    alt="图片"
-                                    className="border-hairline h-24 w-24 rounded-lg border object-cover"
-                                  />
-                                ) : null
-                              )}
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      setPreviewImage({
+                                        src,
+                                        alt: "历史消息图片",
+                                        name: "历史图片",
+                                      })
+                                    }
+                                    className="border-hairline h-24 w-24 cursor-zoom-in overflow-hidden rounded-lg border p-0 hover:opacity-90"
+                                    aria-label="预览历史消息图片"
+                                  >
+                                    <img src={src} alt="" className="h-full w-full object-cover" />
+                                  </Button>
+                                )
+                              })}
                             </div>
                           )}
                           <p className="text-body leading-[1.7] break-words whitespace-pre-wrap">
@@ -1038,6 +1187,39 @@ export default function AiCopilot({
           </div>
         </div>
       )}
+
+      <Dialog
+        open={previewImage !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewImage(null)
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="bg-surface border-hairline shadow-modal max-h-[92vh] w-auto max-w-[92vw] gap-0 overflow-hidden rounded-lg border p-0 sm:max-w-[92vw]"
+        >
+          <DialogTitle className="sr-only">{previewImage?.name ?? "图片预览"}</DialogTitle>
+          <DialogDescription className="sr-only">图片预览，可按 Esc 关闭</DialogDescription>
+          {previewImage && (
+            <img
+              src={previewImage.src}
+              alt={previewImage.alt}
+              className="max-h-[82vh] max-w-[90vw] object-contain"
+            />
+          )}
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              className="shadow-card absolute top-3 right-3"
+              aria-label="关闭图片预览"
+            >
+              <X />
+            </Button>
+          </DialogClose>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

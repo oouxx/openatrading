@@ -8,6 +8,7 @@
 export type TranscriptBlock =
   | { type: "text"; id: string; content: string; streaming: boolean }
   | { type: "image"; id: string; data: string; mimeType: string }
+  | { type: "file"; id: string; name: string; size: number }
   | { type: "thinking"; id: string; content: string; streaming: boolean }
   | {
       type: "tool_call"
@@ -122,9 +123,23 @@ export interface PromptImage {
   mimeType: string
 }
 
+/** A non-image file attachment sent with a prompt.
+ *
+ * `data` is the raw file as standard base64 (no `data:` URL prefix). The
+ * backend detects the real type from the bytes: images become pi-rs image
+ * blocks, PDF / Word / Excel / PowerPoint documents are reduced to text, and
+ * plain UTF-8 files are embedded verbatim. `mimeType` and `size` are display
+ * metadata only. */
+export interface PromptFile {
+  name: string
+  data: string
+  mimeType?: string
+  size?: number
+}
+
 /** Client → server transport (matches backend `ClientCommand`). */
 export type ClientCommand =
-  | { type: "prompt"; text: string; images?: PromptImage[] }
+  | { type: "prompt"; text: string; images?: PromptImage[]; files?: PromptFile[] }
   | { type: "interrupt" }
   | { type: "ping" }
   | { type: "permission_response"; id: string; approved: boolean }
@@ -158,6 +173,12 @@ export type HistoryBlock =
       data: string
       /** Media type, e.g. `image/png`. */
       mimeType: string
+    }
+  | {
+      type: "file"
+      /** Attachment name; the extracted text stays in the prompt, not the UI. */
+      name: string
+      size: number
     }
 
 export interface HistoryMessage {

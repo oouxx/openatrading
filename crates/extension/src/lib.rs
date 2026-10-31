@@ -2,7 +2,7 @@
 //!
 //! Provides [`create_registry()`] which returns an [`ExtensionRegistry`]
 //! pre-configured with openatrading's market-data extension plus the pi-rs
-//! built-in Rust extensions (`pi-extensions`: goal / subagent / web_search).
+//! built-in Rust extensions (`pi-extensions`: subagent / web_search).
 //!
 //! Pass the extension registry to `create_agent_session()` via
 //! `CreateAgentSessionOptions.extension_registry` to register extension-provided
@@ -30,11 +30,7 @@ pub fn create_registry() -> ExtensionRegistry {
         Box::new(trading::MarketDataExtension::new()),
         create_synthetic_source_info("/tmp/test".into(), "market".into(), None, None, None),
     );
-    // pi-rs built-in Rust extensions (pi-extensions): goal / subagent / web_search.
-    registry.register(
-        Box::new(pi_extensions::goal::GoalExtension::new()),
-        create_builtin_source_info("goal"),
-    );
+    // pi-rs built-in Rust extensions (pi-extensions): subagent / web_search.
     registry.register(
         Box::new(pi_extensions::subagent::SubagentExtension::new()),
         create_builtin_source_info("subagent"),

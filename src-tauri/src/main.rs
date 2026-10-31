@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
+use openatrading_core::utils::attachments::{AttachmentService, FileAttachment, ImageAttachment};
 
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
@@ -134,19 +135,13 @@ async fn api_request(
     serde_json::from_slice(&bytes).map_err(|e| format!("invalid JSON response: {e}"))
 }
 
-/// An image attachment sent via Tauri IPC (mirrors the frontend `PromptImage`).
-#[derive(Debug, serde::Deserialize)]
-struct SendPromptImage {
-    data: String,
-    #[serde(rename = "mimeType")]
-    mime_type: String,
-}
-
 #[tauri::command]
 async fn send_prompt(
     session_id: String,
     text: String,
-    #[allow(unused)] images: Option<Vec<SendPromptImage>>,
+    images: Option<Vec<ImageAttachment>>,
+    // Any file (image / PDF / Office document / text), base64 encoded.
+    files: Option<Vec<FileAttachment>>,
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
@@ -180,27 +175,26 @@ async fn send_prompt(
     // Normal prompt — forward to the agent. Events flow via the background
     // forward task set up by ensure_session_tauri.
     //
-    // Default to steering: a prompt submitted while a turn is active is
-    // injected into that run instead of waiting for a separate follow-up turn.
-    // The actor checks its own active-turn state, avoiding a racy
-    // `is_streaming()` TOCTOU check on our side.
-    let image_blocks: Vec<pi_coding_agent::pi_ai_types::ContentBlock> = images
-        .unwrap_or_default()
-        .iter()
-        .map(|img| pi_coding_agent::pi_ai_types::ContentBlock::Image {
-            data: img.data.clone(),
-            mime_type: img.mime_type.clone(),
-        })
-        .collect();
-    let opts = pi_coding_agent::core::agent_session::PromptOptions {
-        streaming_behavior: Some("steer".to_string()),
-        images: (!image_blocks.is_empty()).then_some(image_blocks),
-        ..Default::default()
-    };
+    // Attachments go through the same service as the WebSocket transport:
+    // image type detection / resizing and text-file validation must not
+    // differ between desktop and web. Invalid attachments reject the invoke
+    // so the frontend restores the composer instead of losing the message.
+    let images = images.unwrap_or_default();
+    let files = files.unwrap_or_default();
+    let prepared = tokio::task::spawn_blocking(move || {
+        AttachmentService::prepare_prompt(&text, &images, &files)
+    })
+    .await
+    .map_err(|e| {
+        eprintln!("[tauri] attachment task failed: {e}");
+        "附件处理失败，请重试".to_string()
+    })?
+    .map_err(|e| e.to_string())?;
+
     if let Err(e) = state
         .ctx
         .pool
-        .prompt_with_opts(&session_id, &text, opts)
+        .prompt_with_opts(&session_id, &prepared.text, prepared.options)
         .await
     {
         // Surface the error to the frontend as a Notice event, mirroring the

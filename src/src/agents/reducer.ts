@@ -8,6 +8,7 @@
 import type {
   HistoryBlock,
   HistoryMessage,
+  PromptFile,
   PromptImage,
   SessionEvent,
   TranscriptBlock,
@@ -243,7 +244,8 @@ function replaceLast(turns: TranscriptTurn[], turn: TranscriptTurn): TranscriptT
 export function appendUserTurn(
   turns: TranscriptTurn[],
   text: string,
-  images: PromptImage[]
+  images: PromptImage[],
+  files: PromptFile[] = []
 ): TranscriptTurn[] {
   const blocks: TranscriptBlock[] = [
     ...images.map((img) => ({
@@ -251,6 +253,12 @@ export function appendUserTurn(
       id: newBlockId(),
       data: img.data,
       mimeType: img.mimeType,
+    })),
+    ...files.map((file) => ({
+      type: "file" as const,
+      id: newBlockId(),
+      name: file.name,
+      size: file.size ?? 0,
     })),
     ...(text
       ? [
@@ -652,6 +660,13 @@ function historyBlockToTranscriptBlock(block: HistoryBlock): TranscriptBlock | n
         id: newBlockId(),
         data: block.data,
         mimeType: block.mimeType,
+      }
+    case "file":
+      return {
+        type: "file",
+        id: newBlockId(),
+        name: block.name,
+        size: block.size,
       }
     default:
       return null

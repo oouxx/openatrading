@@ -47,6 +47,7 @@ fn load_skills_at(cwd: &Path) -> LoadSkillsResult {
             .to_string_lossy()
             .to_string()],
         include_defaults: true,
+        home_dir: None,
     })
 }
 

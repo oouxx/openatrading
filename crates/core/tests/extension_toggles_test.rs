@@ -1,7 +1,7 @@
 //! 内置扩展开关（pi-rs `settings.json` 的 `extensionsEnabled`）集成测试。
 //!
 //! 走真实链路：`settings.json` → 会话工厂过滤工具 → 活跃会话 actor 立即
-//! 应用过滤 / 拒绝已停用的扩展命令。
+//! 应用过滤。
 //!
 //! 整个文件只有一个测试函数：`PI_CODING_AGENT_DIR` 是进程级环境变量，
 //! 并行执行的不同测试会互相踩踏，串行执行才能保证隔离。
@@ -13,8 +13,8 @@ use openatrading_core::extensions::{
 };
 use openatrading_core::llm::{create_factory, FactoryOptions, SessionPool};
 
-/// 一个只含内置扩展工具的环境里，三个内置扩展各自的关键工具名。
-const GOAL_TOOLS: [&str; 3] = ["goal_complete", "goal_blocked", "goal_wait"];
+/// 内置扩展各自的关键工具名（pi-rs v1.87.10 移除了 goal；剩余扩展无斜杠命令）。
+const SUBAGENT_TOOLS: [&str; 1] = ["subagent"];
 
 fn has_any_tool(tools: &[String], candidates: &[&str]) -> bool {
     candidates
@@ -28,7 +28,7 @@ fn persist(toggles: &openatrading_core::extensions::ExtensionToggles) {
 }
 
 #[tokio::test]
-async fn builtin_extension_toggles_filter_tools_and_commands() {
+async fn builtin_extension_toggles_filter_tools() {
     // ── 隔离环境：settings.json / sessions 都落在临时目录 ──
     let home = tempfile::tempdir().expect("创建临时目录失败");
     let agent_dir = home.path().join("agent");
@@ -37,7 +37,7 @@ async fn builtin_extension_toggles_filter_tools_and_commands() {
     std::env::set_var("PI_CODING_AGENT_DIR", &agent_dir);
     let cwd = home.path().to_string_lossy().to_string();
 
-    // ── Happy path：没有 settings.json 时三个内置扩展全部启用 ──
+    // ── Happy path：没有 settings.json 时内置扩展全部启用 ──
     let factory = create_factory(FactoryOptions::new(&agent_dir));
     let pool = SessionPool::new(factory);
 
@@ -52,21 +52,21 @@ async fn builtin_extension_toggles_filter_tools_and_commands() {
         );
     }
 
-    // ── 停用 goal：新会话不再获得 goal 工具，其它扩展不受影响 ──
+    // ── 停用 subagent：新会话不再获得 subagent 工具，其它扩展不受影响 ──
     let mut toggles = load_extension_toggles();
-    assert!(toggles.set("goal", false), "goal 应可切换");
+    assert!(toggles.set("subagent", false), "subagent 应可切换");
     persist(&toggles);
 
     let second_id = pool.create_session(&cwd).await.expect("创建会话失败");
     let second = pool.get_session(&second_id).await.expect("会话不在池中");
     let second_tools = second.active_tool_names().await.expect("读取工具列表失败");
     assert!(
-        !has_any_tool(&second_tools, &GOAL_TOOLS),
-        "停用后不应再有 goal 工具: {second_tools:?}"
+        !has_any_tool(&second_tools, &SUBAGENT_TOOLS),
+        "停用后不应再有 subagent 工具: {second_tools:?}"
     );
     assert!(
-        has_any_tool(&second_tools, &["subagent", "web_search"]),
-        "停用 goal 不应影响其它扩展: {second_tools:?}"
+        has_any_tool(&second_tools, &["web_search"]),
+        "停用 subagent 不应影响其它扩展: {second_tools:?}"
     );
 
     // ── 活跃会话立即跟随设置变化（无需重启进程） ──
@@ -79,21 +79,16 @@ async fn builtin_extension_toggles_filter_tools_and_commands() {
 
     let live_tools = handle.active_tool_names().await.expect("读取工具列表失败");
     assert!(
-        !has_any_tool(&live_tools, &GOAL_TOOLS),
-        "活跃会话应立即失去 goal 工具: {live_tools:?}"
+        !has_any_tool(&live_tools, &SUBAGENT_TOOLS),
+        "活跃会话应立即失去 subagent 工具: {live_tools:?}"
     );
 
-    // ── 已停用的扩展命令被拒绝（含 pi-rs 冲突消解后的 `goal:1` 形式） ──
-    for text in ["/goal 完成这个目标", "/goal:1 完成这个目标"] {
-        let err = pool
-            .prompt(&session_id, text)
-            .await
-            .expect_err("停用的扩展命令应被拒绝");
-        assert!(err.contains("已停用"), "错误应说明扩展已停用，实际: {err}");
-    }
+    // pi-rs v1.87.10 的内置扩展不再注册斜杠命令，因此这里没有端到端的
+    // 「停用命令被拒绝」用例；命令名解析与拒绝规则由
+    // `agent::session::extensions` 的单元测试覆盖。
 
     // ── 重新启用：活跃会话恢复到创建时的工具基线 ──
-    assert!(toggles.set("goal", true), "goal 应可切换");
+    assert!(toggles.set("subagent", true), "subagent 应可切换");
     persist(&toggles);
     pool.apply_extension_toggles(&toggles.disabled_tools(), &toggles.disabled_commands())
         .await;

@@ -13,13 +13,13 @@
 // `TauriTransport` uses Tauri IPC (`invoke` / `listen`) to communicate with the
 // Rust backend. It implements the same `AgentTransport` interface.
 
-import type { PromptImage, TranscriptEvent } from "./types"
+import type { PromptFile, PromptImage, TranscriptEvent } from "./types"
 
 export interface AgentTransport {
   /** Register an event listener. Returns an unsubscribe function. */
   onEvent(cb: (event: TranscriptEvent) => void): () => void
   /** Send a user prompt (or slash command as raw text) to the agent. */
-  sendPrompt(text: string, images?: PromptImage[]): Promise<void>
+  sendPrompt(text: string, images?: PromptImage[], files?: PromptFile[]): Promise<void>
   /** Interrupt the running agent turn. */
   interrupt(): Promise<void>
   /** Respond to a permission request (§11). */
@@ -64,13 +64,14 @@ export class TauriTransport implements AgentTransport {
     return () => this.listeners.delete(cb)
   }
 
-  async sendPrompt(text: string, images?: PromptImage[]): Promise<void> {
+  async sendPrompt(text: string, images?: PromptImage[], files?: PromptFile[]): Promise<void> {
     await this.readyPromise
     if (!this.invokeFn) throw new Error("transport not ready")
     await this.invokeFn("send_prompt", {
       sessionId: this.sessionId,
       text,
       images: images ?? [],
+      files: files ?? [],
     })
   }
 

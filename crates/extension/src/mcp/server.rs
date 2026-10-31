@@ -21,7 +21,9 @@ use rmcp::transport::StreamableHttpServerConfig;
 use rmcp::ErrorData;
 use tokio::sync::watch;
 
-use pi_extension_api::{ExtensionContext, ExtensionRegistry, ExtensionUIContext, RuntimeHandle};
+use pi_extension_api::{
+    ExtensionContext, ExtensionRegistry, ExtensionUIContext, RuntimeHandle, ToolInvocation,
+};
 
 /// 基于扩展注册表派发的 MCP server 处理器。
 ///
@@ -70,7 +72,7 @@ impl McpServerHandler {
         let output = self
             .registry
             .hook_runner()
-            .dispatch_tool_call(name, arguments, &self.ctx)
+            .dispatch_tool_call(name, arguments, &self.ctx, &ToolInvocation::noop())
             .await
             .ok_or_else(|| {
                 ErrorData::new(
@@ -135,21 +137,9 @@ impl ServerHandler for McpServerHandler {
 /// 构造一个最小化的 `ExtensionContext`，仅供 server 端 `handle_tool_call` 派发使用。
 /// 行情/交易扩展的 `handle_tool_call` 不读取该上下文。
 fn synthetic_context() -> ExtensionContext {
-    ExtensionContext::new(
-        "mcp-server".to_string(),
-        false,
-        ExtensionUIContext {
-            notify: Arc::new(|msg, _level| eprintln!("[mcp-server] {msg}")),
-            set_status: Arc::new(|_, _| ()),
-            confirm: Arc::new(|_, _| false),
-            select: Arc::new(|_, _, _| Box::pin(async { None })),
-            input: Arc::new(|_, _, _| Box::pin(async { None })),
-            set_widget: Arc::new(|_, _, _| {}),
-            set_title: Arc::new(|_| {}),
-            set_editor_text: Arc::new(|_| {}),
-        },
-        RuntimeHandle::noop(),
-    )
+    let mut ui = ExtensionUIContext::noop();
+    ui.notify = Arc::new(|msg, _level| eprintln!("[mcp-server] {msg}"));
+    ExtensionContext::new("mcp-server".to_string(), false, ui, RuntimeHandle::noop())
 }
 
 // ============================================================================

@@ -1,11 +1,10 @@
 import { useState } from "react"
-import { Globe, Puzzle, Terminal, Users } from "lucide-react"
+import { Globe, Terminal, Users } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { extensionErrorMessage, type BuiltinExtension } from "@/hooks/query/useExtensions"
 
 /** 内置扩展的固定图标（按 pi-rs 扩展 id 映射）。 */
 const EXTENSION_ICON = {
-  goal: Puzzle,
   subagent: Users,
   web_search: Globe,
 } as const

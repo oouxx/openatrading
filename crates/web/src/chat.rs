@@ -11,6 +11,7 @@ use openatrading_core::api::Client as ApiClient;
 use openatrading_core::commands::{CommandSpec, CommandType};
 use openatrading_core::skills::SkillEntry;
 use openatrading_core::skills::SkillRequest;
+use openatrading_core::utils::attachments::split_attachment_wrapper;
 
 use crate::web::OverviewResponse;
 use crate::AppState;
@@ -134,7 +135,7 @@ fn extension_items(toggles: &ExtensionToggles) -> Vec<ExtensionItem> {
         .collect()
 }
 
-/// GET /api/extensions — the three configurable built-ins.
+/// GET /api/extensions — the configurable built-ins.
 pub async fn get_extensions() -> Json<Vec<ExtensionItem>> {
     let toggles = openatrading_core::extensions::load_extension_toggles();
     Json(extension_items(&toggles))
@@ -423,10 +424,8 @@ pub struct SessionMessage {
     pub role: String,
     pub content: String,
     pub created_at: String,
-    /// Structured content blocks (thinking / tool_use / text). Populated for
-    /// assistant messages so the frontend can render tool calls and reasoning
-    /// when loading history (finding #10). Empty for user messages, which
-    /// only carry plain text in `content`.
+    /// Structured content blocks (thinking / tool_use / text / file). Populated
+    /// for assistant messages, and for user messages that carry attachments.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub blocks: Vec<HistoryBlock>,
 }
@@ -459,6 +458,12 @@ pub enum HistoryBlock {
         /// Media type, e.g. `image/png`.
         #[serde(rename = "mimeType")]
         mime_type: String,
+    },
+    /// A non-image attachment. Only the metadata is surfaced: the extracted
+    /// text stays in the prompt and is stripped from the visible message.
+    File {
+        name: String,
+        size: u64,
     },
 }
 
@@ -548,8 +553,26 @@ pub(crate) fn messages_to_session_messages(
             for block in content_blocks {
                 match block {
                     ContentBlock::Text { text, .. } => {
-                        text_parts.push(text.clone());
-                        blocks.push(HistoryBlock::Text { text: text.clone() });
+                        if role == "user" {
+                            // The prompt carries attachments as an XML wrapper
+                            // at the end of the user's text. It is model input,
+                            // not something the user wrote: strip it from the
+                            // visible message and surface file chips instead.
+                            let (visible, files) = split_attachment_wrapper(text);
+                            if !visible.is_empty() {
+                                text_parts.push(visible.clone());
+                                blocks.push(HistoryBlock::Text { text: visible });
+                            }
+                            for file in files {
+                                blocks.push(HistoryBlock::File {
+                                    name: file.name,
+                                    size: file.size,
+                                });
+                            }
+                        } else {
+                            text_parts.push(text.clone());
+                            blocks.push(HistoryBlock::Text { text: text.clone() });
+                        }
                     }
                     ContentBlock::Thinking { thinking, .. } => {
                         blocks.push(HistoryBlock::Thinking {
@@ -791,8 +814,8 @@ fn ai_commands(disabled_commands: &[String]) -> Vec<CommandSpec> {
             })
             .collect();
 
-    // Extension commands (e.g. pi-extensions `/goal`). Every session registers
-    // the same set via `create_registry()`.
+    // Extension commands registered by `create_registry()`. Every session
+    // registers the same set.
     // `resolve_extension_commands` applies the same `:N` conflict resolution
     // pi-rs uses when executing the command inside `prompt()`.
     let mut registry = openatrading_core::llm::create_registry();
@@ -990,6 +1013,43 @@ mod tests {
         }
     }
 
+    /// A persisted prompt that embedded attachment text must reload as the
+    /// user's own words plus file chips, never as raw prompt plumbing.
+    #[test]
+    fn user_attachment_wrapper_is_hidden_from_history() {
+        use openatrading_core::utils::attachments::{
+            AttachmentService, FileAttachment, ImageAttachment,
+        };
+
+        let prepared = AttachmentService::prepare_prompt(
+            "解读这份财报",
+            &[ImageAttachment {
+                name: Some("chart.png".to_string()),
+                data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".to_string(),
+                mime_type: "image/png".to_string(),
+            }],
+            &[FileAttachment {
+                name: "report.md".to_string(),
+                data: "5Y2O5Lic6IKh56Wo".to_string(), // 华东股票
+                mime_type: None,
+                size: None,
+            }],
+        )
+        .unwrap_or_else(|e| panic!("prepare attachment wrapper: {e}"));
+
+        let out = messages_to_session_messages(&[user_text(&prepared.text)]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].content, "解读这份财报");
+        assert!(matches!(
+            &out[0].blocks[0],
+            HistoryBlock::Text { text } if text == "解读这份财报"
+        ));
+        assert!(matches!(
+            &out[0].blocks[1],
+            HistoryBlock::File { name, size } if name == "report.md" && *size == 12
+        ));
+    }
+
     /// `GET /api/extensions` 的形状是前端开关卡的唯一数据源：id / name /
     /// description / enabled / tools / commands 都不能缺。
     #[test]
@@ -1014,18 +1074,21 @@ mod tests {
         assert!(!web.enabled);
         assert!(web.tools.contains(&"web_fetch".to_string()));
 
-        let goal = items
+        let subagent = items
             .iter()
-            .find(|item| item.id == "goal")
-            .unwrap_or_else(|| panic!("缺少 goal: {items:?}"));
-        assert!(goal.enabled, "默认应启用");
-        assert_eq!(goal.commands, vec!["goal".to_string()]);
+            .find(|item| item.id == "subagent")
+            .unwrap_or_else(|| panic!("缺少 subagent: {items:?}"));
+        assert!(subagent.enabled, "默认应启用");
+        assert!(subagent.tools.contains(&"subagent".to_string()));
+        assert!(subagent.commands.is_empty());
     }
 
-    /// Happy path: the slash-command list exposes builtin session commands,
-    /// extension commands (e.g. pi-extensions `/goal`), and skills.
+    /// Happy path: the slash-command list exposes builtin session commands and
+    /// skills. Any extension command the registry does expose must also be
+    /// listed in `BUILTIN_EXTENSIONS` — otherwise the settings UI could not
+    /// disable it.
     #[test]
-    fn ai_commands_include_extension_commands() {
+    fn ai_commands_expose_builtins_skills_and_toggleable_extensions() {
         let specs = ai_commands(&[]);
 
         // Builtin session-level commands keep `Slash` type. Note `help`/`?`
@@ -1040,29 +1103,26 @@ mod tests {
             );
         }
 
-        // Extension commands (pi-extensions `/goal`) surface with `Extension`.
-        let goal = specs
-            .iter()
-            .find(|c| c.name == "goal")
-            .unwrap_or_else(|| panic!("missing extension command /goal: {specs:?}"));
-        assert_eq!(goal.command_type, CommandType::Extension);
-        assert!(!goal.description.is_empty());
-    }
-
-    /// 停用的扩展命令不再出现在命令面板（含 pi-rs 冲突消解的 `goal:1`）。
-    #[test]
-    fn ai_commands_hide_disabled_extension_commands() {
-        let specs = ai_commands(&["goal".to_string()]);
         assert!(
-            !specs.iter().any(|c| {
-                c.command_type == CommandType::Extension && c.name.split(':').next() == Some("goal")
-            }),
-            "停用的 /goal 不应出现在命令列表: {specs:?}"
+            specs.iter().any(|c| c.name.starts_with("skill:")),
+            "skills should be exposed as /skill:<name>: {specs:?}"
         );
-        // 内置命令不受影响。
-        assert!(specs
+
+        let toggleable: Vec<&str> = openatrading_core::extensions::BUILTIN_EXTENSIONS
             .iter()
-            .any(|c| c.name == "model" && c.command_type == CommandType::Slash));
+            .flat_map(|ext| ext.commands.iter().copied())
+            .collect();
+        for spec in specs
+            .iter()
+            .filter(|c| c.command_type == CommandType::Extension)
+        {
+            let base = spec.name.split(':').next().unwrap_or(&spec.name);
+            assert!(
+                toggleable.contains(&base),
+                "extension command /{} has no toggle metadata: {specs:?}",
+                spec.name
+            );
+        }
     }
 
     /// 回归：前端 POST 的是 camelCase（照搬 GET 的响应字段名），

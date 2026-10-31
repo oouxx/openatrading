@@ -1,35 +1,41 @@
-//! Regression tests for extension slash-command wiring.
+//! Regression tests for extension registry wiring.
 //!
-//! The frontend slash menu lists commands from `GET /api/ai/commands`, which
-//! must match what a live session can actually execute. These tests pin the
-//! two halves of that contract:
+//! `create_registry()` is the single builder shared by the web gateway, the
+//! MCP server and the session factory. These tests pin the two halves of the
+//! contract that the settings UI depends on:
 //!
-//! 1. [`registry_has_goal_command`] — `create_registry()` (the same builder
-//!    the web gateway and MCP server use) collects pi-extensions commands
-//!    such as `/goal`.
-//! 2. [`factory_produces_session_with_goal_command`] — a session created via
-//!    `create_factory()` (the exact path the session pool uses) carries the
-//!    extension registry, so pi-rs `prompt()` will dispatch `/goal` instead
-//!    of treating it as a normal user prompt.
+//! 1. [`create_registry_collects_extension_tools`] — the registry exposes the
+//!    tools of every built-in extension.
+//! 2. [`factory_produces_session_with_extension_tools`] — a session created
+//!    via `create_factory()` (the exact path the session pool uses) carries
+//!    the same registry, so the toggles in `settings.json` act on real tools.
 
 use openatrading_agent::session::{create_factory, CreateSessionParams, FactoryOptions};
 use pi_coding_agent::core::session_manager::SessionManager;
 
 #[test]
-fn create_registry_collects_extension_commands() {
+fn create_registry_collects_extension_tools() {
     let mut registry = openatrading_extension::create_registry();
-    let resolved = pi_coding_agent::core::slash_commands::resolve_extension_commands(
-        &registry.collect_commands(),
-    );
-    let names: Vec<String> = resolved.into_iter().map(|c| c.invocation_name).collect();
+    let names: Vec<String> = registry
+        .collect_tools()
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+
+    for expected in ["subagent", "web_search", "web_fetch"] {
+        assert!(
+            names.contains(&expected.to_string()),
+            "missing extension tool {expected}: {names:?}"
+        );
+    }
     assert!(
-        names.contains(&"goal".to_string()),
-        "registry commands: {names:?}"
+        !names.iter().any(|name| name.starts_with("goal_")),
+        "pi-rs v1.87.10 removed the goal extension: {names:?}"
     );
 }
 
 #[test]
-fn factory_produces_session_with_goal_command() {
+fn factory_produces_session_with_extension_tools() {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -64,7 +70,7 @@ fn factory_produces_session_with_goal_command() {
             Some(r) => r,
             None => panic!("session has no extension registry"),
         };
-        let names: Vec<String> = registry.commands().iter().map(|c| c.name.clone()).collect();
-        assert!(names.contains(&"goal".to_string()), "commands: {names:?}");
+        let names: Vec<String> = registry.tools().iter().map(|t| t.name.clone()).collect();
+        assert!(names.contains(&"subagent".to_string()), "tools: {names:?}");
     });
 }

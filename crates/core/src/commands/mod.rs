@@ -6,7 +6,7 @@ pub enum CommandType {
     Tool,
     Skill,
     Slash,
-    /// Extension-registered slash command (e.g. pi-extensions `/goal`).
+    /// Extension-registered slash command (e.g. a third-party extension's `/review`).
     Extension,
 }
 

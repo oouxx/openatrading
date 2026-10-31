@@ -1,7 +1,7 @@
 //! Built-in pi-rs extension toggles (`extensionsEnabled` in settings.json).
 //!
-//! The extension registry always registers all three built-ins so a live
-//! session can be toggled without a restart. Enabling/disabling is therefore
+//! The extension registry always registers every built-in so a live session
+//! can be toggled without a restart. Enabling/disabling is therefore
 //! expressed as an *active tool / command filter*, not by rebuilding the
 //! registry:
 //!
@@ -9,8 +9,8 @@
 //! - disabled extension slash commands are rejected by the session actor.
 //!
 //! Missing keys in `extensionsEnabled` default to enabled. That preserves this
-//! app's historical behaviour (all three built-ins on when no settings exist)
-//! and keeps `settings.json` written by older versions valid.
+//! app's historical behaviour (all built-ins on when no settings exist) and
+//! keeps `settings.json` written by older versions valid.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -29,15 +29,11 @@ pub struct BuiltinExtension {
     pub commands: &'static [&'static str],
 }
 
-/// The three pi-rs built-ins exposed in the settings UI.
+/// The pi-rs built-ins exposed in the settings UI.
+///
+/// `goal` was removed in pi-rs v1.87.10; the remaining built-ins register
+/// tools but no slash commands.
 pub const BUILTIN_EXTENSIONS: &[BuiltinExtension] = &[
-    BuiltinExtension {
-        id: "goal",
-        name: "Goal",
-        description: "用 /goal 启动需要持续完成的目标；关闭后目标工具与 /goal 命令不可用。",
-        tools: &["goal_complete", "goal_blocked", "goal_wait"],
-        commands: &["goal"],
-    },
     BuiltinExtension {
         id: "subagent",
         name: "子代理",
@@ -137,8 +133,8 @@ impl ExtensionToggles {
 
 /// Base name of a pi-rs slash invocation.
 ///
-/// pi-rs resolves name conflicts by appending `:N` (e.g. `goal:1`), so both the
-/// command list and the prompt guard must compare on the base name.
+/// pi-rs resolves name conflicts by appending `:N` (e.g. `review:1`), so both
+/// the command list and the prompt guard must compare on the base name.
 #[must_use]
 pub fn command_base_name(invocation: &str) -> &str {
     invocation.split(':').next().unwrap_or(invocation)
@@ -153,8 +149,8 @@ pub fn is_command_disabled(invocation: &str, disabled_commands: &[String]) -> bo
 
 /// The disabled extension command a user prompt would invoke, if any.
 ///
-/// Only the first whitespace-separated token counts: `/goal 完成目标` invokes
-/// `goal`, while `please /goal` is ordinary text sent to the model.
+/// Only the first whitespace-separated token counts: `/review 这个改动` invokes
+/// `review`, while `please /review` is ordinary text sent to the model.
 #[must_use]
 pub fn disabled_command_in_prompt<'a>(
     text: &str,
@@ -190,30 +186,24 @@ mod tests {
     fn missing_keys_default_to_enabled() {
         let toggles =
             ExtensionToggles::from_enabled_map(&HashMap::from([("subagent".to_string(), false)]));
-        assert_eq!(toggles.is_enabled("goal"), Some(true));
+        assert_eq!(toggles.is_enabled("web_search"), Some(true));
         assert_eq!(toggles.is_enabled("subagent"), Some(false));
         assert_eq!(toggles.disabled_tools(), vec!["subagent".to_string()]);
     }
 
     #[test]
-    fn disabling_goal_hides_tools_and_command() {
+    fn disabling_subagent_hides_its_tool() {
         let mut toggles = ExtensionToggles::default();
-        assert!(toggles.set("goal", false));
-        assert_eq!(
-            toggles.disabled_tools(),
-            vec![
-                "goal_complete".to_string(),
-                "goal_blocked".to_string(),
-                "goal_wait".to_string()
-            ]
-        );
-        assert_eq!(toggles.disabled_commands(), vec!["goal".to_string()]);
+        assert!(toggles.set("subagent", false));
+        assert_eq!(toggles.disabled_tools(), vec!["subagent".to_string()]);
+        // The remaining built-ins register tools but no slash commands.
+        assert!(toggles.disabled_commands().is_empty());
     }
 
     #[test]
     fn unknown_ids_are_rejected_but_preserved() {
         let map = HashMap::from([
-            ("goal".to_string(), false),
+            ("subagent".to_string(), false),
             ("third_party".to_string(), false),
         ]);
         let mut toggles = ExtensionToggles::from_enabled_map(&map);
@@ -226,38 +216,41 @@ mod tests {
         );
 
         // A known key can be re-enabled, and the unknown key stays untouched.
-        assert!(toggles.set("goal", true));
-        assert_eq!(toggles.enabled_map().get("goal"), Some(&true));
+        assert!(toggles.set("subagent", true));
+        assert_eq!(toggles.enabled_map().get("subagent"), Some(&true));
         assert_eq!(toggles.enabled_map().get("third_party"), Some(&false));
     }
 
-    /// pi-rs 冲突消解后的 `goal:1` 与 `goal` 属于同一个扩展命令。
+    /// pi-rs 冲突消解后的 `review:1` 与 `review` 属于同一个扩展命令。
     #[test]
     fn conflict_resolved_invocations_match_the_base_name() {
-        let disabled = vec!["goal".to_string()];
-        assert_eq!(command_base_name("goal:1"), "goal");
-        assert!(is_command_disabled("goal", &disabled));
-        assert!(is_command_disabled("goal:1", &disabled));
+        let disabled = vec!["review".to_string()];
+        assert_eq!(command_base_name("review:1"), "review");
+        assert!(is_command_disabled("review", &disabled));
+        assert!(is_command_disabled("review:1", &disabled));
         assert!(!is_command_disabled("skill:foo", &disabled));
         assert!(!is_command_disabled("compact", &disabled));
     }
 
-    /// 只有 prompt 的第一个 token 才是斜杠调用，正文里出现 `/goal` 不算。
+    /// 只有 prompt 的第一个 token 才是斜杠调用，正文里出现 `/review` 不算。
     #[test]
     fn prompt_guard_only_reads_the_leading_invocation() {
-        let disabled = vec!["goal".to_string()];
-        assert_eq!(disabled_command_in_prompt("/goal", &disabled), Some("goal"));
+        let disabled = vec!["review".to_string()];
         assert_eq!(
-            disabled_command_in_prompt("  /goal:1 完成目标", &disabled),
-            Some("goal")
+            disabled_command_in_prompt("/review", &disabled),
+            Some("review")
         );
         assert_eq!(
-            disabled_command_in_prompt("请用 /goal 做多", &disabled),
+            disabled_command_in_prompt("  /review:1 看看这个改动", &disabled),
+            Some("review")
+        );
+        assert_eq!(
+            disabled_command_in_prompt("请用 /review 看看", &disabled),
             None
         );
-        assert_eq!(disabled_command_in_prompt("/goalkeeper", &disabled), None);
+        assert_eq!(disabled_command_in_prompt("/reviewer", &disabled), None);
         assert_eq!(disabled_command_in_prompt("/", &disabled), None);
-        assert_eq!(disabled_command_in_prompt("goal", &disabled), None);
-        assert_eq!(disabled_command_in_prompt("/goal", &[]), None);
+        assert_eq!(disabled_command_in_prompt("review", &disabled), None);
+        assert_eq!(disabled_command_in_prompt("/review", &[]), None);
     }
 }

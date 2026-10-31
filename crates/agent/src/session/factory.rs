@@ -200,6 +200,8 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
                     settings_manager: None,
                     session_start_event: params.session_start_event,
                     ui_context: None,
+                    trust_override: None,
+                    default_project_trust: None,
                 })
                 .await
                 .map_err(|e| format!("Failed to create session: {e}"))?;
