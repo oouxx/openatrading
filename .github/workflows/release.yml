@@ -162,7 +162,10 @@ jobs:
   build-macos:
     needs: meta
     if: github.event_name == 'push' || inputs.macos
-    runs-on: macos-14
+    # macos-14 已于 2026-11-02 退役（brownout 期间任务会被直接判失败）。
+    # 固定 macos-15（arm64，与 macos-14 同为 Apple Silicon），不用 macos-latest：
+    # 后者已指向 macos-26，未来还会再漂移，发版流水线需要确定性。
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -178,7 +181,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
-          shared-key: macos
+          # 换镜像时一并换 key：不复用 macOS 14 SDK 下编出来的 target/ 产物
+          shared-key: macos-15
       - name: 加 x86_64 target
         run: rustup target add x86_64-apple-darwin
       - name: 构建 CLI（两个架构）
