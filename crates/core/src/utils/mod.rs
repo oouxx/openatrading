@@ -2,12 +2,18 @@ pub mod attachments;
 pub mod time;
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.
-/// Returns `Some((frontmatter_raw, body))` on success, `None` if no frontmatter found.
-pub fn parse_yaml_frontmatter(raw: &str) -> Option<(String, String)> {
-    let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
-    match matter.parse::<serde_json::Value>(raw) {
-        Ok(parsed) if !parsed.matter.is_empty() => Some((parsed.matter, parsed.content)),
-        _ => None,
+///
+/// 委托 pi-rs 的 frontmatter 解析器（`pi_coding_agent::utils::frontmatter`），
+/// 与 Skills / Prompt 模板使用的是同一套规则。返回 `(frontmatter JSON, body)`；
+/// 没有 frontmatter 时 frontmatter 为空对象、body 为原文；frontmatter 存在但
+/// YAML 非法时同样退回原文（编辑器场景宁可展示全文，也不丢用户内容）。
+pub fn parse_yaml_frontmatter(raw: &str) -> (serde_json::Value, String) {
+    match pi_coding_agent::utils::frontmatter::try_parse_frontmatter(raw) {
+        Ok(parsed) => (parsed.frontmatter, parsed.body),
+        Err(_) => (
+            serde_json::Value::Object(serde_json::Map::new()),
+            raw.to_string(),
+        ),
     }
 }
 

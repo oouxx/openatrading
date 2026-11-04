@@ -19,6 +19,7 @@ import {
   useToggleMcpServer,
   useDeleteMcpServer,
   useSaveMcpServer,
+  useTestMcpServer,
 } from "@/hooks/query/useMcpServers"
 import { useExtensions, useToggleExtension } from "@/hooks/query/useExtensions"
 import { McpServerForm } from "./McpServerForm"
@@ -28,7 +29,7 @@ import { ExtensionCard } from "./ExtensionCard"
 import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
-import { CheckIcon, Info, Plus, RefreshCw, Search, Server } from "lucide-react"
+import { AlertTriangle, CheckIcon, Info, Plus, RefreshCw, Search, Server } from "lucide-react"
 import {
   emptyTransport,
   mcpTransportTarget,
@@ -213,7 +214,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const toggleMcp = useToggleMcpServer()
   const deleteMcp = useDeleteMcpServer()
   const saveMcp = useSaveMcpServer()
-  const servers = mcpQuery.data ?? []
+  const testMcp = useTestMcpServer()
+  const servers = mcpQuery.data?.servers ?? []
+  const mcpErrors = mcpQuery.data?.errors ?? []
 
   // 内置扩展（subagent / web_search）开关
   const extensionsQuery = useExtensions()
@@ -224,6 +227,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     name: "",
     enabled: true,
     transport: emptyTransport(type),
+    exposure: "direct",
   })
 
   const mcpNeedle = mcpSearch.trim().toLowerCase()
@@ -697,6 +701,29 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
           {activeTab === "mcp" && (
             <div className="space-y-8">
+              {mcpErrors.length > 0 && (
+                <div className="border-warning/30 bg-warning/10 rounded-lg border px-3.5 py-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="text-warning mt-0.5 size-3.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-warning text-caption font-medium">
+                        以下 MCP 配置无法加载，已跳过
+                      </p>
+                      <ul className="text-secondary mt-1 space-y-0.5">
+                        {mcpErrors.map((error, i) => (
+                          <li
+                            key={`${i}-${error}`}
+                            className="font-number text-caption break-words"
+                          >
+                            {error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <section>
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div className="flex items-baseline gap-2">
@@ -762,11 +789,14 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                         server={s}
                         onToggle={() => toggleMcp.mutateAsync(s.name).then(() => undefined)}
                         onDelete={() => deleteMcp.mutateAsync(s.name).then(() => undefined)}
+                        onTest={() => testMcp.mutateAsync(s.name)}
                         onEdit={() => {
                           setEditingServer({
                             name: s.name,
                             enabled: s.enabled,
                             transport: s.transport,
+                            // codemode 与 deferred 在本应用里等价，统一成 deferred
+                            exposure: s.exposure === "codemode" ? "deferred" : s.exposure,
                           })
                           setEditingOriginalName(s.name)
                           setShowNewForm(true)

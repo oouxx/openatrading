@@ -65,10 +65,8 @@ pub fn skill_scope(skill: &Skill) -> &'static str {
 /// Read the markdown body (after YAML frontmatter) of a skill file.
 pub fn read_skill_content(file_path: &str) -> Option<String> {
     let raw = std::fs::read_to_string(file_path).ok()?;
-    match crate::utils::parse_yaml_frontmatter(&raw) {
-        Some((_matter, body)) => Some(body.trim().to_string()),
-        None => Some(raw.trim().to_string()),
-    }
+    let (_frontmatter, body) = crate::utils::parse_yaml_frontmatter(&raw);
+    Some(body.trim().to_string())
 }
 
 /// Validate a skill name for safe disk use.

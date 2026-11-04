@@ -18,27 +18,12 @@ use crate::AppState;
 
 /// Find a session JSONL file by session ID.
 ///
-/// Session files are named `{timestamp}_{id}.jsonl`, so we cannot construct
-/// the path from the ID alone. This scans the session directory for a file
-/// whose name ends with `_{id}.jsonl`.
+/// 委托 `openatrading_core::llm::find_session_file_by_id`（与 SessionPool /
+/// automation 使用同一套命名规则），避免两处扫描逻辑漂移。
 pub fn find_session_file(id: &str) -> Option<std::path::PathBuf> {
     let dir = pi_coding_agent::config::get_sessions_dir();
-    let suffix = format!("_{id}.jsonl");
-    let direct = dir.join(format!("{id}.jsonl"));
-    if direct.exists() {
-        return Some(direct);
-    }
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with(&suffix) {
-                    return Some(path);
-                }
-            }
-        }
-    }
-    None
+    openatrading_core::llm::find_session_file_by_id(&dir.to_string_lossy(), id)
+        .map(std::path::PathBuf::from)
 }
 
 #[derive(Serialize)]

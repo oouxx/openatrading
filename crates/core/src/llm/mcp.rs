@@ -6,22 +6,24 @@
 //! `{agent_dir}/mcp.json` + `{cwd}/.pi-rs/mcp.json` 并连接（见 pi-rs
 //! `core/sdk.rs` 的 MCP 段），因此配置变更对新会话立即生效，无需重启。
 //!
-//! 本模块只提供两件事：
+//! 本模块只提供三件事：
 //!
 //! 1. 再导出 pi-rs 的配置/连接原语，使 web / cli 不必直接依赖 `pi-coding-agent`；
-//! 2. [`McpConfigStore`]——管理界面与 `doctor` 用的读写投影（列表视图 + 增删改启停）。
+//! 2. [`McpConfigStore`]——管理界面与 `doctor` 用的读写投影（列表视图 + 增删改启停）；
+//! 3. [`McpEndpoint`]——CLI 对单个 HTTP 端点做一次性连接/列工具/调用工具。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-pub use pi_coding_agent::core::mcp::{
-    connect_specs, McpConnection, McpServerSpec, McpTransportSpec,
-};
 pub use pi_coding_agent::core::mcp_config::{
-    add_server, global_config_path, load_servers, load_specs, project_config_path, remove_server,
-    set_enabled, LoadedServer, McpScope,
+    add_server, global_config_path, load_servers, project_config_path, remove_server, set_enabled,
+    LoadedServer,
+};
+pub use pi_coding_agent::core::mcp_runtime::McpServerConnection;
+pub use pi_coding_agent::core::mcp_servers::{
+    validate_mcp_server_config, McpExposure, McpScope, McpServerConfig,
 };
 
 // ============================================================================
@@ -82,6 +84,12 @@ pub struct McpServerView {
     /// 定义该条目的配置文件路径。
     pub source: String,
     pub transport: McpTransportConfig,
+    /// 生效的工具暴露方式（pi-rs 缺省 `codemode`，等价于按需加载）。
+    pub exposure: McpExposure,
+    /// 配置里是否显式写了 `exposure`。旧配置为 `false`，界面据此提示
+    /// “默认按需加载”。
+    #[serde(rename = "exposureExplicit")]
+    pub exposure_explicit: bool,
 }
 
 /// 写入载荷（新增/编辑）。
@@ -93,6 +101,24 @@ pub struct McpServerPayload {
     pub name: String,
     pub enabled: bool,
     pub transport: McpTransportConfig,
+    /// 工具暴露方式；新增时缺省为 `direct`，编辑时缺省保留原值。
+    #[serde(default)]
+    pub exposure: Option<McpExposure>,
+}
+
+/// 一次性连接测试的结果。
+///
+/// 连接失败属于测试结果而非配置错误，因此仍以 `Ok` 返回，让界面展示原因。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerTest {
+    pub ok: bool,
+    /// 握手成功后枚举到的工具数。
+    pub tool_count: usize,
+    /// 失败原因（成功时为 `None`）。
+    pub error: Option<String>,
+    /// 握手 + 工具枚举耗时。
+    pub duration_ms: u64,
 }
 
 /// MCP 配置读写的错误。
@@ -194,7 +220,7 @@ impl McpConfigStore {
         if self.find(&name).is_some() {
             return Err(McpConfigError::Exists);
         }
-        let raw = to_raw_entry(payload)?;
+        let raw = apply_payload(None, &name, payload)?;
         self.with_write_lock(|| add_server(&self.global_path(), &name, &raw).map(|_| ()))
     }
 
@@ -213,7 +239,9 @@ impl McpConfigStore {
         if new_name != current_name && self.find(&new_name).is_some() {
             return Err(McpConfigError::Exists);
         }
-        let raw = to_raw_entry(payload)?;
+        // 编辑时保留 UI 不认识的字段（exposure/timeout/oauth/auth/...）。
+        let existing = raw_entry(&self.global_path(), current_name);
+        let raw = apply_payload(existing.as_ref(), &new_name, payload)?;
         let path = self.global_path();
         // 改名分两步（pi-rs 没有原子重命名）。先写新条目再删旧条目：万一中途失败，
         // 留下的是「新旧并存」这种可见、可手动收拾的状态，而不是静默丢掉用户配置。
@@ -248,12 +276,51 @@ impl McpConfigStore {
     pub fn toggle(&self, name: &str) -> Result<(), McpConfigError> {
         let existing = self.require_global(name)?;
         let path = self.global_path();
-        let target = !existing.enabled;
+        let target = !existing.is_enabled();
         if self.with_write_lock(|| set_enabled(&path, name, target))? {
             Ok(())
         } else {
             Err(McpConfigError::NotFound)
         }
+    }
+
+    /// 为一个已加载条目建立连接句柄（尚未连接，首次 `get_client` 才握手）。
+    ///
+    /// `doctor` 用它做健康检查；显式传入本 store 的 cwd/agent_dir，避免依赖进程全局状态。
+    #[must_use]
+    pub fn connection(&self, server: LoadedServer) -> McpServerConnection {
+        McpServerConnection::with_agent_dir(server, self.cwd.clone(), self.agent_dir.clone())
+    }
+
+    /// 测试一个条目能否连接（握手 + 枚举工具）。
+    ///
+    /// pi-rs 的 `get_client` 自带 10s 连接超时；连接失败作为测试结果返回，
+    /// 只有名字不存在才是配置错误。
+    ///
+    /// # Errors
+    /// 名字不存在 → [`McpConfigError::NotFound`]。
+    pub async fn test(&self, name: &str) -> Result<McpServerTest, McpConfigError> {
+        let server = self.find(name).ok_or(McpConfigError::NotFound)?;
+        let connection = self.connection(server);
+        let started = std::time::Instant::now();
+        let result = connection.get_client().await;
+        let tool_count = connection.tools().len();
+        connection.close().await;
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(match result {
+            Ok(_) => McpServerTest {
+                ok: true,
+                tool_count,
+                error: None,
+                duration_ms,
+            },
+            Err(error) => McpServerTest {
+                ok: false,
+                tool_count: 0,
+                error: Some(error),
+                duration_ms,
+            },
+        })
     }
 
     /// 查一个条目（合并后的视角）。
@@ -262,14 +329,18 @@ impl McpConfigStore {
         servers.into_iter().find(|s| s.name == name)
     }
 
-    /// 找到条目并要求它归全局文件管。
+    /// 找到条目并要求它完全归全局文件管。
+    ///
+    /// 有项目级 override 的条目也拒绝：项目文件覆盖了 `enabled`/`exposure`，
+    /// 只改全局文件不会改变实际生效状态。
     fn require_global(&self, name: &str) -> Result<LoadedServer, McpConfigError> {
         let server = self.find(name).ok_or(McpConfigError::NotFound)?;
-        if server.scope == McpScope::Global {
+        if server.scope == McpScope::Global && server.override_path.is_none() {
             Ok(server)
         } else {
+            let blocker = server.override_path.as_ref().unwrap_or(&server.source);
             Err(McpConfigError::ProjectScoped(
-                server.source.to_string_lossy().to_string(),
+                blocker.to_string_lossy().to_string(),
             ))
         }
     }
@@ -288,6 +359,9 @@ impl McpConfigStore {
 }
 
 /// 名字校验：非空、不含控制字符。
+///
+/// 字符集（字母/数字/`_`/`-`）交给 pi-rs 的 `validate_mcp_server_config` 做权威
+/// 校验——它才是会话加载时真正执行的规则，避免我们放行 pi-rs 会拒绝的名字。
 fn validate_name(name: &str) -> Result<String, McpConfigError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -301,16 +375,36 @@ fn validate_name(name: &str) -> Result<String, McpConfigError> {
 
 /// 载荷 → `mcpServers` 原始条目。
 ///
-/// 形状必须与 pi-rs `mcp_config::resolve_transport` 的解析一致：
+/// 形状必须与 pi-rs `mcp_servers::validate_mcp_server_config` 的解析一致：
 /// - stdio 不写 `type`（`command` 服务器遇到非 `"stdio"` 的 type 会被拒绝）；
 /// - http 省略 `type`（空字符串与 `"http"` 都按 streamable HTTP 解析）；
 /// - sse **必须**写 `type: "sse"`，否则带 `url` 的条目会被当成 http。
-fn to_raw_entry(payload: &McpServerPayload) -> Result<serde_json::Value, McpConfigError> {
+///
+/// `existing` 是编辑前的原始条目：除传输字段与 `enabled` 外的键（`exposure`、
+/// `timeout`、`oauth`、`auth`、`toolExposure` 等 pi-rs 新字段）原样保留，避免
+/// 从管理界面保存时把用户手写的配置删掉。
+fn apply_payload(
+    existing: Option<&serde_json::Value>,
+    name: &str,
+    payload: &McpServerPayload,
+) -> Result<serde_json::Value, McpConfigError> {
     payload.transport.validate()?;
-    let mut entry = serde_json::Map::new();
-    if !payload.enabled {
+    let mut entry = existing
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+
+    // 先清空所有传输字段，避免切换类型后 `command` 与 `url` 并存。
+    for key in ["type", "command", "args", "env", "cwd", "url", "headers"] {
+        entry.remove(key);
+    }
+
+    if payload.enabled {
+        entry.remove("enabled");
+    } else {
         entry.insert("enabled".into(), serde_json::Value::Bool(false));
     }
+
     match &payload.transport {
         McpTransportConfig::Stdio {
             command,
@@ -343,7 +437,34 @@ fn to_raw_entry(payload: &McpServerPayload) -> Result<serde_json::Value, McpConf
             }
         }
     }
-    Ok(serde_json::Value::Object(entry))
+
+    // 本应用没有 codemode 脚本。pi-rs 的 exposure 默认是 `codemode`（映射为
+    // `tool_search` 才能看到的 deferred 工具），而管理界面的语义是「配置即出现在
+    // 工具列表里」。因此新增条目默认写 `direct`。
+    //
+    // 编辑时若载荷没带 exposure（旧客户端），保留文件里的原值——包括“未设置”，
+    // 让界面如实显示 pi-rs 的默认行为，而不是悄悄改配置。
+    match payload.exposure {
+        Some(exposure) => {
+            entry.insert(
+                "exposure".into(),
+                serde_json::Value::String(exposure.to_string()),
+            );
+        }
+        None if existing.is_none() => {
+            entry.insert(
+                "exposure".into(),
+                serde_json::Value::String(McpExposure::Direct.to_string()),
+            );
+        }
+        None => {}
+    }
+
+    let raw = serde_json::Value::Object(entry);
+    // 交给 pi-rs 做权威校验（命名规则、command/url 互斥、exposure 取值等），
+    // 保证写进去的文件一定能被会话加载。
+    validate_mcp_server_config(name, &raw).map_err(McpConfigError::Invalid)?;
+    Ok(raw)
 }
 
 /// `LoadedServer` → 列表视图。
@@ -355,45 +476,70 @@ fn to_raw_entry(payload: &McpServerPayload) -> Result<serde_json::Value, McpConf
 fn server_view(server: &LoadedServer) -> McpServerView {
     let raw_env = || raw_map(&server.source, &server.name, "env");
     let raw_headers = || raw_map(&server.source, &server.name, "headers");
-    let transport = match &server.transport {
-        McpTransportSpec::Stdio {
-            command,
-            args,
-            env,
-            cwd,
-        } => McpTransportConfig::Stdio {
+    let config = &server.config;
+    let transport = if let Some(command) = &config.command {
+        McpTransportConfig::Stdio {
             command: command.clone(),
-            args: args.clone(),
-            env: raw_env()
-                .unwrap_or_else(|| env.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
-            cwd: cwd.clone(),
-        },
-        McpTransportSpec::Http { url, headers } => McpTransportConfig::Http {
-            url: url.clone(),
-            headers: raw_headers().unwrap_or_else(|| {
-                headers
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
+            args: config.args.clone().unwrap_or_default(),
+            env: raw_env().unwrap_or_else(|| {
+                config
+                    .env
+                    .as_ref()
+                    .map(|env| env.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                    .unwrap_or_default()
             }),
-        },
-        McpTransportSpec::Sse { url, headers } => McpTransportConfig::Sse {
-            url: url.clone(),
+            cwd: config.cwd.clone(),
+        }
+    } else if config.kind.as_deref() == Some("sse") {
+        McpTransportConfig::Sse {
+            url: config.url.clone().unwrap_or_default(),
             headers: raw_headers().unwrap_or_else(|| {
-                headers
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
+                config
+                    .headers
+                    .as_ref()
+                    .map(|h| h.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                    .unwrap_or_default()
             }),
-        },
+        }
+    } else {
+        McpTransportConfig::Http {
+            url: config.url.clone().unwrap_or_default(),
+            headers: raw_headers().unwrap_or_else(|| {
+                config
+                    .headers
+                    .as_ref()
+                    .map(|h| h.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                    .unwrap_or_default()
+            }),
+        }
     };
     McpServerView {
         name: server.name.clone(),
-        enabled: server.enabled,
-        scope: server.scope.as_str(),
-        source: server.source.to_string_lossy().to_string(),
+        enabled: server.is_enabled(),
+        // pi-rs 允许项目文件用 `enabled`/`exposure` 覆盖全局条目；此时条目仍
+        // “定义”在全局，但生效状态由项目文件决定，必须按项目级只读处理。
+        scope: if server.override_path.is_some() {
+            McpScope::Project.as_str()
+        } else {
+            server.scope.as_str()
+        },
+        source: server
+            .override_path
+            .as_ref()
+            .unwrap_or(&server.source)
+            .to_string_lossy()
+            .to_string(),
         transport,
+        exposure: config.exposure(),
+        exposure_explicit: config.exposure.is_some(),
     }
+}
+
+/// 从配置文件里取某个 server 的原始条目（用于编辑时保留未知字段）。
+fn raw_entry(path: &Path, name: &str) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let root: serde_json::Value = serde_json::from_str(&text).ok()?;
+    root.get("mcpServers")?.get(name).cloned()
 }
 
 /// 从配置文件里取某个 server 的原始字符串映射（`env` / `headers`）。
@@ -406,6 +552,106 @@ fn raw_map(source: &Path, name: &str, key: &str) -> Option<BTreeMap<String, Stri
             .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string())))
             .collect(),
     )
+}
+
+// ============================================================================
+// 一次性端点连接（CLI）
+// ============================================================================
+
+/// 远端 MCP 工具的精简视图（CLI 展示用）。
+#[derive(Debug, Clone)]
+pub struct McpToolInfo {
+    pub name: String,
+    pub description: String,
+    /// 工具参数 JSON Schema。
+    pub parameters: Option<serde_json::Value>,
+}
+
+/// 对单个 streamable-HTTP 端点的一次性连接。
+///
+/// CLI 的 `mcp list/status/call` 和 `tools doc` 只连一个自主管理的端点，
+/// 不走 `mcp.json`；连接、握手、工具枚举与调用全部委托 pi-rs 的
+/// [`McpServerConnection`]，这里只构造一个临时的 `LoadedServer`。
+pub struct McpEndpoint {
+    connection: McpServerConnection,
+}
+
+impl McpEndpoint {
+    /// 连接一个 streamable-HTTP 端点（完成 initialize + tools/list）。
+    ///
+    /// # Errors
+    /// 端点不可达或握手失败时返回 [`McpConfigError::Config`]。
+    pub async fn connect_http(
+        name: impl Into<String>,
+        url: impl Into<String>,
+    ) -> Result<Self, McpConfigError> {
+        let entry = LoadedServer {
+            name: name.into(),
+            config: McpServerConfig {
+                url: Some(url.into()),
+                ..McpServerConfig::default()
+            },
+            source: PathBuf::new(),
+            scope: McpScope::Global,
+            override_path: None,
+        };
+        let cwd = std::env::current_dir()
+            .map_err(|e| McpConfigError::Config(format!("无法获取当前工作目录: {e}")))?;
+        let connection = McpServerConnection::with_agent_dir(
+            entry,
+            cwd.to_string_lossy().to_string(),
+            pi_coding_agent::config::get_agent_dir()
+                .to_string_lossy()
+                .to_string(),
+        );
+        connection
+            .get_client()
+            .await
+            .map_err(McpConfigError::Config)?;
+        Ok(Self { connection })
+    }
+
+    /// 已枚举的工具。
+    #[must_use]
+    pub fn tools(&self) -> Vec<McpToolInfo> {
+        self.connection
+            .tools()
+            .into_iter()
+            .map(|tool| McpToolInfo {
+                name: tool.name,
+                description: tool.description.unwrap_or_default(),
+                parameters: Some(serde_json::Value::Object(tool.input_schema)),
+            })
+            .collect()
+    }
+
+    /// 已枚举的工具数量。
+    #[must_use]
+    pub fn tool_count(&self) -> usize {
+        self.connection.tools().len()
+    }
+
+    /// 调用一个工具，返回（内容块, 是否错误）。
+    ///
+    /// # Errors
+    /// 连接失败或远端返回协议错误时返回 [`McpConfigError::Config`]。
+    pub async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(Vec<serde_json::Value>, bool), McpConfigError> {
+        let result = self
+            .connection
+            .call_tool(name, arguments, None)
+            .await
+            .map_err(McpConfigError::Config)?;
+        let content = result
+            .content
+            .iter()
+            .filter_map(|block| serde_json::to_value(block).ok())
+            .collect();
+        Ok((content, result.is_error))
+    }
 }
 
 #[cfg(test)]
@@ -435,6 +681,7 @@ mod tests {
                 env: BTreeMap::new(),
                 cwd: None,
             },
+            exposure: None,
         }
     }
 
@@ -472,6 +719,7 @@ mod tests {
                     url: "https://example.com/sse".into(),
                     headers: BTreeMap::new(),
                 },
+                exposure: None,
             })
             .unwrap();
         store
@@ -482,6 +730,7 @@ mod tests {
                     url: "https://example.com/mcp".into(),
                     headers: BTreeMap::from([("Authorization".into(), "Bearer t".into())]),
                 },
+                exposure: None,
             })
             .unwrap();
 
@@ -499,6 +748,109 @@ mod tests {
         let docs = servers.iter().find(|s| s.name == "docs").unwrap();
         assert!(!docs.enabled);
         assert!(matches!(docs.transport, McpTransportConfig::Http { .. }));
+    }
+
+    /// 新条目默认 direct：pi-rs 的缺省 exposure=codemode 会让工具变成
+    /// tool_search 才能看到的 deferred 工具，而本应用没有 codemode 脚本。
+    #[test]
+    fn create_defaults_exposure_to_direct() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+        store.create(&stdio_payload("fs")).unwrap();
+
+        let text = std::fs::read_to_string(store.global_path()).unwrap();
+        let root: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(root["mcpServers"]["fs"]["exposure"], "direct");
+    }
+
+    /// 从管理界面保存时，pi-rs 新增/手写的字段不能被抹掉。
+    #[test]
+    fn update_preserves_fields_the_ui_does_not_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+        write(
+            &store.global_path(),
+            r#"{"mcpServers":{"docs":{
+                 "url":"https://old.example/mcp",
+                 "exposure":"deferred",
+                 "timeout":12.5,
+                 "toolExposure":{"search":"hidden"},
+                 "oauth":{"clientId":"abc","scope":"read"}
+               }}}"#,
+        );
+
+        store
+            .update(
+                "docs",
+                &McpServerPayload {
+                    name: "docs".into(),
+                    enabled: true,
+                    transport: McpTransportConfig::Http {
+                        url: "https://new.example/mcp".into(),
+                        headers: BTreeMap::new(),
+                    },
+                    exposure: None,
+                },
+            )
+            .unwrap();
+
+        let text = std::fs::read_to_string(store.global_path()).unwrap();
+        let entry =
+            &serde_json::from_str::<serde_json::Value>(&text).unwrap()["mcpServers"]["docs"];
+        assert_eq!(entry["url"], "https://new.example/mcp");
+        assert_eq!(
+            entry["exposure"], "deferred",
+            "用户设置的 exposure 必须保留"
+        );
+        assert_eq!(entry["timeout"], 12.5);
+        assert_eq!(entry["toolExposure"]["search"], "hidden");
+        assert_eq!(entry["oauth"]["clientId"], "abc");
+        assert!(entry.get("command").is_none());
+    }
+
+    /// 视图必须如实反映 pi-rs 的生效值，并区分“显式设置”和“使用默认值”。
+    #[test]
+    fn view_reports_effective_exposure_and_explicitness() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+        write(
+            &store.global_path(),
+            r#"{"mcpServers":{
+                 "legacy":{"url":"https://a.example/mcp"},
+                 "docs":{"url":"https://b.example/mcp","exposure":"deferred"}
+               }}"#,
+        );
+
+        let (servers, errors) = store.servers();
+        assert!(errors.is_empty(), "{errors:?}");
+        let legacy = servers.iter().find(|s| s.name == "legacy").unwrap();
+        assert_eq!(legacy.exposure, McpExposure::Codemode);
+        assert!(!legacy.exposure_explicit);
+
+        let docs = servers.iter().find(|s| s.name == "docs").unwrap();
+        assert_eq!(docs.exposure, McpExposure::Deferred);
+        assert!(docs.exposure_explicit);
+    }
+
+    #[test]
+    fn update_sets_exposure_when_provided() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+        store.create(&stdio_payload("fs")).unwrap();
+
+        let mut payload = stdio_payload("fs");
+        payload.exposure = Some(McpExposure::Hidden);
+        store.update("fs", &payload).unwrap();
+
+        let text = std::fs::read_to_string(store.global_path()).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap()["mcpServers"]["fs"]
+                ["exposure"],
+            "hidden"
+        );
+        let view = store.servers().0.pop().unwrap();
+        assert_eq!(view.exposure, McpExposure::Hidden);
+        assert!(view.exposure_explicit);
     }
 
     #[test]
@@ -543,6 +895,44 @@ mod tests {
             store.create(&stdio_payload("dup")),
             Err(McpConfigError::Exists)
         ));
+    }
+
+    /// pi-rs 允许项目文件只写 `enabled`/`exposure` 覆盖全局条目。这种条目由项目
+    /// 文件决定生效状态，管理界面必须按项目级只读展示，否则写全局会静默无效。
+    #[test]
+    fn project_override_of_global_entry_is_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(&dir);
+        write(
+            &store.global_path(),
+            r#"{"mcpServers":{"docs":{"url":"https://global.example/mcp"}}}"#,
+        );
+        write(
+            &store.project_path(),
+            r#"{"mcpServers":{"docs":{"enabled":false}}}"#,
+        );
+
+        let (servers, errors) = store.servers();
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].scope, "project", "override 必须按项目级呈现");
+        assert!(!servers[0].enabled);
+        assert_eq!(
+            servers[0].source,
+            store.project_path().to_string_lossy(),
+            "source 应指向真正决定生效状态的项目文件"
+        );
+
+        for result in [
+            store.toggle("docs"),
+            store.delete("docs"),
+            store.update("docs", &stdio_payload("docs")),
+        ] {
+            assert!(
+                matches!(result, Err(McpConfigError::ProjectScoped(_))),
+                "override 条目不允许写全局: {result:?}"
+            );
+        }
     }
 
     #[test]
@@ -633,29 +1023,29 @@ mod tests {
                }}"#,
         );
 
-        // pi-rs 交给我们的 transport 里是**解析后**的值。
+        // pi-rs 交给我们的 config 里是**解析后**的值。
         let resolved = [
             LoadedServer {
                 name: "docs".into(),
-                transport: McpTransportSpec::Http {
-                    url: "https://e.com/mcp".into(),
-                    headers: BTreeMap::from([("Authorization".into(), "Bearer s3cr3t".into())]),
-                },
-                enabled: true,
+                config: serde_json::from_value(serde_json::json!({
+                    "url": "https://e.com/mcp",
+                    "headers": {"Authorization": "Bearer s3cr3t"}
+                }))
+                .unwrap(),
                 source: path.clone(),
                 scope: McpScope::Global,
+                override_path: None,
             },
             LoadedServer {
                 name: "fs".into(),
-                transport: McpTransportSpec::Stdio {
-                    command: "npx".into(),
-                    args: Vec::new(),
-                    env: BTreeMap::from([("TOKEN".into(), "s3cr3t".into())]),
-                    cwd: None,
-                },
-                enabled: true,
+                config: serde_json::from_value(serde_json::json!({
+                    "command": "npx",
+                    "env": {"TOKEN": "s3cr3t"}
+                }))
+                .unwrap(),
                 source: path.clone(),
                 scope: McpScope::Global,
+                override_path: None,
             },
         ];
 
@@ -681,13 +1071,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let server = LoadedServer {
             name: "docs".into(),
-            transport: McpTransportSpec::Http {
-                url: "https://e.com/mcp".into(),
-                headers: BTreeMap::from([("Authorization".into(), "Bearer resolved".into())]),
-            },
-            enabled: true,
+            config: serde_json::from_value(serde_json::json!({
+                "url": "https://e.com/mcp",
+                "headers": {"Authorization": "Bearer resolved"}
+            }))
+            .unwrap(),
             source: dir.path().join("gone.json"),
             scope: McpScope::Global,
+            override_path: None,
         };
         let view = server_view(&server);
         let McpTransportConfig::Http { headers, .. } = &view.transport else {
@@ -721,6 +1112,7 @@ mod tests {
                 env: BTreeMap::new(),
                 cwd: None,
             },
+            exposure: None,
         };
         assert!(matches!(
             store.create(&no_command),
@@ -734,6 +1126,7 @@ mod tests {
                 url: "".into(),
                 headers: BTreeMap::new(),
             },
+            exposure: None,
         };
         assert!(matches!(
             store.create(&no_url),

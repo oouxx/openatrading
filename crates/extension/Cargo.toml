@@ -14,8 +14,8 @@ tracing = "0.1"
 openatrading-api = { path = "../api" }
 
 # MCP **服务端**（把本项目工具对外暴露为 MCP server）。pi-rs 只提供 MCP 客户端
-# （v1.87 起在 `pi_coding_agent::core::{mcp, mcp_config}`），服务端仍由本 crate 基于
-# rmcp 实现，因此这里只保留 server 侧特性。
+# （`pi_coding_agent::core::{mcp_config, mcp_runtime, mcp_servers}` + `pi-mcp`），
+# 服务端仍由本 crate 基于 rmcp 实现，因此这里只保留 server 侧特性。
 rmcp = { version = "3.1", features = [
     "server",
     "transport-streamable-http-server",

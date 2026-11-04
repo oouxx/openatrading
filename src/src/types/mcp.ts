@@ -35,15 +35,44 @@ export interface McpSseTransport {
 
 export type McpTransportConfig = McpStdioTransport | McpHttpTransport | McpSseTransport
 
+/**
+ * 工具暴露方式（pi-rs `exposure`）。
+ *
+ * - `direct`：直接出现在模型工具列表里（本应用新建条目的默认值）
+ * - `deferred` / `codemode`：由 `tool_search` 按需加载
+ * - `hidden`：注册但不可达
+ *
+ * `codemode` 在 pi-rs 里与 `deferred` 等价（本应用没有 codemode 脚本）。
+ */
+export type McpExposure = "direct" | "deferred" | "codemode" | "hidden"
+
 /** 列表项：配置内容 + 它来自哪个作用域/文件 */
 export interface McpServerConfig {
   name: string
   enabled: boolean
-  /** 条目定义在哪个文件：全局（agent 目录）或项目（{cwd}/.pi-rs） */
+  /** 条目生效于哪个作用域：全局（agent 目录）或项目（{cwd}/.pi-rs） */
   scope: "global" | "project"
-  /** 定义该条目的配置文件路径 */
+  /** 决定该条目生效状态的配置文件路径（项目 override 时为项目文件） */
   source: string
   transport: McpTransportConfig
+  /** 生效的工具暴露方式 */
+  exposure: McpExposure
+  /** 配置里是否显式写了 exposure；false 表示走 pi-rs 默认值（按需加载） */
+  exposureExplicit: boolean
+}
+
+/** 列表响应：`errors` 是 pi-rs 跳过/解析失败的配置项 */
+export interface McpServerListResponse {
+  servers: McpServerConfig[]
+  errors: string[]
+}
+
+/** 一次性连接测试结果（连接失败也是正常响应，`ok: false`） */
+export interface McpServerTestResult {
+  ok: boolean
+  toolCount: number
+  error: string | null
+  durationMs: number
 }
 
 /** 写入载荷：新增/编辑都写全局 `$PI_RS_HOME/agent/mcp.json`，故不带 scope/source */
@@ -51,6 +80,8 @@ export interface McpServerPayload {
   name: string
   enabled: boolean
   transport: McpTransportConfig
+  /** 新增时缺省为 direct；编辑时缺省保留原值 */
+  exposure?: McpExposure
 }
 
 /** 该条目是否可在本界面编辑（项目级只读：项目级按名覆盖全局，写全局不会生效） */

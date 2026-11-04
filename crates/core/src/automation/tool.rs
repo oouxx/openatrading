@@ -311,6 +311,7 @@ fn create_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         execution_mode: None,
         execute: Some(execute),
         source_info: None,
+        ..Default::default()
     }
 }
 
@@ -353,6 +354,7 @@ fn list_automations_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         execution_mode: None,
         execute: Some(execute),
         source_info: None,
+        ..Default::default()
     }
 }
 
@@ -406,6 +408,7 @@ fn update_automation_tool(hub: &Arc<AutomationHub>) -> ToolDefinition {
         execution_mode: None,
         execute: Some(execute),
         source_info: None,
+        ..Default::default()
     }
 }
 

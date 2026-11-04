@@ -26,15 +26,10 @@ pub async fn cmd_tools_doc(endpoint: &str) -> anyhow::Result<()> {
 
     // 远端 MCP server 工具（失败不阻断本地工具文档生成）。
     // 连接与工具元数据来自 pi-rs SDK 的 MCP 客户端。
-    let spec = openatrading_core::llm::McpServerSpec {
-        name: "endpoint".to_string(),
-        transport: openatrading_core::llm::McpTransportSpec::Http {
-            url: endpoint.to_string(),
-            headers: std::collections::BTreeMap::new(),
-        },
-    };
-    if let Ok(connection) = openatrading_core::llm::McpConnection::connect_spec(&spec).await {
-        for tool in connection.tool_definitions() {
+    if let Ok(remote) =
+        openatrading_core::llm::McpEndpoint::connect_http("endpoint", endpoint).await
+    {
+        for tool in remote.tools() {
             // 与本地/已收录工具同名则跳过，保证每个工具名只出现一次。
             if !seen.insert(tool.name.clone()) {
                 continue;

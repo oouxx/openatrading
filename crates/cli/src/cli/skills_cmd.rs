@@ -21,21 +21,16 @@ pub fn cmd_skills_list() -> Result<()> {
 
 /// Parse raw skill markdown into a `SkillRequest`, using `name` as override.
 fn parse_raw(name: &str, raw: &str) -> Result<SkillRequest> {
-    let (description, content) = match openatrading_core::utils::parse_yaml_frontmatter(raw) {
-        Some((matter, body)) => {
-            // best-effort description extraction from frontmatter
-            let desc = matter
-                .lines()
-                .find_map(|l| l.strip_prefix("description:").map(|s| s.trim().to_string()))
-                .unwrap_or_default();
-            (desc, body.trim().to_string())
-        }
-        None => (String::new(), raw.trim().to_string()),
-    };
+    let (frontmatter, body) = openatrading_core::utils::parse_yaml_frontmatter(raw);
+    let description = frontmatter
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     Ok(SkillRequest {
         name: name.to_string(),
         description,
-        content,
+        content: body.trim().to_string(),
         disable_model_invocation: false,
     })
 }

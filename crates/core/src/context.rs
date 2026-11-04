@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::api::Client as ApiClient;
-use crate::llm::{create_factory, DynTool, FactoryOptions, SessionPool, ToolRegistry};
+use crate::llm::{create_factory, FactoryOptions, SessionPool, ToolRegistry};
 use crate::memory::sqlite::MemoryStore;
 use crate::social::NotificationSender;
 use crate::trade::{ApiQuoteSource, TradeService, TradeStore};
@@ -90,10 +90,5 @@ impl AppContext {
             social,
             session_dir,
         }
-    }
-
-    /// Get all extension tools.
-    pub fn all_tools(&self) -> Vec<Arc<DynTool>> {
-        self.tool_registry.load().all_tools()
     }
 }

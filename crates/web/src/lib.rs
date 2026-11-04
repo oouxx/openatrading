@@ -181,6 +181,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             delete(mcp::delete_handler).put(mcp::update_handler),
         )
         .route("/api/mcp/servers/:name/toggle", get(mcp::toggle_handler))
+        .route("/api/mcp/servers/:name/test", post(mcp::test_handler))
         .route("/api/watchlist", get(web::get_watchlist))
         .route("/api/watchlist", post(web::add_watchlist))
         .route("/api/watchlist/:code", delete(web::delete_watchlist))

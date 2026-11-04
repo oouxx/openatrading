@@ -7,6 +7,21 @@ function toTitleCase(s: string): string {
     .trim()
 }
 
+/**
+ * pi-rs 给 MCP 工具加命名空间：`mcp__<server>__<tool>`。
+ *
+ * 摘要只关心 `<tool>`。server/tool 都可能被 pi-rs 清洗成 `_` 并截断，这里按
+ * 最后一个 `__` 拆分（server 比 tool 更可能出现连续下划线）；详情区仍显示
+ * 完整原始名称。
+ */
+function stripMcpNamespace(name: string): string {
+  const prefix = "mcp__"
+  if (!name.startsWith(prefix)) return name
+  const rest = name.slice(prefix.length)
+  const sep = rest.lastIndexOf("__")
+  return sep > 0 ? rest.slice(sep + 2) : name
+}
+
 /** Parse the serialized tool `args` string into an object (best-effort). */
 function parseArgs(args?: string): Record<string, unknown> | null {
   if (!args) return null
@@ -35,25 +50,26 @@ function argString(a: Record<string, unknown> | null, ...keys: string[]): string
  * unknown / MCP tool never requires a bespoke card.
  */
 export function summarizeTool(name: string, args?: string): string {
+  const toolName = stripMcpNamespace(name)
   const a = parseArgs(args)
   const p = (...keys: string[]) => argString(a, ...keys)
 
-  if (/^(read|read_file)$/.test(name))
+  if (/^(read|read_file)$/.test(toolName))
     return p("path", "uri", "file_path") ? `查看 ${p("path", "uri", "file_path")}` : "查看文件"
-  if (/^(write|write_file|create_file)$/.test(name))
+  if (/^(write|write_file|create_file)$/.test(toolName))
     return p("path", "file_path") ? `写入 ${p("path", "file_path")}` : "写入文件"
-  if (/^(edit|edit_file|file_edit)$/.test(name))
+  if (/^(edit|edit_file|file_edit)$/.test(toolName))
     return p("path", "file_path") ? `编辑 ${p("path", "file_path")}` : "编辑文件"
-  if (/^(bash|shell|execute_command|run)$/.test(name))
+  if (/^(bash|shell|execute_command|run)$/.test(toolName))
     return p("command", "cmd") ? `运行 ${p("command", "cmd")}` : "运行命令"
-  if (name === "glob") return p("pattern") ? `查找 ${p("pattern")}` : "查找文件"
-  if (name === "grep") return p("pattern") ? `搜索 ${p("pattern")}` : "搜索代码"
-  if (/^(web_search|search)$/.test(name))
+  if (toolName === "glob") return p("pattern") ? `查找 ${p("pattern")}` : "查找文件"
+  if (toolName === "grep") return p("pattern") ? `搜索 ${p("pattern")}` : "搜索代码"
+  if (/^(web_search|search)$/.test(toolName))
     return p("query", "q") ? `搜索 ${p("query", "q")}` : "网页搜索"
-  if (/^(web_fetch|fetch)$/.test(name)) return p("url") ? `抓取 ${p("url")}` : "抓取网页"
+  if (/^(web_fetch|fetch)$/.test(toolName)) return p("url") ? `抓取 ${p("url")}` : "抓取网页"
 
   // Generic fallback: readable name + a single concise arg value, or the arg keys.
-  const readable = toTitleCase(name)
+  const readable = toTitleCase(toolName)
   if (a) {
     const keys = Object.keys(a)
     if (keys.length === 1) {

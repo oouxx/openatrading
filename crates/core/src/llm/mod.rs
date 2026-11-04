@@ -39,10 +39,12 @@ pub use self::auth::{
 };
 
 /// MCP 客户端：pi-rs 的配置/连接原语 + 管理界面用的读写投影。
+///
+/// 只再导出 web/cli 实际使用的类型；原始 pi-rs 配置函数留在 [`mcp`] 模块内，
+/// 避免把 pi-rs 的内部 API 变成整个 workspace 的公共契约。
 pub use self::mcp::{
-    add_server, connect_specs, global_config_path, load_servers, load_specs, project_config_path,
-    remove_server, set_enabled, LoadedServer, McpConfigError, McpConfigStore, McpConnection,
-    McpScope, McpServerPayload, McpServerSpec, McpServerView, McpTransportConfig, McpTransportSpec,
+    McpConfigError, McpConfigStore, McpEndpoint, McpServerConfig, McpServerPayload, McpServerTest,
+    McpServerView,
 };
 
 // ── Extension registry builder ─────────────────────────────────────────────
@@ -50,7 +52,7 @@ pub use openatrading_extension::create_registry;
 
 // ── pi-rs types ────────────────────────────────────────────────────────────
 pub use openatrading_agent::pi_ai_types;
-pub use openatrading_agent::types::{AgentMessage, DynTool};
+pub use openatrading_agent::types::AgentMessage;
 
 // ── Domain tool registry (stays in core) ──────────────────────────────────
 pub use self::tools::ToolRegistry;

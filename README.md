@@ -258,7 +258,11 @@ bind    = "0.0.0.0:8082"
 }
 ```
 
-省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。鉴权写 `headers`（值支持 `${VAR}` 与 `!命令`），`enabled: false` 保留配置但不连接。配置在每次创建会话时读取，改动后新建会话即生效。
+省略 `type` 或写 `"http"` = streamable HTTP，`"sse"` = 旧版 HTTP+SSE，有 `command` = stdio。鉴权写 `headers`（值支持 `${VAR}` 与 `!命令`），`enabled: false` 保留配置但不连接。配置在每次创建会话时读取，改动后新建会话即生效。设置页每张服务器卡片可以「测试连接」：走 pi-rs 的同一套客户端完成握手并显示工具数与耗时，不修改配置。
+
+pi-rs 原生支持的进阶字段同样可用：`exposure`（`direct` / `deferred` / `codemode` / `hidden`，默认 `codemode`）、`toolExposure`、`timeout`、`oauth`、`auth`。MCP 工具在会话里以 `mcp__<server>__<tool>` 命名；`deferred` / `codemode` 条目由 `tool_search` 按需加载。Web 面板新建的条目默认 `exposure: "direct"`，编辑时可切换「直接可用 / 按需搜索 / 隐藏」；旧条目若未设置 `exposure`，卡片会提示当前处于按需加载状态。
+
+外部 server 在运行时新增/移除工具（`tools/list_changed`）会同步到会话。MCP resources 由 pi-rs 的三个工具（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`）消费。
 
 **Server** — 把 29 个行情工具按 MCP 标准对外暴露，可被 Claude Desktop / Cursor 等 MCP 客户端消费：
 

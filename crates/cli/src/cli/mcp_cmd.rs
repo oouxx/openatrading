@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::cli::app::McpTransport;
@@ -38,24 +37,15 @@ pub async fn cmd_mcp_serve(transport: McpTransport, bind: &str) -> Result<()> {
 /// 连接一个 MCP 端点（`--endpoint`，streamable HTTP）。
 ///
 /// 客户端实现来自 pi-rs SDK；本命令只做参数拼装与结果呈现。
-async fn connect_endpoint(endpoint: &str) -> Result<openatrading_core::llm::McpConnection> {
-    use openatrading_core::llm::{McpConnection, McpServerSpec, McpTransportSpec};
-
-    let spec = McpServerSpec {
-        name: "endpoint".to_string(),
-        transport: McpTransportSpec::Http {
-            url: endpoint.to_string(),
-            headers: BTreeMap::new(),
-        },
-    };
-    McpConnection::connect_spec(&spec)
+async fn connect_endpoint(endpoint: &str) -> Result<openatrading_core::llm::McpEndpoint> {
+    openatrading_core::llm::McpEndpoint::connect_http("endpoint", endpoint)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn cmd_mcp_list(endpoint: &str) -> Result<()> {
     let connection = connect_endpoint(endpoint).await?;
-    let tools = connection.tool_definitions();
+    let tools = connection.tools();
 
     if tools.is_empty() {
         eprintln!("MCP 服务端无注册工具");
@@ -106,9 +96,13 @@ pub async fn cmd_mcp_call(endpoint: &str, tool_name: &str, arguments: &str) -> R
         serde_json::from_str::<serde_json::Value>(arguments)
             .map_err(|e| anyhow::anyhow!("参数解析失败: {e} (应为 JSON 对象)"))?
     };
+    let args = args
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("参数必须是 JSON 对象"))?;
 
-    let tools = connection.tool_definitions();
-    let Some(tool) = tools.iter().find(|t| t.name == tool_name) else {
+    let tools = connection.tools();
+    if !tools.iter().any(|t| t.name == tool_name) {
         let available: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         anyhow::bail!(
             "服务端没有工具 {tool_name}（可用: {}）",
@@ -118,17 +112,15 @@ pub async fn cmd_mcp_call(endpoint: &str, tool_name: &str, arguments: &str) -> R
                 available.join(", ")
             }
         );
-    };
-    let Some(execute) = tool.execute.clone() else {
-        anyhow::bail!("工具 {tool_name} 没有可执行实现");
-    };
+    }
 
-    let output = execute(String::new(), args, None)
+    let (content, is_error) = connection
+        .call_tool(tool_name, args)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    println!("{}", render_output(&output.content));
-    if output.is_error {
+    println!("{}", render_output(&content));
+    if is_error {
         anyhow::bail!("工具 {tool_name} 返回错误");
     }
     Ok(())

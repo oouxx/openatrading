@@ -2,14 +2,12 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use super::{Check, CheckContext, CheckResult, CheckStatus, FixResult, FixRisk, FixStatus, Result};
-use openatrading_core::llm::{McpConfigStore, McpConnection, McpTransportSpec};
+use openatrading_core::llm::{McpConfigStore, McpServerConfig};
 
 /// Network timeout for a single MCP server connect handshake.
 ///
-/// `McpConnection::connect_spec` has no timeout of its own (the 10s bound lives in
-/// `connect_specs`), so the check wraps it. A healthy MCP server completes the
-/// initialize handshake quickly; 10s is generous for a slow stdio cold start while
-/// still failing fast on a hung endpoint.
+/// pi-rs 的 `McpServerConnection::get_client` 内部已有 10s 连接超时；这里再包一层
+/// 只为防御 stdio 冷启动/调度延迟，保证 doctor 不会卡住整轮检查。
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct McpCheck;
@@ -57,32 +55,31 @@ impl Check for McpCheck {
             };
         }
 
-        let enabled = servers.iter().filter(|s| s.enabled).count();
+        let enabled = servers.iter().filter(|s| s.is_enabled()).count();
         let disabled = servers.len() - enabled;
         let mut failures = 0usize;
 
         for server in &servers {
-            let label = if server.enabled {
+            let label = if server.is_enabled() {
                 format!("  {}  ", server.name)
             } else {
                 format!("  {} (已禁用)", server.name)
             };
 
-            if !server.enabled {
+            if !server.is_enabled() {
                 details.push(format!("{label} ⤚ 跳过（已禁用）"));
                 continue;
             }
 
-            let transport_desc = describe_transport(&server.transport);
+            let transport_desc = describe_transport(&server.config);
             // 只做连接握手 + 工具枚举：pi-rs 没有 verify()，而调用任意一个远端工具
             // 可能带副作用（写文件、下单……），不适合作为健康检查。
-            match tokio::time::timeout(NETWORK_TIMEOUT, McpConnection::connect_spec(&server.spec()))
-                .await
-            {
-                Ok(Ok(connection)) => {
+            let connection = store.connection(server.clone());
+            match tokio::time::timeout(NETWORK_TIMEOUT, connection.get_client()).await {
+                Ok(Ok(_)) => {
                     details.push(format!(
                         "{label} {transport_desc}  ✓ ({} tools)",
-                        connection.tool_count()
+                        connection.tools().len()
                     ));
                 }
                 Ok(Err(e)) => {
@@ -134,16 +131,20 @@ impl Check for McpCheck {
     }
 }
 
-fn describe_transport(transport: &McpTransportSpec) -> String {
-    match transport {
-        McpTransportSpec::Stdio { command, args, .. } => {
-            let mut parts = vec![format!("stdio → {command}")];
+fn describe_transport(config: &McpServerConfig) -> String {
+    if let Some(command) = &config.command {
+        let mut parts = vec![format!("stdio → {command}")];
+        if let Some(args) = &config.args {
             if !args.is_empty() {
                 parts.push(args.join(" "));
             }
-            parts.join(" ")
         }
-        McpTransportSpec::Http { url, .. } => format!("http → {url}"),
-        McpTransportSpec::Sse { url, .. } => format!("sse → {url}"),
+        return parts.join(" ");
+    }
+    let url = config.url.as_deref().unwrap_or_default();
+    if config.kind.as_deref() == Some("sse") {
+        format!("sse → {url}")
+    } else {
+        format!("http → {url}")
     }
 }

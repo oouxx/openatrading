@@ -5,6 +5,7 @@ import { KeyValueList } from "./KeyValueList"
 import { mcpErrorMessage } from "@/hooks/query/useMcpServers"
 import {
   emptyTransport,
+  type McpExposure,
   type McpServerPayload,
   type McpTransportConfig,
   type McpTransportType,
@@ -15,6 +16,13 @@ const TRANSPORT_OPTIONS: { value: McpTransportType; label: string }[] = [
   { value: "stdio", label: "STDIO" },
   { value: "sse", label: "SSE" },
 ]
+
+const EXPOSURE_OPTIONS: { value: Exclude<McpExposure, "codemode">; label: string; hint: string }[] =
+  [
+    { value: "direct", label: "直接可用", hint: "工具直接出现在模型工具列表里" },
+    { value: "deferred", label: "按需搜索", hint: "由 tool_search 按需加载" },
+    { value: "hidden", label: "隐藏", hint: "注册但不可调用" },
+  ]
 
 /** Map<string, string> → KeyValueList 的 `key=value` 行 */
 function toEntries(map: Record<string, string>): string[] {
@@ -62,16 +70,20 @@ export function McpServerForm({
 
   // ── 校验 ──
   const trimmedName = server.name.trim()
+  // pi-rs 的 server 命名规则：仅字母、数字、下划线、连字符。
+  const invalidNameChars = trimmedName !== "" && !/^[A-Za-z0-9_-]+$/.test(trimmedName)
   const duplicateName = existingNames.includes(trimmedName)
   const missingEndpoint = isStdio ? transport.command.trim() === "" : transport.url.trim() === ""
-  const valid = trimmedName !== "" && !duplicateName && !missingEndpoint
+  const valid = trimmedName !== "" && !invalidNameChars && !duplicateName && !missingEndpoint
 
   const nameError = attempted
     ? trimmedName === ""
       ? "请输入服务器名称"
-      : duplicateName
-        ? "已存在同名服务器"
-        : null
+      : invalidNameChars
+        ? "仅支持字母、数字、下划线和连字符"
+        : duplicateName
+          ? "已存在同名服务器"
+          : null
     : null
   const endpointError =
     attempted && missingEndpoint ? (isStdio ? "请输入命令" : "请输入 URL") : null
@@ -209,6 +221,35 @@ export function McpServerForm({
           </div>
         </>
       )}
+
+      {/* 工具暴露方式 */}
+      <div>
+        <label className="text-secondary text-caption mb-1 block">工具暴露</label>
+        <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
+          {EXPOSURE_OPTIONS.map((opt) => {
+            // codemode 与 deferred 在本应用里等价，统一显示为「按需搜索」
+            const current =
+              server.exposure === "codemode" ? "deferred" : (server.exposure ?? "direct")
+            const active = current === opt.value
+            return (
+              <Button
+                key={opt.value}
+                type="button"
+                variant="ghost"
+                onClick={() => onChange({ ...server, exposure: opt.value })}
+                title={opt.hint}
+                className={`text-caption h-auto flex-1 rounded-none px-3 py-2 ${
+                  active
+                    ? "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
+                    : "text-secondary hover:bg-hover hover:text-primary"
+                }`}
+              >
+                {opt.label}
+              </Button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* 操作按钮 */}
       <div className="border-hairline flex items-center justify-end gap-2 border-t pt-4">

@@ -1,12 +1,12 @@
 //! 端到端：`mcp.json` 里配置的外部 server，其工具必须真的进入会话的工具列表。
 //!
-//! 这是本次「MCP 客户端改用 pi-rs SDK」的核心不变量。链路为
-//! `create_factory` → `create_agent_session_from_services` → pi-rs
+//! 链路为 `create_factory` → `create_agent_session_from_services` → pi-rs
 //! `sdk::create_agent_session`，后者读 `{agent_dir}/mcp.json` 并连接。
 //!
-//! 被测 server 就是本项目自己的暴露服务（`serve_http`），因此测试完全自洽：不依赖
-//! 外部进程、网络或 API Key。会话用 `FactoryOptions::market_only`（不注册交易扩展工具），
-//! 因此 `get_limit_up` 只可能来自 MCP —— 断言是尖锐的。
+//! 被测 server 是本项目自己的暴露服务（`serve_http`），但注册表里只放一个
+//! **测试专属**工具 `mcp_e2e_probe`：会话侧本地扩展没有同名工具，因此断言不可能
+//! 被本地工具“碰巧”满足。`exposure: "direct"` 让 pi-rs 在首个 prompt 前等待
+//! 连接完成，连接失败会让断言直接失败。
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
 
@@ -15,9 +15,47 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use openatrading_core::llm::{
-    create_factory, create_registry, serve_http, CreateSessionParams, FactoryOptions,
+    create_factory, CreateSessionParams, FactoryOptions, McpConfigError, McpConfigStore,
 };
 use pi_coding_agent::core::session_manager::SessionManager;
+use pi_extension_api::{
+    create_synthetic_source_info, ExtensionContext, ExtensionRegistry, HookHandler, ToolCallOutput,
+    ToolDefinition, ToolInvocation, ToolRegistry,
+};
+
+/// 只暴露一个测试专属工具的扩展。
+struct ProbeExtension;
+
+#[async_trait::async_trait]
+impl HookHandler for ProbeExtension {
+    fn name(&self) -> &str {
+        "mcp-e2e-probe"
+    }
+
+    fn register_tools(&self, tools: &mut ToolRegistry) {
+        let definition = ToolDefinition {
+            name: "mcp_e2e_probe".to_string(),
+            description: "E2E probe tool served over MCP".to_string(),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            })),
+            ..ToolDefinition::default()
+        };
+        tools.register(&definition.name.clone(), definition);
+    }
+
+    async fn handle_tool_call(
+        &self,
+        tool_name: &str,
+        _params: serde_json::Value,
+        _ctx: &ExtensionContext,
+        _invocation: &ToolInvocation,
+    ) -> Option<ToolCallOutput> {
+        (tool_name == "mcp_e2e_probe").then(|| ToolCallOutput::text("ok"))
+    }
+}
 
 /// 取一个当前空闲的端口：绑定 0 端口让内核分配后立即释放。
 ///
@@ -39,13 +77,17 @@ async fn wait_until_listening(addr: SocketAddr) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mcp_servers_from_mcp_json_reach_the_session() {
-    // ── 1. 起一个真的 MCP server（本项目自己的行情工具暴露服务）──
+    // ── 1. 起一个只含测试专属工具的 MCP server ──
     let port = free_port();
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
-    let registry = Arc::new(create_registry());
+    let mut registry = ExtensionRegistry::new();
+    registry.register(
+        Box::new(ProbeExtension),
+        create_synthetic_source_info("/tmp/mcp-e2e".into(), "probe".into(), None, None, None),
+    );
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = tokio::spawn(async move {
-        let _ = serve_http(registry, addr, shutdown_rx).await;
+        let _ = openatrading_core::llm::serve_http(Arc::new(registry), addr, shutdown_rx).await;
     });
     wait_until_listening(addr).await;
 
@@ -57,7 +99,12 @@ async fn mcp_servers_from_mcp_json_reach_the_session() {
         agent_dir.join("mcp.json"),
         serde_json::json!({
             "mcpServers": {
-                "e2e": { "url": format!("http://127.0.0.1:{port}/mcp") }
+                "e2e": {
+                    "url": format!("http://127.0.0.1:{port}/mcp"),
+                    // pi-rs 默认 exposure=codemode（deferred，需要 tool_search 才可见）；
+                    // 本应用的管理界面默认写 direct，这里复现该配置。
+                    "exposure": "direct"
+                }
             }
         })
         .to_string(),
@@ -99,11 +146,25 @@ async fn mcp_servers_from_mcp_json_reach_the_session() {
         .map(|t| t.name.clone())
         .collect();
 
-    // market_only 不注册交易扩展工具，故这些行情工具只能来自 MCP。
+    // 该工具只存在于远端 server，本地扩展不可能提供它。pi-rs 会按
+    // `mcp__<server>__<tool>` 给 MCP 工具加命名空间。
     assert!(
-        tool_names.iter().any(|n| n == "get_limit_up"),
+        tool_names.iter().any(|n| n == "mcp__e2e__mcp_e2e_probe"),
         "mcp.json 里配置的 MCP 工具没有进入会话: {tool_names:?}"
     );
+
+    // ── 4. 管理界面的“测试连接”走同一条 pi-rs 连接路径 ──
+    let store = McpConfigStore::new(
+        cwd.to_string_lossy().to_string(),
+        agent_dir.to_string_lossy().to_string(),
+    );
+    let tested = store.test("e2e").await.expect("测试连接");
+    assert!(tested.ok, "测试连接失败: {:?}", tested.error);
+    assert_eq!(tested.tool_count, 1, "应枚举到测试专属工具");
+    assert!(matches!(
+        store.test("missing").await,
+        Err(McpConfigError::NotFound)
+    ));
 
     let _ = shutdown_tx.send(true);
     server.abort();

@@ -13,9 +13,19 @@ use axum::{
 };
 use std::sync::Arc;
 
-use openatrading_core::llm::{McpConfigError, McpServerPayload, McpServerView};
+use openatrading_core::llm::{McpConfigError, McpServerPayload, McpServerTest, McpServerView};
 
 use crate::AppState;
+
+/// `GET /api/mcp/servers` 的响应。
+///
+/// `errors` 是被 pi-rs 跳过的配置项（非法 JSON、名字不合法、缺 command/url 等）。
+/// 管理界面必须展示它们，否则用户的服务器会在升级后“静默消失”。
+#[derive(serde::Serialize)]
+pub struct McpServerListResponse {
+    pub servers: Vec<McpServerView>,
+    pub errors: Vec<String>,
+}
 
 /// `McpConfigError` → HTTP 状态码。
 ///
@@ -31,18 +41,18 @@ fn status_for(err: &McpConfigError) -> StatusCode {
     }
 }
 
-/// GET /api/mcp/servers — list all MCP servers
-pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<Vec<McpServerView>> {
+/// GET /api/mcp/servers — list all MCP servers (plus skipped-config errors)
+pub async fn list_handler(State(state): State<Arc<AppState>>) -> Json<McpServerListResponse> {
     Json(list_mcp_servers_data(&state))
 }
 
 /// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
-pub fn list_mcp_servers_data(state: &Arc<AppState>) -> Vec<McpServerView> {
+pub fn list_mcp_servers_data(state: &Arc<AppState>) -> McpServerListResponse {
     let (servers, errors) = state.mcp.servers();
     for error in &errors {
         tracing::warn!("[mcp] 配置解析失败: {error}");
     }
-    servers
+    McpServerListResponse { servers, errors }
 }
 
 /// POST /api/mcp/servers — add a new MCP server
@@ -135,6 +145,34 @@ pub async fn toggle_handler(
 /// See [`McpConfigStore::toggle`](openatrading_core::llm::McpConfigStore::toggle).
 pub fn toggle_mcp_server_data(state: &Arc<AppState>, name: &str) -> Result<(), McpConfigError> {
     state.mcp.toggle(name)
+}
+
+/// POST /api/mcp/servers/:name/test — 连接一次并枚举工具。
+///
+/// 连接失败会放在响应体里（`ok: false` + `error`），不是 HTTP 错误；
+/// 只有名字不存在才返回 `404`。
+///
+/// # Errors
+/// `404 Not Found` if the name is unknown.
+pub async fn test_handler(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Json<McpServerTest>, StatusCode> {
+    test_mcp_server_data(&state, &name)
+        .await
+        .map(Json)
+        .map_err(|e| status_for(&e))
+}
+
+/// Data-layer variant shared by the HTTP handler and the Tauri IPC dispatch.
+///
+/// # Errors
+/// See [`McpConfigStore::test`](openatrading_core::llm::McpConfigStore::test).
+pub async fn test_mcp_server_data(
+    state: &Arc<AppState>,
+    name: &str,
+) -> Result<McpServerTest, McpConfigError> {
+    state.mcp.test(name).await
 }
 
 #[cfg(test)]
