@@ -323,3 +323,7 @@ cd src && bun install && bun run dev     # 前端
 ## License
 
 MIT
+
+## Credits
+
+- App icon: [Ram Profile](https://game-icons.net/1x1/delapouite/ram-profile.html) by Delapouite, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), from [Game Icons](https://game-icons.net/).
