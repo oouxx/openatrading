@@ -26,6 +26,7 @@ import {
   type StockSearchItem,
 } from "@/stores/data"
 import { searchStocks } from "@/lib/stock-utils"
+import { keepValidSelection } from "@/lib/selection"
 import { roleKeys } from "@/hooks/query/queryKeys"
 import { useRealtimeQuote } from "@/hooks/query/useRealtimeQuote"
 import {
@@ -493,6 +494,15 @@ function BuyDialog({
   const skipSearchFor = useRef<string | null>(null)
   const commandRef = useRef<HTMLDivElement | null>(null)
   const sharesRef = useRef<HTMLInputElement | null>(null)
+  // Candidates are filtered outside cmdk, so cmdk never re-highlights the
+  // first row after the results change. Track the highlight ourselves.
+  const [activeCode, setActiveCode] = useState<string | null>(null)
+  // Derived (not effect-synced): a new result set falls back to its first row
+  // when the stored code is gone.
+  const highlightedCode = keepValidSelection(
+    activeCode,
+    results.map((item) => item.code)
+  )
 
   // 只对合法 6 位代码拉行情；带 sh/sz 前后缀时也提取出 6 位代码
   const quoteSymbol = extractStockCode(symbol) ?? ""
@@ -570,7 +580,8 @@ function BuyDialog({
   // 搜索完成且无结果时也要展开，让用户看到「无匹配股票」而不是一片空白
   const showSuggestions = symbol.trim() !== "" && (searching || searched || results.length > 0)
 
-  // 候选列表不是 cmdk 的输入框驱动的，方向键/回车转发给 cmdk（与聊天页斜杠菜单同一手法）
+  // 候选列表不是 cmdk 的输入框驱动的：方向键转发给 cmdk 移动高亮，
+  // 回车直接选中高亮项（高亮失效时退回第一条）。
   const handleSymbolKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return
     const pickable = showSuggestions && results.length > 0
@@ -578,13 +589,15 @@ function BuyDialog({
     if (e.key === "Enter") {
       e.preventDefault()
       if (!pickable) return
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (!pickable) return
-      e.preventDefault()
-    } else {
+      const active = results.find((item) => item.code === highlightedCode) ?? results[0]
+      if (active) pickStock(active)
       return
     }
-    commandRef.current?.dispatchEvent(new KeyboardEvent("keydown", { key: e.key, bubbles: true }))
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!pickable) return
+      e.preventDefault()
+      commandRef.current?.dispatchEvent(new KeyboardEvent("keydown", { key: e.key, bubbles: true }))
+    }
   }
 
   // ── 校验 ──
@@ -678,7 +691,13 @@ function BuyDialog({
                   {/* 搜索结果必须脱离表单文档流：列表高度不能把买入弹窗撑大。 */}
                   {showSuggestions && (
                     <div className="border-hairline bg-elevated shadow-modal absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border">
-                      <Command ref={commandRef} shouldFilter={false} className="bg-transparent">
+                      <Command
+                        ref={commandRef}
+                        shouldFilter={false}
+                        value={highlightedCode ?? undefined}
+                        onValueChange={(value) => setActiveCode(value)}
+                        className="bg-transparent"
+                      >
                         <CommandList className="max-h-52">
                           {searchError ? (
                             <div className="text-danger text-caption px-3 py-3">

@@ -673,6 +673,20 @@ function historyBlockToTranscriptBlock(block: HistoryBlock): TranscriptBlock | n
   }
 }
 
+/**
+ * Whether a persisted history snapshot may replace the in-memory transcript.
+ *
+ * While a session streams, its live turns are ahead of persisted history (the
+ * in-flight turn is only persisted once it settles). Replacing them would
+ * erase the reply the user is watching and make the session look idle. A
+ * streaming session also has brief gaps between turns where no `in_progress`
+ * turn exists, hence the explicit `streaming` flag.
+ */
+export function canReplaceWithHistory(turns: TranscriptTurn[], streaming: boolean): boolean {
+  if (streaming) return false
+  return !turns.some((turn) => turn.status === "in_progress")
+}
+
 /** Convert persisted history messages into completed turns. */
 export function historyToTurns(messages: HistoryMessage[]): TranscriptTurn[] {
   return messages.map((m) => {

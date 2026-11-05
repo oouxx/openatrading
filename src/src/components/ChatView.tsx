@@ -42,7 +42,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
-import { appendUserTurn, applyEvent, historyToTurns } from "@/agents/reducer"
+import { TransportRegistry } from "@/agents/transportRegistry"
+import { sendWithOptimisticUserTurn } from "@/agents/promptDispatch"
+import { appendUserTurn, applyEvent, canReplaceWithHistory, historyToTurns } from "@/agents/reducer"
 import type { PromptFile, PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
 import {
   formatFileSize,
@@ -52,6 +54,7 @@ import {
   readComposerAttachments,
   type ComposerAttachment,
 } from "@/lib/composer-attachments"
+import { keepValidSelection } from "@/lib/selection"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
 const KlineDrawer = lazy(() => import("@/components/KlineDrawer"))
@@ -144,19 +147,33 @@ export default function AiCopilot({
     attachmentsRef.current = next
     setAttachments(next)
   }, [])
-  const [streaming, setStreaming] = useState(false)
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [showSlash, setShowSlash] = useState(false)
   // Per-thread transcript turns — the single source of truth for rendering.
   const [threadTurns, setThreadTurns] = useState<Map<string, TranscriptTurn[]>>(new Map())
-  const streamThreadRef = useRef<string | null>(null)
-  const [streamThreadId, setStreamThreadId] = useState<string | null>(null)
-  const transportRef = useRef<AgentTransport | null>(null)
+  // Sessions currently streaming. A Set, not a single id: several sessions can
+  // stream in the background at once (web already works this way, and the
+  // desktop transport map below now does too).
+  const [streamingThreads, setStreamingThreads] = useState<Set<string>>(() => new Set())
+  const streamingThreadsRef = useRef<Set<string>>(streamingThreads)
+  const transportsRef = useRef(new TransportRegistry<AgentTransport>())
   const activeStockTab = useStockTabStore((s) => s.activeStockTab)
   const stockTabs = useStockTabStore((s) => s.stockTabs)
   const openTab = useStockTabStore((s) => s.openTab)
   const closeTab = useStockTabStore((s) => s.closeTab)
   const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
+
+  /** Mark/unmark a session as streaming. Keeps a ref mirror because transport
+   *  callbacks run outside React's render cycle. */
+  const setSessionStreaming = useCallback((sessionId: string, isStreaming: boolean) => {
+    const current = streamingThreadsRef.current
+    if (current.has(sessionId) === isStreaming) return
+    const next = new Set(current)
+    if (isStreaming) next.add(sessionId)
+    else next.delete(sessionId)
+    streamingThreadsRef.current = next
+    setStreamingThreads(next)
+  }, [])
 
   // Keep a ref mirror so async transport callbacks read the latest turns.
   const threadTurnsRef = useRef<Map<string, TranscriptTurn[]>>(threadTurns)
@@ -174,21 +191,35 @@ export default function AiCopilot({
     const lastTurn = turns[turns.length - 1]
     if (lastTurn.isError) return "error"
     if (lastTurn.status === "in_progress") {
+      // The user already pressed stop: the terminal event is still on its way
+      // (an in-flight model/tool call observes the abort asynchronously), but
+      // the status bar must not keep claiming the turn is running.
+      if (!activeThreadId || !streamingThreads.has(activeThreadId)) return "settled"
       const hasRunningTool = lastTurn.blocks.some(
         (b) => b.type === "tool_call" && (b.status === "running" || b.status === "streaming")
       )
       return hasRunningTool ? "processing" : "starting"
     }
     return "settled"
-  }, [threadTurns, activeThreadId])
+  }, [threadTurns, activeThreadId, streamingThreads])
 
   // Stock search
   const [searchQuery, setSearchQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
   const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
+  // Highlighted stock in the header dropdown. The list is filtered outside
+  // cmdk, so cmdk's own search never resets the highlight when it changes.
+  const [activeStock, setActiveStock] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const stockCommandRef = useRef<HTMLDivElement | null>(null)
+  // Derive the highlight instead of syncing it in an effect: when a new result
+  // set no longer contains the stored code, this falls back to the first row.
+  const highlightedStock = keepValidSelection(
+    activeStock,
+    searchResults.map((stock) => stock.code)
+  )
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchSeqRef = useRef(0)
   const msgContainerRef = useRef<HTMLDivElement>(null)
@@ -234,12 +265,10 @@ export default function AiCopilot({
       .catch((error) => console.warn("[chat] 加载 slash commands 失败", error))
   }, [])
 
-  // Tear down the live transport when the active thread changes or on unmount.
+  // Tear down every live transport on unmount.
   useEffect(() => {
-    return () => {
-      transportRef.current?.dispose()
-      transportRef.current = null
-    }
+    const transports = transportsRef.current
+    return () => transports.disposeAll()
   }, [])
 
   // ── WebSocket transport (Web) — multi-session ────────────────────────
@@ -250,12 +279,7 @@ export default function AiCopilot({
   // on connect. Idle sessions don't need a live socket — their history is
   // loaded on demand when the user switches to them.
   const allSessionIds = !isTauri
-    ? [
-        ...new Set([
-          ...(activeThreadId ? [activeThreadId] : []),
-          ...(streamThreadId ? [streamThreadId] : []),
-        ]),
-      ].filter(Boolean)
+    ? [...new Set([...(activeThreadId ? [activeThreadId] : []), ...streamingThreads])]
     : []
 
   const wsAgent = useMultiAgentWebSocket(allSessionIds, {
@@ -273,14 +297,10 @@ export default function AiCopilot({
     onTerminal: useCallback(
       (sessionId: string) => {
         if (isTauri) return
-        setStreaming(false)
-        if (sessionId === streamThreadRef.current) {
-          streamThreadRef.current = null
-          setStreamThreadId(null)
-        }
+        setSessionStreaming(sessionId, false)
         onReload?.()
       },
-      [onReload]
+      [onReload, setSessionStreaming]
     ),
   })
 
@@ -292,43 +312,60 @@ export default function AiCopilot({
     if (isTauri) {
       fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
         .then((msgs) => {
-          if (!msgs || msgs.length === 0) return
-          const turns = historyToTurns(msgs)
-          threadTurnsRef.current.set(activeThreadId, turns)
-          setThreadTurns(new Map(threadTurnsRef.current))
+          const current = threadTurnsRef.current.get(activeThreadId) ?? []
+          // A background stream keeps updating these turns; replacing them
+          // with a persistence snapshot makes the session look stopped.
+          const streaming = streamingThreadsRef.current.has(activeThreadId)
+          if (msgs && msgs.length > 0 && canReplaceWithHistory(current, streaming)) {
+            const turns = historyToTurns(msgs)
+            threadTurnsRef.current.set(activeThreadId, turns)
+            setThreadTurns(new Map(threadTurnsRef.current))
+          }
           scrollToBottomForced()
         })
         .catch((error) => console.warn("[chat] 加载历史消息失败", error))
     } else {
-      wsAgent.loadHistory(activeThreadId).then(scrollToBottomForced)
+      wsAgent
+        .loadHistory(activeThreadId, streamingThreadsRef.current.has(activeThreadId))
+        .then(scrollToBottomForced)
     }
   }, [activeThreadId, wsAgent, scrollToBottomForced])
 
   // ── Tauri transport ──────────────────────────────────────────────────
-  const startTauriTransport = useCallback(
-    async (threadId: string) => {
-      if (!isTauri) return
-      transportRef.current?.dispose()
-      const transport = new TauriTransport(threadId)
-      transportRef.current = transport
-      transport.onEvent((event) => {
-        const currentTurns = threadTurnsRef.current.get(threadId) ?? []
-        const { turns: newTurns, terminal } = applyEvent(currentTurns, event)
-        threadTurnsRef.current.set(threadId, newTurns)
-        setThreadTurns(new Map(threadTurnsRef.current))
-        scrollDown()
-        if (terminal) {
-          setStreaming(false)
-          if (threadId === streamThreadRef.current) {
-            streamThreadRef.current = null
-            setStreamThreadId(null)
+  //
+  // One transport per session, mirroring the web connection map. Switching
+  // sessions or finishing a turn must never tear down a listener that a
+  // background stream (or a follow-up prompt) may still need; every transport
+  // is disposed on unmount.
+  const ensureTauriTransport = useCallback(
+    async (threadId: string): Promise<AgentTransport | null> => {
+      if (!isTauri) return null
+      const transport = transportsRef.current.getOrCreate(threadId, () => {
+        const created = new TauriTransport(threadId)
+        created.onEvent((event) => {
+          const currentTurns = threadTurnsRef.current.get(threadId) ?? []
+          const { turns: newTurns, terminal } = applyEvent(currentTurns, event)
+          threadTurnsRef.current.set(threadId, newTurns)
+          setThreadTurns(new Map(threadTurnsRef.current))
+          scrollDown()
+          if (terminal) {
+            setSessionStreaming(threadId, false)
+            onReload?.()
           }
-          onReload?.()
-        }
+        })
+        return created
       })
-      await transport.ready()
+      try {
+        await transport.ready()
+      } catch (error) {
+        // A failed init leaves a rejected ready() promise; drop it so the next
+        // attempt creates a fresh transport instead of failing forever.
+        transportsRef.current.release(threadId)
+        throw error
+      }
+      return transport
     },
-    [scrollDown, onReload]
+    [scrollDown, setSessionStreaming, onReload]
   )
 
   // ── Send ──────────────────────────────────────────────────────────────
@@ -336,7 +373,12 @@ export default function AiCopilot({
    *  sending has immediate visual feedback before the assistant turn streams.
    *  The turn is replaced by persisted history once the agent settles. */
   const appendLocalUserTurn = useCallback(
-    (sessionId: string, text: string, images: PromptImage[], files: PromptFile[]) => {
+    (
+      sessionId: string,
+      text: string,
+      images: PromptImage[],
+      files: PromptFile[]
+    ): string | null => {
       const current = threadTurnsRef.current
       const turns = current.get(sessionId) ?? []
       const next = appendUserTurn(turns, text, images, files)
@@ -345,9 +387,23 @@ export default function AiCopilot({
       threadTurnsRef.current = updated
       setThreadTurns(updated)
       scrollDown()
+      return next[next.length - 1]?.id ?? null
     },
     [scrollDown]
   )
+
+  /** Remove an optimistic user turn whose prompt never reached the agent. */
+  const removeLocalUserTurn = useCallback((sessionId: string, turnId: string) => {
+    const current = threadTurnsRef.current
+    const turns = current.get(sessionId)
+    if (!turns) return
+    const next = turns.filter((turn) => turn.id !== turnId)
+    if (next.length === turns.length) return
+    const updated = new Map(current)
+    updated.set(sessionId, next)
+    threadTurnsRef.current = updated
+    setThreadTurns(updated)
+  }, [])
 
   const send = useCallback(
     async (override?: string) => {
@@ -368,18 +424,12 @@ export default function AiCopilot({
       const files: PromptFile[] = attachments
         .filter(isFileAttachment)
         .map(({ name, data, mimeType, size }) => ({ name, data, mimeType, size }))
-      // 发送前是否已有回合在跑（steer）：失败回滚时要恢复这个状态，不能把
-      // 仍在运行的回合当成已结束。（与 `isStreamingActive` 同义，但那是在
-      // 本回调之后才声明的派生值。）
-      const wasStreaming = streaming && streamThreadId === activeThreadId
-
       // 在第一个 await 之前清空输入，确保新会话的 React 重渲染期间也无法
       // 再次发送同一份内容。发送失败时再从快照恢复。
       setInput("")
       replaceAttachments([])
       setShowSlash(false)
       setComposerError(null)
-      setStreaming(true)
 
       // If no active session, generate a client-side ID and use it directly.
       // The WebSocket endpoint will create the session if it doesn't exist.
@@ -392,17 +442,28 @@ export default function AiCopilot({
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
 
-      streamThreadRef.current = sessionId
-      setStreamThreadId(sessionId)
+      // 发送前是否已有回合在跑（steer）：失败回滚时要恢复这个状态，不能把
+      // 仍在运行的回合当成已结束。
+      const wasStreaming = streamingThreadsRef.current.has(sessionId)
+      setSessionStreaming(sessionId, true)
 
       // 发送失败时把内容还给用户，并在输入区说明原因：两条传输通道的失败
       // 表现不同（Tauri 抛 IPC 错误、Web 抛连接超时或在 socket 关闭时静默丢弃），
       // 但用户侧必须看到同一件事——「没发出去，内容还在，可以重试」。
       try {
         if (isTauri) {
-          await startTauriTransport(sessionId)
-          await transportRef.current?.sendPrompt(text, images, files)
-          appendLocalUserTurn(sessionId, text, images, files)
+          // Desktop `send_prompt` resolves only after the whole turn, while its
+          // events stream in during the turn. Record the question before the
+          // invoke so the reducer cannot append the reply ahead of it.
+          await sendWithOptimisticUserTurn(
+            () => appendLocalUserTurn(sessionId, text, images, files),
+            (turnId) => removeLocalUserTurn(sessionId, turnId),
+            async () => {
+              const transport = await ensureTauriTransport(sessionId)
+              if (!transport) throw new Error("传输未就绪")
+              await transport.sendPrompt(text, images, files)
+            }
+          )
         } else {
           // Use wsAgent directly with the resolved sessionId so we don't
           // depend on wsAgent.sendPrompt being updated after onActiveThreadChange.
@@ -416,11 +477,13 @@ export default function AiCopilot({
         // 部分，不能覆盖用户此刻正在编辑的状态。
         setInput((current) => (current.length === 0 ? text : current))
         // 以发送期间用户新加的附件为准，只把丢失的旧附件补到剩余容量里。
-        const restored = mergeComposerAttachments(attachmentsRef.current, attachments, MAX_ATTACHMENTS)
+        const restored = mergeComposerAttachments(
+          attachmentsRef.current,
+          attachments,
+          MAX_ATTACHMENTS
+        )
         replaceAttachments(restored.attachments)
-        setStreaming(wasStreaming)
-        streamThreadRef.current = wasStreaming ? streamThreadId : null
-        setStreamThreadId(wasStreaming ? streamThreadId : null)
+        setSessionStreaming(sessionId, wasStreaming)
         const reason = e instanceof Error && e.message ? e.message : "连接已断开"
         const restoreWarning = restored.rejected.join("；")
         setComposerError(
@@ -438,12 +501,12 @@ export default function AiCopilot({
     [
       input,
       activeThreadId,
-      streaming,
-      streamThreadId,
       onActiveThreadChange,
-      startTauriTransport,
+      ensureTauriTransport,
+      setSessionStreaming,
       wsAgent,
       appendLocalUserTurn,
+      removeLocalUserTurn,
       replaceAttachments,
     ]
   )
@@ -506,8 +569,7 @@ export default function AiCopilot({
         .filter((item) => item.kind === "file")
         .map((item) => item.getAsFile())
         .filter((file): file is File => file !== null)
-      const files =
-        clipboardFiles.length > 0 ? clipboardFiles : Array.from(e.clipboardData.files)
+      const files = clipboardFiles.length > 0 ? clipboardFiles : Array.from(e.clipboardData.files)
       if (files.length === 0) return
       if (!e.clipboardData.getData("text/plain")) e.preventDefault()
       void addAttachments(files)
@@ -549,12 +611,18 @@ export default function AiCopilot({
   // ── Stop / interrupt the active stream ───────────────────────────────
   const stop = useCallback(async () => {
     if (!activeThreadId) return
+    const sessionId = activeThreadId
+    // Cancellation is asynchronous on the backend (the running model/tool call
+    // has to observe the abort). Give immediate local feedback instead of
+    // waiting for the terminal event: the composer flips back to Send and the
+    // status bar settles right away. Late events still land in the transcript.
+    setSessionStreaming(sessionId, false)
     if (isTauri) {
-      await transportRef.current?.interrupt()
+      await transportsRef.current.get(sessionId)?.interrupt()
     } else {
-      await wsAgent.interrupt(activeThreadId)
+      await wsAgent.interrupt(sessionId)
     }
-  }, [wsAgent, activeThreadId])
+  }, [wsAgent, activeThreadId, setSessionStreaming])
 
   // ── Slash commands ────────────────────────────────────────────────────
   // 匹配在父层算：菜单渲染什么、Enter 是「执行命令」还是「发送消息」必须是
@@ -604,16 +672,6 @@ export default function AiCopilot({
     },
     [send, showSlash, slashMatches.length]
   )
-
-  // Pre-select the first command when the slash menu opens, so Enter works
-  // immediately without an explicit ArrowDown first.
-  useEffect(() => {
-    if (showSlash) {
-      slashMenuRef.current?.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })
-      )
-    }
-  }, [showSlash])
 
   // 输入框随内容增高：CSS `field-sizing: content` 在 Safari 18.4 之前不支持，
   // 用 JS 兜底（两种机制结果一致，内联高度优先生效）。超过上限后内部滚动。
@@ -708,6 +766,29 @@ export default function AiCopilot({
     [openTab]
   )
 
+  /** Arrow keys move the cmdk highlight; Enter opens the highlighted stock
+   *  (falling back to the first result if the highlight is stale). */
+  const onSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing) return
+      if (!showDropdown || searchResults.length === 0) return
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault()
+        stockCommandRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: e.key, bubbles: true })
+        )
+        return
+      }
+      if (e.key === "Enter") {
+        e.preventDefault()
+        const active =
+          searchResults.find((stock) => stock.code === highlightedStock) ?? searchResults[0]
+        if (active) selectStock(active.code, active.name)
+      }
+    },
+    [highlightedStock, searchResults, selectStock, showDropdown]
+  )
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -724,10 +805,10 @@ export default function AiCopilot({
     () => (activeThreadId ? (threadTurns.get(activeThreadId) ?? []) : []),
     [activeThreadId, threadTurns]
   )
-  const isEmpty = currentTurns.length === 0 && !(streaming && streamThreadId === activeThreadId)
   // True only when the *active* thread is streaming — controls the Stop
   // button and disables Send for the active thread.
-  const isStreamingActive = streaming && streamThreadId === activeThreadId
+  const isStreamingActive = activeThreadId ? streamingThreads.has(activeThreadId) : false
+  const isEmpty = currentTurns.length === 0 && !isStreamingActive
   // Show a "jump to latest" button when the user scrolls up during a stream.
   const [showJumpBottom, setShowJumpBottom] = useState(false)
 
@@ -964,10 +1045,17 @@ export default function AiCopilot({
               placeholder="搜索股票代码或名称..."
               value={searchQuery}
               onChange={onSearchChange}
+              onKeyDown={onSearchKeyDown}
             />
             {showDropdown && (
               <div className="absolute top-full right-0 left-0 z-50 mt-1">
-                <Command className="bg-surface border-hairline shadow-modal rounded-lg border">
+                <Command
+                  ref={stockCommandRef}
+                  shouldFilter={false}
+                  value={highlightedStock ?? undefined}
+                  onValueChange={(value) => setActiveStock(value)}
+                  className="bg-surface border-hairline shadow-modal rounded-lg border"
+                >
                   <CommandList className="max-h-48">
                     {searchLoading ? (
                       <div className="text-secondary text-caption px-3 py-2">搜索中...</div>
@@ -980,7 +1068,7 @@ export default function AiCopilot({
                         {searchResults.map((stock) => (
                           <CommandItem
                             key={stock.code}
-                            value={`${stock.code} ${stock.name}`}
+                            value={stock.code}
                             onSelect={() => selectStock(stock.code, stock.name)}
                             className="text-caption"
                           >
@@ -1136,11 +1224,13 @@ export default function AiCopilot({
                           <TurnRenderer
                             sessionId={activeThreadId}
                             turn={turn}
-                            isStreaming={isLastAi && streaming && streamThreadId === activeThreadId}
+                            isStreaming={isLastAi && isStreamingActive}
                             respondToPermission={
                               isTauri
                                 ? (id: string, approved: boolean) =>
-                                    transportRef.current?.respondToPermission(id, approved)
+                                    transportsRef.current
+                                      .get(activeThreadId ?? "")
+                                      ?.respondToPermission(id, approved)
                                 : (id: string, approved: boolean) =>
                                     wsAgent.respondToPermission(activeThreadId ?? "", id, approved)
                             }
@@ -1271,12 +1361,24 @@ function SlashCommandMenu({
   ref?: React.Ref<HTMLDivElement>
 }) {
   const groups = useMemo(() => groupByType(commands), [commands])
+  // The menu is filtered outside cmdk, so cmdk never resets its highlighted
+  // item when the query narrows the list. Control it here: keep the current
+  // command if it is still a match, otherwise highlight the new first one.
+  const [selected, setSelected] = useState<string | null>(() => commands[0]?.name ?? null)
+  // Keep the highlight valid as the query narrows the list; without this,
+  // cmdk keeps a stale value and Enter has nothing to select.
+  const highlighted = keepValidSelection(
+    selected,
+    commands.map((cmd) => cmd.name)
+  )
 
   return (
     <Command
       ref={ref}
       shouldFilter={false}
       label="斜杠命令"
+      value={highlighted ?? undefined}
+      onValueChange={(value) => setSelected(value)}
       className="bg-popover text-popover-foreground border-hairline shadow-modal overflow-hidden rounded-lg! border p-1"
     >
       <CommandList

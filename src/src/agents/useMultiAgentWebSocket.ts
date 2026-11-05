@@ -5,7 +5,8 @@
 // list. Connections are created/removed as the sessionIds array changes.
 
 import { useCallback, useEffect, useMemo, useRef } from "react"
-import { appendUserTurn, applyEvent, historyToTurns } from "./reducer"
+import { sendWithOptimisticUserTurn } from "./promptDispatch"
+import { appendUserTurn, applyEvent, canReplaceWithHistory, historyToTurns } from "./reducer"
 import type {
   HistoryMessage,
   PromptFile,
@@ -114,35 +115,38 @@ export function useMultiAgentWebSocket(
 
   // ── History loading ────────────────────────────────────────────────────
 
-  const fetchHistory = useCallback(async (sid: string, conn: ConnectionState) => {
-    try {
-      const requestSeq = ++conn.historyRequestSeq
-      const revisionAtRequest = conn.turnRevision
-      const base = getApiBaseUrl()
-      const res = await fetch(`${base}/api/ai/sessions/${sid}/messages`)
-      if (!res.ok) return
-      const msgs: HistoryMessage[] = await res.json()
-      if (!msgs || msgs.length === 0) return
-      if (requestSeq !== conn.historyRequestSeq || conn.turnRevision !== revisionAtRequest) {
-        return
+  const fetchHistory = useCallback(
+    async (sid: string, conn: ConnectionState, isStreaming = false) => {
+      try {
+        const requestSeq = ++conn.historyRequestSeq
+        const revisionAtRequest = conn.turnRevision
+        const base = getApiBaseUrl()
+        const res = await fetch(`${base}/api/ai/sessions/${sid}/messages`)
+        if (!res.ok) return
+        const msgs: HistoryMessage[] = await res.json()
+        if (!msgs || msgs.length === 0) return
+        if (requestSeq !== conn.historyRequestSeq || conn.turnRevision !== revisionAtRequest) {
+          return
+        }
+        // Never overwrite live turns with a stale history snapshot. This
+        // matters when switching to a session that is still streaming in the
+        // background: the in-memory transcript is authoritative until the turn
+        // ends, otherwise the reply the user was watching disappears.
+        if (!canReplaceWithHistory(conn.turns, isStreaming)) return
+        const turns = historyToTurns(msgs)
+        conn.turns = turns
+        conn.turnRevision++
+        // Only notify if the connection is still alive and hasn't been
+        // replaced by a newer connection.
+        if (mountedRef.current) {
+          optionsRef.current.onTurnsUpdate?.(sid, [...turns])
+        }
+      } catch {
+        // History loading is best-effort; live events will still arrive.
       }
-      // Never overwrite a turn list that has an in-progress (streaming) turn —
-      // live data always takes precedence over a stale history snapshot.
-      // This matters when switching to a session that is still streaming in
-      // the background: the live turns are authoritative until the turn ends.
-      if (conn.turns.some((t) => t.status === "in_progress")) return
-      const turns = historyToTurns(msgs)
-      conn.turns = turns
-      conn.turnRevision++
-      // Only notify if the connection is still alive and hasn't been
-      // replaced by a newer connection.
-      if (mountedRef.current) {
-        optionsRef.current.onTurnsUpdate?.(sid, [...turns])
-      }
-    } catch {
-      // History loading is best-effort; live events will still arrive.
-    }
-  }, [])
+    },
+    []
+  )
 
   // `connectSession` reconnects itself from inside `onclose`, so keep a ref to
   // the latest stable callback instead of putting it in its own dependency list.
@@ -367,15 +371,29 @@ export function useMultiAgentWebSocket(
       if (!conn?.ws || conn.ws.readyState !== WebSocket.OPEN) {
         throw new Error("连接已断开")
       }
-      conn.ws.send(
-        JSON.stringify({ type: "prompt", text, images: images ?? [], files: files ?? [] })
-      )
+      const ws = conn.ws
       // The connection owns the transcript used by live events. Append the
-      // optimistic user turn here so the first assistant delta cannot replace
-      // a user message that only existed in React component state.
-      conn.turns = appendUserTurn(conn.turns, text, images ?? [], files ?? [])
-      conn.turnRevision++
-      optionsRef.current.onTurnsUpdate?.(sid, [...conn.turns])
+      // optimistic user turn before sending so a fast first assistant event
+      // cannot put the reply above the question. If the socket throws, the
+      // turn is rolled back and the caller restores the composer.
+      await sendWithOptimisticUserTurn(
+        () => {
+          conn.turns = appendUserTurn(conn.turns, text, images ?? [], files ?? [])
+          conn.turnRevision++
+          optionsRef.current.onTurnsUpdate?.(sid, [...conn.turns])
+          return conn.turns[conn.turns.length - 1]?.id ?? null
+        },
+        (turnId) => {
+          conn.turns = conn.turns.filter((turn) => turn.id !== turnId)
+          conn.turnRevision++
+          optionsRef.current.onTurnsUpdate?.(sid, [...conn.turns])
+        },
+        () => {
+          ws.send(
+            JSON.stringify({ type: "prompt", text, images: images ?? [], files: files ?? [] })
+          )
+        }
+      )
     },
     [ensureConnection, waitForReady]
   )
@@ -416,10 +434,10 @@ export function useMultiAgentWebSocket(
    *  Useful when switching to an already-connected session whose history
    *  was loaded only once during WebSocket onopen. */
   const loadHistory = useCallback(
-    async (sid: string): Promise<void> => {
+    async (sid: string, isStreaming = false): Promise<void> => {
       const conn = connectionsRef.current.get(sid)
       if (!conn) return
-      await fetchHistory(sid, conn)
+      await fetchHistory(sid, conn, isStreaming)
     },
     [fetchHistory]
   )
