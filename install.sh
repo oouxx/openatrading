@@ -218,12 +218,11 @@ fi
 
 # ── CLI install ───────────────────────────────────────────
 
+# gateway / CLI 只部署在 Linux 服务器上；macOS 用户安装桌面客户端即可。
 if [ "$UNAME_S" = "Linux" ]; then
   CLI_ASSET="openatrading-${ARCH}-unknown-linux-gnu"
-elif [ "$UNAME_S" = "Darwin" ]; then
-  CLI_ASSET="openatrading-${ARCH}-apple-darwin"
 else
-  echo "❌ CLI 仅支持 Linux 和 macOS"
+  echo "❌ CLI 仅支持 Linux；macOS 请安装桌面客户端"
   exit 1
 fi
 

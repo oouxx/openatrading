@@ -46,7 +46,7 @@ src-tauri/      Tauri 桌面端
 
 CLI 与服务端二进制从 [GitHub Releases](https://github.com/oouxx/openatrading/releases/latest) 分发。
 
-一行安装（Linux / macOS）：
+一行安装（Linux）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oouxx/openatrading/main/install.sh | bash
@@ -70,8 +70,8 @@ INSTALL_DIR=~/.local/bin bash install.sh   # 指定安装目录
 |------|--------|
 | Linux x86_64 | `openatrading-x86_64-unknown-linux-gnu` |
 | Linux aarch64 | `openatrading-aarch64-unknown-linux-gnu` |
-| macOS Intel | `openatrading-x86_64-apple-darwin` |
-| macOS Apple Silicon | `openatrading-aarch64-apple-darwin` |
+
+macOS 不提供 CLI / gateway，桌面客户端见下方安装说明。
 
 升级：`openatrading update`（同样走 Releases；`OPENATRADING_DL_SERVER` 可覆盖下载源）。
 
