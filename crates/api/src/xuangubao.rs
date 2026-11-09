@@ -51,6 +51,10 @@ const STOCK_DATA_BATCH_SIZE: usize = 200;
 /// 前端按 200 个标的拆分股票标签批量请求。
 const STOCK_LABEL_BATCH_SIZE: usize = 200;
 const PLATE_SUMMARY_BATCH_SIZE: usize = 200;
+/// 选股宝日线接口单次最多返回 5 个标的；多传的标的不会报错，而是被**静默丢弃**。
+/// 请求端必须自己分片，否则依赖「全部标的都有数据」的下游（如区间收益回放）
+/// 会拿不到部分持仓的收盘价，退化成按成本价估值。
+const KLINE_BATCH_SIZE: usize = 5;
 const FUND_FLOW_METRIC_START: usize = 2;
 const FUND_FLOW_METRIC_END: usize = 19;
 const FUND_FLOW_ROW_LEN: usize = 20;
@@ -1899,9 +1903,11 @@ impl XuanguBaoClient {
         })
     }
 
-    /// Fetch kline for multiple symbols in a single API call.
+    /// Fetch kline for multiple symbols.
     /// Returns a map keyed by normalized (yahoo) symbol.
-    /// Fetch K-line data for multiple symbols.
+    ///
+    /// 上游单次请求最多返回 [`KLINE_BATCH_SIZE`] 个标的，因此这里按该上限分片，
+    /// 保证调用方拿到的结果覆盖全部请求的标的（而不是悄悄少几个）。
     ///
     /// # Errors
     /// Returns an error if the HTTP request fails, any symbol is invalid, or the response cannot be parsed.
@@ -1916,6 +1922,21 @@ impl XuanguBaoClient {
             .map(|s| to_yahoo_symbol(s))
             .collect::<Result<Vec<_>>>()?;
 
+        let mut result = ahash::AHashMap::with_capacity(yahoo_symbols.len());
+        for chunk in yahoo_symbols.chunks(KLINE_BATCH_SIZE) {
+            let mut partial = self.fetch_kline_batch_chunk(chunk, period, count).await?;
+            result.extend(partial.drain());
+        }
+        Ok(result)
+    }
+
+    /// 单次请求的 K 线分片，`symbols` 必须不超过 [`KLINE_BATCH_SIZE`]。
+    async fn fetch_kline_batch_chunk(
+        &self,
+        yahoo_symbols: &[String],
+        period: KlinePeriod,
+        count: u32,
+    ) -> Result<ahash::AHashMap<String, KlineData>> {
         let prod_codes: Vec<&str> = yahoo_symbols
             .iter()
             .map(std::string::String::as_str)
@@ -1955,7 +1976,7 @@ impl XuanguBaoClient {
         let candle_data = &resp["data"]["candle"];
         let mut result = ahash::AHashMap::new();
 
-        for yahoo_sym in &yahoo_symbols {
+        for yahoo_sym in yahoo_symbols {
             let lines = candle_data[yahoo_sym]["lines"]
                 .as_array()
                 .cloned()
@@ -2930,6 +2951,79 @@ mod tests {
         (format!("http://{address}"), handle)
     }
 
+    /// 模拟「单次最多返回 `cap` 个标的」的 K 线上游，并收集收到的全部请求。
+    ///
+    /// 用非阻塞 accept + 截止时间等待，避免被测实现少发请求时测试永久挂死。
+    fn serve_capped_kline(
+        expected_requests: usize,
+        cap: usize,
+    ) -> (String, JoinHandle<Vec<String>>) {
+        let listener = ok_or_panic(TcpListener::bind("127.0.0.1:0"), "bind test server");
+        let address = ok_or_panic(listener.local_addr(), "test server address");
+        let handle = thread::spawn(move || {
+            ok_or_panic(listener.set_nonblocking(true), "set nonblocking");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let mut requests = Vec::new();
+            while requests.len() < expected_requests && std::time::Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        ok_or_panic(stream.set_nonblocking(false), "set blocking");
+                        ok_or_panic(
+                            stream.set_read_timeout(Some(Duration::from_secs(2))),
+                            "set read timeout",
+                        );
+                        let mut buffer = [0_u8; 16 * 1024];
+                        let read = ok_or_panic(stream.read(&mut buffer), "read test request");
+                        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                        let body = capped_kline_body(&request, cap);
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        ok_or_panic(stream.write_all(response.as_bytes()), "write test response");
+                        requests.push(request);
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("accept test request: {error}"),
+                }
+            }
+            requests
+        });
+        (format!("http://{address}"), handle)
+    }
+
+    /// 只回请求里前 `cap` 个标的，复刻上游「多传的标的静默丢弃」的行为。
+    fn capped_kline_body(request: &str, cap: usize) -> String {
+        let path = request.split(' ').nth(1).unwrap_or_default();
+        let prod_code = path
+            .split(['?', '&'])
+            .find_map(|kv| kv.strip_prefix("prod_code="))
+            .unwrap_or_default();
+        let candle: serde_json::Map<String, serde_json::Value> = prod_code
+            .split(',')
+            .filter(|symbol| !symbol.is_empty())
+            .take(cap)
+            .enumerate()
+            .map(|(index, symbol)| {
+                (
+                    symbol.to_string(),
+                    serde_json::json!({"lines": [[1_793_923_200_i64, 10.0 + index as f64]]}),
+                )
+            })
+            .collect();
+        serde_json::json!({
+            "code": 20000,
+            "message": "OK",
+            "data": {
+                "fields": ["tick_at", "close_px"],
+                "candle": candle,
+            },
+        })
+        .to_string()
+    }
+
     fn fund_flow_row(symbol: &str, date: &str, timestamp: i64) -> Vec<serde_json::Value> {
         let mut row = vec![serde_json::json!(symbol), serde_json::json!(date)];
         row.extend((0..17).map(|index| serde_json::json!(index as f64 + 0.5)));
@@ -3111,6 +3205,37 @@ mod tests {
         assert_eq!(flows["000008.SZ"][0].metrics.len(), 17);
         assert_eq!(flows["000008.SZ"][0].metrics[0], 0.5);
         assert_eq!(flows["000008.SZ"][0].timestamp, 1_793_059_200);
+    }
+
+    /// 上游 K 线接口单次最多返回 5 个标的，客户端必须分片请求。
+    /// 回归点：不分片时第 6 个之后的标的会被静默丢弃，依赖日线的区间收益
+    /// 拿不到收盘价就会退化成成本价估值，和实时账户权益对不上。
+    #[tokio::test]
+    async fn kline_batch_chunks_around_upstream_symbol_cap() {
+        let symbols: Vec<String> = [
+            "600000", "600001", "600002", "600003", "600004", "600005", "600006",
+        ]
+        .iter()
+        .map(|code| format!("{code}.SS"))
+        .collect();
+
+        let (base_url, server) = serve_capped_kline(2, KLINE_BATCH_SIZE);
+        let client = XuanguBaoClient::with_urls(base_url.clone(), base_url);
+        let data = ok_or_panic(
+            client
+                .fetch_kline_batch(&symbols, KlinePeriod::Day, 30)
+                .await,
+            "kline batch should succeed",
+        );
+        let requests = server
+            .join()
+            .unwrap_or_else(|_| panic!("test server should finish"));
+
+        assert_eq!(requests.len(), 2, "7 个标的必须拆成 2 次请求");
+        assert_eq!(data.len(), symbols.len(), "分片后结果必须覆盖全部标的");
+        for symbol in &symbols {
+            assert_eq!(data[symbol].candles.len(), 1, "{symbol} 的日线不应缺失");
+        }
     }
 
     #[test]
