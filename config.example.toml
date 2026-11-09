@@ -24,6 +24,17 @@ bind    = "0.0.0.0:8082"
 db_path = "data.db"
 web_bind = "0.0.0.0:8080"
 
+# ── 桌面端 ──────────────────────────────────────────────
+# 只对桌面客户端生效。
+[desktop]
+# 关闭窗口后隐藏到菜单栏、进程继续运行（自动化与 agent 保持在后台）。
+# 设为 false 则关闭窗口即退出应用。
+close_to_tray = true
+# 在桌面端启动 MCP server（复用上面 [mcp_server].bind 与工具注册表），默认关闭。
+mcp_server = false
+# 在桌面端启动 Telegram 交互 bot（复用 [social.telegram] 凭据），默认关闭。
+telegram_bot = false
+
 # ── Cron 调度 ────────────────────────────────────────────
 # cron 表达式为 6 字段：秒 分 时 日 月 周
 # 当前仅保留两个 job：采集（collection）与新闻推送（news_push）；

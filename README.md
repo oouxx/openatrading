@@ -292,7 +292,11 @@ pi-rs 内置的扩展可以在 Web 面板「设置 → 扩展」里逐个开关�
 
 ## Automation
 
-对话内让 agent 创建定时任务（工具 `create_automation` / `list_automations` / `update_automation`），也可用 REST `/api/automations` 或桌面端面板。任务持久化在 `data.db`，由 gateway 进程内的 cron 执行；桌面端跨进程的增删改由调度器每 60s 指纹比对 reconcile。
+对话内让 agent 创建定时任务（工具 `create_automation` / `list_automations` / `update_automation`），也可用 REST `/api/automations` 或桌面端面板。任务持久化在 `data.db`。
+
+桌面端和 gateway 都可以作为调度宿主：桌面端关闭窗口后隐藏到菜单栏、进程继续运行（可在「设置 → 后台运行」关闭）；与 gateway 共用同一份数据库时，由 `scheduler_lease` 租约保证同一时刻只有一个宿主执行，另一个待命并在租约释放/过期后自动接管。跨进程的增删改由调度器每 60s 指纹比对 reconcile。桌面端只执行用户自定义自动化，内置采集/新闻任务仅在 gateway 宿主上运行。
+
+桌面端还可在「设置 → 远程访问」按需开启 MCP 服务与 Telegram 机器人（默认关闭）：MCP 复用 `[mcp_server].bind`，Telegram 复用 `[social.telegram]` 凭据。两者都运行在桌面进程内，关闭开关立即停止。
 
 - **调度类型** — `daily` / `weekly` / `every_minutes` / `cron`（6 字段）
 - **运行范围** — `new_thread`（独立会话，跑完即弃）或 `existing_thread`（复用指定会话）

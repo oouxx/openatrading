@@ -12,6 +12,32 @@ pub struct AppConfig {
     pub cron: Option<CronTomlConfig>,
     pub social: Option<SocialConfig>,
     pub mcp_server: McpServerTomlConfig,
+    /// 桌面端行为（`[desktop]`），只对 Tauri 客户端生效。
+    pub desktop: Option<DesktopTomlConfig>,
+}
+
+/// 桌面端行为配置。
+#[derive(Debug, Clone, Deserialize)]
+pub struct DesktopTomlConfig {
+    /// 关闭窗口后保持进程存活（托盘常驻），自动化任务与 agent 继续在后台运行。
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,
+    /// 在桌面端启动 MCP server（复用 `[mcp_server].bind`）。默认关闭。
+    #[serde(default)]
+    pub mcp_server: bool,
+    /// 在桌面端启动 Telegram 交互 bot（复用 `[social.telegram]` 凭据）。默认关闭。
+    #[serde(default)]
+    pub telegram_bot: bool,
+}
+
+impl Default for DesktopTomlConfig {
+    fn default() -> Self {
+        Self {
+            close_to_tray: true,
+            mcp_server: false,
+            telegram_bot: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +73,8 @@ struct RawConfig {
     social: Option<SocialConfig>,
     #[serde(default)]
     mcp_server: Option<McpServerTomlConfig>,
+    #[serde(default)]
+    desktop: Option<DesktopTomlConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,6 +138,7 @@ impl AppConfig {
             cron: None,
             social: None,
             mcp_server: McpServerTomlConfig::default(),
+            desktop: None,
         };
 
         // Load config from {atrading_home}/config.toml
@@ -167,6 +196,7 @@ impl AppConfig {
             cron: raw.cron,
             social: raw.social,
             mcp_server: raw.mcp_server.unwrap_or_default(),
+            desktop: raw.desktop,
         })
     }
 
@@ -177,6 +207,9 @@ impl AppConfig {
         }
         if other.social.is_some() {
             self.social = other.social;
+        }
+        if other.desktop.is_some() {
+            self.desktop = other.desktop;
         }
         for entry in other.roles {
             self.roles.retain(|e| e.name != entry.name);
@@ -203,6 +236,22 @@ impl AppConfig {
     /// `section` is a dotted path, e.g. "service" or "social.telegram".
     /// Uses `toml_edit` for round-trip preserving comments and section style.
     pub fn set_value(section: &str, key: &str, value: &str) -> Result<()> {
+        Self::edit(section, |table| {
+            table.insert(key, value.into());
+            Ok(())
+        })
+    }
+
+    /// 写一个布尔值（`set_value` 只接受字符串，布尔值会被写成字符串）。
+    pub fn set_bool(section: &str, key: &str, value: bool) -> Result<()> {
+        Self::edit(section, |table| {
+            table.insert(key, toml_edit::value(value));
+            Ok(())
+        })
+    }
+
+    /// 读取 → 修改 → 写回 config.toml，保留注释与段落结构。
+    fn edit(section: &str, apply: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {
         let path = Self::config_path();
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         let mut doc: toml_edit::DocumentMut = content.parse().unwrap_or_default();
@@ -220,7 +269,7 @@ impl AppConfig {
                 .ok_or_else(|| anyhow::anyhow!("section {section} is not a table"))?;
         }
 
-        current.insert(key, value.into());
+        apply(current)?;
 
         std::fs::write(&path, doc.to_string())?;
         Ok(())
@@ -253,8 +302,15 @@ pub fn validate_config(path: &Path) {
         return;
     };
 
-    let known: std::collections::HashSet<&str> =
-        ["roles", "service", "cron", "social", "mcp_server"].into();
+    let known: std::collections::HashSet<&str> = [
+        "roles",
+        "service",
+        "cron",
+        "social",
+        "mcp_server",
+        "desktop",
+    ]
+    .into();
 
     for key in table.keys() {
         if !known.contains(key.as_str()) {

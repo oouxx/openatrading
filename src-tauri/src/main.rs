@@ -6,9 +6,159 @@ use openatrading_core::utils::attachments::{AttachmentService, FileAttachment, I
 
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
+
+/// 桌面端窗口行为开关（不参与 Web 宿主，单独管理）。
+struct DesktopPrefs {
+    /// 关闭窗口时隐藏到托盘而不是退出进程；自动化与 agent 继续在后台运行。
+    close_to_tray: AtomicBool,
+}
+
+/// 桌面端可选服务（MCP server / Telegram bot）。
+///
+/// 每个服务持有停止信号：关闭开关时发 `true`，后台任务自行退出。
+/// 默认全部关闭，由设置页按需开启。
+#[derive(Default)]
+struct DesktopServices {
+    mcp: tokio::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>,
+    telegram: tokio::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>,
+}
+
+fn load_app_config() -> Result<openatrading_cli::cli::config::AppConfig, String> {
+    openatrading_cli::cli::config::AppConfig::load().map_err(|e| format!("加载配置失败: {e}"))
+}
+
+/// 启动桌面端 MCP server（复用 `[mcp_server].bind`）。
+async fn start_desktop_mcp(
+    services: &DesktopServices,
+    cfg: &openatrading_cli::cli::config::AppConfig,
+) -> Result<(), String> {
+    let mut running = services.mcp.lock().await;
+    if running.is_some() {
+        return Ok(());
+    }
+    let bind: std::net::SocketAddr = cfg
+        .mcp_server
+        .bind
+        .parse()
+        .map_err(|e| format!("MCP 监听地址无效: {e}"))?;
+    // 先探测端口：否则绑定失败只会在后台任务的日志里，用户看到的是「开关开了但连不上」。
+    std::net::TcpListener::bind(bind).map_err(|e| format!("MCP 端口 {bind} 无法监听: {e}"))?;
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    let registry = Arc::new(openatrading_core::llm::create_registry());
+    tokio::spawn(async move {
+        if let Err(e) = openatrading_core::llm::serve_http(registry, bind, rx).await {
+            eprintln!("[desktop] MCP server error: {e}");
+        }
+    });
+    *running = Some(tx);
+    Ok(())
+}
+
+async fn stop_desktop_mcp(services: &DesktopServices) {
+    if let Some(tx) = services.mcp.lock().await.take() {
+        let _ = tx.send(true);
+    }
+}
+
+/// 启动桌面端 Telegram 交互 bot（复用 `[social.telegram]` 凭据）。
+async fn start_desktop_telegram(
+    app_state: &Arc<AppState>,
+    services: &DesktopServices,
+    cfg: &openatrading_cli::cli::config::AppConfig,
+) -> Result<(), String> {
+    let mut running = services.telegram.lock().await;
+    if running.is_some() {
+        return Ok(());
+    }
+    let tg = cfg
+        .social
+        .as_ref()
+        .and_then(|s| s.telegram.as_ref())
+        .filter(|t| t.enabled)
+        .ok_or_else(|| "请先在「通知渠道 → Telegram」中启用并填写配置".to_string())?;
+    let bot_token = tg
+        .bot_token
+        .clone()
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| "请先填写 Telegram Bot Token".to_string())?;
+    let chat_id = tg
+        .chat_id
+        .clone()
+        .filter(|c| !c.is_empty())
+        .ok_or_else(|| "请先填写 Telegram Chat ID".to_string())?;
+
+    let roles = app_state.roles.read().await.clone();
+    let bot = openatrading_core::social::TelegramBot::new(
+        openatrading_core::social::TelegramBotConfig { bot_token, chat_id },
+        roles,
+        app_state.ctx.clone(),
+    );
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        if let Err(e) = bot.start_polling_with_shutdown(rx).await {
+            eprintln!("[desktop] Telegram bot error: {e}");
+        }
+    });
+    *running = Some(tx);
+    Ok(())
+}
+
+async fn stop_desktop_telegram(services: &DesktopServices) {
+    if let Some(tx) = services.telegram.lock().await.take() {
+        let _ = tx.send(true);
+    }
+}
+
+/// 开启/关闭桌面端 MCP server，并持久化到 `[desktop] mcp_server`。
+#[tauri::command]
+async fn set_desktop_mcp(
+    enabled: bool,
+    services: tauri::State<'_, Arc<DesktopServices>>,
+) -> Result<(), String> {
+    let cfg = load_app_config()?;
+    if enabled {
+        start_desktop_mcp(&services, &cfg).await?;
+        if let Err(e) =
+            openatrading_cli::cli::config::AppConfig::set_bool("desktop", "mcp_server", true)
+        {
+            stop_desktop_mcp(&services).await;
+            return Err(format!("保存设置失败: {e}"));
+        }
+    } else {
+        openatrading_cli::cli::config::AppConfig::set_bool("desktop", "mcp_server", false)
+            .map_err(|e| format!("保存设置失败: {e}"))?;
+        stop_desktop_mcp(&services).await;
+    }
+    Ok(())
+}
+
+/// 开启/关闭桌面端 Telegram bot，并持久化到 `[desktop] telegram_bot`。
+#[tauri::command]
+async fn set_desktop_telegram(
+    enabled: bool,
+    state: tauri::State<'_, Arc<AppState>>,
+    services: tauri::State<'_, Arc<DesktopServices>>,
+) -> Result<(), String> {
+    let cfg = load_app_config()?;
+    if enabled {
+        start_desktop_telegram(&state, &services, &cfg).await?;
+        if let Err(e) =
+            openatrading_cli::cli::config::AppConfig::set_bool("desktop", "telegram_bot", true)
+        {
+            stop_desktop_telegram(&services).await;
+            return Err(format!("保存设置失败: {e}"));
+        }
+    } else {
+        openatrading_cli::cli::config::AppConfig::set_bool("desktop", "telegram_bot", false)
+            .map_err(|e| format!("保存设置失败: {e}"))?;
+        stop_desktop_telegram(&services).await;
+    }
+    Ok(())
+}
 
 fn load_env() {
     // Layer 2: 全局 .env
@@ -455,7 +605,16 @@ async fn get_config() -> Result<serde_json::Value, String> {
         })
         .unwrap_or(serde_json::Value::Null);
 
-    Ok(serde_json::json!({ "social": social }))
+    let desktop = cfg.desktop.clone().unwrap_or_default();
+    Ok(serde_json::json!({
+        "social": social,
+        "desktop": {
+            "close_to_tray": desktop.close_to_tray,
+            "mcp_server": desktop.mcp_server,
+            "telegram_bot": desktop.telegram_bot,
+            "mcp_bind": cfg.mcp_server.bind,
+        },
+    }))
 }
 
 #[tauri::command]
@@ -482,6 +641,62 @@ async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 把主窗口从托盘/最小化状态唤回前台。
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+/// 托盘图标：左键唤回主窗口，菜单提供「显示 / 退出」。
+///
+/// 关闭窗口只隐藏、不退出进程时，没有托盘就再也没有入口把窗口找回来了。
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    // 由 App 托管，避免句柄被回收后托盘图标消失。
+    app.manage(builder.build(app)?);
+    Ok(())
+}
+
+/// 保存「关闭窗口后继续在后台运行」开关，并立即更新运行中的行为。
+#[tauri::command]
+fn set_close_to_tray(enabled: bool, prefs: tauri::State<'_, DesktopPrefs>) -> Result<(), String> {
+    openatrading_cli::cli::config::AppConfig::set_bool("desktop", "close_to_tray", enabled)
+        .map_err(|e| format!("保存设置失败: {e}"))?;
+    prefs.close_to_tray.store(enabled, Ordering::Relaxed);
+    Ok(())
+}
+
 #[allow(clippy::disallowed_methods)]
 fn main() {
     load_env();
@@ -503,30 +718,51 @@ fn main() {
 
     let roles = build_roles();
 
-    // 自动化中枢:桌面端提供 store 级 CRUD/收件箱 + agent 工具;调度器在
-    // gateway 进程启动,避免 gateway 与桌面端同时运行时重复执行同一任务。
-    // 工具创建的任务先落库,由 gateway 的 reconcile(每分钟)感知并加载。
-    let automation_hub =
-        openatrading_core::automation::AutomationHub::new(gateway.automation.clone());
+    // 桌面端自己也是宿主：attach 后启动调度器（只跑用户自动化，不注册内置采集/新闻）。
+    // 与 gateway/轻量进程共用 data.db 时，调度器租约保证同一时刻只有一个宿主执行。
+    let app_config = match openatrading_cli::cli::config::AppConfig::load() {
+        Ok(cfg) => Some(cfg),
+        Err(e) => {
+            eprintln!("[tauri] 加载配置失败，使用默认值: {e}");
+            None
+        }
+    };
+    let social: Arc<dyn openatrading_core::social::NotificationSender> = app_config
+        .as_ref()
+        .and_then(|cfg| cfg.social.as_ref())
+        .map(openatrading_cli::cli::service_cmd::create_notification_sender)
+        .unwrap_or_else(|| Arc::new(openatrading_core::social::NoopChannel));
+    let close_to_tray = app_config
+        .as_ref()
+        .and_then(|cfg| cfg.desktop.as_ref())
+        .map_or(true, |d| d.close_to_tray);
+
+    let automation_hub = openatrading_core::automation::AutomationHub::with_owner(
+        gateway.automation.clone(),
+        "desktop",
+    );
 
     // MCP 服务器配置读写入口：文件（$PI_RS_HOME/agent/mcp.json +
     // {cwd}/.pi-rs/mcp.json）是唯一事实源；会话侧由 pi-rs SDK 在装配时读取。
     let mcp_config = openatrading_core::llm::McpConfigStore::from_process()
         .unwrap_or_else(|e| panic!("failed to resolve MCP config paths: {e}"));
 
-    let app_ctx = tokio::runtime::Runtime::new()
-        .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
-        .block_on(openatrading_core::context::AppContext::build(
-            openatrading_core::context::ContextParams {
-                memory: gateway.memory.clone(),
-                trade_store: gateway.trade.clone(),
-                social: Arc::new(openatrading_core::social::NoopChannel),
-                automations: Some(automation_hub.clone()),
-            },
-        ));
+    let app_ctx = Arc::new(
+        tokio::runtime::Runtime::new()
+            .unwrap_or_else(|e| panic!("failed to create tokio runtime: {e}"))
+            .block_on(openatrading_core::context::AppContext::build(
+                openatrading_core::context::ContextParams {
+                    memory: gateway.memory.clone(),
+                    trade_store: gateway.trade.clone(),
+                    social,
+                    automations: Some(automation_hub.clone()),
+                },
+            )),
+    );
+    automation_hub.attach(app_ctx.clone());
 
     let app_state = Arc::new(AppState {
-        ctx: app_ctx,
+        ctx: (*app_ctx).clone(),
         roles: Arc::new(RwLock::new(roles)),
         mcp: mcp_config,
         cache: openatrading_web::cache::new_cache(),
@@ -540,9 +776,13 @@ fn main() {
     // 到这个 Router，新增/修改接口只需改 `crates/web/src/lib.rs` 一处。
     let api_router = openatrading_web::build_router(app_state.clone());
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(app_state)
         .manage(api_router)
+        .manage(DesktopPrefs {
+            close_to_tray: AtomicBool::new(close_to_tray),
+        })
+        .manage(Arc::new(DesktopServices::default()))
         .invoke_handler(tauri::generate_handler![
             api_request,
             send_prompt,
@@ -553,8 +793,78 @@ fn main() {
             api_order_book_stream,
             get_config,
             update_config,
+            set_close_to_tray,
+            set_desktop_mcp,
+            set_desktop_telegram,
             restart_app
         ])
-        .run(tauri::generate_context!())
+        .setup(|app| {
+            // 桌面端调度器：与 gateway 共用租约，拿不到时自动待命。
+            let state = app.state::<Arc<AppState>>();
+            let hub = state.automation.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = hub.start(None).await {
+                    eprintln!("[automation] scheduler error: {e}");
+                }
+            });
+
+            // 按配置恢复桌面端可选服务（默认关闭）。
+            let services = app.state::<Arc<DesktopServices>>().inner().clone();
+            let service_state = app.state::<Arc<AppState>>().inner().clone();
+            if let Ok(cfg) = openatrading_cli::cli::config::AppConfig::load() {
+                let desktop = cfg.desktop.clone().unwrap_or_default();
+                tauri::async_runtime::spawn(async move {
+                    if desktop.mcp_server {
+                        if let Err(e) = start_desktop_mcp(&services, &cfg).await {
+                            eprintln!("[desktop] MCP server 启动失败: {e}");
+                        }
+                    }
+                    if desktop.telegram_bot {
+                        if let Err(e) =
+                            start_desktop_telegram(&service_state, &services, &cfg).await
+                        {
+                            eprintln!("[desktop] Telegram bot 启动失败: {e}");
+                        }
+                    }
+                });
+            }
+
+            // 托盘创建失败时退化为「关窗即退出」：否则窗口一隐藏就再也找不回来。
+            if let Err(e) = build_tray(app) {
+                eprintln!("[tauri] 托盘初始化失败，关闭窗口将退出应用: {e}");
+                app.state::<DesktopPrefs>()
+                    .close_to_tray
+                    .store(false, Ordering::Relaxed);
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window
+                    .state::<DesktopPrefs>()
+                    .close_to_tray
+                    .load(Ordering::Relaxed)
+                {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
         .unwrap_or_else(|e| panic!("error while running tauri application: {e}"));
+
+    app.run(|app_handle, event| {
+        match event {
+            // macOS 上窗口隐藏后点击 Dock 图标应重新显示主窗口。
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => show_main_window(app_handle),
+            tauri::RunEvent::Exit => {
+                // 正常退出时立刻释放调度租约，下一个宿主无需等待过期。
+                if let Some(state) = app_handle.try_state::<Arc<AppState>>() {
+                    state.automation.release_scheduler_lease();
+                }
+            }
+            _ => {}
+        }
+    });
 }

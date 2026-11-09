@@ -241,7 +241,22 @@ impl TelegramBot {
         Ok(())
     }
 
+    /// 无限轮询（gateway 宿主使用，进程退出才停止）。
     pub async fn start_polling(&self) -> Result<()> {
+        // 保持发送端存活，轮询循环不会因为通道关闭而提前退出。
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        self.poll_loop(rx).await
+    }
+
+    /// 可由宿主随时停止的轮询（桌面端设置开关）。
+    pub async fn start_polling_with_shutdown(
+        &self,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<()> {
+        self.poll_loop(shutdown).await
+    }
+
+    async fn poll_loop(&self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> Result<()> {
         self.register_commands().await?;
 
         let mut offset: i64 = 0;
@@ -254,11 +269,22 @@ impl TelegramBot {
                 self.bot_token, offset
             );
 
-            let resp = match self.client.get(&url).send().await {
+            // 长轮询最多挂 30s，select 让停止信号不必等上游返回。
+            let resp = tokio::select! {
+                _ = shutdown.changed() => {
+                    crate::log::info!("[telegram-bot] polling stopped");
+                    return Ok(());
+                }
+                resp = self.client.get(&url).send() => resp,
+            };
+
+            let resp = match resp {
                 Ok(r) => r,
                 Err(e) => {
                     crate::log::error!("[telegram-bot] getUpdates error: {e}");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if wait_or_stop(&mut shutdown, 5).await {
+                        return Ok(());
+                    }
                     continue;
                 }
             };
@@ -267,7 +293,9 @@ impl TelegramBot {
                 Ok(t) => t,
                 Err(e) => {
                     crate::log::error!("[telegram-bot] read response body error: {e}");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if wait_or_stop(&mut shutdown, 5).await {
+                        return Ok(());
+                    }
                     continue;
                 }
             };
@@ -279,7 +307,9 @@ impl TelegramBot {
                         "[telegram-bot] parse error: {e}, body: {}",
                         &text[..text.len().min(500)]
                     );
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if wait_or_stop(&mut shutdown, 5).await {
+                        return Ok(());
+                    }
                     continue;
                 }
             };
@@ -290,13 +320,16 @@ impl TelegramBot {
                     .error_code
                     .map_or_else(|| "-".into(), |c| c.to_string());
                 crate::log::error!("[telegram-bot] getUpdates returned error {code}: {desc}");
-                if body.error_code == Some(409) {
+                let backoff = if body.error_code == Some(409) {
                     crate::log::warn!(
                         "[telegram-bot] multiple bot instances detected, backing off for 30s"
                     );
-                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    30
                 } else {
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    5
+                };
+                if wait_or_stop(&mut shutdown, backoff).await {
+                    return Ok(());
                 }
                 continue;
             }
@@ -741,6 +774,14 @@ impl TelegramBot {
     }
 }
 
+/// 退避等待；期间收到停止信号立即返回 `true`（调用方应结束轮询）。
+async fn wait_or_stop(shutdown: &mut tokio::sync::watch::Receiver<bool>, secs: u64) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(std::time::Duration::from_secs(secs)) => false,
+        _ = shutdown.changed() => true,
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -807,5 +848,22 @@ mod tests {
         assert!(!text.contains("仅显示前"));
         assert_eq!(rows.len(), 2); // 1 行模型 + 1 行返回
         assert_eq!(rows[0][0].callback_data, "ms:0:0");
+    }
+
+    /// 关闭桌面端开关时，退避等待必须立即结束，而不是等满完整时长。
+    #[tokio::test]
+    async fn wait_or_stop_returns_on_shutdown_signal() {
+        let (tx, mut rx) = tokio::sync::watch::channel(false);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let _ = tx.send(true);
+        });
+        assert!(wait_or_stop(&mut rx, 5).await, "停止信号应打断退避等待");
+    }
+
+    #[tokio::test]
+    async fn wait_or_stop_times_out_without_signal() {
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        assert!(!wait_or_stop(&mut rx, 0).await, "无停止信号时应正常超时");
     }
 }

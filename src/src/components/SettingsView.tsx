@@ -186,6 +186,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const apiUrl = useSettingsStore((s) => s.apiUrl)
   const setApiUrl = useSettingsStore((s) => s.setApiUrl)
   const [restarting, setRestarting] = useState(false)
+  // 关闭窗口后是否隐藏到托盘继续运行（桌面端）
+  const [closeToTray, setCloseToTray] = useState(true)
+  // 桌面端可选远程入口（默认关闭）
+  const [mcpServerEnabled, setMcpServerEnabled] = useState(false)
+  const [telegramBotEnabled, setTelegramBotEnabled] = useState(false)
+  const [mcpBind, setMcpBind] = useState("")
+  const [serviceError, setServiceError] = useState<string | null>(null)
   // Social notification state
   const [social, setSocial] = useState<SocialConfig>({
     notify_channel: "telegram",
@@ -301,6 +308,40 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     [agentSettings]
   )
 
+  // 关闭窗口后继续后台运行：立刻更新窗口行为，同时持久化到 [desktop] 配置。
+  const saveCloseToTray = useCallback(
+    async (enabled: boolean) => {
+      const previous = closeToTray
+      setCloseToTray(enabled)
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        await invoke("set_close_to_tray", { enabled })
+      } catch (e) {
+        console.error("保存后台运行设置失败", e)
+        setCloseToTray(previous)
+      }
+    },
+    [closeToTray]
+  )
+
+  // 开启会立即启动/停止对应服务；失败时回滚开关并把原因显示出来。
+  const saveDesktopService = useCallback(
+    async (kind: "mcp" | "telegram", enabled: boolean) => {
+      setServiceError(null)
+      const setter = kind === "mcp" ? setMcpServerEnabled : setTelegramBotEnabled
+      const previous = kind === "mcp" ? mcpServerEnabled : telegramBotEnabled
+      setter(enabled)
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        await invoke(kind === "mcp" ? "set_desktop_mcp" : "set_desktop_telegram", { enabled })
+      } catch (e) {
+        setter(previous)
+        setServiceError(typeof e === "string" ? e : e instanceof Error ? e.message : String(e))
+      }
+    },
+    [mcpServerEnabled, telegramBotEnabled]
+  )
+
   // Load on mount — initialization fetch outside React data flow
 
   useEffect(() => {
@@ -311,9 +352,29 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       ;(async () => {
         const { invoke } = await import("@tauri-apps/api/core")
         try {
-          const cfg = (await invoke("get_config")) as { social?: Partial<SocialConfig> }
+          const cfg = (await invoke("get_config")) as {
+            social?: Partial<SocialConfig>
+            desktop?: {
+              close_to_tray?: boolean
+              mcp_server?: boolean
+              telegram_bot?: boolean
+              mcp_bind?: string
+            }
+          }
           if (cfg?.social) {
             setSocial((s) => ({ ...s, ...cfg.social }))
+          }
+          if (typeof cfg?.desktop?.close_to_tray === "boolean") {
+            setCloseToTray(cfg.desktop.close_to_tray)
+          }
+          if (typeof cfg?.desktop?.mcp_server === "boolean") {
+            setMcpServerEnabled(cfg.desktop.mcp_server)
+          }
+          if (typeof cfg?.desktop?.telegram_bot === "boolean") {
+            setTelegramBotEnabled(cfg.desktop.telegram_bot)
+          }
+          if (typeof cfg?.desktop?.mcp_bind === "string") {
+            setMcpBind(cfg.desktop.mcp_bind)
           }
         } catch {
           /* ignore */
@@ -493,6 +554,54 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   }
                 />
               </SettingsSection>
+
+              {isTauri && (
+                <>
+                  <SettingsSection title="后台运行">
+                    <SettingRow
+                      label="关闭窗口后继续运行"
+                      hint="隐藏到菜单栏，自动化任务与 agent 在后台继续执行"
+                      control={
+                        <Switch
+                          checked={closeToTray}
+                          onCheckedChange={(enabled) => void saveCloseToTray(enabled)}
+                        />
+                      }
+                    />
+                  </SettingsSection>
+
+                  <SettingsSection title="远程访问">
+                    <SettingRow
+                      label="MCP 服务"
+                      hint={
+                        mcpBind
+                          ? `允许其他 agent 通过 MCP 使用本机能力（监听 ${mcpBind}）`
+                          : "允许其他 agent 通过 MCP 使用本机能力"
+                      }
+                      control={
+                        <Switch
+                          checked={mcpServerEnabled}
+                          onCheckedChange={(enabled) => void saveDesktopService("mcp", enabled)}
+                        />
+                      }
+                    />
+                    <SettingRow
+                      label="Telegram 机器人"
+                      hint="用 Telegram 对话管理 agent（使用通知渠道里的凭据）"
+                      control={
+                        <Switch
+                          checked={telegramBotEnabled}
+                          onCheckedChange={(enabled) =>
+                            void saveDesktopService("telegram", enabled)
+                          }
+                        />
+                      }
+                    />
+                  </SettingsSection>
+
+                  {serviceError && <p className="text-danger text-caption">{serviceError}</p>}
+                </>
+              )}
 
               {isTauri && (
                 <SettingsSection title="操作">
