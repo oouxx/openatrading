@@ -51,7 +51,7 @@ pub async fn cmd_gateway_run(cron_only: bool, web_only: bool, no_mcp: bool) -> R
     };
 
     // ── Automation 调度中枢(内置定时任务 + 用户自动化)──
-    let automation_hub = AutomationHub::new(gateway.automation.clone());
+    let automation_hub = AutomationHub::with_owner(gateway.automation.clone(), "gateway");
     let cron_cfg = app_config.cron.as_ref().map_or_else(
         || CronConfig {
             enabled: true,

@@ -14,6 +14,7 @@ import {
   useTriggerAutomation,
   useUpdateAutomation,
 } from "@/hooks/query/useAutomations"
+import { isTauri } from "@/lib/env"
 import type { Automation, NextRuns, RunQuery } from "@/types/automation"
 
 /** Stable fallback so useMemo dependencies don't change on every render. */
@@ -54,6 +55,12 @@ export default function AutomationsView() {
 
   const unreadCount = runs.filter((r) => r.unread).length
   const filtered = Boolean(runsFilter.unread || runsFilter.active)
+
+  // 后台调度状态：本进程没在调度时，任务到点不会执行，必须让用户看见。
+  // 若租约被另一个宿主持有（如 gateway 服务），运行仍在发生，只需轻提示。
+  const runner = automationsQuery.data?.runner
+  const schedulerIdle = runner != null && !runner.active
+  const ownerLabel = runner?.owner ? runner.owner.split("#")[0] : null
 
   // 所有写操作共用一个错误位：动作失败必须可见，否则用户看到的就是「点了没反应」。
   const failed = [
@@ -100,6 +107,24 @@ export default function AutomationsView() {
           </Button>
         </div>
       )}
+
+      {schedulerIdle &&
+        (ownerLabel ? (
+          <p className="text-tertiary text-caption">后台调度由 {ownerLabel} 进程负责</p>
+        ) : (
+          <div
+            role="status"
+            className="border-warning/25 bg-warning-bg flex items-start gap-2 rounded-lg border px-3 py-2"
+          >
+            <AlertTriangle className="text-warning mt-0.5 size-3.5 shrink-0" />
+            <p className="text-warning text-caption leading-5">
+              后台调度未运行，定时任务不会自动执行。
+              {isTauri
+                ? "在设置中开启「关闭窗口后继续运行」后生效。"
+                : "启动 openatrading gateway 后生效。"}
+            </p>
+          </div>
+        ))}
 
       {/* ── 定时任务 ── */}
       <section className="flex flex-col gap-3">

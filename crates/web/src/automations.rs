@@ -139,9 +139,19 @@ fn ipc_error(e: impl std::fmt::Display) -> String {
 }
 
 /// GET /api/automations
+///
+/// `runner` 描述后台调度状态：`active` 表示本进程在调度，`owner` 是租约持有者
+/// （可能是另一个宿主）。前端据此提示「任务到点是否真的会执行」。
 pub async fn list_automations_data(hub: &Arc<AutomationHub>) -> Result<serde_json::Value, String> {
     let list = hub.store().list().map_err(ipc_error)?;
-    Ok(json!({ "automations": list }))
+    let next_runs = hub.next_run_times().await;
+    let active = hub.is_scheduler_active().await;
+    let owner = hub.store().scheduler_lease_owner().map_err(ipc_error)?;
+    Ok(json!({
+        "automations": list,
+        "next_runs": next_runs,
+        "runner": { "active": active, "owner": owner },
+    }))
 }
 
 /// GET /api/automations/runs?automation_id=&unread=&active=&limit=

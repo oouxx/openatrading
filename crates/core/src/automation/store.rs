@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::model::{
     validate, Automation, AutomationId, AutomationPatch, NewAutomation, NewRun, RunStatus,
@@ -16,6 +16,10 @@ use super::model::{
 
 /// 运行记录保留天数。
 const RUN_RETENTION_DAYS: u32 = 30;
+
+/// 调度器租约的有效期。持锁进程每 60 秒续租一次,超过该时长未续租即视为
+/// 进程已经退出,其他宿主可以接管——因此崩溃后最多一个周期内自动恢复。
+pub const SCHEDULER_LEASE_TTL_SECS: i64 = 120;
 
 /// 一条运行记录(收件箱条目)。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -81,7 +85,13 @@ impl AutomationStore {
                 archived INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_runs_auto
-                ON automation_runs(automation_id, started_at DESC);",
+                ON automation_runs(automation_id, started_at DESC);
+            CREATE TABLE IF NOT EXISTS scheduler_lease (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                owner TEXT NOT NULL,
+                pid INTEGER NOT NULL,
+                heartbeat INTEGER NOT NULL
+            );",
         )?;
         // 增量迁移:老库补列(列已存在时 ALTER 报错,忽略即可)。
         for column in [
@@ -440,6 +450,87 @@ impl AutomationStore {
         Ok(())
     }
 
+    /// 尝试成为唯一的调度器宿主。
+    ///
+    /// 租约存在且未过期时返回 `false`(由另一个进程负责调度);本进程已经是
+    /// 持有者时视为成功——即使没有发生写入,续租路径也不会让调用方误判。
+    ///
+    /// # Errors
+    /// 读写租约表失败。
+    pub fn try_acquire_scheduler_lease(&self, owner: &str) -> Result<bool> {
+        let conn = self.lock_conn()?;
+        let changed = conn.execute(
+            "INSERT INTO scheduler_lease (id, owner, pid, heartbeat)
+             VALUES (1, ?1, ?2, unixepoch())
+             ON CONFLICT(id) DO UPDATE SET
+                 owner = excluded.owner,
+                 pid = excluded.pid,
+                 heartbeat = excluded.heartbeat
+             WHERE scheduler_lease.heartbeat < unixepoch() - ?3",
+            rusqlite::params![owner, std::process::id(), SCHEDULER_LEASE_TTL_SECS],
+        )?;
+        if changed > 0 {
+            return Ok(true);
+        }
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT owner FROM scheduler_lease WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(current.as_deref() == Some(owner))
+    }
+
+    /// 续租。返回 `false` 表示租约已被其他进程接管,本进程必须停止调度。
+    ///
+    /// # Errors
+    /// 写租约表失败。
+    pub fn renew_scheduler_lease(&self, owner: &str) -> Result<bool> {
+        let conn = self.lock_conn()?;
+        let changed = conn.execute(
+            "UPDATE scheduler_lease SET heartbeat = unixepoch() WHERE id = 1 AND owner = ?1",
+            [owner],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// 进程正常退出前主动释放租约,避免下一个宿主等待租约过期。
+    ///
+    /// # Errors
+    /// 写租约表失败。
+    pub fn release_scheduler_lease(&self, owner: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "DELETE FROM scheduler_lease WHERE id = 1 AND owner = ?1",
+            [owner],
+        )?;
+        Ok(())
+    }
+
+    /// 当前有效的租约持有者;没有宿主或租约已过期时返回 `None`。
+    ///
+    /// # Errors
+    /// 读租约表失败。
+    pub fn scheduler_lease_owner(&self) -> Result<Option<String>> {
+        let conn = self.lock_conn()?;
+        conn.query_row(
+            "SELECT owner FROM scheduler_lease
+             WHERE id = 1 AND heartbeat >= unixepoch() - ?1",
+            [SCHEDULER_LEASE_TTL_SECS],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    #[cfg(test)]
+    fn expire_scheduler_lease(&self) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute("UPDATE scheduler_lease SET heartbeat = 0 WHERE id = 1", [])?;
+        Ok(())
+    }
+
     fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         self.conn
             .lock()
@@ -493,4 +584,91 @@ fn row_to_automation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Automation> {
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_store() -> (tempfile::TempDir, AutomationStore) {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let store = AutomationStore::open(&dir.path().join("data.db"))
+            .unwrap_or_else(|e| panic!("open store: {e}"));
+        (dir, store)
+    }
+
+    /// 同一份数据库同时只允许一个宿主调度;释放后另一个可以立即接管。
+    #[test]
+    fn scheduler_lease_is_exclusive_and_transferable() {
+        let (_dir, store) = temp_store();
+
+        assert!(
+            store
+                .try_acquire_scheduler_lease("desktop:1")
+                .unwrap_or(false),
+            "第一个宿主应拿到租约"
+        );
+        assert!(
+            !store
+                .try_acquire_scheduler_lease("gateway:2")
+                .unwrap_or(true),
+            "已有有效租约时第二个宿主不能拿到"
+        );
+        assert_eq!(
+            store.scheduler_lease_owner().unwrap_or(None).as_deref(),
+            Some("desktop:1")
+        );
+
+        assert!(store.renew_scheduler_lease("desktop:1").unwrap_or(false));
+        assert!(
+            !store.renew_scheduler_lease("gateway:2").unwrap_or(true),
+            "非持有者不能续租"
+        );
+
+        store
+            .release_scheduler_lease("desktop:1")
+            .unwrap_or_else(|e| panic!("release: {e}"));
+        assert!(
+            store
+                .try_acquire_scheduler_lease("gateway:2")
+                .unwrap_or(false),
+            "释放后另一个宿主应能接管"
+        );
+    }
+
+    /// 持有者崩溃(不再续租)后,租约过期即可被接管。
+    #[test]
+    fn expired_scheduler_lease_is_reclaimable() {
+        let (_dir, store) = temp_store();
+        assert!(store
+            .try_acquire_scheduler_lease("desktop:1")
+            .unwrap_or(false));
+
+        store
+            .expire_scheduler_lease()
+            .unwrap_or_else(|e| panic!("expire: {e}"));
+        assert_eq!(
+            store.scheduler_lease_owner().unwrap_or(None),
+            None,
+            "过期租约不应再被报告为有效持有者"
+        );
+        assert!(
+            store
+                .try_acquire_scheduler_lease("gateway:2")
+                .unwrap_or(false),
+            "过期租约应可被接管"
+        );
+    }
+
+    /// 同一进程重复 start 时,重复获取租约不能把自己判成"已被占用"。
+    #[test]
+    fn reacquiring_own_lease_succeeds() {
+        let (_dir, store) = temp_store();
+        assert!(store
+            .try_acquire_scheduler_lease("desktop:1")
+            .unwrap_or(false));
+        assert!(store
+            .try_acquire_scheduler_lease("desktop:1")
+            .unwrap_or(false));
+    }
 }

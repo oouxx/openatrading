@@ -2,6 +2,7 @@
 //! 与用户自定义自动化。
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -47,6 +48,8 @@ pub(crate) use add_job;
 /// 只更新内部映射,下次 `start` 生效。
 pub struct AutomationHub {
     store: Arc<AutomationStore>,
+    /// 宿主标签(desktop / gateway),用于租约标识与日志。
+    owner: String,
     ctx: std::sync::OnceLock<Arc<AppContext>>,
     scheduler: Mutex<Option<JobScheduler>>,
     /// 用户自动化 job 映射:automation_id → scheduler job id。
@@ -55,18 +58,36 @@ pub struct AutomationHub {
     fingerprint: Mutex<Option<String>>,
     /// 正在运行的 automation 集合(并发保护:同一任务同时只有一个 run)。
     running: Mutex<HashSet<AutomationId>>,
+    /// 首次 start 时记录的 builtin 配置;租约接管后重建调度器时复用。
+    builtin: Mutex<Option<CronConfig>>,
+    /// 续租/接管循环只允许启动一次。
+    watcher_started: AtomicBool,
 }
 
 impl AutomationHub {
     pub fn new(store: Arc<AutomationStore>) -> Arc<Self> {
+        Self::with_owner(store, "standalone")
+    }
+
+    /// 指定宿主标签。租约按「标签 + 进程 id」标识,同一台机器上运行多个宿主时
+    /// 只有先拿到租约的那个会真正注册 cron job。
+    pub fn with_owner(store: Arc<AutomationStore>, owner: impl Into<String>) -> Arc<Self> {
         Arc::new(Self {
             store,
+            owner: owner.into(),
             ctx: std::sync::OnceLock::new(),
             scheduler: Mutex::new(None),
             jobs: Mutex::new(HashMap::new()),
             fingerprint: Mutex::new(None),
             running: Mutex::new(HashSet::new()),
+            builtin: Mutex::new(None),
+            watcher_started: AtomicBool::new(false),
         })
+    }
+
+    /// 本进程的租约标识(标签 + pid)。
+    fn lease_owner(&self) -> String {
+        format!("{}#{}", self.owner, std::process::id())
     }
 
     /// 注入运行上下文;重复调用时首次生效(进程内只允许一个调度器实例)。
@@ -99,40 +120,121 @@ impl AutomationHub {
     ///
     /// `builtin` 为 `Some` 时同时注册内置采集/推送任务(仅 gateway 进程)。
     ///
+    /// 同一份数据库只允许一个宿主调度:拿不到租约时进入待命,由每分钟一次的
+    /// watchdog 在租约释放/过期后自动接管。这样桌面端、gateway、轻量进程
+    /// 同时运行也不会重复执行同一任务。
+    ///
     /// # Errors
     /// 调度器创建/启动失败或任务注册失败。
     pub async fn start(self: &Arc<Self>, builtin: Option<CronConfig>) -> Result<()> {
-        {
-            let mut guard = self.scheduler.lock().await;
-            if guard.is_none() {
-                let scheduler = JobScheduler::new().await?;
-                scheduler.start().await?;
-                *guard = Some(scheduler);
-                crate::log::info!("[automation] scheduler started (tz=Asia/Shanghai)");
-            }
+        if let Some(cfg) = builtin {
+            *self.builtin.lock().await = Some(cfg);
         }
-        if let Some(cfg) = builtin.filter(|c| c.enabled) {
-            register_builtin(self, cfg).await?;
-        }
-        self.reload().await?;
 
-        // Reconcile:每分钟比对任务表指纹,感知跨进程(tauri)的 CRUD。
+        if self
+            .store
+            .try_acquire_scheduler_lease(&self.lease_owner())?
+        {
+            self.activate().await?;
+        } else {
+            let owner = self.store.scheduler_lease_owner().ok().flatten();
+            crate::log::info!(
+                "[automation] scheduler standby (owner={}): lease held by {owner:?}",
+                self.owner
+            );
+        }
+
+        if self.watcher_started.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        // 续租 + 接管 + 跨进程 CRUD 感知,每分钟一轮。
         let watcher = Arc::clone(self);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
-                if let Err(e) = watcher.store.reap_stale_runs(86_400) {
-                    crate::log::warn!("[automation] reap stale runs: {e}");
-                }
-                if watcher.reconcile_tick().await {
-                    if let Err(e) = watcher.reload().await {
-                        crate::log::warn!("[automation] reconcile reload failed: {e}");
-                    }
+                if let Err(e) = watcher.watchdog_tick().await {
+                    crate::log::warn!("[automation] watchdog tick failed: {e}");
                 }
             }
         });
+        Ok(())
+    }
+
+    /// 调度器是否在本进程内运行(持有租约并注册了 cron job)。
+    pub async fn is_scheduler_active(&self) -> bool {
+        self.scheduler.lock().await.is_some()
+    }
+
+    /// 正常退出时主动释放调度租约;失败只记日志,租约也会自然过期。
+    pub fn release_scheduler_lease(&self) {
+        if let Err(e) = self.store.release_scheduler_lease(&self.lease_owner()) {
+            crate::log::warn!("[automation] release scheduler lease: {e}");
+        }
+    }
+
+    /// 创建并启动调度器,注册 builtin(若有)并加载用户任务。
+    async fn activate(self: &Arc<Self>) -> Result<()> {
+        let created = {
+            let mut guard = self.scheduler.lock().await;
+            if guard.is_none() {
+                let scheduler = JobScheduler::new().await?;
+                scheduler.start().await?;
+                *guard = Some(scheduler);
+                crate::log::info!(
+                    "[automation] scheduler started (owner={}, tz=Asia/Shanghai)",
+                    self.owner
+                );
+                true
+            } else {
+                false
+            }
+        };
+
+        // builtin 只在新建调度器时注册一次;reload 只重建用户任务。
+        if created {
+            let builtin = self.builtin.lock().await.clone();
+            if let Some(cfg) = builtin.filter(|c| c.enabled) {
+                register_builtin(self, cfg).await?;
+            }
+        }
+        self.reload().await
+    }
+
+    /// 停止本进程的调度器,进入待命状态。
+    async fn deactivate(&self) {
+        let scheduler = self.scheduler.lock().await.take();
+        self.jobs.lock().await.clear();
+        if let Some(mut scheduler) = scheduler {
+            if let Err(e) = scheduler.shutdown().await {
+                crate::log::warn!("[automation] scheduler shutdown failed: {e}");
+            }
+        }
+    }
+
+    /// watchdog:清理陈旧运行记录、续租、接管、感知跨进程 CRUD。
+    async fn watchdog_tick(self: &Arc<Self>) -> Result<()> {
+        if let Err(e) = self.store.reap_stale_runs(86_400) {
+            crate::log::warn!("[automation] reap stale runs: {e}");
+        }
+
+        let owner = self.lease_owner();
+        if self.is_scheduler_active().await && !self.store.renew_scheduler_lease(&owner)? {
+            crate::log::warn!("[automation] scheduler lease lost, standing by");
+            self.deactivate().await;
+        }
+        if !self.is_scheduler_active().await && self.store.try_acquire_scheduler_lease(&owner)? {
+            crate::log::info!(
+                "[automation] scheduler lease acquired (owner={})",
+                self.owner
+            );
+            self.activate().await?;
+        }
+        if self.is_scheduler_active().await && self.reconcile_tick().await {
+            self.reload().await?;
+        }
         Ok(())
     }
 

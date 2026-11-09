@@ -24,10 +24,17 @@ function toSearchParams(query: RunQuery): string {
   return s ? `?${s}` : ""
 }
 
+/** 后台调度状态。`owner` 是租约持有者（`desktop#1234` / `gateway#1234`）。 */
+export interface AutomationRunner {
+  active: boolean
+  owner: string | null
+}
+
 /** 全部自动化任务 */
 export interface AutomationsResponse {
   automations: Automation[]
   next_runs: NextRuns
+  runner?: AutomationRunner
 }
 
 export function useAutomations() {
@@ -35,6 +42,9 @@ export function useAutomations() {
     queryKey: automationKeys.all,
     queryFn: () => fetchJson<AutomationsResponse>("/api/automations"),
     staleTime: 10_000,
+    // 后台调度可能由另一个宿主接管/退出，轮询保证状态与下次运行时间不过期。
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   })
 }
 
