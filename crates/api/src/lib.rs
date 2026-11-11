@@ -6,11 +6,13 @@ pub mod sina;
 pub mod taoguba;
 pub mod utils;
 pub mod xuangubao;
+pub mod xueqiu;
 use cls::ClsClient;
 
 use cninfo::CninfoClient;
 use sina::SinaQuoteClient;
 use xuangubao::XuanguBaoClient;
+use xueqiu::XueqiuClient;
 
 use crate::eastmoney::EastmoneyClient;
 #[derive(Clone)]
@@ -20,6 +22,7 @@ pub struct Client {
     pub eastmoney: EastmoneyClient,
     pub cninfo: CninfoClient,
     pub sina: SinaQuoteClient,
+    pub xueqiu: XueqiuClient,
 }
 
 impl Client {
@@ -30,6 +33,7 @@ impl Client {
             eastmoney: EastmoneyClient::new(),
             cninfo: CninfoClient::new(),
             sina: SinaQuoteClient::new(),
+            xueqiu: XueqiuClient::new(),
         }
     }
 }
