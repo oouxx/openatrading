@@ -18,7 +18,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 const SkillEditor = lazy(() => import("./SkillEditor"))
 const RoleView = lazy(() => import("@/components/RoleView"))
 const WatchlistView = lazy(() => import("./WatchlistView"))
-const AutomationsView = lazy(() => import("./AutomationsView"))
 const SettingsView = lazy(() => import("./SettingsView"))
 
 function ViewFallback() {
@@ -128,10 +127,6 @@ export default function AppShell() {
           ) : mode === "roles" ? (
             <LazyView>
               <RoleView />
-            </LazyView>
-          ) : mode === "automations" ? (
-            <LazyView>
-              <AutomationsView />
             </LazyView>
           ) : mode === "watchlist" ? (
             <LazyView>

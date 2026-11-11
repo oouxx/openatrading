@@ -560,7 +560,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   <SettingsSection title="后台运行">
                     <SettingRow
                       label="关闭窗口后继续运行"
-                      hint="隐藏到菜单栏，自动化任务与 agent 在后台继续执行"
+                      hint="隐藏到菜单栏，agent 在后台继续执行"
                       control={
                         <Switch
                           checked={closeToTray}

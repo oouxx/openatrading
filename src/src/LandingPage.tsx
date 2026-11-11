@@ -13,7 +13,6 @@ import {
   Puzzle,
   Star,
   Terminal,
-  Timer,
   Trophy,
   type LucideIcon,
 } from "lucide-react"
@@ -77,11 +76,6 @@ const FEATURES: Feature[] = [
     icon: History,
     title: "行情回放",
     desc: "逐分钟复盘全天行情，异动信号与事件标注按时间轴回放。",
-  },
-  {
-    icon: Timer,
-    title: "定时自动化",
-    desc: "按 cron 在后台巡检行情、推送财联社电报，结果进入收件箱。",
   },
   {
     icon: MonitorSmartphone,
