@@ -28,6 +28,7 @@ import { McpTemplateGrid } from "./McpTemplateGrid"
 import { ExtensionCard } from "./ExtensionCard"
 import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
+import { AppUpdaterSection } from "./AppUpdater"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
 import { AlertTriangle, CheckIcon, Info, Plus, RefreshCw, Search, Server } from "lucide-react"
 import {
@@ -940,14 +941,17 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
           )}
 
           {activeTab === "about" && (
-            <SettingsSection title="关于">
-              {aboutRows.map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between py-3">
-                  <span className="text-secondary text-body">{label}</span>
-                  <span className="text-primary font-number text-caption">{value}</span>
-                </div>
-              ))}
-            </SettingsSection>
+            <>
+              <SettingsSection title="关于">
+                {aboutRows.map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between py-3">
+                    <span className="text-secondary text-body">{label}</span>
+                    <span className="text-primary font-number text-caption">{value}</span>
+                  </div>
+                ))}
+              </SettingsSection>
+              <AppUpdaterSection />
+            </>
           )}
         </div>
       </div>

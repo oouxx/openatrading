@@ -147,11 +147,17 @@ cask 安装时会自动清除 macOS 隔离属性，装完直接双击打开即�
 `.dmg` / `.deb` / `.AppImage` / `.msi` / `.exe`。自行编译则在
 `src-tauri/target/release/bundle/` 获取安装包。
 
-> **从网页下载 DMG 的用户注意**：Release 页面的安装包是 ad-hoc 签名（未经 Apple 公证），首次打开会被 Gatekeeper 拦下。先清除隔离属性再打开：
+> **从网页下载 DMG 的用户注意**：安装包是 ad-hoc 签名（未经 Apple 公证），首次打开需要手动授权（「系统设置 → 隐私与安全性 → 仍要打开」）。如果系统提示「应用已损坏」而没有授权入口，执行一次下面的命令清除下载隔离标记，之后启动不会再提示：
 >
 > ```bash
 > xattr -dr com.apple.quarantine /Applications/OpenATrading.app
 > ```
+
+应用内更新：打开「设置 → 关于 → 更新」检查并安装新版本。更新包只从 GitHub
+Releases 读取，安装前会用编译进客户端的公钥校验 minisign 签名；安装完成后按提示
+重启客户端即可。Windows 安装器会自动重启；Linux 仅 AppImage 安装支持应用内更新。
+
+> **发版维护者**：CI 需要仓库 secret `TAURI_SIGNING_PRIVATE_KEY`（`bunx @tauri-apps/cli signer generate` 生成，私钥不要入库，丢失后已发布客户端将无法验证后续更新）。对应公钥在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。
 
 ## Configuration
 

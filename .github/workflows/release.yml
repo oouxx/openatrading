@@ -10,6 +10,15 @@ name: Release
 # 产物去向：
 #   本仓库 release ← 全部 CLI 二进制 + 全平台安装包（含 .dmg）
 #   tap 仓库 release ← 仅 DMG（cask 的 url 指向那里）+ 更新 cask
+#
+# 应用内更新：
+#   - 所有桌面端构建都会额外产出更新包（macOS .app.tar.gz / Linux AppImage.tar.gz /
+#     Windows nsis.zip、msi.zip）及 minisign `.sig`；
+#   - `publish-release` 用 scripts/generate-latest-json.sh 汇总出 latest.json，
+#     客户端从 releases/latest/download/latest.json 读取（见 tauri.conf.json）。
+#   - 必需 secret：TAURI_SIGNING_PRIVATE_KEY（`bunx @tauri-apps/cli signer generate`
+#     生成的私钥内容）；TAURI_SIGNING_PRIVATE_KEY_PASSWORD 仅在私钥有密码时设置。
+#     公钥已写入 tauri.conf.json，替换私钥时必须同步替换公钥，否则客户端拒绝安装。
 
 on:
   push:
@@ -94,6 +103,8 @@ jobs:
       - name: 构建桌面端（复用上面的 target/）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx @tauri-apps/cli@^2 build --target x86_64-unknown-linux-gnu
       - name: 收集产物
         run: |
@@ -102,6 +113,12 @@ jobs:
           cp target/x86_64-unknown-linux-gnu/release/openatrading dist/openatrading-x86_64-unknown-linux-gnu
           find target/x86_64-unknown-linux-gnu/release/bundle \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+          # updater 产物：按 latest.json 的 platform key 重命名
+          UPDATE_TGZ=$(find target/x86_64-unknown-linux-gnu/release/bundle/appimage \
+            -maxdepth 1 -type f -name '*.AppImage.tar.gz' -print -quit)
+          [ -n "$UPDATE_TGZ" ] || { echo "::error::缺少 Linux x86_64 更新包"; exit 1; }
+          cp "$UPDATE_TGZ" dist/openatrading-linux-x86_64.AppImage.tar.gz
+          cp "${UPDATE_TGZ}.sig" dist/openatrading-linux-x86_64.AppImage.tar.gz.sig
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
@@ -143,6 +160,8 @@ jobs:
       - name: 构建桌面端
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx @tauri-apps/cli@^2 build --target aarch64-unknown-linux-gnu
       - name: 收集产物
         run: |
@@ -151,6 +170,12 @@ jobs:
           cp target/aarch64-unknown-linux-gnu/release/openatrading dist/openatrading-aarch64-unknown-linux-gnu
           find target/aarch64-unknown-linux-gnu/release/bundle \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+          # updater 产物：按 latest.json 的 platform key 重命名
+          UPDATE_TGZ=$(find target/aarch64-unknown-linux-gnu/release/bundle/appimage \
+            -maxdepth 1 -type f -name '*.AppImage.tar.gz' -print -quit)
+          [ -n "$UPDATE_TGZ" ] || { echo "::error::缺少 Linux aarch64 更新包"; exit 1; }
+          cp "$UPDATE_TGZ" dist/openatrading-linux-aarch64.AppImage.tar.gz
+          cp "${UPDATE_TGZ}.sig" dist/openatrading-linux-aarch64.AppImage.tar.gz.sig
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
@@ -195,12 +220,16 @@ jobs:
       - name: 构建桌面端（aarch64 native）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx @tauri-apps/cli@^2 build --target aarch64-apple-darwin
       - name: 验证 aarch64 签名
         run: bash scripts/verify-macos-signature.sh target/aarch64-apple-darwin/release/bundle/macos/openatrading.app
       - name: 构建桌面端（x86_64 cross）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx @tauri-apps/cli@^2 build --target x86_64-apple-darwin
       - name: 验证 x64 签名
         run: bash scripts/verify-macos-signature.sh target/x86_64-apple-darwin/release/bundle/macos/openatrading.app
@@ -214,6 +243,15 @@ jobs:
           cp target/x86_64-apple-darwin/release/openatrading  dist/openatrading-x86_64-apple-darwin
           # dmg 里会有一个挂载用的 rw.*.dmg，必须排除
           find target -type f -name "openatrading_${V}_*.dmg" ! -name 'rw.*' -exec cp {} dist/ \;
+          # updater 产物：两个架构的输出同名，按 latest.json 的 platform key 重命名
+          for pair in "aarch64:darwin-aarch64" "x86_64:darwin-x86_64"; do
+            arch="${pair%%:*}"
+            key="${pair##*:}"
+            src="target/${arch}-apple-darwin/release/bundle/macos/openatrading.app.tar.gz"
+            [ -f "$src" ] || { echo "::error::缺少 ${arch} 更新包"; exit 1; }
+            cp "$src" "dist/openatrading-${key}.app.tar.gz"
+            cp "${src}.sig" "dist/openatrading-${key}.app.tar.gz.sig"
+          done
           ls -l dist
           for a in x64 aarch64; do
             [ -f "dist/openatrading_${V}_${a}.dmg" ] || { echo "::error::缺少 ${a} DMG"; exit 1; }
@@ -248,12 +286,20 @@ jobs:
       - name: 构建桌面端
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx @tauri-apps/cli@^2 build
       - name: 收集产物
         run: |
-          mkdir dist
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path dist | Out-Null
           Copy-Item "target/release/bundle/msi/*.msi" dist/
           Copy-Item "target/release/bundle/nsis/*.exe" dist/
+          # updater 产物：按 latest.json 的 platform key 重命名
+          Copy-Item "target/release/bundle/nsis/*.nsis.zip" "dist/openatrading-windows-x86_64.nsis.zip"
+          Copy-Item "target/release/bundle/nsis/*.nsis.zip.sig" "dist/openatrading-windows-x86_64.nsis.zip.sig"
+          Copy-Item "target/release/bundle/msi/*.msi.zip" "dist/openatrading-windows-x86_64.msi.zip"
+          Copy-Item "target/release/bundle/msi/*.msi.zip.sig" "dist/openatrading-windows-x86_64.msi.zip.sig"
           Get-ChildItem dist
         shell: pwsh
       - uses: actions/upload-artifact@v4
@@ -274,6 +320,8 @@ jobs:
        needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
+      # 必须先 checkout 再下载产物：checkout 默认会 git clean，晚于下载会删掉 dist/。
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -283,6 +331,10 @@ jobs:
           set -euo pipefail
           ls -l dist
           chmod +x dist/openatrading-* || true
+      - name: 生成 updater 清单 latest.json
+        env:
+          V: ${{ needs.meta.outputs.version }}
+        run: bash scripts/generate-latest-json.sh dist "$V" "${{ github.repository }}"
       - name: 创建/复用 release 并上传
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

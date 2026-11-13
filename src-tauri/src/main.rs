@@ -777,6 +777,9 @@ fn main() {
     let api_router = openatrading_web::build_router(app_state.clone());
 
     let app = tauri::Builder::default()
+        // 应用内更新：endpoint / 公钥见 tauri.conf.json 的 `plugins.updater`。
+        // 更新包签名由 CI 用 `TAURI_SIGNING_PRIVATE_KEY` 生成，客户端只持有公钥。
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
         .manage(api_router)
         .manage(DesktopPrefs {
