@@ -3,11 +3,11 @@
 #
 # 用法：generate-latest-json.sh <dist 目录> <版本号> <owner/repo>
 #
-# dist 目录里应包含构建 job 按 platform key 重命名后的更新包及其 `.sig`：
+# dist 目录里应包含各平台的更新包及其 `.sig`：
 #   openatrading-darwin-aarch64.app.tar.gz(.sig)
 #   openatrading-darwin-x86_64.app.tar.gz(.sig)
-#   openatrading-linux-aarch64.AppImage.tar.gz(.sig)
-#   openatrading-linux-x86_64.AppImage.tar.gz(.sig)
+#   openatrading_<version>_aarch64.AppImage(.sig)   # Linux 直接使用 AppImage
+#   openatrading_<version>_amd64.AppImage(.sig)
 #   openatrading-windows-x86_64.nsis.zip(.sig)
 #   openatrading-windows-x86_64.msi.zip(.sig)
 #
@@ -49,8 +49,9 @@ add_platform() {
 
 add_platform darwin-aarch64 openatrading-darwin-aarch64.app.tar.gz
 add_platform darwin-x86_64 openatrading-darwin-x86_64.app.tar.gz
-add_platform linux-aarch64 openatrading-linux-aarch64.AppImage.tar.gz
-add_platform linux-x86_64 openatrading-linux-x86_64.AppImage.tar.gz
+# Tauri 的 Linux updater 直接下载/替换 AppImage，没有额外的 tar.gz。
+add_platform linux-aarch64 "openatrading_${VERSION}_aarch64.AppImage"
+add_platform linux-x86_64 "openatrading_${VERSION}_amd64.AppImage"
 # Windows 更新器先找 `{os}-{arch}-{installer}`，找不到才退回 `{os}-{arch}`。
 add_platform windows-x86_64-nsis openatrading-windows-x86_64.nsis.zip
 add_platform windows-x86_64-msi openatrading-windows-x86_64.msi.zip

@@ -12,7 +12,7 @@ name: Release
 #   tap 仓库 release ← 仅 DMG（cask 的 url 指向那里）+ 更新 cask
 #
 # 应用内更新：
-#   - 所有桌面端构建都会额外产出更新包（macOS .app.tar.gz / Linux AppImage.tar.gz /
+#   - 所有桌面端构建都会额外产出更新包（macOS .app.tar.gz / Linux AppImage /
 #     Windows nsis.zip、msi.zip）及 minisign `.sig`；
 #   - `publish-release` 用 scripts/generate-latest-json.sh 汇总出 latest.json，
 #     客户端从 releases/latest/download/latest.json 读取（见 tauri.conf.json）。
@@ -113,12 +113,12 @@ jobs:
           cp target/x86_64-unknown-linux-gnu/release/openatrading dist/openatrading-x86_64-unknown-linux-gnu
           find target/x86_64-unknown-linux-gnu/release/bundle \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
-          # updater 产物：按 latest.json 的 platform key 重命名
-          UPDATE_TGZ=$(find target/x86_64-unknown-linux-gnu/release/bundle/appimage \
-            -maxdepth 1 -type f -name '*.AppImage.tar.gz' -print -quit)
-          [ -n "$UPDATE_TGZ" ] || { echo "::error::缺少 Linux x86_64 更新包"; exit 1; }
-          cp "$UPDATE_TGZ" dist/openatrading-linux-x86_64.AppImage.tar.gz
-          cp "${UPDATE_TGZ}.sig" dist/openatrading-linux-x86_64.AppImage.tar.gz.sig
+          # AppImage 本身就是 updater 包（Tauri 只额外产出 .sig），
+          # AppImage 已由上面的 find 复制，这里补上同名签名文件。
+          APPIMAGE=$(find target/x86_64-unknown-linux-gnu/release/bundle/appimage \
+            -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          [ -n "$APPIMAGE" ] || { echo "::error::缺少 Linux x86_64 AppImage"; exit 1; }
+          cp "${APPIMAGE}.sig" "dist/$(basename "$APPIMAGE").sig"
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
@@ -170,12 +170,12 @@ jobs:
           cp target/aarch64-unknown-linux-gnu/release/openatrading dist/openatrading-aarch64-unknown-linux-gnu
           find target/aarch64-unknown-linux-gnu/release/bundle \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
-          # updater 产物：按 latest.json 的 platform key 重命名
-          UPDATE_TGZ=$(find target/aarch64-unknown-linux-gnu/release/bundle/appimage \
-            -maxdepth 1 -type f -name '*.AppImage.tar.gz' -print -quit)
-          [ -n "$UPDATE_TGZ" ] || { echo "::error::缺少 Linux aarch64 更新包"; exit 1; }
-          cp "$UPDATE_TGZ" dist/openatrading-linux-aarch64.AppImage.tar.gz
-          cp "${UPDATE_TGZ}.sig" dist/openatrading-linux-aarch64.AppImage.tar.gz.sig
+          # AppImage 本身就是 updater 包（Tauri 只额外产出 .sig），
+          # AppImage 已由上面的 find 复制，这里补上同名签名文件。
+          APPIMAGE=$(find target/aarch64-unknown-linux-gnu/release/bundle/appimage \
+            -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          [ -n "$APPIMAGE" ] || { echo "::error::缺少 Linux aarch64 AppImage"; exit 1; }
+          cp "${APPIMAGE}.sig" "dist/$(basename "$APPIMAGE").sig"
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
