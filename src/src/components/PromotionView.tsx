@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import MiniChartPreview from "@/components/MiniChartPreview"
 import { StatusBanner } from "@/components/status-banner"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
 import { formatCompactNumber } from "@/lib/format"
@@ -333,32 +334,24 @@ export default function PromotionView() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-3 py-16">
-        <span className="bg-brand size-2 animate-pulse rounded-full" />
-        <span className="text-caption text-tertiary font-number">加载晋级分析数据...</span>
+      <div className="p-4">
+        <DataLoading label="加载晋级分析数据…" size="table" rows={5} />
       </div>
     )
   }
 
   if (todayError && allItems.length === 0) {
     return (
-      <div className="p-6">
-        <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
-          <p className="text-danger mb-3">{todayError.message}</p>
-          <Button variant="link" size="xs" className="h-auto p-0" onClick={retry}>
-            重试
-          </Button>
-        </div>
+      <div className="p-4">
+        <DataError title="涨停数据加载失败" description={todayError.message} onRetry={retry} />
       </div>
     )
   }
 
   if (!allItems.length) {
     return (
-      <div className="p-6">
-        <div className="bg-surface border-hairline p-card-inner text-caption text-tertiary rounded-lg border text-center">
-          今日暂无涨停数据
-        </div>
+      <div className="p-4">
+        <DataEmpty title="今日暂无涨停数据" size="table" />
       </div>
     )
   }
@@ -405,21 +398,20 @@ export default function PromotionView() {
   ]
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="@container space-y-4 p-4 @2xl:p-6">
       <div className="@container">
         {/* ST 是否计入由下方「隐藏ST」勾选框表达，标题不再复述 */}
         <div className="text-caption text-tertiary mb-3">全市场晋级概览</div>
-        <div className="grid grid-cols-2 gap-3 @sm:grid-cols-3">
+        <div className="bg-hairline border-hairline grid grid-cols-2 gap-px overflow-hidden rounded-lg border @md:grid-cols-3">
           {statCards.map((card) => (
-            <div
-              key={card.label}
-              className={`bg-surface p-card-inner rounded-lg border text-center ${card.hl ? "border-brand bg-brand/5" : "border-hairline"}`}
-            >
-              <div className="text-caption text-secondary">{card.label}</div>
-              <div className={`font-number text-h1 mt-1 ${card.tone ?? "text-primary"}`}>
+            <div key={card.label} className="bg-surface px-4 py-3">
+              <div className="text-tertiary text-micro">{card.label}</div>
+              <div
+                className={`font-number text-h1 mt-1 font-semibold ${card.tone ?? "text-primary"}`}
+              >
                 {card.value}
               </div>
-              <div className="text-caption text-tertiary mt-1">{card.sub}</div>
+              <div className="text-tertiary text-micro mt-1">{card.sub}</div>
             </div>
           ))}
         </div>
@@ -569,7 +561,7 @@ export default function PromotionView() {
                           断板 {row.brokenCount}只
                         </span>
                       </span>
-                      <span className="bg-hover block h-2 w-full overflow-hidden rounded-full">
+                      <span className="bg-hover block h-1.5 w-full overflow-hidden rounded-full">
                         <span
                           className={`block h-full rounded-full transition-[width] ${
                             row.rate >= 0.5 ? "bg-up" : "bg-warning"

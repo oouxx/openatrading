@@ -11,6 +11,8 @@ import {
 import { subscribeRealtimeBatch, type RealtimeQuote } from "@/hooks/useRealtimeStream"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DataEmpty, DataLoading } from "@/components/data-state"
+import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
@@ -78,7 +80,6 @@ export default function WatchlistView() {
     [sortField]
   )
 
-  // ── Add-stock search ──
   const handleAddSearch = useCallback(async (q: string) => {
     setAddQuery(q)
     if (!q.trim()) {
@@ -146,94 +147,89 @@ export default function WatchlistView() {
     })
   }, [richList, sortField, sortDir, localSearch])
 
-  // ── Sort icon ──
-  const renderSortIcon = (field: SortField) => {
-    if (sortField !== field) return <ArrowUpDown className="ml-0.5 inline size-2.5 opacity-40" />
-    return sortDir === "asc" ? (
-      <ArrowUp className="ml-0.5 inline size-2.5" />
-    ) : (
-      <ArrowDown className="ml-0.5 inline size-2.5" />
-    )
-  }
-
   return (
     <div className="flex h-full">
       {/* Main content */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="max-w-wide mx-auto px-6 py-6">
+        <div className="mx-auto w-full max-w-5xl px-6 py-8">
           {/* ── Header ── */}
-          <div className="mb-4 flex items-center gap-3">
-            <Star className="text-warning size-5" />
-            <h1 className="text-h1 text-primary font-bold">自选股</h1>
-            <span className="text-caption text-secondary">{items.length}只</span>
-
-            {/* Local search */}
-            <div className="relative ml-auto hidden w-48 sm:block">
-              <Search className="text-secondary absolute top-1/2 left-2.5 size-3 -translate-y-1/2" />
-              <Input
-                placeholder="搜索自选..."
-                value={localSearch}
-                onChange={(e) => setLocalSearch(e.target.value)}
-                className="text-caption h-8 pl-8"
-              />
-              {localSearch && (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="absolute top-1/2 right-2 -translate-y-1/2"
-                  onClick={() => setLocalSearch("")}
-                  title="清空搜索"
-                  aria-label="清空搜索"
-                >
-                  <X />
-                </Button>
-              )}
+          <header className="flex flex-wrap items-end justify-between gap-4 pb-5">
+            <div>
+              <h1 className="text-h1 text-primary font-semibold tracking-[-0.01em]">自选股</h1>
+              <p className="text-caption text-tertiary mt-1">
+                {items.length > 0 ? `${items.length} 只 · 实时行情` : "实时行情与 K 线"}
+              </p>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-caption h-8 gap-2"
-              onClick={() => setShowAdd(!showAdd)}
-            >
-              {showAdd ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
-              {showAdd ? "取消" : "添加自选"}
-            </Button>
-          </div>
+            <div className="flex items-center gap-2">
+              <div className="relative hidden w-52 sm:block">
+                <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+                <Input
+                  placeholder="搜索自选…"
+                  aria-label="搜索自选股"
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
+                  className="text-caption h-8 rounded-md pl-8"
+                />
+                {localSearch && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-tertiary hover:text-primary absolute top-1/2 right-1.5 -translate-y-1/2"
+                    onClick={() => setLocalSearch("")}
+                    title="清空搜索"
+                    aria-label="清空搜索"
+                  >
+                    <X />
+                  </Button>
+                )}
+              </div>
+
+              <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
+                {showAdd ? <X /> : <Plus />}
+                {showAdd ? "取消" : "添加自选"}
+              </Button>
+            </div>
+          </header>
 
           {/* ── Add-stock search ── */}
           {showAdd && (
-            <div className="border-hairline bg-canvas mb-4 rounded-lg border p-3">
+            <div className="bg-surface border-hairline mb-5 rounded-lg border p-4">
               <div className="relative">
-                <Search className="text-secondary absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
+                <Search className="text-tertiary pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                 <Input
-                  placeholder="输入股票名称或代码搜索..."
+                  placeholder="输入股票名称或代码…"
+                  aria-label="搜索要添加的股票"
                   value={addQuery}
                   onChange={(e) => handleAddSearch(e.target.value)}
-                  className="text-caption h-9 pl-9"
+                  className="text-body h-9 rounded-md pl-9"
                   autoFocus
                 />
               </div>
               {addSearching && (
-                <div className="text-caption text-secondary py-4 text-center">搜索中...</div>
+                <p className="text-caption text-tertiary py-4 text-center">搜索中…</p>
+              )}
+              {!addSearching && addQuery.trim() && addResults.length === 0 && (
+                <p className="text-caption text-tertiary py-4 text-center">没有找到匹配的股票</p>
               )}
               {addResults.length > 0 && (
-                <div className="mt-2 max-h-60 space-y-1 overflow-y-auto">
+                <div className="mt-2 max-h-64 overflow-y-auto">
                   {addResults.map((r) => (
-                    <button
+                    <Button
                       key={r.code}
                       type="button"
-                      className="hover:bg-hover flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left transition-colors"
+                      variant="ghost"
+                      className="hover:bg-hover h-auto w-full justify-between rounded-md px-3 py-2.5 text-left font-normal"
                       onClick={() => handleAdd(r.code, r.name)}
                     >
                       <span className="flex items-baseline gap-2">
                         <span className="text-body text-primary font-medium">{r.name}</span>
-                        <span className="text-caption text-secondary font-number">
+                        <span className="text-caption text-tertiary font-number">
                           {r.code.replace(/^[a-z]+/i, "")}
                         </span>
                       </span>
                       <Plus className="text-brand size-3.5" />
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -241,76 +237,85 @@ export default function WatchlistView() {
           )}
 
           {/* ── Loading / Empty / List ── */}
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-canvas border-hairline h-14 animate-pulse rounded-lg border"
-                />
-              ))}
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="text-caption text-secondary py-16 text-center">
-              {localSearch.trim()
-                ? "未找到匹配的自选股"
-                : showAdd
-                  ? "在上方搜索并添加股票"
-                  : "暂无自选股，点击右上角「添加自选」开始"}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {/* Column headers — clickable sort */}
-              {!showAdd && (
-                <div className="text-caption text-tertiary flex items-center gap-4 px-3 py-2">
-                  <span className="flex-1">名称 / 代码</span>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
-                    onClick={() => toggleSort("price")}
-                  >
-                    最新价 {renderSortIcon("price")}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-caption text-tertiary hover:text-secondary h-auto w-16 justify-end px-0 font-normal hover:bg-transparent"
-                    onClick={() => toggleSort("change")}
-                  >
-                    涨幅 {renderSortIcon("change")}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
-                    onClick={() => toggleSort("market_value")}
-                  >
-                    总市值 {renderSortIcon("market_value")}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-caption text-tertiary hover:text-secondary h-auto w-20 justify-end px-0 font-normal hover:bg-transparent"
-                    onClick={() => toggleSort("circulation_value")}
-                  >
-                    流通市值 {renderSortIcon("circulation_value")}
-                  </Button>
-                  <span className="w-6" />
-                </div>
-              )}
-              {sorted.map((s) => (
-                <StockRow
-                  key={s.code}
-                  quote={s.quote}
-                  name={s.name}
-                  code={s.code}
-                  onSelect={(v) => setKlineStock(v)}
-                  onDelete={() => deleteWatchlist.mutate(s.code)}
-                />
-              ))}
-            </div>
-          )}
+          <section className="bg-surface border-hairline @container overflow-hidden rounded-lg border">
+            {isLoading ? (
+              <DataLoading size="table" rows={6} label="加载自选股…" />
+            ) : sorted.length === 0 ? (
+              <DataEmpty
+                size="panel"
+                icon={<Star className="size-4" />}
+                title={localSearch.trim() ? "没有匹配的自选股" : "还没有自选股"}
+                description={
+                  localSearch.trim()
+                    ? "换个名称或代码试试"
+                    : "添加后在这里查看实时行情、涨跌幅与 K 线"
+                }
+                action={
+                  !localSearch.trim() ? (
+                    <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+                      <Plus />
+                      添加自选
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>名称 / 代码</th>
+                      <SortHeader
+                        label="最新价"
+                        field="price"
+                        sortField={sortField}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <SortHeader
+                        label="涨跌幅"
+                        field="change"
+                        sortField={sortField}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <SortHeader
+                        label="总市值"
+                        field="market_value"
+                        sortField={sortField}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                        className="hidden @md:table-cell"
+                      />
+                      <SortHeader
+                        label="流通市值"
+                        field="circulation_value"
+                        sortField={sortField}
+                        sortDir={sortDir}
+                        onSort={toggleSort}
+                        className="hidden @lg:table-cell"
+                      />
+                      <th className="w-10 pr-3">
+                        <span className="sr-only">操作</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((s) => (
+                      <StockRow
+                        key={s.code}
+                        quote={s.quote}
+                        name={s.name}
+                        code={s.code}
+                        onSelect={(v) => setKlineStock(v)}
+                        onDelete={() => deleteWatchlist.mutate(s.code)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       </div>
 
@@ -325,6 +330,49 @@ export default function WatchlistView() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── SortHeader ──
+
+function SortHeader({
+  label,
+  field,
+  sortField,
+  sortDir,
+  onSort,
+  className,
+}: {
+  label: string
+  field: SortField
+  sortField: SortField
+  sortDir: SortDir
+  onSort: (field: SortField) => void
+  className?: string
+}) {
+  const active = sortField === field
+  return (
+    <th className={cn("num", className)}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+        className={`hover:text-secondary inline-flex items-center gap-1 transition-colors ${
+          active ? "text-secondary" : ""
+        }`}
+      >
+        {label}
+        {active ? (
+          sortDir === "asc" ? (
+            <ArrowUp className="size-2.5" aria-hidden />
+          ) : (
+            <ArrowDown className="size-2.5" aria-hidden />
+          )
+        ) : (
+          <ArrowUpDown className="size-2.5 opacity-40" aria-hidden />
+        )}
+      </button>
+    </th>
   )
 }
 
@@ -347,60 +395,63 @@ function StockRow({
   const loaded = quote?.last_px != null
 
   return (
-    <div className="bg-canvas border-hairline hover:border-brand/30 flex items-center gap-4 rounded-lg border p-3 transition-colors">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 text-left"
-        onClick={() => onSelect({ symbol: code, name })}
-      >
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="text-body text-primary truncate font-semibold">{name}</span>
-          <span className="text-caption text-secondary font-number">
+    <tr className="group/row cursor-pointer" onClick={() => onSelect({ symbol: code, name })}>
+      <td>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="text-primary text-body truncate font-medium">{name}</span>
+          <span className="text-tertiary text-caption font-number">
             {code.replace(/^[a-z]+/i, "")}
           </span>
         </div>
+      </td>
 
-        {loaded ? (
-          <>
-            <span className="font-number text-body text-primary w-20 text-right font-bold">
-              {quote.last_px?.toFixed(2)}
-            </span>
-            <span
-              className={`font-number text-caption w-16 rounded-lg px-2 py-0.5 text-right font-semibold ${
-                up ? "bg-up/20 text-up" : "bg-down/20 text-down"
-              }`}
-            >
-              {up ? "+" : ""}
-              {quote.px_change_rate?.toFixed(2)}%
-            </span>
-            <span className="font-number text-caption text-secondary w-20 text-right">
-              {formatCompactNumber(quote.market_value)}
-            </span>
-            <span className="font-number text-caption text-secondary w-20 text-right">
-              {formatCompactNumber(quote.circulation_value)}
-            </span>
-          </>
-        ) : (
-          <>
-            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
-            <div className="text-caption text-secondary bg-hover h-4 w-16 animate-pulse rounded" />
-            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
-            <div className="text-caption text-secondary bg-hover h-4 w-20 animate-pulse rounded" />
-          </>
-        )}
-      </button>
+      {loaded ? (
+        <>
+          <td className="num text-body text-primary font-medium">{quote.last_px?.toFixed(2)}</td>
+          <td className={`num text-body font-medium ${up ? "text-up" : "text-down"}`}>
+            {up ? "+" : ""}
+            {quote.px_change_rate?.toFixed(2)}%
+          </td>
+          <td className="num text-secondary hidden @md:table-cell">
+            {formatCompactNumber(quote.market_value)}
+          </td>
+          <td className="num text-secondary hidden @lg:table-cell">
+            {formatCompactNumber(quote.circulation_value)}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="num">
+            <span className="bg-hover inline-block h-3.5 w-14 animate-pulse rounded-sm" />
+          </td>
+          <td className="num">
+            <span className="bg-hover inline-block h-3.5 w-12 animate-pulse rounded-sm" />
+          </td>
+          <td className="num hidden @md:table-cell">
+            <span className="bg-hover inline-block h-3.5 w-14 animate-pulse rounded-sm" />
+          </td>
+          <td className="num hidden @lg:table-cell">
+            <span className="bg-hover inline-block h-3.5 w-14 animate-pulse rounded-sm" />
+          </td>
+        </>
+      )}
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`删除自选 ${name}`}
-        className="text-secondary hover:text-down size-6 shrink-0"
-        onClick={onDelete}
-        title="删除自选"
-      >
-        <Trash2 />
-      </Button>
-    </div>
+      <td className="w-10 pr-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`删除自选 ${name}`}
+          className="text-tertiary hover:text-danger ml-auto opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          title="删除自选"
+        >
+          <Trash2 />
+        </Button>
+      </td>
+    </tr>
   )
 }

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useCallback, useState } from "react"
+import { lazy, Suspense, useEffect, useCallback, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
   ChevronLeft,
@@ -103,6 +103,8 @@ export default function RightPanel() {
   const dragControls = useDragControls()
   const panelRef = usePanelRef()
   const [collapsed, setCollapsed] = useState(loadCollapsed)
+  const tabStripRef = useRef<HTMLDivElement | null>(null)
+  const [tabEdges, setTabEdges] = useState({ left: false, right: false })
   const queryClient = useQueryClient()
   const stockRankingOrder = useRightPanelStore((state) => state.stockRankingOrder)
   const stockRankingMarket = useRightPanelStore((state) => state.stockRankingMarket)
@@ -110,11 +112,7 @@ export default function RightPanel() {
 
   const prefetchStockRankings = useCallback(() => {
     void queryClient.prefetchInfiniteQuery(
-      stockRankingQueryOptions(
-        stockRankingOrder,
-        stockRankingMarket,
-        stockRankingExcludeSt
-      )
+      stockRankingQueryOptions(stockRankingOrder, stockRankingMarket, stockRankingExcludeSt)
     )
   }, [queryClient, stockRankingOrder, stockRankingMarket, stockRankingExcludeSt])
 
@@ -135,6 +133,33 @@ export default function RightPanel() {
     if (size.inPixels <= 0) return
     setCollapsed(size.inPixels <= PANEL_COLLAPSED_WIDTH + 1)
   }, [])
+
+  // The strip holds nine tabs and is narrower than their total width. Track
+  // which edges still have hidden tabs so the fade affordance only appears
+  // where it means something.
+  const syncTabEdges = useCallback(() => {
+    const el = tabStripRef.current?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+    if (!el) return
+    const left = el.scrollLeft > 2
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+    setTabEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
+  }, [])
+
+  useEffect(() => {
+    const el = tabStripRef.current?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+    if (!el) return
+    const observer = new ResizeObserver(syncTabEdges)
+    observer.observe(el)
+    syncTabEdges()
+    return () => observer.disconnect()
+  }, [syncTabEdges, collapsed])
+
+  // Keep the active tab visible when switching views from code or shortcuts.
+  useEffect(() => {
+    const active = tabStripRef.current?.querySelector<HTMLElement>('[data-state="active"]')
+    active?.scrollIntoView({ inline: "nearest", block: "nearest" })
+    syncTabEdges()
+  }, [activeView, syncTabEdges])
 
   useEffect(() => {
     if (!popoutView) return
@@ -179,7 +204,7 @@ export default function RightPanel() {
       >
         <div className="bg-surface border-hairline flex h-full flex-col overflow-hidden border-l">
           <div
-            className={`border-hairline flex shrink-0 items-center gap-1 border-b p-2 ${
+            className={`border-hairline flex h-12 shrink-0 items-center gap-1 border-b px-2 ${
               collapsed ? "justify-center" : ""
             }`}
           >
@@ -189,32 +214,74 @@ export default function RightPanel() {
               onClick={toggleCollapse}
               title={collapsed ? "展开面板" : "折叠面板"}
               aria-label={collapsed ? "展开面板" : "折叠面板"}
+              className="text-secondary hover:text-primary shrink-0"
             >
               {collapsed ? <ChevronLeft /> : <ChevronRight />}
             </Button>
             {/* 当前视图名由下方 TabsList 的选中态表达，头部不再重复一遍 */}
             {!collapsed && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="ml-auto"
-                onClick={() => setPopoutView(activeView)}
-                title="弹出到独立窗口"
-                aria-label="弹出到独立窗口"
-              >
-                <Maximize2 />
-              </Button>
+              <>
+                <div ref={tabStripRef} className="relative min-w-0 flex-1">
+                  <Tabs
+                    value={activeView}
+                    onValueChange={(value) => setActiveView(value as RightPanelView)}
+                    className="gap-0"
+                  >
+                    <TabsList
+                      variant="line"
+                      onScroll={syncTabEdges}
+                      className="h-12 w-full [scrollbar-width:none] justify-start gap-0 overflow-x-auto rounded-none bg-transparent px-0"
+                    >
+                      {TABS.map((tab) => (
+                        <TabsTrigger
+                          key={tab.id}
+                          value={tab.id}
+                          onPointerEnter={
+                            tab.id === "stock-ranking" ? prefetchStockRankings : undefined
+                          }
+                          onFocus={tab.id === "stock-ranking" ? prefetchStockRankings : undefined}
+                          className="text-caption text-secondary data-active:text-brand hover:text-primary data-active:border-b-brand flex-none rounded-none border-b-2 border-transparent px-2.5 py-0 whitespace-nowrap after:hidden"
+                        >
+                          {tab.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                  {tabEdges.left && (
+                    <div
+                      className="from-surface pointer-events-none absolute inset-y-0 left-0 w-5 bg-linear-to-r to-transparent"
+                      aria-hidden
+                    />
+                  )}
+                  {tabEdges.right && (
+                    <div
+                      className="from-surface pointer-events-none absolute inset-y-0 right-0 w-5 bg-linear-to-l to-transparent"
+                      aria-hidden
+                    />
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-secondary hover:text-primary shrink-0"
+                  onClick={() => setPopoutView(activeView)}
+                  title="弹出到独立窗口"
+                  aria-label="弹出到独立窗口"
+                >
+                  <Maximize2 />
+                </Button>
+              </>
             )}
           </div>
 
           {collapsed ? (
-            <div className="border-hairline flex flex-1 flex-col items-center gap-1 overflow-y-auto border-t py-2">
+            <div className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto py-3">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <Button
                   key={id}
                   variant="ghost"
                   size="icon"
-                  className="data-[active=true]:text-brand hover:bg-hover size-10 rounded-lg"
+                  className="data-[active=true]:text-brand data-[active=true]:bg-brand/10 hover:bg-hover size-9 rounded-md"
                   data-active={activeView === id}
                   title={label}
                   aria-label={label}
@@ -228,54 +295,29 @@ export default function RightPanel() {
               ))}
             </div>
           ) : (
-            <>
-              <Tabs
-                value={activeView}
-                onValueChange={(value) => setActiveView(value as RightPanelView)}
-                className="shrink-0 gap-0"
-              >
-                <TabsList
-                  variant="line"
-                  className="border-hairline h-auto w-full shrink-0 justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-3 py-0"
-                >
-                  {TABS.map((tab) => (
-                    <TabsTrigger
-                      key={tab.id}
-                      value={tab.id}
-                      onPointerEnter={tab.id === "stock-ranking" ? prefetchStockRankings : undefined}
-                      onFocus={tab.id === "stock-ranking" ? prefetchStockRankings : undefined}
-                      className="text-caption data-active:border-b-brand data-active:text-brand flex-none rounded-none border-b-2 border-transparent px-3 py-2 whitespace-nowrap after:hidden"
-                    >
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-
-              <div className="relative flex flex-1 overflow-hidden">
-                <div className="flex-1 overflow-y-auto">
-                  <ErrorBoundary name="RightPanel">
-                    <Suspense fallback={<ViewFallback />}>
-                      <ViewRenderer view={activeView} />
-                    </Suspense>
-                  </ErrorBoundary>
-                </div>
-
-                <AnimatePresence>
-                  {klineTarget && (
-                    <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
-                      <Suspense fallback={<ViewFallback />}>
-                        <KlineDrawer
-                          symbol={klineTarget.symbol}
-                          name={klineTarget.name}
-                          onClose={closeKline}
-                        />
-                      </Suspense>
-                    </div>
-                  )}
-                </AnimatePresence>
+            <div className="relative flex flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
+                <ErrorBoundary name="RightPanel">
+                  <Suspense fallback={<ViewFallback />}>
+                    <ViewRenderer view={activeView} />
+                  </Suspense>
+                </ErrorBoundary>
               </div>
-            </>
+
+              <AnimatePresence>
+                {klineTarget && (
+                  <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
+                    <Suspense fallback={<ViewFallback />}>
+                      <KlineDrawer
+                        symbol={klineTarget.symbol}
+                        name={klineTarget.name}
+                        onClose={closeKline}
+                      />
+                    </Suspense>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
         </div>
       </Panel>
@@ -329,7 +371,7 @@ export default function RightPanel() {
                     <X className="size-4" />
                   </Button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto">
                   <ErrorBoundary name="RightPanelPopout">
                     <Suspense fallback={<ViewFallback />}>
                       <ViewRenderer view={popoutView} />

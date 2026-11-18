@@ -10,6 +10,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataError, DataLoading } from "@/components/data-state"
 import {
   usePlateDetail,
   usePlateRankings,
@@ -119,76 +120,64 @@ export default function PlateRankingTab() {
 
   if (rankings.isPending) {
     return (
-      <div className="space-y-4 p-4">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="p-4">
+        <DataLoading label="加载板块排行…" size="table" rows={6} />
       </div>
     )
   }
 
   if (rankings.error) {
     return (
-      <div className="p-4">
-        <div className="bg-surface border-hairline rounded-lg border p-5">
-          <p className="text-caption text-danger">加载失败：{rankings.error.message}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => void rankings.refetch()}
-          >
-            重试
-          </Button>
-        </div>
-      </div>
+      <DataError
+        title="板块排行获取失败"
+        description={rankings.error.message}
+        onRetry={() => void rankings.refetch()}
+      />
     )
   }
 
   const data = rankings.data ?? { generated_at: 0, gainers: [], losers: [] }
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex items-center gap-1">
-        {RANK_TYPES.map((type) => {
-          const active = rankType === type.id
-          return (
-            <Button
-              key={type.id}
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-pressed={active}
-              onClick={() => setRankType(type.id)}
-              className={cn(
-                "text-caption rounded-full px-3",
-                active
-                  ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-                  : "text-secondary hover:bg-hover hover:text-primary"
-              )}
-            >
-              {type.label}
-            </Button>
-          )
-        })}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-caption text-tertiary">
-          {data.generated_at ? `${updatedAt(data.generated_at)} 更新` : "当日板块"}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="刷新板块排行"
-          title="刷新"
-          disabled={rankings.isFetching}
-          onClick={() => void rankings.refetch()}
-        >
-          <RefreshCw className={cn("size-3.5", rankings.isFetching && "animate-spin")} />
-        </Button>
+    <div className="@container space-y-3 p-4 @2xl:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
+          {RANK_TYPES.map((type) => {
+            const active = rankType === type.id
+            return (
+              <button
+                key={type.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setRankType(type.id)}
+                className={cn(
+                  "text-caption focus-visible:ring-brand/40 flex h-7 items-center rounded-sm px-2.5 transition-colors outline-none focus-visible:ring-2",
+                  active
+                    ? "bg-surface text-primary shadow-card"
+                    : "text-tertiary hover:text-secondary"
+                )}
+              >
+                {type.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-caption text-tertiary">
+            {data.generated_at ? `${updatedAt(data.generated_at)} 更新` : "当日板块"}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="刷新板块排行"
+            title="刷新"
+            disabled={rankings.isFetching}
+            onClick={() => void rankings.refetch()}
+          >
+            <RefreshCw className={cn("size-3.5", rankings.isFetching && "animate-spin")} />
+          </Button>
+        </div>
       </div>
 
       <RankingSection
@@ -253,14 +242,21 @@ function RankingSection({
                 <ChevronRight className="text-tertiary size-3.5 transition-transform group-hover:translate-x-0.5" />
               </div>
 
-              <div className="text-caption font-number text-secondary mt-2 grid grid-cols-2 gap-x-4 gap-y-1 pl-7">
-                <span>资金流 {compactText(item.fund_flow)}</span>
+              <div className="text-caption text-tertiary font-number mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-7">
                 <span>
-                  涨跌家数 {item.rise_count}/{item.fall_count}/{item.stay_count}
+                  资金流 <span className="text-secondary">{compactText(item.fund_flow)}</span>
                 </span>
-                <span>涨停 {item.limit_up_count}</span>
                 <span>
-                  核心排名 {item.core_avg_pcp_rank ?? "—"}{" "}
+                  涨跌{" "}
+                  <span className="text-secondary">
+                    {item.rise_count}/{item.fall_count}/{item.stay_count}
+                  </span>
+                </span>
+                <span>
+                  涨停 <span className="text-secondary">{item.limit_up_count}</span>
+                </span>
+                <span>
+                  核心 <span className="text-secondary">{item.core_avg_pcp_rank ?? "—"}</span>{" "}
                   <span
                     className={cn(
                       item.core_avg_pcp_rank_change != null && item.core_avg_pcp_rank_change > 0
@@ -321,7 +317,7 @@ function PlateDetailView({ plate, onBack }: { plate: PlateRankingItem; onBack: (
   const stocks = data ? sortStocksByChangeRate(data.stocks) : []
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="@container space-y-4 p-4 @2xl:p-6">
       <div className="flex items-start gap-2">
         <Button
           type="button"

@@ -51,7 +51,11 @@ export function DataLoading({
 }) {
   if (size === "compact") {
     return (
-      <div role="status" aria-live="polite" className="text-tertiary text-caption flex items-center justify-center gap-2 py-4">
+      <div
+        role="status"
+        aria-live="polite"
+        className="text-tertiary text-caption flex items-center justify-center gap-2 py-4"
+      >
         <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
         {label}
       </div>
@@ -62,17 +66,11 @@ export function DataLoading({
     <div
       role="status"
       aria-live="polite"
-      className={cn(
-        "space-y-2",
-        SIZE_CLASS[size] === SIZE_CLASS.table ? "p-4" : "p-5"
-      )}
+      className={cn("space-y-2", SIZE_CLASS[size] === SIZE_CLASS.table ? "p-4" : "p-5")}
     >
       <span className="sr-only">{label}</span>
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton
-          key={index}
-          className={cn("w-full rounded-md", index === 0 ? "h-7" : "h-9")}
-        />
+        <Skeleton key={index} className={cn("w-full rounded-md", index === 0 ? "h-7" : "h-9")} />
       ))}
     </div>
   )
@@ -120,12 +118,14 @@ export function DataError({
 }) {
   return (
     <Shell size={size} role="alert">
-      <div className="bg-down/10 text-down flex size-9 items-center justify-center rounded-full">
+      <div className="bg-danger/10 text-danger flex size-9 items-center justify-center rounded-full">
         <AlertCircle className="size-4" aria-hidden />
       </div>
       <div className="space-y-1">
         <p className={cn("text-primary font-medium", TITLE_CLASS[size])}>{title}</p>
-        {description && <p className="text-tertiary text-caption max-w-sm break-words">{description}</p>}
+        {description && (
+          <p className="text-tertiary text-caption max-w-sm break-words">{description}</p>
+        )}
       </div>
       {onRetry && (
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>

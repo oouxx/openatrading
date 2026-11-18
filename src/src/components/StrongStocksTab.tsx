@@ -1,6 +1,5 @@
 import { useState } from "react"
 
-import { Button } from "@/components/ui/button"
 import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useSuperStock } from "@/hooks/query/useSuperStock"
@@ -26,113 +25,123 @@ export default function StrongStocksTab() {
   const openKline = useRightPanelStore((s) => s.openKline)
 
   return (
-    <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
-      <div className="border-hairline flex items-center gap-1 border-b px-3 py-1.5">
+    <div className="@container space-y-3 p-4 @2xl:p-6">
+      <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
         {POOLS.map((p) => {
+          const active = pool === p.id
           const query = p.id === "limit-up" ? limitUp : superStock
           const count = query.isPending ? "…" : query.error ? "—" : (query.data?.length ?? 0)
-          const active = pool === p.id
 
           return (
-            <Button
+            <button
               key={p.id}
               type="button"
-              variant="ghost"
-              size="sm"
               aria-pressed={active}
               onClick={() => setPool(p.id)}
               className={cn(
-                "text-caption rounded-full px-3",
+                "text-caption focus-visible:ring-brand/40 flex h-7 items-center gap-1.5 rounded-sm px-2.5 transition-colors outline-none focus-visible:ring-2",
                 active
-                  ? "bg-brand/20 text-brand hover:bg-brand/20 hover:text-brand"
-                  : "text-secondary hover:bg-hover hover:text-primary",
+                  ? "bg-surface text-primary shadow-card"
+                  : "text-tertiary hover:text-secondary"
               )}
             >
               {p.label}
               <span className="font-number tabular-nums">{count}</span>
-            </Button>
+            </button>
           )
         })}
       </div>
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>代码</th>
-              <th>名称</th>
-              <th className="num">涨幅</th>
-              <th className="num">连板</th>
-              <th className="num">封板次数</th>
-              <th className="num">换手率</th>
-              <th className="num">市值</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activeQuery.isPending ? (
+
+      <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={8} className="p-0">
-                  <DataLoading label={`加载${pool === "limit-up" ? "涨停股" : "强势股"}…`} size="table" rows={4} />
-                </td>
+                <th>个股</th>
+                <th className="num">涨幅</th>
+                <th className="num">连板</th>
+                <th className="num hidden @2xl:table-cell">封板次数</th>
+                <th className="num">换手率</th>
+                <th className="num hidden @2xl:table-cell">市值</th>
+                <th className="hidden @2xl:table-cell">原因</th>
               </tr>
-            ) : activeQuery.error ? (
-              <tr>
-                <td colSpan={8} className="p-0">
-                  <DataError
-                    title="股票池获取失败"
-                    description={activeQuery.error.message}
-                    size="table"
-                    onRetry={() => void activeQuery.refetch()}
-                  />
-                </td>
-              </tr>
-            ) : stocks.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-0">
-                  <DataEmpty title="暂无数据" description="当前股票池为空" size="table" />
-                </td>
-              </tr>
-            ) : (
-              stocks.map((s: Stock) => (
-                <tr
-                  key={s.symbol}
-                  className="cursor-pointer"
-                  onClick={() => openKline(s.symbol, s.stock_chi_name)}
-                >
-                  <td className="text-secondary">{s.symbol.replace(/\.[A-Z]+$/, "")}</td>
-                  <td>
-                    <MiniChartPreview symbol={s.symbol} name={s.stock_chi_name}>
-                      <button
-                        type="button"
-                        className="hover:text-brand text-primary cursor-pointer transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openKline(s.symbol, s.stock_chi_name)
-                        }}
-                      >
-                        {s.stock_chi_name}
-                      </button>
-                    </MiniChartPreview>
-                  </td>
-                  <td className={cn("num", pctClass(s.change_percent))}>
-                    {formatRatioPct(s.change_percent)}
-                  </td>
-                  <td className="num text-brand font-semibold">
-                    {s.limit_up_days > 1 ? s.limit_up_days + "连板" : "—"}
-                  </td>
-                  <td className="num">{s.break_limit_up_times || "—"}</td>
-                  <td className="num">
-                    {s.turnover_ratio != null ? (s.turnover_ratio * 100).toFixed(2) + "%" : "—"}
-                  </td>
-                  <td className="num">{formatCompactNumber(s.total_capital)}</td>
-                  <td className="text-secondary text-caption max-w-[200px] truncate">
-                    {s.surge_reason?.stock_reason || "—"}
+            </thead>
+            <tbody>
+              {activeQuery.isPending ? (
+                <tr>
+                  <td colSpan={7} className="p-0">
+                    <DataLoading
+                      label={`加载${pool === "limit-up" ? "涨停股" : "强势股"}…`}
+                      size="table"
+                      rows={4}
+                    />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : activeQuery.error ? (
+                <tr>
+                  <td colSpan={7} className="p-0">
+                    <DataError
+                      title="股票池获取失败"
+                      description={activeQuery.error.message}
+                      size="table"
+                      onRetry={() => void activeQuery.refetch()}
+                    />
+                  </td>
+                </tr>
+              ) : stocks.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-0">
+                    <DataEmpty title="暂无数据" description="当前股票池为空" size="table" />
+                  </td>
+                </tr>
+              ) : (
+                stocks.map((s: Stock) => (
+                  <tr
+                    key={s.symbol}
+                    className="cursor-pointer"
+                    onClick={() => openKline(s.symbol, s.stock_chi_name)}
+                  >
+                    <td>
+                      <div className="flex min-w-0 flex-col">
+                        <MiniChartPreview symbol={s.symbol} name={s.stock_chi_name}>
+                          <button
+                            type="button"
+                            className="hover:text-brand text-primary block max-w-full cursor-pointer truncate text-left transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openKline(s.symbol, s.stock_chi_name)
+                            }}
+                          >
+                            {s.stock_chi_name}
+                          </button>
+                        </MiniChartPreview>
+                        <span className="text-tertiary text-micro font-number">
+                          {s.symbol.replace(/\.[A-Z]+$/, "")}
+                        </span>
+                      </div>
+                    </td>
+                    <td className={cn("num", pctClass(s.change_percent))}>
+                      {formatRatioPct(s.change_percent)}
+                    </td>
+                    <td className="num text-brand font-medium">
+                      {s.limit_up_days > 1 ? s.limit_up_days + "连板" : "—"}
+                    </td>
+                    <td className="num hidden @2xl:table-cell">{s.break_limit_up_times || "—"}</td>
+                    <td className="num">
+                      {s.turnover_ratio != null ? (s.turnover_ratio * 100).toFixed(2) + "%" : "—"}
+                    </td>
+                    <td className="num text-secondary hidden @2xl:table-cell">
+                      {formatCompactNumber(s.total_capital)}
+                    </td>
+                    <td className="text-secondary hidden max-w-48 truncate @2xl:table-cell">
+                      {s.surge_reason?.stock_reason || "—"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

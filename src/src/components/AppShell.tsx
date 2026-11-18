@@ -31,7 +31,8 @@ function ViewFallback() {
 function LazyView({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="border-hairline flex items-center gap-2 border-b px-3 py-2">
+      {/* 只有侧栏开关，不再铺一条带分割线的空工具条——页面自己的标题承担层级 */}
+      <div className="flex h-10 shrink-0 items-center gap-2 px-3">
         <SidebarTrigger />
       </div>
       <div className="flex-1 overflow-y-auto">

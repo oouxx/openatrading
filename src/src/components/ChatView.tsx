@@ -107,6 +107,9 @@ const MAX_FILE_ATTACHMENT_BYTES = 20 * 1024 * 1024
 /** 输入框自动增高的上限，需与 textarea 上的 `max-h-[200px]` 保持一致。 */
 const TEXTAREA_MAX_HEIGHT = 200
 
+/** 空会话的起手提示：只放进输入框，不直接发送，用户仍可改写。 */
+const SUGGESTIONS = ["复盘今日大盘", "资金流向了哪里", "整理首板晋级梯队", "看看我的自选"]
+
 export default function AiCopilot({
   activeThreadId,
   onActiveThreadChange,
@@ -857,8 +860,8 @@ export default function AiCopilot({
         onDragOver={onComposerDragOver}
         onDragLeave={onComposerDragLeave}
         onDrop={onComposerDrop}
-        className={`bg-surface border-hairline shadow-card focus-within:border-brand/60 focus-within:ring-brand/20 relative flex flex-col gap-1.5 rounded-lg border px-2 pt-2 pb-1.5 transition-colors focus-within:ring-3 ${
-          draggingFiles ? "border-brand/60 ring-brand/20 ring-3" : ""
+        className={`bg-surface border-hairline shadow-card focus-within:border-brand/50 focus-within:ring-brand/15 relative flex flex-col gap-2 rounded-lg border px-3 pt-3 pb-2 transition-colors focus-within:ring-2 ${
+          draggingFiles ? "border-brand/60 ring-brand/20 ring-2" : ""
         }`}
       >
         {/* Attached image previews + file chips */}
@@ -929,8 +932,8 @@ export default function AiCopilot({
 
         <Textarea
           ref={textareaRef}
-          className="text-body text-primary placeholder:text-tertiary max-h-[200px] min-h-[24px] w-full resize-none border-0 bg-transparent px-0.5 py-0 shadow-none dark:bg-transparent"
-          placeholder="有什么可以帮你？"
+          className="text-body text-primary placeholder:text-tertiary max-h-[200px] min-h-[24px] w-full resize-none border-0 bg-transparent px-0.5 py-0 leading-[1.6] shadow-none dark:bg-transparent"
+          placeholder="问点什么，比如「复盘今天的市场」"
           aria-label="输入消息"
           aria-expanded={showSlash}
           aria-controls={showSlash ? SLASH_MENU_ID : undefined}
@@ -1034,15 +1037,16 @@ export default function AiCopilot({
   return (
     <div className="flex h-full flex-col">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="border-hairline flex shrink-0 items-center gap-2 border-b px-4 py-2">
-        <SidebarTrigger />
-        <div className="flex flex-1 items-center gap-2">
-          <div ref={searchContainerRef} className="relative flex-1">
-            <Search className="text-secondary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+      <div className="border-hairline flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        <SidebarTrigger className="text-secondary hover:text-primary" />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div ref={searchContainerRef} className="relative w-full max-w-xs">
+            <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
             <Input
               ref={searchRef}
-              className="bg-canvas border-hairline focus-visible:border-brand text-caption h-9 pl-9"
-              placeholder="搜索股票代码或名称..."
+              className="bg-canvas border-hairline focus-visible:border-brand/60 text-caption h-8 rounded-md pl-8"
+              placeholder="搜索股票…"
+              aria-label="搜索股票代码或名称"
               value={searchQuery}
               onChange={onSearchChange}
               onKeyDown={onSearchKeyDown}
@@ -1085,12 +1089,12 @@ export default function AiCopilot({
           </div>
           {/* Stock tabs */}
           {stockTabs.length > 0 && (
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
               {stockTabs.map((tab) => (
                 <div
                   key={tab.id}
-                  className={`flex items-center rounded-md ${
-                    activeStockTab === tab.id ? "bg-brand/15" : ""
+                  className={`flex shrink-0 items-center rounded-md ${
+                    activeStockTab === tab.id ? "bg-brand/10" : ""
                   }`}
                 >
                   <Button
@@ -1099,7 +1103,7 @@ export default function AiCopilot({
                     size="xs"
                     className={`text-caption rounded-r-none ${
                       activeStockTab === tab.id
-                        ? "text-brand hover:bg-brand/15 hover:text-brand"
+                        ? "text-brand hover:bg-brand/10 hover:text-brand"
                         : "text-secondary hover:bg-hover"
                     }`}
                     onClick={() => setActiveStockTab(tab.id)}
@@ -1111,7 +1115,7 @@ export default function AiCopilot({
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`关闭 ${tab.name}`}
-                    className="text-secondary hover:bg-hover rounded-l-none opacity-60 hover:opacity-100"
+                    className="text-tertiary hover:bg-hover hover:text-primary rounded-l-none"
                     onClick={() => closeTab(tab.id)}
                   >
                     ×
@@ -1141,9 +1145,40 @@ export default function AiCopilot({
       ) : isEmpty ? (
         // ── Centered new-session hero (Claude.ai 样式) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-          <div className="w-full max-w-[48rem]">
-            <h2 className="text-hero text-primary mb-6 text-center font-semibold">AI 行情助手</h2>
-            {renderInputField()}
+          <div className="w-full max-w-[44rem] pb-8">
+            <div className="text-center">
+              <img
+                src="/app-icon.png"
+                alt=""
+                className="mx-auto mb-5 size-9 rounded-md opacity-90"
+              />
+              <h2 className="text-hero text-primary font-semibold tracking-[-0.01em]">
+                今天想复盘什么？
+              </h2>
+              <p className="text-secondary text-body mt-2.5">
+                说一句就行。行情、资金、涨停与自选，我会自己去找数据。
+              </p>
+            </div>
+
+            <div className="mt-8">{renderInputField()}</div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              {SUGGESTIONS.map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-caption text-secondary hover:text-primary hover:border-secondary/30 h-7 rounded-full px-3 font-normal"
+                  onClick={() => {
+                    setInput(s)
+                    textareaRef.current?.focus()
+                  }}
+                >
+                  {s}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       ) : (
@@ -1151,7 +1186,7 @@ export default function AiCopilot({
           <div
             ref={msgContainerRef}
             onScroll={onContainerScroll}
-            className="flex flex-1 scrollbar-gutter-stable flex-col overflow-y-auto py-5"
+            className="flex flex-1 scrollbar-gutter-stable flex-col overflow-y-auto py-6"
           >
             {/* Claude.ai 消息列宽：固定 48rem 居中（不随宽屏放大） */}
             <div
@@ -1270,7 +1305,7 @@ export default function AiCopilot({
           )}
 
           {/* ── Floating input (Claude style) ─────────────────────────── */}
-          <div className="from-canvas via-canvas/90 pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t to-transparent px-6 pt-12 pb-4">
+          <div className="from-canvas via-canvas/92 pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t to-transparent px-6 pt-14 pb-5">
             <div className="pointer-events-auto mx-auto flex w-full max-w-[48rem] items-end gap-2">
               {renderInputField()}
             </div>

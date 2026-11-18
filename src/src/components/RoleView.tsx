@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
-import { AlertTriangle, Plus, Trash2 } from "lucide-react"
+import { AlertTriangle, Plus, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PnlPanel } from "@/components/PnlPanel"
 import { StatusBanner } from "@/components/status-banner"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -1349,19 +1350,27 @@ export default function RoleView() {
             低于内容高度，导致曲线底部（日期横轴）和脚注被裁掉，页面却不滚动。 */}
         <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6 [&>*]:shrink-0">
           {!activeRole ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              <p className="text-secondary text-caption">
-                {rolesPending && visibleRoles.length === 0
-                  ? "加载角色…"
-                  : rolesQueryError && visibleRoles.length === 0
-                    ? "角色列表加载失败，请检查服务端"
-                    : "还没有角色。一个角色就是一个独立的模拟账户。"}
-              </p>
-              {!rolesPending && visibleRoles.length === 0 && (
-                <Button size="sm" onClick={openCreate}>
-                  <Plus className="size-4" />
-                  新建角色
-                </Button>
+            <div className="flex flex-1 items-center justify-center">
+              {rolesPending && visibleRoles.length === 0 ? (
+                <DataLoading label="加载角色…" size="panel" />
+              ) : rolesQueryError && visibleRoles.length === 0 ? (
+                <DataError
+                  title="角色列表加载失败"
+                  description={errorText(rolesQueryError)}
+                  onRetry={() => void refetchRoles()}
+                />
+              ) : (
+                <DataEmpty
+                  icon={<Users className="size-4" />}
+                  title="还没有模拟账户"
+                  description="每个角色都是一个独立的模拟账户，买入后按实时行情估值。"
+                  action={
+                    <Button size="sm" onClick={openCreate}>
+                      <Plus />
+                      新建角色
+                    </Button>
+                  }
+                />
               )}
             </div>
           ) : (

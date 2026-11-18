@@ -332,7 +332,7 @@ function EmptyEditor({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="bg-hover text-secondary grid size-12 place-items-center rounded-xl">
+      <div className="bg-hover text-secondary grid size-12 place-items-center rounded-lg">
         <Puzzle className="size-5" />
       </div>
       <div className="max-w-sm">

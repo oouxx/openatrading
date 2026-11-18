@@ -58,7 +58,7 @@ export default function SentimentHistory() {
         color: chartColors.brand(),
         lineStyle: 2 as const,
         lineWidth: 1,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         // title: `今日 ${last.value.toFixed(1)}`,
       })
     }
@@ -70,8 +70,8 @@ export default function SentimentHistory() {
   }, [chartData])
 
   return (
-    <div className="bg-surface border-hairline p-card-inner rounded-lg">
-      <h3 className="text-caption text-secondary mb-4">情绪历史走势（近10日）</h3>
+    <div className="bg-surface border-hairline p-card-inner rounded-lg border">
+      <h3 className="text-caption text-primary mb-4 font-medium">情绪历史走势（近 10 日）</h3>
       {!chartData.length ? (
         <div className="text-caption text-secondary py-8 text-center">暂无情绪历史数据</div>
       ) : (

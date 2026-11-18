@@ -431,10 +431,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         className={`mx-auto w-full px-4 pt-8 pb-16 sm:px-8 ${isMcp ? "max-w-5xl" : "max-w-3xl"}`}
       >
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-tertiary text-caption font-medium tracking-wide">设置</p>
-            <h1 className="text-h1 text-primary mt-1">{pageTitle}</h1>
-          </div>
+          <h1 className="text-h1 text-primary font-semibold tracking-[-0.01em]">{pageTitle}</h1>
           {isMcp && (
             <div className="flex items-center gap-1.5">
               <Button
@@ -860,7 +857,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 {mcpQuery.isPending ? (
                   <div className="space-y-2.5">
                     {Array.from({ length: 2 }).map((_, i) => (
-                      <Skeleton key={i} className="h-[76px] w-full rounded-xl" />
+                      <Skeleton key={i} className="h-[76px] w-full rounded-lg" />
                     ))}
                   </div>
                 ) : mcpQuery.isError ? (
@@ -942,7 +939,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
 
           {activeTab === "about" && (
             <>
-              <SettingsSection title="关于">
+              <SettingsSection title="应用信息">
                 {aboutRows.map(([label, value]) => (
                   <div key={label} className="flex items-center justify-between py-3">
                     <span className="text-secondary text-body">{label}</span>

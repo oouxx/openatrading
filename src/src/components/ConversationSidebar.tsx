@@ -6,6 +6,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -23,6 +24,12 @@ interface ConversationSidebarProps {
   onNewThread: () => void
   onDeleteThread: (id: string) => void
 }
+
+const WORKSPACE_NAV = [
+  { mode: "skill-editor", label: "技能", icon: Puzzle },
+  { mode: "roles", label: "模拟盘", icon: Users },
+  { mode: "watchlist", label: "自选", icon: Star },
+] as const
 
 export default function ConversationSidebar({
   threads,
@@ -42,73 +49,79 @@ export default function ConversationSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
+      <SidebarHeader className="gap-2 px-3 pt-3 pb-1">
+        <div className="text-primary flex h-8 items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center">
+          <img src="/app-icon.png" alt="" className="size-5 rounded-sm" />
+          <span className="text-body font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            openatrading
+          </span>
+        </div>
+
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={onNewThread} tooltip="新建会话">
-              <Plus />
-              <span>新建会话</span>
+            <SidebarMenuButton
+              onClick={onNewThread}
+              tooltip="新建会话"
+              className="border-hairline bg-surface hover:bg-hover hover:border-secondary/25 h-9 rounded-md border transition-colors"
+            >
+              <Plus className="text-brand" />
+              <span className="text-primary font-medium">新建会话</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup className="pt-3 pb-1">
+          <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
+            工作台
+          </SidebarGroupLabel>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setMode(mode === "skill-editor" ? "chat" : "skill-editor")}
-                isActive={mode === "skill-editor"}
-                tooltip="技能"
-              >
-                <Puzzle />
-                <span>技能</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setMode(mode === "roles" ? "chat" : "roles")}
-                isActive={mode === "roles"}
-                tooltip="模拟盘"
-              >
-                <Users />
-                <span>模拟盘</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setMode(mode === "watchlist" ? "chat" : "watchlist")}
-                isActive={mode === "watchlist"}
-                tooltip="自选"
-              >
-                <Star />
-                <span>自选</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {WORKSPACE_NAV.map((item) => {
+              const Icon = item.icon
+              const active = mode === item.mode
+              return (
+                <SidebarMenuItem key={item.mode}>
+                  <SidebarMenuButton
+                    onClick={() => setMode(active ? "chat" : item.mode)}
+                    isActive={active}
+                    tooltip={item.label}
+                    className={cn(
+                      "text-secondary hover:text-primary h-9",
+                      "data-[active=true]:text-primary data-[active=true]:font-medium"
+                    )}
+                  >
+                    <Icon className={active ? "text-brand" : undefined} />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
           </SidebarMenu>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <div className="px-3 py-2 group-data-[collapsible=icon]:hidden">
+        <SidebarGroup className="min-h-0 flex-1 pt-4">
+          <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
+            会话
+          </SidebarGroupLabel>
+
+          <div className="px-0 pb-2 group-data-[collapsible=icon]:hidden">
             <div className="relative">
-              <Search className="text-secondary absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+              <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input
-                placeholder="搜索会话..."
+                placeholder="搜索会话…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="text-caption h-8 pl-8"
+                className="text-caption h-8 rounded-md pl-8"
               />
             </div>
           </div>
-        </SidebarGroup>
 
-        <SidebarGroup className="min-h-0 flex-1">
           <SidebarMenu>
             {filteredThreads.length === 0 ? (
-              <div className="text-secondary text-caption py-8 text-center group-data-[collapsible=icon]:hidden">
-                {search.trim() ? "未找到匹配会话" : "暂无会话"}
-              </div>
+              <p className="text-tertiary text-caption px-2 py-6 text-center leading-relaxed group-data-[collapsible=icon]:hidden">
+                {search.trim() ? "没有匹配的会话" : "还没有会话"}
+              </p>
             ) : (
               filteredThreads.map((t) => (
                 <SidebarMenuItem key={t.id} className="group/item">
@@ -120,19 +133,16 @@ export default function ConversationSidebar({
                     }}
                     tooltip={t.name || t.first_message || t.id}
                     className={cn(
-                      "relative transition-colors",
-                      "data-[active=true]:before:bg-brand data-[active=true]:before:absolute data-[active=true]:before:inset-y-1.5 data-[active=true]:before:left-0 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full"
+                      "text-secondary hover:text-primary h-9",
+                      "data-[active=true]:bg-hover data-[active=true]:text-primary data-[active=true]:font-medium"
                     )}
                   >
-                    <span
-                      className={`size-1.5 shrink-0 rounded-full ${activeThreadId === t.id ? "bg-up" : "bg-ink-muted"}`}
-                    />
-                    <span className="flex-1 truncate">{t.name || t.first_message || t.id}</span>
+                    <span className="truncate">{t.name || t.first_message || t.id}</span>
                   </SidebarMenuButton>
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="hover:text-down text-secondary focus-visible:opacity-100 absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
+                    className="text-tertiary hover:text-danger absolute top-1/2 right-1.5 z-10 -translate-y-1/2 opacity-0 transition-opacity group-focus-within/item:opacity-100 group-hover/item:opacity-100 focus-visible:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDeleteThread(t.id)
@@ -149,13 +159,14 @@ export default function ConversationSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="border-hairline border-t px-3 py-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={() => setMode(mode === "settings" ? "chat" : "settings")}
               isActive={mode === "settings"}
               tooltip="设置"
+              className="text-secondary hover:text-primary data-[active=true]:text-primary h-9"
             >
               <Settings />
               <span>设置</span>
