@@ -151,25 +151,25 @@ async fn forward_events(
                                 {
                                     let handle = handle.clone();
                                     let notice_tx = tx.clone();
+                                    let slash_state = Arc::clone(state);
+                                    let slash_sid = session_id.to_string();
                                     let slash_worker = tokio::spawn(async move {
-                                        let result = handle.slash(&cmd_name, &cmd_args).await;
-                                        let payload = match result {
-                                            Ok(text) => SessionEventPayload::Notice {
-                                                text,
-                                                is_error: false,
-                                            },
-                                            Err(e) => SessionEventPayload::Notice {
-                                                text: format!("[Slash Error] {e}"),
-                                                is_error: true,
-                                            },
-                                        };
-                                        let json = serde_json::to_string(&EventEnvelope {
-                                            schema_version: SCHEMA_VERSION,
-                                            seq: 0,
-                                            event: TranscriptEvent::Session(payload),
-                                        })
-                                        .unwrap_or_default();
-                                        let _ = notice_tx.send(json).await;
+                                        let (text, is_error) =
+                                            match handle.slash(&cmd_name, &cmd_args).await {
+                                                Ok(text) => (text, false),
+                                                Err(e) => (format!("[Slash Error] {e}"), true),
+                                            };
+                                        // Route through the session event state like every
+                                        // other notice (seq + ring), so reconnect resume sees
+                                        // it and the wire shape matches the desktop path.
+                                        emit_notice(
+                                            &slash_state,
+                                            &notice_tx,
+                                            &slash_sid,
+                                            text,
+                                            is_error,
+                                        )
+                                        .await;
                                     });
                                     // Observe the spawned task so a panic is never silently
                                     // swallowed (project rule: no fire-and-forget JoinHandles).
