@@ -28,6 +28,7 @@ import {
 } from "@/stores/data"
 import { searchStocks } from "@/lib/stock-utils"
 import { keepValidSelection } from "@/lib/selection"
+import { cn } from "@/lib/utils"
 import { roleKeys } from "@/hooks/query/queryKeys"
 import { useRealtimeQuote } from "@/hooks/query/useRealtimeQuote"
 import {
@@ -1465,16 +1466,16 @@ export default function RoleView() {
                           onRetry={() => void positionsQuery.refetch()}
                         />
                       ) : positions.length > 0 ? (
-                        <table className="text-caption w-full border-collapse">
+                        <table className="data-table">
                           <thead>
                             <tr>
                               <Th>股票</Th>
-                              <Th>成本价</Th>
-                              <Th>现价</Th>
-                              <Th>数量</Th>
-                              <Th>市值</Th>
-                              <Th>浮动盈亏</Th>
-                              <Th>盈亏%</Th>
+                              <Th className="num">成本价</Th>
+                              <Th className="num">现价</Th>
+                              <Th className="num">数量</Th>
+                              <Th className="num">市值</Th>
+                              <Th className="num">浮动盈亏</Th>
+                              <Th className="num">盈亏%</Th>
                               <Th>入场日期</Th>
                               <Th className="col-sticky-actions">操作</Th>
                             </tr>
@@ -1497,18 +1498,20 @@ export default function RoleView() {
                                     {p.symbol}
                                   </span>
                                 </Td>
-                                <Td>{formatMoney(p.cost_price)}</Td>
-                                <Td>{p.last_price === null ? DASH : formatMoney(p.last_price)}</Td>
-                                <Td>{p.shares}</Td>
-                                <Td>
+                                <Td className="num">{formatMoney(p.cost_price)}</Td>
+                                <Td className="num">
+                                  {p.last_price === null ? DASH : formatMoney(p.last_price)}
+                                </Td>
+                                <Td className="num">{p.shares}</Td>
+                                <Td className="num">
                                   {p.market_value === null ? DASH : formatMoney(p.market_value)}
                                 </Td>
-                                <Td className={pctClass(p.unrealized_pnl)}>
+                                <Td className={cn("num", pctClass(p.unrealized_pnl))}>
                                   {p.unrealized_pnl === null
                                     ? DASH
                                     : formatSignedMoney(p.unrealized_pnl)}
                                 </Td>
-                                <Td className={pctClass(p.unrealized_pct)}>
+                                <Td className={cn("num", pctClass(p.unrealized_pct))}>
                                   {p.unrealized_pct === null ? DASH : formatPct(p.unrealized_pct)}
                                 </Td>
                                 <Td muted>{p.opened_at.slice(0, 10)}</Td>
@@ -1545,16 +1548,16 @@ export default function RoleView() {
                           onRetry={() => void tradesQuery.refetch()}
                         />
                       ) : trades.length > 0 ? (
-                        <table className="text-caption w-full border-collapse">
+                        <table className="data-table">
                           <thead>
                             <tr>
                               <Th>成交时间</Th>
                               <Th>股票</Th>
                               <Th>方向</Th>
-                              <Th>价格</Th>
-                              <Th>数量</Th>
-                              <Th>成本价</Th>
-                              <Th>已实现盈亏</Th>
+                              <Th className="num">价格</Th>
+                              <Th className="num">数量</Th>
+                              <Th className="num">成本价</Th>
+                              <Th className="num">已实现盈亏</Th>
                               <Th>备注</Th>
                             </tr>
                           </thead>
@@ -1582,10 +1585,10 @@ export default function RoleView() {
                                     {t.side === "buy" ? "买入" : "卖出"}
                                   </span>
                                 </Td>
-                                <Td>{formatMoney(t.price)}</Td>
-                                <Td>{t.shares}</Td>
-                                <Td>{formatMoney(t.cost_price)}</Td>
-                                <Td className={pctClass(t.realized_pnl)}>
+                                <Td className="num">{formatMoney(t.price)}</Td>
+                                <Td className="num">{t.shares}</Td>
+                                <Td className="num">{formatMoney(t.cost_price)}</Td>
+                                <Td className={cn("num", pctClass(t.realized_pnl))}>
                                   {t.realized_pnl === null
                                     ? DASH
                                     : formatSignedMoney(t.realized_pnl)}
@@ -1612,15 +1615,15 @@ export default function RoleView() {
                           onRetry={() => void historyQuery.refetch()}
                         />
                       ) : history.length > 0 ? (
-                        <table className="text-caption w-full border-collapse">
+                        <table className="data-table">
                           <thead>
                             <tr>
                               <Th>股票</Th>
-                              <Th>成本价</Th>
-                              <Th>出场价</Th>
-                              <Th>数量</Th>
-                              <Th>已实现盈亏</Th>
-                              <Th>盈亏%</Th>
+                              <Th className="num">成本价</Th>
+                              <Th className="num">出场价</Th>
+                              <Th className="num">数量</Th>
+                              <Th className="num">已实现盈亏</Th>
+                              <Th className="num">盈亏%</Th>
                               <Th>平仓时间</Th>
                               <Th>出场理由</Th>
                             </tr>
@@ -1643,13 +1646,13 @@ export default function RoleView() {
                                     {h.symbol}
                                   </span>
                                 </Td>
-                                <Td>{formatMoney(h.cost_price)}</Td>
-                                <Td>{formatMoney(h.exit_price)}</Td>
-                                <Td>{h.shares}</Td>
-                                <Td className={pctClass(h.realized_pnl)}>
+                                <Td className="num">{formatMoney(h.cost_price)}</Td>
+                                <Td className="num">{formatMoney(h.exit_price)}</Td>
+                                <Td className="num">{h.shares}</Td>
+                                <Td className={cn("num", pctClass(h.realized_pnl))}>
                                   {formatSignedMoney(h.realized_pnl)}
                                 </Td>
-                                <Td className={pctClass(h.realized_pct)}>
+                                <Td className={cn("num", pctClass(h.realized_pct))}>
                                   {formatPct(h.realized_pct)}
                                 </Td>
                                 <Td muted>{formatTradeTime(h.closed_at)}</Td>
@@ -1880,15 +1883,7 @@ export default function RoleView() {
 // ── Table helpers ──────────────────────────────────────
 
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th
-      className={`bg-ink-dim border-hairline text-secondary text-caption border-b px-4 py-3 text-left font-medium whitespace-nowrap ${
-        className ?? ""
-      }`}
-    >
-      {children}
-    </th>
-  )
+  return <th className={className}>{children}</th>
 }
 function Td({
   children,
@@ -1903,10 +1898,10 @@ function Td({
   muted?: boolean
   reason?: boolean
 }) {
-  let cls = "px-4 py-3 border-b border-hairline text-primary whitespace-nowrap"
-  if (bold) cls += " font-semibold font-number text-caption"
-  if (muted) cls += " text-caption text-secondary"
-  if (reason) cls += " max-w-sidebar whitespace-normal text-caption text-secondary leading-relaxed"
+  let cls = "whitespace-nowrap"
+  if (bold) cls += " font-medium"
+  if (muted) cls += " text-secondary"
+  if (reason) cls += " max-w-sidebar whitespace-normal text-secondary leading-relaxed"
   if (className) cls += " " + className
   return <td className={cls}>{children}</td>
 }

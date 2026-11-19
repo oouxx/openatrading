@@ -9,7 +9,7 @@ const LandingPage = lazy(() => import("./LandingPage"))
 
 function PageFallback() {
   return (
-    <div className="bg-bg flex min-h-screen items-center justify-center p-8">
+    <div className="bg-canvas flex min-h-screen items-center justify-center p-8">
       <Skeleton className="h-8 w-48" />
     </div>
   )
@@ -18,7 +18,7 @@ function PageFallback() {
 export default function App() {
   return (
     <AppModeProvider>
-      <div className="bg-bg min-h-screen">
+      <div className="bg-canvas min-h-screen">
         <Suspense fallback={<PageFallback />}>
           <Routes>
             {isTauri ? (

@@ -32,7 +32,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="text-secondary text-body flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-          <p>该区域渲染出错。</p>
+          <p className="text-danger text-body font-medium">该区域渲染出错</p>
           <pre className="bg-hover font-number text-caption max-h-48 w-full max-w-xl overflow-auto rounded-md p-2 text-left">
             {this.state.error?.message ?? "Unknown error"}
           </pre>

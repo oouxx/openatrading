@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmpty, DataError } from "@/components/data-state"
 import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
@@ -836,7 +837,11 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   <div className="flex items-baseline gap-2">
                     <h2 className="text-primary text-body font-semibold">已安装</h2>
                     <span className="text-tertiary font-number text-caption">
-                      {mcpNeedle ? `${visibleServers.length} / ${servers.length}` : servers.length}
+                      {mcpQuery.isPending
+                        ? "…"
+                        : mcpNeedle
+                          ? `${visibleServers.length} / ${servers.length}`
+                          : servers.length}
                     </span>
                   </div>
                   {servers.length > 0 && (
@@ -857,36 +862,50 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 {mcpQuery.isPending ? (
                   <div className="space-y-2.5">
                     {Array.from({ length: 2 }).map((_, i) => (
-                      <Skeleton key={i} className="h-[76px] w-full rounded-lg" />
+                      <div
+                        key={i}
+                        className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-4"
+                      >
+                        <Skeleton className="size-9 shrink-0 rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-3 w-2/3" />
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : mcpQuery.isError ? (
-                  <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
-                    <p className="text-secondary text-caption">无法加载 MCP 服务器列表</p>
-                    <Button size="xs" variant="outline" onClick={() => mcpQuery.refetch()}>
-                      重试
-                    </Button>
+                  <div className="bg-surface border-hairline rounded-lg border">
+                    <DataError
+                      title="无法加载 MCP 服务器列表"
+                      onRetry={() => void mcpQuery.refetch()}
+                    />
                   </div>
                 ) : servers.length === 0 ? (
-                  <div className="bg-surface border-hairline flex flex-col items-center rounded-lg border px-6 py-12 text-center">
-                    <span className="bg-hover text-tertiary grid size-10 place-items-center rounded-full">
-                      <Server className="size-5" />
-                    </span>
-                    <h3 className="text-primary text-body mt-3 font-medium">还没有 MCP 服务器</h3>
-                    <p className="text-secondary text-caption mt-1 max-w-sm">
-                      连接外部工具后，Agent 可以在会话中调用它们。
-                    </p>
-                    <Button size="sm" className="mt-4" onClick={openNewServer}>
-                      <Plus className="size-3.5" />
-                      添加服务器
-                    </Button>
+                  <div className="bg-surface border-hairline rounded-lg border">
+                    <DataEmpty
+                      icon={<Server className="size-4" />}
+                      title="还没有 MCP 服务器"
+                      description="连接外部工具后，Agent 可以在会话中调用它们。"
+                      action={
+                        <Button size="sm" onClick={openNewServer}>
+                          <Plus className="size-3.5" />
+                          添加服务器
+                        </Button>
+                      }
+                    />
                   </div>
                 ) : visibleServers.length === 0 ? (
-                  <div className="bg-surface border-hairline flex flex-col items-center gap-2 rounded-lg border px-6 py-10 text-center">
-                    <p className="text-secondary text-caption">没有匹配的服务器</p>
-                    <Button size="xs" variant="ghost" onClick={() => setMcpSearch("")}>
-                      清除搜索
-                    </Button>
+                  <div className="bg-surface border-hairline rounded-lg border">
+                    <DataEmpty
+                      size="compact"
+                      title="没有匹配的服务器"
+                      action={
+                        <Button size="xs" variant="ghost" onClick={() => setMcpSearch("")}>
+                          清除搜索
+                        </Button>
+                      }
+                    />
                   </div>
                 ) : (
                   <div className="space-y-2.5">

@@ -181,9 +181,12 @@
   background: var(--color-surface);
   box-shadow: -8px 0 8px -8px oklch(0.3 0.01 75 / 0.28);
 }
-/* 表头另有 bg-ink-dim 叠色，透明底会露出后面的列，这里自己铺一层不透明底 */
+/* 表头与数据行都铺不透明底，避免横向滚动时后面的列透出来 */
 th.col-sticky-actions {
-  background: linear-gradient(var(--color-ink-dim), var(--color-ink-dim)), var(--color-surface);
+  background: var(--color-surface);
+}
+.data-table tbody tr:hover .col-sticky-actions {
+  background: var(--color-hover);
 }
 
 /* --- readable-content: 阅读排版行宽约束 — clamp 流式自适应 --- */

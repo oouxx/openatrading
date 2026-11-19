@@ -165,18 +165,12 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   },
   pre: ({ children }) => <>{children}</>,
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto">
-      <table className="font-number text-caption w-full border-collapse">{children}</table>
+    <div className="border-hairline my-3 overflow-x-auto rounded-md border">
+      <table className="data-table">{children}</table>
     </div>
   ),
-  th: ({ children }) => (
-    <th className="bg-hover border-hairline text-secondary border-b px-3 py-2 text-left font-medium">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="border-hairline text-secondary border-b px-3 py-2">{children}</td>
-  ),
+  th: ({ children }) => <th>{children}</th>,
+  td: ({ children }) => <td>{children}</td>,
   a: ({ children, href }) => (
     <a href={href} className="text-brand hover:underline" target="_blank" rel="noreferrer">
       {children}
