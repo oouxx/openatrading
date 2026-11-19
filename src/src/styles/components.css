@@ -5,14 +5,16 @@
 @custom-variant can-hover (@media (hover: hover));
 
 @layer base {
-  /* --- data-table --- */
+  /* --- data-table ---
+   * 表格是数据页的主要阅读面：正文用 sans（中文股票名不能掉进等宽字），
+   * 只有 `.num` 数字列走等宽 + tabular-nums，保证纵向对齐。 */
   .data-table {
     width: 100%;
     border-collapse: collapse;
   }
   .data-table th {
     text-align: left;
-    padding: 8px 12px;
+    padding: 9px 12px;
     color: var(--color-tertiary);
     font-weight: 500;
     font-size: var(--font-size-micro);
@@ -22,24 +24,31 @@
     white-space: nowrap;
   }
   .data-table td {
-    height: 36px;
-    padding: 7px 12px;
+    height: 38px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--color-hairline);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 12px;
     color: var(--color-primary);
     vertical-align: middle;
   }
+  .data-table tbody tr {
+    transition: background-color var(--duration-fast) var(--ease-out-brand);
+  }
   .data-table tbody tr:last-child td {
     border-bottom: 0;
   }
-  .data-table tr:hover td {
+  .data-table tbody tr:hover td {
     background: var(--color-hover);
   }
   .data-table .num {
     text-align: right;
+    font-family: var(--font-number);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+  .data-table th.num {
+    text-align: right;
   }
 
   /* --- skeleton --- */
@@ -71,12 +80,20 @@
     color: var(--color-primary) !important;
     border: 1px solid var(--color-hairline) !important;
     box-shadow: var(--shadow-modal) !important;
+    /* shadcn 默认 rounded-xl(12px)，超出项目 4/6/8 的圆角契约，统一收敛到 lg */
+    border-radius: var(--radius-lg) !important;
+  }
+  [data-slot="dialog-footer"] {
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
   }
 
   /* --- Command dialog ---
    * 只对弹窗内的 command 透明：对话框自身提供 surface 背景。
    * 内联弹出层（斜杠命令、股票搜索）需要自带背景，否则会透出下面的
    * 消息内容，所以不能全局抹掉 background。 */
+  [data-slot="command"] {
+    border-radius: var(--radius-lg) !important;
+  }
   [data-slot="dialog-content"] [data-slot="command"] {
     background: transparent !important;
     color: var(--color-primary) !important;
@@ -164,9 +181,12 @@
   background: var(--color-surface);
   box-shadow: -8px 0 8px -8px oklch(0.3 0.01 75 / 0.28);
 }
-/* 表头另有 bg-ink-dim 叠色，透明底会露出后面的列，这里自己铺一层不透明底 */
+/* 表头与数据行都铺不透明底，避免横向滚动时后面的列透出来 */
 th.col-sticky-actions {
-  background: linear-gradient(var(--color-ink-dim), var(--color-ink-dim)), var(--color-surface);
+  background: var(--color-surface);
+}
+.data-table tbody tr:hover .col-sticky-actions {
+  background: var(--color-hover);
 }
 
 /* --- readable-content: 阅读排版行宽约束 — clamp 流式自适应 --- */
@@ -176,4 +196,22 @@ th.col-sticky-actions {
   width: 100%;
   /* 768px 基础 → 80% 容器宽度 → 1280px 封顶，随分辨率流畅缩放 */
   max-width: clamp(48rem, 80%, 80rem);
+}
+
+/* --- hero-glow: 落地页首屏的暖色环境光 ---
+ * 只用品牌色的极低透明度做一层径向渐变，不铺大面积渐变面板；
+ * 深色主题下降低透明度，避免变成发光的营销页。 */
+@utility hero-glow {
+  background-image: radial-gradient(
+    52% 48% at 50% 0%,
+    color-mix(in oklch, var(--color-brand) 10%, transparent),
+    transparent 72%
+  );
+}
+[data-theme="dark"] .hero-glow {
+  background-image: radial-gradient(
+    52% 48% at 50% 0%,
+    color-mix(in oklch, var(--color-brand) 7%, transparent),
+    transparent 72%
+  );
 }

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -167,9 +168,11 @@ function SkillListBody({
           <div className="min-w-0">
             <h1 className="text-h2 text-primary font-medium">技能</h1>
             <p className="text-tertiary text-caption mt-0.5">
-              {searching
-                ? `${filteredSkills.length} / ${skills.length} 个技能`
-                : `${skills.length} 个已安装`}
+              {isLoading
+                ? "加载中…"
+                : searching
+                  ? `${filteredSkills.length} / ${skills.length} 个技能`
+                  : `${skills.length} 个已安装`}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -228,30 +231,29 @@ function SkillListBody({
             ))}
           </div>
         ) : error && skills.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-            <AlertCircle className="text-danger size-4" />
-            <p className="text-danger text-caption">技能列表加载失败</p>
-            <p className="text-tertiary text-caption break-all">{error}</p>
-            <Button type="button" variant="outline" size="xs" onClick={onRefresh}>
-              重试
-            </Button>
-          </div>
+          <DataError
+            size="compact"
+            title="技能列表加载失败"
+            description={error}
+            onRetry={onRefresh}
+          />
         ) : filteredSkills.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-            <p className="text-secondary text-caption">
-              {searching ? "没有匹配的技能" : "还没有安装技能"}
-            </p>
-            {searching ? (
-              <Button type="button" variant="ghost" size="xs" onClick={() => onSearchChange("")}>
-                清除搜索
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" size="xs" onClick={onNew}>
-                <Plus className="size-3" />
-                新建技能
-              </Button>
-            )}
-          </div>
+          <DataEmpty
+            size="compact"
+            title={searching ? "没有匹配的技能" : "还没有安装技能"}
+            action={
+              searching ? (
+                <Button type="button" variant="ghost" size="xs" onClick={() => onSearchChange("")}>
+                  清除搜索
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" size="xs" onClick={onNew}>
+                  <Plus className="size-3" />
+                  新建技能
+                </Button>
+              )
+            }
+          />
         ) : (
           <div className="space-y-1">
             {error && <p className="text-danger text-caption px-2 py-1.5">刷新失败：{error}</p>}
@@ -307,32 +309,16 @@ function EmptyEditor({
   onOpenList: () => void
 }) {
   if (loading) {
-    return (
-      <div className="text-secondary flex flex-1 flex-col items-center justify-center gap-2">
-        <Loader2 className="text-tertiary size-4 animate-spin" />
-        <span className="text-caption">正在加载技能…</span>
-      </div>
-    )
+    return <DataLoading size="panel" label="正在加载技能…" />
   }
 
   if (error) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-        <AlertCircle className="text-danger size-6" />
-        <div>
-          <p className="text-primary text-body font-medium">无法加载技能列表</p>
-          <p className="text-tertiary text-caption mt-1 break-all">{error}</p>
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          重试
-        </Button>
-      </div>
-    )
+    return <DataError title="无法加载技能列表" description={error} onRetry={onRetry} />
   }
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="bg-hover text-secondary grid size-12 place-items-center rounded-xl">
+      <div className="bg-hover text-secondary grid size-12 place-items-center rounded-lg">
         <Puzzle className="size-5" />
       </div>
       <div className="max-w-sm">

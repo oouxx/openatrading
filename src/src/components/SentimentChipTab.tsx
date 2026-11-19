@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { type SentimentHistoryDay } from "@/stores/data"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { useOverview } from "@/hooks/query/useOverview"
+import { DataLoading } from "@/components/data-state"
 import SentimentHistory from "./SentimentHistory"
 
 export default function SentimentChipTab() {
@@ -79,13 +80,13 @@ export default function SentimentChipTab() {
   }, [currentSentiment, bombRate])
 
   return (
-    <div>
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="@container space-y-4 p-4 @2xl:p-6">
+      <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2">
         {/* 市场情绪周期判断 */}
         <div className="bg-surface border-hairline p-card-inner rounded-lg border">
-          <h3 className="text-caption text-secondary mb-4">市场情绪周期判断</h3>
+          <h3 className="text-caption text-primary mb-4 font-medium">市场情绪周期判断</h3>
           {!history.length ? (
-            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
+            <DataLoading size="compact" label="加载情绪数据…" />
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -95,13 +96,19 @@ export default function SentimentChipTab() {
                   {currentPhaseLabel}
                 </span>
               </div>
-              <div className="bg-canvas h-2 overflow-hidden rounded-full">
+              <div className="bg-hover h-1.5 overflow-hidden rounded-full">
                 <div
-                  className="from-down to-up via-ai h-full rounded-full bg-linear-to-r"
+                  className={`h-full rounded-full ${
+                    currentSentiment >= 75
+                      ? "bg-up"
+                      : currentSentiment >= 50
+                        ? "bg-brand"
+                        : "bg-down"
+                  }`}
                   style={{ width: currentSentimentPct + "%" }}
                 />
               </div>
-              <div className="text-caption text-secondary flex justify-between">
+              <div className="text-micro text-tertiary flex justify-between">
                 <span>冷淡</span>
                 <span>正常</span>
                 <span>偏热</span>
@@ -113,9 +120,9 @@ export default function SentimentChipTab() {
 
         {/* 市场筹码结构分析 */}
         <div className="bg-surface border-hairline p-card-inner rounded-lg border">
-          <h3 className="text-caption text-secondary mb-4">市场筹码结构分析</h3>
+          <h3 className="text-caption text-primary mb-4 font-medium">市场筹码结构分析</h3>
           {!overview ? (
-            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
+            <DataLoading size="compact" label="加载筹码数据…" />
           ) : (
             <div className="space-y-3">
               <div className="text-caption flex justify-between">

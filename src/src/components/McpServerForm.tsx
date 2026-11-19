@@ -39,7 +39,7 @@ function fromEntries(entries: string[]): Record<string, string> {
 }
 
 function FieldError({ children }: { children: string }) {
-  return <p className="text-down text-caption mt-1">{children}</p>
+  return <p className="text-danger text-caption mt-1">{children}</p>
 }
 
 export function McpServerForm({
@@ -120,21 +120,20 @@ export function McpServerForm({
       {/* 通信方式 */}
       <div>
         <label className="text-secondary text-caption mb-1 block">通信方式</label>
-        <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
+        <div className="bg-hover border-hairline flex gap-0.5 rounded-md border p-0.5">
           {TRANSPORT_OPTIONS.map((opt) => (
-            <Button
+            <button
               key={opt.value}
               type="button"
-              variant="ghost"
               onClick={() => updateTransport(emptyTransport(opt.value))}
-              className={`text-caption h-auto flex-1 rounded-none px-3 py-2 ${
+              className={`text-caption focus-visible:ring-brand/40 h-8 flex-1 rounded-sm transition-colors outline-none focus-visible:ring-2 ${
                 transport.type === opt.value
-                  ? "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
-                  : "text-secondary hover:bg-hover hover:text-primary"
+                  ? "bg-surface text-primary shadow-card"
+                  : "text-tertiary hover:text-secondary"
               }`}
             >
               {opt.label}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
@@ -225,27 +224,26 @@ export function McpServerForm({
       {/* 工具暴露方式 */}
       <div>
         <label className="text-secondary text-caption mb-1 block">工具暴露</label>
-        <div className="border-hairline flex gap-0 overflow-hidden rounded-md border">
+        <div className="bg-hover border-hairline flex gap-0.5 rounded-md border p-0.5">
           {EXPOSURE_OPTIONS.map((opt) => {
             // codemode 与 deferred 在本应用里等价，统一显示为「按需搜索」
             const current =
               server.exposure === "codemode" ? "deferred" : (server.exposure ?? "direct")
             const active = current === opt.value
             return (
-              <Button
+              <button
                 key={opt.value}
                 type="button"
-                variant="ghost"
                 onClick={() => onChange({ ...server, exposure: opt.value })}
                 title={opt.hint}
-                className={`text-caption h-auto flex-1 rounded-none px-3 py-2 ${
+                className={`text-caption focus-visible:ring-brand/40 h-8 flex-1 rounded-sm transition-colors outline-none focus-visible:ring-2 ${
                   active
-                    ? "bg-brand text-brand-foreground hover:bg-brand hover:text-brand-foreground"
-                    : "text-secondary hover:bg-hover hover:text-primary"
+                    ? "bg-surface text-primary shadow-card"
+                    : "text-tertiary hover:text-secondary"
                 }`}
               >
                 {opt.label}
-              </Button>
+              </button>
             )
           })}
         </div>
@@ -253,7 +251,7 @@ export function McpServerForm({
 
       {/* 操作按钮 */}
       <div className="border-hairline flex items-center justify-end gap-2 border-t pt-4">
-        {saveError && <span className="text-down text-caption mr-auto">{saveError}</span>}
+        {saveError && <span className="text-danger text-caption mr-auto">{saveError}</span>}
         <Button variant="outline" size="sm" onClick={onCancel}>
           取消
         </Button>

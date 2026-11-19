@@ -48,10 +48,7 @@ export default function StockRankingTab() {
   const setExcludeSt = useRightPanelStore((state) => state.setStockRankingExcludeSt)
   const openKline = useRightPanelStore((state) => state.openKline)
   const query = useStockRanking(order, market, excludeSt)
-  const stocks = useMemo(
-    () => mergeStockRankingPages(query.data?.pages ?? []),
-    [query.data?.pages]
-  )
+  const stocks = useMemo(() => mergeStockRankingPages(query.data?.pages ?? []), [query.data?.pages])
   const marketLabel = MARKETS.find((item) => item.id === market)?.label ?? "全部"
   const latestPage = query.data?.pages.at(-1)
   const updatedAt = latestPage?.generated_at
@@ -80,9 +77,9 @@ export default function StockRankingTab() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, stocks.length])
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="@container space-y-3 p-4 @2xl:p-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="bg-hover/60 border-hairline inline-flex rounded-md border p-0.5">
+        <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
           {ORDERS.map((item) => {
             const active = order === item.id
             const Icon = item.id === "gainers" ? ArrowUpRight : ArrowDownRight
@@ -127,7 +124,7 @@ export default function StockRankingTab() {
               "text-caption h-8 rounded-none border-b-2 border-transparent px-2.5",
               market === item.id
                 ? "border-b-brand text-primary hover:bg-transparent"
-                : "text-tertiary hover:bg-transparent hover:text-secondary"
+                : "text-tertiary hover:text-secondary hover:bg-transparent"
             )}
           >
             {item.label}
@@ -173,29 +170,31 @@ export default function StockRankingTab() {
             query.isFetching && !query.isFetchingNextPage && "opacity-75"
           )}
         >
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>代码</th>
-                <th>名称</th>
-                <th className="num">最新价</th>
-                <th className="num">涨跌幅</th>
-                <th className="num">换手率</th>
-                <th className="num">流通市值</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stocks.map((stock, index) => (
-                <RankingRow
-                  key={stock.symbol}
-                  stock={stock}
-                  rank={index + 1}
-                  onOpen={() => openKline(stock.symbol, stock.name)}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>代码</th>
+                  <th>名称</th>
+                  <th className="num">最新价</th>
+                  <th className="num">涨跌幅</th>
+                  <th className="num">换手率</th>
+                  <th className="num hidden @2xl:table-cell">流通市值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stocks.map((stock, index) => (
+                  <RankingRow
+                    key={stock.symbol}
+                    stock={stock}
+                    rank={index + 1}
+                    onOpen={() => openKline(stock.symbol, stock.name)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div
             ref={loadMoreRef}
             className="border-hairline text-caption text-tertiary flex min-h-9 items-center justify-center border-t px-3"
@@ -233,7 +232,7 @@ function RankingRow({
       <td className="num">
         {stock.turnover_rate != null ? `${numberText(stock.turnover_rate)}%` : "—"}
       </td>
-      <td className="num">{formatCompactNumber(stock.float_market_cap)}</td>
+      <td className="num hidden @2xl:table-cell">{formatCompactNumber(stock.float_market_cap)}</td>
     </tr>
   )
 }

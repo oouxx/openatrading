@@ -50,7 +50,7 @@ export function KeyValueList({
                   commit(next)
                 }}
                 placeholder={keyPlaceholder ?? "KEY"}
-                className="font-number text-caption w-28"
+                className="font-number text-caption w-32"
               />
             )}
             <Input
@@ -68,7 +68,7 @@ export function KeyValueList({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="text-secondary hover:text-down shrink-0 self-center"
+                className="text-secondary hover:text-danger shrink-0 self-center"
                 onClick={() => commit(display.filter((_, j) => j !== i))}
                 title="删除"
               >

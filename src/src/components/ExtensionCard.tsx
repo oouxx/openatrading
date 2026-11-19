@@ -24,7 +24,7 @@ export function ExtensionCard({
   const Icon = EXTENSION_ICON[ext.id as keyof typeof EXTENSION_ICON] ?? Terminal
 
   return (
-    <div className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-3.5">
+    <div className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-4">
       <span
         className={`bg-hover grid size-9 shrink-0 place-items-center rounded-lg ${
           ext.enabled ? "text-secondary" : "text-tertiary"
@@ -53,7 +53,7 @@ export function ExtensionCard({
         >
           {ext.description}
         </p>
-        {error && <p className="text-down text-caption mt-1">{error}</p>}
+        {error && <p className="text-danger text-caption mt-1">{error}</p>}
       </div>
 
       <Switch

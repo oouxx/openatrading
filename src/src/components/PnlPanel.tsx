@@ -11,11 +11,12 @@
  */
 import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataError } from "@/components/data-state"
 import { formatCompactNumber, formatPct, pctClass } from "@/lib/format"
 import {
   PNL_CALENDAR_STALE_MS,
@@ -592,16 +593,11 @@ export function PnlPanel({ roleName }: { roleName: string }) {
 
   if (query.error) {
     return (
-      <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-        <AlertTriangle className="text-danger size-4" />
-        <p className="text-danger text-caption">
-          区间收益加载失败：
-          {query.error instanceof Error ? query.error.message : String(query.error)}
-        </p>
-        <Button variant="outline" size="xs" onClick={() => void query.refetch()}>
-          重试
-        </Button>
-      </div>
+      <DataError
+        title="区间收益加载失败"
+        description={query.error instanceof Error ? query.error.message : String(query.error)}
+        onRetry={() => void query.refetch()}
+      />
     )
   }
 

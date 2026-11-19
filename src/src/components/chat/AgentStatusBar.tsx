@@ -83,7 +83,7 @@ export default function AgentStatusBar({ phase, errorMessage }: AgentStatusBarPr
       {/* Phase indicator dot + label */}
       <div className={`flex items-center gap-2 ${vis.color} transition-colors duration-300`}>
         {vis.icon}
-        <span className="font-number text-caption font-medium tracking-wide">{vis.label}</span>
+        <span className="font-number text-caption font-medium">{vis.label}</span>
       </div>
 
       {/* Animated progress bar (during active phases) */}

@@ -165,18 +165,12 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   },
   pre: ({ children }) => <>{children}</>,
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto">
-      <table className="font-number text-caption w-full border-collapse">{children}</table>
+    <div className="border-hairline my-3 overflow-x-auto rounded-md border">
+      <table className="data-table">{children}</table>
     </div>
   ),
-  th: ({ children }) => (
-    <th className="bg-hover border-hairline text-secondary border-b px-3 py-2 text-left font-medium">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="border-hairline text-secondary border-b px-3 py-2">{children}</td>
-  ),
+  th: ({ children }) => <th>{children}</th>,
+  td: ({ children }) => <td>{children}</td>,
   a: ({ children, href }) => (
     <a href={href} className="text-brand hover:underline" target="_blank" rel="noreferrer">
       {children}
@@ -187,7 +181,9 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   hr: () => <hr className="border-hairline my-3" />,
   h1: ({ children }) => <h1 className="text-h1 text-primary mt-5 mb-3">{children}</h1>,
   h2: ({ children }) => <h2 className="text-h2 text-primary mt-4 mb-2">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-h2 text-primary mt-3 mb-1.5">{children}</h3>,
+  h3: ({ children }) => (
+    <h3 className="text-body text-primary mt-3 mb-1.5 font-semibold">{children}</h3>
+  ),
   p: ({ children }) => <p className="text-body my-2 leading-[1.7]">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="border-brand/30 text-secondary text-body my-2 border-l-2 pl-3 italic">

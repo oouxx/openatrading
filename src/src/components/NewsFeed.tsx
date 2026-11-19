@@ -1,18 +1,13 @@
 import { useEffect, useRef } from "react"
 import { useTelegraphInfinite, type TelegraphItem } from "@/hooks/query/useTelegraph"
 import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
-import { Radio } from "lucide-react"
-
-interface NewsFeedProps {
-  variant?: "default" | "tab"
-}
 
 interface NewsItem {
   id: number
   severity: "major" | "normal"
   time: string
   title: string
-  aiNote: string
+  detail: string
 }
 
 function formatTime(ts?: number | string): string {
@@ -31,45 +26,8 @@ function toNewsItem(item: TelegraphItem, idx: number): NewsItem {
     severity: (item.level === "R" || item.level === "B" ? "major" : "normal") as "major" | "normal",
     time: formatTime(item.ctime || item.modified_time),
     title: item.brief || item.title || (item.content || "").substring(0, 60),
-    aiNote: item.title || "",
+    detail: item.title || "",
   }
-}
-
-function NewsList({ items, isLoading }: { items: NewsItem[]; isLoading: boolean }) {
-  if (items.length === 0 && isLoading) {
-    return <DataLoading label="加载资讯…" size="table" rows={5} />
-  }
-  if (items.length === 0) {
-    return <DataEmpty title="暂无资讯" size="table" />
-  }
-  return (
-    <>
-      {items.map((item, idx) => (
-        <div
-          key={`${item.id}-${idx}`}
-          className={`border-hairline hover:bg-hover cursor-pointer border-t px-5 py-4 transition-colors ${idx === 0 ? "border-t-0" : ""}`}
-        >
-          <div className="flex items-start gap-2">
-            <span
-              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
-                item.severity === "major" ? "bg-up" : "bg-tertiary/40"
-              }`}
-              aria-label={item.severity === "major" ? "重要" : undefined}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-body text-secondary leading-relaxed">
-                <span className="text-secondary font-number mr-1">{item.time}</span>
-                {item.title}
-              </p>
-              {item.aiNote && (
-                <p className="text-brand/80 text-caption mt-1 leading-relaxed">→ {item.aiNote}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
-    </>
-  )
 }
 
 function Sentry({ onVisible }: { onVisible: () => void }) {
@@ -89,7 +47,7 @@ function Sentry({ onVisible }: { onVisible: () => void }) {
   return <div ref={ref} className="h-4" />
 }
 
-export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
+export default function NewsFeed() {
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error, refetch } =
     useTelegraphInfinite()
 
@@ -97,103 +55,58 @@ export default function NewsFeed({ variant = "default" }: NewsFeedProps) {
   const items: NewsItem[] = data ? data.pages.flat().map((item, idx) => toNewsItem(item, idx)) : []
   const majorCount = items.filter((n) => n.severity === "major").length
 
-  if (variant === "tab") {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="text-caption mb-6 flex shrink-0 items-center gap-3">
-          <span className="text-secondary">
-            <b className="text-primary">{items.length}</b> 条资讯
-            <span className="ml-2">
-              · <b className="text-up">{majorCount}</b> 重要
-            </span>
-          </span>
-        </div>
-
-        {error && (
-          <div className="shrink-0 py-4">
-            <DataError
-              title="资讯加载失败"
-              description={error.message}
-              size="compact"
-              onRetry={() => void refetch()}
-            />
-          </div>
-        )}
-
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {error ? null : items.length > 0 ? (
-            <>
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-surface border-hairline group hover:bg-hover mb-3 flex cursor-pointer items-start gap-3 rounded-lg border px-5 py-4 transition-colors"
-                >
-                  <span
-                    className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
-                      item.severity === "major" ? "bg-up" : "bg-tertiary/40"
-                    }`}
-                    aria-label={item.severity === "major" ? "重要" : undefined}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-body text-secondary group-hover:text-primary leading-relaxed transition-colors">
-                      <span className="text-secondary font-number text-caption mr-2">
-                        {item.time}
-                      </span>
-                      {item.title}
-                    </p>
-                    {item.aiNote && (
-                      <p className="text-brand/70 text-caption mt-1">→ {item.aiNote}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div className="flex-1" />
-              {isFetchingNextPage && (
-                <DataLoading label="加载更多资讯…" size="compact" />
-              )}
-              {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
-            </>
-          ) : isLoading ? (
-            <DataLoading label="加载资讯…" size="table" rows={5} />
-          ) : (
-            <DataEmpty title="暂无资讯" size="table" />
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="bg-surface border-hairline flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
-      <div className="border-hairline flex items-center justify-between border-b px-4 py-3">
-        <span className="text-caption text-secondary flex items-center gap-1.5">
-          <Radio className="size-3" />
-          实时资讯
-        </span>
-        <span className="text-caption text-secondary font-number">{items.length} 条</span>
-      </div>
-      <div className="max-h-full min-h-0 flex-1 overflow-y-auto">
-        {isLoading && !items.length ? (
-          <DataLoading label="加载资讯…" size="table" rows={4} />
-        ) : error && !items.length ? (
-          <div className="p-3">
-            <DataError
-              title="资讯加载失败"
-              description={error.message}
-              size="compact"
-              onRetry={() => void refetch()}
-            />
-          </div>
-        ) : (
-          <>
-            <NewsList items={items} isLoading={isLoading} />
-            {isFetchingNextPage && (
-              <DataLoading label="加载更多资讯…" size="compact" />
-            )}
-            {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
-          </>
+    <div className="@container p-4 @2xl:p-6">
+      <div className="text-caption text-tertiary flex items-center gap-2 pb-3">
+        <span>{items.length} 条资讯</span>
+        {majorCount > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="bg-brand size-1 rounded-full" aria-hidden />
+            {majorCount} 条重要
+          </span>
         )}
       </div>
+
+      {error && (
+        <DataError
+          title="资讯加载失败"
+          description={error.message}
+          size="compact"
+          onRetry={() => void refetch()}
+        />
+      )}
+
+      {error ? null : items.length > 0 ? (
+        <div className="border-hairline bg-surface divide-hairline divide-y overflow-hidden rounded-lg border">
+          {items.map((item) => (
+            <article key={item.id} className="px-4 py-3.5">
+              <div className="flex items-start gap-2.5">
+                <span
+                  className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
+                    item.severity === "major" ? "bg-brand" : "bg-tertiary/40"
+                  }`}
+                  aria-label={item.severity === "major" ? "重要" : undefined}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-body text-secondary leading-[1.65]">
+                    <span className="text-tertiary font-number text-caption mr-2">{item.time}</span>
+                    {item.title}
+                  </p>
+                  {item.detail && item.detail !== item.title && (
+                    <p className="text-tertiary text-caption mt-1 leading-relaxed">{item.detail}</p>
+                  )}
+                </div>
+              </div>
+            </article>
+          ))}
+          {isFetchingNextPage && <DataLoading label="加载更多资讯…" size="compact" />}
+          {hasNextPage && <Sentry onVisible={() => fetchNextPage()} />}
+        </div>
+      ) : isLoading ? (
+        <DataLoading label="加载资讯…" size="table" rows={5} />
+      ) : (
+        <DataEmpty title="暂无资讯" size="table" />
+      )}
     </div>
   )
 }

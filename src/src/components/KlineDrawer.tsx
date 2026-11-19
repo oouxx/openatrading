@@ -6,9 +6,10 @@ import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatic
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
 import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
 import { toYahooSymbol } from "@/lib/stock-utils"
-import { Star } from "lucide-react"
+import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 
 interface KlineDrawerProps {
   symbol: string
@@ -33,7 +34,7 @@ function canonicalWatchSymbol(raw: string): string {
 }
 
 function toXuangubaoSymbol(code: string): string {
-  const clean = code.replace(/[.].*$/, "")
+  const clean = code.replace(/[.].*$/, "").replace(/^(sh|sz|bj)/i, "")
   if (clean.startsWith("6")) return clean + ".SS"
   if (clean.startsWith("0") || clean.startsWith("3")) return clean + ".SZ"
   if (clean.startsWith("4") || clean.startsWith("8")) return clean + ".BJ"
@@ -55,6 +56,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
   // Kline data from SSE
   const [klineData, setKlineData] = useState<KlineCandle[]>([])
+  const [klineLoading, setKlineLoading] = useState(true)
+  const [klineError, setKlineError] = useState<string | null>(null)
+  const [streamNonce, setStreamNonce] = useState(0)
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null)
   const crosshairRef = useRef<CrosshairInfo | null>(null)
 
@@ -72,6 +76,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   }, [setChartCrosshair, klineData])
 
   useEffect(() => {
+    // 切换标的时先清掉上一只股票的报价，避免头部短暂显示旧价格。
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换标的后重置可见状态
+    setQuote(null)
     return subscribeRealtime<RealtimeQuote>(xgSymbol, setQuote, (err) =>
       console.warn("[realtime-stream]", err)
     )
@@ -81,14 +88,27 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换股票/周期时先清空上一份数据
     setKlineData([])
+    setKlineLoading(true)
+    setKlineError(null)
     crosshairRef.current = null
     setCrosshair(null)
-    return subscribeKline<{ candles?: KlineCandle[] }>(xgSymbol, period, 256, (data) => {
-      if (data.candles) {
-        setKlineData(data.candles)
+    return subscribeKline<{ candles?: KlineCandle[] }>(
+      xgSymbol,
+      period,
+      256,
+      (data) => {
+        if (data.candles) {
+          setKlineData(data.candles)
+          setKlineLoading(false)
+          setKlineError(null)
+        }
+      },
+      (err) => {
+        setKlineLoading(false)
+        setKlineError(err)
       }
-    })
-  }, [xgSymbol, period])
+    )
+  }, [xgSymbol, period, streamNonce])
   const { data: plates } = usePlatesByStock(xgSymbol)
   const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<PlateByStockItem | null>(null)
@@ -110,7 +130,11 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       { label: "总市值", value: formatCompactNumber(quote.market_value) },
       { label: "流通市值", value: formatCompactNumber(quote.circulation_value) },
       { label: "量比", value: quote.volume_ratio?.toFixed(2) || "-" },
-      { label: "成交量", value: formatCompactNumber(quote.turnover_volume) + "股" },
+      {
+        label: "成交量",
+        value:
+          quote.turnover_volume != null ? `${formatCompactNumber(quote.turnover_volume)}股` : "-",
+      },
     ]
   }, [quote])
 
@@ -151,21 +175,23 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const up = quote != null && (quote.px_change_rate ?? -1) >= 0
 
   return (
-    <div className="bg-canvas h-full overflow-y-auto">
+    <div className="bg-canvas @container h-full overflow-y-auto">
       {/* Header */}
-      <div className="bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
+      <div className="bg-surface border-hairline flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-4 @md:gap-3 @md:px-6">
         <Button
           variant="ghost"
           size="icon-xs"
-          className="text-h1 leading-none"
+          className="text-secondary hover:text-primary"
           onClick={onClose}
           title="关闭"
           aria-label="关闭行情详情"
         >
-          &times;
+          <X className="size-4" />
         </Button>
-        <span className="text-h1 text-primary font-bold">{name}</span>
-        <span className="text-secondary font-number text-caption">{symbol}</span>
+        <span className="text-h1 text-primary shrink-0 font-semibold tracking-[-0.01em] whitespace-nowrap">
+          {name}
+        </span>
+        <span className="text-secondary font-number text-caption hidden @md:inline">{symbol}</span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -179,14 +205,13 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             }
           }}
           title={inWatchlist ? "取消自选" : "添加自选"}
+          aria-label={inWatchlist ? "取消自选" : "添加自选"}
         >
-          <Star
-            className={`size-4 ${inWatchlist ? "fill-warning text-warning" : "text-secondary"}`}
-          />
+          <Star className={`size-4 ${inWatchlist ? "fill-brand text-brand" : "text-secondary"}`} />
         </Button>
         {quote && (
-          <div className="ml-auto flex items-center gap-3">
-            <span className="font-number text-h1 font-bold">{quote.last_px?.toFixed(2)}</span>
+          <div className="ml-auto flex shrink-0 items-center gap-2 @md:gap-3">
+            <span className="font-number text-h1 font-semibold">{quote.last_px?.toFixed(2)}</span>
             <span
               className={`font-number text-body rounded-lg px-3 py-1 font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
             >
@@ -198,8 +223,8 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       </div>
 
       {/* Period selector */}
-      <div className="bg-surface border-hairline flex border-b px-6 py-2">
-        <div className="bg-hover/60 border-hairline inline-flex rounded-md border p-0.5">
+      <div className="bg-surface border-hairline flex border-b px-4 py-2 @md:px-6">
+        <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
           {periods.map((p) => {
             const active = period === p.value
             return (
@@ -223,9 +248,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Crosshair info bar */}
       {currCrosshair && (
-        <div className="bg-surface border-hairline font-number text-caption flex items-center justify-between border-b px-3 py-1">
+        <div className="bg-surface border-hairline font-number text-caption flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-b px-3 py-1">
           <span className="text-primary shrink-0">{currCrosshair.time}</span>
-          <div className="text-tertiary flex shrink-0 items-center gap-2">
+          <div className="text-tertiary flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span>
               开 <span className="text-primary">{currCrosshair.open}</span>
             </span>
@@ -247,25 +272,53 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       )}
 
       {/* Chart */}
-      <div className="px-0">
+      <div className="relative px-5">
         <KlineChart
           data={klineData}
           period={period}
           preclose={quote?.preclose_px}
           symbol={xgSymbol}
         />
+        {klineData.length === 0 && (
+          <div className="bg-canvas absolute inset-0 z-10 flex items-center justify-center px-6">
+            {klineLoading ? (
+              <DataLoading size="compact" label="加载 K 线…" />
+            ) : klineError ? (
+              <DataError
+                size="compact"
+                title="K 线加载失败"
+                description={
+                  klineError === "connection error" ? "行情连接中断，请稍后重试" : klineError
+                }
+                onRetry={() => setStreamNonce((n) => n + 1)}
+              />
+            ) : (
+              <DataEmpty
+                size="compact"
+                title="暂无 K 线数据"
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setStreamNonce((n) => n + 1)}
+                  >
+                    重试
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Metrics */}
       {quote && (
-        <div className="px-6 py-3">
-          <div className="text-caption grid grid-cols-4 gap-2">
+        <div className="px-4 py-3 @md:px-6">
+          <div className="text-caption grid grid-cols-2 gap-2 @md:grid-cols-4">
             {metrics.map((m) => (
-              <div
-                key={m.label}
-                className="bg-surface border-hairline rounded-md border p-2.5 text-center"
-              >
-                <p className="text-secondary text-caption mb-1">{m.label}</p>
+              <div key={m.label} className="bg-surface border-hairline rounded-md border p-2.5">
+                <p className="text-tertiary text-micro mb-1">{m.label}</p>
                 <p className="font-number text-caption text-primary">{m.value}</p>
               </div>
             ))}
@@ -275,7 +328,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Plates */}
       {plateList.length > 0 && (
-        <div className="border-hairline mt-2 border-t px-6 py-3">
+        <div className="border-hairline mt-2 border-t px-4 py-3 @md:px-6">
           <p className="text-secondary text-caption mb-2">所属板块</p>
           <div className="grid max-h-[200px] grid-cols-2 gap-2 overflow-y-auto">
             {plateList.map((p) => (
@@ -284,7 +337,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                 type="button"
                 disabled={!p.reason}
                 className={`bg-surface border-hairline w-full rounded-md border p-2.5 text-left transition-colors ${
-                  p.reason ? "hover:border-hairline cursor-pointer" : "cursor-default"
+                  p.reason ? "hover:border-brand/30 cursor-pointer" : "cursor-default"
                 }`}
                 onClick={() => p.reason && setDialogPlate(p)}
               >
@@ -297,7 +350,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
                   </span>
                 </div>
                 {p.reason && (
-                  <p className="text-body text-secondary mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-caption text-secondary mt-1 line-clamp-2 leading-relaxed">
                     {p.reason}
                   </p>
                 )}
@@ -317,7 +370,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
         >
           <DialogContent className="bg-surface border-hairline shadow-modal w-[420px] max-w-[90vw] gap-3 rounded-lg border p-5 sm:max-w-[90vw]">
             <div className="flex items-center gap-2 pr-8">
-              <DialogTitle className="text-body text-primary font-bold">
+              <DialogTitle className="text-body text-primary font-semibold">
                 {dialogPlate.plate_name}
               </DialogTitle>
               <span className={`font-number text-caption ${pctClass(dialogPlate.core_avg_pcp)}`}>

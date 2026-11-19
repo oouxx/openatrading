@@ -73,7 +73,7 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
 
       {visible && (
         <div
-          className="bg-surface border-hairline fixed z-60 rounded-lg border p-2"
+          className="bg-surface border-hairline shadow-modal fixed z-60 rounded-lg border p-2"
           style={{ top: pos.y + "px", left: pos.x + "px" }}
           onMouseEnter={clearTimer}
           onMouseLeave={onLeave}
@@ -106,11 +106,11 @@ export default function MiniChartPreview({ symbol, name, children }: MiniChartPr
           <button
             type="button"
             aria-label="关闭走势图"
-            className="absolute inset-0"
+            className="bg-scrim absolute inset-0"
             onClick={() => setEnlarged(false)}
           />
           <div
-            className="bg-surface border-hairline relative rounded-lg border p-4"
+            className="bg-surface border-hairline shadow-modal relative rounded-lg border p-4"
             onWheel={(e) => {
               const step = 0.5
               setScale((s) => Math.max(0.5, Math.min(8, s + (e.deltaY < 0 ? step : -step))))

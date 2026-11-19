@@ -189,7 +189,7 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
               >
                 {loadFailed ? (
                   <div className="flex flex-col items-center gap-2 py-6 text-center">
-                    <p className="text-secondary text-caption">无法加载模型列表</p>
+                    <p className="text-danger text-caption">无法加载模型列表</p>
                     <Button size="xs" variant="outline" onClick={() => modelsQuery.refetch()}>
                       重试
                     </Button>

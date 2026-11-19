@@ -17,6 +17,8 @@ import {
   type ReplayEvent,
 } from "@/hooks/query/useReplay"
 import { chartColors } from "@/lib/chartColors"
+import { cn } from "@/lib/utils"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { IndexMiniChart, RotationHeatmap, type IndexSeries } from "@/components/replay/ReplayCharts"
 import {
   TRADING_MINUTES,
@@ -228,21 +230,15 @@ export default function ReplayView() {
 
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
-        <p className="text-secondary text-caption text-center">{error.message}</p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="xs"
-            className="border-hairline"
-            onClick={() => void refetch()}
-          >
-            重试
-          </Button>
-          <Button variant="ghost" size="xs" onClick={() => setSelectedDate(null)}>
-            最近交易日
-          </Button>
-        </div>
+      <div className="flex h-full flex-col items-center justify-center gap-1 px-6">
+        <DataError
+          title="回放数据加载失败"
+          description={error.message}
+          onRetry={() => void refetch()}
+        />
+        <Button variant="ghost" size="xs" onClick={() => setSelectedDate(null)}>
+          回到最近交易日
+        </Button>
       </div>
     )
   }
@@ -255,10 +251,7 @@ export default function ReplayView() {
           <Skeleton className="h-5 w-14" />
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="text-secondary text-caption flex items-center gap-2">
-            <span className="bg-brand size-2 animate-pulse rounded-full" />
-            加载回放数据...
-          </div>
+          <DataLoading size="compact" label="加载回放数据…" />
         </div>
       </div>
     )
@@ -358,73 +351,92 @@ export default function ReplayView() {
             className="h-1 min-w-0 flex-1 cursor-pointer"
             style={{ accentColor: "var(--color-brand)" }}
           />
-          <div className="flex gap-0.5">
-            {SPEEDS.map((item) => (
-              <Button
-                key={item.value}
-                variant="outline"
-                size="xs"
-                onClick={() => setSpeed(item.value)}
-                className={`text-caption font-number h-6 px-1.5 ${
-                  speed === item.value
-                    ? "border-brand bg-brand text-brand-foreground"
-                    : "border-hairline text-secondary"
-                }`}
-              >
-                {item.label}
-              </Button>
-            ))}
+          <div className="bg-hover border-hairline flex gap-0.5 rounded-md border p-0.5">
+            {SPEEDS.map((item) => {
+              const active = speed === item.value
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setSpeed(item.value)}
+                  className={cn(
+                    "text-caption focus-visible:ring-brand/40 font-number h-6 rounded-sm px-1.5 transition-colors outline-none focus-visible:ring-2",
+                    active
+                      ? "bg-surface text-primary shadow-card"
+                      : "text-tertiary hover:text-secondary"
+                  )}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          {(
-            [
-              { value: "all", label: "全部" },
-              { value: "good", label: "利好" },
-              { value: "bad", label: "利空" },
-            ] as const
-          ).map((item) => (
-            <Button
-              key={item.value}
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                setDirection(item.value)
-                setSelectedId(null)
-              }}
-              className={`text-caption h-6 px-2 ${
-                direction === item.value
-                  ? item.value === "good"
-                    ? "border-up bg-up/10 text-up"
-                    : item.value === "bad"
-                      ? "border-down bg-down/10 text-down"
-                      : "border-brand bg-brand text-brand-foreground"
-                  : "border-hairline text-secondary"
-              }`}
-            >
-              {item.label}
-            </Button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="bg-hover border-hairline flex gap-0.5 rounded-md border p-0.5">
+            {(
+              [
+                { value: "all", label: "全部" },
+                { value: "good", label: "利好" },
+                { value: "bad", label: "利空" },
+              ] as const
+            ).map((item) => {
+              const active = direction === item.value
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setDirection(item.value)
+                    setSelectedId(null)
+                  }}
+                  className={cn(
+                    "text-caption focus-visible:ring-brand/40 h-6 rounded-sm px-2 transition-colors outline-none focus-visible:ring-2",
+                    active
+                      ? cn(
+                          "bg-surface shadow-card",
+                          item.value === "good"
+                            ? "text-up"
+                            : item.value === "bad"
+                              ? "text-down"
+                              : "text-primary"
+                        )
+                      : "text-tertiary hover:text-secondary"
+                  )}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
+          </div>
           <span className="text-tertiary text-caption">幅度≥</span>
-          {PCT_OPTIONS.map((pct) => (
-            <Button
-              key={pct}
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                setMinPct(pct)
-                setSelectedId(null)
-              }}
-              className={`text-caption font-number h-6 px-1.5 ${
-                minPct === pct
-                  ? "border-brand bg-brand text-brand-foreground"
-                  : "border-hairline text-secondary"
-              }`}
-            >
-              {pct}%
-            </Button>
-          ))}
+          <div className="bg-hover border-hairline flex gap-0.5 rounded-md border p-0.5">
+            {PCT_OPTIONS.map((pct) => {
+              const active = minPct === pct
+              return (
+                <button
+                  key={pct}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setMinPct(pct)
+                    setSelectedId(null)
+                  }}
+                  className={cn(
+                    "text-caption focus-visible:ring-brand/40 font-number h-6 min-w-8 rounded-sm px-1.5 transition-colors outline-none focus-visible:ring-2",
+                    active
+                      ? "bg-surface text-primary shadow-card"
+                      : "text-tertiary hover:text-secondary"
+                  )}
+                >
+                  {pct}%
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -438,9 +450,7 @@ export default function ReplayView() {
           {indexSeries.length > 0 ? (
             <IndexMiniChart series={indexSeries} cursor={cursor} />
           ) : (
-            <p className="text-tertiary text-caption py-3">
-              该交易日没有保存指数分时（仅保存采集当天的数据）
-            </p>
+            <DataEmpty size="compact" title="暂无指数分时" description="仅保存采集当天的数据" />
           )}
         </section>
 
@@ -505,7 +515,7 @@ export default function ReplayView() {
               ))}
             </div>
           ) : (
-            <p className="text-tertiary text-caption py-2">没有满足条件的信号</p>
+            <DataEmpty size="compact" title="没有满足条件的信号" />
           )}
         </section>
 
@@ -576,20 +586,23 @@ export default function ReplayView() {
               )}
             </div>
           ) : (
-            <div className="text-secondary text-caption flex flex-col items-center gap-2 py-6">
-              <span>当前筛选条件下没有事件</span>
-              <Button
-                variant="outline"
-                size="xs"
-                className="border-hairline"
-                onClick={() => {
-                  setDirection("all")
-                  setMinPct(0)
-                }}
-              >
-                清除筛选
-              </Button>
-            </div>
+            <DataEmpty
+              size="compact"
+              title="当前筛选条件下没有事件"
+              action={
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="border-hairline"
+                  onClick={() => {
+                    setDirection("all")
+                    setMinPct(0)
+                  }}
+                >
+                  清除筛选
+                </Button>
+              }
+            />
           )}
         </section>
 
