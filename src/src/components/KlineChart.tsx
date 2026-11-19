@@ -661,9 +661,13 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     gridDayRef.current = -1
     axisPinnedRef.current = false
     precloseAppliedRef.current = null
+    // 分时量程钉死值属于上一只股票/上一张图；切换标的后必须清掉，
+    // 否则新标的会沿用旧标的的涨跌停区间。
+    intradayRangeRef.current = null
     klineTickKeyRef.current = ""
     lastPriceLineRef.current = null
     setMaLegend(null)
+    setGridLen(0)
 
     if (period === "minute") {
       initIntradayChart()
@@ -969,11 +973,30 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       )
 
       clearPriceLines()
-      // 同花顺默认可见密度：日K≈半年、周K≈2~3 年、月K≈5 年
-      const visible = period === "day" ? 120 : period === "week" ? 120 : 60
-      const to = deduped.length - 1
-      const from = Math.max(0, to - visible + 1)
-      chart.timeScale().setVisibleLogicalRange({ from, to })
+      // 同花顺默认可见密度：日K≈半年、周K≈2~3 年、月K≈5 年；窄屏减半。
+      // 只在首次填充时设置可视区间：3 秒一次的流式刷新不能把用户手动
+      // 缩放/平移后的视角拽回最新 N 根。
+      if (!axisPinnedRef.current) {
+        const narrowChart = (containerRef.current?.clientWidth ?? 0) < 480
+        const visible =
+          period === "day"
+            ? narrowChart
+              ? 60
+              : 120
+            : period === "week"
+              ? narrowChart
+                ? 60
+                : 120
+              : narrowChart
+                ? 36
+                : 60
+        const to = deduped.length - 1
+        // 左侧留 4 根空白：时间轴首个 yy/mm 标签居中于第一根 bar，
+        // 不留空白时标签左半会被画布边缘裁掉（显示成 "5/10"）。
+        const from = to - visible + 1 - 4
+        chart.timeScale().setVisibleLogicalRange({ from, to })
+        axisPinnedRef.current = true
+      }
     }
   }, [data, period, symbol, preclose, theme, clearPriceLines])
 
