@@ -80,12 +80,20 @@
     color: var(--color-primary) !important;
     border: 1px solid var(--color-hairline) !important;
     box-shadow: var(--shadow-modal) !important;
+    /* shadcn 默认 rounded-xl(12px)，超出项目 4/6/8 的圆角契约，统一收敛到 lg */
+    border-radius: var(--radius-lg) !important;
+  }
+  [data-slot="dialog-footer"] {
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
   }
 
   /* --- Command dialog ---
    * 只对弹窗内的 command 透明：对话框自身提供 surface 背景。
    * 内联弹出层（斜杠命令、股票搜索）需要自带背景，否则会透出下面的
    * 消息内容，所以不能全局抹掉 background。 */
+  [data-slot="command"] {
+    border-radius: var(--radius-lg) !important;
+  }
   [data-slot="dialog-content"] [data-slot="command"] {
     background: transparent !important;
     color: var(--color-primary) !important;

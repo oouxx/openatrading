@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { type SentimentHistoryDay } from "@/stores/data"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { useOverview } from "@/hooks/query/useOverview"
+import { DataLoading } from "@/components/data-state"
 import SentimentHistory from "./SentimentHistory"
 
 export default function SentimentChipTab() {
@@ -85,7 +86,7 @@ export default function SentimentChipTab() {
         <div className="bg-surface border-hairline p-card-inner rounded-lg border">
           <h3 className="text-caption text-primary mb-4 font-medium">市场情绪周期判断</h3>
           {!history.length ? (
-            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
+            <DataLoading size="compact" label="加载情绪数据…" />
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -121,7 +122,7 @@ export default function SentimentChipTab() {
         <div className="bg-surface border-hairline p-card-inner rounded-lg border">
           <h3 className="text-caption text-primary mb-4 font-medium">市场筹码结构分析</h3>
           {!overview ? (
-            <div className="text-caption text-secondary py-8 text-center">加载中...</div>
+            <DataLoading size="compact" label="加载筹码数据…" />
           ) : (
             <div className="space-y-3">
               <div className="text-caption flex justify-between">

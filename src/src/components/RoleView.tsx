@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
-import { AlertTriangle, Plus, Trash2, Users } from "lucide-react"
+import { Plus, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PnlPanel } from "@/components/PnlPanel"
 import { StatusBanner } from "@/components/status-banner"
@@ -111,35 +111,14 @@ function TableStatus({
   onRetry?: () => void
 }) {
   if (kind === "loading") {
-    return (
-      <div className="space-y-2 px-5 py-6" aria-label="加载中">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-5/6" />
-        <Skeleton className="h-4 w-2/3" />
-      </div>
-    )
+    return <DataLoading size="table" rows={4} label="加载中…" />
   }
-  return (
-    <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-      <AlertTriangle className="text-danger size-4" />
-      <p className="text-danger text-caption">{message ?? "加载失败"}</p>
-      {onRetry && (
-        <Button variant="outline" size="xs" onClick={onRetry}>
-          重试
-        </Button>
-      )}
-    </div>
-  )
+  return <DataError size="table" title={message ?? "加载失败"} onRetry={onRetry} />
 }
 
 /** 表格空态：一句「现在没有」+ 一句「什么情况下会有」，避免空表格像坏了 */
 function TableEmpty({ message, hint }: { message: string; hint?: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1 px-5 py-12 text-center">
-      <p className="text-secondary text-caption">{message}</p>
-      {hint && <p className="text-tertiary text-caption">{hint}</p>}
-    </div>
-  )
+  return <DataEmpty size="table" title={message} description={hint} />
 }
 
 interface RoleStat {
@@ -1350,28 +1329,30 @@ export default function RoleView() {
             低于内容高度，导致曲线底部（日期横轴）和脚注被裁掉，页面却不滚动。 */}
         <main className="readable-content flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6 [&>*]:shrink-0">
           {!activeRole ? (
-            <div className="flex flex-1 items-center justify-center">
-              {rolesPending && visibleRoles.length === 0 ? (
-                <DataLoading label="加载角色…" size="panel" />
-              ) : rolesQueryError && visibleRoles.length === 0 ? (
-                <DataError
-                  title="角色列表加载失败"
-                  description={errorText(rolesQueryError)}
-                  onRetry={() => void refetchRoles()}
-                />
-              ) : (
-                <DataEmpty
-                  icon={<Users className="size-4" />}
-                  title="还没有模拟账户"
-                  description="每个角色都是一个独立的模拟账户，买入后按实时行情估值。"
-                  action={
-                    <Button size="sm" onClick={openCreate}>
-                      <Plus />
-                      新建角色
-                    </Button>
-                  }
-                />
-              )}
+            <div className="flex flex-1 items-center justify-center px-6">
+              <div className="w-full max-w-md">
+                {rolesPending && visibleRoles.length === 0 ? (
+                  <DataLoading label="加载角色…" size="panel" />
+                ) : rolesQueryError && visibleRoles.length === 0 ? (
+                  <DataError
+                    title="角色列表加载失败"
+                    description={errorText(rolesQueryError)}
+                    onRetry={() => void refetchRoles()}
+                  />
+                ) : (
+                  <DataEmpty
+                    icon={<Users className="size-4" />}
+                    title="还没有模拟账户"
+                    description="每个角色都是一个独立的模拟账户，买入后按实时行情估值。"
+                    action={
+                      <Button size="sm" onClick={openCreate}>
+                        <Plus />
+                        新建角色
+                      </Button>
+                    }
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <>
@@ -1379,7 +1360,7 @@ export default function RoleView() {
               <div className="group flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-baseline gap-3">
                   <h1
-                    className="text-h1 text-primary min-w-0 truncate font-semibold"
+                    className="text-h1 text-primary min-w-0 truncate font-semibold tracking-[-0.01em]"
                     title={currentRole?.name ?? activeRole}
                   >
                     {currentDisplayName}

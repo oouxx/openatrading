@@ -229,7 +229,7 @@ export default function ReplayView() {
   if (error) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
-        <p className="text-secondary text-caption text-center">{error.message}</p>
+        <p className="text-danger text-caption text-center">{error.message}</p>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"

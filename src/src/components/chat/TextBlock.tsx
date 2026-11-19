@@ -187,7 +187,9 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   hr: () => <hr className="border-hairline my-3" />,
   h1: ({ children }) => <h1 className="text-h1 text-primary mt-5 mb-3">{children}</h1>,
   h2: ({ children }) => <h2 className="text-h2 text-primary mt-4 mb-2">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-h2 text-primary mt-3 mb-1.5">{children}</h3>,
+  h3: ({ children }) => (
+    <h3 className="text-body text-primary mt-3 mb-1.5 font-semibold">{children}</h3>
+  ),
   p: ({ children }) => <p className="text-body my-2 leading-[1.7]">{children}</p>,
   blockquote: ({ children }) => (
     <blockquote className="border-brand/30 text-secondary text-body my-2 border-l-2 pl-3 italic">

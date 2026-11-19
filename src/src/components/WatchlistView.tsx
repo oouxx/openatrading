@@ -321,7 +321,7 @@ export default function WatchlistView() {
 
       {/* KlineDrawer overlay */}
       {klineStock && (
-        <div className="bg-surface border-hairline w-detail-panel shrink-0 overflow-y-auto border-l">
+        <div className="bg-surface border-hairline w-full shrink-0 overflow-y-auto sm:w-detail-panel sm:border-l">
           <KlineDrawer
             symbol={klineStock.symbol}
             name={klineStock.name}

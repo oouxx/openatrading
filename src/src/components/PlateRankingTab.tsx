@@ -9,8 +9,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { DataError, DataLoading } from "@/components/data-state"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import {
   usePlateDetail,
   usePlateRankings,
@@ -219,7 +218,7 @@ function RankingSection({
         <span className="text-caption font-number text-tertiary">{items.length}</span>
       </div>
       {items.length === 0 ? (
-        <div className="text-caption text-tertiary px-4 py-8 text-center">暂无板块</div>
+        <DataEmpty size="table" title="暂无板块" description="当前排名类型下没有数据" />
       ) : (
         <div className="divide-hairline divide-y">
           {items.map((item, index) => (
@@ -343,23 +342,13 @@ function PlateDetailView({ plate, onBack }: { plate: PlateRankingItem; onBack: (
       </div>
 
       {detail.isPending ? (
-        <div className="space-y-3">
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
+        <DataLoading size="table" rows={5} label="加载板块详情…" />
       ) : detail.error ? (
-        <div className="bg-surface border-hairline rounded-lg border p-5">
-          <p className="text-caption text-danger">加载失败：{detail.error.message}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => void detail.refetch()}
-          >
-            重试
-          </Button>
-        </div>
+        <DataError
+          title="板块详情加载失败"
+          description={detail.error.message}
+          onRetry={() => void detail.refetch()}
+        />
       ) : data ? (
         <>
           <section className="bg-surface border-hairline rounded-lg border p-3">
@@ -399,7 +388,7 @@ function PlateDetailView({ plate, onBack }: { plate: PlateRankingItem; onBack: (
               <span className="text-caption font-number text-tertiary">{data.stocks.length}</span>
             </div>
             {data.stocks.length === 0 ? (
-              <div className="text-caption text-tertiary px-4 py-10 text-center">暂无成分股</div>
+              <DataEmpty size="table" title="暂无成分股" />
             ) : (
               <div className="divide-hairline divide-y">
                 {stocks.map((stock) => (

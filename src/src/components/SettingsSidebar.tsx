@@ -35,7 +35,7 @@ export default function SettingsSidebar({ activeTab, onTabChange }: SettingsSide
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setMode("chat")} tooltip="返回">
+            <SidebarMenuButton onClick={() => setMode("chat")} tooltip="返回" className="h-9">
               <ArrowLeft />
               <span>返回</span>
             </SidebarMenuButton>
@@ -46,7 +46,7 @@ export default function SettingsSidebar({ activeTab, onTabChange }: SettingsSide
       <SidebarContent>
         {NAV_GROUPS.map((group) => (
           <SidebarGroup key={group.label}>
-            <SidebarGroupLabel className="text-tertiary text-caption font-medium">
+            <SidebarGroupLabel className="text-tertiary text-micro font-medium">
               {group.label}
             </SidebarGroupLabel>
             <SidebarMenu>
@@ -58,6 +58,7 @@ export default function SettingsSidebar({ activeTab, onTabChange }: SettingsSide
                       onClick={() => onTabChange(tab)}
                       isActive={activeTab === tab}
                       tooltip={label}
+                      className="h-9"
                     >
                       <Icon />
                       <span>{label}</span>

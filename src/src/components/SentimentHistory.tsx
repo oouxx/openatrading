@@ -3,6 +3,7 @@ import { chartColors, withAlpha } from "@/lib/chartColors"
 import { useRef, useEffect, useMemo } from "react"
 import { createChart, ColorType, type IChartApi, type Time, LineSeries } from "lightweight-charts"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
+import { DataEmpty } from "@/components/data-state"
 
 export default function SentimentHistory() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -73,7 +74,7 @@ export default function SentimentHistory() {
     <div className="bg-surface border-hairline p-card-inner rounded-lg border">
       <h3 className="text-caption text-primary mb-4 font-medium">情绪历史走势（近 10 日）</h3>
       {!chartData.length ? (
-        <div className="text-caption text-secondary py-8 text-center">暂无情绪历史数据</div>
+        <DataEmpty size="compact" title="暂无情绪历史数据" />
       ) : (
         <div ref={containerRef} style={{ height: 200 }} />
       )}

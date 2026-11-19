@@ -90,7 +90,7 @@ export function McpServerCard({
   const readOnlyTip = `定义在 ${s.source}，请直接编辑该文件`
 
   return (
-    <div className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-3.5">
+    <div className="bg-surface border-hairline flex items-start gap-3 rounded-lg border p-4">
       <span className="bg-hover text-secondary grid size-9 shrink-0 place-items-center rounded-lg">
         <Icon className="size-4" />
       </span>
@@ -139,7 +139,7 @@ export function McpServerCard({
         {testResult && (
           <p
             className={`text-caption mt-1 break-words ${
-              testResult.ok ? "text-success" : "text-down"
+              testResult.ok ? "text-success" : "text-danger"
             }`}
           >
             {testResult.ok
@@ -147,7 +147,7 @@ export function McpServerCard({
               : `连接失败：${testResult.error ?? "未知错误"}`}
           </p>
         )}
-        {error && !confirmOpen && <p className="text-down text-caption mt-1">{error}</p>}
+        {error && !confirmOpen && <p className="text-danger text-caption mt-1">{error}</p>}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
@@ -204,7 +204,7 @@ export function McpServerCard({
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="text-secondary hover:text-down"
+              className="text-secondary hover:text-danger"
               disabled={readOnly || busy !== null || testing}
               title={readOnly ? readOnlyTip : "删除"}
               aria-label={`删除 ${s.name}`}
@@ -217,7 +217,7 @@ export function McpServerCard({
             <p className="text-secondary text-caption mt-1">
               此操作不可撤销，之后新建的会话将无法再使用该服务器。
             </p>
-            {error && <p className="text-down text-caption mt-2">{error}</p>}
+            {error && <p className="text-danger text-caption mt-2">{error}</p>}
             <div className="mt-3 flex justify-end gap-2">
               <Button type="button" variant="ghost" size="xs" onClick={() => setConfirmOpen(false)}>
                 取消

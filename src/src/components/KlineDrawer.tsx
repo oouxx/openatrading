@@ -6,7 +6,7 @@ import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatic
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
 import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
 import { toYahooSymbol } from "@/lib/stock-utils"
-import { Star } from "lucide-react"
+import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
@@ -151,21 +151,21 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   const up = quote != null && (quote.px_change_rate ?? -1) >= 0
 
   return (
-    <div className="bg-canvas h-full overflow-y-auto">
+    <div className="bg-canvas @container h-full overflow-y-auto">
       {/* Header */}
-      <div className="bg-surface border-hairline flex shrink-0 items-center gap-3 border-b px-6 py-4">
+      <div className="bg-surface border-hairline flex shrink-0 items-center gap-2 border-b px-4 py-4 sm:gap-3 sm:px-6">
         <Button
           variant="ghost"
           size="icon-xs"
-          className="text-h1 leading-none"
+          className="text-secondary hover:text-primary"
           onClick={onClose}
           title="关闭"
           aria-label="关闭行情详情"
         >
-          &times;
+          <X className="size-4" />
         </Button>
-        <span className="text-h1 text-primary font-bold">{name}</span>
-        <span className="text-secondary font-number text-caption">{symbol}</span>
+        <span className="text-h1 text-primary font-semibold tracking-[-0.01em]">{name}</span>
+        <span className="text-secondary font-number text-caption hidden sm:inline">{symbol}</span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -180,13 +180,11 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
           }}
           title={inWatchlist ? "取消自选" : "添加自选"}
         >
-          <Star
-            className={`size-4 ${inWatchlist ? "fill-warning text-warning" : "text-secondary"}`}
-          />
+          <Star className={`size-4 ${inWatchlist ? "fill-brand text-brand" : "text-secondary"}`} />
         </Button>
         {quote && (
-          <div className="ml-auto flex items-center gap-3">
-            <span className="font-number text-h1 font-bold">{quote.last_px?.toFixed(2)}</span>
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <span className="font-number text-h1 font-semibold">{quote.last_px?.toFixed(2)}</span>
             <span
               className={`font-number text-body rounded-lg px-3 py-1 font-semibold ${up ? "bg-up/20 text-up" : "bg-down/20 text-down"}`}
             >
@@ -198,8 +196,8 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       </div>
 
       {/* Period selector */}
-      <div className="bg-surface border-hairline flex border-b px-6 py-2">
-        <div className="bg-hover/60 border-hairline inline-flex rounded-md border p-0.5">
+      <div className="bg-surface border-hairline flex border-b px-4 py-2 sm:px-6">
+        <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
           {periods.map((p) => {
             const active = period === p.value
             return (
@@ -258,14 +256,11 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Metrics */}
       {quote && (
-        <div className="px-6 py-3">
-          <div className="text-caption grid grid-cols-4 gap-2">
+        <div className="px-4 py-3 sm:px-6">
+          <div className="text-caption grid grid-cols-2 gap-2 @md:grid-cols-4">
             {metrics.map((m) => (
-              <div
-                key={m.label}
-                className="bg-surface border-hairline rounded-md border p-2.5 text-center"
-              >
-                <p className="text-secondary text-caption mb-1">{m.label}</p>
+              <div key={m.label} className="bg-surface border-hairline rounded-md border p-2.5">
+                <p className="text-tertiary text-micro mb-1">{m.label}</p>
                 <p className="font-number text-caption text-primary">{m.value}</p>
               </div>
             ))}
@@ -275,7 +270,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Plates */}
       {plateList.length > 0 && (
-        <div className="border-hairline mt-2 border-t px-6 py-3">
+        <div className="border-hairline mt-2 border-t px-4 py-3 sm:px-6">
           <p className="text-secondary text-caption mb-2">所属板块</p>
           <div className="grid max-h-[200px] grid-cols-2 gap-2 overflow-y-auto">
             {plateList.map((p) => (

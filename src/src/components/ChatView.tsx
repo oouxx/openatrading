@@ -850,7 +850,7 @@ export default function AiCopilot({
   const renderInputField = () => (
     <div ref={composerRef} className="relative flex-1">
       {composerError && (
-        <p role="status" className="text-down text-caption mb-1.5 px-1">
+        <p role="status" className="text-danger text-caption mb-1.5 px-1">
           {composerError}
         </p>
       )}
