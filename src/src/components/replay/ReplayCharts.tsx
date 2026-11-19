@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { chartColors, withAlpha } from "@/lib/chartColors"
+import { useUiStore } from "@/stores/ui"
 import {
   BUCKET_COUNT,
   TRADING_MINUTES,
@@ -54,6 +55,7 @@ export function IndexMiniChart({
   cursor: number
   height?: number
 }) {
+  const theme = useUiStore((state) => state.theme)
   const [ref, width] = useContainerWidth<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -137,7 +139,7 @@ export function IndexMiniChart({
       ctx.textAlign = minute === 0 ? "left" : minute === TRADING_MINUTES ? "right" : "center"
       ctx.fillText(formatTradingMinute(minute), x(minute), height - 4)
     }
-  }, [series, cursor, width, height])
+  }, [series, cursor, width, height, theme])
 
   return (
     <div ref={ref} className="relative">
@@ -177,6 +179,7 @@ export function RotationHeatmap({
   selectedId: number | null
   onSelect: (eventId: number, tradingMinute: number) => void
 }) {
+  const theme = useUiStore((state) => state.theme)
   const [scrollRef, width] = useContainerWidth<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [hover, setHover] = useState<{
@@ -267,7 +270,7 @@ export function RotationHeatmap({
       ctx.textAlign = minute === 0 ? "left" : minute === TRADING_MINUTES ? "right" : "center"
       ctx.fillText(formatTradingMinute(minute), xForMinute(minute), height - 4)
     }
-  }, [rotation, cursor, selectedId, width, height])
+  }, [rotation, cursor, selectedId, width, height, theme])
 
   if (rotation.rows.length === 0) {
     return (

@@ -1,6 +1,7 @@
 import { chartColors, withAlpha } from "@/lib/chartColors"
 import { formatCompactNumber } from "@/lib/format"
 import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
+import { useUiStore } from "@/stores/ui"
 
 import { useRef, useEffect, useCallback, useState } from "react"
 import {
@@ -210,6 +211,10 @@ function getLimitPrices(
 }
 
 export default function KlineChart({ data, period, preclose, symbol }: KlineChartProps) {
+  // Canvas colors are resolved from CSS variables at creation/draw time, so the
+  // chart must be rebuilt when the theme changes; otherwise it keeps the
+  // previous theme's palette until period/symbol changes.
+  const theme = useUiStore((state) => state.theme)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
@@ -368,9 +373,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     pctAnchorSeriesRef.current = chart.addSeries(LineSeries, {
       color: "transparent",
       priceScaleId: "right",
+      crosshairMarkerVisible: false,
       lastValueVisible: false,
       priceLineVisible: false,
-      crosshairMarkerVisible: false,
       priceFormat: {
         type: "custom",
         // 同花顺百分比轴：正数带 “+”，0 不带（同花顺昨收处显示 0.00%）
@@ -391,13 +396,32 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     priceSeriesRef.current.applyOptions({
       autoscaleInfoProvider: () => {
         const r = intradayRangeRef.current?.left
-        return r ? { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS } : null
+        if (r) return { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS }
+        // 昨收还没到（实时行情首帧 / 停牌）时不能返回 null：null 会让该 series
+        // 完全不参与 autoscale，左轴只剩均价的窄区间，现价线会被裁成竖刺。
+        const closes = dataRef.current
+          .map((c) => c.close)
+          .filter((v): v is number => Number.isFinite(v))
+        if (closes.length === 0) return null
+        const min = Math.min(...closes)
+        const max = Math.max(...closes)
+        const pad = Math.max((max - min) * 0.08, max * 0.002)
+        return {
+          priceRange: { minValue: min - pad, maxValue: max + pad },
+          margins: INTRADAY_AUTOSCALE_MARGINS,
+        }
       },
     })
     pctAnchorSeriesRef.current.applyOptions({
       autoscaleInfoProvider: () => {
         const r = intradayRangeRef.current?.right
-        return r ? { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS } : null
+        if (r) return { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS }
+        // 没有昨收时仍按涨跌停幅度撑开百分比轴，避免退化成 ±0.5% 的默认量程。
+        const limitPct = getLimitPct(symbol)
+        return {
+          priceRange: { minValue: -limitPct, maxValue: limitPct },
+          margins: INTRADAY_AUTOSCALE_MARGINS,
+        }
       },
     })
 
@@ -407,6 +431,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       HistogramSeries,
       {
         priceScaleId: "right",
+        // 成交量自身的 last value / price line 会画一条与最新量柱同色的
+        // 虚线和色块（在副图里看起来像一条错误提示），量值改由光标信息栏读取。
+        lastValueVisible: false,
+        priceLineVisible: false,
         priceFormat: {
           type: "custom",
           formatter: (v: number) => {
@@ -458,7 +486,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     })
 
     chartRef.current = chart
-  }, [])
+  }, [symbol])
 
   const initKlineChart = useCallback(() => {
     if (!containerRef.current) return
@@ -541,9 +569,9 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         color,
         lineWidth: 1,
         priceScaleId: "right",
+        crosshairMarkerVisible: false,
         lastValueVisible: false,
         priceLineVisible: false,
-        crosshairMarkerVisible: false,
         priceFormat: { type: "price", precision: 2, minMove: 0.01 },
       })
       ref.current = series
@@ -556,6 +584,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       HistogramSeries,
       {
         priceScaleId: "right",
+        // 成交量自身的 last value / price line 会画一条与最新量柱同色的
+        // 虚线和色块（在副图里看起来像一条错误提示），量值改由光标信息栏读取。
+        lastValueVisible: false,
+        priceLineVisible: false,
         priceFormat: {
           type: "custom",
           formatter: (v: number) => {
@@ -654,7 +686,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       ma30SeriesRef.current = null
       seriesRefs.current = []
     }
-  }, [period, symbol, initIntradayChart, initKlineChart, clearPriceLines])
+  }, [period, symbol, theme, initIntradayChart, initKlineChart, clearPriceLines])
 
   // Keep prop mirrors in sync for the long-lived crosshair handler (the chart
   // is created once and must not depend on `data`/`preclose`).
@@ -684,7 +716,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
     ro.observe(el)
     updateLayout()
     return () => ro.disconnect()
-  }, [period, symbol])
+  }, [period, symbol, theme])
 
   // Data fill: intraday pre-draws the full-session grid and fills values as the
   // stream arrives; kline applies a full snapshot each tick. Never re-creates
@@ -943,7 +975,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       const from = Math.max(0, to - visible + 1)
       chart.timeScale().setVisibleLogicalRange({ from, to })
     }
-  }, [data, period, symbol, preclose, clearPriceLines])
+  }, [data, period, symbol, preclose, theme, clearPriceLines])
 
   // Expose crosshair ref + listener for KlineDrawer (in effect to avoid modifying during render)
   useEffect(() => {

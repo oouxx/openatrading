@@ -9,6 +9,7 @@ import { toYahooSymbol } from "@/lib/stock-utils"
 import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 
 interface KlineDrawerProps {
   symbol: string
@@ -55,6 +56,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
   // Kline data from SSE
   const [klineData, setKlineData] = useState<KlineCandle[]>([])
+  const [klineLoading, setKlineLoading] = useState(true)
+  const [klineError, setKlineError] = useState<string | null>(null)
+  const [streamNonce, setStreamNonce] = useState(0)
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null)
   const crosshairRef = useRef<CrosshairInfo | null>(null)
 
@@ -81,14 +85,27 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换股票/周期时先清空上一份数据
     setKlineData([])
+    setKlineLoading(true)
+    setKlineError(null)
     crosshairRef.current = null
     setCrosshair(null)
-    return subscribeKline<{ candles?: KlineCandle[] }>(xgSymbol, period, 256, (data) => {
-      if (data.candles) {
-        setKlineData(data.candles)
+    return subscribeKline<{ candles?: KlineCandle[] }>(
+      xgSymbol,
+      period,
+      256,
+      (data) => {
+        if (data.candles) {
+          setKlineData(data.candles)
+          setKlineLoading(false)
+          setKlineError(null)
+        }
+      },
+      (err) => {
+        setKlineLoading(false)
+        setKlineError(err)
       }
-    })
-  }, [xgSymbol, period])
+    )
+  }, [xgSymbol, period, streamNonce])
   const { data: plates } = usePlatesByStock(xgSymbol)
   const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<PlateByStockItem | null>(null)
@@ -110,7 +127,11 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       { label: "总市值", value: formatCompactNumber(quote.market_value) },
       { label: "流通市值", value: formatCompactNumber(quote.circulation_value) },
       { label: "量比", value: quote.volume_ratio?.toFixed(2) || "-" },
-      { label: "成交量", value: formatCompactNumber(quote.turnover_volume) + "股" },
+      {
+        label: "成交量",
+        value:
+          quote.turnover_volume != null ? `${formatCompactNumber(quote.turnover_volume)}股` : "-",
+      },
     ]
   }, [quote])
 
@@ -221,9 +242,9 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
       {/* Crosshair info bar */}
       {currCrosshair && (
-        <div className="bg-surface border-hairline font-number text-caption flex items-center justify-between border-b px-3 py-1">
+        <div className="bg-surface border-hairline font-number text-caption flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-b px-3 py-1">
           <span className="text-primary shrink-0">{currCrosshair.time}</span>
-          <div className="text-tertiary flex shrink-0 items-center gap-2">
+          <div className="text-tertiary flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span>
               开 <span className="text-primary">{currCrosshair.open}</span>
             </span>
@@ -245,13 +266,44 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
       )}
 
       {/* Chart */}
-      <div className="px-0">
+      <div className="relative px-2 sm:px-0">
         <KlineChart
           data={klineData}
           period={period}
           preclose={quote?.preclose_px}
           symbol={xgSymbol}
         />
+        {klineData.length === 0 && (
+          <div className="bg-canvas absolute inset-0 z-10 flex items-center justify-center px-6">
+            {klineLoading ? (
+              <DataLoading size="compact" label="加载 K 线…" />
+            ) : klineError ? (
+              <DataError
+                size="compact"
+                title="K 线加载失败"
+                description={
+                  klineError === "connection error" ? "行情连接中断，请稍后重试" : klineError
+                }
+                onRetry={() => setStreamNonce((n) => n + 1)}
+              />
+            ) : (
+              <DataEmpty
+                size="compact"
+                title="暂无 K 线数据"
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setStreamNonce((n) => n + 1)}
+                  >
+                    重试
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Metrics */}

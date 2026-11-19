@@ -4,8 +4,10 @@ import { useRef, useEffect, useMemo } from "react"
 import { createChart, ColorType, type IChartApi, type Time, LineSeries } from "lightweight-charts"
 import { useSentimentHistory } from "@/hooks/query/useSentimentHistory"
 import { DataEmpty } from "@/components/data-state"
+import { useUiStore } from "@/stores/ui"
 
 export default function SentimentHistory() {
+  const theme = useUiStore((state) => state.theme)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const { data: raw = [] } = useSentimentHistory()
@@ -68,7 +70,7 @@ export default function SentimentHistory() {
     chartRef.current = chart
 
     return () => chart.remove()
-  }, [chartData])
+  }, [chartData, theme])
 
   return (
     <div className="bg-surface border-hairline p-card-inner rounded-lg border">
