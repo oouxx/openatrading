@@ -463,6 +463,10 @@ impl SessionActor {
                     }
                     if self.turn_done_rx.is_some() {
                         self.cancelled.store(true, Ordering::SeqCst);
+                        // Record the abort request before yielding, so the run
+                        // cannot restart through the settled-continuation path
+                        // (pi-rs `request_abort`, v1.87.16).
+                        self.session.request_abort();
                         let session = Arc::clone(&self.session);
                         // `abort()` waits for the agent to become idle; bound
                         // it so a wedged agent can't hang shutdown forever.
@@ -610,6 +614,10 @@ impl SessionActor {
             return;
         }
         self.cancelled.store(true, Ordering::SeqCst);
+        // Capture the abort request synchronously, before a queued prompt can
+        // start a new run: pi-rs marks the run as abort-requested at request
+        // time, and a background `abort()` alone would set that flag too late.
+        self.session.request_abort();
         // `abort()` waits for the agent to become idle, so it runs as a
         // separate task; the turn task observes the abort, settles, and
         // replies. The actor loop stays responsive meanwhile. Clear pi's

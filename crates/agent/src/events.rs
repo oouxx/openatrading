@@ -301,19 +301,22 @@ const TOOL_RESULT_PREVIEW_LIMIT: usize = 2000;
 
 /// Convert a tool result text into a preview payload, truncating if too long.
 fn to_tool_result_payload(content: &str) -> ToolResultPayload {
+    // The UI renders this next to `content.length` on the same preview, so
+    // count UTF-16 code units (pi-rs `utf16_len`) rather than bytes.
+    let full_length = pi_coding_agent::pi_agent_core::pi_ai::utils::text::utf16_len(content);
     let len = content.chars().count();
     if len <= TOOL_RESULT_PREVIEW_LIMIT {
         ToolResultPayload {
             preview: content.to_string(),
             truncated: false,
-            full_length: content.len(),
+            full_length,
         }
     } else {
         let preview: String = content.chars().take(TOOL_RESULT_PREVIEW_LIMIT).collect();
         ToolResultPayload {
             preview,
             truncated: true,
-            full_length: content.len(),
+            full_length,
         }
     }
 }
