@@ -205,6 +205,7 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
             }
           }}
           title={inWatchlist ? "取消自选" : "添加自选"}
+          aria-label={inWatchlist ? "取消自选" : "添加自选"}
         >
           <Star className={`size-4 ${inWatchlist ? "fill-brand text-brand" : "text-secondary"}`} />
         </Button>

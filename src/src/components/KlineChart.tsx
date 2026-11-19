@@ -1017,13 +1017,18 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   }, [])
 
   return (
-    <div className="relative w-full" style={{ height: period === "minute" ? 436 : 420 }}>
+    <div
+      className="relative w-full"
+      style={{ height: period === "minute" ? 436 : 420 }}
+      role="img"
+      aria-label={`${symbol} ${period === "minute" ? "分时" : "K 线"}图`}
+    >
       {/* K 线主图左上角 MA 图例（同花顺样式：整行与均线同色；分时图不显示） */}
       {period !== "minute" && maLegend && (
         <div className="font-number text-caption absolute top-1.5 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-0.5">
           {maLegend.map((m) => (
             <span key={m.label} className="flex items-center gap-1" style={{ color: m.color }}>
-              {m.label}: <span className="font-bold">{m.value}</span>
+              {m.label}: <span className="font-semibold">{m.value}</span>
             </span>
           ))}
         </div>
