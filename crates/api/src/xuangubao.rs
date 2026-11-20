@@ -1017,6 +1017,13 @@ fn parse_fund_flow_row(value: &serde_json::Value) -> Result<FundFlowRow> {
     })
 }
 
+/// `data` 的键是否是 `<代码>.<市场>` 形式的证券代码。
+fn is_product_code(key: &str) -> bool {
+    key.rsplit_once('.').is_some_and(|(code, market)| {
+        !code.is_empty() && matches!(market, "SS" | "SZ" | "HK" | "TW")
+    })
+}
+
 fn parse_fund_flow_batch(
     resp: &serde_json::Value,
 ) -> Result<ahash::AHashMap<String, Vec<FundFlowRow>>> {
@@ -1027,6 +1034,11 @@ fn parse_fund_flow_batch(
     let mut result = ahash::AHashMap::with_capacity(data.len());
 
     for (key, series) in data {
+        // 上游在 `data` 里混了一个 `fields` 列名数组（`["prod_code","date",...]`），
+        // 它不是证券行，必须跳过，否则整批解析失败。
+        if !is_product_code(key) {
+            continue;
+        }
         let rows = series["fund_flow"]
             .as_array()
             .with_context(|| format!("资金流响应缺少 {key}.fund_flow 数组"))?
@@ -3509,6 +3521,108 @@ mod tests {
         assert_ne!(request_date(&dated[0]), request_date(&dated[1]));
     }
 
+    /// 选股宝全线接口的联网冒烟测试（默认跳过）。
+    ///
+    /// 运行：`cargo test -p openatrading-api live_xuangubao_endpoints -- --ignored --nocapture`
+    ///
+    /// 上游 schema / 参数会无声漂移，且只在线上暴露：`pool/detail` 不带 `date`
+    /// 直接 `code:50000 timed out`、资金流响应混入 `fields` 元数据键、股票池里
+    /// `m_days_n_boards_days` 给 `-1`。动过 xuangubao 客户端就跑一遍，能一次看清
+    /// 哪些接口被上游改坏了。
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn live_xuangubao_endpoints() {
+        let client = XuanguBaoClient::new();
+        let date = XuanguBaoClient::latest_completed_trade_date();
+        let mut failures: Vec<String> = Vec::new();
+
+        macro_rules! check {
+            ($name:expr, $call:expr) => {
+                if let Err(error) = $call.await {
+                    failures.push(format!("{}: {error:#}", $name));
+                }
+            };
+        }
+
+        check!("pool limit_up", client.fetch_limit_up());
+        check!("pool limit_down", client.fetch_limit_down());
+        check!("pool super_stock", client.fetch_super_stock());
+        check!("pool yesterday_limit_up", client.fetch_yesterday_limit_up());
+        check!("market_overview", client.fetch_market_overview());
+        check!(
+            "market_indicator_line",
+            client.fetch_market_indicator_line()
+        );
+        check!(
+            "market_pcp_distribution",
+            client.fetch_market_pcp_distribution()
+        );
+        check!(
+            "market_overview_for_date",
+            client.fetch_market_overview_for_date(&date)
+        );
+        check!("market_trend", client.fetch_market_trend("600519.SS"));
+        check!("market_real", client.fetch_market_real(&["000001.SS"]));
+        check!(
+            "market_real",
+            client.fetch_market_real(&["399001.SZ", "399006.SZ"])
+        );
+        check!("security_type", client.fetch_security_type("600519.SS"));
+        check!(
+            "plate_rank_ids",
+            client.fetch_plate_rank_ids(PlateRankType::Concept)
+        );
+        check!(
+            "plate_rankings",
+            client.fetch_plate_rankings(PlateRankType::Concept, 20)
+        );
+        check!(
+            "plate_incdec",
+            client.fetch_plate_incdec(PlateIncdecType::One, Some(10))
+        );
+        check!(
+            "plate_index_history",
+            client.fetch_plate_index_history(17928146, 10, None)
+        );
+        check!(
+            "plate_index_realtime",
+            client.fetch_plate_index_realtime(17928146)
+        );
+        check!("plate_detail", client.fetch_plate_detail(17928146));
+        check!("plate_abnormal", client.fetch_plate_abnormal(30));
+        check!("all_day_events", client.fetch_all_day_events(0.0));
+        check!("dapan_abnormal", client.fetch_dapan_abnormal());
+        check!(
+            "kline",
+            client.fetch_kline("600519.SS", KlinePeriod::Day, 30)
+        );
+        check!(
+            "kline_batch",
+            client.fetch_kline_batch(&["600519.SS".to_string()], KlinePeriod::Day, 30)
+        );
+        check!("stock_data", client.fetch_stock_data(&["600519.SS"]));
+        check!("stock_labels", client.fetch_stock_labels(&["600519.SS"]));
+        check!("fund_flow", client.fetch_fund_flow_batch(&["600519.SS"], 5));
+        check!("realtime", client.fetch_realtime("600519.SS"));
+        check!(
+            "realtime_batch",
+            client.fetch_realtime_batch(&["600519.SS".to_string()])
+        );
+        check!(
+            "plates_by_any_stock",
+            client.plates_by_any_stock("600519.SS")
+        );
+        check!("index_trends", fetch_index_trends(&client));
+        check!("news_stream", client.fetch_news_stream(None, None));
+
+        assert!(
+            failures.is_empty(),
+            "上游接口异常 {} 个:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
     #[test]
     fn pool_candidate_dates_start_today_and_skip_weekends() {
         let dates = pool_candidate_dates();
@@ -3542,6 +3656,8 @@ mod tests {
 
     #[tokio::test]
     async fn fund_flow_batch_round_trips_documented_compact_rows() {
+        // 回归点：上游在 `data` 里混了一个 `fields` 列名数组，符号行之外还有元数据键，
+        // 不做区分会让整批资金流解析失败（曾导致资金流相关能力全挂）。
         let response = serde_json::json!({
             "code": 20000,
             "message": "OK",
@@ -3556,7 +3672,8 @@ mod tests {
                     "fund_flow": [
                         fund_flow_row("600000.SS", "2026-10-27", 1_793_059_200_i64)
                     ]
-                }
+                },
+                "fields": ["prod_code", "date", "main_in", "main_out"]
             }
         });
         let (base_url, server) = serve_json(response);
@@ -3580,6 +3697,10 @@ mod tests {
         assert_eq!(flows["000008.SZ"][0].metrics.len(), 17);
         assert_eq!(flows["000008.SZ"][0].metrics[0], 0.5);
         assert_eq!(flows["000008.SZ"][0].timestamp, 1_793_059_200);
+        assert!(
+            !flows.contains_key("fields"),
+            "`fields` 元数据键不能当成证券行"
+        );
     }
 
     /// 上游 K 线接口单次最多返回 5 个标的，客户端必须分片请求。
