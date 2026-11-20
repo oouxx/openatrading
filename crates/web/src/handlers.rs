@@ -298,7 +298,11 @@ where
         return Ok(serde_json::from_str(&cached).unwrap_or_default());
     }
 
-    let value = fetch().await?;
+    let value = fetch().await.map_err(|error| {
+        // 上层会把错误折成 HTTP 500（空 body），这里留下原因，便于排查上游异常。
+        tracing::error!("[cache] {key} 拉取失败: {error}");
+        error
+    })?;
     let json_string = serde_json::to_string(&value).unwrap_or_default();
     let json_value: serde_json::Value = serde_json::from_str(&json_string).unwrap_or_default();
     cache::set(cache, key, &json_string, policy);

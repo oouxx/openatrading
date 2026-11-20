@@ -172,50 +172,101 @@ pub struct ApiResponse<T> {
     pub data: T,
 }
 
+/// 股票池（涨停/跌停/强势/昨日涨停）中的一行。
+///
+/// 上游 `pool/detail` 有两套字段：不带 `date` 的「当日快照」带 `stock_type`，
+/// 带 `date` 的「历史快照」没有 `stock_type` 但多一个 `prev_close_price`。
+/// 因此除 `symbol`/`stock_chi_name` 外的字段一律 `#[serde(default)]`，
+/// 避免上游漏字段时整池反序列化失败（曾经直接表现为接口 500）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stock {
     pub symbol: String,
     pub stock_chi_name: String,
+    #[serde(default)]
     pub price: f64,
+    #[serde(default)]
     pub change_percent: f64,
+    #[serde(default)]
     pub limit_up_days: u32,
+    #[serde(default)]
     pub first_limit_up: i64,
+    #[serde(default)]
     pub last_limit_up: i64,
+    #[serde(default)]
     pub break_limit_up_times: u32,
+    #[serde(default)]
     pub first_break_limit_up: i64,
+    #[serde(default)]
     pub last_break_limit_up: i64,
+    #[serde(default)]
     pub limit_down_days: u32,
+    #[serde(default)]
     pub first_limit_down: i64,
+    #[serde(default)]
     pub last_limit_down: i64,
+    #[serde(default)]
     pub break_limit_down_times: u32,
+    #[serde(default)]
     pub first_break_limit_down: i64,
+    #[serde(default)]
     pub last_break_limit_down: i64,
+    #[serde(default)]
     pub yesterday_first_limit_up: i64,
+    #[serde(default)]
     pub yesterday_last_limit_up: i64,
+    #[serde(default)]
     pub yesterday_break_limit_up_times: u32,
+    #[serde(default)]
     pub yesterday_limit_up_days: u32,
+    #[serde(default)]
     pub yesterday_limit_down_days: u32,
+    #[serde(default)]
     pub non_restricted_capital: f64,
+    #[serde(default)]
     pub total_capital: f64,
+    #[serde(default)]
     pub turnover_ratio: f64,
+    #[serde(default)]
     pub volume_bias_ratio: f64,
+    #[serde(default)]
     pub buy_lock_volume_ratio: f64,
+    #[serde(default)]
     pub sell_lock_volume_ratio: f64,
+    /// 只有不带 `date` 的当日快照才有该字段。
+    #[serde(default)]
     pub stock_type: i32,
+    #[serde(default)]
     pub is_new_stock: bool,
+    #[serde(default)]
     pub issue_price: f64,
+    #[serde(default)]
     pub listed_date: i64,
+    /// 涨停当日的昨收价，只有带 `date` 的历史快照才有该字段。
+    #[serde(default)]
+    pub prev_close_price: f64,
+    #[serde(default)]
     pub surge_reason: Option<SurgeReason>,
     #[serde(default)]
     pub limit_timeline: Option<LimitTimeline>,
+    #[serde(default)]
     pub mtm: f64,
-    pub m_days_n_boards_boards: u32,
-    pub m_days_n_boards_days: u32,
+    /// 「M 天 N 板」里的 N；上游在无连板概念时会给 -1，故用有符号类型。
+    #[serde(default)]
+    pub m_days_n_boards_boards: i32,
+    /// 「M 天 N 板」里的 M；上游在无连板概念时会给 -1（曾导致 `u32` 反序列化失败 → 接口 500）。
+    #[serde(default)]
+    pub m_days_n_boards_days: i32,
+    #[serde(default)]
     pub nearly_new_acc_pcp: f64,
+    #[serde(default)]
     pub nearly_new_break_days: u32,
+    #[serde(default)]
     pub new_stock_acc_pcp: f64,
+    #[serde(default)]
     pub new_stock_break_limit_up: u32,
+    #[serde(default)]
     pub new_stock_limit_up_days: u32,
+    #[serde(default)]
     pub new_stock_limit_up_price_before_broken: f64,
 }
 
@@ -1035,6 +1086,27 @@ fn parse_stock_labels(
         .collect()
 }
 
+/// 股票池查询的日期回退窗口（自然日，含被跳过的周末）。
+const POOL_DATE_LOOKBACK: usize = 12;
+
+/// 股票池查询候选日期：从今天（北京时间）开始按自然日向前回退，跳过周末。
+///
+/// 只跳过周末、不含节假日日历；节假日由上游返回 `data: null`，调用方继续回退即可。
+fn pool_candidate_dates() -> Vec<String> {
+    let mut date = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
+    let mut dates = Vec::with_capacity(POOL_DATE_LOOKBACK);
+    while dates.len() < POOL_DATE_LOOKBACK {
+        if !matches!(date.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
+            dates.push(date.format("%Y-%m-%d").to_string());
+        }
+        match date.pred_opt() {
+            Some(previous) => date = previous,
+            None => break,
+        }
+    }
+    dates
+}
+
 #[derive(Clone)]
 pub struct XuanguBaoClient {
     client: reqwest::Client,
@@ -1080,13 +1152,77 @@ impl XuanguBaoClient {
         reqwest::Client::new()
     }
 
+    /// 拉取某个股票池的明细。
+    ///
+    /// 上游有两条可用路径：
+    /// - `GET /pool/{pool_name}`：当日实时池，盘中秒级更新，但开盘前/休市时是空数组；
+    /// - `GET /pool/detail?pool_name=..&date=YYYY-MM-DD`：按日归档的历史快照。
+    ///
+    /// 注意 `/pool/detail` **不带** `date` 时会走服务端「默认日期」分支，该分支目前
+    /// 稳定返回 `{"code":50000,"message":"timed out"}`（10s 后失败），必须显式带日期。
+    ///
+    /// 所以先取实时池；为空或失败时再按日期向前回退到最近一个有归档的交易日。
     async fn fetch_pool(&self, pool_name: &str) -> Result<Vec<Stock>> {
-        let url = format!("{}/pool/detail?pool_name={pool_name}", self.base_url);
+        match self.fetch_live_pool(pool_name).await {
+            Ok(stocks) if !stocks.is_empty() => return Ok(stocks),
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!("实时股票池 {pool_name} 拉取失败，回退到历史快照: {error}");
+            }
+        }
+        self.fetch_dated_pool(pool_name).await
+    }
 
-        let resp: ApiResponse<Vec<Stock>> = self.client.get(&url).send().await?.json().await?;
+    /// 当日实时股票池（`GET /pool/{pool_name}`）。
+    ///
+    /// # Errors
+    /// 请求失败、业务状态码异常或响应字段不符合约定时返回错误。
+    async fn fetch_live_pool(&self, pool_name: &str) -> Result<Vec<Stock>> {
+        let url = format!("{}/pool/{pool_name}", self.base_url);
 
-        anyhow::ensure!(resp.code == 20000, "API 返回错误码: {}", resp.code);
-        Ok(resp.data)
+        let resp: ApiResponse<Option<Vec<Stock>>> =
+            self.client.get(&url).send().await?.json().await?;
+
+        anyhow::ensure!(
+            resp.code == 20000,
+            "股票池 {pool_name} 返回错误码: {} ({})",
+            resp.code,
+            resp.message
+        );
+        Ok(resp.data.unwrap_or_default())
+    }
+
+    /// 历史股票池（`GET /pool/detail?pool_name=..&date=..`），按日期向前回退。
+    ///
+    /// # Errors
+    /// 请求失败或业务状态码异常时返回错误；回退窗口内均为 `data: null` 时返回空池。
+    async fn fetch_dated_pool(&self, pool_name: &str) -> Result<Vec<Stock>> {
+        let url = format!("{}/pool/detail", self.base_url);
+
+        for date in pool_candidate_dates() {
+            let resp: ApiResponse<Option<Vec<Stock>>> = self
+                .client
+                .get(&url)
+                .query(&[("pool_name", pool_name), ("date", date.as_str())])
+                .send()
+                .await?
+                .json()
+                .await?;
+
+            anyhow::ensure!(
+                resp.code == 20000,
+                "股票池 {pool_name} @ {date} 返回错误码: {} ({})",
+                resp.code,
+                resp.message
+            );
+
+            if let Some(stocks) = resp.data {
+                return Ok(stocks);
+            }
+        }
+
+        // 回退窗口内每一天都没有数据（例如长假）：返回空池，不当作错误。
+        Ok(Vec::new())
     }
 
     /// Fetch limit-up stocks.
@@ -2928,6 +3064,110 @@ mod tests {
         }
     }
 
+    /// 依次为每个请求返回一份 JSON：第 i 个请求拿到 `bodies[i]`。
+    ///
+    /// 用 `bodies` 长度界定 accept 次数，并设截止时间，避免被测实现少发请求时挂死。
+    fn serve_json_sequence(bodies: Vec<serde_json::Value>) -> (String, JoinHandle<Vec<String>>) {
+        let listener = ok_or_panic(TcpListener::bind("127.0.0.1:0"), "bind test server");
+        let address = ok_or_panic(listener.local_addr(), "test server address");
+        let handle = thread::spawn(move || {
+            ok_or_panic(listener.set_nonblocking(true), "set nonblocking");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let mut requests = Vec::new();
+            while requests.len() < bodies.len() && std::time::Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        ok_or_panic(stream.set_nonblocking(false), "set blocking");
+                        ok_or_panic(
+                            stream.set_read_timeout(Some(Duration::from_secs(2))),
+                            "set read timeout",
+                        );
+                        let mut buffer = [0_u8; 16 * 1024];
+                        let read = ok_or_panic(stream.read(&mut buffer), "read test request");
+                        requests.push(String::from_utf8_lossy(&buffer[..read]).to_string());
+                        let body = bodies[requests.len() - 1].to_string();
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        ok_or_panic(stream.write_all(response.as_bytes()), "write test response");
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("accept test request: {error}"),
+                }
+            }
+            requests
+        });
+        (format!("http://{address}"), handle)
+    }
+
+    /// 上游 `pool/detail` 单只股票的完整字段，按「带 `date` 的历史快照」布局：
+    /// 有 `prev_close_price`、没有 `stock_type`；含 `-1` 这类哨兵值与可空字段。
+    ///
+    /// 分两段 `json!` 拼接：单个 `json!` 描述 42 个字段会撞上宏递归上限。
+    fn stock_payload(symbol: &str, m_days_n_boards_days: i32) -> serde_json::Value {
+        let mut row = serde_json::json!({
+            "symbol": symbol,
+            "stock_chi_name": "贵州茅台",
+            "price": 1500.0,
+            "change_percent": 0.1,
+            "limit_up_days": 1,
+            "first_limit_up": 1_795_065_945_i64,
+            "last_limit_up": 1_795_070_709_i64,
+            "break_limit_up_times": 3,
+            "first_break_limit_up": 1_795_066_236_i64,
+            "last_break_limit_up": 1_795_068_795_i64,
+            "limit_down_days": 0,
+            "first_limit_down": 0,
+            "last_limit_down": 0,
+            "break_limit_down_times": 0,
+            "first_break_limit_down": 0,
+            "last_break_limit_down": 0,
+            "yesterday_first_limit_up": 0,
+            "yesterday_last_limit_up": 0,
+            "yesterday_break_limit_up_times": 0,
+            "yesterday_limit_up_days": 0,
+            "yesterday_limit_down_days": 0,
+        });
+        let tail = serde_json::json!({
+            "non_restricted_capital": 1.0,
+            "total_capital": 1.0,
+            "turnover_ratio": 0.01,
+            "volume_bias_ratio": 0.01,
+            "buy_lock_volume_ratio": 0.5,
+            "sell_lock_volume_ratio": 0.0,
+            "prev_close_price": 1485.0,
+            "is_new_stock": false,
+            "issue_price": 4.1,
+            "listed_date": 948_297_600_i64,
+            "surge_reason": serde_json::Value::Null,
+            "limit_timeline": serde_json::Value::Null,
+            "mtm": 0.004_444_444_4,
+            "m_days_n_boards_boards": 0,
+            "m_days_n_boards_days": m_days_n_boards_days,
+            "nearly_new_acc_pcp": 0.0,
+            "nearly_new_break_days": 0,
+            "new_stock_acc_pcp": 0.0,
+            "new_stock_break_limit_up": 0,
+            "new_stock_limit_up_days": 0,
+            "new_stock_limit_up_price_before_broken": 0.0,
+        });
+        if let (Some(base), serde_json::Value::Object(tail)) = (row.as_object_mut(), tail) {
+            base.extend(tail);
+        }
+        row
+    }
+
+    fn request_date(request: &str) -> String {
+        request
+            .split(['?', '&', ' '])
+            .find_map(|pair| pair.strip_prefix("date="))
+            .unwrap_or_default()
+            .to_string()
+    }
+
     fn serve_json(body: serde_json::Value) -> (String, JoinHandle<String>) {
         let listener = ok_or_panic(TcpListener::bind("127.0.0.1:0"), "bind test server");
         let address = ok_or_panic(listener.local_addr(), "test server address");
@@ -3163,6 +3403,141 @@ mod tests {
             BASE_URL, "https://flash-api.xuangubao.com.cn/api",
             "短域名 flash-api.xuangubao.cn 对 plate/incdec 返回空 data，不能作为统一 base URL"
         );
+    }
+
+    /// 回归点 1：上游在「M 天 N 板」没有意义时给 `-1`（盘中快照很常见），
+    /// 字段曾是 `u32`，导致整个股票池反序列化失败 ——
+    /// `/api/limit-up`、`/api/super-stock`、`/api/yesterday-limit-up` 全部 500。
+    ///
+    /// 回归点 2：带 `date` 查询时上游不给 `stock_type`，只多一个 `prev_close_price`，
+    /// 缺字段同样会让整池解析失败；不带 `date` 的当日快照又是反过来没有 `prev_close_price`。
+    #[test]
+    fn pool_rows_tolerate_both_upstream_layouts() {
+        let dated: Stock = ok_or_panic(
+            serde_json::from_value(stock_payload("600519.SS", -1)),
+            "historical pool row should deserialize",
+        );
+        assert_eq!(dated.m_days_n_boards_days, -1);
+        assert_eq!(dated.prev_close_price, 1485.0);
+        assert_eq!(
+            dated.stock_type, 0,
+            "历史快照没有 stock_type，应回退到默认值"
+        );
+        assert!(dated.limit_timeline.is_none());
+        assert!(dated.surge_reason.is_none());
+
+        let mut live = stock_payload("600519.SS", 0);
+        if let serde_json::Value::Object(row) = &mut live {
+            row.remove("prev_close_price");
+            row.insert("stock_type".into(), serde_json::json!(11));
+        }
+        let live: Stock = ok_or_panic(
+            serde_json::from_value(live),
+            "live pool row should deserialize",
+        );
+        assert_eq!(live.stock_type, 11);
+        assert_eq!(live.prev_close_price, 0.0, "当日快照没有 prev_close_price");
+    }
+
+    /// 盘中：当日实时池（`/pool/{pool_name}`）有数据时直接返回，不再打归档接口。
+    #[tokio::test]
+    async fn live_pool_short_circuits_dated_queries() {
+        let (base_url, server) = serve_json_sequence(vec![serde_json::json!({
+            "code": 20000,
+            "message": "OK",
+            "data": [stock_payload("600519.SS", 0)],
+        })]);
+        let client = XuanguBaoClient::with_urls(format!("{base_url}/api"), base_url);
+
+        let stocks = ok_or_panic(client.fetch_limit_up().await, "live pool should parse");
+        let requests = server
+            .join()
+            .unwrap_or_else(|_| panic!("test server should finish"));
+
+        assert_eq!(stocks.len(), 1);
+        assert_eq!(requests.len(), 1, "实时池有数据时不应再请求归档接口");
+        assert!(
+            requests[0].starts_with("GET /api/pool/limit_up "),
+            "{}",
+            requests[0]
+        );
+    }
+
+    /// 回归点：`pool/detail` 不带 `date` 时上游稳定返回 `code:50000 timed out`，
+    /// 客户端必须显式带日期；当天（开盘前/休市）是 `data: null`，要回退到上一交易日。
+    #[tokio::test]
+    async fn dated_pool_sends_date_and_falls_back_past_null_days() {
+        let (base_url, server) = serve_json_sequence(vec![
+            // 1) 实时池：开盘前/休市是空数组
+            serde_json::json!({"code": 20000, "message": "OK", "data": []}),
+            // 2) 今天归档：没有数据
+            serde_json::json!({"code": 20000, "message": "OK", "data": serde_json::Value::Null}),
+            // 3) 上一交易日归档：有数据
+            serde_json::json!({
+                "code": 20000,
+                "message": "OK",
+                "data": [stock_payload("600519.SS", -1)],
+            }),
+        ]);
+        let client = XuanguBaoClient::with_urls(format!("{base_url}/api"), base_url);
+
+        let stocks = ok_or_panic(client.fetch_limit_up().await, "limit up pool should parse");
+        let requests = server
+            .join()
+            .unwrap_or_else(|_| panic!("test server should finish"));
+
+        assert_eq!(stocks.len(), 1);
+        assert_eq!(stocks[0].symbol, "600519.SS");
+        assert_eq!(
+            requests.len(),
+            3,
+            "空实时池 + data: null 时必须回退到上一交易日"
+        );
+        assert!(
+            requests[0].starts_with("GET /api/pool/limit_up "),
+            "{}",
+            requests[0]
+        );
+
+        let dated = &requests[1..];
+        let dates = pool_candidate_dates();
+        for (request, expected) in dated.iter().zip(&dates) {
+            assert!(request.starts_with("GET /api/pool/detail?"), "{request}");
+            assert!(request.contains("pool_name=limit_up"), "{request}");
+            assert_eq!(&request_date(request), expected);
+        }
+        assert_ne!(request_date(&dated[0]), request_date(&dated[1]));
+    }
+
+    #[test]
+    fn pool_candidate_dates_start_today_and_skip_weekends() {
+        let dates = pool_candidate_dates();
+        assert_eq!(dates.len(), POOL_DATE_LOOKBACK);
+
+        let today = chrono::Utc::now()
+            .with_timezone(&beijing_tz())
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(dates[0], today);
+
+        let parsed = dates
+            .iter()
+            .map(|date| {
+                ok_or_panic(
+                    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d"),
+                    "candidate date format",
+                )
+            })
+            .collect::<Vec<_>>();
+        for window in parsed.windows(2) {
+            assert!(window[0] > window[1], "候选日期必须严格递减");
+        }
+        for date in &parsed {
+            assert!(
+                !matches!(date.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun),
+                "{date} 是周末，不应该出现在候选里"
+            );
+        }
     }
 
     #[tokio::test]
