@@ -23,6 +23,8 @@ import {
   useTestMcpServer,
 } from "@/hooks/query/useMcpServers"
 import { useExtensions, useToggleExtension } from "@/hooks/query/useExtensions"
+import { useAgentModels } from "@/hooks/query/useAgentModels"
+import { clampThinkingLevel, thinkingLevelOptions } from "@/lib/thinking-levels"
 import { McpServerForm } from "./McpServerForm"
 import { McpServerCard } from "./McpServerCard"
 import { McpTemplateGrid } from "./McpTemplateGrid"
@@ -84,14 +86,6 @@ interface AgentSettings {
 }
 
 const THEME_LABELS: Record<string, string> = { dark: "暗色", light: "浅色" }
-
-const THINKING_LEVELS: { value: string; label: string }[] = [
-  { value: "off", label: "关闭" },
-  { value: "minimal", label: "极简" },
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
-]
 
 type NotifyKey = "collect" | "news"
 
@@ -310,6 +304,19 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
     [agentSettings]
   )
 
+  // 所选模型声明的思考级别：各模型差异极大（非推理模型只有 off，
+  // claude-opus-5-5 只有 low~max，还有一批推理模型不支持 off），
+  // 下拉只列真正支持的档位，避免把无效值写进 settings.json 后被 pi-rs 静默 clamp。
+  const modelsQuery = useAgentModels()
+  const selectedModel = modelsQuery.data?.providers
+    .find((p) => p.name === agentSettings.defaultProvider)
+    ?.models.find((m) => m.id === agentSettings.defaultModel)
+  const supportedLevels = selectedModel?.thinkingLevels
+  const thinkingOptions = thinkingLevelOptions(supportedLevels)
+  // 已存档位对新模型可能无效：这里只按 pi-rs 的规则收敛展示，不回写设置——
+  // 换回原模型时用户原来的偏好仍然在，会话侧 pi-rs 本来也会做同样的 clamp。
+  const thinkingLevel = clampThinkingLevel(agentSettings.thinkingLevel, supportedLevels)
+
   // 关闭窗口后继续后台运行：立刻更新窗口行为，同时持久化到 [desktop] 配置。
   const saveCloseToTray = useCallback(
     async (enabled: boolean) => {
@@ -524,9 +531,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                   label="思考级别"
                   control={
                     <SelectField
-                      value={agentSettings.thinkingLevel}
+                      value={thinkingLevel}
                       onChange={(v) => saveAgentSettings({ thinkingLevel: v })}
-                      options={THINKING_LEVELS}
+                      options={thinkingOptions}
+                      disabled={thinkingOptions.length <= 1}
                       className="w-[140px]"
                     />
                   }

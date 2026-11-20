@@ -1985,6 +1985,10 @@ pub fn get_pi_agent_models_data() -> Result<serde_json::Value, String> {
                     "reasoning": m.reasoning,
                     "contextWindow": m.context_window,
                     "maxTokens": m.max_tokens,
+                    // 思考级别档位随模型不同：`xhigh`/`max` 需要模型在
+                    // `thinkingLevelMap` 里声明，部分推理模型还不允许 `off`。
+                    // 直接复用 pi-rs 的判定，前端只展示模型真正支持的档位。
+                    "thinkingLevels": pi_coding_agent::pi_agent_core::pi_ai_types::get_supported_thinking_levels(&m),
                     "available": registry.has_configured_auth(&m),
                 })
             })
@@ -2466,5 +2470,14 @@ mod tests {
         assert!(model["id"].is_string());
         assert!(model["name"].is_string());
         assert!(model["available"].is_boolean());
+        // 思考级别必须按模型给出，前端据此过滤下拉选项（与 pi-rs 对齐）
+        let levels = model["thinkingLevels"]
+            .as_array()
+            .unwrap_or_else(|| panic!("thinkingLevels array"));
+        assert!(!levels.is_empty(), "每个模型至少支持一个思考级别");
+        assert!(
+            levels.iter().all(|level| level.is_string()),
+            "思考级别是字符串（off/minimal/low/medium/high/xhigh/max）"
+        );
     }
 }

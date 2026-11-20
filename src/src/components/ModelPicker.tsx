@@ -1,6 +1,5 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { fetchJson } from "@/stores/data"
+import { useAgentModels, type ModelOption, type ProviderOption } from "@/hooks/query/useAgentModels"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Command,
@@ -13,21 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChevronDownIcon, LockKeyholeIcon } from "lucide-react"
 import { SettingRow, SelectField } from "./settings-ui"
-import { agentModelsKeys } from "@/hooks/query/queryKeys"
 
-export interface ModelOption {
-  id: string
-  name: string
-  reasoning: boolean
-  contextWindow: number
-  maxTokens: number
-  available: boolean
-}
-
-export interface ProviderOption {
-  name: string
-  models: ModelOption[]
-}
+export type { ModelOption, ProviderOption }
 
 interface ModelPickerProps {
   provider: string
@@ -106,12 +92,7 @@ export default function ModelPicker({ provider, model, onChange, disabled }: Mod
 
   // 模型列表走 react-query 缓存：staleTime 内重复进入设置页不重新请求
   // key 取自 queryKeys——保存 API Key 后要按同一 key 失效，才能立刻刷新置灰状态
-  const modelsQuery = useQuery({
-    queryKey: agentModelsKeys.all,
-    queryFn: () => fetchJson<{ providers: ProviderOption[] }>("/api/agent/models"),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  })
+  const modelsQuery = useAgentModels()
   const providers = modelsQuery.data?.providers ?? []
   const loading = modelsQuery.isPending
 
