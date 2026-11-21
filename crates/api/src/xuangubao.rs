@@ -3628,11 +3628,19 @@ mod tests {
         let dates = pool_candidate_dates();
         assert_eq!(dates.len(), POOL_DATE_LOOKBACK);
 
-        let today = chrono::Utc::now()
-            .with_timezone(&beijing_tz())
-            .format("%Y-%m-%d")
-            .to_string();
-        assert_eq!(dates[0], today);
+        // 周末首个候选日是上一个工作日：断言必须跟"跳过周末"的规则一致，
+        // 否则这个测试在周六/周日必然失败（不是数据有问题）。
+        let mut expected_first = chrono::Utc::now().with_timezone(&beijing_tz()).date_naive();
+        while matches!(
+            expected_first.weekday(),
+            chrono::Weekday::Sat | chrono::Weekday::Sun
+        ) {
+            match expected_first.pred_opt() {
+                Some(previous) => expected_first = previous,
+                None => break,
+            }
+        }
+        assert_eq!(dates[0], expected_first.format("%Y-%m-%d").to_string());
 
         let parsed = dates
             .iter()
