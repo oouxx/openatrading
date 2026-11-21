@@ -33,7 +33,16 @@ import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
 import { AppUpdaterSection } from "./AppUpdater"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
-import { AlertTriangle, CheckIcon, Info, Plus, RefreshCw, Search, Server } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckIcon,
+  Info,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  Trash2,
+} from "lucide-react"
 import {
   emptyTransport,
   mcpTransportTarget,
@@ -41,6 +50,8 @@ import {
   type McpTransportType,
 } from "../types/mcp"
 import { SETTINGS_TABS } from "@/lib/settings-tabs"
+import { formatFileSize } from "@/lib/composer-attachments"
+import { formatRelativeTime } from "@/lib/format"
 import type { SettingsTab } from "@/stores/ui"
 
 import { isTauri } from "@/lib/env"
@@ -175,6 +186,32 @@ function ThemeCard({
 /* ── 右侧控件宽度常量 ── */
 const inputCls = "w-64 bg-surface font-number text-caption"
 
+/** `GET /api/cache/stats` 的返回形状：一个目录的用量。 */
+interface CacheDirStats {
+  files: number
+  bytes: number
+  path: string
+}
+
+/** `GET /api/cache/stats`：三类临时缓存的当前占用 + 上次清理记录。 */
+interface CacheStats {
+  httpCache: { entries: number; bytes: number }
+  attachments: CacheDirStats
+  temp: CacheDirStats
+  totalBytes: number
+  /** Unix 毫秒；`null` 表示从未清理过。 */
+  lastClearedAt: number | null
+  lastFreedBytes: number
+}
+
+/** `POST /api/cache/clear`：本次清理释放了多少。 */
+interface CacheClearResult {
+  httpCacheEntries: number
+  removedFiles: number
+  freedBytes: number
+  errors: string[]
+}
+
 export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) {
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
@@ -211,6 +248,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   })
   // About info
   const [aboutInfo, setAboutInfo] = useState<Record<string, string> | null>(null)
+  // 临时缓存（设置 → 缓存页）
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
+  const [cacheLoading, setCacheLoading] = useState(false)
+  const [cacheClearing, setCacheClearing] = useState(false)
+  const [cacheError, setCacheError] = useState<string | null>(null)
+  const [clearResult, setClearResult] = useState<CacheClearResult | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   // MCP 服务器列表 + 增删改切换（react-query 缓存，乐观更新）
   const mcpQuery = useMcpServers()
@@ -283,6 +327,37 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       // API 可能不可用（Web 端网关未启动等）
     }
   }, [])
+
+  // 缓存页的统计与清理：结果不缓存，每次切到页签重新拉取——
+  // 这是「手动清理」的支点，展示一个过期数字没有意义。
+  const loadCacheStats = useCallback(async () => {
+    setCacheLoading(true)
+    try {
+      const data = await fetchJson<CacheStats>("/api/cache/stats")
+      setCacheStats(data)
+      setCacheError(null)
+    } catch (e) {
+      setCacheStats(null)
+      setCacheError(e instanceof Error && e.message ? e.message : "缓存统计读取失败")
+    } finally {
+      setCacheLoading(false)
+    }
+  }, [])
+
+  const clearCache = useCallback(async () => {
+    setCacheClearing(true)
+    setCacheError(null)
+    try {
+      const result = await fetchJson<CacheClearResult>("/api/cache/clear", { method: "POST" })
+      setClearResult(result)
+      setConfirmClear(false)
+      await loadCacheStats()
+    } catch (e) {
+      setCacheError(e instanceof Error && e.message ? e.message : "缓存清理失败")
+    } finally {
+      setCacheClearing(false)
+    }
+  }, [loadCacheStats])
 
   const saveAgentSettings = useCallback(
     async (patch: Partial<AgentSettings>) => {
@@ -403,6 +478,12 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
       if (Object.keys(stored).length > 0) setSocial((s) => ({ ...s, ...stored }))
     }
   }, [loadAbout, loadAgentSettings])
+
+  // 进入缓存页时拉一次用量：只在需要看的时候算，不让设置页启动时白白发请求。
+  useEffect(() => {
+    if (activeTab !== "cache") return
+    void loadCacheStats()
+  }, [activeTab, loadCacheStats])
 
   // 一次性清除旧版本在浏览器里留下的凭据副本（旧版 setConfig 什么都往
   // localStorage 写）。发现即删，不需要用户操作。
@@ -962,6 +1043,140 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                 </p>
               </div>
             </div>
+          )}
+
+          {activeTab === "cache" && (
+            <>
+              <SettingsSection title="临时缓存">
+                <SettingRow
+                  label="行情接口缓存"
+                  hint="内存缓存，重启后自动清空"
+                  control={
+                    <span className="text-primary font-number text-caption">
+                      {cacheLoading && !cacheStats
+                        ? "统计中…"
+                        : cacheStats
+                          ? `${cacheStats.httpCache.entries} 条 · ${formatFileSize(cacheStats.httpCache.bytes)}`
+                          : "—"}
+                    </span>
+                  }
+                />
+                <SettingRow
+                  label="附件缓存"
+                  hint={cacheStats?.attachments.path ?? "目录尚未创建"}
+                  control={
+                    <span className="text-primary font-number text-caption">
+                      {cacheStats
+                        ? `${cacheStats.attachments.files} 个 · ${formatFileSize(cacheStats.attachments.bytes)}`
+                        : "—"}
+                    </span>
+                  }
+                />
+                <SettingRow
+                  label="临时文件"
+                  hint={cacheStats?.temp.path ?? "目录尚未创建"}
+                  control={
+                    <span className="text-primary font-number text-caption">
+                      {cacheStats
+                        ? `${cacheStats.temp.files} 个 · ${formatFileSize(cacheStats.temp.bytes)}`
+                        : "—"}
+                    </span>
+                  }
+                />
+                <SettingRow
+                  label="合计"
+                  control={
+                    <span className="text-primary font-number text-caption">
+                      {cacheStats ? formatFileSize(cacheStats.totalBytes) : "—"}
+                    </span>
+                  }
+                />
+              </SettingsSection>
+
+              <SettingsSection title="清理">
+                <SettingRow
+                  label="清除缓存"
+                  hint="只删除上面这些可重新生成的临时数据；会话记录、角色与模拟盘数据不受影响。"
+                  control={
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void loadCacheStats()}
+                        disabled={cacheLoading}
+                      >
+                        <RefreshCw className={cacheLoading ? "animate-spin" : undefined} />
+                        重新统计
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setClearResult(null)
+                          setConfirmClear(true)
+                        }}
+                        disabled={cacheClearing}
+                      >
+                        <Trash2 />
+                        清除缓存
+                      </Button>
+                    </div>
+                  }
+                />
+                <SettingRow
+                  label="上次清理"
+                  hint="记录写在数据根，重启后仍在"
+                  control={
+                    <span className="text-primary font-number text-caption">
+                      {cacheStats?.lastClearedAt
+                        ? `${formatRelativeTime(new Date(cacheStats.lastClearedAt).toISOString())} · 释放 ${formatFileSize(cacheStats.lastFreedBytes)}`
+                        : "从未清理"}
+                    </span>
+                  }
+                />
+                {clearResult && (
+                  <p className="text-secondary text-caption py-3 leading-5">
+                    已释放 {formatFileSize(clearResult.freedBytes)}（内存缓存{" "}
+                    {clearResult.httpCacheEntries} 条、文件 {clearResult.removedFiles} 个）。
+                    {clearResult.errors.length > 0
+                      ? ` 部分条目未能删除：${clearResult.errors.join("；")}`
+                      : ""}
+                  </p>
+                )}
+                {cacheError && <p className="text-danger text-caption py-3">{cacheError}</p>}
+              </SettingsSection>
+
+              <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+                <DialogContent className="sm:max-w-sm">
+                  <DialogHeader className="pr-8">
+                    <DialogTitle>清除临时缓存？</DialogTitle>
+                    <DialogDescription>
+                      将删除行情接口缓存、附件落盘缓存与临时文件，共{" "}
+                      {cacheStats ? formatFileSize(cacheStats.totalBytes) : "—"}
+                      。会话记录、角色与模拟盘数据不会被删除。
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setConfirmClear(false)}
+                      disabled={cacheClearing}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void clearCache()}
+                      disabled={cacheClearing}
+                    >
+                      {cacheClearing ? "清理中…" : "确认清除"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
           )}
 
           {activeTab === "about" && (

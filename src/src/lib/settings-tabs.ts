@@ -1,4 +1,4 @@
-import { Bell, Cpu, Info, Palette, Plug, Puzzle } from "lucide-react"
+import { Bell, Cpu, HardDrive, Info, Palette, Plug, Puzzle } from "lucide-react"
 import type { SettingsTab } from "@/stores/ui"
 
 /**
@@ -11,5 +11,6 @@ export const SETTINGS_TABS: Record<SettingsTab, { label: string; icon: typeof Pa
   extensions: { label: "扩展", icon: Puzzle },
   social: { label: "通知", icon: Bell },
   mcp: { label: "MCP 服务器", icon: Plug },
+  cache: { label: "缓存", icon: HardDrive },
   about: { label: "关于", icon: Info },
 }

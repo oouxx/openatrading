@@ -17,6 +17,11 @@ use quick_xml::reader::Reader;
 use quick_xml::XmlVersion;
 use serde::{Deserialize, Serialize};
 
+/// 单条 prompt 的附件数硬上限。
+///
+/// 比 Web 输入框的 `MAX_ATTACHMENTS`（10）宽：这里是防滥用的最后一道，也留给
+/// 自动化、MCP 等非 UI 入口余量——它们的成本不由点击的这个人承担，但也不该
+/// 被 UI 的预算卡住。
 pub const MAX_ATTACHMENTS: usize = 20;
 pub const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_TOTAL_BYTES: usize = 40 * 1024 * 1024;
@@ -25,6 +30,12 @@ pub const MAX_TOTAL_BYTES: usize = 40 * 1024 * 1024;
 pub const MAX_TEXT_BYTES: usize = 1024 * 1024;
 /// Prompt-wide text limit across all attachments.
 pub const MAX_TOTAL_TEXT_BYTES: usize = 2 * 1024 * 1024;
+/// 落盘附件在**对话解析时**的读取上限。
+///
+/// 上传侧允许到 512MB（`attachment_store::MAX_UPLOAD_BYTES`），但解析是同步的：
+/// PDF / OOXML 抽取需要整个字节进内存，几百 MB 会直接顶爆。超过这个上限就明确
+/// 拒绝，而不是悄悄把内存吃光——流式解析是后续的事（见 docs/attachments-phase2.md）。
+pub const MAX_STORED_READ_BYTES: usize = 64 * 1024 * 1024;
 
 const MAX_FILE_MEGABYTES: usize = MAX_FILE_BYTES / (1024 * 1024);
 const MAX_TOTAL_MEGABYTES: usize = MAX_TOTAL_BYTES / (1024 * 1024);
@@ -44,12 +55,20 @@ const MAX_SHEET_COLUMNS: usize = 16_384;
 
 /// An image supplied by a transport. `mime_type` is client metadata only; the
 /// service always detects the actual type from decoded bytes.
+///
+/// 两种载荷形式二选一：`data`（base64 内联，旧客户端）或 `id`（已上传到
+/// `POST /api/attachments` 的落盘附件，见 [`StoredAttachmentScope`]）。
+/// `data` 优先——两个都给了就按内联处理，不会去读盘。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ImageAttachment {
     #[serde(default)]
     pub name: Option<String>,
     /// Standard base64 without a `data:` URL prefix.
-    pub data: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// 落盘附件 id（`POST /api/attachments` 返回的那个）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(default, rename = "mimeType")]
     pub mime_type: String,
 }
@@ -57,15 +76,44 @@ pub struct ImageAttachment {
 /// A file supplied by a transport. `mime_type` and `size` are client metadata
 /// only; the service detects the type from decoded bytes and computes the
 /// authoritative size itself.
+///
+/// 载荷形式同 [`ImageAttachment`]：`data` 内联或 `id` 落盘。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FileAttachment {
+    /// 展示名。走 `id` 时可以不传，服务端回落到元信息里的原始文件名。
+    #[serde(default)]
     pub name: String,
     /// Standard base64 without a `data:` URL prefix.
-    pub data: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// 落盘附件 id（`POST /api/attachments` 返回的那个）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(default, rename = "mimeType")]
     pub mime_type: Option<String>,
     #[serde(default)]
     pub size: Option<u64>,
+}
+
+/// 解析落盘附件 id 所需的上下文：数据根 + 会话。
+///
+/// 会话 id 参与目录定位，所以它必须与 `POST /api/attachments` 上传时用的那个
+/// 一致；不一致的结果就是「附件不存在」，而不是读到别人的文件。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredAttachmentScope {
+    pub data_dir: std::path::PathBuf,
+    pub session_id: String,
+}
+
+impl StoredAttachmentScope {
+    /// 用品牌根与会话 id 组一个 scope。
+    #[must_use]
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            data_dir: crate::atrading_home(),
+            session_id: session_id.into(),
+        }
+    }
 }
 
 /// One `<file>` entry recorded in the prompt wrapper. Used when replaying
@@ -112,6 +160,12 @@ pub enum AttachmentError {
     InvalidImage { name: String },
     #[error("「{name}」包含二进制或危险控制字符")]
     InvalidText { name: String },
+    #[error("「{name}」缺少文件内容（既没有内联数据，也没有附件 id）")]
+    MissingPayload { name: String },
+    #[error("附件 {id} 不存在或已失效，请重新上传")]
+    AttachmentMissing { id: String },
+    #[error("「{name}」超过对话解析上限 {max_mb}MB，请拆分后再发")]
+    StoredTooLarge { name: String, max_mb: usize },
 }
 
 pub struct AttachmentService;
@@ -125,8 +179,9 @@ impl AttachmentService {
         text: &str,
         images: &[ImageAttachment],
         files: &[FileAttachment],
+        scope: Option<&StoredAttachmentScope>,
     ) -> Result<PreparedPrompt, AttachmentError> {
-        let processed = Self::process(text, images, files)?;
+        let processed = Self::process(text, images, files, scope)?;
         Ok(PreparedPrompt {
             text: processed.prompt_text,
             options: PromptOptions {
@@ -145,6 +200,7 @@ impl AttachmentService {
         text: &str,
         images: &[ImageAttachment],
         files: &[FileAttachment],
+        scope: Option<&StoredAttachmentScope>,
     ) -> Result<ProcessedAttachments, AttachmentError> {
         let attachment_count = images.len().saturating_add(files.len());
         if attachment_count > MAX_ATTACHMENTS {
@@ -167,13 +223,19 @@ impl AttachmentService {
 
         for (index, image) in images.iter().enumerate() {
             let fallback_name = format!("图片 {}", index + 1);
-            let name = display_name(image.name.as_deref(), &fallback_name);
-            // Bound the payload before allocating the decoded buffer: a client
-            // must not be able to force a huge allocation with one frame.
-            enforce_encoded_size(&name, &image.data)?;
-            let raw = base64::engine::general_purpose::STANDARD
-                .decode(image.data.as_bytes())
-                .map_err(|_| AttachmentError::InvalidImage { name: name.clone() })?;
+            let hint_name = display_name(image.name.as_deref(), &fallback_name);
+            let resolved = resolve_payload(
+                PayloadKind::Image,
+                &hint_name,
+                image.data.as_deref(),
+                image.id.as_deref(),
+                scope,
+            )?;
+            let name = display_name(
+                image.name.as_deref().or(resolved.name.as_deref()),
+                &fallback_name,
+            );
+            let raw = resolved.bytes;
             enforce_file_size(&name, raw.len())?;
             total_bytes = checked_total(total_bytes, raw.len())?;
 
@@ -184,11 +246,20 @@ impl AttachmentService {
 
         for (index, file) in files.iter().enumerate() {
             let fallback_name = format!("附件 {}", index + 1);
-            let name = sanitize_file_name(&file.name, &fallback_name);
-            enforce_encoded_size(&name, &file.data)?;
-            let raw = base64::engine::general_purpose::STANDARD
-                .decode(file.data.as_bytes())
-                .map_err(|_| AttachmentError::InvalidFileData { name: name.clone() })?;
+            let hint_name = sanitize_file_name(&file.name, &fallback_name);
+            let resolved = resolve_payload(
+                PayloadKind::File,
+                &hint_name,
+                file.data.as_deref(),
+                file.id.as_deref(),
+                scope,
+            )?;
+            let raw = resolved.bytes;
+            let name = if file.name.trim().is_empty() {
+                sanitize_file_name(resolved.name.as_deref().unwrap_or_default(), &fallback_name)
+            } else {
+                hint_name
+            };
             enforce_file_size(&name, raw.len())?;
             total_bytes = checked_total(total_bytes, raw.len())?;
 
@@ -247,6 +318,84 @@ impl AttachmentService {
             prompt_text,
         })
     }
+}
+
+/// 载荷来自哪个通道。只影响错误信息的措辞（"图片"/"文件"）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PayloadKind {
+    Image,
+    File,
+}
+
+/// 解析出来的载荷：原始字节 + 落盘附件自带的展示名。
+struct ResolvedPayload {
+    bytes: Vec<u8>,
+    /// 只有走 `id` 时才有值（来自元信息），客户端没给名字时用它兜底。
+    name: Option<String>,
+}
+
+/// 取出一个附件的原始字节：内联 base64 优先，否则按 id 读盘。
+///
+/// 两条路径最终喂给同一套解析逻辑（图片归一化 / 文本抽取），这是刻意的：
+/// 否则"内联发的 PDF"和"上传后发的 PDF"行为会慢慢漂移。
+fn resolve_payload(
+    kind: PayloadKind,
+    name: &str,
+    data: Option<&str>,
+    id: Option<&str>,
+    scope: Option<&StoredAttachmentScope>,
+) -> Result<ResolvedPayload, AttachmentError> {
+    let invalid = || match kind {
+        PayloadKind::Image => AttachmentError::InvalidImage {
+            name: name.to_string(),
+        },
+        PayloadKind::File => AttachmentError::InvalidFileData {
+            name: name.to_string(),
+        },
+    };
+
+    if let Some(data) = data {
+        // Bound the payload before allocating the decoded buffer: a client
+        // must not be able to force a huge allocation with one frame.
+        enforce_encoded_size(name, data)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data.as_bytes())
+            .map_err(|_| invalid())?;
+        return Ok(ResolvedPayload { bytes, name: None });
+    }
+
+    let Some(id) = id else {
+        return Err(AttachmentError::MissingPayload {
+            name: name.to_string(),
+        });
+    };
+    let Some(scope) = scope else {
+        // 传输层没给会话上下文：宁可明确报错，也不要猜一个目录去读。
+        return Err(AttachmentError::AttachmentMissing { id: id.to_string() });
+    };
+    let missing = || AttachmentError::AttachmentMissing { id: id.to_string() };
+    let dir = crate::utils::attachment_store::session_dir(&scope.data_dir, &scope.session_id)
+        .ok_or_else(missing)?;
+    let meta = crate::utils::attachment_store::read_meta(&dir, id).ok_or_else(missing)?;
+
+    // 先按元信息里的 size 判上限，再读：避免为一个超大文件先把内存吃下去。
+    if meta.size > MAX_STORED_READ_BYTES as u64 {
+        return Err(AttachmentError::StoredTooLarge {
+            name: meta.name.clone(),
+            max_mb: MAX_STORED_READ_BYTES / (1024 * 1024),
+        });
+    }
+    let bytes = std::fs::read(meta.data_path(&dir)).map_err(|_| missing())?;
+    if bytes.len() > MAX_STORED_READ_BYTES {
+        return Err(AttachmentError::StoredTooLarge {
+            name: meta.name.clone(),
+            max_mb: MAX_STORED_READ_BYTES / (1024 * 1024),
+        });
+    }
+    Ok(ResolvedPayload {
+        bytes,
+        name: Some(meta.name),
+    })
 }
 
 /// Split this service's attachment wrapper off the end of a persisted prompt.
@@ -841,16 +990,18 @@ mod tests {
 
     fn png_image(name: &str) -> ImageAttachment {
         ImageAttachment {
+            id: None,
             name: Some(name.to_string()),
-            data: PNG_BASE64.to_string(),
+            data: Some(PNG_BASE64.to_string()),
             mime_type: "image/png".to_string(),
         }
     }
 
     fn file(name: &str, bytes: &[u8]) -> FileAttachment {
         FileAttachment {
+            id: None,
             name: name.to_string(),
-            data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            data: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
             mime_type: None,
             size: None,
         }
@@ -946,7 +1097,7 @@ mod tests {
     #[test]
     fn image_becomes_pi_rs_image_block() {
         let prepared =
-            AttachmentService::prepare_prompt("看看这张图", &[png_image("chart.png")], &[])
+            AttachmentService::prepare_prompt("看看这张图", &[png_image("chart.png")], &[], None)
                 .expect("valid image must be accepted");
 
         assert_eq!(
@@ -973,6 +1124,7 @@ mod tests {
             "summarize",
             &[],
             &[text_file("notes.md", "<b>&</b>")],
+            None,
         )
         .expect("supported text file must be accepted");
 
@@ -991,6 +1143,7 @@ mod tests {
             "",
             &[],
             &[text_file("report.unknownext", "平仓\n止损")],
+            None,
         )
         .expect("utf-8 bytes are text, whatever the extension says");
 
@@ -1004,7 +1157,7 @@ mod tests {
         let raw = base64::engine::general_purpose::STANDARD
             .decode(PNG_BASE64)
             .expect("valid base64");
-        let prepared = AttachmentService::prepare_prompt("", &[], &[file("clip.png", &raw)])
+        let prepared = AttachmentService::prepare_prompt("", &[], &[file("clip.png", &raw)], None)
             .expect("image bytes must be accepted");
 
         assert_eq!(prepared.options.images.expect("image blocks").len(), 1);
@@ -1018,8 +1171,9 @@ mod tests {
              <w:p><w:r><w:t xml:space=\"preserve\">营收 </w:t></w:r>\
              <w:r><w:t>增长 12%</w:t></w:r></w:p>",
         );
-        let prepared = AttachmentService::prepare_prompt("", &[], &[file("report.docx", &docx)])
-            .expect("docx must be accepted");
+        let prepared =
+            AttachmentService::prepare_prompt("", &[], &[file("report.docx", &docx)], None)
+                .expect("docx must be accepted");
 
         assert!(prepared.text.contains("<file name=\"report.docx\" size=\""));
         assert!(prepared.text.contains("季度报告\n营收 增长 12%\n"));
@@ -1035,8 +1189,9 @@ mod tests {
             <row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"C2\"><v>1.5</v></c></row>\
             </sheetData></worksheet>";
         let xlsx = xlsx_with(shared, sheet);
-        let prepared = AttachmentService::prepare_prompt("", &[], &[file("holdings.xlsx", &xlsx)])
-            .expect("xlsx must be accepted");
+        let prepared =
+            AttachmentService::prepare_prompt("", &[], &[file("holdings.xlsx", &xlsx)], None)
+                .expect("xlsx must be accepted");
 
         assert!(prepared.text.contains("股票\t涨幅\n贵州茅台\t\t1.5\n"));
     }
@@ -1053,8 +1208,9 @@ mod tests {
                 "<p:sld xmlns:p=\"p\" xmlns:a=\"a\"><a:p><a:r><a:t>第二页</a:t></a:r></a:p></p:sld>",
             ),
         ]);
-        let prepared = AttachmentService::prepare_prompt("", &[], &[file("deck.pptx", &pptx)])
-            .expect("pptx must be accepted");
+        let prepared =
+            AttachmentService::prepare_prompt("", &[], &[file("deck.pptx", &pptx)], None)
+                .expect("pptx must be accepted");
 
         let slide_two = prepared.text.find("## Slide 1\n第二页\n").expect("slide 2");
         let slide_ten = prepared
@@ -1067,7 +1223,7 @@ mod tests {
     #[test]
     fn pdf_text_is_extracted() {
         let pdf = minimal_pdf("Hello PDF");
-        let prepared = AttachmentService::prepare_prompt("", &[], &[file("memo.pdf", &pdf)])
+        let prepared = AttachmentService::prepare_prompt("", &[], &[file("memo.pdf", &pdf)], None)
             .expect("pdf must be accepted");
 
         assert!(prepared.text.contains("Hello PDF"));
@@ -1075,8 +1231,8 @@ mod tests {
 
     #[test]
     fn prompt_without_attachments_is_unchanged() {
-        let prepared =
-            AttachmentService::prepare_prompt("hi", &[], &[]).expect("no attachments is valid");
+        let prepared = AttachmentService::prepare_prompt("hi", &[], &[], None)
+            .expect("no attachments is valid");
 
         assert_eq!(prepared.text, "hi");
         assert!(prepared.options.images.is_none());
@@ -1084,9 +1240,13 @@ mod tests {
 
     #[test]
     fn attachment_name_keeps_only_the_basename() {
-        let prepared =
-            AttachmentService::prepare_prompt("", &[], &[text_file("../../etc/notes.txt", "x")])
-                .expect("path names are sanitized, not rejected");
+        let prepared = AttachmentService::prepare_prompt(
+            "",
+            &[],
+            &[text_file("../../etc/notes.txt", "x")],
+            None,
+        )
+        .expect("path names are sanitized, not rejected");
 
         assert!(prepared
             .text
@@ -1099,6 +1259,7 @@ mod tests {
             "总结这两个文件",
             &[png_image("chart.png")],
             &[text_file("a.md", "alpha"), text_file("b.txt", "beta")],
+            None,
         )
         .expect("prepare");
         let (visible, files) = split_attachment_wrapper(&prepared.text);
@@ -1136,23 +1297,280 @@ mod tests {
     fn oversized_text_is_truncated_with_a_note() {
         let oversized = "a".repeat(MAX_TEXT_BYTES + 10);
         let prepared =
-            AttachmentService::prepare_prompt("", &[], &[text_file("big.txt", &oversized)])
+            AttachmentService::prepare_prompt("", &[], &[text_file("big.txt", &oversized)], None)
                 .expect("oversized text is truncated, not rejected");
 
         assert!(prepared.text.contains("内容已截断"));
         assert!(!prepared.text.contains(&oversized));
     }
 
+    // ── 落盘附件（POST /api/attachments 之后按 id 引用）──────────────────
+
+    /// 在临时数据根下造一个已上传附件，返回 (data_dir, session_id, id)。
+    fn stored_fixture(
+        root: &std::path::Path,
+        session: &str,
+        name: &str,
+        bytes: &[u8],
+        mime: &str,
+    ) -> String {
+        let dir = crate::utils::attachment_store::session_dir(root, session)
+            .unwrap_or_else(|| panic!("session dir"));
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        let id = crate::utils::attachment_store::new_attachment_id();
+        let meta = crate::utils::attachment_store::AttachmentMeta::new(
+            id.clone(),
+            session,
+            Some(name),
+            mime,
+            bytes.len() as u64,
+            1_700_000_000_000,
+        );
+        std::fs::write(meta.data_path(&dir), bytes).unwrap_or_else(|e| panic!("write: {e}"));
+        crate::utils::attachment_store::write_meta(&dir, &meta)
+            .unwrap_or_else(|e| panic!("meta: {e}"));
+        id
+    }
+
+    fn scratch_root(tag: &str) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("atrading-att-scope-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        root
+    }
+
+    #[test]
+    fn stored_file_by_id_produces_the_same_wrapper_as_inline() {
+        let root = scratch_root("same");
+        let id = stored_fixture(&root, "sess-1", "notes.md", b"hello world", "text/markdown");
+        let scope = StoredAttachmentScope {
+            data_dir: root.clone(),
+            session_id: "sess-1".to_string(),
+        };
+
+        let stored = AttachmentService::prepare_prompt(
+            "总结",
+            &[],
+            &[FileAttachment {
+                id: Some(id),
+                name: String::new(),
+                data: None,
+                mime_type: None,
+                size: None,
+            }],
+            Some(&scope),
+        )
+        .unwrap_or_else(|e| panic!("stored: {e}"));
+
+        let inline = AttachmentService::prepare_prompt(
+            "总结",
+            &[],
+            &[FileAttachment {
+                id: None,
+                name: "notes.md".to_string(),
+                data: Some(base64::engine::general_purpose::STANDARD.encode(b"hello world")),
+                mime_type: None,
+                size: None,
+            }],
+            None,
+        )
+        .unwrap_or_else(|e| panic!("inline: {e}"));
+
+        // 两条路径必须产出**完全一致**的 prompt：否则同一份文件"上传后发"
+        // 与"内联发"在模型眼里就不是一回事了。
+        assert_eq!(stored.text, inline.text);
+        assert!(stored.text.contains("hello world"));
+        assert!(
+            stored.text.contains("name=\"notes.md\""),
+            "名字回落到元信息"
+        );
+        assert_eq!(
+            stored.options.images.is_some(),
+            inline.options.images.is_some()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn stored_image_by_id_becomes_an_image_block() {
+        let root = scratch_root("image");
+        let id = stored_fixture(
+            &root,
+            "sess-1",
+            "chart.png",
+            &base64::engine::general_purpose::STANDARD
+                .decode(PNG_BASE64)
+                .unwrap_or_else(|e| panic!("decode: {e}")),
+            "image/png",
+        );
+        let scope = StoredAttachmentScope {
+            data_dir: root.clone(),
+            session_id: "sess-1".to_string(),
+        };
+
+        let prepared = AttachmentService::prepare_prompt(
+            "看图",
+            &[ImageAttachment {
+                id: Some(id),
+                name: None,
+                data: None,
+                mime_type: String::new(),
+            }],
+            &[],
+            Some(&scope),
+        )
+        .unwrap_or_else(|e| panic!("prepare: {e}"));
+
+        let images = prepared.options.images.unwrap_or_default();
+        assert_eq!(images.len(), 1);
+        assert!(matches!(&images[0], ContentBlock::Image { .. }));
+        // 1×1 PNG 在限额内原样透传，没有缩放/转换 hint，所以 wrapper 里不该
+        // 冒出 `<image_hint>` —— 图片名只出现在 hint 与错误信息里。
+        assert!(!prepared.text.contains("<image_hint"));
+        assert!(prepared.text.starts_with("看图"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unknown_or_cross_session_ids_are_rejected() {
+        let root = scratch_root("missing");
+        let id = stored_fixture(&root, "sess-1", "a.md", b"x", "text/markdown");
+        let scope = StoredAttachmentScope {
+            data_dir: root.clone(),
+            session_id: "sess-1".to_string(),
+        };
+        let file = |id: &str| FileAttachment {
+            id: Some(id.to_string()),
+            name: "a.md".to_string(),
+            data: None,
+            mime_type: None,
+            size: None,
+        };
+
+        // 不存在的 id
+        assert!(matches!(
+            AttachmentService::process("", &[], &[file("nope")], Some(&scope)),
+            Err(AttachmentError::AttachmentMissing { .. })
+        ));
+        // 会话不匹配：不能读到别的会话的附件
+        let other_session = StoredAttachmentScope {
+            data_dir: root.clone(),
+            session_id: "sess-2".to_string(),
+        };
+        assert!(matches!(
+            AttachmentService::process("", &[], &[file(&id)], Some(&other_session)),
+            Err(AttachmentError::AttachmentMissing { .. })
+        ));
+        // 没有 scope 时明确报错，而不是去猜目录
+        assert!(matches!(
+            AttachmentService::process("", &[], &[file(&id)], None),
+            Err(AttachmentError::AttachmentMissing { .. })
+        ));
+        // 有 scope 才通
+        assert!(
+            AttachmentService::process("", &[], &[file(&id)], Some(&scope)).is_ok(),
+            "同会话应当可读"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn attachment_without_payload_or_id_is_rejected() {
+        assert!(matches!(
+            AttachmentService::process(
+                "",
+                &[],
+                &[FileAttachment {
+                    id: None,
+                    name: "ghost.txt".to_string(),
+                    data: None,
+                    mime_type: None,
+                    size: None,
+                }],
+                None
+            ),
+            Err(AttachmentError::MissingPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn oversized_stored_file_is_rejected_before_reading_it() {
+        let root = scratch_root("huge");
+        let dir = crate::utils::attachment_store::session_dir(&root, "sess-1")
+            .unwrap_or_else(|| panic!("dir"));
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        let id = crate::utils::attachment_store::new_attachment_id();
+        // 元信息声明超过解析上限：不真写 64MB，靠稀疏文件撑住尺寸。
+        let meta = crate::utils::attachment_store::AttachmentMeta::new(
+            id.clone(),
+            "sess-1",
+            Some("huge.pdf"),
+            "application/pdf",
+            (MAX_STORED_READ_BYTES as u64) + 1,
+            1,
+        );
+        let file =
+            std::fs::File::create(meta.data_path(&dir)).unwrap_or_else(|e| panic!("create: {e}"));
+        file.set_len(meta.size)
+            .unwrap_or_else(|e| panic!("set_len: {e}"));
+        crate::utils::attachment_store::write_meta(&dir, &meta)
+            .unwrap_or_else(|e| panic!("meta: {e}"));
+
+        let scope = StoredAttachmentScope {
+            data_dir: root.clone(),
+            session_id: "sess-1".to_string(),
+        };
+        let err = AttachmentService::process(
+            "",
+            &[],
+            &[FileAttachment {
+                id: Some(id),
+                name: "huge.pdf".to_string(),
+                data: None,
+                mime_type: None,
+                size: None,
+            }],
+            Some(&scope),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, AttachmentError::StoredTooLarge { .. }),
+            "应按解析上限拒绝，得到 {err:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn inline_data_wins_over_id() {
+        // 两者都给时按内联处理：不去读盘，也就不需要 scope。
+        let inline = FileAttachment {
+            id: Some("does-not-exist".to_string()),
+            name: "a.md".to_string(),
+            data: Some(base64::engine::general_purpose::STANDARD.encode(b"inline")),
+            mime_type: None,
+            size: None,
+        };
+        let prepared = AttachmentService::prepare_prompt("", &[], &[inline], None)
+            .unwrap_or_else(|e| panic!("prepare: {e}"));
+        assert!(prepared.text.contains("inline"));
+    }
+
     #[test]
     fn invalid_base64_image_is_rejected() {
         let image = ImageAttachment {
+            id: None,
             name: Some("broken.png".to_string()),
-            data: "%%%not-base64%%%".to_string(),
+            data: Some("%%%not-base64%%%".to_string()),
             mime_type: "image/png".to_string(),
         };
 
         assert_eq!(
-            AttachmentService::process("", &[image], &[]).unwrap_err(),
+            AttachmentService::process("", &[image], &[], None).unwrap_err(),
             AttachmentError::InvalidImage {
                 name: "broken.png".to_string()
             }
@@ -1163,13 +1581,14 @@ mod tests {
     fn client_mime_type_cannot_spoof_a_non_image() {
         // Valid base64 for "hello", declared as PNG by the client.
         let image = ImageAttachment {
+            id: None,
             name: Some("chart.png".to_string()),
-            data: "aGVsbG8=".to_string(),
+            data: Some("aGVsbG8=".to_string()),
             mime_type: "image/png".to_string(),
         };
 
         assert_eq!(
-            AttachmentService::process("", &[image], &[]).unwrap_err(),
+            AttachmentService::process("", &[image], &[], None).unwrap_err(),
             AttachmentError::InvalidImage {
                 name: "chart.png".to_string()
             }
@@ -1179,14 +1598,15 @@ mod tests {
     #[test]
     fn invalid_base64_file_is_rejected() {
         let invalid = FileAttachment {
+            id: None,
             name: "broken.bin".to_string(),
-            data: "%not-base64%".to_string(),
+            data: Some("%not-base64%".to_string()),
             mime_type: None,
             size: None,
         };
 
         assert_eq!(
-            AttachmentService::process("", &[], &[invalid]).unwrap_err(),
+            AttachmentService::process("", &[], &[invalid], None).unwrap_err(),
             AttachmentError::InvalidFileData {
                 name: "broken.bin".to_string()
             }
@@ -1198,7 +1618,7 @@ mod tests {
         // Valid UTF-8 is required; a bare binary blob is not silently lossy.
         let binary = [0x00, 0xff, 0xfe, 0x01];
         assert_eq!(
-            AttachmentService::process("", &[], &[file("payload.exe", &binary)]).unwrap_err(),
+            AttachmentService::process("", &[], &[file("payload.exe", &binary)], None).unwrap_err(),
             AttachmentError::UnsupportedFile {
                 name: "payload.exe".to_string()
             }
@@ -1209,7 +1629,7 @@ mod tests {
     fn unknown_zip_archive_is_rejected() {
         let archive = zip_with(&[("data.bin", b"not a document")]);
         assert_eq!(
-            AttachmentService::process("", &[], &[file("bundle.zip", &archive)]).unwrap_err(),
+            AttachmentService::process("", &[], &[file("bundle.zip", &archive)], None).unwrap_err(),
             AttachmentError::UnsupportedFile {
                 name: "bundle.zip".to_string()
             }
@@ -1220,7 +1640,7 @@ mod tests {
     fn malformed_office_document_reports_extraction_failure() {
         let broken = zip_with(&[("word/document.xml", b"<w:document><w:body>")]);
         assert_eq!(
-            AttachmentService::process("", &[], &[file("broken.docx", &broken)]).unwrap_err(),
+            AttachmentService::process("", &[], &[file("broken.docx", &broken)], None).unwrap_err(),
             AttachmentError::ExtractionFailed {
                 name: "broken.docx".to_string()
             }
@@ -1232,7 +1652,7 @@ mod tests {
         let xml = vec![b'<'; MAX_XML_ENTRY_BYTES + 1];
         let bomb = zip_with(&[("word/document.xml", &xml)]);
         assert_eq!(
-            AttachmentService::process("", &[], &[file("bomb.docx", &bomb)]).unwrap_err(),
+            AttachmentService::process("", &[], &[file("bomb.docx", &bomb)], None).unwrap_err(),
             AttachmentError::ExtractionFailed {
                 name: "bomb.docx".to_string()
             }
@@ -1242,7 +1662,8 @@ mod tests {
     #[test]
     fn control_characters_in_text_are_rejected() {
         assert_eq!(
-            AttachmentService::process("", &[], &[text_file("log.txt", "a\u{0}b")]).unwrap_err(),
+            AttachmentService::process("", &[], &[text_file("log.txt", "a\u{0}b")], None)
+                .unwrap_err(),
             AttachmentError::InvalidText {
                 name: "log.txt".to_string()
             }
@@ -1256,7 +1677,7 @@ mod tests {
             .collect();
 
         assert_eq!(
-            AttachmentService::process("", &[], &files).unwrap_err(),
+            AttachmentService::process("", &[], &files, None).unwrap_err(),
             AttachmentError::TooMany {
                 max: MAX_ATTACHMENTS
             }
@@ -1267,7 +1688,7 @@ mod tests {
     fn oversized_file_is_rejected() {
         let oversized = vec![b'a'; MAX_FILE_BYTES + 1];
         assert_eq!(
-            AttachmentService::process("", &[], &[file("big.bin", &oversized)]).unwrap_err(),
+            AttachmentService::process("", &[], &[file("big.bin", &oversized)], None).unwrap_err(),
             AttachmentError::FileTooLarge {
                 name: "big.bin".to_string(),
                 max_mb: MAX_FILE_MEGABYTES

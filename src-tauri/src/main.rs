@@ -2,7 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
-use openatrading_core::utils::attachments::{AttachmentService, FileAttachment, ImageAttachment};
+use openatrading_core::utils::attachments::{
+    AttachmentService, FileAttachment, ImageAttachment, StoredAttachmentScope,
+};
 
 use openatrading_web::gateway::Gateway;
 use openatrading_web::{AppState, RoleEntry};
@@ -285,6 +287,134 @@ async fn api_request(
     serde_json::from_slice(&bytes).map_err(|e| format!("invalid JSON response: {e}"))
 }
 
+/// 桌面端的一个待存附件：字节经 IPC 过来（base64），落盘走与 web 相同的
+/// `attachment_store`，所以配额、上限、元信息格式完全一致。
+#[derive(serde::Deserialize)]
+struct IncomingAttachment {
+    name: Option<String>,
+    #[serde(default, rename = "mimeType")]
+    mime_type: Option<String>,
+    /// 标准 base64（无 `data:` 前缀）。
+    data: String,
+}
+
+/// 探测拖入文件的元信息（桌面端拖拽没有 `File` 对象，只有路径）。
+///
+/// 只读 `metadata`，不读内容：拖一个 300MB 的 PDF 进来也不该先把内存撑起来。
+#[tauri::command]
+fn inspect_attachment_paths(paths: Vec<String>) -> Vec<serde_json::Value> {
+    paths
+        .into_iter()
+        .map(|path| {
+            let file = std::path::Path::new(&path);
+            let name = file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("attachment")
+                .to_string();
+            let meta = std::fs::metadata(file);
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let is_file = meta.as_ref().is_ok_and(|m| m.is_file());
+            serde_json::json!({
+                "path": path,
+                "name": name,
+                "size": size,
+                "mimeType": openatrading_core::utils::attachment_store::guess_mime_from_name(&name),
+                "isFile": is_file,
+            })
+        })
+        .collect()
+}
+
+/// 桌面端按路径落盘（拖拽路径）：与服务端 multipart 共用
+/// `attachment_store::store_from_path`，**流式复制**，不经过 IPC 也不占大内存。
+#[tauri::command]
+async fn store_attachments_from_paths(
+    session_id: String,
+    paths: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let data_dir = openatrading_core::atrading_home();
+    tokio::task::spawn_blocking(move || {
+        let mut saved = Vec::new();
+        let mut rejected = Vec::new();
+        for path in paths {
+            let file = std::path::Path::new(&path);
+            let display = file
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(openatrading_core::utils::attachment_store::sanitize_display_name)
+                .unwrap_or_else(|| "附件".to_string());
+            match openatrading_core::utils::attachment_store::store_from_path(
+                &data_dir,
+                &session_id,
+                file,
+            ) {
+                Ok(meta) => saved.push(serde_json::json!({
+                    "id": meta.id,
+                    "name": meta.name,
+                    "size": meta.size,
+                    "mimeType": meta.mime_type,
+                    "kind": meta.kind,
+                })),
+                Err(e) => {
+                    rejected.push(serde_json::json!({ "name": display, "error": e.to_string() }))
+                }
+            }
+        }
+        Ok(serde_json::json!({ "attachments": saved, "rejected": rejected }))
+    })
+    .await
+    .map_err(|e| format!("附件落盘任务失败：{e}"))?
+}
+
+/// 桌面端的附件落盘：`POST /api/attachments` 的等价物。
+///
+/// 为什么不用 HTTP：桌面端没有本地 HTTP 服务，路由是进程内 oneshot 调用的，
+/// 传 multipart 还得先把文件组装成 body。这里直接给 core 的字节入口，少一层
+/// 拼装，且与 web 共用同一套校验与元信息实现。
+#[tauri::command]
+async fn store_attachments(
+    session_id: String,
+    attachments: Vec<IncomingAttachment>,
+) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+
+    let data_dir = openatrading_core::atrading_home();
+    let mut saved = Vec::new();
+    let mut rejected = Vec::new();
+
+    for item in attachments {
+        let raw_name = item.name.unwrap_or_default();
+        let display = openatrading_core::utils::attachment_store::sanitize_display_name(&raw_name);
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(item.data.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                rejected
+                    .push(serde_json::json!({ "name": display, "error": "内容不是合法 base64" }));
+                continue;
+            }
+        };
+        match openatrading_core::utils::attachment_store::store_bytes(
+            &data_dir,
+            &session_id,
+            Some(&raw_name),
+            item.mime_type.as_deref().unwrap_or_default(),
+            &bytes,
+        ) {
+            Ok(meta) => saved.push(serde_json::json!({
+                "id": meta.id,
+                "name": meta.name,
+                "size": meta.size,
+                "mimeType": meta.mime_type,
+                "kind": meta.kind,
+            })),
+            Err(e) => rejected.push(serde_json::json!({ "name": display, "error": e.to_string() })),
+        }
+    }
+
+    Ok(serde_json::json!({ "attachments": saved, "rejected": rejected }))
+}
+
 #[tauri::command]
 async fn send_prompt(
     session_id: String,
@@ -331,8 +461,20 @@ async fn send_prompt(
     // so the frontend restores the composer instead of losing the message.
     let images = images.unwrap_or_default();
     let files = files.unwrap_or_default();
+    let scope = StoredAttachmentScope::new(session_id.clone());
     let prepared = tokio::task::spawn_blocking(move || {
-        AttachmentService::prepare_prompt(&text, &images, &files)
+        // 读盘期间登记为"在途"，清缓存时跳过（与 Web 路径一致）。
+        let ids: Vec<String> = images
+            .iter()
+            .filter_map(|image| image.id.clone())
+            .chain(files.iter().filter_map(|file| file.id.clone()))
+            .collect();
+        let _in_flight = openatrading_web::in_flight::InFlightGuard::register(
+            &scope.data_dir.join("attachments"),
+            &scope.session_id,
+            ids,
+        );
+        AttachmentService::prepare_prompt(&text, &images, &files, Some(&scope))
     })
     .await
     .map_err(|e| {
@@ -788,6 +930,9 @@ fn main() {
         .manage(Arc::new(DesktopServices::default()))
         .invoke_handler(tauri::generate_handler![
             api_request,
+            store_attachments,
+            inspect_attachment_paths,
+            store_attachments_from_paths,
             send_prompt,
             interrupt_session,
             respond_permission,
@@ -802,6 +947,11 @@ fn main() {
             restart_app
         ])
         .setup(|app| {
+            // 孤儿附件清扫：桌面端没有 gateway 时也要跑（共用同一个品牌根）。
+            tauri::async_runtime::spawn(async move {
+                openatrading_web::attachments_api::spawn_gc();
+            });
+
             // 桌面端调度器：与 gateway 共用租约，拿不到时自动待命。
             let state = app.state::<Arc<AppState>>();
             let hub = state.automation.clone();

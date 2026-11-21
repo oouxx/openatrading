@@ -1,4 +1,6 @@
+pub mod attachment_store;
 pub mod attachments;
+pub mod temp_files;
 pub mod time;
 
 /// Parse YAML frontmatter from `---\n...\n---` delimited content.

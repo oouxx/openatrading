@@ -48,12 +48,19 @@ import { appendUserTurn, applyEvent, canReplaceWithHistory, historyToTurns } fro
 import type { PromptFile, PromptImage, TranscriptBlock, TranscriptTurn } from "@/agents/types"
 import {
   formatFileSize,
-  isFileAttachment,
   isImageAttachment,
   mergeComposerAttachments,
   readComposerAttachments,
+  attachmentsFromPaths,
+  revokeAttachmentPreviews,
+  uploadComposerAttachments,
   type ComposerAttachment,
 } from "@/lib/composer-attachments"
+import {
+  inspectAttachmentPaths,
+  uploadAttachments,
+  uploadAttachmentsByPath,
+} from "@/lib/attachments-api"
 import { keepValidSelection } from "@/lib/selection"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
@@ -86,24 +93,35 @@ interface ImagePreview {
   name: string
 }
 
-/** Read a File as a data URL (base64). Rejects on read error. */
-function readFileAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
-}
-
 import { isTauri } from "@/lib/env"
 
-/** 一条消息最多带几个附件（图片与文件共用名额）。 */
-const MAX_ATTACHMENTS = 6
-/** 单张图片上限 5MB：base64 后随一条 WebSocket 文本帧一起发出。 */
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+/**
+ * 一条消息最多带几个附件（图片与文件共用名额）。
+ *
+ * 这是 **UI 预算**，不是服务端上限：后端 `attachments.rs` 的 `MAX_ATTACHMENTS`
+ * 是 20，留给自动化 / MCP 这类非 UI 入口。两者不一致是故意的——每张图都算
+ * 输入 token，点击的人该看到比"服务端扛得住"更早的刹车。
+ */
+const MAX_ATTACHMENTS = 10
+/**
+ * 单张图片上限 20MB，与 ChatGPT / OpenAI 的图片口径对齐。
+ *
+ * 前端不再用这个值去卡画质：pi-rs 收到后会归一化到 2000×2000 / 4.5MB
+ * base64，超限图片是「自动降采样」而不是「报错」。这里的 20MB 只是拦住
+ * 明显不该上传的东西（视频、原始 RAW），避免本地读成 base64 把内存顶爆。
+ */
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 /** 单个文件上限 20MB，与后端 `MAX_FILE_BYTES` 一致。 */
 const MAX_FILE_ATTACHMENT_BYTES = 20 * 1024 * 1024
+/**
+ * 整条消息所有附件的合计上限 40MB，与后端 `MAX_TOTAL_BYTES` 一致。
+ *
+ * 这个上限是**传输**约束而不是模型约束：一条 prompt 的全部附件在
+ * `ws.send()` 里被打成单个 WebSocket 帧（base64 原始字节 × 4/3，40MB →
+ * 约 53MB），后端 `MAX_WS_MESSAGE_BYTES` 留了 64MB。没有这道预算时
+ * 10 张 20MB 图能砌出 267MB 的单帧，结果不是「文件太大」而是断连。
+ */
+const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
 /** 输入框自动增高的上限，需与 textarea 上的 `max-h-[200px]` 保持一致。 */
 const TEXTAREA_MAX_HEIGHT = 200
 
@@ -123,6 +141,10 @@ export default function AiCopilot({
   // state 更新不会同步反映到下一次事件回调，发送锁必须用 ref 防止连点重复发送。
   const sendingRef = useRef(false)
   const [isReadingAttachments, setIsReadingAttachments] = useState(false)
+  /** 上传进度（0..1）；`null` 表示当前没有上传。 */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  /** 取消上传用。上传开始前创建，结束后清空。 */
+  const uploadAbortRef = useRef<AbortController | null>(null)
   const [previewImage, setPreviewImage] = useState<ImagePreview | null>(null)
   // 输入区的可见错误（发送失败 / 附件被拒）。输入框是唯一能重试的地方，
   // 静默失败等于把消息吞掉。
@@ -419,23 +441,9 @@ export default function AiCopilot({
       if (!text && attachments.length === 0) return
       if (sendingRef.current) return
       sendingRef.current = true
-      // 图片与文件分开走两条通道：图片进 pi-rs 的 image blocks，
-      // 文件由后端按字节提取文本。
-      const images: PromptImage[] = attachments
-        .filter(isImageAttachment)
-        .map(({ data, mimeType }) => ({ data, mimeType }))
-      const files: PromptFile[] = attachments
-        .filter(isFileAttachment)
-        .map(({ name, data, mimeType, size }) => ({ name, data, mimeType, size }))
-      // 在第一个 await 之前清空输入，确保新会话的 React 重渲染期间也无法
-      // 再次发送同一份内容。发送失败时再从快照恢复。
-      setInput("")
-      replaceAttachments([])
-      setShowSlash(false)
-      setComposerError(null)
 
-      // If no active session, generate a client-side ID and use it directly.
-      // The WebSocket endpoint will create the session if it doesn't exist.
+      // 会话 id 必须先定下来：附件落盘目录是 `attachments/<session_id>/`，
+      // 上传要用它。没有活跃会话时先生成一个客户端 id，WS 端会按需建会话。
       let sessionId = activeThreadId
       if (!sessionId) {
         sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -444,6 +452,60 @@ export default function AiCopilot({
         // to create the WebSocket connection before we try to send.
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
+
+      // 图片与文件分开走两条通道：图片进 pi-rs 的 image blocks，
+      // 文件由后端按字节提取文本。附件在这里才上传（见
+      // `readComposerAttachments` 的注释），消息里只带落盘 id。
+      let images: PromptImage[] = []
+      let files: PromptFile[] = []
+      if (attachments.length > 0) {
+        setIsReadingAttachments(true)
+        setUploadProgress(0)
+        const controller = new AbortController()
+        uploadAbortRef.current = controller
+        try {
+          const uploaded = await uploadComposerAttachments(
+            attachments,
+            sessionId,
+            uploadAttachments,
+            {
+              signal: controller.signal,
+              onProgress: (loaded, total) =>
+                setUploadProgress(total > 0 ? Math.min(1, loaded / total) : 0),
+              // 桌面端拖入的附件走路径直读，不进 IPC。
+              uploadPaths: uploadAttachmentsByPath,
+            }
+          )
+          if (uploaded.rejected.length > 0) {
+            throw new Error(uploaded.rejected.join("；"))
+          }
+          images = uploaded.images
+          files = uploaded.files
+        } catch (e) {
+          const cancelled = e instanceof Error && e.name === "UploadCancelled"
+          setIsReadingAttachments(false)
+          setUploadProgress(null)
+          uploadAbortRef.current = null
+          sendingRef.current = false
+          // 取消与失败分开说：取消是用户自己按的，不该显示成错误。
+          if (cancelled) setComposerError("已取消上传，附件仍在输入框里")
+          else {
+            const reason = e instanceof Error && e.message ? e.message : "上传失败"
+            setComposerError(`附件上传失败：${reason}`)
+          }
+          return
+        }
+        setIsReadingAttachments(false)
+        setUploadProgress(null)
+        uploadAbortRef.current = null
+      }
+      // 在第一个 await 之前清空输入，确保新会话的 React 重渲染期间也无法
+      // 再次发送同一份内容。发送失败时再从快照恢复。
+      setInput("")
+      replaceAttachments([])
+      revokeAttachmentPreviews(attachments)
+      setShowSlash(false)
+      setComposerError(null)
 
       // 发送前是否已有回合在跑（steer）：失败回滚时要恢复这个状态，不能把
       // 仍在运行的回合当成已结束。
@@ -483,7 +545,8 @@ export default function AiCopilot({
         const restored = mergeComposerAttachments(
           attachmentsRef.current,
           attachments,
-          MAX_ATTACHMENTS
+          MAX_ATTACHMENTS,
+          MAX_TOTAL_ATTACHMENT_BYTES
         )
         replaceAttachments(restored.attachments)
         setSessionStreaming(sessionId, wasStreaming)
@@ -528,18 +591,23 @@ export default function AiCopilot({
       pendingAttachmentReadsRef.current += 1
       setIsReadingAttachments(true)
       try {
-        const result = await readComposerAttachments(files, {
+        const result = readComposerAttachments(files, {
           currentCount: attachmentsRef.current.length,
+          currentBytes: attachmentsRef.current.reduce(
+            (sum, attachment) => sum + attachment.size,
+            0
+          ),
           maxAttachments: MAX_ATTACHMENTS,
           maxImageBytes: MAX_ATTACHMENT_BYTES,
           maxFileBytes: MAX_FILE_ATTACHMENT_BYTES,
-          readFile: readFileAsDataURL,
+          maxTotalBytes: MAX_TOTAL_ATTACHMENT_BYTES,
           createId: () => crypto.randomUUID(),
         })
         const merged = mergeComposerAttachments(
           attachmentsRef.current,
           result.attachments,
-          MAX_ATTACHMENTS
+          MAX_ATTACHMENTS,
+          MAX_TOTAL_ATTACHMENT_BYTES
         )
         if (merged.added > 0) {
           replaceAttachments(merged.attachments)
@@ -709,6 +777,62 @@ export default function AiCopilot({
     }
   }, [])
 
+  /**
+   * 桌面端的 OS 拖拽：Tauri 默认拦截 `drop` 事件（`dragDropEnabled`），DOM 的
+   * `onDrop` 根本不会触发，只给绝对路径。所以桌面端必须走这条监听，否则
+   * 往输入框里拖文件**什么都不会发生**；同时这也让大文件不必先进 IPC 内存。
+   */
+  useEffect(() => {
+    if (!isTauri) return
+    let dispose: (() => void) | undefined
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview")
+        const unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+          if (event.payload.type === "over") {
+            setDraggingFiles(true)
+            return
+          }
+          if (event.payload.type === "leave") {
+            setDraggingFiles(false)
+            return
+          }
+          if (event.payload.type !== "drop") return
+          setDraggingFiles(false)
+          const paths = event.payload.paths ?? []
+          if (paths.length === 0) return
+          const inspected = await inspectAttachmentPaths(paths)
+          const attachments = attachmentsFromPaths(inspected, {
+            createId: () => crypto.randomUUID(),
+          })
+          if (attachments.length === 0) {
+            setComposerError("拖入的文件无法识别或为空文件")
+            return
+          }
+          replaceAttachments(
+            mergeComposerAttachments(
+              attachmentsRef.current,
+              attachments,
+              MAX_ATTACHMENTS,
+              MAX_TOTAL_ATTACHMENT_BYTES
+            ).attachments
+          )
+        })
+        if (cancelled) unlisten()
+        else dispose = unlisten
+      } catch (e) {
+        console.error("桌面拖拽监听注册失败", e)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      dispose?.()
+    }
+  }, [replaceAttachments])
+
   // 点击输入区之外收起斜杠菜单；点在菜单里不算「外面」，事件仍在容器内。
   useEffect(() => {
     if (!showSlash) return
@@ -847,6 +971,13 @@ export default function AiCopilot({
   //    按钮不再绝对定位压在正文上——输入变高时按钮跟着卡片走，文字也不会被
   //    padding 挤成窄条；附件、粘贴、拖拽落点也都在同一张卡里。
   const hasPayload = input.trim().length > 0 || attachments.length > 0
+  // 合计预算目前只有吃到上限时才会在错误里暴露，平常也该看得见：
+  // 40MB 的天花板不显示，用户就不知道还剩多少可以再加。
+  const attachmentTotalBytes = attachments.reduce((sum, attachment) => sum + attachment.size, 0)
+  const attachmentBudgetHint =
+    attachments.length > 0
+      ? `合计 ${formatFileSize(attachmentTotalBytes)} / ${formatFileSize(MAX_TOTAL_ATTACHMENT_BYTES)}`
+      : null
   const renderInputField = () => (
     <div ref={composerRef} className="relative flex-1">
       {composerError && (
@@ -869,7 +1000,7 @@ export default function AiCopilot({
           <div className="flex flex-wrap items-center gap-1.5 px-0.5">
             {attachments.map((attachment, i) => {
               if (isImageAttachment(attachment)) {
-                const src = `data:${attachment.mimeType};base64,${attachment.data}`
+                const src = attachment.previewUrl
                 return (
                   <div key={attachment.id} className="relative">
                     <Button
@@ -893,7 +1024,12 @@ export default function AiCopilot({
                       type="button"
                       variant="ghost"
                       size="icon-xs"
-                      onClick={() => removeAttachment(attachment.id)}
+                      onClick={() => {
+                        if (isImageAttachment(attachment)) {
+                          revokeAttachmentPreviews([attachment])
+                        }
+                        removeAttachment(attachment.id)
+                      }}
                       className="bg-scrim-strong text-brand-foreground hover:bg-scrim absolute -top-1.5 -right-1.5 size-5 rounded-full"
                       aria-label={`移除附件 ${i + 1}`}
                     >
@@ -918,7 +1054,12 @@ export default function AiCopilot({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    onClick={() => removeAttachment(attachment.id)}
+                    onClick={() => {
+                      if (isImageAttachment(attachment)) {
+                        revokeAttachmentPreviews([attachment])
+                      }
+                      removeAttachment(attachment.id)
+                    }}
                     className="text-tertiary hover:text-primary hover:bg-hover shrink-0 rounded-full"
                     aria-label={`移除附件 ${i + 1}`}
                   >
@@ -952,7 +1093,7 @@ export default function AiCopilot({
             onClick={() => fileInputRef.current?.click()}
             className="text-secondary hover:text-brand hover:bg-hover rounded-md"
             aria-label="添加附件"
-            title={`添加附件（最多 ${MAX_ATTACHMENTS} 个，图片 ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB、文件 ${MAX_FILE_ATTACHMENT_BYTES / 1024 / 1024}MB；也可粘贴或拖入）`}
+            title={`添加附件（最多 ${MAX_ATTACHMENTS} 个、合计 ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB，单张图片 ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB、单个文件 ${MAX_FILE_ATTACHMENT_BYTES / 1024 / 1024}MB；也可粘贴或拖入）`}
             disabled={isStreamingActive}
           >
             <Paperclip className="size-4" />
@@ -960,10 +1101,14 @@ export default function AiCopilot({
           {isReadingAttachments ? (
             <span className="text-tertiary text-micro flex items-center gap-1">
               <Loader2 className="size-3 animate-spin" />
-              正在读取附件…
+              {uploadProgress === null
+                ? "正在处理附件…"
+                : `上传中 ${Math.round(uploadProgress * 100)}%`}
             </span>
           ) : isStreamingActive ? (
             <span className="text-tertiary text-micro">Enter 可引导当前回答</span>
+          ) : attachmentBudgetHint ? (
+            <span className="text-tertiary text-micro font-number">{attachmentBudgetHint}</span>
           ) : null}
           <div className="flex-1" />
           {isStreamingActive ? (
@@ -977,22 +1122,28 @@ export default function AiCopilot({
             >
               <Square className="size-3.5" fill="currentColor" />
             </Button>
+          ) : isReadingAttachments ? (
+            // 上传期间把发送键换成取消：大文件上传十几秒，没有出口等于卡死。
+            <Button
+              size="icon"
+              variant="secondary"
+              onClick={() => uploadAbortRef.current?.abort()}
+              className="rounded-full"
+              aria-label="取消上传"
+              title="取消上传"
+            >
+              <X className="size-4" />
+            </Button>
           ) : (
             hasPayload && (
               <Button
                 size="icon"
                 onClick={() => void send()}
                 className="rounded-full"
-                aria-label={isReadingAttachments ? "附件读取中" : "发送"}
-                title={isReadingAttachments ? "附件读取中" : "发送（Enter）"}
-                disabled={isReadingAttachments}
-                aria-busy={isReadingAttachments}
+                aria-label="发送"
+                title="发送（Enter）"
               >
-                {isReadingAttachments ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ArrowUp className="size-4" />
-                )}
+                <ArrowUp className="size-4" />
               </Button>
             )
           )}
@@ -1224,7 +1375,7 @@ export default function AiCopilot({
                             <div className="mb-2 flex flex-wrap gap-2">
                               {turn.blocks.map((b) => {
                                 if (b.type !== "image") return null
-                                const src = `data:${b.mimeType};base64,${b.data}`
+                                const src = b.url ?? `data:${b.mimeType};base64,${b.data}`
                                 return (
                                   <Button
                                     key={b.id}

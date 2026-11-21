@@ -251,8 +251,10 @@ export function appendUserTurn(
     ...images.map((img) => ({
       type: "image" as const,
       id: newBlockId(),
-      data: img.data,
+      // 乐观渲染用本地 blob；消息里已经没有 base64 了。
+      data: "",
       mimeType: img.mimeType,
+      url: img.previewUrl,
     })),
     ...files.map((file) => ({
       type: "file" as const,

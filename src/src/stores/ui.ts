@@ -3,7 +3,14 @@ import { create } from "zustand"
 const PREFIX = "openatrading-"
 
 export type AppMode = "chat" | "watchlist" | "skill-editor" | "settings" | "roles"
-export type SettingsTab = "appearance" | "agent" | "extensions" | "social" | "mcp" | "about"
+export type SettingsTab =
+  | "appearance"
+  | "agent"
+  | "extensions"
+  | "social"
+  | "mcp"
+  | "cache"
+  | "about"
 
 interface UiState {
   /** 当前主题: 'dark' | 'light'，默认跟随系统或 localStorage */
@@ -40,6 +47,7 @@ function storedSettingsTab(): SettingsTab {
     v === "extensions" ||
     v === "social" ||
     v === "mcp" ||
+    v === "cache" ||
     v === "about"
   )
     return v

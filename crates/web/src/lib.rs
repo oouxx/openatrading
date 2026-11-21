@@ -1,10 +1,13 @@
 pub mod agent_ws;
+pub mod attachments_api;
 pub mod automations;
 pub mod cache;
+pub mod cache_admin;
 pub mod chat;
 pub mod chat_session;
 pub mod gateway;
 pub mod handlers;
+pub mod in_flight;
 pub mod market_stream;
 pub mod mcp;
 pub mod web;
@@ -14,6 +17,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{delete, get, patch, post, put},
     Router,
 };
@@ -186,6 +190,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/watchlist", post(web::add_watchlist))
         .route("/api/watchlist/:code", delete(web::delete_watchlist))
         .route("/api/about", get(web::get_about))
+        .route(
+            "/api/attachments",
+            // 体积限制由 handler 自己按单文件/会话配额执行，这里必须关掉
+            // axum 默认的 2MB body 限制，否则大附件连解析都进不去。
+            post(attachments_api::upload).layer(DefaultBodyLimit::disable()),
+        )
+        .route("/api/attachments/:id", get(attachments_api::download))
+        .route("/api/cache/stats", get(cache_admin::get_cache_stats))
+        .route("/api/cache/clear", post(cache_admin::clear_cache))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

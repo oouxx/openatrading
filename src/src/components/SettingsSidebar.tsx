@@ -18,7 +18,7 @@ import type { SettingsTab } from "@/stores/ui"
 const NAV_GROUPS: { label: string; tabs: SettingsTab[] }[] = [
   { label: "偏好", tabs: ["appearance", "social"] },
   { label: "Agent", tabs: ["agent", "extensions", "mcp"] },
-  { label: "系统", tabs: ["about"] },
+  { label: "系统", tabs: ["cache", "about"] },
 ]
 
 interface SettingsSidebarProps {

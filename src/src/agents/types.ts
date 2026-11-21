@@ -7,7 +7,8 @@
 /** A single renderable unit inside a turn. */
 export type TranscriptBlock =
   | { type: "text"; id: string; content: string; streaming: boolean }
-  | { type: "image"; id: string; data: string; mimeType: string }
+  /** `url` 用于乐观渲染（本地 blob）；历史消息走 `data`（后端回放的 base64）。 */
+  | { type: "image"; id: string; data: string; mimeType: string; url?: string }
   | { type: "file"; id: string; name: string; size: number }
   | { type: "thinking"; id: string; content: string; streaming: boolean }
   | {
@@ -115,24 +116,24 @@ export type TranscriptEvent = SessionEvent | { kind: string; [k: string]: unknow
 
 /** A single image attachment sent with a prompt.
  *
- * `data` is raw base64 (no `data:image/png;base64,` prefix) and `mimeType`
- * is the media type (e.g. `image/png`). The backend converts each to a pi-rs
- * `ContentBlock::Image` and threads it through `PromptOptions.images`. */
+ * `id` 是 `POST /api/attachments` 返回的落盘附件 id：消息里只传引用，不再
+ * 携带 base64（远古客户端的 `data` 仍被后端接受，但前端不再发它）。
+ * 后端按 id 从会话目录读出字节，转成 pi-rs 的 `ContentBlock::Image`。
+ *
+ * `previewUrl` 是本地的 blob URL，只用于乐观渲染当前这一轮，不上线。 */
 export interface PromptImage {
-  data: string
+  id: string
   mimeType: string
+  previewUrl?: string
 }
 
 /** A non-image file attachment sent with a prompt.
  *
- * `data` is the raw file as standard base64 (no `data:` URL prefix). The
- * backend detects the real type from the bytes: images become pi-rs image
- * blocks, PDF / Word / Excel / PowerPoint documents are reduced to text, and
- * plain UTF-8 files are embedded verbatim. `mimeType` and `size` are display
- * metadata only. */
+ * `id` 同上。后端按字节重新判定类型：图片走 image block，PDF / Word / Excel /
+ * PowerPoint 提取文本，纯 UTF-8 原文内嵌。`mimeType` 与 `size` 仅用于展示。 */
 export interface PromptFile {
+  id: string
   name: string
-  data: string
   mimeType?: string
   size?: number
 }

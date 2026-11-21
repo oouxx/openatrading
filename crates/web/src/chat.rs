@@ -1009,16 +1009,22 @@ mod tests {
         let prepared = AttachmentService::prepare_prompt(
             "解读这份财报",
             &[ImageAttachment {
+                id: None,
                 name: Some("chart.png".to_string()),
-                data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==".to_string(),
+                data: Some(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                        .to_string(),
+                ),
                 mime_type: "image/png".to_string(),
             }],
             &[FileAttachment {
+                id: None,
                 name: "report.md".to_string(),
-                data: "5Y2O5Lic6IKh56Wo".to_string(), // 华东股票
+                data: Some("5Y2O5Lic6IKh56Wo".to_string()), // 华东股票
                 mime_type: None,
                 size: None,
             }],
+            None,
         )
         .unwrap_or_else(|e| panic!("prepare attachment wrapper: {e}"));
 

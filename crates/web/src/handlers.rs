@@ -1825,6 +1825,15 @@ pub async fn delete_session_data(
     let path = crate::chat::find_session_file(id).ok_or_else(|| "not found".to_string())?;
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        // 附件跟着会话走：会话没了，`attachments/<id>/` 就是垃圾。
+        // 失败不影响删除结果——GC 之后还会兜底扫一遍。
+        let removed = openatrading_core::utils::attachment_store::remove_session(
+            &openatrading_core::atrading_home(),
+            id,
+        );
+        if !removed {
+            openatrading_core::log::debug!("delete_session: {id} 没有附件目录或删除失败");
+        }
         Ok(serde_json::json!({"ok": true}))
     } else {
         Err("not found".to_string())
