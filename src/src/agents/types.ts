@@ -116,23 +116,25 @@ export type TranscriptEvent = SessionEvent | { kind: string; [k: string]: unknow
 
 /** A single image attachment sent with a prompt.
  *
- * `id` 是 `POST /api/attachments` 返回的落盘附件 id：消息里只传引用，不再
- * 携带 base64（远古客户端的 `data` 仍被后端接受，但前端不再发它）。
- * 后端按 id 从会话目录读出字节，转成 pi-rs 的 `ContentBlock::Image`。
+ * `path` 是磁盘上的绝对路径：后端读它、交给 pi-rs 的图片管线归一化成
+ * `ContentBlock::Image`。`data` 只在没有路径时使用（Web 端拿不到服务器路径，
+ * 所以统一走 `POST /api/attachments` 换路径）。
  *
- * `previewUrl` 是本地的 blob URL，只用于乐观渲染当前这一轮，不上线。 */
+ * `previewUrl` 是本地的 blob URL，只用于乐观渲染，不上线。 */
 export interface PromptImage {
-  id: string
-  mimeType: string
+  path?: string
+  data?: string
+  mimeType?: string
   previewUrl?: string
 }
 
 /** A non-image file attachment sent with a prompt.
  *
- * `id` 同上。后端按字节重新判定类型：图片走 image block，PDF / Word / Excel /
- * PowerPoint 提取文本，纯 UTF-8 原文内嵌。`mimeType` 与 `size` 仅用于展示。 */
+ * `path` 同上：prompt 里只放路径，由 pi-rs 的 `read` 工具按需分页读取（小文本
+ * 由后端内联，省一次往返）。`name` / `size` / `mimeType` 只用于展示。 */
 export interface PromptFile {
-  id: string
+  path?: string
+  data?: string
   name: string
   mimeType?: string
   size?: number

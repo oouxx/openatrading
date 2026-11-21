@@ -5,7 +5,7 @@ A 股短线行情与舆情工作台。聚合选股宝、韭研公社、财联社
 ## Features
 
 - 多源数据聚合：选股宝（涨停跌停/板块涨跌榜/大盘异动/K 线/分时）、东方财富（全市场个股涨跌排行/龙虎榜）、财联社电报、新浪集合竞价
-- 多模态输入：图片直接作为模型输入；PDF、.docx、.xlsx、.pptx 与文本文件在本地提取文本后随消息发送。附件在发送时上传到 `~/.atrading/attachments/<会话>/`，消息里只带 id（单次最多 10 个、合计 40MB；超出 2000px/4.5MB 的图片由 pi-rs 自动降采样）
+- 多模态输入：图片经 pi-rs 归一化后作为图片输入；其余文件只把**绝对路径**交给 agent，由 pi-rs 内置的 `read` 工具按需分页读取（≤64KB 的纯文本内联省一次往返）。附件字节数不限，消息体只带路径
 - 项目 Skill：韭研板块异动与市场情报由 agent 按需获取，动态 token 和浏览器侧凭证不进入 Rust 运行链路
 - 模拟盘手动记账：在 Web 面板按角色记录买卖，你填成交价与股数，系统只记账不撮合、不计手续费，持仓按实时行情估值
 - 定时自动化：内置 cron 调度器，盘中采集数据、推送财联社 A/B 级电报
@@ -121,7 +121,7 @@ openatrading update                  # 从 GitHub Releases 自更新
 cd src && bun install && bun run dev
 ```
 
-附件的行为与限制（支持格式、上限、文件落在哪、什么时候被清理）见 [docs/attachments.md](docs/attachments.md)，存储设计见 [docs/attachments-phase2.md](docs/attachments-phase2.md)。
+附件怎么工作（谁读文件、上限、文件落在哪、什么时候被清理）见 [docs/attachments.md](docs/attachments.md)。
 
 「设置 → 缓存」可以查看并手动清理三类可重新生成的临时数据：行情接口的内存缓存（moka）、`~/.atrading/attachments`（附件落盘）与 `~/.atrading/tmp`（工具中间文件）。会话记录、角色与模拟盘数据不受影响。
 

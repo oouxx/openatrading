@@ -14,7 +14,7 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use openatrading_core::llm::{EventEnvelope, SessionEventPayload, TranscriptEvent, SCHEMA_VERSION};
 use openatrading_core::utils::attachments::{
-    AttachmentService, FileAttachment, ImageAttachment, StoredAttachmentScope,
+    AttachmentScope, AttachmentService, FileAttachment, ImageAttachment,
 };
 use serde::Deserialize;
 use tokio::sync::mpsc;
@@ -25,29 +25,6 @@ use crate::AppState;
 pub use openatrading_core::llm::{convert_agent_event, convert_session_event, SessionEventState};
 
 // ── WS handler ────────────────────────────────────────────────────────────
-
-/// 单条 WS 消息（= 单帧）的体积上限：64MB。
-///
-/// 前端把一条 prompt 的全部附件塞进**一次** `ws.send()`，浏览器不会帮我们
-/// 分帧，所以一帧必须装得下整条消息。按后端附件预算（合计 40MB 原始字节）
-/// 算：base64 膨胀 4/3 ≈ 53.4MB，再加 JSON 包装与文本，64MB 有安全余量。
-///
-/// 不设这个值就是个隐藏地雷：`tungstenite` 默认 `max_frame_size` 只有 16MB
-/// （`max_message_size` 64MB），超过时连接直接被判 `Capacity` 断开，用户看到
-/// 的是「连接已断开」而不是「文件太大」——22MB 以上的附件根本发不出去。
-const MAX_WS_MESSAGE_BYTES: usize = 64 << 20;
-
-// 编译期护栏：这两条是常量语义，写错就该编不过。
-// - 退回 16MB（tungstenite 默认）会让 20MB 附件直接断连；
-// - 低于 64MB 就装不下后端 40MB 附件预算的 base64 膨胀（约 53.4MB）。
-const _: () = assert!(
-    MAX_WS_MESSAGE_BYTES > (16 << 20),
-    "回到 16MB 单帧会让 20MB 附件直接断连"
-);
-const _: () = assert!(
-    MAX_WS_MESSAGE_BYTES >= (64 << 20),
-    "单帧上限低于 64MB 装不下 40MB 附件预算"
-);
 
 #[derive(Deserialize)]
 pub struct WsQuery {
@@ -67,12 +44,9 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.max_frame_size(MAX_WS_MESSAGE_BYTES)
-        .max_message_size(MAX_WS_MESSAGE_BYTES)
-        // 写缓冲至少要容纳「缓冲区 + 一整条消息」，否则大 prompt 的
-        // 回显/事件回放会在 flush 前被写入上限挤断。
-        .max_write_buffer_size(MAX_WS_MESSAGE_BYTES.saturating_mul(2))
-        .on_upgrade(move |socket| handle_session(socket, state, query.id, query.last_seq))
+    // prompt 里只带附件路径（字节走 `POST /api/attachments`），所以这里不需要
+    // 为附件放开帧上限，保持 tungstenite 默认即可。
+    ws.on_upgrade(move |socket| handle_session(socket, state, query.id, query.last_seq))
 }
 
 async fn handle_session(
@@ -223,16 +197,14 @@ async fn forward_events(
                                     log::info!("ws: agent prompt received for {sid}");
                                     // Decoding and resizing images is CPU-bound;
                                     // keep it off the async worker threads.
-                                    // 落盘附件（`POST /api/attachments` 的 id）按会话目录解析；
-                                    // 内联 base64 的老路径不受影响。
-                                    let scope = StoredAttachmentScope::new(sid.clone());
+                                    // Web 端只允许引用附件目录下的路径：浏览器用户不是
+                                    // 这台机器的主人。
+                                    let scope = AttachmentScope::web(sid.clone());
                                     let prepared = match tokio::task::spawn_blocking(move || {
                                         // 读盘期间登记为"在途"：这期间用户点清缓存也不会
-                                        // 把正在解析的文件删掉。
-                                        let _in_flight = crate::in_flight::InFlightGuard::register(
-                                            &scope.data_dir.join("attachments"),
-                                            &scope.session_id,
-                                            stored_attachment_ids(&images, &files),
+                                        // 把正在读取的文件删掉。
+                                        let _in_flight = crate::in_flight::InFlightGuard::register_paths(
+                                            referenced_paths(&images, &files),
                                         );
                                         AttachmentService::prepare_prompt(
                                             &text,
@@ -320,12 +292,12 @@ async fn forward_events(
     }
 }
 
-/// prompt 里引用到的落盘附件 id（内联字节的没有 id，自然不在其中）。
-fn stored_attachment_ids(images: &[ImageAttachment], files: &[FileAttachment]) -> Vec<String> {
+/// prompt 里引用到的落盘文件路径（内联字节的没有路径，自然不在其中）。
+fn referenced_paths(images: &[ImageAttachment], files: &[FileAttachment]) -> Vec<String> {
     images
         .iter()
-        .filter_map(|image| image.id.clone())
-        .chain(files.iter().filter_map(|file| file.id.clone()))
+        .filter_map(|image| image.path.clone())
+        .chain(files.iter().filter_map(|file| file.path.clone()))
         .collect()
 }
 
@@ -405,14 +377,12 @@ mod tests {
                 assert_eq!(images.len(), 1);
                 assert_eq!(images[0].name.as_deref(), Some("chart.png"));
                 assert_eq!(images[0].data.as_deref(), Some("aGVsbG8="));
-                assert_eq!(images[0].mime_type, "image/png");
+                assert_eq!(images[0].mime_type.as_deref(), Some("image/png"));
 
                 let files = files.expect("files present");
                 assert_eq!(files.len(), 1);
-                assert_eq!(files[0].name, "notes.md");
+                assert_eq!(files[0].name.as_deref(), Some("notes.md"));
                 assert_eq!(files[0].data.as_deref(), Some("aGVsbG8="));
-                assert_eq!(files[0].mime_type.as_deref(), Some("text/markdown"));
-                assert_eq!(files[0].size, Some(5));
             }
             other => panic!("expected Prompt, got {other:?}"),
         }
@@ -479,24 +449,5 @@ mod tests {
             }
             other => panic!("expected Prompt, got {other:?}"),
         }
-    }
-
-    /// 单帧上限必须装得下「后端附件总预算 × base64 膨胀 + JSON 包装」。
-    ///
-    /// 这条测试是给未来的人看的：`MAX_TOTAL_BYTES` 一涨，帧上限就得跟着涨，
-    /// 否则现象是连接被对端判超限断开（`Reason::Capacity`），而不是一个能看懂
-    /// 的错误——这正是这次修掉的 bug。
-    #[test]
-    fn frame_limit_covers_the_attachment_budget_with_headroom() {
-        use openatrading_core::utils::attachments::MAX_TOTAL_BYTES;
-
-        // 4 个 base64 字符编码 3 字节，向上取整。
-        let base64_bytes = MAX_TOTAL_BYTES.div_ceil(3) * 4;
-        let json_headroom = 4 << 20;
-
-        assert!(
-            base64_bytes + json_headroom <= MAX_WS_MESSAGE_BYTES,
-            "单帧上限 {MAX_WS_MESSAGE_BYTES} 装不下附件预算 {MAX_TOTAL_BYTES}（base64 {base64_bytes} + 包装 {json_headroom}）"
-        );
     }
 }

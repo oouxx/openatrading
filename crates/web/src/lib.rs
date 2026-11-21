@@ -196,7 +196,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             // axum 默认的 2MB body 限制，否则大附件连解析都进不去。
             post(attachments_api::upload).layer(DefaultBodyLimit::disable()),
         )
-        .route("/api/attachments/:id", get(attachments_api::download))
         .route("/api/cache/stats", get(cache_admin::get_cache_stats))
         .route("/api/cache/clear", post(cache_admin::clear_cache))
         .layer(cors)

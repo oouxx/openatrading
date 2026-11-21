@@ -998,31 +998,35 @@ mod tests {
         }
     }
 
-    /// A persisted prompt that embedded attachment text must reload as the
-    /// user's own words plus file chips, never as raw prompt plumbing.
+    /// 已持久化的 prompt 里，附件 wrapper 必须在历史里还原成「用户说的话 +
+    /// 文件 chip」，而不是把 prompt 管道当成用户内容显示出来。
     #[test]
     fn user_attachment_wrapper_is_hidden_from_history() {
         use openatrading_core::utils::attachments::{
             AttachmentService, FileAttachment, ImageAttachment,
         };
 
+        let dir = std::env::temp_dir().join(format!("atrading-history-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        let report = dir.join("report.md");
+        // 「华东股票」= 12 字节，走内联（≤64KB）。
+        std::fs::write(&report, "华东股票").unwrap_or_else(|e| panic!("write: {e}"));
+
         let prepared = AttachmentService::prepare_prompt(
             "解读这份财报",
             &[ImageAttachment {
-                id: None,
                 name: Some("chart.png".to_string()),
                 data: Some(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
                         .to_string(),
                 ),
-                mime_type: "image/png".to_string(),
+                path: None,
+                mime_type: Some("image/png".to_string()),
             }],
             &[FileAttachment {
-                id: None,
-                name: "report.md".to_string(),
-                data: Some("5Y2O5Lic6IKh56Wo".to_string()), // 华东股票
-                mime_type: None,
-                size: None,
+                name: Some("report.md".to_string()),
+                path: Some(report.to_string_lossy().to_string()),
+                data: None,
             }],
             None,
         )
@@ -1035,10 +1039,14 @@ mod tests {
             &out[0].blocks[0],
             HistoryBlock::Text { text } if text == "解读这份财报"
         ));
+        // chip 里是文件路径（模型读的就是它），大小是磁盘上的真实字节数；
+        // 内容虽然内联进了 prompt，历史里只保留 chip。
         assert!(matches!(
             &out[0].blocks[1],
-            HistoryBlock::File { name, size } if name == "report.md" && *size == 12
+            HistoryBlock::File { name, size } if name.ends_with("report.md") && *size == 12
         ));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// `GET /api/extensions` 的形状是前端开关卡的唯一数据源：id / name /

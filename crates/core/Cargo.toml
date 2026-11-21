@@ -27,9 +27,6 @@ thiserror = "2"
 anyhow = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-pdf-extract = "0.12"
-quick-xml = "0.42"
-zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio-cron-scheduler = "0.13"
 chrono-tz = "0.10"

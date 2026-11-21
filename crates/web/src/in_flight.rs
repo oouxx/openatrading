@@ -11,7 +11,7 @@
 //! 没有更好的共同宿主。
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 fn registry() -> &'static Mutex<HashSet<PathBuf>> {
@@ -36,11 +36,10 @@ pub struct InFlightGuard {
 }
 
 impl InFlightGuard {
-    /// 用附件根 + 会话 + id 计算路径并登记。
+    /// 直接按绝对路径登记（prompt 里引用的就是路径）。
     #[must_use]
-    pub fn register(root: &Path, session_id: &str, ids: impl IntoIterator<Item = String>) -> Self {
-        let dir = root.join(session_id);
-        let paths: Vec<PathBuf> = ids.into_iter().map(|id| dir.join(id)).collect();
+    pub fn register_paths(paths: impl IntoIterator<Item = String>) -> Self {
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         if !paths.is_empty() {
             let mut guard = registry()
                 .lock()
@@ -76,6 +75,7 @@ impl Drop for InFlightGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     /// 登记表是进程级单例，同进程内多个测试会并发读写同一份状态：
     /// 断言只看自己登记的那几条路径，不对总体集合做"必须为空"的假设。
@@ -85,15 +85,16 @@ mod tests {
 
     #[test]
     fn paths_are_tracked_only_while_the_guard_lives() {
-        let root = Path::new("/data/attachments");
         assert!(
             !is_tracked("/data/attachments/sess-single/a"),
             "初始不该在册"
         );
 
         {
-            let _guard =
-                InFlightGuard::register(root, "sess-single", ["a".to_string(), "b".to_string()]);
+            let _guard = InFlightGuard::register_paths([
+                "/data/attachments/sess-single/a".to_string(),
+                "/data/attachments/sess-single/b".to_string(),
+            ]);
             assert!(is_tracked("/data/attachments/sess-single/a"));
             assert!(is_tracked("/data/attachments/sess-single/b"));
         }
@@ -115,9 +116,8 @@ mod tests {
     /// 多个 prompt 并行解析同一附件时，先结束的那个不能把另一个的登记删掉。
     #[test]
     fn nested_registrations_do_not_cancel_each_other() {
-        let root = Path::new("/data/attachments");
-        let outer = InFlightGuard::register(root, "sess-nested", ["a".to_string()]);
-        let inner = InFlightGuard::register(root, "sess-nested", ["b".to_string()]);
+        let outer = InFlightGuard::register_paths(["/data/attachments/sess-nested/a".to_string()]);
+        let inner = InFlightGuard::register_paths(["/data/attachments/sess-nested/b".to_string()]);
         drop(inner);
         assert!(
             is_tracked("/data/attachments/sess-nested/a"),

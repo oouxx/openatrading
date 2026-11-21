@@ -14,7 +14,7 @@ export interface ComposerImageAttachment {
   mimeType: string
   /** 浏览器选择/粘贴/拖拽拿到的文件；桌面端按路径拖入时为空。 */
   file?: File
-  /** 桌面端拖拽得到的绝对路径（按路径直读，不进 IPC 内存）。 */
+  /** 桌面端拖拽得到的绝对路径：直接进 prompt，字节不进 IPC。 */
   path?: string
   /** 没有本地文件时的预览地址（桌面端拖拽图片暂无缩略图，置空）。 */
   previewUrl: string
@@ -62,15 +62,16 @@ export function isImageFile(file: File): boolean {
   return extension !== undefined && IMAGE_EXTENSIONS.has(extension)
 }
 
+/**
+ * 收纳选项。
+ *
+ * **没有字节上限**：非图片附件不会被内联进 prompt，它们只是把绝对路径交给
+ * pi-rs 的 `read` 工具；图片由 pi-rs 按模型内联上限缩放。本地再设一道字节
+ * 上限，只会拒掉后端本来处理得了的文件。
+ */
 export interface ReadComposerAttachmentsOptions {
   currentCount: number
-  /** 输入框里已有附件占用的字节数，用于合计预算。 */
-  currentBytes?: number
   maxAttachments: number
-  maxImageBytes: number
-  maxFileBytes: number
-  /** 整条消息所有附件合计上限；不传表示不限制。 */
-  maxTotalBytes?: number
   createId: () => string
   /** 创建图片预览 URL；默认用 `URL.createObjectURL`，测试可注入。 */
   createPreviewUrl?: (file: File) => string
@@ -91,12 +92,6 @@ export function attachmentLimitMessage(maxAttachments: number): string {
   return `一条消息最多 ${maxAttachments} 个附件`
 }
 
-/** 合计预算的拒绝文案：说清楚上限与当前余量，用户才知道要减掉多少。 */
-export function attachmentsTotalLimitMessage(maxTotalBytes: number, usedBytes: number): string {
-  const remaining = Math.max(0, maxTotalBytes - usedBytes)
-  return `附件合计不能超过 ${formatFileSize(maxTotalBytes)}（仅剩 ${formatFileSize(remaining)}）`
-}
-
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
@@ -113,33 +108,18 @@ export function formatFileSize(bytes: number): string {
 export function mergeComposerAttachments(
   current: ComposerAttachment[],
   incoming: ComposerAttachment[],
-  maxAttachments: number,
-  maxTotalBytes?: number
+  maxAttachments: number
 ): MergeComposerAttachmentsResult {
   const limit = Math.max(0, Math.floor(maxAttachments))
   const existing = current.slice(0, limit)
   const available = Math.max(0, limit - existing.length)
-  const rejected: string[] = []
-  const accepted: ComposerAttachment[] = []
-  let usedBytes = existing.reduce((sum, attachment) => sum + attachment.size, 0)
-
-  for (const attachment of incoming) {
-    if (accepted.length >= available) {
-      rejected.push(attachmentLimitMessage(maxAttachments))
-      break
-    }
-    if (maxTotalBytes !== undefined && usedBytes + attachment.size > maxTotalBytes) {
-      rejected.push(attachmentsTotalLimitMessage(maxTotalBytes, usedBytes))
-      continue
-    }
-    accepted.push(attachment)
-    usedBytes += attachment.size
-  }
+  const accepted = incoming.slice(0, available)
+  const rejected = accepted.length < incoming.length ? [attachmentLimitMessage(maxAttachments)] : []
 
   return {
     attachments: [...existing, ...accepted],
     added: accepted.length,
-    rejected: [...new Set(rejected)],
+    rejected,
   }
 }
 
@@ -157,9 +137,6 @@ export function readComposerAttachments(
   const attachments: ComposerAttachment[] = []
   const rejected: string[] = []
   let available = Math.max(0, Math.floor(options.maxAttachments) - options.currentCount)
-  // 合计预算按「已有 + 本批已收」累计，避免一张张加起来冲破单帧上限。
-  const maxTotalBytes = options.maxTotalBytes
-  let usedBytes = Math.max(0, options.currentBytes ?? 0)
   const preview = options.createPreviewUrl ?? ((file: File) => URL.createObjectURL(file))
 
   for (const file of files) {
@@ -170,19 +147,6 @@ export function readComposerAttachments(
 
     const image = isImageFile(file)
     const label = file.name || (image ? "剪贴板图片" : "剪贴板文件")
-    const maxBytes = image ? options.maxImageBytes : options.maxFileBytes
-    if (file.size > maxBytes) {
-      rejected.push(`「${label}」超过 ${formatFileSize(maxBytes)}`)
-      continue
-    }
-    if (maxTotalBytes !== undefined && usedBytes + file.size > maxTotalBytes) {
-      rejected.push(
-        `「${label}」会让附件合计超过 ${formatFileSize(maxTotalBytes)}（仅剩 ${formatFileSize(
-          Math.max(0, maxTotalBytes - usedBytes)
-        )}）`
-      )
-      continue
-    }
 
     const id = options.createId()
     attachments.push(
@@ -206,7 +170,6 @@ export function readComposerAttachments(
           }
     )
     available -= 1
-    usedBytes += file.size
   }
 
   return { attachments, rejected }
@@ -270,20 +233,6 @@ export function revokeAttachmentPreviews(attachments: ComposerAttachment[]): voi
   }
 }
 
-/** 服务端返回的已落盘附件。 */
-export interface UploadedAttachment {
-  id: string
-  name: string
-  size: number
-  mimeType?: string
-}
-
-/** 上传结果：成功的附件 + 逐个被拒的原因。 */
-export interface UploadComposerAttachmentsResult {
-  uploaded: UploadedAttachment[]
-  rejected: string[]
-}
-
 /** 进度回调：(已传字节, 总字节)。 */
 export type AttachmentUploadProgress = (loaded: number, total: number) => void
 
@@ -293,119 +242,126 @@ export interface AttachmentUploadOptions {
   onProgress?: AttachmentUploadProgress
 }
 
-/** 上传器：把本地文件交给服务端落盘，返回 id。Web 走 multipart，桌面走 IPC。 */
+/** 服务端落盘后返回的元信息：路径就是 prompt 里要引用的东西。 */
+export interface UploadedAttachment {
+  path: string
+  name: string
+  size: number
+  mimeType?: string
+}
+
+/** 上传器：把本地文件交给服务端落盘，返回绝对路径（Web 端专用）。 */
 export type AttachmentUploader = (
   sessionId: string,
   items: { file: File; name: string; mimeType?: string }[],
   options?: AttachmentUploadOptions
 ) => Promise<{ attachments: UploadedAttachment[]; rejected: { name: string; error: string }[] }>
 
-/** 按路径上传（桌面拖拽）：服务端/桌面进程直接读那个路径，字节不进内存。 */
-export type PathAttachmentUploader = (
-  sessionId: string,
-  paths: string[],
-  options?: AttachmentUploadOptions
-) => Promise<{ attachments: UploadedAttachment[]; rejected: { name: string; error: string }[] }>
+/**
+ * File → 标准 base64（无 `data:` 前缀）。桌面端没有路径时内联用。
+ *
+ * 用 `arrayBuffer()` + `btoa` 而不是 `FileReader`：前者在任何 JS 运行时都能
+ * 用（测试跑在 Bun 里，没有 `FileReader`），也少一层事件回调。
+ */
+export async function readFileAsBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ""
+  const chunk = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk))
+  }
+  return btoa(binary)
+}
 
 /**
- * 发送前把附件上传成 id，并拆成 pi-rs 需要的两路载荷。
+ * 发送前把附件变成 pi-rs 需要的载荷。
  *
- * 上传是**发送时**发生的：见 [`readComposerAttachments`] 里关于会话 id 的说明。
- * 任何一个附件被拒都会让整条消息失败（保持"要么都到、要么都不发"的语义），
- * 避免用户以为附件已经发出去了。
+ * 三条路：
+ *
+ * 1. 有 `path`（桌面拖拽/选择器）→ 直接引用，**不经过任何传输**；
+ * 2. 有 `file` 且给了上传器（Web 端）→ 上传换服务器路径（浏览器没有路径）；
+ * 3. 有 `file` 但没有上传器（桌面粘贴）→ 内联 base64。
+ *
+ * 每个附件都必须先落在一个真实路径上（或内联），否则 `read` 工具读不到。
  */
 export async function uploadComposerAttachments(
   attachments: ComposerAttachment[],
   sessionId: string,
-  upload: AttachmentUploader,
-  options?: AttachmentUploadOptions & {
-    /** 路径上传（桌面拖拽）。附件带 `path` 时必须有它，否则报错。 */
-    uploadPaths?: PathAttachmentUploader
-  }
+  upload?: AttachmentUploader,
+  options?: AttachmentUploadOptions
 ): Promise<{ images: PromptImage[]; files: PromptFile[]; rejected: string[] }> {
   if (attachments.length === 0) return { images: [], files: [], rejected: [] }
 
-  const withFile = attachments.filter((attachment) => attachment.file)
-  const withPath = attachments.filter((attachment) => !attachment.file && attachment.path)
-  if (withFile.length + withPath.length !== attachments.length) {
-    return {
-      images: [],
-      files: [],
-      rejected: ["有附件既没有本地文件也没有路径，无法上传"],
-    }
-  }
-  if (withPath.length > 0 && !options?.uploadPaths) {
-    return { images: [], files: [], rejected: ["当前环境不支持按路径上传附件"] }
-  }
-
-  const uploadedById = new Map<string, UploadedAttachment>()
+  const pending = attachments.filter((attachment) => !attachment.path && attachment.file)
+  const uploadedByKey = new Map<string, UploadedAttachment>()
   const rejected: string[] = []
-  const record = (
-    sources: ComposerAttachment[],
-    result: { attachments: UploadedAttachment[]; rejected: { name: string; error: string }[] }
-  ) => {
-    rejected.push(...result.rejected.map((item) => `「${item.name}」${item.error}`))
-    if (result.attachments.length !== sources.length) {
-      // 有具体原因就只说具体原因，别在用户面前堆一句无信息的兜底文案。
-      if (result.rejected.length === 0) rejected.push("有附件未能上传，请重试")
-      return
-    }
-    sources.forEach((source, index) => {
-      const uploaded = result.attachments[index]
-      if (uploaded) uploadedById.set(source.id, uploaded)
-    })
-  }
 
-  if (withFile.length > 0) {
-    record(
-      withFile,
-      await upload(
+  if (pending.length > 0 && upload) {
+    try {
+      const result = await upload(
         sessionId,
-        withFile.map((attachment) => ({
-          // 过滤时已保证存在
+        pending.map((attachment) => ({
           file: attachment.file as File,
           name: attachment.name,
           mimeType: attachment.mimeType,
         })),
         options
       )
-    )
-  }
-  if (withPath.length > 0) {
-    const uploadPaths = options?.uploadPaths
-    if (!uploadPaths) return { images: [], files: [], rejected }
-    record(
-      withPath,
-      await uploadPaths(
-        sessionId,
-        withPath.map((attachment) => attachment.path as string),
-        options
-      )
-    )
+      rejected.push(...result.rejected.map((item) => `「${item.name}」${item.error}`))
+      if (result.attachments.length === pending.length) {
+        pending.forEach((attachment, index) => {
+          const uploaded = result.attachments[index]
+          if (uploaded) uploadedByKey.set(attachment.id, uploaded)
+        })
+      } else if (result.rejected.length === 0) {
+        rejected.push("有附件未能上传，请重试")
+      }
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "上传失败"
+      return { images: [], files: [], rejected: [reason] }
+    }
   }
   if (rejected.length > 0) return { images: [], files: [], rejected }
 
   const images: PromptImage[] = []
   const files: PromptFile[] = []
-  attachments.forEach((source) => {
-    const uploaded = uploadedById.get(source.id)
-    if (!uploaded) return
-    if (source.kind === "image") {
-      // 预览用本地 blob：消息里不再携带 base64。
+  for (const attachment of attachments) {
+    const uploaded = uploadedByKey.get(attachment.id)
+    const path = attachment.path ?? uploaded?.path
+    let data: string | undefined
+    if (!path && attachment.file) {
+      try {
+        data = await readFileAsBase64(attachment.file)
+      } catch (e) {
+        rejected.push(e instanceof Error ? e.message : "读取失败")
+        continue
+      }
+    }
+    if (!path && !data) {
+      rejected.push(`「${attachment.name}」既没有路径也没有内容`)
+      continue
+    }
+
+    if (attachment.kind === "image") {
       images.push({
-        id: uploaded.id,
-        mimeType: uploaded.mimeType || source.mimeType,
-        previewUrl: source.previewUrl,
+        path,
+        data,
+        mimeType: uploaded?.mimeType || attachment.mimeType,
+        // 预览用本地 blob：消息里不再携带图片字节。
+        previewUrl: attachment.previewUrl,
       })
     } else {
       files.push({
-        id: uploaded.id,
-        name: uploaded.name,
-        mimeType: uploaded.mimeType || source.mimeType,
-        size: uploaded.size,
+        path,
+        data,
+        name: attachment.name,
+        mimeType: uploaded?.mimeType || attachment.mimeType,
+        size: uploaded?.size ?? attachment.size,
       })
     }
-  })
+  }
 
   return { images, files, rejected }
 }
+
+/** 释放图片预览 URL：移除附件、发送完成、组件卸载时都要调用。 */

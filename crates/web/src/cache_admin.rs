@@ -308,32 +308,6 @@ mod tests {
     }
 
     #[test]
-    fn clear_reports_attachment_count_not_meta_files() {
-        let root = scratch("clear-meta");
-        let targets = cache_targets(&root);
-        let dir = root.join(openatrading_core::utils::temp_files::ATTACHMENTS_DIR_NAME);
-        std::fs::create_dir_all(dir.join("sess-1")).unwrap_or_else(|e| panic!("mkdir: {e}"));
-        std::fs::write(dir.join("sess-1").join("id-1"), vec![0u8; 40])
-            .unwrap_or_else(|e| panic!("write: {e}"));
-        std::fs::write(dir.join("sess-1").join("id-1.json"), b"{}")
-            .unwrap_or_else(|e| panic!("write: {e}"));
-
-        let outcome = clear_targets(&root, &targets);
-
-        // 磁盘上删了 2 个文件，但对用户来说是「1 个附件」——与 stats 口径一致。
-        let attachments = outcome
-            .per_dir
-            .iter()
-            .find(|(name, _, _)| *name == "attachments")
-            .map(|(_, _, usage)| *usage)
-            .unwrap_or_default();
-        assert_eq!(attachments.files, 1);
-        assert_eq!(attachments.bytes, 42, "字节仍按真实磁盘占用算");
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
     fn clear_is_idempotent_on_an_already_empty_data_dir() {
         let root = scratch("clear-empty");
         let targets = cache_targets(&root);

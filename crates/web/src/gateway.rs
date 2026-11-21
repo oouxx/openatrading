@@ -90,9 +90,6 @@ impl Gateway {
             }
         }
 
-        // 孤儿附件清扫：会话删掉后留下的 attachments/<id>/ 由它兜底。
-        crate::attachments_api::spawn_gc();
-
         let router = web::build_router(state);
         let addr = SocketAddr::from_str(&config.web_bind)
             .map_err(|e| anyhow::anyhow!("invalid web_bind {}: {e}", config.web_bind))?;

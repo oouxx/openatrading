@@ -56,11 +56,7 @@ import {
   uploadComposerAttachments,
   type ComposerAttachment,
 } from "@/lib/composer-attachments"
-import {
-  inspectAttachmentPaths,
-  uploadAttachments,
-  uploadAttachmentsByPath,
-} from "@/lib/attachments-api"
+import { inspectAttachmentPaths, uploadAttachments } from "@/lib/attachments-api"
 import { keepValidSelection } from "@/lib/selection"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
@@ -98,30 +94,10 @@ import { isTauri } from "@/lib/env"
 /**
  * 一条消息最多带几个附件（图片与文件共用名额）。
  *
- * 这是 **UI 预算**，不是服务端上限：后端 `attachments.rs` 的 `MAX_ATTACHMENTS`
- * 是 20，留给自动化 / MCP 这类非 UI 入口。两者不一致是故意的——每张图都算
- * 输入 token，点击的人该看到比"服务端扛得住"更早的刹车。
+ * **没有字节上限**：非图片附件只是把路径交给 `read` 工具，图片由 pi-rs 按
+ * 模型内联上限缩放；本地再设一道字节上限只会拒掉后端处理得了的文件。
  */
 const MAX_ATTACHMENTS = 10
-/**
- * 单张图片上限 20MB，与 ChatGPT / OpenAI 的图片口径对齐。
- *
- * 前端不再用这个值去卡画质：pi-rs 收到后会归一化到 2000×2000 / 4.5MB
- * base64，超限图片是「自动降采样」而不是「报错」。这里的 20MB 只是拦住
- * 明显不该上传的东西（视频、原始 RAW），避免本地读成 base64 把内存顶爆。
- */
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
-/** 单个文件上限 20MB，与后端 `MAX_FILE_BYTES` 一致。 */
-const MAX_FILE_ATTACHMENT_BYTES = 20 * 1024 * 1024
-/**
- * 整条消息所有附件的合计上限 40MB，与后端 `MAX_TOTAL_BYTES` 一致。
- *
- * 这个上限是**传输**约束而不是模型约束：一条 prompt 的全部附件在
- * `ws.send()` 里被打成单个 WebSocket 帧（base64 原始字节 × 4/3，40MB →
- * 约 53MB），后端 `MAX_WS_MESSAGE_BYTES` 留了 64MB。没有这道预算时
- * 10 张 20MB 图能砌出 267MB 的单帧，结果不是「文件太大」而是断连。
- */
-const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
 /** 输入框自动增高的上限，需与 textarea 上的 `max-h-[200px]` 保持一致。 */
 const TEXTAREA_MAX_HEIGHT = 200
 
@@ -467,13 +443,13 @@ export default function AiCopilot({
           const uploaded = await uploadComposerAttachments(
             attachments,
             sessionId,
-            uploadAttachments,
+            // Web 端没有路径，只能上传换服务器路径；桌面端拖拽自带路径，
+            // 粘贴的字节直接内联进 prompt，不经过任何传输。
+            isTauri ? undefined : uploadAttachments,
             {
               signal: controller.signal,
               onProgress: (loaded, total) =>
                 setUploadProgress(total > 0 ? Math.min(1, loaded / total) : 0),
-              // 桌面端拖入的附件走路径直读，不进 IPC。
-              uploadPaths: uploadAttachmentsByPath,
             }
           )
           if (uploaded.rejected.length > 0) {
@@ -545,8 +521,7 @@ export default function AiCopilot({
         const restored = mergeComposerAttachments(
           attachmentsRef.current,
           attachments,
-          MAX_ATTACHMENTS,
-          MAX_TOTAL_ATTACHMENT_BYTES
+          MAX_ATTACHMENTS
         )
         replaceAttachments(restored.attachments)
         setSessionStreaming(sessionId, wasStreaming)
@@ -593,21 +568,13 @@ export default function AiCopilot({
       try {
         const result = readComposerAttachments(files, {
           currentCount: attachmentsRef.current.length,
-          currentBytes: attachmentsRef.current.reduce(
-            (sum, attachment) => sum + attachment.size,
-            0
-          ),
           maxAttachments: MAX_ATTACHMENTS,
-          maxImageBytes: MAX_ATTACHMENT_BYTES,
-          maxFileBytes: MAX_FILE_ATTACHMENT_BYTES,
-          maxTotalBytes: MAX_TOTAL_ATTACHMENT_BYTES,
           createId: () => crypto.randomUUID(),
         })
         const merged = mergeComposerAttachments(
           attachmentsRef.current,
           result.attachments,
-          MAX_ATTACHMENTS,
-          MAX_TOTAL_ATTACHMENT_BYTES
+          MAX_ATTACHMENTS
         )
         if (merged.added > 0) {
           replaceAttachments(merged.attachments)
@@ -812,12 +779,8 @@ export default function AiCopilot({
             return
           }
           replaceAttachments(
-            mergeComposerAttachments(
-              attachmentsRef.current,
-              attachments,
-              MAX_ATTACHMENTS,
-              MAX_TOTAL_ATTACHMENT_BYTES
-            ).attachments
+            mergeComposerAttachments(attachmentsRef.current, attachments, MAX_ATTACHMENTS)
+              .attachments
           )
         })
         if (cancelled) unlisten()
@@ -971,13 +934,7 @@ export default function AiCopilot({
   //    按钮不再绝对定位压在正文上——输入变高时按钮跟着卡片走，文字也不会被
   //    padding 挤成窄条；附件、粘贴、拖拽落点也都在同一张卡里。
   const hasPayload = input.trim().length > 0 || attachments.length > 0
-  // 合计预算目前只有吃到上限时才会在错误里暴露，平常也该看得见：
-  // 40MB 的天花板不显示，用户就不知道还剩多少可以再加。
-  const attachmentTotalBytes = attachments.reduce((sum, attachment) => sum + attachment.size, 0)
-  const attachmentBudgetHint =
-    attachments.length > 0
-      ? `合计 ${formatFileSize(attachmentTotalBytes)} / ${formatFileSize(MAX_TOTAL_ATTACHMENT_BYTES)}`
-      : null
+
   const renderInputField = () => (
     <div ref={composerRef} className="relative flex-1">
       {composerError && (
@@ -1093,7 +1050,7 @@ export default function AiCopilot({
             onClick={() => fileInputRef.current?.click()}
             className="text-secondary hover:text-brand hover:bg-hover rounded-md"
             aria-label="添加附件"
-            title={`添加附件（最多 ${MAX_ATTACHMENTS} 个、合计 ${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB，单张图片 ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB、单个文件 ${MAX_FILE_ATTACHMENT_BYTES / 1024 / 1024}MB；也可粘贴或拖入）`}
+            title={`添加附件（最多 ${MAX_ATTACHMENTS} 个，大小不限；也可粘贴或拖入）`}
             disabled={isStreamingActive}
           >
             <Paperclip className="size-4" />
@@ -1107,8 +1064,6 @@ export default function AiCopilot({
             </span>
           ) : isStreamingActive ? (
             <span className="text-tertiary text-micro">Enter 可引导当前回答</span>
-          ) : attachmentBudgetHint ? (
-            <span className="text-tertiary text-micro font-number">{attachmentBudgetHint}</span>
           ) : null}
           <div className="flex-1" />
           {isStreamingActive ? (
