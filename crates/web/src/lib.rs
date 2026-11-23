@@ -8,6 +8,7 @@ pub mod chat_session;
 pub mod gateway;
 pub mod handlers;
 pub mod in_flight;
+pub mod layouts;
 pub mod market_stream;
 pub mod mcp;
 pub mod web;
@@ -181,6 +182,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/automations/runs/:id/archive",
             post(automations::archive_run),
+        )
+        .route(
+            "/api/layouts",
+            get(layouts::get_layouts).put(layouts::save_layouts),
         )
         .route("/api/mcp/servers", get(mcp::list_handler))
         .route("/api/mcp/servers", post(mcp::add_handler))

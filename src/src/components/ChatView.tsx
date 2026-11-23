@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Search, Square, ArrowDown, ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react"
+import { Square, ArrowDown, ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react"
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import { TurnActions } from "@/components/chat/TurnActions"
@@ -16,9 +16,7 @@ import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityT
 import { summarizeTool } from "@/lib/tool-summary"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import type { HistoryMessage } from "@/agents/types"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
@@ -27,19 +25,12 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { defaultFilter } from "cmdk"
 
 import { fetchJson } from "@/stores/data"
 import { fetchCommands } from "@/hooks/useChatThreads"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useStockTabStore } from "@/stores/stockTabStore"
 import { useMultiAgentWebSocket } from "@/agents/useMultiAgentWebSocket"
 import { TauriTransport, type AgentTransport } from "@/agents/transport"
 import { TransportRegistry } from "@/agents/transportRegistry"
@@ -60,21 +51,11 @@ import { inspectAttachmentPaths, uploadAttachments } from "@/lib/attachments-api
 import { keepValidSelection } from "@/lib/selection"
 
 const TextBlock = lazy(() => import("@/components/chat/TextBlock"))
-const KlineDrawer = lazy(() => import("@/components/KlineDrawer"))
 
 interface SlashCommand {
   name: string
   description: string
   command_type: string
-}
-
-interface StockSearchHit {
-  code: string
-  name: string
-}
-
-interface StockSearchResponse {
-  results?: StockSearchHit[]
 }
 
 interface AiCopilotProps {
@@ -158,11 +139,6 @@ export default function AiCopilot({
   const [streamingThreads, setStreamingThreads] = useState<Set<string>>(() => new Set())
   const streamingThreadsRef = useRef<Set<string>>(streamingThreads)
   const transportsRef = useRef(new TransportRegistry<AgentTransport>())
-  const activeStockTab = useStockTabStore((s) => s.activeStockTab)
-  const stockTabs = useStockTabStore((s) => s.stockTabs)
-  const openTab = useStockTabStore((s) => s.openTab)
-  const closeTab = useStockTabStore((s) => s.closeTab)
-  const setActiveStockTab = useStockTabStore((s) => s.setActiveStockTab)
 
   /** Mark/unmark a session as streaming. Keeps a ref mirror because transport
    *  callbacks run outside React's render cycle. */
@@ -204,25 +180,6 @@ export default function AiCopilot({
     return "settled"
   }, [threadTurns, activeThreadId, streamingThreads])
 
-  // Stock search
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  // Highlighted stock in the header dropdown. The list is filtered outside
-  // cmdk, so cmdk's own search never resets the highlight when it changes.
-  const [activeStock, setActiveStock] = useState<string | null>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
-  const searchContainerRef = useRef<HTMLDivElement>(null)
-  const stockCommandRef = useRef<HTMLDivElement | null>(null)
-  // Derive the highlight instead of syncing it in an effect: when a new result
-  // set no longer contains the stored code, this falls back to the first row.
-  const highlightedStock = keepValidSelection(
-    activeStock,
-    searchResults.map((stock) => stock.code)
-  )
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const searchSeqRef = useRef(0)
   const msgContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const slashMenuRef = useRef<HTMLDivElement | null>(null)
@@ -806,90 +763,6 @@ export default function AiCopilot({
     return () => document.removeEventListener("mousedown", onPointerDown)
   }, [showSlash])
 
-  // ── Stock search ──────────────────────────────────────────────────────
-  const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const q = e.target.value
-    setSearchQuery(q)
-    const seq = ++searchSeqRef.current
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (q.length < 1) {
-      setShowDropdown(false)
-      setSearchResults([])
-      setSearchLoading(false)
-      return
-    }
-    debounceRef.current = setTimeout(async () => {
-      if (seq !== searchSeqRef.current) return
-      setSearchLoading(true)
-      try {
-        const data = await fetchJson<StockSearchResponse | StockSearchHit[]>(
-          `/api/search-stocks?q=${encodeURIComponent(q)}`
-        )
-        if (seq !== searchSeqRef.current) return
-        setSearchResults(Array.isArray(data) ? data : (data?.results ?? []))
-        setShowDropdown(true)
-      } catch (error) {
-        if (seq !== searchSeqRef.current) return
-        console.warn("[stock-search] 搜索失败", error)
-        setSearchResults([])
-      } finally {
-        if (seq === searchSeqRef.current) setSearchLoading(false)
-      }
-    }, 200)
-  }, [])
-
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      // Invalidate any in-flight search so it cannot update an unmounted view.
-      searchSeqRef.current++
-    },
-    []
-  )
-
-  const selectStock = useCallback(
-    (code: string, name: string) => {
-      openTab(code, name)
-      setShowDropdown(false)
-      setSearchQuery("")
-    },
-    [openTab]
-  )
-
-  /** Arrow keys move the cmdk highlight; Enter opens the highlighted stock
-   *  (falling back to the first result if the highlight is stale). */
-  const onSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.nativeEvent.isComposing) return
-      if (!showDropdown || searchResults.length === 0) return
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault()
-        stockCommandRef.current?.dispatchEvent(
-          new KeyboardEvent("keydown", { key: e.key, bubbles: true })
-        )
-        return
-      }
-      if (e.key === "Enter") {
-        e.preventDefault()
-        const active =
-          searchResults.find((stock) => stock.code === highlightedStock) ?? searchResults[0]
-        if (active) selectStock(active.code, active.name)
-      }
-    },
-    [highlightedStock, searchResults, selectStock, showDropdown]
-  )
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
-
   // ── Derived state ─────────────────────────────────────────────────────
   const currentTurns = useMemo(
     () => (activeThreadId ? (threadTurns.get(activeThreadId) ?? []) : []),
@@ -1142,113 +1015,8 @@ export default function AiCopilot({
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="border-hairline flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <SidebarTrigger className="text-secondary hover:text-primary" />
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div ref={searchContainerRef} className="relative w-full max-w-xs">
-            <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-            <Input
-              ref={searchRef}
-              className="bg-canvas border-hairline focus-visible:border-brand/60 text-caption h-8 rounded-md pl-8"
-              placeholder="搜索股票…"
-              aria-label="搜索股票代码或名称"
-              value={searchQuery}
-              onChange={onSearchChange}
-              onKeyDown={onSearchKeyDown}
-            />
-            {showDropdown && (
-              <div className="absolute top-full right-0 left-0 z-50 mt-1">
-                <Command
-                  ref={stockCommandRef}
-                  shouldFilter={false}
-                  value={highlightedStock ?? undefined}
-                  onValueChange={(value) => setActiveStock(value)}
-                  className="bg-surface border-hairline shadow-modal rounded-lg border"
-                >
-                  <CommandList className="max-h-48">
-                    {searchLoading ? (
-                      <div className="text-secondary text-caption px-3 py-2">搜索中...</div>
-                    ) : searchResults.length === 0 ? (
-                      <CommandEmpty className="text-secondary text-caption py-3 text-center">
-                        未找到结果
-                      </CommandEmpty>
-                    ) : (
-                      <CommandGroup>
-                        {searchResults.map((stock) => (
-                          <CommandItem
-                            key={stock.code}
-                            value={stock.code}
-                            onSelect={() => selectStock(stock.code, stock.name)}
-                            className="text-caption"
-                          >
-                            <span className="text-secondary font-number">{stock.code}</span>
-                            <span className="text-primary">{stock.name}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
-                  </CommandList>
-                </Command>
-              </div>
-            )}
-          </div>
-          {/* Stock tabs */}
-          {stockTabs.length > 0 && (
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-              {stockTabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  className={`flex shrink-0 items-center rounded-md ${
-                    activeStockTab === tab.id ? "bg-brand/10" : ""
-                  }`}
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    className={`text-caption rounded-r-none ${
-                      activeStockTab === tab.id
-                        ? "text-brand hover:bg-brand/10 hover:text-brand"
-                        : "text-secondary hover:bg-hover"
-                    }`}
-                    onClick={() => setActiveStockTab(tab.id)}
-                  >
-                    {tab.name}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={`关闭 ${tab.name}`}
-                    className="text-tertiary hover:bg-hover hover:text-primary rounded-l-none"
-                    onClick={() => closeTab(tab.id)}
-                  >
-                    ×
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ── Body ────────────────────────────────────────────────────── */}
-      {activeStockTab ? (
-        <Suspense
-          fallback={
-            <div className="p-4">
-              <Skeleton className="h-24 w-full" />
-            </div>
-          }
-        >
-          <KlineDrawer
-            symbol={activeStockTab}
-            name={stockTabs.find((t) => t.id === activeStockTab)?.name ?? activeStockTab}
-            onClose={() => setActiveStockTab(null)}
-          />
-        </Suspense>
-      ) : isEmpty ? (
+      {isEmpty ? (
         // ── Centered new-session hero (Claude.ai 样式) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
           <div className="w-full max-w-[44rem] pb-8">

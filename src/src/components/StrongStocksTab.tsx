@@ -5,7 +5,7 @@ import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useSuperStock } from "@/hooks/query/useSuperStock"
 import { cn } from "@/lib/utils"
 import MiniChartPreview from "@/components/MiniChartPreview"
-import { useRightPanelStore } from "@/stores/rightPanelStore"
+import { usePaneNav } from "@/components/paneNavContext"
 import type { Stock } from "@/stores/data"
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
 
@@ -22,7 +22,7 @@ export default function StrongStocksTab() {
   const superStock = useSuperStock()
   const activeQuery = pool === "limit-up" ? limitUp : superStock
   const stocks = activeQuery.data ?? []
-  const openKline = useRightPanelStore((s) => s.openKline)
+  const { openStock: openKline } = usePaneNav()
 
   return (
     <div className="@container space-y-3 p-4 @2xl:p-6">

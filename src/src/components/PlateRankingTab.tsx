@@ -19,7 +19,7 @@ import {
 } from "@/hooks/query/usePlateRanking"
 import { formatCompactNumber, formatPct, formatRatioPct, pctClass } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useRightPanelStore } from "@/stores/rightPanelStore"
+import { usePaneNav } from "@/components/paneNavContext"
 
 const RANK_TYPES: { id: PlateRankType; label: string }[] = [
   { id: 0, label: "全部" },
@@ -109,12 +109,14 @@ function rankChangeText(change: number | null | undefined): string {
 }
 
 export default function PlateRankingTab() {
-  const [selected, setSelected] = useState<PlateRankingItem | null>(null)
+  const { plateDetail, openPlate, closePlate } = usePaneNav()
   const [rankType, setRankType] = useState<PlateRankType>(0)
   const rankings = usePlateRankings(rankType)
 
-  if (selected) {
-    return <PlateDetailView plate={selected} onBack={() => setSelected(null)} />
+  // 子页面状态挂在格子 id 上（见 paneNavContext），不是组件的 useState：
+  // 这样放大/还原后还停在详情里，换榜时又会被统一清掉。
+  if (plateDetail) {
+    return <PlateDetailView plate={plateDetail as PlateRankingItem} onBack={closePlate} />
   }
 
   if (rankings.isPending) {
@@ -179,18 +181,8 @@ export default function PlateRankingTab() {
         </div>
       </div>
 
-      <RankingSection
-        title="涨幅前 10"
-        items={data.gainers}
-        direction="up"
-        onSelect={setSelected}
-      />
-      <RankingSection
-        title="跌幅前 10"
-        items={data.losers}
-        direction="down"
-        onSelect={setSelected}
-      />
+      <RankingSection title="涨幅前 10" items={data.gainers} direction="up" onSelect={openPlate} />
+      <RankingSection title="跌幅前 10" items={data.losers} direction="down" onSelect={openPlate} />
     </div>
   )
 }
@@ -405,7 +397,7 @@ function PlateDetailView({ plate, onBack }: { plate: PlateRankingItem; onBack: (
 
 function ComponentStockRow({ stock }: { stock: PlateStock }) {
   const [expanded, setExpanded] = useState(false)
-  const openKline = useRightPanelStore((state) => state.openKline)
+  const { openStock: openKline } = usePaneNav()
   const change = stock.px_change_rate
   const name = stock.name || stock.symbol
   const labels = stock.labels ?? []

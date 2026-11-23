@@ -11,10 +11,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Search, Plus, Settings, Puzzle, Users, Star, Trash2 } from "lucide-react"
+import { Search, Plus, Settings, Users, Star, Trash2 } from "lucide-react"
 import { useAppMode } from "@/contexts/useAppMode"
 import type { ChatSession } from "@/hooks/useChatThreads"
+import { paneKinds, useActiveLayout } from "@/stores/layoutStore"
 import { cn } from "@/lib/utils"
 
 interface ConversationSidebarProps {
@@ -26,7 +28,6 @@ interface ConversationSidebarProps {
 }
 
 const WORKSPACE_NAV = [
-  { mode: "skill-editor", label: "技能", icon: Puzzle },
   { mode: "roles", label: "模拟盘", icon: Users },
   { mode: "watchlist", label: "自选", icon: Star },
 ] as const
@@ -39,7 +40,19 @@ export default function ConversationSidebar({
   onDeleteThread,
 }: ConversationSidebarProps) {
   const { mode, setMode } = useAppMode()
+  const activeLayout = useActiveLayout()
   const [search, setSearch] = useState("")
+
+  // 布局里已经摆了模拟盘/自选的列，侧栏再留一份入口就是同一块屏幕上两个入口指向
+  // 同一份内容——点下去还会把工作区顶掉。按当前布局的列内容动态收起。
+  const workspaceNav = useMemo(() => {
+    const kinds = paneKinds(activeLayout.root)
+    return WORKSPACE_NAV.filter(
+      (item) =>
+        !(item.mode === "roles" || item.mode === "watchlist") ||
+        !kinds.has(item.mode as "roles" | "watchlist")
+    )
+  }, [activeLayout])
 
   const filteredThreads = useMemo(() => {
     if (!search.trim()) return threads
@@ -51,10 +64,12 @@ export default function ConversationSidebar({
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-2 px-3 pt-3 pb-1">
         <div className="text-primary flex h-8 items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center">
-          <img src="/app-icon.png" alt="" className="size-5 rounded-sm" />
-          <span className="text-body font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+          <img src="/app-icon.png" alt="" className="size-5 shrink-0 rounded-sm" />
+          <span className="text-body truncate font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             openatrading
           </span>
+          {/* 折叠按钮跟着侧栏自己走：工作区的每一格（包括对话）都不再自带这条工具条 */}
+          <SidebarTrigger className="text-tertiary hover:text-primary ml-auto group-data-[collapsible=icon]:ml-0" />
         </div>
 
         <SidebarMenu>
@@ -72,33 +87,36 @@ export default function ConversationSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="pt-3 pb-1">
-          <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
-            工作台
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {WORKSPACE_NAV.map((item) => {
-              const Icon = item.icon
-              const active = mode === item.mode
-              return (
-                <SidebarMenuItem key={item.mode}>
-                  <SidebarMenuButton
-                    onClick={() => setMode(active ? "chat" : item.mode)}
-                    isActive={active}
-                    tooltip={item.label}
-                    className={cn(
-                      "text-secondary hover:text-primary h-9",
-                      "data-[active=true]:text-primary data-[active=true]:font-medium"
-                    )}
-                  >
-                    <Icon className={active ? "text-brand" : undefined} />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {/* 布局里已经摆了模拟盘/自选时这一组会被清空，空分组连标题一起收掉 */}
+        {workspaceNav.length > 0 && (
+          <SidebarGroup className="pt-3 pb-1">
+            <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
+              工作台
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {workspaceNav.map((item) => {
+                const Icon = item.icon
+                const active = mode === item.mode
+                return (
+                  <SidebarMenuItem key={item.mode}>
+                    <SidebarMenuButton
+                      onClick={() => setMode(active ? "chat" : item.mode)}
+                      isActive={active}
+                      tooltip={item.label}
+                      className={cn(
+                        "text-secondary hover:text-primary h-9",
+                        "data-[active=true]:text-primary data-[active=true]:font-medium"
+                      )}
+                    >
+                      <Icon className={active ? "text-brand" : undefined} />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup className="min-h-0 flex-1 pt-4">
           <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">

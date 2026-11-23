@@ -13,6 +13,7 @@ import {
 import { formatCompactNumber, formatPct, pctClass } from "@/lib/format"
 import { mergeStockRankingPages } from "@/lib/stock-ranking"
 import { cn } from "@/lib/utils"
+import { usePaneNav } from "@/components/paneNavContext"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 const ORDERS: { id: StockRankingOrder; label: string }[] = [
@@ -46,7 +47,7 @@ export default function StockRankingTab() {
   const setMarket = useRightPanelStore((state) => state.setStockRankingMarket)
   const excludeSt = useRightPanelStore((state) => state.stockRankingExcludeSt)
   const setExcludeSt = useRightPanelStore((state) => state.setStockRankingExcludeSt)
-  const openKline = useRightPanelStore((state) => state.openKline)
+  const { openStock: openKline } = usePaneNav()
   const query = useStockRanking(order, market, excludeSt)
   const stocks = useMemo(() => mergeStockRankingPages(query.data?.pages ?? []), [query.data?.pages])
   const marketLabel = MARKETS.find((item) => item.id === market)?.label ?? "全部"
