@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import LayoutTransferDialog from "@/components/LayoutTransferDialog"
 import { useAppMode } from "@/contexts/useAppMode"
-import { useActiveLayout, useLayoutStore, type WorkspaceLayout } from "@/stores/layoutStore"
+import { useLayoutStore, type WorkspaceLayout } from "@/stores/layoutStore"
 import { cn } from "@/lib/utils"
 
 /** 内置布局的固定图标；自定义布局统一用网格图标。 */
@@ -69,10 +69,10 @@ export default function LayoutsSettings() {
   const presetKinds = useLayoutStore((s) => s.presetKinds)
   const setLayout = useLayoutStore((s) => s.setLayout)
   const cloneLayout = useLayoutStore((s) => s.cloneLayout)
+  const createBlankLayout = useLayoutStore((s) => s.createBlankLayout)
   const deleteLayout = useLayoutStore((s) => s.deleteLayout)
   const resetPreset = useLayoutStore((s) => s.resetPreset)
   const startEditing = useLayoutStore((s) => s.startEditing)
-  const active = useActiveLayout()
   const { mode, setMode } = useAppMode()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [transfer, setTransfer] = useState<"import" | "export" | null>(null)
@@ -197,8 +197,8 @@ export default function LayoutsSettings() {
             size="xs"
             className="text-secondary hover:text-primary gap-1.5"
             onClick={() => {
-              cloneLayout(active.id)
-              // 新建就是奔着改结构去的，直接回工作台进入编辑态
+              // 白板新建：不继承任何东西，拆几格、放什么，全从零开始选
+              createBlankLayout()
               toWorkspace()
             }}
           >

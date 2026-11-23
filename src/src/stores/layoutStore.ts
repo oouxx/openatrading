@@ -130,10 +130,10 @@ export const PRESET_LAYOUTS: WorkspaceLayout[] = [
     name: "记账",
     builtin: true,
     storageId: "layout-ledger",
+    // 右边上下分：模拟盘在上、自选在下——两张表都是全宽才好读，横着切三栏每栏都太窄
     root: split("ledger-root", "horizontal", [
       pane("chat", "chat"),
-      pane("roles", "roles"),
-      pane("watchlist", "watchlist"),
+      split("ledger-stack", "vertical", [pane("roles", "roles"), pane("watchlist", "watchlist")]),
     ]),
   },
 ]
@@ -504,6 +504,8 @@ interface LayoutState {
   setLayout: (id: string) => void
   /** 克隆成一份可编辑的自定义布局，返回新布局 id。内置预设同样可以克隆。 */
   cloneLayout: (id: string) => string
+  /** 从白板新建：只有一格对话，其余由用户自己拆。 */
+  createBlankLayout: () => string
   importLayouts: (payload: string) => ImportResult
   renameLayout: (id: string, name: string) => void
   deleteLayout: (id: string) => void
@@ -655,6 +657,22 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       set({ layouts: [...layouts, created], activeId: created.id, editingId: created.id })
       commit()
       return created.id
+    },
+
+    createBlankLayout: () => {
+      const layouts = get().layouts
+      const id = `custom-${newNodeId("layout")}`
+      const created: WorkspaceLayout = {
+        id,
+        name: uniqueName("新布局", new Set(layouts.map((layout) => layout.name))),
+        builtin: false,
+        storageId: `layout-${id}`,
+        // 白板 = 一格对话；想再要什么内容，点右上角拆分 / 编辑面板加
+        root: { id: newNodeId("pane"), type: "pane", kind: "chat" },
+      }
+      set({ layouts: [...layouts, created], activeId: id, editingId: id })
+      commit()
+      return id
     },
 
     importLayouts: (payload) => {

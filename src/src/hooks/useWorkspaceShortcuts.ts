@@ -7,7 +7,8 @@ import { useUiStore } from "@/stores/ui"
  * 工作区的全局快捷键。
  *
  * - `⌘,` 打开设置（macOS 惯例，设置里的「布局」页就是布局管理入口）
- * - `⌥⌘1–9` 切换布局，顺序与设置里的列表一致（前三档是内置预设）
+ * - `⌥⌘1–9` 切换布局，顺序与设置里的列表一致（前三档是内置预设）。
+ *   注意 macOS 的 Option 会把数字键变成符号（⌥2 = "™"），所以按 `event.code` 判断。
  * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
  * - `Esc` 先还原放大的格子，再退出布局结构编辑态
  *
@@ -73,8 +74,12 @@ export function useWorkspaceShortcuts() {
       }
 
       if (!mod || !event.altKey || event.shiftKey) return
-      const index = "123456789".indexOf(event.key)
-      if (index === -1) return
+      // macOS 上 Option 会改写 key：⌥1 得到的是 "¡"、⌥2 是 "™"、⌥3 是 "£"……
+      // 所以数字必须读 event.code（Digit1..Digit9），不能用 event.key 比对。
+      const digit =
+        /^Digit([1-9])$/.exec(event.code)?.[1] ?? (/^[1-9]$/.test(event.key) ? event.key : "")
+      if (!digit) return
+      const index = Number(digit) - 1
 
       const layout = useLayoutStore.getState().layouts[index]
       if (!layout) return
