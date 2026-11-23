@@ -215,3 +215,184 @@ th.col-sticky-actions {
     transparent 72%
   );
 }
+
+/* ── markdown-prose — 消息正文（模型输出）的阅读排版 ──
+ *
+ * 参照 Claude 的消息排版：层级由「字号 + 字重 + 间距」三件事表达，不靠堆加粗；
+ * 同一段内容内部收紧（段落 0.7em、列表项 0.25em），换节时放大（标题上边距 1.3–1.6em）。
+ *
+ * 与数据页 `.data-table` 的区别：模型输出的表格是阅读型，单元格里常是整句话，
+ * 所以正文用 body 档 + 1.6 行高 + 顶部对齐，而不是数据页的 12px/定高 38px/垂直居中。
+ *
+ * 必须写在 `@layer` 之外：这里的规则要盖过 `@layer base` 里的 `.data-table` 与
+ * `html` 基础样式，unlayered 才有稳定优先级。
+ */
+.markdown-prose {
+  font-size: var(--font-size-body);
+  line-height: 1.65;
+  color: var(--color-primary);
+  /* 长 URL / 无空格串不撑破消息列 */
+  overflow-wrap: break-word;
+}
+
+/* 首尾贴边：消息块自身已由列表间距隔开，正文里不再多留一层空白 */
+.markdown-prose > :first-child {
+  margin-top: 0;
+}
+.markdown-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-prose p {
+  margin: 0.7em 0;
+}
+
+/* 标题：20 / 16 / 14 三级，字重统一 600（中文 700 会糊成一片），字号差就是层级 */
+.markdown-prose h1,
+.markdown-prose h2,
+.markdown-prose h3,
+.markdown-prose h4,
+.markdown-prose h5,
+.markdown-prose h6 {
+  color: var(--color-primary);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.markdown-prose h1 {
+  font-size: var(--font-size-h1);
+  line-height: 1.35;
+  margin: 1.6em 0 0.5em;
+}
+.markdown-prose h2 {
+  font-size: var(--font-size-h2);
+  line-height: 1.4;
+  margin: 1.5em 0 0.45em;
+}
+.markdown-prose h3 {
+  font-size: var(--font-size-body);
+  line-height: 1.45;
+  margin: 1.3em 0 0.35em;
+}
+.markdown-prose h4,
+.markdown-prose h5,
+.markdown-prose h6 {
+  font-size: var(--font-size-body);
+  line-height: 1.45;
+  font-weight: 500;
+  margin: 1.1em 0 0.3em;
+}
+
+/* 列表：条目间距小于段间距，一组要点读起来是一块而不是散落的几行 */
+.markdown-prose ul,
+.markdown-prose ol {
+  margin: 0.7em 0;
+  padding-left: 1.35em;
+}
+.markdown-prose ul {
+  list-style: disc;
+}
+.markdown-prose ol {
+  list-style: decimal;
+}
+.markdown-prose li {
+  margin: 0.25em 0;
+}
+.markdown-prose li > ul,
+.markdown-prose li > ol {
+  margin: 0.25em 0;
+}
+/* 空心圆点区分嵌套层级，实心圆点压成辅助色：标记负责分条，不负责抢视线 */
+.markdown-prose ul ul,
+.markdown-prose ol ul {
+  list-style: circle;
+}
+.markdown-prose li::marker {
+  color: var(--color-tertiary);
+}
+.markdown-prose li > p {
+  margin: 0.25em 0;
+}
+
+/* 引用：中文斜体是合成倾斜，长段落看着发虚，改用左侧色条 + 次级墨色分层 */
+.markdown-prose blockquote {
+  margin: 1em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid color-mix(in oklch, var(--color-brand) 40%, transparent);
+  color: var(--color-secondary);
+}
+.markdown-prose blockquote > :first-child {
+  margin-top: 0;
+}
+.markdown-prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* 加粗降到 600：与标题同字重，避免正文里出现比小标题还重的黑块 */
+.markdown-prose strong {
+  font-weight: 600;
+}
+
+/* 行内代码跟随正文尺寸，只靠底色和等宽字区分，不做成缩一号的小块 */
+.markdown-prose :not(pre) > code {
+  font-family: var(--font-number);
+  font-size: 0.92em;
+  padding: 0.1em 0.3em;
+  border-radius: var(--radius-sm);
+  background: var(--color-ink-dim);
+}
+
+/* 链接常嵌在中文里，没有下划线就看不出可点；线压淡一档，不抢正文 */
+.markdown-prose a {
+  color: var(--color-brand);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in oklch, var(--color-brand) 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.markdown-prose a:hover {
+  text-decoration-color: currentColor;
+}
+
+.markdown-prose hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.markdown-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+/* --- markdown-table: 阅读型表格容器（横向溢出只在表格内部滚动） --- */
+.markdown-prose .markdown-table {
+  margin: 1em 0;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+/* 表头比正文小一档、压成辅助色：表头是索引，单元格才是内容 */
+.markdown-prose .data-table th {
+  padding: 9px 12px;
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-tertiary);
+  background: var(--color-ink-dim);
+  border-bottom: 1px solid var(--color-hairline);
+  white-space: normal;
+}
+.markdown-prose .data-table td {
+  height: auto;
+  padding: 9px 12px;
+  font-size: var(--font-size-body);
+  line-height: 1.6;
+  /* 单元格常是整段话：顶部对齐，多行内容才能和首列对上 */
+  vertical-align: top;
+}
+/* 阅读型表格不做行 hover：这里不是可点的数据行，高亮只会让视线跳 */
+.markdown-prose .data-table tbody tr:hover td {
+  background: transparent;
+}

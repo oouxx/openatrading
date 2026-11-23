@@ -60,7 +60,7 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
   }, [children])
 
   return (
-    <div className="bg-hover border-hairline group my-2 overflow-hidden rounded-lg border">
+    <div className="bg-hover border-hairline group my-3 overflow-hidden rounded-lg border">
       {/* Header bar */}
       <div className="border-hairline flex items-center justify-between border-b px-4 py-2">
         <span className="text-tertiary font-number text-caption">{language || "code"}</span>
@@ -95,13 +95,11 @@ function CodeBlock({ className, children, ...props }: React.ComponentPropsWithou
 }
 
 // ── Inline Code Component ────────────────────────────
+// 样式归 `.markdown-prose :not(pre) > code`（跟随正文尺寸），这里只保证
+// 行内代码不被当成代码块处理。
 
 function InlineCode({ children, ...props }: React.ComponentPropsWithoutRef<"code">) {
-  return (
-    <code className="bg-hover text-primary font-number text-caption rounded px-2 py-0.5" {...props}>
-      {children}
-    </code>
-  )
+  return <code {...props}>{children}</code>
 }
 
 // ── Mermaid Diagram Component ─────────────────────────
@@ -165,30 +163,14 @@ const getMdComponents = (isStreaming: boolean): Components => ({
   },
   pre: ({ children }) => <>{children}</>,
   table: ({ children }) => (
-    <div className="border-hairline my-3 overflow-x-auto rounded-md border">
+    <div className="markdown-table">
       <table className="data-table">{children}</table>
     </div>
   ),
-  th: ({ children }) => <th>{children}</th>,
-  td: ({ children }) => <td>{children}</td>,
   a: ({ children, href }) => (
-    <a href={href} className="text-brand hover:underline" target="_blank" rel="noreferrer">
+    <a href={href} target="_blank" rel="noreferrer">
       {children}
     </a>
-  ),
-  ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5">{children}</ol>,
-  hr: () => <hr className="border-hairline my-3" />,
-  h1: ({ children }) => <h1 className="text-h1 text-primary mt-5 mb-3">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-h2 text-primary mt-4 mb-2">{children}</h2>,
-  h3: ({ children }) => (
-    <h3 className="text-body text-primary mt-3 mb-1.5 font-semibold">{children}</h3>
-  ),
-  p: ({ children }) => <p className="text-body my-2 leading-[1.7]">{children}</p>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-brand/30 text-secondary text-body my-2 border-l-2 pl-3 italic">
-      {children}
-    </blockquote>
   ),
 })
 
@@ -268,7 +250,7 @@ export default function TextBlock({ content, isStreaming }: TextBlockProps) {
   // content gracefully — incomplete constructs simply don't close until the
   // final delta arrives.
   return (
-    <div className="prose-custom text-body">
+    <div className="markdown-prose">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={rehypePlugins}

@@ -68,6 +68,7 @@ bun run lint:fix
   - 禁止用 `text-primary/40` 这类透明度叠色做层级——三级语义色 `primary`(15.8:1) / `secondary`(8.8:1) / `tertiary`(5.0:1) 已按 WCAG 标定，直接用。
 - **排版**：正文 Geist（`--font-sans`）、数字/代码 Geist Mono（`--font-number`）；字号只用 `text-hero/h1/h2/body/caption` 五级，`caption` 只给元信息（时间、计数、代码），正文段落用 `text-body`。
   - 中文标签禁止 `uppercase` 与 `tracking-wider`（CJK 无大小写、字距会散架）。
+  - 模型输出（Markdown）的版式统一在 `styles/components.css` 的 `.markdown-prose` 里改：层级走「字号 + 字重 + 间距」，不要在 `TextBlock` 里给单个标签挂工具类。
 - **间距**：面板容器 `p-6`，卡片内容 `p-card-inner`(16px)，列表行 `px-5 py-4`，列表间距 `space-y-4`、`gap-3` 起。不要回到 `p-2`/`gap-2` 的拥挤密度。
 - **动效**：时长与缓动只有一套 token——`--default-transition-duration`(200ms) 与 `--default-transition-timing-function`(`cubic-bezier(.32,.72,0,1)`，与 `lib/motion.ts` 的 EASE 同源)。用 `transition-colors` 等显式属性，只有进度条类才用 `transition-[width]`；禁止 `transition-all` 与点击位移（`active:translate-y`），用 `active:opacity-90`。
 - **分层**：面板 = `bg-surface` + `border-hairline`；浮层/弹窗 = `shadow-modal`；卡内子块 = `bg-canvas`；hover = `bg-hover`。不要再混入 `border-border` / `hairline-dark`。
