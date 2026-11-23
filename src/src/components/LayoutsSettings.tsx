@@ -94,7 +94,7 @@ export default function LayoutsSettings() {
       <section className="bg-surface border-hairline rounded-lg border px-5 py-4">
         <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-primary text-body font-semibold">工作区布局</h2>
-          <span className="text-tertiary text-micro">⌘1–9 切换 · ⌥⌘←/→ 循环 · ⌘, 回到这里</span>
+          <span className="text-tertiary text-micro">⌘1–9 切换 · ⌘, 回到这里</span>
         </div>
 
         <ul className="divide-hairline divide-y">

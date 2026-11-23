@@ -7,15 +7,16 @@ import { useUiStore } from "@/stores/ui"
  * 工作区的全局快捷键。
  *
  * - `⌘1–9` 直接跳到第 n 个布局（顺序与设置里的列表一致）
- * - `⌥⌘←/→` 按列表顺序循环切换（浏览器把 `⌘1–9` 给了标签页，web 端用这条）
  * - `⌘,` 打开设置（设置里的「布局」页就是布局管理入口）
  * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
  * - `Esc` 先退子页面，再还原放大的格子，最后退出结构编辑态
  *
- * 两个按下注意：
- * - 数字按 `event.code`（Digit1..Digit9）判断：macOS 的 Option 会改写 `event.key`
- *   （⌥2 得到 "™"），拿 key 比对在真机上永远匹配不到。
- * - 光标在输入框里时不抢键：`⌘1–9` / `⌥⌘←/→` 在文本框里各有别的语义。
+ * 几个按下注意：
+ * - 数字按 `event.code`（Digit1..Digit9）判断：macOS 的 Option 会改写 `event.key`，
+ *   拿 key 比对在真机上会漏（以前用 ⌥⌘数字时踩过）。
+ * - 光标在输入框里时不抢键：数字键在文本框里另有语义。
+ * - 浏览器把 `⌘1–9` 留给了标签页，web 端这组快捷键**不生效**（产品决定：不为 web 绕行，
+ *   切布局走 设置 · 布局 里的「使用」）。桌面端没有标签页，正常工作。
  * - 不用 `⌘⇧1..3`：macOS 把 `⌘⇧3/4` 占给了系统截图。
  */
 export function useWorkspaceShortcuts() {
@@ -23,7 +24,7 @@ export function useWorkspaceShortcuts() {
   const stopEditing = useLayoutStore((s) => s.stopEditing)
 
   useEffect(() => {
-    /** 光标在可编辑区域里时，方向键类快捷键要让位给文本编辑。 */
+    /** 光标在输入框里时让位给文本编辑，别把按键抢走。 */
     const inEditable = (event: KeyboardEvent) => {
       // 事件目标可能是 window / document（无焦点时的合成事件），先确认是元素
       const target = event.target
@@ -101,17 +102,6 @@ export function useWorkspaceShortcuts() {
           setLayout(target.id)
           return
         }
-      }
-
-      if (!mod || !event.altKey || event.shiftKey) return
-
-      // ⌥⌘←/→ —— 按列表顺序循环切布局（浏览器把 ⌘1–9 给了标签页，web 端靠这条）
-      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-        if (inEditable(event)) return
-        event.preventDefault()
-        if (useUiStore.getState().mode !== "chat") useUiStore.getState().setMode("chat")
-        useLayoutStore.getState().cycleLayout(event.key === "ArrowRight" ? 1 : -1)
-        return
       }
     }
     window.addEventListener("keydown", handler)

@@ -502,8 +502,6 @@ interface LayoutState {
   /** 从后端拉一次快照；服务端还没有存档时把本地缓存推上去。 */
   hydrate: () => Promise<void>
   setLayout: (id: string) => void
-  /** 按列表顺序循环切换（⌥⌘←/→）。 */
-  cycleLayout: (direction: 1 | -1) => void
   /** 克隆成一份可编辑的自定义布局，返回新布局 id。内置预设同样可以克隆。 */
   cloneLayout: (id: string) => string
   /** 从白板新建：只有一格对话，其余由用户自己拆。 */
@@ -649,14 +647,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       // 换布局后原来的格子 id 就不存在了，最大化与子页面状态必须一起清掉
       set({ activeId: id, editingId: null, maximizedPaneId: null, paneDetail: {} })
       commit()
-    },
-
-    cycleLayout: (direction) => {
-      const { layouts, activeId } = get()
-      if (layouts.length < 2) return
-      const index = layouts.findIndex((layout) => layout.id === activeId)
-      const next = layouts[(index + direction + layouts.length) % layouts.length]
-      if (next) get().setLayout(next.id)
     },
 
     cloneLayout: (id) => {
