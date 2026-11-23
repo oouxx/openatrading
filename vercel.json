@@ -1,5 +1,6 @@
 {
-  "buildCommand": "cd src && npm install && npm run build:vercel",
+  "installCommand": "cd src && bun install --frozen-lockfile",
+  "buildCommand": "cd src && bun run build:vercel",
   "outputDirectory": "src/dist",
   "routes": [
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
