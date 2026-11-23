@@ -4115,7 +4115,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-agent"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4137,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4178,7 +4178,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4206,7 +4206,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4241,7 +4241,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-extension"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4258,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4281,7 +4281,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -8838,9 +8838,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.8.1"
+version = "9.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9534624d547e3f516ecde0ed9a70d37788f01d340efcfdd03bf3ea8e163c1d0"
+checksum = "2d8dbe089cf6b0448b78f5fc50139ab5aaa40d08ac07cdc1baf2c13add35fcce"
 dependencies = [
  "constant_time_eq",
  "crc32fast",
