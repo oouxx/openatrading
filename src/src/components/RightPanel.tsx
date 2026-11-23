@@ -1,52 +1,20 @@
-import { lazy, Suspense, useEffect, useCallback, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useCallback, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import {
-  ChevronLeft,
-  ChevronRight,
-  CirclePlay,
-  Clock,
-  Gauge,
-  Layers,
-  ListOrdered,
-  Maximize2,
-  Rss,
-  TrendingUp,
-  Trophy,
-  X,
-} from "lucide-react"
+import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react"
 import { motion, AnimatePresence, useDragControls } from "motion/react"
-import { Panel, Separator, usePanelRef, type PanelSize } from "react-resizable-panels"
+import { Panel, usePanelRef, type PanelSize } from "react-resizable-panels"
 import { Button } from "@/components/ui/button"
-import ErrorBoundary from "@/components/ErrorBoundary"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import MarketView from "@/components/MarketView"
+import { RightPanelNavProvider } from "@/components/PaneNav"
+import { MARKET_VIEWS, marketViewLabel } from "@/lib/marketViews"
 import { useRightPanelStore, type RightPanelView } from "@/stores/rightPanelStore"
 import { motionTransition } from "@/lib/motion"
 import { useQueryClient } from "@tanstack/react-query"
 import { stockRankingQueryOptions } from "@/hooks/query/useStockRanking"
 
 const KlineDrawer = lazy(() => import("./KlineDrawer"))
-const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
-const ReplayView = lazy(() => import("@/components/ReplayView"))
-const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
-const PromotionView = lazy(() => import("@/components/PromotionView"))
-const PlateRankingTab = lazy(() => import("@/components/PlateRankingTab"))
-const StockRankingTab = lazy(() => import("@/components/StockRankingTab"))
-const TimelineTab = lazy(() => import("@/components/TimelineTab"))
-const SentimentChipTab = lazy(() => import("@/components/SentimentChipTab"))
-const NewsFeed = lazy(() => import("@/components/NewsFeed"))
-
-const TABS: { id: RightPanelView; label: string; icon: typeof TrendingUp }[] = [
-  { id: "strong-stocks", label: "强势股", icon: TrendingUp },
-  { id: "promotion", label: "晋级分析", icon: Layers },
-  { id: "plate-ranking", label: "板块排行", icon: ListOrdered },
-  { id: "stock-ranking", label: "个股排行", icon: TrendingUp },
-  { id: "dragon-tiger", label: "龙虎榜", icon: Trophy },
-  { id: "timeline", label: "时间线", icon: Clock },
-  { id: "sentiment-chip", label: "情绪筹码", icon: Gauge },
-  { id: "news", label: "资讯", icon: Rss },
-  { id: "replay", label: "行情回放", icon: CirclePlay },
-]
 
 const PANEL_DEFAULT_WIDTH = 400
 const PANEL_MIN_WIDTH = 300
@@ -63,6 +31,7 @@ function loadCollapsed(): boolean {
   }
 }
 
+/** K 线抽屉自己的懒加载骨架（行情视图的骨架在 marketViews 里）。 */
 function ViewFallback() {
   return (
     <div className="p-6">
@@ -71,30 +40,21 @@ function ViewFallback() {
   )
 }
 
-function ViewRenderer({ view }: { view: RightPanelView }) {
-  switch (view) {
-    case "dragon-tiger":
-      return <DragonTigerView />
-    case "replay":
-      return <ReplayView />
-    case "strong-stocks":
-      return <StrongStocksTab />
-    case "promotion":
-      return <PromotionView />
-    case "plate-ranking":
-      return <PlateRankingTab />
-    case "stock-ranking":
-      return <StockRankingTab />
-    case "timeline":
-      return <TimelineTab />
-    case "sentiment-chip":
-      return <SentimentChipTab />
-    case "news":
-      return <NewsFeed />
-  }
-}
-
-export default function RightPanel() {
+/**
+ * 行情面板（九个视图共用一条 tab 条，可折叠成 48px 图标条）。
+ *
+ * 它自己就是一个 `Panel`：折叠成图标条要靠 react-resizable-panels 的 collapsible，
+ * 外面再套一层 Panel 会变成嵌套面板。所以 AppShell 对 market-tabs 列直接渲染它，
+ * 其余列才由 AppShell 统一包 Panel。
+ */
+export default function RightPanel({
+  panelId = "right",
+  cornerActions,
+}: {
+  panelId?: string
+  /** 右上角浮层：放大按钮，或结构编辑态下的工具条（由 LayoutNodeView 注入）。 */
+  cornerActions?: ReactNode
+}) {
   const activeView = useRightPanelStore((s) => s.activeView)
   const setActiveView = useRightPanelStore((s) => s.setActiveView)
   const klineTarget = useRightPanelStore((s) => s.klineTarget)
@@ -189,9 +149,8 @@ export default function RightPanel() {
 
   return (
     <>
-      <Separator className="bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 w-1 shrink-0 cursor-col-resize transition-colors" />
       <Panel
-        id="right"
+        id={panelId}
         panelRef={panelRef}
         defaultSize={PANEL_DEFAULT_WIDTH}
         minSize={PANEL_MIN_WIDTH}
@@ -202,7 +161,8 @@ export default function RightPanel() {
         onResize={handleResize}
         className="min-w-0"
       >
-        <div className="bg-surface border-hairline flex h-full flex-col overflow-hidden border-l">
+        <div className="bg-surface border-hairline relative flex h-full flex-col overflow-hidden border-l">
+          {cornerActions}
           <div
             className={`border-hairline flex h-12 shrink-0 items-center gap-1 border-b px-2 ${
               collapsed ? "justify-center" : ""
@@ -232,7 +192,7 @@ export default function RightPanel() {
                       onScroll={syncTabEdges}
                       className="h-12 w-full [scrollbar-width:none] justify-start gap-0 overflow-x-auto rounded-none bg-transparent px-0"
                     >
-                      {TABS.map((tab) => (
+                      {MARKET_VIEWS.map((tab) => (
                         <TabsTrigger
                           key={tab.id}
                           value={tab.id}
@@ -276,7 +236,7 @@ export default function RightPanel() {
 
           {collapsed ? (
             <div className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto py-3">
-              {TABS.map(({ id, label, icon: Icon }) => (
+              {MARKET_VIEWS.map(({ id, label, icon: Icon }) => (
                 <Button
                   key={id}
                   variant="ghost"
@@ -297,11 +257,9 @@ export default function RightPanel() {
           ) : (
             <div className="relative flex flex-1 overflow-hidden">
               <div className="flex-1 overflow-y-auto">
-                <ErrorBoundary name="RightPanel">
-                  <Suspense fallback={<ViewFallback />}>
-                    <ViewRenderer view={activeView} />
-                  </Suspense>
-                </ErrorBoundary>
+                <RightPanelNavProvider>
+                  <MarketView view={activeView} boundary="RightPanel" />
+                </RightPanelNavProvider>
               </div>
 
               <AnimatePresence>
@@ -338,7 +296,7 @@ export default function RightPanel() {
               <motion.div
                 role="dialog"
                 aria-modal="true"
-                aria-label={TABS.find((t) => t.id === popoutView)?.label}
+                aria-label={marketViewLabel(popoutView)}
                 className="bg-surface border-hairline shadow-modal flex h-[min(600px,90vh)] w-[min(896px,90vw)] flex-col rounded-lg border"
                 drag
                 dragMomentum={false}
@@ -358,7 +316,7 @@ export default function RightPanel() {
                   }}
                 >
                   <span className="text-body text-primary font-medium">
-                    {TABS.find((t) => t.id === popoutView)?.label}
+                    {marketViewLabel(popoutView)}
                   </span>
                   <Button
                     autoFocus
@@ -371,12 +329,22 @@ export default function RightPanel() {
                     <X className="size-4" />
                   </Button>
                 </div>
-                <div className="flex-1 overflow-y-auto">
-                  <ErrorBoundary name="RightPanelPopout">
-                    <Suspense fallback={<ViewFallback />}>
-                      <ViewRenderer view={popoutView} />
-                    </Suspense>
-                  </ErrorBoundary>
+                <div className="relative flex-1 overflow-y-auto">
+                  <RightPanelNavProvider>
+                    <MarketView view={popoutView} boundary="RightPanelPopout" />
+                  </RightPanelNavProvider>
+                  {/* 弹出窗口里的表格点股票也要就地出 K 线，否则点击会落到背后那个面板里 */}
+                  {klineTarget && (
+                    <div className="bg-surface absolute inset-0 z-10 overflow-y-auto">
+                      <Suspense fallback={<ViewFallback />}>
+                        <KlineDrawer
+                          symbol={klineTarget.symbol}
+                          name={klineTarget.name}
+                          onClose={closeKline}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </motion.div>

@@ -1,4 +1,14 @@
-import { Bell, Cpu, HardDrive, Info, Palette, Plug, Puzzle } from "lucide-react"
+import {
+  Bell,
+  Blocks,
+  Cpu,
+  HardDrive,
+  Info,
+  LayoutPanelLeft,
+  Palette,
+  Plug,
+  Puzzle,
+} from "lucide-react"
 import type { SettingsTab } from "@/stores/ui"
 
 /**
@@ -7,8 +17,10 @@ import type { SettingsTab } from "@/stores/ui"
  */
 export const SETTINGS_TABS: Record<SettingsTab, { label: string; icon: typeof Palette }> = {
   appearance: { label: "外观", icon: Palette },
+  layouts: { label: "布局", icon: LayoutPanelLeft },
   agent: { label: "Agent", icon: Cpu },
-  extensions: { label: "扩展", icon: Puzzle },
+  skills: { label: "技能", icon: Puzzle },
+  extensions: { label: "扩展", icon: Blocks },
   social: { label: "通知", icon: Bell },
   mcp: { label: "MCP 服务器", icon: Plug },
   cache: { label: "缓存", icon: HardDrive },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { Suspense, lazy, useState, useEffect, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -37,6 +37,9 @@ import ModelPicker from "./ModelPicker"
 import { AgentApiKeySection } from "./AgentApiKeySection"
 import { AppUpdaterSection } from "./AppUpdater"
 import { SettingRow, SettingsSection, SelectField } from "./settings-ui"
+import LayoutsSettings from "./LayoutsSettings"
+
+const SkillEditor = lazy(() => import("./SkillEditor"))
 import {
   AlertTriangle,
   CheckIcon,
@@ -519,6 +522,24 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const { label: pageTitle } = SETTINGS_TABS[activeTab]
   const isMcp = activeTab === "mcp"
 
+  // 技能页是一个"列表 + 编辑器"的双栏工作区，自带页头，塞进设置的窄容器会挤成一团，
+  // 所以这里整块让给它（仍是设置里的一个页签，只是不吃设置页的内边距与最大宽度）。
+  if (activeTab === "skills") {
+    return (
+      <div className="h-full min-h-0">
+        <Suspense
+          fallback={
+            <div className="p-6">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          }
+        >
+          <SkillEditor />
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-full">
       <div
@@ -584,6 +605,7 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
         </Dialog>
 
         <div className="space-y-6">
+          {activeTab === "layouts" && <LayoutsSettings />}
           {activeTab === "appearance" && (
             <SettingsSection title="基础主题">
               <div className="flex flex-wrap items-start gap-3 py-3">

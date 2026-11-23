@@ -15,6 +15,8 @@ interface KlineDrawerProps {
   symbol: string
   name: string
   onClose: () => void
+  /** 嵌进网格格子时没有"关闭"这回事：隐藏关闭按钮，也不再响应 Esc。 */
+  showClose?: boolean
 }
 
 const periods = [
@@ -41,7 +43,7 @@ function toXuangubaoSymbol(code: string): string {
   return clean
 }
 
-export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps) {
+export default function KlineDrawer({ symbol, name, onClose, showClose = true }: KlineDrawerProps) {
   const [period, setPeriod] = useState("minute")
   const xgSymbol = toXuangubaoSymbol(symbol)
   const [quote, setQuote] = useState<RealtimeQuote | null>(null)
@@ -140,11 +142,12 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (!showClose) return
       if (e.key === "Escape") onClose()
     }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
-  }, [onClose])
+  }, [onClose, showClose])
 
   // Default crosshair from last candle
   const defaultCrosshair = useMemo((): CrosshairInfo | null => {
@@ -178,16 +181,18 @@ export default function KlineDrawer({ symbol, name, onClose }: KlineDrawerProps)
     <div className="bg-canvas @container h-full overflow-y-auto">
       {/* Header */}
       <div className="bg-surface border-hairline flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-4 @md:gap-3 @md:px-6">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="text-secondary hover:text-primary"
-          onClick={onClose}
-          title="关闭"
-          aria-label="关闭行情详情"
-        >
-          <X className="size-4" />
-        </Button>
+        {showClose && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-secondary hover:text-primary"
+            onClick={onClose}
+            title="关闭"
+            aria-label="关闭行情详情"
+          >
+            <X className="size-4" />
+          </Button>
+        )}
         <span className="text-h1 text-primary shrink-0 font-semibold tracking-[-0.01em] whitespace-nowrap">
           {name}
         </span>

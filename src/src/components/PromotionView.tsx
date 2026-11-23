@@ -7,7 +7,7 @@ import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 import { useLimitUp } from "@/hooks/query/useLimitUp"
 import { useYesterdayLimitUp } from "@/hooks/query/useYesterdayLimitUp"
 import { formatCompactNumber } from "@/lib/format"
-import { useRightPanelStore } from "@/stores/rightPanelStore"
+import { usePaneNav } from "@/components/paneNavContext"
 import { type Stock } from "@/stores/data"
 
 type PromotionStatus = "promoted" | "broken" | "first"
@@ -211,7 +211,7 @@ export default function PromotionView() {
     error: yesterdayError,
     refetch: refetchYesterday,
   } = useYesterdayLimitUp()
-  const openKline = useRightPanelStore((state) => state.openKline)
+  const { openStock: openKline } = usePaneNav()
 
   const hasYesterdayData = yesterdayList.length > 0
   const isLoading = todayLoading || yesterdayLoading
