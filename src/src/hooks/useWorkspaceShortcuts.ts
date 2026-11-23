@@ -6,19 +6,36 @@ import { useUiStore } from "@/stores/ui"
 /**
  * 工作区的全局快捷键。
  *
- * - `⌘,` 打开设置（macOS 惯例，设置里的「布局」页就是布局管理入口）
- * - `⌥⌘1–9` 切换布局，顺序与设置里的列表一致（前三档是内置预设）。
- *   注意 macOS 的 Option 会把数字键变成符号（⌥2 = "™"），所以按 `event.code` 判断。
+ * - `⌘1–9` 直接跳到第 n 个布局（顺序与设置里的列表一致）
+ * - `⌥⌘←/→` 按列表顺序循环切换（浏览器把 `⌘1–9` 给了标签页，web 端用这条）
+ * - `⌘,` 打开设置（设置里的「布局」页就是布局管理入口）
  * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
- * - `Esc` 先还原放大的格子，再退出布局结构编辑态
+ * - `Esc` 先退子页面，再还原放大的格子，最后退出结构编辑态
  *
- * 不用 `⌘⇧1..3`：macOS 把 `⌘⇧3/4` 占给了系统截图，按下时事件根本到不了页面。
+ * 两个按下注意：
+ * - 数字按 `event.code`（Digit1..Digit9）判断：macOS 的 Option 会改写 `event.key`
+ *   （⌥2 得到 "™"），拿 key 比对在真机上永远匹配不到。
+ * - 光标在输入框里时不抢键：`⌘1–9` / `⌥⌘←/→` 在文本框里各有别的语义。
+ * - 不用 `⌘⇧1..3`：macOS 把 `⌘⇧3/4` 占给了系统截图。
  */
 export function useWorkspaceShortcuts() {
   const setLayout = useLayoutStore((s) => s.setLayout)
   const stopEditing = useLayoutStore((s) => s.stopEditing)
 
   useEffect(() => {
+    /** 光标在可编辑区域里时，方向键类快捷键要让位给文本编辑。 */
+    const inEditable = (event: KeyboardEvent) => {
+      // 事件目标可能是 window / document（无焦点时的合成事件），先确认是元素
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return false
+      return (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable ||
+        target.getAttribute("role") === "textbox"
+      )
+    }
+
     const handler = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey
 
@@ -73,20 +90,29 @@ export function useWorkspaceShortcuts() {
         return
       }
 
-      if (!mod || !event.altKey || event.shiftKey) return
-      // macOS 上 Option 会改写 key：⌥1 得到的是 "¡"、⌥2 是 "™"、⌥3 是 "£"……
-      // 所以数字必须读 event.code（Digit1..Digit9），不能用 event.key 比对。
-      const digit =
-        /^Digit([1-9])$/.exec(event.code)?.[1] ?? (/^[1-9]$/.test(event.key) ? event.key : "")
-      if (!digit) return
-      const index = Number(digit) - 1
+      // ⌘1–9 —— 直接跳第 n 个布局
+      if (mod && !event.altKey && !event.shiftKey) {
+        const digit =
+          /^Digit([1-9])$/.exec(event.code)?.[1] ?? (/^[1-9]$/.test(event.key) ? event.key : "")
+        const target = digit ? useLayoutStore.getState().layouts[Number(digit) - 1] : undefined
+        if (target && !inEditable(event)) {
+          event.preventDefault()
+          if (useUiStore.getState().mode !== "chat") useUiStore.getState().setMode("chat")
+          setLayout(target.id)
+          return
+        }
+      }
 
-      const layout = useLayoutStore.getState().layouts[index]
-      if (!layout) return
-      event.preventDefault()
-      // 布局只在对话态可见，从设置页按快捷键要顺带回到工作台
-      if (useUiStore.getState().mode !== "chat") useUiStore.getState().setMode("chat")
-      setLayout(layout.id)
+      if (!mod || !event.altKey || event.shiftKey) return
+
+      // ⌥⌘←/→ —— 按列表顺序循环切布局（浏览器把 ⌘1–9 给了标签页，web 端靠这条）
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        if (inEditable(event)) return
+        event.preventDefault()
+        if (useUiStore.getState().mode !== "chat") useUiStore.getState().setMode("chat")
+        useLayoutStore.getState().cycleLayout(event.key === "ArrowRight" ? 1 : -1)
+        return
+      }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
