@@ -301,6 +301,20 @@ pi-rs 内置的扩展可以在 Web 面板「设置 → 扩展」里逐个开关�
 
 省略的 id 视为启用；本应用不管理的扩展 key 会原样保留。停用后 Agent 立即失去该扩展的工具；已打开的会话不需要重启，下一轮就按新的工具集工作。
 
+`subagent` 没有 `settings.json` 配置项（它的配置就是 `$PI_RS_HOME/agent/agents/*.md`）。`web_search`
+的后端在同一个页面的「设置」里改，写入同一份 `settings.json` 的 `webSearch` 段：
+
+| 设置 | settings.json | 默认 |
+|------|---------------|------|
+| 搜索后端 | `webSearch.provider` | `auto`：有 DeepSeek 凭据走 DeepSeek，否则走本地 Ollama |
+| DeepSeek 地址 | `webSearch.deepseek.baseUrl` | `https://api.deepseek.com` |
+| Ollama 地址 | `webSearch.ollama.host` | `http://localhost:11434` |
+
+留空即删除该键，回落到 pi-rs 的环境变量（`PI_WEB_SEARCH_PROVIDER` / `DEEPSEEK_BASE_URL` /
+`OLLAMA_HOST`、`OLLAMA_BASE_URL`）与内置默认。密钥不在这里配：显式设置
+`webSearch.deepseek.apiKey`（支持 `${ENV}` 模板）优先，否则用「Agent」页保存的 DeepSeek
+凭据（pi-rs `auth.json`）或 `DEEPSEEK_API_KEY`。扩展设置在建会话时读取，因此对之后新建的会话生效。
+
 ## Automation
 
 对话内让 agent 创建定时任务（工具 `create_automation` / `list_automations` / `update_automation`），也可用 REST `/api/automations` 或桌面端面板。任务持久化在 `data.db`。

@@ -26,7 +26,7 @@ pub mod slash;
 pub use actor::{spawn_session_actor, SessionHandle, SessionMsg, SessionStatus};
 pub use extensions::{
     command_base_name, disabled_command_in_prompt, is_command_disabled, BuiltinExtension,
-    ExtensionToggles, BUILTIN_EXTENSIONS,
+    ExtensionSetting, ExtensionToggles, BUILTIN_EXTENSIONS,
 };
 pub use factory::{
     create_factory, CreateSessionFactory, CreateSessionParams, CreatedSession, FactoryOptions,

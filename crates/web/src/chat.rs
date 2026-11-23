@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
@@ -82,9 +83,11 @@ pub async fn update_agent_settings(
     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-// ── Built-in extensions（pi-rs `settings.json` extensionsEnabled）────────
+// ── Built-in extensions（pi-rs `settings.json`）────────────────────────
 
-use openatrading_core::extensions::{BuiltinExtension, ExtensionToggles, BUILTIN_EXTENSIONS};
+use openatrading_core::extensions::{
+    BuiltinExtension, ExtensionSettingError, ExtensionToggles, BUILTIN_EXTENSIONS,
+};
 
 #[derive(Debug, Serialize)]
 pub struct ExtensionItem {
@@ -94,11 +97,65 @@ pub struct ExtensionItem {
     pub enabled: bool,
     pub tools: Vec<String>,
     pub commands: Vec<String>,
+    /// pi-rs settings the extension reads, with their effective values.
+    /// Empty = this extension has no settings section.
+    pub settings: Vec<ExtensionSettingItem>,
+    /// See [`BuiltinExtension::settings_note`].
+    #[serde(rename = "settingsNote")]
+    pub settings_note: Option<String>,
+}
+
+/// One settings row: the declared control plus its effective value.
+#[derive(Debug, Serialize)]
+pub struct ExtensionSettingItem {
+    /// Dotted `settings.json` path, used as the write key.
+    pub key: String,
+    pub label: String,
+    pub hint: Option<String>,
+    pub placeholder: Option<String>,
+    /// Effective value; empty = unset (pi-rs falls back to env/default).
+    pub value: String,
+    /// Non-empty = dropdown; the first entry is pi-rs's default.
+    pub options: Vec<ExtensionSettingOptionItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExtensionSettingOptionItem {
+    pub value: String,
+    pub label: String,
 }
 
 type ExtensionErrorResponse = (StatusCode, Json<serde_json::Value>);
 
-fn extension_item(ext: &BuiltinExtension, toggles: &ExtensionToggles) -> ExtensionItem {
+fn extension_setting_items(
+    ext: &BuiltinExtension,
+    values: &BTreeMap<String, String>,
+) -> Vec<ExtensionSettingItem> {
+    ext.settings
+        .iter()
+        .map(|setting| ExtensionSettingItem {
+            key: setting.key.to_string(),
+            label: setting.label.to_string(),
+            hint: setting.hint.map(str::to_string),
+            placeholder: setting.placeholder.map(str::to_string),
+            value: values.get(setting.key).cloned().unwrap_or_default(),
+            options: setting
+                .options
+                .iter()
+                .map(|(value, label)| ExtensionSettingOptionItem {
+                    value: (*value).to_string(),
+                    label: (*label).to_string(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn extension_item(
+    ext: &BuiltinExtension,
+    toggles: &ExtensionToggles,
+    values: &BTreeMap<String, String>,
+) -> ExtensionItem {
     ExtensionItem {
         id: ext.id.to_string(),
         name: ext.name.to_string(),
@@ -110,13 +167,16 @@ fn extension_item(ext: &BuiltinExtension, toggles: &ExtensionToggles) -> Extensi
             .iter()
             .map(|command| (*command).to_string())
             .collect(),
+        settings: extension_setting_items(ext, values),
+        settings_note: ext.settings_note.map(str::to_string),
     }
 }
 
 fn extension_items(toggles: &ExtensionToggles) -> Vec<ExtensionItem> {
+    let values = openatrading_core::extensions::load_extension_setting_values();
     BUILTIN_EXTENSIONS
         .iter()
-        .map(|ext| extension_item(ext, toggles))
+        .map(|ext| extension_item(ext, toggles, &values))
         .collect()
 }
 
@@ -161,6 +221,44 @@ pub async fn update_extension(
         .apply_extension_toggles(&toggles.disabled_tools(), &toggles.disabled_commands())
         .await;
 
+    Ok(Json(extension_items(&toggles)))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateExtensionSettingRequest {
+    /// Dotted `settings.json` path, e.g. `webSearch.provider`.
+    pub key: String,
+    /// New value; empty removes the key (pi-rs falls back to env/default).
+    pub value: String,
+}
+
+/// `ExtensionSettingError` → HTTP 状态码 + 用户可读文案。
+fn setting_error(err: ExtensionSettingError) -> ExtensionErrorResponse {
+    let status = match &err {
+        ExtensionSettingError::UnknownExtension(_) => StatusCode::NOT_FOUND,
+        ExtensionSettingError::UnknownKey(_) | ExtensionSettingError::InvalidValue { .. } => {
+            StatusCode::BAD_REQUEST
+        }
+        ExtensionSettingError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(serde_json::json!({ "error": err.to_string() })),
+    )
+}
+
+/// PUT /api/extensions/:id/settings — persist one settings.json key.
+///
+/// Unlike the enable toggle (applied to live sessions immediately), extension
+/// settings are read when a session's registry is built, so they apply to
+/// sessions created afterwards.
+pub async fn update_extension_setting(
+    Path(id): Path<String>,
+    Json(req): Json<UpdateExtensionSettingRequest>,
+) -> Result<Json<Vec<ExtensionItem>>, ExtensionErrorResponse> {
+    openatrading_core::extensions::save_extension_setting(&id, &req.key, &req.value)
+        .map_err(setting_error)?;
+    let toggles = openatrading_core::extensions::load_extension_toggles();
     Ok(Json(extension_items(&toggles)))
 }
 
@@ -1049,8 +1147,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// `GET /api/extensions` 的形状是前端开关卡的唯一数据源：id / name /
-    /// description / enabled / tools / commands 都不能缺。
+    /// `GET /api/extensions` 的形状是前端扩展卡的唯一数据源：id / name /
+    /// description / enabled / tools / commands / settings 都不能缺。
     #[test]
     fn extension_items_expose_toggle_state_and_capabilities() {
         use openatrading_core::extensions::{ExtensionToggles, BUILTIN_EXTENSIONS};
@@ -1080,6 +1178,31 @@ mod tests {
         assert!(subagent.enabled, "默认应启用");
         assert!(subagent.tools.contains(&"subagent".to_string()));
         assert!(subagent.commands.is_empty());
+        assert!(
+            subagent.settings.is_empty(),
+            "subagent 在 pi-rs 里没有 settings.json 配置项"
+        );
+
+        // 设置行由后端声明（含下拉候选与生效值），前端不按扩展 id 分支。
+        let keys: Vec<&str> = web.settings.iter().map(|s| s.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "webSearch.provider",
+                "webSearch.deepseek.baseUrl",
+                "webSearch.ollama.host"
+            ]
+        );
+        let provider = web
+            .settings
+            .first()
+            .unwrap_or_else(|| panic!("缺少 provider 设置"));
+        assert!(!provider.options.is_empty(), "provider 应是下拉框");
+        assert!(provider.hint.is_some(), "provider 需要说明 auto 的含义");
+        assert!(
+            web.settings_note.is_some(),
+            "web_search 需要凭据/生效时机脚注"
+        );
     }
 
     /// Happy path: the slash-command list exposes builtin session commands and

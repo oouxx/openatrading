@@ -22,7 +22,11 @@ import {
   useSaveMcpServer,
   useTestMcpServer,
 } from "@/hooks/query/useMcpServers"
-import { useExtensions, useToggleExtension } from "@/hooks/query/useExtensions"
+import {
+  useExtensions,
+  useToggleExtension,
+  useUpdateExtensionSetting,
+} from "@/hooks/query/useExtensions"
 import { useAgentModels } from "@/hooks/query/useAgentModels"
 import { clampThinkingLevel, thinkingLevelOptions } from "@/lib/thinking-levels"
 import { McpServerForm } from "./McpServerForm"
@@ -265,9 +269,10 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
   const servers = mcpQuery.data?.servers ?? []
   const mcpErrors = mcpQuery.data?.errors ?? []
 
-  // 内置扩展（subagent / web_search）开关
+  // 内置扩展（subagent / web_search）开关 + 设置
   const extensionsQuery = useExtensions()
   const toggleExtension = useToggleExtension()
+  const saveExtensionSetting = useUpdateExtensionSetting()
   const extensions = extensionsQuery.data ?? []
 
   const newServerTemplate = (type: McpTransportType = "http"): McpServerPayload => ({
@@ -743,6 +748,9 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
                       extension={ext}
                       disabled={toggleExtension.isPending}
                       onToggle={(enabled) => toggleExtension.mutateAsync({ id: ext.id, enabled })}
+                      onSaveSetting={(key, value) =>
+                        saveExtensionSetting.mutateAsync({ id: ext.id, key, value })
+                      }
                     />
                   ))}
                 </div>
@@ -751,12 +759,13 @@ export default function SettingsView({ activeTab }: { activeTab: SettingsTab }) 
               <div className="bg-surface border-hairline text-tertiary text-caption mt-6 flex items-start gap-2 rounded-lg border px-3.5 py-3">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 <p className="leading-5">
-                  开关写入 pi-rs 的{" "}
+                  开关与设置都写入 pi-rs 的{" "}
                   <code className="text-secondary font-number">
                     $PI_RS_HOME/agent/settings.json
-                  </code>{" "}
-                  的 <code className="text-secondary font-number">extensionsEnabled</code>
-                  ，对已打开的会话立即生效。停用后 Agent 不再获得该扩展的工具与命令。
+                  </code>
+                  （开关是 <code className="text-secondary font-number">extensionsEnabled</code>
+                  ，设置写各自的段，如 <code className="text-secondary font-number">webSearch</code>
+                  ）。开关对已打开的会话立即生效：停用后 Agent 不再获得该扩展的工具与命令。
                 </p>
               </div>
             </>

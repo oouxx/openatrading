@@ -22,9 +22,22 @@ use pi_extension_api::{
     create_builtin_source_info, create_synthetic_source_info, ExtensionRegistry,
 };
 
+pub use pi_extensions::web_search::WebSearchConfig;
+
 /// Create an `ExtensionRegistry` with all openatrading extensions + pi-rs built-ins.
+///
+/// `web_search` uses pi-rs's own environment/default resolution; callers that
+/// have the session's pi-rs settings at hand should use
+/// [`create_registry_with`] so `settings.json`'s `webSearch` section applies.
 #[must_use]
 pub fn create_registry() -> ExtensionRegistry {
+    create_registry_with(&WebSearchConfig::default())
+}
+
+/// Create a registry whose `web_search` extension reads `webSearch` from
+/// pi-rs settings (backend, endpoints, credentials).
+#[must_use]
+pub fn create_registry_with(web_search: &WebSearchConfig) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
     registry.register(
         Box::new(trading::MarketDataExtension::new()),
@@ -36,7 +49,9 @@ pub fn create_registry() -> ExtensionRegistry {
         create_builtin_source_info("subagent"),
     );
     registry.register(
-        Box::new(pi_extensions::web_search::WebSearchExtension::new()),
+        Box::new(pi_extensions::web_search::WebSearchExtension::from_config(
+            web_search,
+        )),
         create_builtin_source_info("web_search"),
     );
     registry

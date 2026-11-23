@@ -162,7 +162,25 @@ pub fn create_factory(opts: FactoryOptions) -> CreateSessionFactory {
             // Create a fresh extension registry for each session. The registry
             // always contains all built-ins: toggles are applied by filtering
             // the active tool set, which keeps re-enabling possible at runtime.
-            let ext_registry = openatrading_extension::create_registry();
+            //
+            // `web_search` reads its backend from settings `webSearch`. An
+            // explicit `webSearch.deepseek.apiKey` wins (支持 `${ENV}` 模板，
+            // 因此这里先解析模板）；否则用模型注册表解析到的 DeepSeek 凭据
+            // （auth.json → models.json/注册 provider → 环境变量），
+            // 这样「Agent → API Key」里存的 key 直接可用于搜索。
+            let mut web_search = services.settings_manager.get_web_search_config();
+            let configured_key = web_search
+                .deepseek
+                .as_ref()
+                .and_then(|deepseek| deepseek.api_key.as_deref())
+                .and_then(pi_coding_agent::core::resolve_config_value::resolve_config_value);
+            let api_key = configured_key
+                .or_else(|| services.model_registry.get_api_key_for_provider("deepseek"));
+            web_search
+                .deepseek
+                .get_or_insert_with(Default::default)
+                .api_key = api_key;
+            let ext_registry = openatrading_extension::create_registry_with(&web_search);
 
             // pi-rs' service wrapper currently drops resource-loader options, so
             // call its SDK entry point directly to preserve `.agents/skills`.

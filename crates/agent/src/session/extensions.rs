@@ -27,6 +27,33 @@ pub struct BuiltinExtension {
     pub tools: &'static [&'static str],
     /// Slash commands registered by the extension (without the leading `/`).
     pub commands: &'static [&'static str],
+    /// pi-rs `settings.json` keys the extension reads. Empty = not
+    /// configurable (the extension has no settings section).
+    pub settings: &'static [ExtensionSetting],
+    /// Footnote shown once under the settings panel (credentials source,
+    /// when a change takes effect). Only set when a field can't explain it.
+    pub settings_note: Option<&'static str>,
+}
+
+/// One pi-rs `settings.json` key an extension reads.
+///
+/// `key` is the settings path (camelCase section + leaf), i.e. exactly what
+/// pi-rs resolves — `webSearch.provider` ⇢ `{"webSearch": {"provider": …}}`.
+/// The settings UI renders one control per entry, so adding a key to an
+/// extension never requires a frontend change.
+#[derive(Debug, Clone, Copy)]
+pub struct ExtensionSetting {
+    /// Dotted path inside `settings.json`.
+    pub key: &'static str,
+    /// Label shown next to the control.
+    pub label: &'static str,
+    /// Only what the label can't say (value semantics, fallback order).
+    pub hint: Option<&'static str>,
+    /// Example value shown while the key is unset (text inputs only).
+    pub placeholder: Option<&'static str>,
+    /// Allowed `(value, label)` pairs. Non-empty = dropdown, first entry is
+    /// pi-rs's default. Empty = free-form text.
+    pub options: &'static [(&'static str, &'static str)],
 }
 
 /// The pi-rs built-ins exposed in the settings UI.
@@ -40,6 +67,10 @@ pub const BUILTIN_EXTENSIONS: &[BuiltinExtension] = &[
         description: "允许 Agent 把独立任务交给拥有独立上下文的子代理执行。",
         tools: &["subagent"],
         commands: &[],
+        // pi-rs 没有 `subagent` 的 settings.json 配置项：它只认
+        // `{agent_dir}/agents/*.md` 里的 agent 定义。
+        settings: &[],
+        settings_note: None,
     },
     BuiltinExtension {
         id: "web_search",
@@ -47,8 +78,52 @@ pub const BUILTIN_EXTENSIONS: &[BuiltinExtension] = &[
         description: "允许 Agent 搜索并抓取网页内容（web_search / web_fetch）。",
         tools: &["web_search", "web_fetch"],
         commands: &[],
+        settings: WEB_SEARCH_SETTINGS,
+        settings_note: Some(
+            "DeepSeek 凭据取自 Agent 页的 API Key（pi-rs auth.json）或 DEEPSEEK_API_KEY；设置对之后新建的会话生效。",
+        ),
     },
 ];
+
+/// `web_search` 的后端配置（pi-rs `settings.json` 的 `webSearch` 段）。
+///
+/// 不暴露 `webSearch.deepseek.apiKey`：密钥统一存在 pi-rs 的 `auth.json`
+/// （「Agent」页的 API Key），扩展侧只需要地址与后端选择。
+const WEB_SEARCH_SETTINGS: &[ExtensionSetting] = &[
+    ExtensionSetting {
+        key: "webSearch.provider",
+        label: "搜索后端",
+        hint: Some("自动：有 DeepSeek 凭据时走 DeepSeek，否则走本地 Ollama"),
+        placeholder: None,
+        options: &[
+            ("auto", "自动"),
+            ("deepseek", "DeepSeek"),
+            ("ollama", "Ollama"),
+        ],
+    },
+    ExtensionSetting {
+        key: "webSearch.deepseek.baseUrl",
+        label: "DeepSeek 地址",
+        hint: None,
+        placeholder: Some("https://api.deepseek.com"),
+        options: &[],
+    },
+    ExtensionSetting {
+        key: "webSearch.ollama.host",
+        label: "Ollama 地址",
+        hint: None,
+        placeholder: Some("http://localhost:11434"),
+        options: &[],
+    },
+];
+
+impl BuiltinExtension {
+    /// The settings entry this extension declares for `key`, if any.
+    #[must_use]
+    pub fn setting(&self, key: &str) -> Option<&'static ExtensionSetting> {
+        self.settings.iter().find(|setting| setting.key == key)
+    }
+}
 
 /// Resolved enable flags for the built-in extensions.
 ///
