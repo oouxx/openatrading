@@ -975,10 +975,40 @@ fn parse_plate_index_realtime(resp: &serde_json::Value) -> Result<PlateIndexReal
     Ok(PlateIndexRealtime { prev_close, items })
 }
 
+/// 递归删除 JSON 对象里的 null 字段。
+///
+/// 上游的空集合 / 空串有时序列化成 `null`（例如 `question_answers`、`sub_sets`）。
+/// `#[serde(default)]` 只处理"字段缺失"，遇到显式 null 仍会反序列化失败；把 null
+/// 摘掉正好等价于"这个字段没给"，对 `Option<T>` 也是同一个结果。
+fn drop_null_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            map.retain(|_, item| !item.is_null());
+            for item in map.values_mut() {
+                drop_null_fields(item);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items.iter_mut() {
+                drop_null_fields(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn parse_plate_detail(resp: &serde_json::Value) -> Result<PlateDetail> {
     ensure_api_success(resp, "题材详情查询")?;
     let data = resp.get("data").context("题材详情响应缺少 data")?;
-    serde_json::from_value(data.clone()).context("题材详情字段格式异常")
+    // 上游把"空"写成 null（`"question_answers": null`），而 `#[serde(default)]`
+    // 只在字段**缺失**时生效，显式 null 会直接报 `invalid type: null, expected
+    // a sequence`——电子鼻这类新题材的详情整页因此 500。
+    // 先递归删掉 null 字段，让 default 按设计生效（Option 字段删掉后同样是 None）。
+    let mut data = data.clone();
+    drop_null_fields(&mut data);
+    // 把 serde 的具体原因带出来：上游字段一漂移，接口错误里就能直接看到是哪个字段，
+    // 不用再回来加日志重跑。
+    serde_json::from_value(data).map_err(|e| anyhow::anyhow!("题材详情字段格式异常: {e}"))
 }
 
 fn parse_fund_flow_number(value: &serde_json::Value, column: usize) -> Result<f64> {
@@ -3906,6 +3936,39 @@ mod tests {
             detail.industrial_chains[0].stock_premium_infos[0].symbol,
             "000034.SZ"
         );
+    }
+
+    /// 上游对空集合会返回 null 而不是 []（2026-11 的"电子鼻"题材就是这样），
+    /// 之前会 500："invalid type: null, expected a sequence"。
+    #[test]
+    fn plate_detail_tolerates_null_collections() {
+        let response = serde_json::json!({
+            "code": 20000,
+            "data": {
+                "id": 97970574_i64,
+                "name": "电子鼻",
+                "desc": "MEMS 气体传感",
+                "industrial_chains": [],
+                "question_answers": null,
+                "sub_sets": null,
+                "premium_desc": null,
+                "stocks": [
+                    {"symbol": "688655.SS", "desc_url": null, "core_flag": 100},
+                    {"symbol": "300456.SZ"}
+                ]
+            }
+        });
+
+        let detail = ok_or_panic(
+            parse_plate_detail(&response),
+            "null collections should parse",
+        );
+        assert_eq!(detail.name, "电子鼻");
+        assert!(detail.question_answers.is_empty());
+        assert!(detail.sub_sets.is_none());
+        assert!(detail.premium_desc.is_empty());
+        assert_eq!(detail.stocks.len(), 2);
+        assert_eq!(detail.stocks[0].desc_url, None);
     }
 
     #[test]
