@@ -3,6 +3,7 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import RightPanel from "@/components/RightPanel"
 import PaneEditOverlay from "@/components/PaneEditOverlay"
 import PaneMaximizeButton from "@/components/PaneMaximizeButton"
+import PaneStockPage from "@/components/PaneStockPage"
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
@@ -101,6 +102,7 @@ function MaximizedPaneLayout({
       <Panel id={leaf.id} className="min-h-0 min-w-0">
         <PaneFrame paneId={leaf.id}>
           {renderPane(leaf)}
+          <PaneStockPage leafId={leaf.id} />
           <PaneMaximizeButton leafId={leaf.id} alwaysVisible />
         </PaneFrame>
       </Panel>
@@ -162,6 +164,8 @@ export default function LayoutNodeView({
     return (
       <PaneFrame paneId={node.id}>
         {renderPane(node)}
+        {/* 每一格都能当 K 线子页面的宿主：联动到哪一格就在哪一格开 */}
+        <PaneStockPage leafId={node.id} />
         {!editing && <PaneMaximizeButton leafId={node.id} />}
         {editing && (
           <PaneEditOverlay leaf={node} layout={layout} parentOrientation={parentOrientation} />

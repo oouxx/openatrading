@@ -14,10 +14,10 @@ export function RolePane() {
   )
 }
 
-export function WatchlistPane() {
+export function WatchlistPane({ leafId, layoutId }: { leafId: string; layoutId: string }) {
   return (
     <EmbeddedPage name="WatchlistView">
-      <WatchlistView />
+      <WatchlistView leafId={leafId} layoutId={layoutId} />
     </EmbeddedPage>
   )
 }

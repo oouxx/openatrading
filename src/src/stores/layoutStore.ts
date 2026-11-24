@@ -525,6 +525,13 @@ interface LayoutState {
   setPaneKind: (layoutId: string, nodeId: string, kind: PaneKind) => void
   /** 给"个股详情"格钉一只股票。 */
   setPaneSymbol: (layoutId: string, nodeId: string, symbol: string, name: string) => void
+  /**
+   * 把一只股票送到指定那一格打开（联动/派发用）。
+   *
+   * “个股详情”格是直接钉住（K 线就是它的正文）；其它格子走子页面叠层，
+   * 关掉就回到原来那张表。内置布局的格子结构只读，一律走子页面。
+   */
+  openStockInPane: (layoutId: string, nodeId: string, symbol: string, name: string) => void
   splitPane: (layoutId: string, nodeId: string, orientation: SplitOrientation) => void
   removePane: (layoutId: string, nodeId: string) => void
 }
@@ -847,6 +854,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         }),
       })
       commit()
+    },
+
+    openStockInPane: (layoutId, nodeId, symbol, name) => {
+      const layout = get().layouts.find((item) => item.id === layoutId)
+      const leaf = layout && findLeaf(layout.root, nodeId)
+      if (!leaf) return
+      if (leaf.kind === "detail" && !layout.builtin) {
+        get().setPaneSymbol(layoutId, nodeId, symbol, name)
+        return
+      }
+      get().openPaneStock(nodeId, symbol, name)
     },
 
     splitPane: (layoutId, nodeId, orientation) => {

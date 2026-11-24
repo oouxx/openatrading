@@ -85,7 +85,7 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
   },
   watchlist: {
     icon: Star,
-    render: () => <WatchlistPane />,
+    render: (leaf, ctx) => <WatchlistPane leafId={leaf.id} layoutId={ctx.layout.id} />,
   },
   roles: {
     icon: Wallet,

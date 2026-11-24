@@ -1,5 +1,4 @@
 import MarketView from "@/components/MarketView"
-import KlineDrawer from "@/components/KlineDrawer"
 import { PaneNavProvider } from "@/components/PaneNav"
 import { MARKET_VIEW_ICONS, MARKET_VIEWS } from "@/lib/marketViews"
 import {
@@ -17,8 +16,8 @@ import { useLayoutStore, type MarketPaneKind } from "@/stores/layoutStore"
  * 九个行情页都是独立的面板类型（`kind` 就是视图 id），所以"换榜"在这里是换内容
  * 而不是换结构——内置的盯盘预设也能直接换，不需要先克隆布局。
  *
- * 点表格里的股票会在**本格内**打开 K 线（子页面），表头仍在，K 线自带关闭按钮，
- * 不会出现"跳进去回不来"。
+ * 点表格里的股票会在**本格内**打开 K 线（子页面，见 `PaneStockPage`——
+ * LayoutNodeView 给每一格都挂了这层），表头仍在，K 线自带关闭按钮。
  */
 export default function MarketPane({
   leafId,
@@ -30,9 +29,6 @@ export default function MarketPane({
   kind: MarketPaneKind
 }) {
   const setPaneKind = useLayoutStore((s) => s.setPaneKind)
-  const stack = useLayoutStore((s) => s.paneDetail[leafId])
-  const detail = stack?.[stack.length - 1]
-  const closePaneDetail = useLayoutStore((s) => s.closePaneDetail)
   const Icon = MARKET_VIEW_ICONS[kind] ?? MARKET_VIEW_ICONS["strong-stocks"]
 
   return (
@@ -63,16 +59,6 @@ export default function MarketPane({
 
         <div className="relative min-h-0 flex-1 overflow-y-auto">
           <MarketView view={kind} boundary="MarketPane" />
-          {detail?.type === "stock" && (
-            // 子页面：覆盖正文但保留表头，K 线自己的关闭按钮就是"返回"
-            <div className="bg-canvas absolute inset-0 z-20 overflow-y-auto">
-              <KlineDrawer
-                symbol={detail.symbol}
-                name={detail.name}
-                onClose={() => closePaneDetail(leafId)}
-              />
-            </div>
-          )}
         </div>
       </div>
     </PaneNavProvider>
