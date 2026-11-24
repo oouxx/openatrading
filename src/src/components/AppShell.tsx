@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useMemo, type ReactNode } from "react"
+import { motion } from "motion/react"
 import { useAppMode } from "@/contexts/useAppMode"
 import AiCopilot from "@/components/ChatView"
 import ErrorBoundary from "@/components/ErrorBoundary"
@@ -22,6 +23,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Skeleton } from "@/components/ui/skeleton"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { motionTransition } from "@/lib/motion"
 
 const RoleView = lazy(() => import("@/components/RoleView"))
 const WatchlistView = lazy(() => import("./WatchlistView"))
@@ -90,12 +92,13 @@ export default function AppShell() {
     [activeThreadId, deleteSession, reload, setActiveThreadId]
   )
 
+  // 切会话只改选中项：会话列表本身没变，原来这里的 reload() 会每点一次都拉一遍
+  // /api/ai/sessions 并 setState，把整棵树（含消息列表）再渲染一遍。
   const handleActiveChange = useCallback(
     (id: string | null) => {
       setActiveThreadId(id)
-      reload()
     },
-    [reload, setActiveThreadId]
+    [setActiveThreadId]
   )
 
   // 面板类型 → 内容由注册表决定（lib/paneRegistry）。加一种新面板不用改这里，
@@ -132,10 +135,18 @@ export default function AppShell() {
         )}
         <SidebarInset className="overflow-hidden">
           {mode === "chat" ? (
-            // 换布局就换一棵面板树：面板 id 变了，必须整体重挂载才能拿到新的默认尺寸
-            <div key={layout.id} className="h-svh min-w-0 flex-1">
+            // 换布局就换一棵面板树：面板 id 变了，必须整体重挂载才能拿到新的默认尺寸。
+            // 挂载时给一次 200ms 淡入——两套网格直接硬切会"啪"地跳一下，淡入把
+            // 这次重排收成一个动作（只动 opacity，走合成层，不引起重排）。
+            <motion.div
+              key={layout.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={motionTransition.fast}
+              className="h-svh min-w-0 flex-1"
+            >
               <LayoutNodeView node={layout.root} layout={layout} renderPane={renderPane} />
-            </div>
+            </motion.div>
           ) : mode === "roles" ? (
             <LazyView>
               <RoleView />

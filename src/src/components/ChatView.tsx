@@ -1,5 +1,6 @@
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -85,11 +86,7 @@ const TEXTAREA_MAX_HEIGHT = 200
 /** 空会话的起手提示：只放进输入框，不直接发送，用户仍可改写。 */
 const SUGGESTIONS = ["复盘今日大盘", "资金流向了哪里", "整理首板晋级梯队", "看看我的自选"]
 
-export default function AiCopilot({
-  activeThreadId,
-  onActiveThreadChange,
-  onReload,
-}: AiCopilotProps) {
+function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilotProps) {
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   // 异步读取完成时必须合并到最新附件列表，而不是创建读取任务时的旧快照。
@@ -262,32 +259,57 @@ export default function AiCopilot({
     ),
   })
 
+  // 历史消息是本进程内"按会话加载一次"的：记下已加载过的会话，切换时用它判断
+  // 该显示骨架（历史在路上）还是空态（真的没有消息）。这样不会先闪一屏"空会话"
+  // 的大标题再跳成消息列表——那是切会话观感最主要的来源。
+  const [loadedHistory, setLoadedHistory] = useState<Set<string>>(() => new Set())
+
   // Load history messages when switching to a different session.
   // The WebSocket onopen only loads history once per connection, so
   // switching to an already-connected session needs an explicit fetch.
   useEffect(() => {
     if (!activeThreadId) return
+    const threadId = activeThreadId
+    const markLoaded = () =>
+      setLoadedHistory((prev) => (prev.has(threadId) ? prev : new Set(prev).add(threadId)))
+
     if (isTauri) {
-      fetchJson<HistoryMessage[]>(`/api/ai/sessions/${activeThreadId}/messages`)
+      fetchJson<HistoryMessage[]>(`/api/ai/sessions/${threadId}/messages`)
         .then((msgs) => {
-          const current = threadTurnsRef.current.get(activeThreadId) ?? []
+          const current = threadTurnsRef.current.get(threadId) ?? []
           // A background stream keeps updating these turns; replacing them
           // with a persistence snapshot makes the session look stopped.
-          const streaming = streamingThreadsRef.current.has(activeThreadId)
+          const streaming = streamingThreadsRef.current.has(threadId)
           if (msgs && msgs.length > 0 && canReplaceWithHistory(current, streaming)) {
             const turns = historyToTurns(msgs)
-            threadTurnsRef.current.set(activeThreadId, turns)
+            threadTurnsRef.current.set(threadId, turns)
             setThreadTurns(new Map(threadTurnsRef.current))
           }
           scrollToBottomForced()
         })
         .catch((error) => console.warn("[chat] 加载历史消息失败", error))
+        .finally(markLoaded)
     } else {
       wsAgent
-        .loadHistory(activeThreadId, streamingThreadsRef.current.has(activeThreadId))
+        .loadHistory(threadId, streamingThreadsRef.current.has(threadId))
         .then(scrollToBottomForced)
+        .finally(markLoaded)
     }
   }, [activeThreadId, wsAgent, scrollToBottomForced])
+
+  // 换会话时给消息列表一个 160ms 淡入：历史是异步到的，硬切会闪。只淡列表本体，
+  // 输入框不跟着闪（它在下方的相对容器里，不参与这次过渡）。
+  useEffect(() => {
+    const el = msgContainerRef.current
+    if (!el || !activeThreadId) return
+    el.style.transition = "none"
+    el.style.opacity = "0"
+    const raf = requestAnimationFrame(() => {
+      el.style.transition = "opacity 160ms cubic-bezier(.32,.72,0,1)"
+      el.style.opacity = "1"
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [activeThreadId])
 
   // ── Tauri transport ──────────────────────────────────────────────────
   //
@@ -771,7 +793,13 @@ export default function AiCopilot({
   // True only when the *active* thread is streaming — controls the Stop
   // button and disables Send for the active thread.
   const isStreamingActive = activeThreadId ? streamingThreads.has(activeThreadId) : false
-  const isEmpty = currentTurns.length === 0 && !isStreamingActive
+  // 会话已选中、但历史还没回来：显示骨架而不是空态
+  const historyPending =
+    Boolean(activeThreadId) &&
+    currentTurns.length === 0 &&
+    !isStreamingActive &&
+    !loadedHistory.has(activeThreadId as string)
+  const isEmpty = currentTurns.length === 0 && !isStreamingActive && !historyPending
   // Show a "jump to latest" button when the user scrolls up during a stream.
   const [showJumpBottom, setShowJumpBottom] = useState(false)
 
@@ -1016,7 +1044,17 @@ export default function AiCopilot({
   return (
     <div className="flex h-full flex-col">
       {/* ── Body ────────────────────────────────────────────────────── */}
-      {isEmpty ? (
+      {historyPending ? (
+        // 历史消息在路上：给三条骨架占位，避免"空态 → 消息"的两次跳变
+        <div className="flex min-h-0 flex-1 flex-col gap-6 px-6 py-8">
+          <div className="mx-auto w-full max-w-[48rem] space-y-3">
+            <Skeleton className="ml-auto h-9 w-1/3 rounded-lg" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+        </div>
+      ) : isEmpty ? (
         // ── Centered new-session hero (Claude.ai 样式) ──────────
         <div className="flex min-h-0 flex-1 items-center justify-center px-6">
           <div className="w-full max-w-[44rem] pb-8">
@@ -1485,3 +1523,10 @@ function PermissionRequestCard({ block, respondToPermission }: PermissionRequest
 }
 
 // ── Text segment with hover copy (#3) ─────────────────────────────────────
+
+/**
+ * 会话面板整棵树很大（Markdown、工具卡、图表）。父组件任何状态变化（会话列表刷新、
+ * 布局 toast、最大化切换…）都不应该带着它重渲染，所以这里用 memo 兜住——传入的三个
+ * props 都是稳定引用。
+ */
+export default memo(AiCopilot)
