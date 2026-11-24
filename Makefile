@@ -47,15 +47,23 @@ check: fmt lint test
 clean:
 	cargo clean
 
-# Install to /usr/local/bin
-install: release
-	cp target/release/openatrading /usr/local/bin/openatrading
-	@echo "✓ Installed to /usr/local/bin/openatrading"
+# ─── 本机安装（装当前工作区的代码，不走发版流程）────────────────
+#
+# 以前 `install: release` 等于"先发一次版再装"：tag 已存在时直接报错退出，装不上；
+# 而且 `cp` 到 /usr/local/bin 没有 sudo——那个目录是 root 的，普通用户写不进去。
+# 现在只构建 release 二进制，按目录权限决定是否加 sudo。
+BIN_DIR ?= /usr/local/bin
+SUDO := $(shell [ -w "$(BIN_DIR)" ] || echo sudo)
 
-# Uninstall
+install:
+	cargo build --release --bin openatrading
+	$(SUDO) install -m 755 target/release/openatrading "$(BIN_DIR)/openatrading"
+	@"$(BIN_DIR)/openatrading" --version 2>/dev/null | head -1 | sed 's/^/  /' || true
+	@echo "✓ 已安装到 $(BIN_DIR)/openatrading"
+
 uninstall:
-	rm -f /usr/local/bin/openatrading
-	@echo "✓ Removed /usr/local/bin/openatrading"
+	$(SUDO) rm -f "$(BIN_DIR)/openatrading"
+	@echo "✓ 已移除 $(BIN_DIR)/openatrading"
 
 # ─── Deploy ──────────────────────────────────────────
 
