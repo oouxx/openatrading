@@ -9,12 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { paneIcon } from "@/lib/paneRegistry"
+import PaneKindOption from "@/components/PaneKindOption"
 import {
   GENERAL_PANE_KINDS,
   MARKET_PANE_KINDS,
   PANE_HORIZONTAL_ONLY,
-  PANE_KIND_LABELS,
   countLeaves,
   useLayoutStore,
   type PaneKind,
@@ -30,17 +29,6 @@ import {
  * 只改结构的三个动作（拆分左右、拆分上下、删除）都在这，改内容（哪只行情）留在面板
  * 自己的标题里——编辑结构和切换内容是两件事，不该挤在同一个控件里。
  */
-/** 下拉项：图标 + 名字（十三个选项只靠文字扫一眼很难区分行情那几个）。 */
-function renderKindOption(kind: PaneKind) {
-  const Icon = paneIcon(kind)
-  return (
-    <span className="flex items-center gap-2">
-      <Icon className="text-tertiary size-3.5" />
-      {PANE_KIND_LABELS[kind]}
-    </span>
-  )
-}
-
 export default function PaneEditOverlay({
   leaf,
   layout,
@@ -79,7 +67,7 @@ export default function PaneEditOverlay({
             <SelectLabel>通用</SelectLabel>
             {generalKinds.map((kind) => (
               <SelectItem key={kind} value={kind}>
-                {renderKindOption(kind)}
+                <PaneKindOption kind={kind} />
               </SelectItem>
             ))}
           </SelectGroup>
@@ -87,7 +75,7 @@ export default function PaneEditOverlay({
             <SelectLabel>行情</SelectLabel>
             {MARKET_PANE_KINDS.map((kind) => (
               <SelectItem key={kind} value={kind}>
-                {renderKindOption(kind)}
+                <PaneKindOption kind={kind} />
               </SelectItem>
             ))}
           </SelectGroup>

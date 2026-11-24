@@ -4,11 +4,13 @@ import RightPanel from "@/components/RightPanel"
 import PaneEditOverlay from "@/components/PaneEditOverlay"
 import PaneMaximizeButton from "@/components/PaneMaximizeButton"
 import PaneStockPage from "@/components/PaneStockPage"
+import PaneKindSwitcher from "@/components/PaneKindSwitcher"
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
   paneSizing,
+  resolvePaneKind,
   useLayoutStore,
   type LayoutNode,
   type PaneLeaf,
@@ -32,6 +34,31 @@ function PaneSeparator({ orientation }: { orientation: SplitOrientation }) {
           ? "bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 relative w-1 shrink-0 cursor-col-resize transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
           : "bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 relative h-1 w-full shrink-0 cursor-row-resize transition-colors before:absolute before:-top-1 before:h-3 before:w-full before:content-['']"
       }
+    />
+  )
+}
+
+/**
+ * 角落的"换这一格的内容"，用了覆盖表里的**实际类型**做当前值（内置预设换过榜/换过
+ * 面板的格子要显示自己真正在放的东西）。
+ */
+function PaneKindButton({
+  leaf,
+  layout,
+  alwaysVisible,
+}: {
+  leaf: PaneLeaf
+  layout: WorkspaceLayout
+  alwaysVisible?: boolean
+}) {
+  const presetKinds = useLayoutStore((s) => s.presetKinds)
+  const kind = resolvePaneKind(layout, leaf, presetKinds)
+  return (
+    <PaneKindSwitcher
+      layoutId={layout.id}
+      leafId={leaf.id}
+      kind={kind}
+      alwaysVisible={alwaysVisible}
     />
   )
 }
@@ -103,6 +130,7 @@ function MaximizedPaneLayout({
         <PaneFrame paneId={leaf.id}>
           {renderPane(leaf)}
           <PaneStockPage leafId={leaf.id} />
+          <PaneKindButton leaf={leaf} layout={layout} alwaysVisible />
           <PaneMaximizeButton leafId={leaf.id} alwaysVisible />
         </PaneFrame>
       </Panel>
@@ -166,6 +194,7 @@ export default function LayoutNodeView({
         {renderPane(node)}
         {/* 每一格都能当 K 线子页面的宿主：联动到哪一格就在哪一格开 */}
         <PaneStockPage leafId={node.id} />
+        {!editing && <PaneKindButton leaf={node} layout={layout} />}
         {!editing && <PaneMaximizeButton leafId={node.id} />}
         {editing && (
           <PaneEditOverlay leaf={node} layout={layout} parentOrientation={parentOrientation} />

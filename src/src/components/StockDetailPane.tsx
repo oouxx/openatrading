@@ -25,6 +25,11 @@ export default function StockDetailPane({
 }) {
   const setPaneSymbol = useLayoutStore((s) => s.setPaneSymbol)
   const setActiveStock = useActiveStockStore((s) => s.set)
+  // 没有钉住股票时跟随工作区当前标的：内置预设里把某一格换成"个股详情"后，
+  // 点榜单里的票也能直接看（`setPaneSymbol` 对内置预设是只读的，钉不住）
+  const active = useActiveStockStore((s) => s.stock)
+  const shownCode = symbol ?? active?.code
+  const shownName = symbolName ?? active?.name
 
   const select = useCallback(
     (code: string, name: string) => {
@@ -40,17 +45,17 @@ export default function StockDetailPane({
       <header className="border-hairline flex h-9 shrink-0 items-center border-b px-2">
         <StockSearchBox
           className="w-full"
-          placeholder={symbol ? `${symbolName ?? symbol} · 换一只` : "搜索股票…"}
+          placeholder={shownCode ? `${shownName ?? shownCode} · 换一只` : "搜索股票…"}
           ariaLabel="搜索要钉住的股票"
           onPick={select}
         />
       </header>
 
-      {symbol ? (
+      {shownCode ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <KlineDrawer
-            symbol={symbol}
-            name={symbolName ?? symbol}
+            symbol={shownCode}
+            name={shownName ?? shownCode}
             onClose={() => {}}
             showClose={false}
           />

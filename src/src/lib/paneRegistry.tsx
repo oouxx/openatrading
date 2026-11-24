@@ -14,6 +14,7 @@ import StockDetailPane from "@/components/StockDetailPane"
 import { OrderBookPane, TradePane } from "@/components/TradePanes"
 import {
   MARKET_PANE_KINDS,
+  PANE_KINDS,
   resolvePaneKind,
   type MarketPaneKind,
   type PaneKind,
@@ -111,12 +112,37 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
   },
 }
 
+/**
+ * 下拉里可切换的类型。
+ *
+ * 排除两类：`chat`（预设里只有一格，多开会让同一会话被两处订阅）、
+ * `market-tabs`（selfPanel，Panel 包裹方式由布局结构决定，运行期换不了）。
+ */
+export const SWITCHABLE_PANE_KINDS: readonly PaneKind[] = PANE_KINDS.filter(
+  (kind) => kind !== "chat" && kind !== "market-tabs"
+)
+
 export function paneIcon(kind: PaneKind): typeof MessageSquare {
   return PANE_DEFINITIONS[kind].icon
 }
 
-/** 渲染一格的内容；`selfPanel` 的类型由 LayoutNodeView 自己处理，这里返回 null。 */
+/**
+ * 类型 → 图标。渲染期按 kind 取图标请用这张表（`PANE_ICONS[kind]`），不要调
+ * `paneIcon()`：ESLint 的 fast-refresh 规则会把"函数返回值当组件"判成 render 期
+ * 创建组件。
+ */
+export const PANE_ICONS: Record<PaneKind, typeof MessageSquare> = Object.fromEntries(
+  PANE_KINDS.map((kind) => [kind, PANE_DEFINITIONS[kind].icon])
+) as Record<PaneKind, typeof MessageSquare>
+
+/**
+ * 渲染一格的内容；`selfPanel` 的类型由 LayoutNodeView 自己处理，这里返回 null。
+ *
+ * 用**解析后的**类型：内置布局里换过内容的格子（含换成「个股详情」「五档」这类
+ * 通用面板）记在覆盖表里，预设本身不动。
+ */
 export function renderWorkspacePane(leaf: PaneLeaf, ctx: PaneRenderContext): ReactNode {
-  const definition = PANE_DEFINITIONS[leaf.kind]
+  const kind = resolvePaneKind(ctx.layout, leaf, ctx.presetKinds)
+  const definition = PANE_DEFINITIONS[kind] ?? PANE_DEFINITIONS[leaf.kind]
   return definition.render ? definition.render(leaf, ctx) : null
 }

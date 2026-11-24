@@ -786,10 +786,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       const leaf = layout ? findLeaf(layout.root, nodeId) : null
       if (!layout || !leaf) return
 
-      // 内置布局里"换个榜看"是换内容，不是换结构：只要两边都是行情视图就允许，
-      // 记在覆盖表里，预设本身不动。
+      // 内置布局里换内容不改结构：行情格换榜、或换成「个股详情 / 五档 / 下单 / 自选 /
+      // 模拟盘」都允许，记在覆盖表里，预设本身不动。
+      //
+      // 两类除外：`market-tabs` 是 selfPanel（Panel 包裹方式由结构决定，运行期换不了），
+      // `chat` 预设里只有一格（多开会让同一会话被两处订阅）。
       if (layout.builtin) {
-        if (!isMarketPaneKind(kind) || !isMarketPaneKind(leaf.kind)) return
+        if (kind === "market-tabs" || kind === "chat") return
         clearPaneDetail(nodeId)
         set({
           presetKinds: {
