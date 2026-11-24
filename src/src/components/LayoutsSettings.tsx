@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Check,
   Download,
@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input"
 import LayoutTransferDialog from "@/components/LayoutTransferDialog"
 import { useAppMode } from "@/contexts/useAppMode"
 import { useLayoutStore, type WorkspaceLayout } from "@/stores/layoutStore"
+import { comboOwner, useLayoutShortcutStore } from "@/stores/layoutShortcutStore"
+import { comboFromEvent, defaultCombo, formatCombo } from "@/lib/shortcuts"
 import { cn } from "@/lib/utils"
 
 /** 内置布局的固定图标；自定义布局统一用网格图标。 */
@@ -51,6 +53,96 @@ function RenameInput({ layout, onDone }: { layout: WorkspaceLayout; onDone: () =
       }}
       className="text-body h-8 max-w-64 rounded-md"
     />
+  )
+}
+
+/**
+ * 布局快捷键的录制控件：显示当前组合键，点一下进入录制，按下新组合即生效。
+ *
+ * - 录制时 `Backspace` / `Delete`：清掉自定义键（这个布局就没有快捷键了）
+ * - `Esc`：放弃录制
+ * - 和别的布局撞键时给行内提示，不静默抢占
+ */
+function ShortcutChip({ layout, index }: { layout: WorkspaceLayout; index: number }) {
+  const layouts = useLayoutStore((s) => s.layouts)
+  const combos = useLayoutShortcutStore((s) => s.combos)
+  const set = useLayoutShortcutStore((s) => s.set)
+  const reset = useLayoutShortcutStore((s) => s.reset)
+  const [recording, setRecording] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const combo = layout.id in combos ? combos[layout.id] : defaultCombo(index)
+  const isCustom = layout.id in combos
+
+  useEffect(() => {
+    if (!recording) return
+    const handler = (event: KeyboardEvent) => {
+      // 录制期间独占键盘：不让全局快捷键（切布局、⌘,）跟着触发
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === "Escape") {
+        setRecording(false)
+        setError(null)
+        return
+      }
+      if (event.key === "Backspace" || event.key === "Delete") {
+        set(layout.id, null)
+        setRecording(false)
+        setError(null)
+        return
+      }
+      const result = comboFromEvent(event)
+      if ("reason" in result) {
+        setError(result.reason)
+        return
+      }
+      const owner = comboOwner(layouts, combos, result.combo, layout.id)
+      if (owner) {
+        setError(`已经给了「${owner}」`)
+        return
+      }
+      set(layout.id, result.combo)
+      setRecording(false)
+      setError(null)
+    }
+    window.addEventListener("keydown", handler, true)
+    return () => window.removeEventListener("keydown", handler, true)
+  }, [recording, layout.id, layouts, combos, set])
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => {
+          setRecording(true)
+          setError(null)
+        }}
+        title={recording ? "按下新的组合键（Esc 取消，Backspace 清除）" : "点击改快捷键"}
+        aria-label={`${layout.name} 的快捷键，点击修改`}
+        className={cn(
+          "font-number text-caption rounded-sm border px-1.5 py-0.5 transition-colors",
+          recording
+            ? "border-brand text-brand animate-pulse"
+            : isCustom
+              ? "border-hairline text-secondary hover:border-brand/50 hover:text-primary"
+              : "border-hairline text-tertiary hover:border-brand/50 hover:text-secondary"
+        )}
+      >
+        {recording ? "按下快捷键…" : combo ? formatCombo(combo) : "无"}
+      </button>
+      {isCustom && !recording && (
+        <button
+          type="button"
+          onClick={() => reset(layout.id)}
+          title="恢复默认快捷键"
+          aria-label={`恢复 ${layout.name} 的默认快捷键`}
+          className="text-tertiary hover:text-primary text-micro"
+        >
+          恢复
+        </button>
+      )}
+      {error && <span className="text-danger text-micro">{error}</span>}
+    </span>
   )
 }
 
@@ -94,7 +186,7 @@ export default function LayoutsSettings() {
       <section className="bg-surface border-hairline rounded-lg border px-5 py-4">
         <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-primary text-body font-semibold">工作区布局</h2>
-          <span className="text-tertiary text-micro">⌘1–9 切换 · ⌘, 回到这里</span>
+          <span className="text-tertiary text-micro">⌘1–9 默认切换 · ⌘, 回到这里</span>
         </div>
 
         <ul className="divide-hairline divide-y">
@@ -122,13 +214,13 @@ export default function LayoutsSettings() {
                       </p>
                       <p className="text-tertiary text-caption mt-0.5">
                         {layout.builtin ? "内置" : "自定义"}
-                        {shortcutIndex < 9 && ` · ⌘${shortcutIndex + 1}`}
                       </p>
                     </div>
                   )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
+                  <ShortcutChip layout={layout} index={shortcutIndex} />
                   {!isActive && (
                     <Button
                       variant="ghost"

@@ -1,12 +1,15 @@
 import { useEffect } from "react"
 import { eachLeaf, useLayoutStore } from "@/stores/layoutStore"
+import { combosFor, useLayoutShortcutStore } from "@/stores/layoutShortcutStore"
+import { pressedCombo } from "@/lib/shortcuts"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 import { useUiStore } from "@/stores/ui"
 
 /**
  * 工作区的全局快捷键。
  *
- * - `⌘1–9` 直接跳到第 n 个布局（顺序与设置里的列表一致）
+ * - 布局快捷键：默认 `⌘1–9` 按列表位置，可在 设置 · 布局 里逐个改成任意
+ *   `⌘/⌃ + 键` 的组合（含 `⌘⇧1`、`⌘⌥K` 这类）
  * - `⌘,` 打开设置（设置里的「布局」页就是布局管理入口）
  * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
  * - `Esc` 先退子页面，再还原放大的格子，最后退出结构编辑态
@@ -91,15 +94,23 @@ export function useWorkspaceShortcuts() {
         return
       }
 
-      // ⌘1–9 —— 直接跳第 n 个布局
-      if (mod && !event.altKey && !event.shiftKey) {
-        const digit =
-          /^Digit([1-9])$/.exec(event.code)?.[1] ?? (/^[1-9]$/.test(event.key) ? event.key : "")
-        const target = digit ? useLayoutStore.getState().layouts[Number(digit) - 1] : undefined
-        if (target && !inEditable(event)) {
+      // 布局快捷键（默认 ⌘1–9，可在设置里自定义）
+      if (!inEditable(event)) {
+        const combo = pressedCombo(event)
+        const bindings = combosFor(
+          useLayoutStore.getState().layouts,
+          useLayoutShortcutStore.getState().combos
+        )
+        // 默认键写成 ⌘n；Windows/Linux 上按 ⌃n 也要能中（沿用以前 meta||ctrl 的口径）
+        const target =
+          bindings.find((item) => item.combo === combo) ??
+          (combo.startsWith("Ctrl+")
+            ? bindings.find((item) => item.combo === combo.replace(/^Ctrl\+/, "Meta+"))
+            : undefined)
+        if (target) {
           event.preventDefault()
           if (useUiStore.getState().mode !== "chat") useUiStore.getState().setMode("chat")
-          setLayout(target.id)
+          setLayout(target.layoutId)
           return
         }
       }
