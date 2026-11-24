@@ -570,7 +570,10 @@ async fn api_kline_stream(
     // One-shot — see api_realtime_stream.
     match client.fetch_kline(&symbol, kline_period, count).await {
         Ok(data) => {
-            let json = serde_json::to_string(&data).map_err(|e| format!("serialize error: {e}"))?;
+            // 与 Web 端 SSE 的批量形状保持一致：{ "600519.SS": <kline> }
+            let value = serde_json::to_value(&data).map_err(|e| format!("serialize error: {e}"))?;
+            let json = serde_json::to_string(&serde_json::json!({ symbol.as_str(): value }))
+                .map_err(|e| format!("serialize error: {e}"))?;
             channel
                 .send(json)
                 .map_err(|e| format!("channel error: {e}"))

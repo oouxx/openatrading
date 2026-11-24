@@ -87,7 +87,7 @@ export function subscribeRealtime<T = unknown>(
             onError?.(String(parsed.error))
           } else {
             // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-            const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
+            const found = matchSymbol(parsed, normalized)
             if (found) onData(found as T)
           }
         }
@@ -115,7 +115,7 @@ export function subscribeRealtime<T = unknown>(
       onError?.(String(parsed.error))
     } else {
       // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-      const found = matchSymbol(parsed, normalized) ?? Object.values(parsed)[0]
+      const found = matchSymbol(parsed, normalized)
       if (found) onData(found as T)
     }
   }
@@ -290,8 +290,9 @@ export function subscribeOrderBook<T = unknown>(
           if (parsed.error) {
             onError?.(String(parsed.error))
           } else {
-            // 与 Web 端一致：批量形状 { "000001": OrderBook }
-            const found = matchSymbol(parsed, symbol) ?? Object.values(parsed)[0]
+            // 批量形状 { "000001": OrderBook }；payload 是全站订阅的并集，
+            // 匹配不到自己那只时**不能**退回第一条（那会是别人的盘口）
+            const found = matchSymbol(parsed, symbol)
             if (found) onData(found as T)
           }
         }
@@ -312,7 +313,8 @@ export function subscribeOrderBook<T = unknown>(
     `/api/order-book/stream?symbols=${encodeURIComponent(symbol)}`,
     (data) => {
       const map = data as Record<string, unknown>
-      const found = matchSymbol(map, symbol) ?? Object.values(map)[0]
+      // 并集 payload：只认自己这只，匹配不到就等下一帧（绝不退回第一条）
+      const found = matchSymbol(map, symbol)
       if (found) onData(found as T)
     },
     onError
@@ -369,7 +371,7 @@ export function subscribeKline<T = unknown>(
   // Web: sseStream passes raw JSON — unwrap batch map to extract single symbol data
   const wrappedOnData = (data: unknown) => {
     const map = data as Record<string, unknown>
-    const found = matchSymbol(map, symbol) ?? Object.values(map)[0]
+    const found = matchSymbol(map, symbol)
     if (found) onData(found as T)
   }
 

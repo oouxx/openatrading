@@ -17,7 +17,7 @@ use tokio::sync::broadcast;
 use crate::AppState;
 
 use crate::cache::{self, CachePolicy};
-use crate::market_stream::{FetchFn, StreamSpec};
+use crate::market_stream::{FetchFn, StreamSpec, StreamSubscription};
 use openatrading_core::api::utils::to_yahoo_symbol;
 use openatrading_core::api::xuangubao::{KlinePeriod, XuanguBaoClient};
 
@@ -253,10 +253,12 @@ pub struct KlineStreamQuery {
 /// is skipped — the race between reading `last` and subscribing can otherwise
 /// duplicate the most recent payload.
 fn market_sse(
-    rx: broadcast::Receiver<String>,
-    last: Option<String>,
+    subscription: StreamSubscription,
 ) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
     let s = stream! {
+        // 守卫在整条 SSE 的生命周期里持有：连接结束时把符号从这一路上游的并集里
+        // 摘掉，否则会为没人看的票一直打上游。
+        let ((rx, last), _guard) = subscription.into_parts();
         let mut rx = rx;
         let mut skip = last.clone();
         if let Some(json) = last {
@@ -302,10 +304,9 @@ pub async fn get_kline_stream(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // One shared upstream poll per symbol set, fanned out to every SSE
-    // connection via the hub. The fetch closure also repopulates the
-    // per-symbol kline cache, so the single-shot `/api/kline/:symbol`
-    // endpoint reads stream-fresh data instead of fetching upstream itself.
+    // 同一种周期+条数共用**一条**上游轮询（hub 按 kind 去重，符号进并集），
+    // 结果广播给所有连接，各连接按 symbol 取自己要的那几只。
+    // fetch 同时回填逐票缓存，单发接口 `/api/kline/:symbol` 因此能读到流内新鲜数据。
     let cache = Arc::clone(&state.cache);
     let client = Arc::new(XuanguBaoClient::new());
     let fetch: FetchFn = Arc::new(move |syms: &[String]| {
@@ -333,13 +334,14 @@ pub async fn get_kline_stream(
     });
 
     let spec = StreamSpec {
-        key: format!("kline:{}:{}", period.as_str(), symbols.join(",")),
+        // 一种周期+条数一条上游轮询；符号只是并集里的元素，不参与 key
+        kind: format!("kline:{}:{count}", period.as_str()),
         trading_interval: Duration::from_secs(3),
         nontrading_interval: Duration::from_secs(30),
         fetch,
     };
-    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
-    Ok(market_sse(rx, last))
+    let subscription = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(subscription))
 }
 
 /// GET /api/kline/:symbol
@@ -381,7 +383,7 @@ pub async fn get_realtime(
 
 /// GET /api/order-book/stream — SSE，盘口五档，交易时段每 3 秒一帧。
 ///
-/// 与其他行情流同构：同一组 symbol 共用一条上游轮询，结果以
+/// 与其他行情流同构：全站共用一条上游轮询（符号进并集），结果以
 /// `{ "000001": OrderBook }` 的批量形状广播；同时回填 `order_book_{symbol}`
 /// 缓存，供单发接口 `/api/order-book/:symbol` 读到流内新鲜数据。
 #[derive(serde::Deserialize)]
@@ -446,14 +448,14 @@ pub async fn get_order_book_stream(
     });
 
     let spec = StreamSpec {
-        key: format!("order-book:{}", symbols.join(",")),
+        kind: "order-book".to_string(),
         // 盘口变化比 K 线快，交易时段 3 秒一帧；休市时每秒也变不出新挂单。
         trading_interval: Duration::from_secs(3),
         nontrading_interval: Duration::from_secs(30),
         fetch,
     };
-    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
-    Ok(market_sse(rx, last))
+    let subscription = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(subscription))
 }
 
 /// GET /api/order-book/:symbol — 盘口五档
@@ -501,10 +503,9 @@ pub async fn get_realtime_stream(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // One shared upstream poll per symbol set, fanned out to every SSE
-    // connection via the hub. The fetch closure also repopulates the
-    // per-symbol realtime cache, so the single-shot `/api/realtime/:symbol`
-    // endpoint reads stream-fresh data instead of fetching upstream itself.
+    // 实时行情全站共用一条上游轮询（hub 按 kind 去重，符号进并集）：连接数、
+    // 自选分片数都不再放大上游调用量。fetch 同时回填逐票缓存，单发接口
+    // `/api/realtime/:symbol` 因此能读到流内新鲜数据。
     let cache = Arc::clone(&state.cache);
     let client = Arc::new(XuanguBaoClient::new());
     let fetch: FetchFn = Arc::new(move |syms: &[String]| {
@@ -535,13 +536,13 @@ pub async fn get_realtime_stream(
     });
 
     let spec = StreamSpec {
-        key: format!("realtime:{}", symbols.join(",")),
+        kind: "realtime".to_string(),
         trading_interval: Duration::from_secs(3),
         nontrading_interval: Duration::from_secs(30),
         fetch,
     };
-    let (rx, last) = state.market_hub.subscribe(spec, symbols).await;
-    Ok(market_sse(rx, last))
+    let subscription = state.market_hub.subscribe(spec, symbols).await;
+    Ok(market_sse(subscription))
 }
 
 /// GET /api/yesterday-limit-up
