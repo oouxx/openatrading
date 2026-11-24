@@ -144,6 +144,33 @@ export function subscribeRealtimeBatch<T = unknown>(
 ): () => void {
   if (symbols.length === 0) return () => {}
 
+  // 一条连接带全部代码会把 URL 推过代理的长度上限（自选一多就是 414），
+  // 按批次拆成多条连接：每条约 1KB，几秒钟一轮也不会互相拖慢。
+  const unique = [...new Set(symbols)]
+  if (unique.length <= REALTIME_BATCH_SIZE) {
+    return subscribeRealtimeBatchChunk(unique, onData, onError)
+  }
+  const cleanups: (() => void)[] = []
+  for (let i = 0; i < unique.length; i += REALTIME_BATCH_SIZE) {
+    cleanups.push(
+      subscribeRealtimeBatchChunk(unique.slice(i, i + REALTIME_BATCH_SIZE), onData, onError)
+    )
+  }
+  return () => {
+    for (const cleanup of cleanups) cleanup()
+  }
+}
+
+/** 一条连接承载的代码数上限（与服务端上游分片一致，别超过 60 太多）。 */
+const REALTIME_BATCH_SIZE = 60
+
+function subscribeRealtimeBatchChunk<T = unknown>(
+  symbols: string[],
+  onData: (code: string, data: T) => void,
+  onError?: (err: string) => void
+): () => void {
+  if (symbols.length === 0) return () => {}
+
   const normalizedSymbols = symbols.map(normalizeSymbolSafe)
   const code = normalizedSymbols.join(",")
 

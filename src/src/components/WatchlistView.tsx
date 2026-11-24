@@ -1,7 +1,17 @@
 import { formatCompactNumber } from "@/lib/format"
 import { searchStocks } from "@/lib/stock-utils"
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { ArrowDown, ArrowUp, ArrowUpDown, Plus, Search, Star, Trash2, X } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Plus,
+  Search,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react"
 import {
   useWatchlist,
   useAddWatchlist,
@@ -61,28 +71,35 @@ export default function WatchlistView({
     [layoutId, leafId, openStockInPane]
   )
 
-  // ── Real-time quotes via streams — single SSE for all symbols ──
+  // ── Real-time quotes via streams（内部按 60 一片拆成多条 SSE） ──
   const [quotesMap, setQuotesMap] = useState<Map<string, RealtimeQuote>>(new Map())
   const [quoteTick, setQuoteTick] = useState(0)
+  // 行情流断开时给一句明确的话：以前是静默失败，行里只剩「—」，看着像数据源没数
+  const [streamError, setStreamError] = useState<string | null>(null)
 
   useEffect(() => {
     if (items.length === 0) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换自选列表时先清空上一轮行情
     setQuotesMap(new Map())
     const codes = items.map((item) => item.code)
-    return subscribeRealtimeBatch<RealtimeQuote>(codes, (code, data) => {
-      setQuotesMap((prev) => {
-        const next = new Map(prev)
-        next.set(code, {
-          last_px: data.last_px,
-          px_change_rate: data.px_change_rate,
-          market_value: data.market_value,
-          circulation_value: data.circulation_value,
+    return subscribeRealtimeBatch<RealtimeQuote>(
+      codes,
+      (code, data) => {
+        setStreamError(null)
+        setQuotesMap((prev) => {
+          const next = new Map(prev)
+          next.set(code, {
+            last_px: data.last_px,
+            px_change_rate: data.px_change_rate,
+            market_value: data.market_value,
+            circulation_value: data.circulation_value,
+          })
+          return next
         })
-        return next
-      })
-      setQuoteTick((n) => n + 1)
-    })
+        setQuoteTick((n) => n + 1)
+      },
+      (err) => setStreamError(err)
+    )
   }, [items])
 
   // ── Add-stock search ──
@@ -265,6 +282,14 @@ export default function WatchlistView({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 行情流断开：明确说是"连接断了"，别让空行「—」被读成"没有数据" */}
+          {streamError && !isLoading && sorted.length > 0 && (
+            <div className="border-warning/30 bg-warning/10 text-warning text-caption mb-3 flex items-center gap-1.5 rounded-md border px-3 py-2">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">行情连接中断（{streamError}），正在自动重连…</span>
             </div>
           )}
 

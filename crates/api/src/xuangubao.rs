@@ -1162,6 +1162,12 @@ impl Default for XuanguBaoClient {
     }
 }
 
+/// 单个上游请求最多带多少个代码。
+///
+/// 选股宝 `/market/real` 把代码塞进 query，几百个代码的 URL 会被上游或中间代理拒掉
+/// （414/400）；60 个既能让 3 秒一轮的轮询跑得动，也不会让 URL 超过 1KB。
+const REALTIME_BATCH_LIMIT: usize = 60;
+
 impl XuanguBaoClient {
     pub fn new() -> Self {
         Self::with_urls(BASE_URL.to_string(), MARKET_BASE_URL.to_string())
@@ -2427,21 +2433,50 @@ impl XuanguBaoClient {
         })
     }
 
-    /// Fetch realtime quotes for multiple symbols in a single API call.
-    /// Returns a map keyed by normalized (yahoo) symbol.
     /// Fetch real-time quotes for multiple symbols.
     ///
+    /// 上游 `/market/real` 把代码放在 query 里（`prod_code=a,b,c`），一次几百个会把
+    /// URL 推过上游与中间代理的长度上限（自选股一多就是 414/400）。这里按
+    /// `REALTIME_BATCH_LIMIT` 分片取，再合并结果——调用方不需要关心数量。
+    ///
+    /// 重复代码先去重：同一只票在一个批次里只会被请求一次。
+    ///
     /// # Errors
-    /// Returns an error if the HTTP request fails, any symbol is invalid, or the response cannot be parsed.
+    /// Returns an error if any chunk's HTTP request fails, a symbol is invalid, or a response cannot be parsed.
     pub async fn fetch_realtime_batch(
         &self,
         symbols: &[String],
     ) -> Result<ahash::AHashMap<String, RealtimeQuote>> {
-        let yahoo_symbols: Vec<String> = symbols
-            .iter()
-            .map(|s| to_yahoo_symbol(s))
-            .collect::<Result<Vec<_>>>()?;
+        let mut seen = std::collections::HashSet::new();
+        let mut yahoo_symbols: Vec<String> = Vec::with_capacity(symbols.len());
+        for symbol in symbols {
+            let yahoo = to_yahoo_symbol(symbol)?;
+            if seen.insert(yahoo.clone()) {
+                yahoo_symbols.push(yahoo);
+            }
+        }
+        if yahoo_symbols.is_empty() {
+            return Ok(ahash::AHashMap::new());
+        }
 
+        let chunks: Vec<Vec<String>> = yahoo_symbols
+            .chunks(REALTIME_BATCH_LIMIT)
+            .map(<[String]>::to_vec)
+            .collect();
+        let mut merged = ahash::AHashMap::new();
+        for chunk in chunks {
+            let part = self.fetch_realtime_chunk(&chunk).await?;
+            merged.extend(part);
+        }
+        Ok(merged)
+    }
+
+    /// 一片实时行情（一个上游请求）。分片与合并见 [`Self::fetch_realtime_batch`]。
+    async fn fetch_realtime_chunk(
+        &self,
+        yahoo_symbols: &[String],
+    ) -> Result<ahash::AHashMap<String, RealtimeQuote>> {
+        let yahoo_symbols: Vec<String> = yahoo_symbols.to_vec();
         let prod_codes: Vec<&str> = yahoo_symbols
             .iter()
             .map(std::string::String::as_str)

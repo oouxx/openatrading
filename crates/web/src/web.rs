@@ -467,6 +467,12 @@ pub async fn get_order_book(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+/// 一条实时行情订阅最多带多少只票。
+///
+/// 前端按 60 一片订阅（URL 长度可控），这里留出余量做成硬上限：超过就 400，
+/// 而不是让请求打到上游拿一个看不懂的 414。
+const MAX_REALTIME_STREAM_SYMBOLS: usize = 300;
+
 /// GET /api/realtime/stream — SSE, every 3s, comma-separated symbols
 #[derive(serde::Deserialize)]
 pub struct RealtimeStreamQuery {
@@ -478,13 +484,20 @@ pub async fn get_realtime_stream(
     State(state): State<Arc<AppState>>,
     Query(q): Query<RealtimeStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    // 去重：分片订阅的边界可能带重复代码，重复只会让上游 URL 变长
+    let mut seen = std::collections::HashSet::new();
     let symbols: Vec<String> = q
         .symbols
         .split(',')
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && seen.insert(s.clone()))
         .collect();
     if symbols.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    // 上限兜底：前端已经按 60 一片订阅，这里拦住手写的超大请求，
+    // 别让请求打到上游再拿一个看不懂的 414
+    if symbols.len() > MAX_REALTIME_STREAM_SYMBOLS {
         return Err(StatusCode::BAD_REQUEST);
     }
 
