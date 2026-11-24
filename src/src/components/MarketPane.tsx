@@ -1,25 +1,13 @@
 import MarketView from "@/components/MarketView"
 import { PaneNavProvider } from "@/components/PaneNav"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { isMarketPaneKind, useLayoutStore, type PaneKind } from "@/stores/layoutStore"
+import { MARKET_VIEW_ICONS } from "@/lib/marketViews"
+import { PANE_KIND_LABELS } from "@/stores/layoutStore"
 import type { MarketPaneKind } from "@/stores/layoutStore"
-import { SWITCHABLE_PANE_KINDS } from "@/lib/paneRegistry"
-import PaneKindOption from "@/components/PaneKindOption"
 
 /**
- * 行情格：一个格子只看一个榜，表头下拉是"这一格放什么"。
- *
- * 表头下拉是"这一格放什么"：九个行情榜和通用面板（个股详情 / 五档 / 下单 / 自选 /
- * 模拟盘）在同一份列表里，分组展示。行情格的换面板只在这一处，角落里不再重复一颗；
- * 非行情格没有这个表头，才退回角落的 `PaneKindSwitcher`。
+ * 行情格：一个格子只看一个榜。表头只显示当前榜名，**不**放切换器——换内容统一走
+ * 右上角的 `PaneKindSwitcher`（14 种面板同一套控件、同一个位置），否则行情格有两个
+ * 入口、其它格子只有角落那一个，位置还不一致。
  *
  * 点表格里的股票：这一格被拖到别的格上关联过，就在那一格打开 K 线；否则在本格开
  * 子页面。关联 / 解除都由格子角落的把手拖动完成（见 `usePaneDragLink`）。
@@ -33,46 +21,22 @@ export default function MarketPane({
   layoutId: string
   kind: MarketPaneKind
 }) {
-  const setPaneKind = useLayoutStore((s) => s.setPaneKind)
+  // 表头只显示当前榜名；图标用查表而不是渲染期调函数（会被 fast-refresh 判成
+  // "render 期创建组件"）
+  const Icon = MARKET_VIEW_ICONS[kind] ?? MARKET_VIEW_ICONS["strong-stocks"]
+  const title = PANE_KIND_LABELS[kind] ?? kind
 
   return (
     <PaneNavProvider leafId={leafId} layoutId={layoutId}>
       <div className="bg-surface @container flex h-full min-w-0 flex-col overflow-hidden">
         <header className="border-hairline flex h-9 shrink-0 items-center gap-1 border-b px-1.5">
-          {/* 这一格放什么：通用面板和九个行情榜在同一个下拉里（和角落里那份一模一样，
-              所以角落那颗已经不再重复出现） */}
-          <Select
-            value={kind}
-            onValueChange={(next) => setPaneKind(layoutId, leafId, next as PaneKind)}
-          >
-            <SelectTrigger
-              size="sm"
-              aria-label="这一格放什么"
-              title="这一格放什么"
-              className="text-caption text-primary hover:bg-hover h-7 min-w-0 gap-1.5 border-transparent bg-transparent px-1 font-medium shadow-none"
-            >
-              {/* 图标由 SelectValue 带出来（选中项本身就是 PaneKindOption：图标 + 名字） */}
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-h-[70vh]">
-              <SelectGroup>
-                <SelectLabel>通用</SelectLabel>
-                {SWITCHABLE_PANE_KINDS.filter((item) => !isMarketPaneKind(item)).map((item) => (
-                  <SelectItem key={item} value={item}>
-                    <PaneKindOption kind={item} />
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>行情</SelectLabel>
-                {SWITCHABLE_PANE_KINDS.filter((item) => isMarketPaneKind(item)).map((item) => (
-                  <SelectItem key={item} value={item}>
-                    <PaneKindOption kind={item} />
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          {/* 这一格看哪个榜：只做**展示**。换内容统一走右上角那颗（14 种面板同一套
+              控件、同一个位置），表头这里不再放第二个下拉——否则行情格有两个入口，
+              别的格子又只能去角落，位置不一致。 */}
+          <span className="flex min-w-0 items-center gap-1.5 px-1">
+            <Icon className="text-tertiary size-3.5 shrink-0" />
+            <span className="text-caption text-primary truncate font-medium">{title}</span>
+          </span>
         </header>
 
         <div className="relative min-h-0 flex-1 overflow-y-auto">
