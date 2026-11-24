@@ -604,9 +604,9 @@ dependencies = [
 
 [[package]]
 name = "brotli-decompressor"
-version = "6.3.2"
+version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc031cd87c6529082b0b65c604e86af0ed7744841b17ccfe60b1e31fa606179e"
+checksum = "664148598c930650998ef56df301329ffe7b4cdb02d49b2a3fca3bcaf2185bcb"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -4115,7 +4115,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-agent"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4137,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-api"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-channels"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4178,7 +4178,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-cli"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4206,7 +4206,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-core"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -4241,7 +4241,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-extension"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4258,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-tauri"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4281,7 +4281,7 @@ dependencies = [
 
 [[package]]
 name = "openatrading-web"
-version = "0.20.14"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "arc-swap",
