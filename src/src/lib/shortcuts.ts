@@ -33,7 +33,7 @@ const MODIFIER_CODES = new Set([
 export type ComboResult = { combo: string } | { reason: string }
 
 /**
- * 已经被工作区占用的组合键：`⌘,` 打开设置、`⌘⇧F` 放大当前格。
+ * 已经被工作区占用的组合键：`⌘,` 打开设置、`⌘↵` 放大当前格。
  * 布局快捷键不能抢这两个，否则用户会突然打不开设置。
  */
 const RESERVED_COMBOS: Record<string, string> = {
@@ -43,8 +43,8 @@ const RESERVED_COMBOS: Record<string, string> = {
   "Ctrl+KeyE": "⌘E 是编辑当前布局的快捷键",
   "Meta+KeyS": "⌘S 是保存布局的快捷键",
   "Ctrl+KeyS": "⌘S 是保存布局的快捷键",
-  "Meta+Shift+KeyF": "⌘⇧F 是放大当前格的快捷键",
-  "Ctrl+Shift+KeyF": "⌘⇧F 是放大当前格的快捷键",
+  "Meta+Enter": "⌘↵ 是放大当前格的快捷键",
+  "Ctrl+Enter": "⌘↵ 是放大当前格的快捷键",
 }
 
 /** 把一次 keydown 转成规范化的组合键；不带 ⌘/⌃ 的按下直接拒绝（否则会抢打字）。 */

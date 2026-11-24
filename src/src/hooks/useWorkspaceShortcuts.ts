@@ -13,7 +13,7 @@ import { useUiStore } from "@/stores/ui"
  * - `⌘,` 打开设置（设置里的「布局」页就是布局管理入口）
  * - `⌘E` 编辑当前布局的结构（内置布局只读，会先克隆一份再进编辑）
  * - `⌘S` 结束编辑（改动一直是即时保存的，这里是把"收工"变成一个手感熟悉的动作）
- * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
+ * - `⌘↵` 把光标所在的格子放大/还原；没有指向时放大第一格
  * - `Esc` 先退子页面，再还原放大的格子，最后退出结构编辑态
  *
  * 几个按下注意：
@@ -100,8 +100,16 @@ export function useWorkspaceShortcuts() {
         return
       }
 
-      // ⌘⇧F —— 放大/还原光标所在的那一格
-      if (mod && event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
+      // ⌘↵ —— 放大/还原光标所在的那一格。
+      // 光标在输入框里时让位（聊天框里 ⌘↵ 是发送），弹窗开着时也不抢。
+      if (
+        mod &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key === "Enter" &&
+        !inEditable(event) &&
+        !document.querySelector('[role="dialog"]')
+      ) {
         event.preventDefault()
         const state = useLayoutStore.getState()
         const layout = state.layouts.find((item) => item.id === state.activeId)

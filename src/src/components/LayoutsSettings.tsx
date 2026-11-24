@@ -331,7 +331,7 @@ export default function LayoutsSettings() {
         </p>
         <p className="flex items-start gap-1.5">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
-          工作区里每格右上角可以把这一格放大到全屏；快捷键 ⌘⇧F，Esc 还原。
+          工作区里每格右上角可以把这一格放大到全屏；快捷键 ⌘↵，Esc 还原。
         </p>
       </div>
 

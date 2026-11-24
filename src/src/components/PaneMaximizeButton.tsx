@@ -21,7 +21,7 @@ export default function PaneMaximizeButton({
   const maximized = useLayoutStore((s) => s.maximizedPaneId === leafId)
   const setMaximizedPane = useLayoutStore((s) => s.setMaximizedPane)
   const Icon = maximized ? Minimize2 : Maximize2
-  const label = maximized ? "还原（Esc）" : "放大这一格（⌘⇧F）"
+  const label = maximized ? "还原（Esc）" : "放大这一格（⌘↵）"
 
   return (
     <Button

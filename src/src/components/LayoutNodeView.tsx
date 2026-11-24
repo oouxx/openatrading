@@ -171,7 +171,7 @@ function defaultSizes(children: LayoutNode[]): string[] {
 
 /**
  * 一格的定位外壳：`group/pane` 让右上角按钮能跟着悬停出现，顺便把"鼠标在哪一格"
- * 记进 store —— ⌘⇧F 需要一个作用对象，光标所在格就是最不意外的那一个。
+ * 记进 store —— ⌘↵ 需要一个作用对象，光标所在格就是最不意外的那一个。
  */
 function PaneFrame({ paneId, children }: { paneId: string; children: ReactNode }) {
   const setActivePane = useLayoutStore((s) => s.setActivePane)

@@ -513,7 +513,7 @@ interface LayoutState {
   editingId: string | null
   /** 被放大到整块工作区的格子（不持久化，属于临时视图状态）。 */
   maximizedPaneId: string | null
-  /** 鼠标所在/最近交互的格子，⌘⇧F 的对象。 */
+  /** 鼠标所在/最近交互的格子，⌘↵ 的对象。 */
   activePaneId: string | null
   /**
    * 每一格自己打开的"子页面"**栈**：点股票 → K 线，点板块 → 板块详情。
