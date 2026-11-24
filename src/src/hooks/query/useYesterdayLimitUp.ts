@@ -7,10 +7,11 @@ export function useYesterdayLimitUp() {
   return useQuery({
     queryKey: yesterdayLimitUpKeys.all,
     queryFn: () => fetchJson<Stock[]>("/api/yesterday-limit-up"),
-    // 榜单要跟着盘中变化走：服务端缓存 10 秒，前端 15 秒一轮不会额外压上游；
-    // 页面不可见时不刷（切回来再补）。
-    staleTime: 10 * 1000,
-    refetchInterval: 15 * 1000,
+    // 昨日涨停的**名单**当天开盘后就固定了，只有"今天表现"会在意时间差；而这个接口
+    // 单次 250KB（150 行 × 全字段），15 秒一轮太浪费。给 60 秒：晋级分析里真正在动的
+    // 今日涨停名单由 `useLimitUp` 15 秒刷。
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
     refetchIntervalInBackground: false,
   })
 }
