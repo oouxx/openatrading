@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { fetchLayoutSnapshot, pushLayoutSnapshot } from "@/lib/layoutsApi"
+import { useChatStockStore } from "./chatStockStore"
 import { isRightPanelView } from "./rightPanelStore"
 
 /**
@@ -862,6 +863,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       if (!leaf) return
       if (leaf.kind === "detail" && !layout.builtin) {
         get().setPaneSymbol(layoutId, nodeId, symbol, name)
+        return
+      }
+      // 对话格有自己的一套 K 线标签，别再叠一层子页面
+      if (leaf.kind === "chat") {
+        useChatStockStore.getState().open(symbol, name)
         return
       }
       get().openPaneStock(nodeId, symbol, name)

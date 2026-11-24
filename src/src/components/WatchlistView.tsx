@@ -1,18 +1,7 @@
 import { formatCompactNumber } from "@/lib/format"
 import { searchStocks } from "@/lib/stock-utils"
 import { useState, useMemo, useCallback, useEffect } from "react"
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Link2,
-  Link2Off,
-  Plus,
-  Search,
-  Star,
-  Trash2,
-  X,
-} from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Plus, Search, Star, Trash2, X } from "lucide-react"
 import {
   useWatchlist,
   useAddWatchlist,
@@ -25,21 +14,9 @@ import { Input } from "@/components/ui/input"
 import { DataEmpty, DataLoading } from "@/components/data-state"
 import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  eachLeaf,
-  findLeaf,
-  isMarketPaneKind,
-  PANE_KIND_LABELS,
-  useLayoutStore,
-} from "@/stores/layoutStore"
-import { usePaneLinkStore } from "@/stores/paneLinkStore"
+import { useLayoutStore } from "@/stores/layoutStore"
+import { resolveStockTarget } from "@/stores/paneLinkStore"
+import StockLinkSelect from "@/components/StockLinkSelect"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
@@ -72,36 +49,6 @@ export default function WatchlistView({
   // 独立页面模式的 K 线（网格模式下派发到别的格子，不用这份状态）
   const [pageKline, setPageKline] = useState<{ symbol: string; name: string } | null>(null)
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  const layout = useLayoutStore((s) => (layoutId ? s.layouts.find((l) => l.id === layoutId) : null))
-  const linkTargetId = usePaneLinkStore((s) =>
-    layoutId && leafId ? (s.links[layoutId]?.[leafId] ?? null) : null
-  )
-  const link = usePaneLinkStore((s) => s.link)
-  const unlink = usePaneLinkStore((s) => s.unlink)
-
-  /** 可选联动目标：能显示 K 线的其它格子（个股详情 / 各行情格）。 */
-  const linkTargets = useMemo(() => {
-    if (!layout || !leafId) return []
-    const out: { id: string; label: string }[] = []
-    eachLeaf(layout.root, (leaf) => {
-      if (leaf.id === leafId) return
-      if (leaf.kind === "detail") {
-        out.push({
-          id: leaf.id,
-          label: leaf.symbolName
-            ? `${PANE_KIND_LABELS.detail} · ${leaf.symbolName}`
-            : PANE_KIND_LABELS.detail,
-        })
-      } else if (isMarketPaneKind(leaf.kind)) {
-        out.push({ id: leaf.id, label: `行情 · ${PANE_KIND_LABELS[leaf.kind]}` })
-      }
-    })
-    return out
-  }, [layout, leafId])
-
-  // 关联目标可能因为拆格/删格失效：失效就回到"本格打开"
-  const linkTarget =
-    linkTargetId && layout && findLeaf(layout.root, linkTargetId) ? linkTargetId : null
 
   const openStock = useCallback(
     (code: string, name: string) => {
@@ -109,9 +56,9 @@ export default function WatchlistView({
         setPageKline({ symbol: code, name })
         return
       }
-      openStockInPane(layoutId, linkTarget ?? leafId, code, name)
+      openStockInPane(layoutId, resolveStockTarget(layoutId) ?? leafId, code, name)
     },
-    [layoutId, leafId, linkTarget, openStockInPane]
+    [layoutId, leafId, openStockInPane]
   )
 
   // ── Real-time quotes via streams — single SSE for all symbols ──
@@ -268,50 +215,7 @@ export default function WatchlistView({
                 )}
               </div>
 
-              {linkTargets.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <Select
-                    value={linkTarget ?? "self"}
-                    onValueChange={(next) => {
-                      if (!layoutId || !leafId) return
-                      if (next === "self") unlink(layoutId, leafId)
-                      else link(layoutId, leafId, next)
-                    }}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      aria-label="点击自选股时在哪一格打开 K 线"
-                      title="点击自选股时在哪一格打开 K 线"
-                      className="text-caption text-secondary h-8 w-[168px]"
-                    >
-                      <Link2 className={linkTarget ? "text-brand" : "text-tertiary"} />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="self">不关联 · 本格打开</SelectItem>
-                      {linkTargets.map((target) => (
-                        <SelectItem key={target.id} value={target.id}>
-                          {target.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {linkTarget && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-tertiary hover:text-primary"
-                      title="解除关联"
-                      aria-label="解除关联"
-                      onClick={() => {
-                        if (layoutId && leafId) unlink(layoutId, leafId)
-                      }}
-                    >
-                      <Link2Off className="size-3.5" />
-                    </Button>
-                  )}
-                </div>
-              )}
+              {layoutId && <StockLinkSelect layoutId={layoutId} />}
 
               <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
                 {showAdd ? <X /> : <Plus />}
