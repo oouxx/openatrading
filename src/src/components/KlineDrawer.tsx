@@ -175,6 +175,18 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
 
   const currCrosshair = crosshair ?? defaultCrosshair
 
+  // 图例始终渲染（数据未到时是占位符），高度才不会在加载前后跳一下。
+  const legend: CrosshairInfo = currCrosshair ?? {
+    time: "—",
+    open: "—",
+    high: "—",
+    low: "—",
+    close: "—",
+    volume: "—",
+    change: "—",
+    changeNum: 0,
+  }
+
   const up = quote != null && (quote.px_change_rate ?? -1) >= 0
 
   return (
@@ -251,30 +263,36 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
         </div>
       </div>
 
-      {/* Crosshair info bar */}
-      {currCrosshair && (
-        <div className="bg-surface border-hairline font-number text-caption flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-b px-3 py-1">
-          <span className="text-primary shrink-0">{currCrosshair.time}</span>
-          <div className="text-tertiary flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span>
-              开 <span className="text-primary">{currCrosshair.open}</span>
-            </span>
-            <span>
-              高 <span className="text-primary">{currCrosshair.high}</span>
-            </span>
-            <span>
-              低 <span className="text-primary">{currCrosshair.low}</span>
-            </span>
-            <span>
-              价 <span className="text-primary">{currCrosshair.close}</span>
-            </span>
-            <span>
-              量 <span className="text-primary">{currCrosshair.volume}</span>
-            </span>
-            <span className={pctClass(currCrosshair.changeNum)}>{currCrosshair.change}</span>
-          </div>
+      {/* Crosshair info bar（同花顺式图例）
+       *
+       * 固定两行、每行 18px（text-caption 行高），高度不随内容变：
+       * 这里原先用 flex-wrap，而自选股详情面板宽 500px 正好卡在换行边界——
+       * 分时的时间串比日 K 长 40px、量的位数随游标变化，于是同一处会一行/两行
+       * 来回跳；下面 K 线是固定高度（420px），上面一变高就把图表推下去，看着就是闪。
+       * 换行（而不是换行后高度自适）是根本原因，所以这里写死行数。 */}
+      <div className="bg-surface border-hairline font-number text-caption border-b px-3 py-1">
+        <div className="flex items-center justify-between gap-3 whitespace-nowrap">
+          <span className="text-primary min-w-0 truncate">{legend.time}</span>
+          <span className={`shrink-0 ${pctClass(legend.changeNum)}`}>{legend.change}</span>
         </div>
-      )}
+        <div className="text-tertiary flex items-center gap-x-2 overflow-hidden whitespace-nowrap">
+          <span>
+            开 <span className="text-primary">{legend.open}</span>
+          </span>
+          <span>
+            高 <span className="text-primary">{legend.high}</span>
+          </span>
+          <span>
+            低 <span className="text-primary">{legend.low}</span>
+          </span>
+          <span>
+            价 <span className="text-primary">{legend.close}</span>
+          </span>
+          <span>
+            量 <span className="text-primary">{legend.volume}</span>
+          </span>
+        </div>
+      </div>
 
       {/* Chart */}
       <div className="relative px-5">
