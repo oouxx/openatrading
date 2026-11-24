@@ -25,8 +25,7 @@ import { DataEmpty, DataLoading } from "@/components/data-state"
 import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
 import { useLayoutStore } from "@/stores/layoutStore"
-import { resolveStockTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
-import PaneLinkLock from "@/components/PaneLinkLock"
+import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
@@ -59,7 +58,8 @@ export default function WatchlistView({
   // 独立页面模式的 K 线（网格模式下派发到别的格子，不用这份状态）
   const [pageKline, setPageKline] = useState<{ symbol: string; name: string } | null>(null)
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  const locked = usePaneLinkStore((s) => s.isLocked(layoutId, leafId))
+  const linkTarget = usePaneLinkStore((s) => (layoutId ? s.links[layoutId]?.[leafId ?? ""] : null))
+  const target = linkTarget ? linkedTarget(layoutId, leafId) : null
 
   const openStock = useCallback(
     (code: string, name: string) => {
@@ -67,15 +67,10 @@ export default function WatchlistView({
         setPageKline({ symbol: code, name })
         return
       }
-      // 锁着就去关联格，解开就在本格打开（页内 K 线）
-      openStockInPane(
-        layoutId,
-        (locked ? resolveStockTarget(layoutId) : null) ?? leafId,
-        code,
-        name
-      )
+      // 拖拽关联过就在对方格打开，否则在本格开（页内 K 线）
+      openStockInPane(layoutId, target ?? leafId, code, name)
     },
-    [layoutId, leafId, locked, openStockInPane]
+    [layoutId, leafId, target, openStockInPane]
   )
 
   // ── Real-time quotes via streams（内部按 60 一片拆成多条 SSE） ──
@@ -238,8 +233,6 @@ export default function WatchlistView({
                   </Button>
                 )}
               </div>
-
-              {layoutId && leafId && <PaneLinkLock layoutId={layoutId} leafId={leafId} />}
 
               <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
                 {showAdd ? <X /> : <Plus />}

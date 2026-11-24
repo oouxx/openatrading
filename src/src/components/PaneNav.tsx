@@ -1,15 +1,15 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
 import { useLayoutStore } from "@/stores/layoutStore"
-import { resolveStockTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
+import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 /**
  * 面板内的"下一层页面"导航。
  *
  * 点股票要打开 K 线、点板块要打开板块详情：
- * - 股票 K 线默认派发到关联网格（自动跟随布局里第一格「个股详情」/ 对话格）；
- *   表头的锁解开时，就在本格开子页面。
+ * - 股票 K 线：这一格被拖到别的格上关联过就派发过去，否则在本格开子页面
+ *   （关联 / 解除都由格子角落的把手拖动完成）。
  * - 板块 / 龙虎榜这些详情子页面必须开在**点它的那一格**里：
  * - 网格格子 → 状态落在这一格的 leaf id 上，放大/还原、切回布局都还在，换榜时统一清掉；
  * - 右侧行情面板 → 沿用面板自身的覆盖层（老行为）。
@@ -29,7 +29,10 @@ export function PaneNavProvider({
   children: ReactNode
 }) {
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  const locked = usePaneLinkStore((s) => s.isLocked(layoutId, leafId))
+  // 关联是拖出来的（`usePaneDragLink`）：有链接就派发到对方格，没有就在本格开子页面。
+  // 订阅一下 links，拖拽改关联后这一格的派发目标要立刻跟着变。
+  const links = usePaneLinkStore((s) => s.links[layoutId])
+  const target = links?.[leafId] ? linkedTarget(layoutId, leafId) : null
   const openPanePlate = useLayoutStore((s) => s.openPanePlate)
   const openPaneDragon = useLayoutStore((s) => s.openPaneDragon)
   const closePaneDetail = useLayoutStore((s) => s.closePaneDetail)
@@ -38,14 +41,7 @@ export function PaneNavProvider({
 
   const value = useMemo<PaneNav>(
     () => ({
-      // 锁着派发到关联格，解开就在本格开子页面（PaneStockPage 负责渲染）
-      openStock: (symbol, name) =>
-        openStockInPane(
-          layoutId,
-          (locked ? resolveStockTarget(layoutId) : null) ?? leafId,
-          symbol,
-          name
-        ),
+      openStock: (symbol, name) => openStockInPane(layoutId, target ?? leafId, symbol, name),
       plateDetail: top?.type === "plate" ? top.plate : null,
       openPlate: (plate) => openPanePlate(leafId, plate),
       closePlate: () => closePaneDetail(leafId),
@@ -53,7 +49,7 @@ export function PaneNavProvider({
       openDragon: (item) => openPaneDragon(leafId, item),
       closeDragon: () => closePaneDetail(leafId),
     }),
-    [leafId, layoutId, locked, top, openStockInPane, openPanePlate, openPaneDragon, closePaneDetail]
+    [leafId, layoutId, target, top, openStockInPane, openPanePlate, openPaneDragon, closePaneDetail]
   )
   return <PaneNavContext.Provider value={value}>{children}</PaneNavContext.Provider>
 }

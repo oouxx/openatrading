@@ -3,12 +3,19 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import RightPanel from "@/components/RightPanel"
 import PaneEditOverlay from "@/components/PaneEditOverlay"
 import PaneMaximizeButton from "@/components/PaneMaximizeButton"
+import { Lock, Move } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import PaneStockPage from "@/components/PaneStockPage"
 import PaneKindSwitcher from "@/components/PaneKindSwitcher"
+import { usePaneDragLink } from "@/hooks/usePaneDragLink"
+import { usePaneDragStore } from "@/stores/paneDragStore"
+import { cn } from "@/lib/utils"
+import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
+  isMarketPaneKind,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -26,7 +33,13 @@ import {
  * 分隔条本身只有 4px 宽，不给一点容错就会一直点空。双击可把这一组恢复默认比例
  * （react-resizable-panels 内建行为）。
  */
-function PaneSeparator({ orientation }: { orientation: SplitOrientation }) {
+function PaneSeparator({
+  orientation,
+  children,
+}: {
+  orientation: SplitOrientation
+  children?: ReactNode
+}) {
   return (
     <Separator
       className={
@@ -34,7 +47,9 @@ function PaneSeparator({ orientation }: { orientation: SplitOrientation }) {
           ? "bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 relative w-1 shrink-0 cursor-col-resize transition-colors before:absolute before:inset-y-0 before:-left-1 before:w-3 before:content-['']"
           : "bg-hairline data-[separator=active]:bg-brand/60 data-[separator=hover]:bg-brand/40 relative h-1 w-full shrink-0 cursor-row-resize transition-colors before:absolute before:-top-1 before:h-3 before:w-full before:content-['']"
       }
-    />
+    >
+      {children}
+    </Separator>
   )
 }
 
@@ -63,6 +78,108 @@ function PaneKindButton({
   )
 }
 
+/**
+ * 格子角落的"拖动把手"：按住拖到另一格上 = 关联，拖开 = 解除关联。
+ *
+ * 只给**派发方**（行情格 / 自选）挂：接收方（个股详情、对话格）不需要把手，把榜单
+ * 拖到它上面就行。
+ */
+function PaneDragHandle({
+  layoutId,
+  leafId,
+  linked,
+  alwaysVisible,
+}: {
+  layoutId: string
+  leafId: string
+  linked: boolean
+  alwaysVisible?: boolean
+}) {
+  const begin = usePaneDragLink(layoutId)
+  const dragging = usePaneDragStore((s) => s.sourceId === leafId)
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联"}
+      title={linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联"}
+      onPointerDown={(event) => begin(leafId, event)}
+      className={cn(
+        "bg-surface/90 border-hairline hover:bg-hover text-tertiary hover:text-primary absolute top-1.5 right-19 z-30 rounded-md border transition-opacity",
+        alwaysVisible || dragging || linked
+          ? "opacity-100"
+          : "opacity-0 group-hover/pane:opacity-100",
+        dragging && "text-brand"
+      )}
+    >
+      <Move />
+    </Button>
+  )
+}
+
+/**
+ * 两格之间的锁：相邻的两格互相关联时，把锁挂在它们中间的分隔条上（"网格之间有个锁"）。
+ *
+ * 不写在格子角落里：关联是**两格之间的关系**，画在关系本身上最省解释。不是在同一个
+ * 分割里相邻的一对（比如跨了两层），锁就退回到派发方格子的把手上（把手常驻高亮）。
+ */
+function PaneLinkLock({
+  layoutId,
+  prev,
+  next,
+}: {
+  layoutId: string
+  prev: LayoutNode
+  next: LayoutNode
+}) {
+  const links = usePaneLinkStore((s) => s.links[layoutId])
+  const unlink = usePaneLinkStore((s) => s.unlink)
+  if (prev.type !== "pane" || next.type !== "pane") return null
+  const sourceId =
+    links?.[prev.id] === next.id ? prev.id : links?.[next.id] === prev.id ? next.id : null
+  if (!sourceId) return null
+
+  const label = "两格已关联：点股票在对方那一格打开（点这里解除）"
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => unlink(layoutId, sourceId)}
+      className="bg-surface border-hairline text-brand hover:bg-hover shadow-card absolute top-1/2 left-1/2 z-30 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border"
+    >
+      <Lock className="size-3" />
+    </button>
+  )
+}
+
+/** 只有派发方（行情格 / 自选）需要把手：接收方等别人拖过来就行。 */
+function PaneDragHandleSlot({
+  leaf,
+  layout,
+  alwaysVisible,
+}: {
+  leaf: PaneLeaf
+  layout: WorkspaceLayout
+  alwaysVisible?: boolean
+}) {
+  const presetKinds = useLayoutStore((s) => s.presetKinds)
+  const kind = resolvePaneKind(layout, leaf, presetKinds)
+  // 目标格被删掉时不算"还关联着"
+  const linked = usePaneLinkStore((s) => s.links[layout.id]?.[leaf.id] !== undefined)
+  const valid = linkedTarget(layout.id, leaf.id) !== null
+  if (!isMarketPaneKind(kind) && kind !== "watchlist") return null
+  return (
+    <PaneDragHandle
+      layoutId={layout.id}
+      leafId={leaf.id}
+      linked={linked && valid}
+      alwaysVisible={alwaysVisible}
+    />
+  )
+}
+
 /** 首次打开时的分配比例：按各面板"想要多少宽度"归一化成百分比，避免超宽被裁。 */
 function defaultSizes(children: LayoutNode[]): string[] {
   // 分割子树的权重按叶子数给：3×3 那种九格网格不该和对话栏五五开
@@ -83,14 +200,25 @@ function defaultSizes(children: LayoutNode[]): string[] {
  */
 function PaneFrame({ paneId, children }: { paneId: string; children: ReactNode }) {
   const setActivePane = useLayoutStore((s) => s.setActivePane)
+  const dragging = usePaneDragStore((s) => s.sourceId !== null)
+  const isDropTarget = usePaneDragStore((s) => s.hoverId === paneId)
 
   return (
     <div
+      data-pane-id={paneId}
       className="group/pane relative h-full min-h-0 min-w-0"
       onPointerEnter={() => setActivePane(paneId)}
       onPointerDown={() => setActivePane(paneId)}
     >
       {children}
+      {/* 拖拽中：落点高亮 + 一句"松手关联到此格" */}
+      {dragging && isDropTarget && (
+        <div className="border-brand/70 bg-brand/[0.06] pointer-events-none absolute inset-0 z-40 rounded-md border-2 border-dashed">
+          <span className="bg-brand text-pure-white text-caption shadow-modal absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md px-2 py-1">
+            松手关联到此格
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -130,6 +258,7 @@ function MaximizedPaneLayout({
         <PaneFrame paneId={leaf.id}>
           {renderPane(leaf)}
           <PaneStockPage leafId={leaf.id} />
+          <PaneDragHandleSlot leaf={leaf} layout={layout} alwaysVisible />
           <PaneKindButton leaf={leaf} layout={layout} alwaysVisible />
           <PaneMaximizeButton leafId={leaf.id} alwaysVisible />
         </PaneFrame>
@@ -192,8 +321,9 @@ export default function LayoutNodeView({
     return (
       <PaneFrame paneId={node.id}>
         {renderPane(node)}
-        {/* 每一格都能当 K 线子页面的宿主：联动到哪一格就在哪一格开 */}
+        {/* 每一格都能当 K 线子页面的宿主：拖拽关联到哪一格就在哪一格开 */}
         <PaneStockPage leafId={node.id} />
+        {!editing && <PaneDragHandleSlot leaf={node} layout={layout} />}
         {!editing && <PaneKindButton leaf={node} layout={layout} />}
         {!editing && <PaneMaximizeButton leafId={node.id} />}
         {editing && (
@@ -247,7 +377,11 @@ function SplitView({
     >
       {node.children.map((child, index) => (
         <Fragment key={child.id}>
-          {index > 0 && <PaneSeparator orientation={node.orientation} />}
+          {index > 0 && (
+            <PaneSeparator orientation={node.orientation}>
+              <PaneLinkLock layoutId={layout.id} prev={node.children[index - 1]} next={child} />
+            </PaneSeparator>
+          )}
           {child.type === "pane" && PANE_DEFINITIONS[child.kind].selfPanel ? (
             // 行情面板自己就是 Panel（折叠成图标条依赖 collapsible），不能再包一层
             <RightPanel
