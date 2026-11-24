@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef } from "react"
 import { usePaneDragStore } from "@/stores/paneDragStore"
-import {
-  findLeaf,
-  isMarketPaneKind,
-  paneHasLink,
-  resolvePaneKind,
-  useLayoutStore,
-} from "@/stores/layoutStore"
+import { findLeaf, groupOf, resolvePaneKind, useLayoutStore } from "@/stores/layoutStore"
 
 /** 小于这个位移算"点了一下"，不触发关联/解除。 */
 const DRAG_THRESHOLD_PX = 6
@@ -19,14 +13,14 @@ function paneUnder(x: number, y: number, exclude?: string | null): string | null
   return id && id !== exclude ? id : null
 }
 
-/** 这一格是不是"点股票会派发"的派发方（行情榜 / 自选）。 */
-function isDispatcher(layoutId: string, leafId: string): boolean {
+/** 这一格能不能参与联动（派发方或接收方都算）。 */
+function canJoinGroup(layoutId: string, leafId: string): boolean {
   const state = useLayoutStore.getState()
   const layout = state.layouts.find((item) => item.id === layoutId)
   const leaf = layout ? findLeaf(layout.root, leafId) : null
   if (!layout || !leaf) return false
   const kind = resolvePaneKind(layout, leaf, state.presetKinds)
-  return isMarketPaneKind(kind) || kind === "watchlist"
+  return kind !== "roles" && kind !== "market-tabs"
 }
 
 /**
@@ -38,8 +32,8 @@ function isDispatcher(layoutId: string, leafId: string): boolean {
  * 返回值里的 `begin` 挂到格子角落的把手上：`onPointerDown={(e) => begin(leafId, e)}`。
  */
 export function usePaneDragLink(layoutId: string) {
-  const linkPanes = useLayoutStore((s) => s.linkPanes)
-  const unlinkPane = useLayoutStore((s) => s.unlinkPane)
+  const joinPanes = useLayoutStore((s) => s.joinPanes)
+  const leavePane = useLayoutStore((s) => s.leavePane)
   const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => () => cleanupRef.current?.(), [])
@@ -50,7 +44,7 @@ export function usePaneDragLink(layoutId: string) {
       event.preventDefault()
       const startX = event.clientX
       const startY = event.clientY
-      const wasLinked = paneHasLink(layoutId, sourceId)
+      const wasGrouped = groupOf(layoutId, sourceId) !== null
       let moved = false
       usePaneDragStore.getState().start(sourceId)
 
@@ -66,15 +60,12 @@ export function usePaneDragLink(layoutId: string) {
         cleanup()
         const target = paneUnder(e.clientX, e.clientY, sourceId)
         if (moved && target) {
-          // 两个方向都认：把接收方拖到榜单上也等于"榜单派发到接收方"。
-          // 关联的方向永远是 派发方 → 接收方，跟谁被拖动无关。
-          const sourceIsDispatcher = isDispatcher(layoutId, sourceId)
-          const targetIsDispatcher = isDispatcher(layoutId, target)
-          if (sourceIsDispatcher) linkPanes(layoutId, sourceId, target)
-          else if (targetIsDispatcher) linkPanes(layoutId, target, sourceId)
-          // 两边都不是派发方：没有"点股票"这回事，不建立无意义关联
-        } else if (moved && wasLinked) {
-          unlinkPane(layoutId, sourceId)
+          // 组模型：谁拖谁不重要，两格进同一组就行（派发方向由"谁是榜单"决定）
+          if (canJoinGroup(layoutId, sourceId) && canJoinGroup(layoutId, target)) {
+            joinPanes(layoutId, sourceId, target)
+          }
+        } else if (moved && wasGrouped) {
+          leavePane(layoutId, sourceId)
         }
       }
 
@@ -92,7 +83,7 @@ export function usePaneDragLink(layoutId: string) {
       window.addEventListener("pointerup", onUp)
       window.addEventListener("pointercancel", cleanup)
     },
-    [layoutId, linkPanes, unlinkPane]
+    [layoutId, joinPanes, leavePane]
   )
 
   return begin

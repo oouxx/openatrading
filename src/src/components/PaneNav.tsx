@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
-import { linkedTarget, useLayoutStore } from "@/stores/layoutStore"
+import { linkedReceivers, useLayoutStore } from "@/stores/layoutStore"
 
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
@@ -29,10 +29,10 @@ export function PaneNavProvider({
   children: ReactNode
 }) {
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  // 关联是拖出来的（`usePaneDragLink`）：有链接就派发到对方格，没有就在本格开子页面。
-  // 订阅一下 links，拖拽改关联后这一格的派发目标要立刻跟着变。
-  const links = useLayoutStore((s) => s.links[layoutId])
-  const target = links?.[leafId] ? linkedTarget(layoutId, leafId) : null
+  // 联动组是拖出来的（`usePaneDragLink`）：组里有接收方就派发过去，没有就在本格开
+  // 子页面。订阅一下 groups，拖拽改组后这一格的派发目标要立刻跟着变。
+  useLayoutStore((s) => s.groups[layoutId])
+  const receivers = linkedReceivers(layoutId, leafId)
   const openPanePlate = useLayoutStore((s) => s.openPanePlate)
   const openPaneDragon = useLayoutStore((s) => s.openPaneDragon)
   const closePaneDetail = useLayoutStore((s) => s.closePaneDetail)
@@ -41,7 +41,14 @@ export function PaneNavProvider({
 
   const value = useMemo<PaneNav>(
     () => ({
-      openStock: (symbol, name) => openStockInPane(layoutId, target ?? leafId, symbol, name),
+      openStock: (symbol, name) => {
+        if (receivers.length === 0) {
+          openStockInPane(layoutId, leafId, symbol, name)
+          return
+        }
+        // 一对多：组里每个接收方都更新（个股详情钉住 / 对话格开标签 / 行情格开子页面）
+        for (const receiver of receivers) openStockInPane(layoutId, receiver, symbol, name)
+      },
       plateDetail: top?.type === "plate" ? top.plate : null,
       openPlate: (plate) => openPanePlate(leafId, plate),
       closePlate: () => closePaneDetail(leafId),
@@ -49,7 +56,16 @@ export function PaneNavProvider({
       openDragon: (item) => openPaneDragon(leafId, item),
       closeDragon: () => closePaneDetail(leafId),
     }),
-    [leafId, layoutId, target, top, openStockInPane, openPanePlate, openPaneDragon, closePaneDetail]
+    [
+      leafId,
+      layoutId,
+      receivers,
+      top,
+      openStockInPane,
+      openPanePlate,
+      openPaneDragon,
+      closePaneDetail,
+    ]
   )
   return <PaneNavContext.Provider value={value}>{children}</PaneNavContext.Provider>
 }

@@ -25,8 +25,10 @@ import {
   MARKET_PANE_KINDS,
   PANE_KINDS,
   countLeaves,
+  PANE_KIND_LABELS,
   eachLeaf,
   findLeaf,
+  resolvePaneKind,
   isMarketPaneKind,
   type LayoutNode,
   type PaneKind,
@@ -73,8 +75,8 @@ export type {
 const CUSTOM_KEY = "workspace-custom-layouts-v2"
 const LEGACY_CUSTOM_KEY = "workspace-custom-layouts"
 const PRESET_KINDS_KEY = "workspace-preset-kinds"
-/** 拖拽联动（跟布局一起同步，本机也缓存一份）。 */
-const LINKS_KEY = "workspace-pane-links"
+/** 拖拽联动组（跟布局一起同步，本机也缓存一份）。 */
+const GROUPS_KEY = "workspace-pane-groups"
 /** 上一版：只记"这一格显示哪个行情视图"。 */
 const LEGACY_PRESET_VIEWS_KEY = "workspace-preset-views"
 const ACTIVE_KEY = "workspace-active-layout"
@@ -277,9 +279,9 @@ function loadPresetKinds(): Record<string, Record<string, PaneKind>> {
   }
 }
 
-function loadLinks(): PaneLinks {
+function loadGroups(): PaneGroups {
   try {
-    return parseLinks(JSON.parse(localStorage.getItem(LINKS_KEY) ?? "null"))
+    return parseGroups(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "null"))
   } catch {
     return {}
   }
@@ -328,38 +330,47 @@ export interface LayoutSnapshot {
   activeId: string
   /** 内置布局里被换过的面板：`{ 布局 id: { 节点 id: 面板类型 } }`。 */
   presetKinds: Record<string, Record<string, PaneKind>>
-  /** 拖拽建立的联动：`{ 布局 id: { 派发格 id: 接收格 id } }`。 */
-  links: PaneLinks
+  /** 拖拽建立的联动组：`{ 布局 id: { 格子 id: 组 id } }`。 */
+  groups: PaneGroups
   layouts: { id: string; name: string; storageId: string; root: LayoutNode }[]
 }
 
 export const LAYOUT_SNAPSHOT_VERSION = 1
 
-/** 拖拽联动表：`布局 id → 派发格 id → 接收格 id`。 */
-type PaneLinks = Record<string, Record<string, string>>
+/**
+ * 联动组成员表：`布局 id → 格子 id → 组 id`。
+ *
+ * 存"格子在哪个组"而不是"谁连谁"：一对多、多对多天然成立，每格最多一个组，
+ * 显示也恒定（每格一枚标识），不用处理"分隔条上塞不下第二枚锁"。
+ */
+type PaneGroups = Record<string, Record<string, string>>
 
 export function toSnapshot(state: {
   layouts: WorkspaceLayout[]
   activeId: string
   presetKinds: Record<string, Record<string, PaneKind>>
-  links: PaneLinks
+  groups: PaneGroups
 }): LayoutSnapshot {
   return {
     version: LAYOUT_SNAPSHOT_VERSION,
     updatedAt: Date.now(),
     activeId: state.activeId,
     presetKinds: state.presetKinds,
-    links: state.links,
+    groups: state.groups,
     layouts: state.layouts
       .filter((layout) => !layout.builtin)
       .map(({ id, name, storageId, root }) => ({ id, name, storageId, root })),
   }
 }
 
-/** 联动表的宽松解析：只留 `布局 id → { 派发格: 接收格 }` 里的字符串对。 */
-function parseLinks(raw: unknown): PaneLinks {
+/**
+ * 联动组的宽松解析：只留 `布局 id → { 格子 id: 组 id }` 里的字符串对。
+ *
+ * 也吃快照里旧字段名 `links`（那版是 1:1 的边，从未发布过，直接当组 id 用即可）。
+ */
+function parseGroups(raw: unknown): PaneGroups {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
-  const out: PaneLinks = {}
+  const out: PaneGroups = {}
   for (const [layoutId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== "object") continue
     const pairs = Object.entries(value as Record<string, unknown>).filter(
@@ -374,7 +385,7 @@ function parseLinks(raw: unknown): PaneLinks {
 export function parseSnapshot(raw: unknown): {
   layouts: WorkspaceLayout[]
   presetKinds: Record<string, Record<string, PaneKind>>
-  links: PaneLinks
+  groups: PaneGroups
   activeId: string
   updatedAt: number
 } | null {
@@ -411,7 +422,13 @@ export function parseSnapshot(raw: unknown): {
 
   const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : 0
 
-  return { layouts, presetKinds, links: parseLinks(record.links), activeId, updatedAt }
+  return {
+    layouts,
+    presetKinds,
+    groups: parseGroups(record.groups ?? record.links),
+    activeId,
+    updatedAt,
+  }
 }
 
 // ── 导入 / 导出 ────────────────────────────────────────────────────────────
@@ -491,7 +508,7 @@ interface LayoutState {
   /** 内置布局里被用户换过内容的格（结构只读，换行情内容可以）。 */
   presetKinds: Record<string, Record<string, PaneKind>>
   /** 拖拽建立的联动：`布局 id → 派发格 → 接收格`（跟布局一起存服务端）。 */
-  links: PaneLinks
+  groups: PaneGroups
   /** 正在结构编辑的自定义布局 id；null 表示不在编辑态。 */
   editingId: string | null
   /** 被放大到整块工作区的格子（不持久化，属于临时视图状态）。 */
@@ -533,10 +550,10 @@ interface LayoutState {
   /** 最大化/还原某一格；传 null 表示还原。 */
   setMaximizedPane: (paneId: string | null) => void
 
-  /** 把 `sourceId` 关联到 `targetId`（拖拽落点），覆盖原有链接。 */
-  linkPanes: (layoutId: string, sourceId: string, targetId: string) => void
-  /** 解除与这一格有关的所有联动（不论它是派发方还是接收方）。 */
-  unlinkPane: (layoutId: string, leafId: string) => void
+  /** 把两格放进同一个联动组（拖拽落点）：任一方已在组里就并进去，都没有就新建。 */
+  joinPanes: (layoutId: string, aId: string, bId: string) => void
+  /** 让这一格退出联动组；组里剩不到两格就解散。 */
+  leavePane: (layoutId: string, leafId: string) => void
   setPaneKind: (layoutId: string, nodeId: string, kind: PaneKind) => void
   /** 给"个股详情"格钉一只股票。 */
   setPaneSymbol: (layoutId: string, nodeId: string, symbol: string, name: string) => void
@@ -572,17 +589,17 @@ function scheduleRemoteSave(snapshot: LayoutSnapshot) {
 export const useLayoutStore = create<LayoutState>((set, get) => {
   /** 本地缓存（毫秒级）与服务端（跨设备）同时写：前者保证刷新不丢，后者保证换机器还在。 */
   const commit = () => {
-    const { layouts, presetKinds, links, activeId } = get()
+    const { layouts, presetKinds, groups, activeId } = get()
     persist(
       CUSTOM_KEY,
       layouts.filter((layout) => !layout.builtin)
     )
     persist(PRESET_KINDS_KEY, presetKinds)
-    persist(LINKS_KEY, links)
+    persist(GROUPS_KEY, groups)
     persist(ACTIVE_KEY, activeId)
     persist(UPDATED_AT_KEY, Date.now())
     localEditsPending = true
-    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds, links }))
+    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds, groups }))
   }
 
   const updateLayout = (
@@ -610,7 +627,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     layouts: [...PRESET_LAYOUTS, ...initialCustoms],
     activeId: loadActiveId(initialCustoms),
     presetKinds: initialPresetKinds,
-    links: loadLinks(),
+    groups: loadGroups(),
     editingId: null,
     maximizedPaneId: null,
     activePaneId: null,
@@ -618,14 +635,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
 
     hydrate: async () => {
       const pushLocal = async () => {
-        const { layouts, presetKinds, links, activeId } = get()
+        const { layouts, presetKinds, groups, activeId } = get()
         const hasLocalState =
           layouts.some((layout) => !layout.builtin) ||
           Object.keys(presetKinds).length > 0 ||
-          Object.keys(links).length > 0 ||
+          Object.keys(groups).length > 0 ||
           activeId !== "review"
         if (!hasLocalState) return
-        const snapshot = toSnapshot({ layouts, activeId, presetKinds, links })
+        const snapshot = toSnapshot({ layouts, activeId, presetKinds, groups })
         persist(UPDATED_AT_KEY, snapshot.updatedAt)
         await pushLayoutSnapshot(snapshot)
       }
@@ -658,7 +675,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           layouts: [...PRESET_LAYOUTS, ...remote.layouts],
           activeId,
           presetKinds: remote.presetKinds,
-          links: remote.links,
+          groups: remote.groups,
         })
         // 把服务端版本缓存到本地，下次打开可以先用缓存渲染
         persist(
@@ -666,7 +683,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           remote.layouts.filter((layout) => !layout.builtin)
         )
         persist(PRESET_KINDS_KEY, remote.presetKinds)
-        persist(LINKS_KEY, remote.links)
+        persist(GROUPS_KEY, remote.groups)
         persist(ACTIVE_KEY, activeId)
         persist(UPDATED_AT_KEY, remote.updatedAt)
       } catch {
@@ -824,25 +841,42 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         activePaneId: paneId ?? state.activePaneId,
       })),
 
-    linkPanes: (layoutId, sourceId, targetId) => {
-      if (sourceId === targetId) return
-      set((state) => ({
-        links: {
-          ...state.links,
-          [layoutId]: { ...(state.links[layoutId] ?? {}), [sourceId]: targetId },
-        },
-      }))
+    joinPanes: (layoutId, aId, bId) => {
+      if (aId === bId) return
+      const groups = get().groups[layoutId] ?? {}
+      const groupA = groups[aId]
+      const groupB = groups[bId]
+      if (groupA && groupB && groupA === groupB) return
+
+      const next = { ...groups }
+      if (groupA && groupB) {
+        // 两组并成一组：后来的并入先来的
+        for (const [leaf, group] of Object.entries(next)) {
+          if (group === groupB) next[leaf] = groupA
+        }
+      } else if (groupA) {
+        next[bId] = groupA
+      } else if (groupB) {
+        next[aId] = groupB
+      } else {
+        const id = newNodeId("link")
+        next[aId] = id
+        next[bId] = id
+      }
+      set({ groups: { ...get().groups, [layoutId]: next } })
       commit()
     },
 
-    unlinkPane: (layoutId, leafId) => {
-      const links = get().links[layoutId]
-      if (!links) return
-      // 两个方向都要断：这一格可能是派发方（键），也可能是接收方（值）
-      const next = Object.fromEntries(
-        Object.entries(links).filter(([source, target]) => source !== leafId && target !== leafId)
-      )
-      set({ links: { ...get().links, [layoutId]: next } })
+    leavePane: (layoutId, leafId) => {
+      const groups = get().groups[layoutId]
+      if (!groups?.[leafId]) return
+      const next = { ...groups }
+      const group = next[leafId]
+      delete next[leafId]
+      // 组里只剩一格就没有"联动"可言，一起解散，别留孤儿 id
+      const rest = Object.entries(next).filter(([, value]) => value === group)
+      if (rest.length < 2) for (const [leaf] of rest) delete next[leaf]
+      set({ groups: { ...get().groups, [layoutId]: next } })
       commit()
     },
 
@@ -1004,38 +1038,57 @@ function cloneWithNewIds(node: LayoutNode): LayoutNode {
   }
 }
 
-/**
- * 这一格派发到哪一格（联动），无效就返回 `null`。
- *
- * 目标格被拆掉/删掉之后链接会留成悬空记录，这里一并校验。
- */
-export function linkedTarget(
-  layoutId: string | null | undefined,
-  sourceId: string | null | undefined
-): string | null {
-  if (!layoutId || !sourceId) return null
-  const state = useLayoutStore.getState()
-  const layout = state.layouts.find((item) => item.id === layoutId)
-  const target = state.links[layoutId]?.[sourceId]
-  if (!layout || !target) return null
-  return findLeaf(layout.root, target) ? target : null
+/** 这一格所在的联动组（没有就 `null`）。 */
+export function groupOf(layoutId: string | null | undefined, leafId: string | null | undefined) {
+  if (!layoutId || !leafId) return null
+  return useLayoutStore.getState().groups[layoutId]?.[leafId] ?? null
 }
 
-/** 这一格有没有**有效**的联动（派发方或接收方都算）。 */
-export function paneHasLink(
+/**
+ * 点这一格的股票时，要一起更新的**接收方**格子。
+ *
+ * 组里除了自己，只认能显示行情的格子：个股详情（钉住）、对话格（K 线标签）、
+ * 其它行情格（子页面）。另一个榜单、自选、模拟盘不算接收方——点一个榜的股票
+ * 顺便把另一个榜换掉，只会让人看不懂。
+ */
+export function linkedReceivers(
   layoutId: string | null | undefined,
   leafId: string | null | undefined
-): boolean {
-  if (!layoutId || !leafId) return false
+): string[] {
+  if (!layoutId || !leafId) return []
   const state = useLayoutStore.getState()
   const layout = state.layouts.find((item) => item.id === layoutId)
-  if (!layout) return false
-  const links = state.links[layoutId] ?? {}
-  const target = links[leafId]
-  if (target) return findLeaf(layout.root, target) !== null
-  return Object.entries(links).some(
-    ([source, dest]) => dest === leafId && findLeaf(layout.root, source) !== null
-  )
+  const group = state.groups[layoutId]?.[leafId]
+  if (!layout || !group) return []
+  return Object.entries(state.groups[layoutId] ?? {})
+    .filter(([leaf, value]) => value === group && leaf !== leafId)
+    .filter(([leaf]) => {
+      const target = findLeaf(layout.root, leaf)
+      if (!target) return false
+      const kind = resolvePaneKind(layout, target, state.presetKinds)
+      return kind === "detail" || kind === "chat" || isMarketPaneKind(kind)
+    })
+    .map(([leaf]) => leaf)
+}
+
+/** 同组其它格子的名字（给提示文案用："与「个股详情」同组"）。 */
+export function groupPeerLabels(
+  layoutId: string | null | undefined,
+  leafId: string | null | undefined
+): string[] {
+  if (!layoutId || !leafId) return []
+  const state = useLayoutStore.getState()
+  const layout = state.layouts.find((item) => item.id === layoutId)
+  const group = state.groups[layoutId]?.[leafId]
+  if (!layout || !group) return []
+  const labels: string[] = []
+  for (const [leaf, value] of Object.entries(state.groups[layoutId] ?? {})) {
+    if (value !== group || leaf === leafId) continue
+    const target = findLeaf(layout.root, leaf)
+    if (!target) continue
+    labels.push(PANE_KIND_LABELS[resolvePaneKind(layout, target, state.presetKinds)] ?? "面板")
+  }
+  return labels
 }
 
 export function useActiveLayout(): WorkspaceLayout {

@@ -3,7 +3,7 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import RightPanel from "@/components/RightPanel"
 import PaneEditOverlay from "@/components/PaneEditOverlay"
 import PaneMaximizeButton from "@/components/PaneMaximizeButton"
-import { Lock, Move } from "lucide-react"
+import { Link2, Move } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import PaneStockPage from "@/components/PaneStockPage"
 import PaneKindSwitcher from "@/components/PaneKindSwitcher"
@@ -15,7 +15,8 @@ import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
-  paneHasLink,
+  groupOf,
+  groupPeerLabels,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -79,82 +80,49 @@ function PaneKindButton({
 }
 
 /**
- * 格子角落的"拖动把手"：按住拖到另一格上 = 关联，拖开 = 解除关联。
+ * 格子角落的拖动把手：按住拖到另一格上 = 进同一个联动组，拖到空白处 = 退出组。
  *
- * 只给**派发方**（行情格 / 自选）挂：接收方（个股详情、对话格）不需要把手，把榜单
- * 拖到它上面就行。
+ * 它同时是**组标识**：在组里就换成链环图标 + 品牌色（每格恒定一枚，一对多也不会
+ * 长出第二个徽标）。提示里会列出同组的其它格子。
  */
 function PaneDragHandle({
   layoutId,
   leafId,
   linked,
+  peers,
   alwaysVisible,
 }: {
   layoutId: string
   leafId: string
   linked: boolean
+  /** 同组其它格子的名字，用在提示里 */
+  peers: string[]
   alwaysVisible?: boolean
 }) {
   const begin = usePaneDragLink(layoutId)
   const dragging = usePaneDragStore((s) => s.sourceId === leafId)
+  const Icon = linked ? Link2 : Move
+  const label = linked
+    ? `已联动${peers.length > 0 ? `：与${peers.map((name) => `「${name}」`).join("")}一组` : ""}（拖到空白处解除，拖到别的格改组）`
+    : "拖到另一格联动（榜单与看盘格互拖都行）"
 
   return (
     <Button
       variant="ghost"
       size="icon-xs"
-      aria-label={
-        linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联（榜单与看盘格互拖都行）"
-      }
-      title={
-        linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联（榜单与看盘格互拖都行）"
-      }
+      aria-label={label}
+      title={label}
       onPointerDown={(event) => begin(leafId, event)}
       className={cn(
         "bg-surface/90 border-hairline hover:bg-hover text-tertiary hover:text-primary absolute top-1.5 right-19 z-30 rounded-md border transition-opacity",
         alwaysVisible || dragging || linked
           ? "opacity-100"
           : "opacity-0 group-hover/pane:opacity-100",
-        dragging && "text-brand"
+        (dragging || linked) && "text-brand hover:text-brand"
       )}
     >
-      <Move />
+      <Icon />
     </Button>
-  )
-}
-
-/**
- * 两格之间的锁：相邻的两格互相关联时，把锁挂在它们中间的分隔条上（"网格之间有个锁"）。
- *
- * 不写在格子角落里：关联是**两格之间的关系**，画在关系本身上最省解释。不是在同一个
- * 分割里相邻的一对（比如跨了两层），锁就退回到派发方格子的把手上（把手常驻高亮）。
- */
-function PaneLinkLock({
-  layoutId,
-  prev,
-  next,
-}: {
-  layoutId: string
-  prev: LayoutNode
-  next: LayoutNode
-}) {
-  const links = useLayoutStore((s) => s.links[layoutId])
-  const unlinkPane = useLayoutStore((s) => s.unlinkPane)
-  if (prev.type !== "pane" || next.type !== "pane") return null
-  const sourceId =
-    links?.[prev.id] === next.id ? prev.id : links?.[next.id] === prev.id ? next.id : null
-  if (!sourceId) return null
-
-  const label = "两格已关联：点股票在对方那一格打开（点这里解除）"
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={() => unlinkPane(layoutId, sourceId)}
-      className="bg-surface border-hairline text-brand hover:bg-hover shadow-card absolute top-1/2 left-1/2 z-30 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border"
-    >
-      <Lock className="size-3" />
-    </button>
   )
 }
 
@@ -173,13 +141,15 @@ function PaneDragHandleSlot({
 }) {
   // 订阅 links：拖拽改关联后把手要立刻亮/灭。关联的方向由谁是派发方决定，
   // 所以派发方和接收方都算"有关联"
-  useLayoutStore((s) => s.links[layout.id])
-  const linked = paneHasLink(layout.id, leaf.id)
+  useLayoutStore((s) => s.groups[layout.id])
+  const linked = groupOf(layout.id, leaf.id) !== null
+  const peers = linked ? groupPeerLabels(layout.id, leaf.id) : []
   return (
     <PaneDragHandle
       layoutId={layout.id}
       leafId={leaf.id}
       linked={linked}
+      peers={peers}
       alwaysVisible={alwaysVisible}
     />
   )
@@ -382,11 +352,7 @@ function SplitView({
     >
       {node.children.map((child, index) => (
         <Fragment key={child.id}>
-          {index > 0 && (
-            <PaneSeparator orientation={node.orientation}>
-              <PaneLinkLock layoutId={layout.id} prev={node.children[index - 1]} next={child} />
-            </PaneSeparator>
-          )}
+          {index > 0 && <PaneSeparator orientation={node.orientation} />}
           {child.type === "pane" && PANE_DEFINITIONS[child.kind].selfPanel ? (
             // 行情面板自己就是 Panel（折叠成图标条依赖 collapsible），不能再包一层
             <RightPanel

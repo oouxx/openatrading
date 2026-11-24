@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input"
 import { DataEmpty, DataLoading } from "@/components/data-state"
 import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
-import { linkedTarget, useLayoutStore } from "@/stores/layoutStore"
+import { linkedReceivers, useLayoutStore } from "@/stores/layoutStore"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
@@ -57,8 +57,9 @@ export default function WatchlistView({
   // 独立页面模式的 K 线（网格模式下派发到别的格子，不用这份状态）
   const [pageKline, setPageKline] = useState<{ symbol: string; name: string } | null>(null)
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  const linkTarget = useLayoutStore((s) => (layoutId ? s.links[layoutId]?.[leafId ?? ""] : null))
-  const target = linkTarget ? linkedTarget(layoutId, leafId) : null
+  // 订阅 groups：拖拽改组后这一格的派发目标要立刻跟着变
+  useLayoutStore((s) => (layoutId ? s.groups[layoutId] : null))
+  const receivers = linkedReceivers(layoutId, leafId)
 
   const openStock = useCallback(
     (code: string, name: string) => {
@@ -66,10 +67,11 @@ export default function WatchlistView({
         setPageKline({ symbol: code, name })
         return
       }
-      // 拖拽关联过就在对方格打开，否则在本格开（页内 K 线）
-      openStockInPane(layoutId, target ?? leafId, code, name)
+      // 联动组里的接收方都更新；没有组就在本格打开（页内 K 线）
+      if (receivers.length === 0) openStockInPane(layoutId, leafId, code, name)
+      else for (const receiver of receivers) openStockInPane(layoutId, receiver, code, name)
     },
-    [layoutId, leafId, target, openStockInPane]
+    [layoutId, leafId, receivers, openStockInPane]
   )
 
   // ── Real-time quotes via streams（内部按 60 一片拆成多条 SSE） ──
