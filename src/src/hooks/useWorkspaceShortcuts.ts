@@ -11,6 +11,8 @@ import { useUiStore } from "@/stores/ui"
  * - 布局快捷键：默认 `⌘1–9` 按列表位置，可在 设置 · 布局 里逐个改成任意
  *   `⌘/⌃ + 键` 的组合（含 `⌘⇧1`、`⌘⌥K` 这类）
  * - `⌘,` 打开设置（设置里的「布局」页就是布局管理入口）
+ * - `⌘E` 编辑当前布局的结构（内置布局只读，会先克隆一份再进编辑）
+ * - `⌘S` 结束编辑（改动一直是即时保存的，这里是把"收工"变成一个手感熟悉的动作）
  * - `⌘⇧F` 把光标所在的格子放大/还原；没有指向时放大第一格
  * - `Esc` 先退子页面，再还原放大的格子，最后退出结构编辑态
  *
@@ -47,6 +49,31 @@ export function useWorkspaceShortcuts() {
       if (mod && !event.altKey && event.key === ",") {
         event.preventDefault()
         useUiStore.getState().setMode("settings")
+        return
+      }
+
+      // ⌘S —— 保存布局：编辑态下收工。改动本来就是即时落盘的，这里给一个"存了"的确认。
+      // 非编辑态也吞掉按键：web 端默认会弹"保存网页"对话框。
+      if (mod && !event.altKey && event.key.toLowerCase() === "s") {
+        event.preventDefault()
+        if (useLayoutStore.getState().editingId) stopEditing()
+        return
+      }
+
+      // ⌘E —— 编辑当前布局；内置布局结构只读，先克隆一份再进编辑（与设置里那颗
+      // "克隆并编辑"一致，否则按下去什么都不发生）
+      if (mod && !event.altKey && event.key.toLowerCase() === "e" && !inEditable(event)) {
+        event.preventDefault()
+        const state = useLayoutStore.getState()
+        if (state.editingId) return
+        const layout = state.layouts.find((item) => item.id === state.activeId)
+        if (!layout) return
+        if (layout.builtin) {
+          const cloned = state.cloneLayout(layout.id)
+          useLayoutStore.getState().startEditing(cloned)
+        } else {
+          state.startEditing(layout.id)
+        }
         return
       }
 

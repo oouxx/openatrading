@@ -39,6 +39,10 @@ export type ComboResult = { combo: string } | { reason: string }
 const RESERVED_COMBOS: Record<string, string> = {
   "Meta+Comma": "⌘, 是打开设置的快捷键",
   "Ctrl+Comma": "⌘, 是打开设置的快捷键",
+  "Meta+KeyE": "⌘E 是编辑当前布局的快捷键",
+  "Ctrl+KeyE": "⌘E 是编辑当前布局的快捷键",
+  "Meta+KeyS": "⌘S 是保存布局的快捷键",
+  "Ctrl+KeyS": "⌘S 是保存布局的快捷键",
   "Meta+Shift+KeyF": "⌘⇧F 是放大当前格的快捷键",
   "Ctrl+Shift+KeyF": "⌘⇧F 是放大当前格的快捷键",
 }
