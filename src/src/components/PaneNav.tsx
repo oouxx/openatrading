@@ -1,16 +1,15 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
 import { useLayoutStore } from "@/stores/layoutStore"
-import { resolveStockTarget } from "@/stores/paneLinkStore"
+import { resolveStockTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 /**
  * 面板内的"下一层页面"导航。
  *
  * 点股票要打开 K 线、点板块要打开板块详情：
- * - 股票 K 线**不**在本格开子页面，而是派发到关联网格（`StockLinkSelect` 选中的
- *   「个股详情」格；没配就自动跟随布局里的第一格）；布局里一格「个股详情」都没有时
- *   才退回本格子页面。
+ * - 股票 K 线默认派发到关联网格（自动跟随布局里第一格「个股详情」/ 对话格）；
+ *   表头的锁解开时，就在本格开子页面。
  * - 板块 / 龙虎榜这些详情子页面必须开在**点它的那一格**里：
  * - 网格格子 → 状态落在这一格的 leaf id 上，放大/还原、切回布局都还在，换榜时统一清掉；
  * - 右侧行情面板 → 沿用面板自身的覆盖层（老行为）。
@@ -30,6 +29,7 @@ export function PaneNavProvider({
   children: ReactNode
 }) {
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
+  const locked = usePaneLinkStore((s) => s.isLocked(layoutId, leafId))
   const openPanePlate = useLayoutStore((s) => s.openPanePlate)
   const openPaneDragon = useLayoutStore((s) => s.openPaneDragon)
   const closePaneDetail = useLayoutStore((s) => s.closePaneDetail)
@@ -38,9 +38,14 @@ export function PaneNavProvider({
 
   const value = useMemo<PaneNav>(
     () => ({
-      // 派发：关联网格优先，没有目标时退回本格（PaneStockPage 负责渲染）
+      // 锁着派发到关联格，解开就在本格开子页面（PaneStockPage 负责渲染）
       openStock: (symbol, name) =>
-        openStockInPane(layoutId, resolveStockTarget(layoutId) ?? leafId, symbol, name),
+        openStockInPane(
+          layoutId,
+          (locked ? resolveStockTarget(layoutId) : null) ?? leafId,
+          symbol,
+          name
+        ),
       plateDetail: top?.type === "plate" ? top.plate : null,
       openPlate: (plate) => openPanePlate(leafId, plate),
       closePlate: () => closePaneDetail(leafId),
@@ -48,7 +53,7 @@ export function PaneNavProvider({
       openDragon: (item) => openPaneDragon(leafId, item),
       closeDragon: () => closePaneDetail(leafId),
     }),
-    [leafId, layoutId, top, openStockInPane, openPanePlate, openPaneDragon, closePaneDetail]
+    [leafId, layoutId, locked, top, openStockInPane, openPanePlate, openPaneDragon, closePaneDetail]
   )
   return <PaneNavContext.Provider value={value}>{children}</PaneNavContext.Provider>
 }

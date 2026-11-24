@@ -12,7 +12,7 @@ import { useLayoutStore } from "@/stores/layoutStore"
 import type { MarketPaneKind } from "@/stores/layoutStore"
 
 import PaneKindOption from "@/components/PaneKindOption"
-import StockLinkSelect from "@/components/StockLinkSelect"
+import PaneLinkLock from "@/components/PaneLinkLock"
 
 /**
  * 行情格：一个格子只看一个榜，表头下拉用来换榜。
@@ -21,9 +21,8 @@ import StockLinkSelect from "@/components/StockLinkSelect"
  * 五档 / 下单 / 自选 / 模拟盘）走右上角的 `PaneKindSwitcher`——那是低频动作，和放大
  * 按钮放一起，任何格子都用同一套控件。
  *
- * 点表格里的股票不会再在本格盖子页面：K 线派发到关联网格（表头的 `⚯` 选，
- * 没配就自动跟随布局里的第一格「个股详情」）；布局里没有「个股详情」时才退回
- * 本格子页面。
+ * 点表格里的股票：表头的锁锁着（默认）就派发到关联的看盘格，解开就在本格打开
+ * 子页面。关联目标自动取布局里第一格「个股详情」（没有就对话格）。
  */
 export default function MarketPane({
   leafId,
@@ -64,8 +63,8 @@ export default function MarketPane({
               ))}
             </SelectContent>
           </Select>
-          {/* 窄格子里让位给榜单下拉：联动设置在有空间的格子里改 */}
-          <StockLinkSelect layoutId={layoutId} className="ml-auto hidden @[336px]:flex" />
+          {/* 联动锁：两态，不用选目标 */}
+          <PaneLinkLock layoutId={layoutId} leafId={leafId} className="ml-auto" />
         </header>
 
         <div className="relative min-h-0 flex-1 overflow-y-auto">
