@@ -73,6 +73,8 @@ export type {
 const CUSTOM_KEY = "workspace-custom-layouts-v2"
 const LEGACY_CUSTOM_KEY = "workspace-custom-layouts"
 const PRESET_KINDS_KEY = "workspace-preset-kinds"
+/** 拖拽联动（跟布局一起同步，本机也缓存一份）。 */
+const LINKS_KEY = "workspace-pane-links"
 /** 上一版：只记"这一格显示哪个行情视图"。 */
 const LEGACY_PRESET_VIEWS_KEY = "workspace-preset-views"
 const ACTIVE_KEY = "workspace-active-layout"
@@ -275,6 +277,14 @@ function loadPresetKinds(): Record<string, Record<string, PaneKind>> {
   }
 }
 
+function loadLinks(): PaneLinks {
+  try {
+    return parseLinks(JSON.parse(localStorage.getItem(LINKS_KEY) ?? "null"))
+  } catch {
+    return {}
+  }
+}
+
 function loadActiveId(customs: WorkspaceLayout[]): string {
   const known = new Set([...PRESET_LAYOUT_IDS, ...customs.map((layout) => layout.id)])
   try {
@@ -318,31 +328,53 @@ export interface LayoutSnapshot {
   activeId: string
   /** 内置布局里被换过的面板：`{ 布局 id: { 节点 id: 面板类型 } }`。 */
   presetKinds: Record<string, Record<string, PaneKind>>
+  /** 拖拽建立的联动：`{ 布局 id: { 派发格 id: 接收格 id } }`。 */
+  links: PaneLinks
   layouts: { id: string; name: string; storageId: string; root: LayoutNode }[]
 }
 
 export const LAYOUT_SNAPSHOT_VERSION = 1
 
+/** 拖拽联动表：`布局 id → 派发格 id → 接收格 id`。 */
+type PaneLinks = Record<string, Record<string, string>>
+
 export function toSnapshot(state: {
   layouts: WorkspaceLayout[]
   activeId: string
   presetKinds: Record<string, Record<string, PaneKind>>
+  links: PaneLinks
 }): LayoutSnapshot {
   return {
     version: LAYOUT_SNAPSHOT_VERSION,
     updatedAt: Date.now(),
     activeId: state.activeId,
     presetKinds: state.presetKinds,
+    links: state.links,
     layouts: state.layouts
       .filter((layout) => !layout.builtin)
       .map(({ id, name, storageId, root }) => ({ id, name, storageId, root })),
   }
 }
 
+/** 联动表的宽松解析：只留 `布局 id → { 派发格: 接收格 }` 里的字符串对。 */
+function parseLinks(raw: unknown): PaneLinks {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  const out: PaneLinks = {}
+  for (const [layoutId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue
+    const pairs = Object.entries(value as Record<string, unknown>).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== ""
+    )
+    if (pairs.length > 0) out[layoutId] = Object.fromEntries(pairs)
+  }
+  return out
+}
+
 /** 解析服务端快照；形状不对返回 null（调用方回落到本地缓存）。 */
 export function parseSnapshot(raw: unknown): {
   layouts: WorkspaceLayout[]
   presetKinds: Record<string, Record<string, PaneKind>>
+  links: PaneLinks
   activeId: string
   updatedAt: number
 } | null {
@@ -379,7 +411,7 @@ export function parseSnapshot(raw: unknown): {
 
   const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : 0
 
-  return { layouts, presetKinds, activeId, updatedAt }
+  return { layouts, presetKinds, links: parseLinks(record.links), activeId, updatedAt }
 }
 
 // ── 导入 / 导出 ────────────────────────────────────────────────────────────
@@ -458,6 +490,8 @@ interface LayoutState {
   activeId: string
   /** 内置布局里被用户换过内容的格（结构只读，换行情内容可以）。 */
   presetKinds: Record<string, Record<string, PaneKind>>
+  /** 拖拽建立的联动：`布局 id → 派发格 → 接收格`（跟布局一起存服务端）。 */
+  links: PaneLinks
   /** 正在结构编辑的自定义布局 id；null 表示不在编辑态。 */
   editingId: string | null
   /** 被放大到整块工作区的格子（不持久化，属于临时视图状态）。 */
@@ -499,6 +533,10 @@ interface LayoutState {
   /** 最大化/还原某一格；传 null 表示还原。 */
   setMaximizedPane: (paneId: string | null) => void
 
+  /** 把 `sourceId` 关联到 `targetId`（拖拽落点），覆盖原有链接。 */
+  linkPanes: (layoutId: string, sourceId: string, targetId: string) => void
+  /** 解除与这一格有关的所有联动（不论它是派发方还是接收方）。 */
+  unlinkPane: (layoutId: string, leafId: string) => void
   setPaneKind: (layoutId: string, nodeId: string, kind: PaneKind) => void
   /** 给"个股详情"格钉一只股票。 */
   setPaneSymbol: (layoutId: string, nodeId: string, symbol: string, name: string) => void
@@ -534,16 +572,17 @@ function scheduleRemoteSave(snapshot: LayoutSnapshot) {
 export const useLayoutStore = create<LayoutState>((set, get) => {
   /** 本地缓存（毫秒级）与服务端（跨设备）同时写：前者保证刷新不丢，后者保证换机器还在。 */
   const commit = () => {
-    const { layouts, presetKinds, activeId } = get()
+    const { layouts, presetKinds, links, activeId } = get()
     persist(
       CUSTOM_KEY,
       layouts.filter((layout) => !layout.builtin)
     )
     persist(PRESET_KINDS_KEY, presetKinds)
+    persist(LINKS_KEY, links)
     persist(ACTIVE_KEY, activeId)
     persist(UPDATED_AT_KEY, Date.now())
     localEditsPending = true
-    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds }))
+    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds, links }))
   }
 
   const updateLayout = (
@@ -571,6 +610,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     layouts: [...PRESET_LAYOUTS, ...initialCustoms],
     activeId: loadActiveId(initialCustoms),
     presetKinds: initialPresetKinds,
+    links: loadLinks(),
     editingId: null,
     maximizedPaneId: null,
     activePaneId: null,
@@ -578,13 +618,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
 
     hydrate: async () => {
       const pushLocal = async () => {
-        const { layouts, presetKinds, activeId } = get()
+        const { layouts, presetKinds, links, activeId } = get()
         const hasLocalState =
           layouts.some((layout) => !layout.builtin) ||
           Object.keys(presetKinds).length > 0 ||
+          Object.keys(links).length > 0 ||
           activeId !== "review"
         if (!hasLocalState) return
-        const snapshot = toSnapshot({ layouts, activeId, presetKinds })
+        const snapshot = toSnapshot({ layouts, activeId, presetKinds, links })
         persist(UPDATED_AT_KEY, snapshot.updatedAt)
         await pushLayoutSnapshot(snapshot)
       }
@@ -617,6 +658,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           layouts: [...PRESET_LAYOUTS, ...remote.layouts],
           activeId,
           presetKinds: remote.presetKinds,
+          links: remote.links,
         })
         // 把服务端版本缓存到本地，下次打开可以先用缓存渲染
         persist(
@@ -624,6 +666,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           remote.layouts.filter((layout) => !layout.builtin)
         )
         persist(PRESET_KINDS_KEY, remote.presetKinds)
+        persist(LINKS_KEY, remote.links)
         persist(ACTIVE_KEY, activeId)
         persist(UPDATED_AT_KEY, remote.updatedAt)
       } catch {
@@ -781,6 +824,28 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         activePaneId: paneId ?? state.activePaneId,
       })),
 
+    linkPanes: (layoutId, sourceId, targetId) => {
+      if (sourceId === targetId) return
+      set((state) => ({
+        links: {
+          ...state.links,
+          [layoutId]: { ...(state.links[layoutId] ?? {}), [sourceId]: targetId },
+        },
+      }))
+      commit()
+    },
+
+    unlinkPane: (layoutId, leafId) => {
+      const links = get().links[layoutId]
+      if (!links) return
+      // 两个方向都要断：这一格可能是派发方（键），也可能是接收方（值）
+      const next = Object.fromEntries(
+        Object.entries(links).filter(([source, target]) => source !== leafId && target !== leafId)
+      )
+      set({ links: { ...get().links, [layoutId]: next } })
+      commit()
+    },
+
     setPaneKind: (layoutId, nodeId, kind) => {
       const layout = get().layouts.find((item) => item.id === layoutId)
       const leaf = layout ? findLeaf(layout.root, nodeId) : null
@@ -937,6 +1002,40 @@ function cloneWithNewIds(node: LayoutNode): LayoutNode {
     id: newNodeId("split"),
     children: node.children.map(cloneWithNewIds),
   }
+}
+
+/**
+ * 这一格派发到哪一格（联动），无效就返回 `null`。
+ *
+ * 目标格被拆掉/删掉之后链接会留成悬空记录，这里一并校验。
+ */
+export function linkedTarget(
+  layoutId: string | null | undefined,
+  sourceId: string | null | undefined
+): string | null {
+  if (!layoutId || !sourceId) return null
+  const state = useLayoutStore.getState()
+  const layout = state.layouts.find((item) => item.id === layoutId)
+  const target = state.links[layoutId]?.[sourceId]
+  if (!layout || !target) return null
+  return findLeaf(layout.root, target) ? target : null
+}
+
+/** 这一格有没有**有效**的联动（派发方或接收方都算）。 */
+export function paneHasLink(
+  layoutId: string | null | undefined,
+  leafId: string | null | undefined
+): boolean {
+  if (!layoutId || !leafId) return false
+  const state = useLayoutStore.getState()
+  const layout = state.layouts.find((item) => item.id === layoutId)
+  if (!layout) return false
+  const links = state.links[layoutId] ?? {}
+  const target = links[leafId]
+  if (target) return findLeaf(layout.root, target) !== null
+  return Object.entries(links).some(
+    ([source, dest]) => dest === leafId && findLeaf(layout.root, source) !== null
+  )
 }
 
 export function useActiveLayout(): WorkspaceLayout {

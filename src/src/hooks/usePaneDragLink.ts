@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef } from "react"
 import { usePaneDragStore } from "@/stores/paneDragStore"
-import { paneHasLink, usePaneLinkStore } from "@/stores/paneLinkStore"
-import { findLeaf, isMarketPaneKind, resolvePaneKind, useLayoutStore } from "@/stores/layoutStore"
+import {
+  findLeaf,
+  isMarketPaneKind,
+  paneHasLink,
+  resolvePaneKind,
+  useLayoutStore,
+} from "@/stores/layoutStore"
 
 /** 小于这个位移算"点了一下"，不触发关联/解除。 */
 const DRAG_THRESHOLD_PX = 6
@@ -33,8 +38,8 @@ function isDispatcher(layoutId: string, leafId: string): boolean {
  * 返回值里的 `begin` 挂到格子角落的把手上：`onPointerDown={(e) => begin(leafId, e)}`。
  */
 export function usePaneDragLink(layoutId: string) {
-  const link = usePaneLinkStore((s) => s.link)
-  const unlink = usePaneLinkStore((s) => s.unlink)
+  const linkPanes = useLayoutStore((s) => s.linkPanes)
+  const unlinkPane = useLayoutStore((s) => s.unlinkPane)
   const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => () => cleanupRef.current?.(), [])
@@ -65,11 +70,11 @@ export function usePaneDragLink(layoutId: string) {
           // 关联的方向永远是 派发方 → 接收方，跟谁被拖动无关。
           const sourceIsDispatcher = isDispatcher(layoutId, sourceId)
           const targetIsDispatcher = isDispatcher(layoutId, target)
-          if (sourceIsDispatcher) link(layoutId, sourceId, target)
-          else if (targetIsDispatcher) link(layoutId, target, sourceId)
+          if (sourceIsDispatcher) linkPanes(layoutId, sourceId, target)
+          else if (targetIsDispatcher) linkPanes(layoutId, target, sourceId)
           // 两边都不是派发方：没有"点股票"这回事，不建立无意义关联
         } else if (moved && wasLinked) {
-          unlink(layoutId, sourceId)
+          unlinkPane(layoutId, sourceId)
         }
       }
 
@@ -87,7 +92,7 @@ export function usePaneDragLink(layoutId: string) {
       window.addEventListener("pointerup", onUp)
       window.addEventListener("pointercancel", cleanup)
     },
-    [layoutId, link, unlink]
+    [layoutId, linkPanes, unlinkPane]
   )
 
   return begin

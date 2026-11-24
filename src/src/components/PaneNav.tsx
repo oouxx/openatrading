@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
-import { useLayoutStore } from "@/stores/layoutStore"
-import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
+import { linkedTarget, useLayoutStore } from "@/stores/layoutStore"
+
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 /**
@@ -31,7 +31,7 @@ export function PaneNavProvider({
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
   // 关联是拖出来的（`usePaneDragLink`）：有链接就派发到对方格，没有就在本格开子页面。
   // 订阅一下 links，拖拽改关联后这一格的派发目标要立刻跟着变。
-  const links = usePaneLinkStore((s) => s.links[layoutId])
+  const links = useLayoutStore((s) => s.links[layoutId])
   const target = links?.[leafId] ? linkedTarget(layoutId, leafId) : null
   const openPanePlate = useLayoutStore((s) => s.openPanePlate)
   const openPaneDragon = useLayoutStore((s) => s.openPaneDragon)

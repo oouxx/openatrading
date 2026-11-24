@@ -10,11 +10,12 @@ import PaneKindSwitcher from "@/components/PaneKindSwitcher"
 import { usePaneDragLink } from "@/hooks/usePaneDragLink"
 import { usePaneDragStore } from "@/stores/paneDragStore"
 import { cn } from "@/lib/utils"
-import { paneHasLink, usePaneLinkStore } from "@/stores/paneLinkStore"
+
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
+  paneHasLink,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -136,8 +137,8 @@ function PaneLinkLock({
   prev: LayoutNode
   next: LayoutNode
 }) {
-  const links = usePaneLinkStore((s) => s.links[layoutId])
-  const unlink = usePaneLinkStore((s) => s.unlink)
+  const links = useLayoutStore((s) => s.links[layoutId])
+  const unlinkPane = useLayoutStore((s) => s.unlinkPane)
   if (prev.type !== "pane" || next.type !== "pane") return null
   const sourceId =
     links?.[prev.id] === next.id ? prev.id : links?.[next.id] === prev.id ? next.id : null
@@ -149,7 +150,7 @@ function PaneLinkLock({
       type="button"
       aria-label={label}
       title={label}
-      onClick={() => unlink(layoutId, sourceId)}
+      onClick={() => unlinkPane(layoutId, sourceId)}
       className="bg-surface border-hairline text-brand hover:bg-hover shadow-card absolute top-1/2 left-1/2 z-30 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border"
     >
       <Lock className="size-3" />
@@ -172,7 +173,7 @@ function PaneDragHandleSlot({
 }) {
   // 订阅 links：拖拽改关联后把手要立刻亮/灭。关联的方向由谁是派发方决定，
   // 所以派发方和接收方都算"有关联"
-  usePaneLinkStore((s) => s.links[layout.id])
+  useLayoutStore((s) => s.links[layout.id])
   const linked = paneHasLink(layout.id, leaf.id)
   return (
     <PaneDragHandle

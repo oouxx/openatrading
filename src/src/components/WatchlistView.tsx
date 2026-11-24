@@ -24,8 +24,7 @@ import { Input } from "@/components/ui/input"
 import { DataEmpty, DataLoading } from "@/components/data-state"
 import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
-import { useLayoutStore } from "@/stores/layoutStore"
-import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
+import { linkedTarget, useLayoutStore } from "@/stores/layoutStore"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
@@ -58,7 +57,7 @@ export default function WatchlistView({
   // 独立页面模式的 K 线（网格模式下派发到别的格子，不用这份状态）
   const [pageKline, setPageKline] = useState<{ symbol: string; name: string } | null>(null)
   const openStockInPane = useLayoutStore((s) => s.openStockInPane)
-  const linkTarget = usePaneLinkStore((s) => (layoutId ? s.links[layoutId]?.[leafId ?? ""] : null))
+  const linkTarget = useLayoutStore((s) => (layoutId ? s.links[layoutId]?.[leafId ?? ""] : null))
   const target = linkTarget ? linkedTarget(layoutId, leafId) : null
 
   const openStock = useCallback(
