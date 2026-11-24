@@ -42,8 +42,8 @@ interface PaneLinkState {
   ) => string | null
   /** 把 `sourceId` 关联到 `targetId`；已有关联会被覆盖。 */
   link: (layoutId: string, sourceId: string, targetId: string) => void
-  /** 解除关联（拖动这一格丢在空白处时调用）。 */
-  unlink: (layoutId: string, sourceId: string) => void
+  /** 解除与这一格有关的所有关联（不论它是派发方还是接收方）。 */
+  unlink: (layoutId: string, leafId: string) => void
 }
 
 export const usePaneLinkStore = create<PaneLinkState>((set, get) => {
@@ -70,15 +70,37 @@ export const usePaneLinkStore = create<PaneLinkState>((set, get) => {
       persist({ ...links, [layoutId]: { ...links[layoutId], [sourceId]: targetId } })
     },
 
-    unlink: (layoutId, sourceId) => {
-      const links = get().links
-      if (!(sourceId in (links[layoutId] ?? {}))) return
-      const next = { ...links[layoutId] }
-      delete next[sourceId]
-      persist({ ...links, [layoutId]: next })
+    unlink: (layoutId, leafId) => {
+      const links = get().links[layoutId]
+      if (!links) return
+      // 两个方向都要断：这一格可能是派发方（键），也可能是接收方（值）
+      const next = Object.fromEntries(
+        Object.entries(links).filter(([source, target]) => source !== leafId && target !== leafId)
+      )
+      persist({ ...get().links, [layoutId]: next })
     },
   }
 })
+
+/**
+ * 这一格有没有**有效**的关联（不论它是派发方还是接收方）。
+ *
+ * 对方格被拆掉/删掉之后链接会留成悬空记录，这里一并校验，别让把手一直亮着。
+ */
+export function paneHasLink(
+  layoutId: string | null | undefined,
+  leafId: string | null | undefined
+): boolean {
+  if (!layoutId || !leafId) return false
+  const layout = useLayoutStore.getState().layouts.find((item) => item.id === layoutId)
+  if (!layout) return false
+  const links = usePaneLinkStore.getState().links[layoutId] ?? {}
+  const target = links[leafId]
+  if (target) return findLeaf(layout.root, target) !== null
+  return Object.entries(links).some(
+    ([source, dest]) => dest === leafId && findLeaf(layout.root, source) !== null
+  )
+}
 
 /** 这一格是否还有效地关联着（目标格被删掉时视为没有）。 */
 export function linkedTarget(

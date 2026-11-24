@@ -10,12 +10,11 @@ import PaneKindSwitcher from "@/components/PaneKindSwitcher"
 import { usePaneDragLink } from "@/hooks/usePaneDragLink"
 import { usePaneDragStore } from "@/stores/paneDragStore"
 import { cn } from "@/lib/utils"
-import { linkedTarget, usePaneLinkStore } from "@/stores/paneLinkStore"
+import { paneHasLink, usePaneLinkStore } from "@/stores/paneLinkStore"
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
-  isMarketPaneKind,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -102,8 +101,12 @@ function PaneDragHandle({
     <Button
       variant="ghost"
       size="icon-xs"
-      aria-label={linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联"}
-      title={linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联"}
+      aria-label={
+        linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联（榜单与看盘格互拖都行）"
+      }
+      title={
+        linked ? "已关联：拖到另一格改关联，拖开解除" : "拖到另一格关联（榜单与看盘格互拖都行）"
+      }
       onPointerDown={(event) => begin(leafId, event)}
       className={cn(
         "bg-surface/90 border-hairline hover:bg-hover text-tertiary hover:text-primary absolute top-1.5 right-19 z-30 rounded-md border transition-opacity",
@@ -154,7 +157,10 @@ function PaneLinkLock({
   )
 }
 
-/** 只有派发方（行情格 / 自选）需要把手：接收方等别人拖过来就行。 */
+/**
+ * 每格都挂把手：**两个方向都认**——把接收方（个股详情 / 对话格）拖到榜单上，同样
+ * 等于"榜单派发到它"，关联方向永远由谁是派发方决定，跟谁被拖动无关。
+ */
 function PaneDragHandleSlot({
   leaf,
   layout,
@@ -164,17 +170,15 @@ function PaneDragHandleSlot({
   layout: WorkspaceLayout
   alwaysVisible?: boolean
 }) {
-  const presetKinds = useLayoutStore((s) => s.presetKinds)
-  const kind = resolvePaneKind(layout, leaf, presetKinds)
-  // 目标格被删掉时不算"还关联着"
-  const linked = usePaneLinkStore((s) => s.links[layout.id]?.[leaf.id] !== undefined)
-  const valid = linkedTarget(layout.id, leaf.id) !== null
-  if (!isMarketPaneKind(kind) && kind !== "watchlist") return null
+  // 订阅 links：拖拽改关联后把手要立刻亮/灭。关联的方向由谁是派发方决定，
+  // 所以派发方和接收方都算"有关联"
+  usePaneLinkStore((s) => s.links[layout.id])
+  const linked = paneHasLink(layout.id, leaf.id)
   return (
     <PaneDragHandle
       layoutId={layout.id}
       leafId={leaf.id}
-      linked={linked && valid}
+      linked={linked}
       alwaysVisible={alwaysVisible}
     />
   )
