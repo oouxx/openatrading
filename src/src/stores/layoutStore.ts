@@ -103,31 +103,6 @@ export const PRESET_LAYOUTS: WorkspaceLayout[] = [
     root: split("review-root", "horizontal", [pane("chat", "chat"), pane("right", "market-tabs")]),
   },
   {
-    id: "board",
-    name: "盯盘",
-    builtin: true,
-    storageId: "layout-board",
-    // 3×3：对话也是网格里的一格。九个格子里放对话 + 八个盯盘视图，
-    // 只省掉「行情回放」——那是复盘用的，不是盘中该占一格的东西。
-    root: split("board-root", "vertical", [
-      split("board-row-1", "horizontal", [
-        pane("chat", "chat"),
-        pane("board-grid-1", "strong-stocks"),
-        pane("board-grid-2", "promotion"),
-      ]),
-      split("board-row-2", "horizontal", [
-        pane("board-grid-3", "plate-ranking"),
-        pane("board-grid-4", "stock-ranking"),
-        pane("board-grid-5", "dragon-tiger"),
-      ]),
-      split("board-row-3", "horizontal", [
-        pane("board-grid-6", "timeline"),
-        pane("board-grid-7", "sentiment-chip"),
-        pane("board-grid-8", "news"),
-      ]),
-    ]),
-  },
-  {
     id: "ledger",
     name: "记账",
     builtin: true,
@@ -633,9 +608,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         }
         if (local === remote.updatedAt) return
 
+        // 快照里记着的布局可能已经不存在了（预设被删掉、或布局在别处删了）：
+        // 落到第一个预设，避免 activeId 一直指向一个渲染不出来的 id
+        const knownIds = new Set([...PRESET_LAYOUT_IDS, ...remote.layouts.map((l) => l.id)])
+        const activeId = knownIds.has(remote.activeId) ? remote.activeId : PRESET_LAYOUT_IDS[0]
+
         set({
           layouts: [...PRESET_LAYOUTS, ...remote.layouts],
-          activeId: remote.activeId,
+          activeId,
           presetKinds: remote.presetKinds,
         })
         // 把服务端版本缓存到本地，下次打开可以先用缓存渲染
@@ -644,7 +624,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           remote.layouts.filter((layout) => !layout.builtin)
         )
         persist(PRESET_KINDS_KEY, remote.presetKinds)
-        persist(ACTIVE_KEY, remote.activeId)
+        persist(ACTIVE_KEY, activeId)
         persist(UPDATED_AT_KEY, remote.updatedAt)
       } catch {
         // 后端不可用：继续用本地缓存，不做提示（用户此刻并不需要知道）

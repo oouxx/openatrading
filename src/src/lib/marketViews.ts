@@ -14,7 +14,7 @@ import type { RightPanelView } from "@/stores/rightPanelStore"
 /**
  * 行情视图的标签与图标。
  *
- * 右侧面板的 tab 条和盯盘四宫格的选择器都从这里取，各自抄一份 TABS 迟早会漂移成
+ * 右侧面板的 tab 条和行情格的选择器都从这里取，各自抄一份 TABS 迟早会漂移成
  * 两套文案。放在 lib 里而不是组件文件里，是为了不打断 fast refresh 的模块边界。
  */
 export interface MarketViewMeta {

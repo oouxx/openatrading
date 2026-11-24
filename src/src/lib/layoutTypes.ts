@@ -190,7 +190,7 @@ export function paneKinds(node: LayoutNode): Set<PaneKind> {
  * 解析一个格子最终展示的类型。
  *
  * 内置布局的结构写在代码里，用户改过的行情格记在 `presetKinds` 覆盖表里——所以
- * 盯盘四宫格换个榜不需要克隆布局。
+ * 行情格换个榜不需要克隆布局。
  */
 export function resolvePaneKind(
   layout: WorkspaceLayout,

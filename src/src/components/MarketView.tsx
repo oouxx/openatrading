@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { RightPanelView } from "@/stores/rightPanelStore"
 
 // 九个行情视图都是重组件（图表/无限列表），一律懒加载：
-// 右侧面板和盯盘四宫格共用同一个渲染入口，避免两份 switch 各自漏掉一个 case。
+// 右侧行情面板和各种行情格共用同一个渲染入口，避免两份 switch 各自漏掉一个 case。
 const DragonTigerView = lazy(() => import("@/components/DragonTigerView"))
 const ReplayView = lazy(() => import("@/components/ReplayView"))
 const StrongStocksTab = lazy(() => import("@/components/StrongStocksTab"))
