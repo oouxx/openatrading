@@ -2,6 +2,7 @@ import { getApiBaseUrl } from "@/stores/data"
 
 import { isTauri } from "@/lib/env"
 import { toYahooSymbol } from "@/lib/stock-utils"
+import { pickSymbolPayload } from "@/lib/stream-payload"
 
 /** 归一化失败时回退原始输入，保持与后端容错行为一致。 */
 function normalizeSymbolSafe(raw: string): string {
@@ -10,18 +11,6 @@ function normalizeSymbolSafe(raw: string): string {
   } catch {
     return raw
   }
-}
-
-/**
- * Try to match a raw symbol (e.g. "000001") against a batch-response map
- * whose keys may carry market suffixes (e.g. "000001.SZ").
- */
-function matchSymbol(parsed: Record<string, unknown>, rawCode: string): unknown {
-  if (rawCode in parsed) return parsed[rawCode]
-  for (const [k, v] of Object.entries(parsed)) {
-    if (k.replace(/\.(SS|SZ|BJ)$/i, "") === rawCode) return v
-  }
-  return undefined
 }
 
 function safeParse(raw: string, context: string): Record<string, unknown> | null {
@@ -87,7 +76,7 @@ export function subscribeRealtime<T = unknown>(
             onError?.(String(parsed.error))
           } else {
             // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-            const found = matchSymbol(parsed, normalized)
+            const found = pickSymbolPayload(parsed, normalized)
             if (found) onData(found as T)
           }
         }
@@ -115,7 +104,7 @@ export function subscribeRealtime<T = unknown>(
       onError?.(String(parsed.error))
     } else {
       // Backend returns { "symbol": {...}, ... } — extract the one we asked for
-      const found = matchSymbol(parsed, normalized)
+      const found = pickSymbolPayload(parsed, normalized)
       if (found) onData(found as T)
     }
   }
@@ -190,7 +179,7 @@ function subscribeRealtimeBatchChunk<T = unknown>(
             onError?.(String(parsed.error))
           } else {
             for (let i = 0; i < symbols.length; i++) {
-              const found = matchSymbol(parsed, normalizedSymbols[i])
+              const found = pickSymbolPayload(parsed, normalizedSymbols[i])
               if (found) onData(symbols[i], found as T)
             }
           }
@@ -222,7 +211,7 @@ function subscribeRealtimeBatchChunk<T = unknown>(
       onError?.(String(parsed.error))
     } else {
       for (let i = 0; i < symbols.length; i++) {
-        const found = matchSymbol(parsed, normalizedSymbols[i])
+        const found = pickSymbolPayload(parsed, normalizedSymbols[i])
         if (found) onData(symbols[i], found as T)
       }
     }
@@ -292,7 +281,7 @@ export function subscribeOrderBook<T = unknown>(
           } else {
             // 批量形状 { "000001": OrderBook }；payload 是全站订阅的并集，
             // 匹配不到自己那只时**不能**退回第一条（那会是别人的盘口）
-            const found = matchSymbol(parsed, symbol)
+            const found = pickSymbolPayload(parsed, symbol)
             if (found) onData(found as T)
           }
         }
@@ -314,7 +303,7 @@ export function subscribeOrderBook<T = unknown>(
     (data) => {
       const map = data as Record<string, unknown>
       // 并集 payload：只认自己这只，匹配不到就等下一帧（绝不退回第一条）
-      const found = matchSymbol(map, symbol)
+      const found = pickSymbolPayload(map, symbol)
       if (found) onData(found as T)
     },
     onError
@@ -340,6 +329,7 @@ export function subscribeKline<T = unknown>(
   if (isTauri) {
     let active = true
     let timer: ReturnType<typeof setInterval> | null = null
+    let warned = false
     const poll = async () => {
       if (!active) return
       try {
@@ -352,7 +342,13 @@ export function subscribeKline<T = unknown>(
           if (parsed.error) {
             onError?.(String(parsed.error))
           } else {
-            onData(parsed as T)
+            // 与 Web 端一致：接口返回 { "600519.SS": <kline> }，按 symbol 取出来
+            const found = pickSymbolPayload(parsed, symbol)
+            if (found) onData(found as T)
+            else if (!warned) {
+              warned = true
+              console.warn("[kline] payload 里没有这只票", symbol, Object.keys(parsed))
+            }
           }
         }
         await invoke("api_kline_stream", { symbol, period, count, channel })
@@ -369,10 +365,15 @@ export function subscribeKline<T = unknown>(
   }
 
   // Web: sseStream passes raw JSON — unwrap batch map to extract single symbol data
+  let warned = false
   const wrappedOnData = (data: unknown) => {
     const map = data as Record<string, unknown>
-    const found = matchSymbol(map, symbol)
+    const found = pickSymbolPayload(map, symbol)
     if (found) onData(found as T)
+    else if (!warned) {
+      warned = true
+      console.warn("[kline] payload 里没有这只票", symbol, Object.keys(map))
+    }
   }
 
   return sseStream(
