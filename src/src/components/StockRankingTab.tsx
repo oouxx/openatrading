@@ -181,12 +181,9 @@ export default function StockRankingTab() {
       ) : stocks.length === 0 ? (
         <DataEmpty title="暂无股票" description="当前筛选条件下没有可展示的个股" size="table" />
       ) : (
-        <div
-          className={cn(
-            "bg-surface border-hairline overflow-hidden rounded-lg border transition-opacity",
-            query.isFetching && !query.isFetchingNextPage && "opacity-75"
-          )}
-        >
+        <div className="bg-surface border-hairline overflow-hidden rounded-lg border">
+          {/* 不再给整表套"刷新中变半透明"：快照是 10 秒一轮的后台刷新，整表每 10 秒
+              暗一下比数字更新本身更扎眼。新鲜度看表头更新时间，手动刷新看按钮转圈。 */}
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
