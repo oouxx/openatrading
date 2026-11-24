@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { CandlestickChart, Search } from "lucide-react"
+import { useCallback } from "react"
+import { CandlestickChart } from "lucide-react"
 import KlineDrawer from "@/components/KlineDrawer"
+import { StockSearchBox } from "@/components/StockSearchBox"
 import { Button } from "@/components/ui/button"
-import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
-import { Input } from "@/components/ui/input"
-import { searchStocks } from "@/lib/stock-utils"
 import { useLayoutStore } from "@/stores/layoutStore"
 
 /**
@@ -25,125 +23,23 @@ export default function StockDetailPane({
   symbolName?: string
 }) {
   const setPaneSymbol = useLayoutStore((s) => s.setPaneSymbol)
-  const [query, setQuery] = useState("")
-  const [results, setResults] = useState<{ code: string; name: string }[]>([])
-  const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [highlight, setHighlight] = useState(0)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 请求序号：慢的那次回包不能盖掉快的那次
-  const seqRef = useRef(0)
 
   const select = useCallback(
     (code: string, name: string) => {
       setPaneSymbol(layoutId, leafId, code, name)
-      setQuery("")
-      setOpen(false)
     },
     [layoutId, leafId, setPaneSymbol]
   )
 
-  const onQueryChange = (value: string) => {
-    setQuery(value)
-    const seq = ++seqRef.current
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!value.trim()) {
-      setResults([])
-      setOpen(false)
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    debounceRef.current = setTimeout(() => {
-      void searchStocks(value)
-        .then((items) => {
-          if (seq !== seqRef.current) return
-          setResults(items.slice(0, 8))
-          setHighlight(0)
-          setOpen(true)
-        })
-        .catch(() => {
-          if (seq === seqRef.current) setResults([])
-        })
-        .finally(() => {
-          if (seq === seqRef.current) setLoading(false)
-        })
-    }, 250)
-  }
-
-  // 点外面收起下拉
-  useEffect(() => {
-    const handler = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node))
-        setOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [])
-
   return (
     <div className="bg-surface flex h-full min-w-0 flex-col overflow-hidden">
-      <header className="border-hairline flex h-9 shrink-0 items-center gap-1.5 border-b px-2">
-        <div ref={containerRef} className="relative min-w-0 flex-1">
-          <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
-          <Input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder={symbol ? `${symbolName ?? symbol} · 换一只` : "搜索股票…"}
-            aria-label="搜索要钉住的股票"
-            className="bg-canvas border-hairline focus-visible:border-brand/60 text-caption h-7 rounded-md pl-7"
-            onFocus={() => query.trim() && results.length > 0 && setOpen(true)}
-            onKeyDown={(e) => {
-              if (!open) return
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault()
-                const delta = e.key === "ArrowDown" ? 1 : -1
-                setHighlight(
-                  (prev) => (prev + delta + results.length) % Math.max(results.length, 1)
-                )
-                return
-              }
-              if (e.key === "Enter") {
-                const picked = results[highlight] ?? results[0]
-                if (picked) select(picked.code, picked.name)
-                return
-              }
-              if (e.key === "Escape") setOpen(false)
-            }}
-          />
-          {open && (
-            <div className="absolute top-full right-0 left-0 z-30 mt-1">
-              <Command
-                shouldFilter={false}
-                className="bg-surface border-hairline shadow-modal rounded-lg border"
-              >
-                <CommandList className="max-h-56">
-                  {loading && results.length === 0 ? (
-                    <div className="text-secondary text-caption px-3 py-2">搜索中…</div>
-                  ) : results.length === 0 ? (
-                    <div className="text-secondary text-caption px-3 py-2">未找到结果</div>
-                  ) : (
-                    <CommandGroup>
-                      {results.map((stock, index) => (
-                        <CommandItem
-                          key={stock.code}
-                          value={stock.code}
-                          onSelect={() => select(stock.code, stock.name)}
-                          className="text-caption"
-                          data-highlighted={index === highlight ? "true" : undefined}
-                        >
-                          <span className="text-secondary font-number">{stock.code}</span>
-                          <span className="text-primary">{stock.name}</span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
-            </div>
-          )}
-        </div>
+      <header className="border-hairline flex h-9 shrink-0 items-center border-b px-2">
+        <StockSearchBox
+          className="w-full"
+          placeholder={symbol ? `${symbolName ?? symbol} · 换一只` : "搜索股票…"}
+          ariaLabel="搜索要钉住的股票"
+          onPick={select}
+        />
       </header>
 
       {symbol ? (

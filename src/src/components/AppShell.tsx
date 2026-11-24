@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useMemo, type ReactNode } from "react"
 import { motion } from "motion/react"
 import { useAppMode } from "@/contexts/useAppMode"
 import AiCopilot from "@/components/ChatView"
+import ChatPane from "@/components/ChatPane"
 import ErrorBoundary from "@/components/ErrorBoundary"
 import ConversationSidebar from "./ConversationSidebar"
 import LayoutNodeView from "./LayoutNodeView"
@@ -105,13 +106,15 @@ export default function AppShell() {
   // AppShell 只负责提供对话节点这份"外部句柄"。
   const paneContext = {
     chat: (
-      <ErrorBoundary name="AiCopilot">
-        <AiCopilot
-          activeThreadId={activeThreadId}
-          onActiveThreadChange={handleActiveChange}
-          onReload={reload}
-        />
-      </ErrorBoundary>
+      <ChatPane activeThreadId={activeThreadId}>
+        <ErrorBoundary name="AiCopilot">
+          <AiCopilot
+            activeThreadId={activeThreadId}
+            onActiveThreadChange={handleActiveChange}
+            onReload={reload}
+          />
+        </ErrorBoundary>
+      </ChatPane>
     ),
     layout,
     presetKinds,
