@@ -47,23 +47,37 @@ check: fmt lint test
 clean:
 	cargo clean
 
-# ─── 本机安装（装当前工作区的代码，不走发版流程）────────────────
+# ─── 本机安装（装当前工作区的桌面端，不走发版流程）────────────────
 #
-# 以前 `install: release` 等于"先发一次版再装"：tag 已存在时直接报错退出，装不上；
-# 而且 `cp` 到 /usr/local/bin 没有 sudo——那个目录是 root 的，普通用户写不进去。
-# 现在只构建 release 二进制，按目录权限决定是否加 sudo。
-BIN_DIR ?= /usr/local/bin
-SUDO := $(shell [ -w "$(BIN_DIR)" ] || echo sudo)
+# 只装桌面应用：`cargo tauri build` 出的 .app → /Applications，直接覆盖。
+# 以前这里是 `install: release` + `cp` 一个 CLI 二进制，两个问题：`release` 依赖会
+# 先发一次版（tag 已存在就直接失败），/usr/local/bin 是 root 的、`cp` 写不进去。
+APP_PATH ?= /Applications/OpenATrading.app
+# tauri 的 productName 是小写的 openatrading，产物在这里；装到上面的显示名路径
+APP_BUNDLE := target/release/bundle/macos/openatrading.app
+SUDO := $(shell [ -w "$(dir $(APP_PATH))" ] || echo sudo)
+SUDO_BIN := $(shell [ -w /usr/local/bin ] || echo sudo)
+# 本地只出 .app：不打 DMG，也不生成更新包（更新包需要 TAURI_SIGNING_PRIVATE_KEY，
+# 那是发版流程的事，本地没有那把钥匙）
+TAURI_BUILD := cd src-tauri && cargo tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
 install:
-	cargo build --release --bin openatrading
-	$(SUDO) install -m 755 target/release/openatrading "$(BIN_DIR)/openatrading"
-	@"$(BIN_DIR)/openatrading" --version 2>/dev/null | head -1 | sed 's/^/  /' || true
-	@echo "✓ 已安装到 $(BIN_DIR)/openatrading"
+	$(TAURI_BUILD)
+	@if pgrep -f "$(APP_PATH)/Contents/MacOS" >/dev/null; then \
+		echo "→ 正在运行的 $(notdir $(APP_PATH)) 先退出"; \
+		osascript -e 'quit app "$(notdir $(basename $(APP_PATH)))"' >/dev/null 2>&1 || true; \
+		sleep 1; \
+	fi
+	$(SUDO) rm -rf "$(APP_PATH)"
+	$(SUDO) ditto "$(APP_BUNDLE)" "$(APP_PATH)"
+	@/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(APP_PATH)/Contents/Info.plist" | sed 's/^/  /'
+	@echo "✓ 已安装到 $(APP_PATH)"
 
+# 卸掉桌面端和（如果还在的）CLI 二进制
 uninstall:
-	$(SUDO) rm -f "$(BIN_DIR)/openatrading"
-	@echo "✓ 已移除 $(BIN_DIR)/openatrading"
+	$(SUDO) rm -rf "$(APP_PATH)"
+	$(SUDO_BIN) rm -f /usr/local/bin/openatrading
+	@echo "✓ 已移除 $(APP_PATH) 与 /usr/local/bin/openatrading"
 
 # ─── Deploy ──────────────────────────────────────────
 
@@ -182,5 +196,5 @@ help:
 	@echo ""
 	@echo "Other:"
 	@echo "  clean          cargo clean"
-	@echo "  install        安装到 /usr/local/bin"
-	@echo "  uninstall      从 /usr/local/bin 卸载"
+	@echo "  install        构建桌面端并装到 /Applications/OpenATrading.app"
+	@echo "  uninstall      卸载桌面端（以及遗留的 /usr/local/bin CLI）"
