@@ -12,9 +12,12 @@ import {
 } from "@/hooks/query/useStockRanking"
 import { formatCompactNumber, formatPct, pctClass } from "@/lib/format"
 import { mergeStockRankingPages } from "@/lib/stock-ranking"
+import { liveWindow } from "@/lib/rank-live-window"
 import { cn } from "@/lib/utils"
 import { usePaneNav } from "@/components/paneNavContext"
 import { useRightPanelStore } from "@/stores/rightPanelStore"
+import { useLiveQuotes } from "@/hooks/useLiveQuotes"
+import { useVisibleRows } from "@/hooks/useVisibleCodes"
 
 const ORDERS: { id: StockRankingOrder; label: string }[] = [
   { id: "gainers", label: "涨幅榜" },
@@ -40,6 +43,9 @@ function codeText(symbol: string, code: string): string {
   return code || symbol.replace(/\.[A-Z]+$/, "")
 }
 
+/** 可视区订阅的取整块：一次订一块（30 行），滚动跨块才换订阅。 */
+const LIVE_BLOCK = 30
+
 export default function StockRankingTab() {
   const order = useRightPanelStore((state) => state.stockRankingOrder)
   const setOrder = useRightPanelStore((state) => state.setStockRankingOrder)
@@ -59,6 +65,16 @@ export default function StockRankingTab() {
         second: "2-digit",
       })
     : ""
+  // 可视区订阅：只有看得见的那几十行跟着实时跳动，整表 15 秒才重排一次。
+  // 行号按 LIVE_BLOCK 取整 —— 订阅集合只在跨块时变化，滚动不会每 200ms 重连。
+  const { range: liveRange, rowRef } = useVisibleRows()
+  const liveCodes = useMemo(() => {
+    const { start, end } = liveWindow(liveRange, stocks.length, LIVE_BLOCK)
+    return stocks.slice(start, end).map((stock) => stock.symbol)
+  }, [liveRange, stocks])
+  // 回调里的 code 就是订阅时传进去的字符串，直接拿 stock.symbol 当键即可
+  const liveQuotes = useLiveQuotes(liveCodes)
+
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
 
@@ -190,6 +206,8 @@ export default function StockRankingTab() {
                     key={stock.symbol}
                     stock={stock}
                     rank={index + 1}
+                    live={liveQuotes.get(stock.symbol)}
+                    rowRef={rowRef(index, stock.symbol)}
                     onOpen={() => openKline(stock.symbol, stock.name)}
                   />
                 ))}
@@ -215,21 +233,26 @@ export default function StockRankingTab() {
 function RankingRow({
   stock,
   rank,
+  live,
+  rowRef,
   onOpen,
 }: {
   stock: RankedStock
   rank: number
+  /** 可视区订阅推回来的最新价/涨跌幅；没有就是快照值 */
+  live?: { price: number | null; pct: number | null }
+  rowRef: (el: HTMLElement | null) => void
   onOpen: () => void
 }) {
+  const price = live?.price ?? stock.price
+  const pct = live?.pct ?? stock.change_percent
   return (
-    <tr className="cursor-pointer" onClick={onOpen}>
+    <tr ref={rowRef} className="cursor-pointer" onClick={onOpen}>
       <td className="text-tertiary font-number w-8">{rank}</td>
       <td className="text-secondary font-number">{codeText(stock.symbol, stock.code)}</td>
       <td className="text-primary max-w-28 truncate">{stock.name}</td>
-      <td className="num">{numberText(stock.price)}</td>
-      <td className={cn("num font-medium", pctClass(stock.change_percent))}>
-        {percentText(stock.change_percent)}
-      </td>
+      <td className="num">{numberText(price)}</td>
+      <td className={cn("num font-medium", pctClass(pct))}>{percentText(pct)}</td>
       <td className="num">
         {stock.turnover_rate != null ? `${numberText(stock.turnover_rate)}%` : "—"}
       </td>

@@ -48,8 +48,10 @@ export function stockRankingQueryOptions(
       lastPage.next_offset === null
         ? undefined
         : { offset: lastPage.next_offset, limit: NEXT_PAGE_SIZE },
-    staleTime: 2 * 1000,
-    refetchInterval: 3 * 1000,
+    // 快照只负责"有谁、什么顺序"：服务端缓存本身是 5 秒，之前每 3 秒整表重拉既
+    // 撞缓存做无用功，又让整张表重渲染。实时跳动交给可视区订阅（`useLiveQuotes`）。
+    staleTime: 8 * 1000,
+    refetchInterval: 15 * 1000,
     refetchIntervalInBackground: false,
   }
 }
