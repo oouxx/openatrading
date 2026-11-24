@@ -4,6 +4,7 @@ import KlineDrawer from "@/components/KlineDrawer"
 import { StockSearchBox } from "@/components/StockSearchBox"
 import { Button } from "@/components/ui/button"
 import { useLayoutStore } from "@/stores/layoutStore"
+import { useActiveStockStore } from "@/stores/activeStockStore"
 
 /**
  * 个股详情格：表头搜股票，正文是这只票的 K 线与盘口。
@@ -23,12 +24,15 @@ export default function StockDetailPane({
   symbolName?: string
 }) {
   const setPaneSymbol = useLayoutStore((s) => s.setPaneSymbol)
+  const setActiveStock = useActiveStockStore((s) => s.set)
 
   const select = useCallback(
     (code: string, name: string) => {
       setPaneSymbol(layoutId, leafId, code, name)
+      // 钉住的同时也更新工作区当前标的：五档 / 下单格跟着换
+      setActiveStock({ code, name })
     },
-    [layoutId, leafId, setPaneSymbol]
+    [layoutId, leafId, setPaneSymbol, setActiveStock]
   )
 
   return (

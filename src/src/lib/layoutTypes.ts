@@ -21,7 +21,14 @@ export type MarketPaneKind = RightPanelView
 export const MARKET_PANE_KINDS: readonly MarketPaneKind[] = MARKET_VIEWS.map((view) => view.id)
 
 /** 与行情无关的通用面板。 */
-export type GeneralPaneKind = "chat" | "detail" | "market-tabs" | "watchlist" | "roles"
+export type GeneralPaneKind =
+  | "chat"
+  | "detail"
+  | "market-tabs"
+  | "watchlist"
+  | "roles"
+  | "orderbook"
+  | "trade"
 
 export type PaneKind = GeneralPaneKind | MarketPaneKind
 
@@ -37,6 +44,8 @@ export const PANE_KINDS: readonly PaneKind[] = [
   ...MARKET_PANE_KINDS,
   "watchlist",
   "roles",
+  "orderbook",
+  "trade",
 ]
 
 export const GENERAL_PANE_KINDS: readonly GeneralPaneKind[] = [
@@ -45,6 +54,8 @@ export const GENERAL_PANE_KINDS: readonly GeneralPaneKind[] = [
   "market-tabs",
   "watchlist",
   "roles",
+  "orderbook",
+  "trade",
 ]
 
 export const PANE_KIND_LABELS: Record<string, string> = {
@@ -53,6 +64,8 @@ export const PANE_KIND_LABELS: Record<string, string> = {
   "market-tabs": "行情面板",
   watchlist: "自选",
   roles: "模拟盘",
+  orderbook: "五档行情",
+  trade: "下单",
   ...Object.fromEntries(MARKET_PANE_KINDS.map((kind) => [kind, marketViewLabel(kind)])),
 }
 
@@ -74,6 +87,8 @@ const GENERIC_SIZING: Record<GeneralPaneKind, PaneSizing> = {
   "market-tabs": { minSize: 300, defaultSize: 400 },
   watchlist: { minSize: 280, defaultSize: 340 },
   roles: { minSize: 380, defaultSize: 560 },
+  orderbook: { minSize: 220, defaultSize: 300 },
+  trade: { minSize: 300, defaultSize: 360 },
 }
 
 /** 每类面板的尺寸约束：min 保证不塌，default 是首次打开时的比例基准。 */

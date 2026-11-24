@@ -60,3 +60,8 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
   if (at.getTime() >= todayStart - 86_400_000) return `昨天 ${hhmm}`
   return `${pad2(at.getMonth() + 1)}-${pad2(at.getDate())} ${hhmm}`
 }
+
+/** 金额：千分位 + 两位小数（模拟盘记账全站统一这一个口径）。 */
+export function formatMoney(v: number): string {
+  return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}

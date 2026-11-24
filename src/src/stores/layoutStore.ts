@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { fetchLayoutSnapshot, pushLayoutSnapshot } from "@/lib/layoutsApi"
 import { useChatStockStore } from "./chatStockStore"
+import { useActiveStockStore } from "./activeStockStore"
 import { isRightPanelView } from "./rightPanelStore"
 
 /**
@@ -858,6 +859,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     },
 
     openStockInPane: (layoutId, nodeId, symbol, name) => {
+      // 「五档行情」「下单」格跟着走：一次点击，三处看同一只票
+      useActiveStockStore.getState().set({ code: symbol, name })
       const layout = get().layouts.find((item) => item.id === layoutId)
       const leaf = layout && findLeaf(layout.root, nodeId)
       if (!leaf) return

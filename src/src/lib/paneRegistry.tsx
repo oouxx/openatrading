@@ -1,8 +1,17 @@
 import type { ReactNode } from "react"
-import { CandlestickChart, MessageSquare, PanelRight, Star, Wallet } from "lucide-react"
+import {
+  ArrowLeftRight,
+  CandlestickChart,
+  Layers,
+  MessageSquare,
+  PanelRight,
+  Star,
+  Wallet,
+} from "lucide-react"
 import { RolePane, WatchlistPane } from "@/components/EmbeddedPages"
 import MarketPane from "@/components/MarketPane"
 import StockDetailPane from "@/components/StockDetailPane"
+import { OrderBookPane, TradePane } from "@/components/TradePanes"
 import {
   MARKET_PANE_KINDS,
   resolvePaneKind,
@@ -90,6 +99,15 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
   roles: {
     icon: Wallet,
     render: () => <RolePane />,
+  },
+  // 这两个格子跟随工作区当前标的（activeStockStore），和 K 线派发同一条链路
+  orderbook: {
+    icon: Layers,
+    render: () => <OrderBookPane />,
+  },
+  trade: {
+    icon: ArrowLeftRight,
+    render: () => <TradePane />,
   },
 }
 

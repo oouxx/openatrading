@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { AnimatePresence } from "motion/react"
 import { useQueries } from "@tanstack/react-query"
 import { Plus, Trash2, Users } from "lucide-react"
@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command"
 import {
   fetchJson,
   type RoleEntry,
@@ -24,13 +23,9 @@ import {
   type RoleAccount,
   type RoleTrade,
   type ClosedPosition,
-  type StockSearchItem,
 } from "@/stores/data"
-import { searchStocks } from "@/lib/stock-utils"
-import { keepValidSelection } from "@/lib/selection"
 import { cn } from "@/lib/utils"
 import { roleKeys } from "@/hooks/query/queryKeys"
-import { useRealtimeQuote } from "@/hooks/query/useRealtimeQuote"
 import {
   useRoleList,
   useRolePositions,
@@ -40,16 +35,12 @@ import {
   ROLE_LIVE_REFRESH_MS,
   ROLE_SIDEBAR_REFRESH_MS,
 } from "@/hooks/query/useRoleQueries"
-import {
-  useCreateRole,
-  useDeleteRole,
-  useResetRole,
-  usePlaceOrder,
-} from "@/hooks/query/useRoleMutations"
+import { useCreateRole, useDeleteRole, useResetRole } from "@/hooks/query/useRoleMutations"
 import KlineDrawer from "@/components/KlineDrawer"
-import { OrderBookLadder } from "@/components/OrderBookLadder"
-import { useOrderBook } from "@/hooks/query/useOrderBook"
-import { formatPct, pctClass } from "@/lib/format"
+import { OrderBookPanel } from "@/components/OrderBookPanel"
+import { BuyTicketForm, SellTicketForm } from "@/components/TradeTicket"
+import { formatMoney, formatPct, pctClass } from "@/lib/format"
+import { extractStockCode } from "@/lib/trade"
 
 /** 行情不可用时的占位符 —— 后端返回 null 时用它，绝不能显示 0 */
 const DASH = "—"
@@ -64,10 +55,6 @@ function formatTradeTime(value: string): string {
   return value.replace("T", " ").slice(0, 16)
 }
 
-function formatMoney(v: number): string {
-  return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 /** 带正负号的金额，用于盈亏展示 */
 function formatSignedMoney(v: number): string {
   return `${v >= 0 ? "+" : "-"}¥${formatMoney(Math.abs(v))}`
@@ -77,25 +64,6 @@ function formatSignedMoney(v: number): string {
  * 后端所有 `*_pct` 字段已经是百分数（`2.9` 表示 2.9%），不要再次乘 100。
  * 旧版 `pnl_pct` 是小数比例，字段已随接口改版一起换掉。
  */
-function FieldError({ children }: { children: string }) {
-  return <p className="text-danger text-caption mt-1">{children}</p>
-}
-
-/** A 股整手股数。买入必须是它的整数倍（与后端 `Shares::require_board_lot` 一致）。 */
-const BOARD_LOT = 100
-
-/**
- * 只接受不会被后端 `normalize_code` 误解析的输入：
- * 裸 6 位代码，或带 sh/sz/ss 前缀/后缀的 6 位代码。
- * 像 "360" 这种 3 位数字后端会补成 000360，必须在前端直接拒绝。
- */
-const SYMBOL_CODE_RE = /^(?:(?:sh|sz|ss)[.\-_]?(\d{6})|(\d{6})(?:\.(?:ss|sz))?)$/i
-
-function extractStockCode(raw: string): string | null {
-  const match = SYMBOL_CODE_RE.exec(raw.trim())
-  return match ? (match[1] ?? match[2] ?? null) : null
-}
-
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message
   return error ? String(error) : "未知错误"
@@ -128,34 +96,6 @@ interface RoleStat {
   loading: boolean
   error: string | null
   incomplete: boolean
-}
-
-/**
- * 按可用资金与价格折算买入股数，向下取整到整手。
- * 资金/价格不可用时返回 0，调用方据此隐藏快捷仓位。
- */
-function maxBuyableShares(cash: number | null, price: number): number {
-  if (cash === null || !Number.isFinite(price) || price <= 0 || cash <= 0) return 0
-  return Math.floor(cash / price / BOARD_LOT) * BOARD_LOT
-}
-
-/** 买入股数快捷比例 —— 按可用资金折算成「几成仓」 */
-const BUY_SHARE_RATIOS: { label: string; ratio: number }[] = [
-  { label: "1/3 仓", ratio: 1 / 3 },
-  { label: "半仓", ratio: 1 / 2 },
-  { label: "全仓", ratio: 1 },
-]
-
-/** 卖出股数快捷比例 —— 「全部」取实际持仓，其余按整手折算 */
-function sellShareOptions(held: number): { label: string; shares: number }[] {
-  const options = [{ label: "全部", shares: held }]
-  for (const ratio of [1 / 2, 1 / 3]) {
-    const shares = Math.floor((held * ratio) / BOARD_LOT) * BOARD_LOT
-    if (shares >= BOARD_LOT && shares < held) {
-      options.push({ label: ratio === 1 / 2 ? "半仓" : "1/3 仓", shares })
-    }
-  }
-  return options
 }
 
 // ── Role switcher ─────────────────────────────────────
@@ -355,96 +295,6 @@ function AccountOverview({
   )
 }
 
-// ── 买入 Dialog ────────────────────────────────────────
-
-/**
- * 下单弹窗右侧的五档行情栏。
- *
- * 数据走行情通道（`useOrderBook`，后端每个 symbol 只跑一条上游轮询），
- * 所以弹窗开着的时间越长数据越新，而不是打开那一刻的快照。
- */
-function OrderMarketPanel({ symbol, name }: { symbol: string; name?: string }) {
-  const { book, error } = useOrderBook(symbol)
-
-  if (!symbol) {
-    return (
-      <div className="border-hairline text-tertiary text-caption flex h-full min-h-40 items-center justify-center rounded-lg border border-dashed px-3 text-center">
-        选择股票后显示五档行情
-      </div>
-    )
-  }
-
-  return (
-    <div className="border-hairline min-w-0 rounded-lg border px-1 py-1.5">
-      <div className="text-tertiary text-caption mb-1 px-1">五档{name ? ` · ${name}` : ""}</div>
-      <OrderBookLadder book={book} error={error} />
-    </div>
-  )
-}
-
-/**
- * 下单表单里的一个字段：label（关联 input）+ 右侧内联提示 + 控件 + 错误。
- *
- * 买/卖两个弹窗原来各写一遍这套排布，错误提示的位置、字号、间距容易漂移。
- */
-function OrderField({
-  label,
-  id,
-  hint,
-  error,
-  children,
-}: {
-  label: string
-  id: string
-  /** 内联提示：现价、「最多可买 N 股」这类一眼要看到的补充值 */
-  hint?: React.ReactNode
-  error?: string | null
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-secondary text-caption">
-          {label}
-        </label>
-        {hint}
-      </div>
-      {children}
-      {error && <FieldError>{error}</FieldError>}
-    </div>
-  )
-}
-
-/**
- * 下单摘要：金额这类「填完才敢点确认」的数字集中在一个块里。
- *
- * 常驻显示（字段非法时值为 —），而不是校验通过才出现——「可用资金」是决定
- * 买不买得起的前提信息，不该在填错股数时消失。
- */
-function OrderSummary({
-  rows,
-  warn,
-}: {
-  rows: { label: string; value: React.ReactNode; strong?: boolean }[]
-  warn?: string | null
-}) {
-  return (
-    <div className="bg-canvas border-hairline text-caption flex flex-col gap-1 rounded-lg border px-3 py-2">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center justify-between gap-3">
-          <span className="text-secondary">{r.label}</span>
-          <span
-            className={`font-number ${r.strong ? "text-primary font-medium" : "text-secondary"}`}
-          >
-            {r.value}
-          </span>
-        </div>
-      ))}
-      {warn && <p className="text-warning">{warn}</p>}
-    </div>
-  )
-}
-
 function BuyDialog({
   roleName,
   accountLabel,
@@ -455,184 +305,8 @@ function BuyDialog({
   accountLabel?: string
   onClose: () => void
 }) {
-  const placeOrder = usePlaceOrder()
-  const { data: account } = useRoleAccount(roleName)
+  // 右侧五档要跟着表单里选中的票走：表单的标的状态在组件内部，这里只镜像代码
   const [symbol, setSymbol] = useState("")
-  const [stockName, setStockName] = useState("")
-  const [shares, setShares] = useState("")
-  // null = 跟随现价；"" = 用户主动清空，两者必须区分，否则价格框清不掉
-  const [priceOverride, setPriceOverride] = useState<string | null>(null)
-  const [reason, setReason] = useState("")
-  const [attempted, setAttempted] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-  const [results, setResults] = useState<StockSearchItem[]>([])
-  const [searching, setSearching] = useState(false)
-  const [searched, setSearched] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  // 从下拉里选中后回填代码，不应再触发一次搜索把下拉弹回来。
-  // 记录要跳过的具体代码，而不是一个 boolean：连续操作时 boolean 很容易
-  // 残留下来，把用户下一次真正输入也一起跳过。
-  const skipSearchFor = useRef<string | null>(null)
-  const commandRef = useRef<HTMLDivElement | null>(null)
-  const sharesRef = useRef<HTMLInputElement | null>(null)
-  // Candidates are filtered outside cmdk, so cmdk never re-highlights the
-  // first row after the results change. Track the highlight ourselves.
-  const [activeCode, setActiveCode] = useState<string | null>(null)
-  // Derived (not effect-synced): a new result set falls back to its first row
-  // when the stored code is gone.
-  const highlightedCode = keepValidSelection(
-    activeCode,
-    results.map((item) => item.code)
-  )
-
-  // 只对合法 6 位代码拉行情；带 sh/sz 前后缀时也提取出 6 位代码
-  const quoteSymbol = extractStockCode(symbol) ?? ""
-  const { data: quote, isLoading: quoteLoading } = useRealtimeQuote(quoteSymbol)
-  const livePx = typeof quote?.last_px === "number" && quote.last_px > 0 ? quote.last_px : null
-  const suspended = !!quote?.trade_status && quote.trade_status !== "TRADE"
-  // 停牌时现价不能作为成交参考，强制用户手填
-  const autoPx = suspended ? null : livePx
-  const price = priceOverride ?? (autoPx === null ? "" : autoPx.toFixed(2))
-  // 代码填了、行情也拉完了，却还是拿不到现价：只能手动填，得说清楚
-  const quoteMissing = quoteSymbol !== "" && !quoteLoading && livePx === null
-  const cash = account?.cash ?? null
-  const maxShares = maxBuyableShares(cash, Number(price))
-
-  const handleSymbolChange = (value: string) => {
-    setSymbol(value)
-    // 代码一变，旧股票的 name / 价格立刻失效；后端会信任 stock_name，不能留旧值
-    setStockName("")
-    setPriceOverride(null)
-    setResults([])
-    setSearched(false)
-    setSearchError(null)
-    setSearching(value.trim() !== "")
-  }
-
-  useEffect(() => {
-    const q = symbol.trim()
-    if (skipSearchFor.current === q) {
-      skipSearchFor.current = null
-      return
-    }
-    skipSearchFor.current = null
-    if (!q) return
-    let cancelled = false
-    const timer = setTimeout(async () => {
-      setSearching(true)
-      try {
-        const items = await searchStocks(q)
-        if (cancelled) return
-        setResults(items)
-      } catch (e) {
-        if (cancelled) return
-        setResults([])
-        // 搜索失败必须说出来——否则下拉只会显示「无匹配股票」，
-        // 用户会以为这只股票不存在（实际是后端/网络挂了）
-        setSearchError(errorText(e))
-      } finally {
-        if (!cancelled) {
-          setSearching(false)
-          setSearched(true)
-        }
-      }
-    }, 300)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [symbol])
-
-  const pickStock = (item: StockSearchItem) => {
-    skipSearchFor.current = item.code
-    setSymbol(item.code)
-    setStockName(item.name)
-    setPriceOverride(null)
-    setResults([])
-    setSearched(false)
-    setSearchError(null)
-    // 选中时可能有旧请求还没回来，cleanup 会把它标成 cancelled、finally 不再复位，
-    // 不复位 searching 的话下拉会永远停在「搜索中…」
-    setSearching(false)
-    // 选完股票直接接着填股数，不用再点一下输入框
-    sharesRef.current?.focus()
-  }
-
-  // 搜索完成且无结果时也要展开，让用户看到「无匹配股票」而不是一片空白
-  const showSuggestions = symbol.trim() !== "" && (searching || searched || results.length > 0)
-
-  // 候选列表不是 cmdk 的输入框驱动的：方向键转发给 cmdk 移动高亮，
-  // 回车直接选中高亮项（高亮失效时退回第一条）。
-  const handleSymbolKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.nativeEvent.isComposing) return
-    const pickable = showSuggestions && results.length > 0
-    // 回车在代码框里是「选中候选」，不是提交表单——避免刚打完代码就误下单
-    if (e.key === "Enter") {
-      e.preventDefault()
-      if (!pickable) return
-      const active = results.find((item) => item.code === highlightedCode) ?? results[0]
-      if (active) pickStock(active)
-      return
-    }
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (!pickable) return
-      e.preventDefault()
-      commandRef.current?.dispatchEvent(new KeyboardEvent("keydown", { key: e.key, bubbles: true }))
-    }
-  }
-
-  // ── 校验 ──
-  const sharesNum = Number(shares)
-  const priceNum = Number(price)
-  const symbolOk = extractStockCode(symbol) !== null
-  const sharesOk = shares.trim() !== "" && Number.isFinite(sharesNum) && sharesNum > 0
-  const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
-  const lotOk = sharesOk && sharesNum % BOARD_LOT === 0
-  const valid = symbolOk && sharesOk && lotOk && priceOk
-  const estimated = sharesOk && priceOk ? sharesNum * priceNum : null
-
-  const symbolError = attempted && !symbolOk ? "请输入 6 位股票代码，或从搜索结果中选择股票" : null
-  const sharesError = attempted
-    ? !sharesOk
-      ? "股数必须为正数"
-      : !lotOk
-        ? `股数必须是 ${BOARD_LOT} 的整数倍`
-        : null
-    : null
-  const priceError =
-    attempted && !priceOk
-      ? quoteLoading
-        ? "现价获取中，请稍候或手动输入价格"
-        : suspended
-          ? "停牌中不自动带入现价，请手动填写"
-          : "请填写买入价格"
-      : null
-
-  const quickShares = BUY_SHARE_RATIOS.map(({ label, ratio }) => ({
-    label,
-    shares: ratio === 1 ? maxShares : Math.floor((maxShares * ratio) / BOARD_LOT) * BOARD_LOT,
-  })).filter((o) => o.shares >= BOARD_LOT)
-
-  const handleSubmit = async () => {
-    setAttempted(true)
-    setFormError(null)
-    if (!valid || placeOrder.isPending) return
-    try {
-      await placeOrder.mutateAsync({
-        roleName,
-        side: "buy",
-        symbol: symbol.trim(),
-        stockName: stockName.trim() || undefined,
-        shares: sharesNum,
-        price: priceNum,
-        reason: reason.trim() || undefined,
-      })
-      onClose()
-    } catch (e) {
-      // 后端 400 的中文原因（如「股数必须是 100 的整数倍」「可用资金不足」）由 fetchJson 抛出
-      setFormError(errorText(e))
-    }
-  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -643,205 +317,10 @@ function BuyDialog({
             手动记账，不撮合{accountLabel ? ` · 记入「${accountLabel}」` : ""}
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void handleSubmit()
-          }}
-          onKeyDown={(e) => {
-            // 中文输入法用 Enter 选词时不要顺带提交表单
-            if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault()
-          }}
-        >
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
-            <div className="flex min-w-0 flex-col gap-3">
-              <OrderField label="股票" id="buy-symbol" error={symbolError}>
-                <div className="relative">
-                  <Input
-                    id="buy-symbol"
-                    value={symbol}
-                    onChange={(e) => handleSymbolChange(e.target.value)}
-                    onKeyDown={handleSymbolKeyDown}
-                    placeholder="输入代码或名称，如 300272 / 开能健康"
-                    autoComplete="off"
-                    aria-invalid={symbolError ? true : undefined}
-                    className="font-number text-caption"
-                    autoFocus
-                  />
-                  {/* 搜索结果必须脱离表单文档流：列表高度不能把买入弹窗撑大。 */}
-                  {showSuggestions && (
-                    <div className="border-hairline bg-elevated shadow-modal absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border">
-                      <Command
-                        ref={commandRef}
-                        shouldFilter={false}
-                        value={highlightedCode ?? undefined}
-                        onValueChange={(value) => setActiveCode(value)}
-                        className="bg-transparent"
-                      >
-                        <CommandList className="max-h-52">
-                          {searchError ? (
-                            <div className="text-danger text-caption px-3 py-3">
-                              股票搜索失败：{searchError}
-                            </div>
-                          ) : (
-                            <CommandEmpty className="text-secondary text-caption py-3">
-                              {searching ? "搜索中…" : "无匹配股票，可直接输入 6 位代码"}
-                            </CommandEmpty>
-                          )}
-                          {results.map((r) => (
-                            <CommandItem
-                              key={r.code}
-                              value={r.code}
-                              onSelect={() => pickStock(r)}
-                              className="hover:bg-hover data-selected:bg-hover text-caption flex cursor-pointer items-center gap-2 px-3 py-2"
-                            >
-                              <span className="font-number text-primary">{r.code}</span>
-                              <span className="text-secondary truncate">{r.name}</span>
-                            </CommandItem>
-                          ))}
-                        </CommandList>
-                      </Command>
-                    </div>
-                  )}
-                </div>
-              </OrderField>
-
-              {/* 名称只做确认，不再提供手填输入框：留空时后端会用行情补全，
-              手填名称只会带来拼错和前后不一致 */}
-              {/* 现价/停牌只在「价格」字段旁边说一次，这里只确认选中的是哪只股票 */}
-              {stockName && !showSuggestions && (
-                <div className="text-caption -mt-1 flex items-center gap-2">
-                  <span className="text-primary truncate font-medium">{stockName}</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <OrderField
-                  label="股数"
-                  id="buy-shares"
-                  hint={
-                    cash !== null && maxShares < BOARD_LOT ? (
-                      <span className="text-warning text-caption">可用资金不足一手</span>
-                    ) : maxShares >= BOARD_LOT ? (
-                      <span className="text-tertiary text-caption">最多 {maxShares} 股</span>
-                    ) : undefined
-                  }
-                  error={sharesError}
-                >
-                  <Input
-                    id="buy-shares"
-                    ref={sharesRef}
-                    value={shares}
-                    onChange={(e) => setShares(e.target.value)}
-                    placeholder="100"
-                    inputMode="numeric"
-                    aria-invalid={sharesError ? true : undefined}
-                    className="font-number text-caption"
-                  />
-                </OrderField>
-                <OrderField
-                  label="价格"
-                  id="buy-price"
-                  hint={
-                    /* 现价由右侧盘口面板实时给出；这里只在用户手动改过价格时给一个
-                       回到现价的动作，避免同一个数字在一屏里出现两次 */
-                    suspended ? (
-                      <span className="text-warning text-caption">停牌，需手填价格</span>
-                    ) : livePx !== null && priceOverride !== null ? (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="xs"
-                        onClick={() => setPriceOverride(null)}
-                        className="text-brand text-caption h-auto p-0"
-                      >
-                        恢复现价 {livePx.toFixed(2)}
-                      </Button>
-                    ) : quoteLoading && quoteSymbol ? (
-                      <span className="text-tertiary text-caption">行情加载中…</span>
-                    ) : quoteMissing ? (
-                      <span className="text-tertiary text-caption">取不到现价，请手动填写</span>
-                    ) : undefined
-                  }
-                  error={priceError}
-                >
-                  <Input
-                    id="buy-price"
-                    value={price}
-                    onChange={(e) => setPriceOverride(e.target.value)}
-                    placeholder={autoPx === null ? "10.50" : autoPx.toFixed(2)}
-                    inputMode="decimal"
-                    aria-invalid={priceError ? true : undefined}
-                    className="font-number text-caption"
-                  />
-                </OrderField>
-              </div>
-
-              {quickShares.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {quickShares.map((o) => (
-                    <Button
-                      key={o.label}
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      onClick={() => setShares(String(o.shares))}
-                      aria-pressed={shares === String(o.shares)}
-                      className={`h-7 px-2.5 ${
-                        shares === String(o.shares)
-                          ? "border-brand text-brand hover:border-brand hover:text-brand"
-                          : "border-hairline text-secondary hover:bg-hover"
-                      }`}
-                    >
-                      {o.label}
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              <OrderField label="备注" id="buy-reason">
-                <Input
-                  id="buy-reason"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="记录买入理由（可选）"
-                  className="text-caption"
-                />
-              </OrderField>
-
-              <OrderSummary
-                rows={[
-                  {
-                    label: "预估金额",
-                    value: estimated === null ? DASH : `¥${formatMoney(estimated)}`,
-                    strong: true,
-                  },
-                  {
-                    label: "可用资金",
-                    value: cash === null ? DASH : `¥${formatMoney(cash)}`,
-                  },
-                ]}
-                warn={
-                  cash !== null && estimated !== null && estimated > cash + 0.005
-                    ? `超出可用资金 ¥${formatMoney(estimated - cash)}，下单会被拒绝`
-                    : null
-                }
-              />
-            </div>
-            <OrderMarketPanel symbol={quoteSymbol} name={stockName} />
-          </div>
-
-          <DialogFooter>
-            {formError && <span className="text-danger text-caption mr-auto">{formError}</span>}
-            <Button type="button" variant="ghost" onClick={onClose}>
-              取消
-            </Button>
-            <Button type="submit" disabled={placeOrder.isPending}>
-              {placeOrder.isPending ? "提交中…" : "买入"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
+          <BuyTicketForm roleName={roleName} onSymbolChange={setSymbol} onDone={onClose} />
+          <OrderBookPanel symbol={extractStockCode(symbol) ?? ""} />
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -861,204 +340,25 @@ function SellDialog({
   position: RolePosition
   onClose: () => void
 }) {
-  const placeOrder = usePlaceOrder()
-  const [shares, setShares] = useState(String(position.shares))
-  const [price, setPrice] = useState(
-    position.last_price === null ? "" : String(position.last_price)
-  )
-  const [reason, setReason] = useState("")
-  const [attempted, setAttempted] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-
-  const sharesNum = Number(shares)
-  const priceNum = Number(price)
-  const sharesOk =
-    shares.trim() !== "" &&
-    Number.isFinite(sharesNum) &&
-    Number.isInteger(sharesNum) &&
-    sharesNum > 0 &&
-    sharesNum <= position.shares
-  const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
-  const valid = sharesOk && priceOk
-  // 已实现盈亏随输入实时变化：(卖价 − 成本价) × 股数
-  const estimatedPnl = sharesOk && priceOk ? (priceNum - position.cost_price) * sharesNum : null
-  const estimatedAmount = sharesOk && priceOk ? sharesNum * priceNum : null
-  const sellOptions = sellShareOptions(position.shares)
-
-  const sharesError = attempted
-    ? shares.trim() === ""
-      ? "请输入卖出股数"
-      : !Number.isFinite(sharesNum) || sharesNum <= 0
-        ? "股数必须为正数"
-        : !Number.isInteger(sharesNum)
-          ? "股数必须是整数"
-          : sharesNum > position.shares
-            ? `最多可卖 ${position.shares} 股`
-            : null
-    : null
-  const priceError = attempted && !priceOk ? "价格必须为正数" : null
-
-  const handleSubmit = async () => {
-    setAttempted(true)
-    setFormError(null)
-    if (!valid || placeOrder.isPending) return
-    try {
-      await placeOrder.mutateAsync({
-        roleName,
-        side: "sell",
-        symbol: position.symbol,
-        stockName: position.stock_name,
-        shares: sharesNum,
-        price: priceNum,
-        reason: reason.trim() || undefined,
-      })
-      onClose()
-    } catch (e) {
-      setFormError(errorText(e))
-    }
-  }
-
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>卖出 {position.stock_name || position.symbol}</DialogTitle>
           <DialogDescription className="text-tertiary text-caption">
-            {position.symbol} · 成本 {formatMoney(position.cost_price)} · 持仓 {position.shares} 股
+            {position.symbol}
             {accountLabel ? ` · 记入「${accountLabel}」` : ""}
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void handleSubmit()
-          }}
-          onKeyDown={(e) => {
-            // 中文输入法用 Enter 选词时不要顺带提交表单
-            if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault()
-          }}
-        >
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
-            <div className="flex min-w-0 flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3">
-                <OrderField
-                  label="股数"
-                  id="sell-shares"
-                  hint={
-                    <span className="text-tertiary text-caption">最多 {position.shares} 股</span>
-                  }
-                  error={sharesError}
-                >
-                  <Input
-                    id="sell-shares"
-                    value={shares}
-                    onChange={(e) => setShares(e.target.value)}
-                    placeholder={String(position.shares)}
-                    inputMode="numeric"
-                    aria-invalid={sharesError ? true : undefined}
-                    className="font-number text-caption"
-                    autoFocus
-                  />
-                </OrderField>
-                <OrderField
-                  label="价格"
-                  id="sell-price"
-                  hint={<span className="text-tertiary text-caption">现价与五档见右侧</span>}
-                  error={priceError}
-                >
-                  <Input
-                    id="sell-price"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="10.50"
-                    inputMode="decimal"
-                    aria-invalid={priceError ? true : undefined}
-                    className="font-number text-caption"
-                  />
-                </OrderField>
-              </div>
-
-              {sellOptions.length > 1 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {sellOptions.map((o) => (
-                    <Button
-                      key={o.label}
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      onClick={() => setShares(String(o.shares))}
-                      aria-pressed={shares === String(o.shares)}
-                      className={`h-7 px-2.5 ${
-                        shares === String(o.shares)
-                          ? "border-brand text-brand hover:border-brand hover:text-brand"
-                          : "border-hairline text-secondary hover:bg-hover"
-                      }`}
-                    >
-                      {o.label}
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              <OrderField label="备注" id="sell-reason">
-                <Input
-                  id="sell-reason"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="记录卖出理由（可选）"
-                  className="text-caption"
-                />
-              </OrderField>
-
-              <OrderSummary
-                rows={[
-                  {
-                    label: "预估金额",
-                    value: estimatedAmount === null ? DASH : `¥${formatMoney(estimatedAmount)}`,
-                    strong: true,
-                  },
-                  {
-                    label: "预估已实现盈亏",
-                    value:
-                      estimatedPnl === null ? (
-                        DASH
-                      ) : (
-                        <span className={pctClass(estimatedPnl)}>
-                          {formatSignedMoney(estimatedPnl)}
-                        </span>
-                      ),
-                  },
-                ]}
-              />
-            </div>
-            <OrderMarketPanel symbol={position.symbol} name={position.stock_name} />
-          </div>
-
-          <DialogFooter>
-            {formError && <span className="text-danger text-caption mr-auto">{formError}</span>}
-            <Button type="button" variant="ghost" onClick={onClose}>
-              取消
-            </Button>
-            <Button type="submit" disabled={placeOrder.isPending}>
-              {placeOrder.isPending ? "提交中…" : "卖出"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_15rem]">
+          <SellTicketForm roleName={roleName} position={position} onDone={onClose} />
+          <OrderBookPanel symbol={extractStockCode(position.symbol) ?? ""} />
+        </div>
       </DialogContent>
     </Dialog>
   )
 }
 
-// ── Main Component ────────────────────────────────────
-
-/**
- * 单层视图切换。
- *
- * 原来是「持仓管理 / 盈利分析」+ 卡片内再套「当前持仓 / 成交流水 / 平仓记录」
- * 两级 tab，两套视觉语言（segmented 与文字按钮）表达同一件事。合并成一行后
- * 少一层嵌套，页面只有一个 segmented 控件。
- */
 type RoleTab = "current" | "trades" | "history" | "performance"
 
 const TABS: { id: RoleTab; label: string }[] = [
