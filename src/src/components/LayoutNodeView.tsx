@@ -17,6 +17,7 @@ import {
   findLeaf,
   groupOf,
   groupPeerLabels,
+  isMarketPaneKind,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -69,6 +70,8 @@ function PaneKindButton({
 }) {
   const presetKinds = useLayoutStore((s) => s.presetKinds)
   const kind = resolvePaneKind(layout, leaf, presetKinds)
+  // 行情格的表头已经有同一个"这一格放什么"下拉，角落里不再重复来一颗
+  if (isMarketPaneKind(kind)) return null
   return (
     <PaneKindSwitcher
       layoutId={layout.id}
