@@ -9,8 +9,8 @@ import type { MarketPaneKind } from "@/stores/layoutStore"
  * 右上角的 `PaneKindSwitcher`（14 种面板同一套控件、同一个位置），否则行情格有两个
  * 入口、其它格子只有角落那一个，位置还不一致。
  *
- * 点表格里的股票：这一格被拖到别的格上关联过，就在那一格打开 K 线；否则在本格开
- * 子页面。关联 / 解除都由格子角落的把手拖动完成（见 `usePaneDragLink`）。
+ * 点表格里的股票：联动组里如果有「个股详情」/对话格，就在那一格打开 K 线；没有就
+ * 只把这只票设为当前标的（不盖住榜单）。关联 / 解除都由格子角落的把手拖动完成。
  */
 export default function MarketPane({
   leafId,

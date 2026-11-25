@@ -104,7 +104,9 @@ export const PRESET_LAYOUTS: WorkspaceLayout[] = [
     name: "复盘",
     builtin: true,
     storageId: "chat-layout",
-    root: split("review-root", "horizontal", [pane("chat", "chat"), pane("right", "market-tabs")]),
+    // 就是整块对话：右侧那条"行情面板"竖条已经没用了——九个行情视图各自都是独立的
+    // 面板类型，要看盘就把格子拆出来放，不再需要一条只跑 tab 的窄栏。
+    root: pane("chat", "chat"),
   },
   {
     id: "ledger",
@@ -544,6 +546,8 @@ interface LayoutState {
 
   setActivePane: (paneId: string) => void
   openPaneStock: (paneId: string, symbol: string, name: string) => void
+  /** 只把这只票设为工作区当前标的（五档/下单格会跟着），不打开任何页面。 */
+  selectStock: (symbol: string, name: string) => void
   openPanePlate: (paneId: string, plate: PlateDetailTarget) => void
   openPaneDragon: (paneId: string, item: DragonDetailTarget) => void
   closePaneDetail: (paneId: string) => void
@@ -800,13 +804,19 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       set({ activePaneId: paneId })
     },
 
+    // 同一格重复看股票只保留一层：被派发方反复更新时不要越压越高（Esc/返回要按好几次）
     openPaneStock: (paneId, symbol, name) =>
-      set((state) => ({
-        paneDetail: {
-          ...state.paneDetail,
-          [paneId]: [...(state.paneDetail[paneId] ?? []), { type: "stock", symbol, name }],
-        },
-      })),
+      set((state) => {
+        const stack = state.paneDetail[paneId] ?? []
+        const top = stack[stack.length - 1]
+        const nextStack =
+          top?.type === "stock"
+            ? [...stack.slice(0, -1), { type: "stock" as const, symbol, name }]
+            : [...stack, { type: "stock" as const, symbol, name }]
+        return { paneDetail: { ...state.paneDetail, [paneId]: nextStack } }
+      }),
+
+    selectStock: (symbol, name) => useActiveStockStore.getState().set({ code: symbol, name }),
 
     openPanePlate: (paneId, plate) =>
       set((state) => ({
@@ -888,10 +898,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       // 内置布局里换内容不改结构：行情格换榜、或换成「个股详情 / 五档 / 下单 / 自选 /
       // 模拟盘」都允许，记在覆盖表里，预设本身不动。
       //
-      // 两类除外：`market-tabs` 是 selfPanel（Panel 包裹方式由结构决定，运行期换不了），
-      // `chat` 预设里只有一格（多开会让同一会话被两处订阅）。
+      // `market-tabs` 是 selfPanel（Panel 包裹方式由结构决定，运行期换不了）；
+      // `chat` 可以切，但一个布局只能有一条（见 `PaneKindSwitcher` 的禁用逻辑）。
       if (layout.builtin) {
-        if (kind === "market-tabs" || kind === "chat") return
+        if (kind === "market-tabs") return
         clearPaneDetail(nodeId)
         set({
           presetKinds: {
@@ -1047,9 +1057,11 @@ export function groupOf(layoutId: string | null | undefined, leafId: string | nu
 /**
  * 点这一格的股票时，要一起更新的**接收方**格子。
  *
- * 组里除了自己，只认能显示行情的格子：个股详情（钉住）、对话格（K 线标签）、
- * 其它行情格（子页面）。另一个榜单、自选、模拟盘不算接收方——点一个榜的股票
- * 顺便把另一个榜换掉，只会让人看不懂。
+ * 只认"专门用来看一只票"的格子：个股详情（钉住那只票）、对话格（K 线标签）。
+ *
+ * **行情格不算接收方**：把两个榜放在一组时，点 A 的股票会往 B 上叠一层 K 线，
+ * 点 B 又叠回 A，两边互相盖、看着就乱了。榜单只负责派发，"在哪看"由个股详情格
+ * 决定。自选 / 模拟盘 / 五档 / 下单同理不接（五档和下单本来就跟随当前标的）。
  */
 export function linkedReceivers(
   layoutId: string | null | undefined,
@@ -1066,7 +1078,7 @@ export function linkedReceivers(
       const target = findLeaf(layout.root, leaf)
       if (!target) return false
       const kind = resolvePaneKind(layout, target, state.presetKinds)
-      return kind === "detail" || kind === "chat" || isMarketPaneKind(kind)
+      return kind === "detail" || kind === "chat"
     })
     .map(([leaf]) => leaf)
 }

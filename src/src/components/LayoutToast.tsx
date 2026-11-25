@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { useActiveLayout, useLayoutStore } from "@/stores/layoutStore"
+import { useUiHintStore } from "@/stores/uiHintStore"
 import { motionTransition } from "@/lib/motion"
 
 /**
@@ -20,6 +21,7 @@ const EDITING_TOAST = {
 export default function LayoutToast() {
   const active = useActiveLayout()
   const editingId = useLayoutStore((s) => s.editingId)
+  const hint = useUiHintStore((s) => s.message)
   const [shown, setShown] = useState<string | null>(null)
   const [editingToast, setEditingToast] = useState<string | null>(null)
   const prevEditing = useRef<string | null>(null)
@@ -47,9 +49,9 @@ export default function LayoutToast() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center">
       <AnimatePresence>
-        {(editingToast ?? shown) && (
+        {(hint ?? editingToast ?? shown) && (
           <motion.div
-            key={editingToast ?? shown ?? ""}
+            key={hint ?? editingToast ?? shown ?? ""}
             role="status"
             className="bg-surface border-hairline shadow-modal text-body text-primary rounded-full border px-3.5 py-1.5 font-medium"
             initial={{ opacity: 0, y: -6 }}
@@ -57,7 +59,7 @@ export default function LayoutToast() {
             exit={{ opacity: 0 }}
             transition={motionTransition.fast}
           >
-            {editingToast ?? shown}
+            {hint ?? editingToast ?? shown}
           </motion.div>
         )}
       </AnimatePresence>

@@ -115,11 +115,12 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
 /**
  * 下拉里可切换的类型。
  *
- * 排除两类：`chat`（预设里只有一格，多开会让同一会话被两处订阅）、
- * `market-tabs`（selfPanel，Panel 包裹方式由布局结构决定，运行期换不了）。
+ * 只排除 `market-tabs`（selfPanel，Panel 包裹方式由布局结构决定，运行期换不了）。
+ * `chat` 在列表里，但**一个布局只能有一条**（所有对话格读同一个 activeThreadId，
+ * 多开只会互相镜像 + 各自建一条 WebSocket），所以选择器把已存在的情况禁掉。
  */
 export const SWITCHABLE_PANE_KINDS: readonly PaneKind[] = PANE_KINDS.filter(
-  (kind) => kind !== "chat" && kind !== "market-tabs"
+  (kind) => kind !== "market-tabs"
 )
 
 export function paneIcon(kind: PaneKind): typeof MessageSquare {

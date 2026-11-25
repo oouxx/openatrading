@@ -48,10 +48,15 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "trade",
 ]
 
+/**
+ * "换内容"下拉里能选的通用面板。
+ *
+ * 不含 `market-tabs`（旧的右侧行情竖栏）：它仍然能被解析和渲染（老布局里可能还有），
+ * 但不再提供新建入口——九个行情视图各自都是独立面板类型，直接拆一格放就行。
+ */
 export const GENERAL_PANE_KINDS: readonly GeneralPaneKind[] = [
   "chat",
   "detail",
-  "market-tabs",
   "watchlist",
   "roles",
   "orderbook",
