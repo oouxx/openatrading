@@ -19,6 +19,7 @@ import {
   type WatchlistItem,
 } from "@/hooks/query/useWatchlist"
 import { subscribeRealtimeBatch, type RealtimeQuote } from "@/hooks/useRealtimeStream"
+import type { StockSearchItem } from "@/stores/data"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DataEmpty, DataLoading } from "@/components/data-state"
@@ -115,7 +116,7 @@ export default function WatchlistView({
   // ── Add-stock search ──
   const [showAdd, setShowAdd] = useState(false)
   const [addQuery, setAddQuery] = useState("")
-  const [addResults, setAddResults] = useState<{ code: string; name: string }[]>([])
+  const [addResults, setAddResults] = useState<StockSearchItem[]>([])
   const [addSearching, setAddSearching] = useState(false)
 
   // ── Local search ──
@@ -277,7 +278,7 @@ export default function WatchlistView({
                       type="button"
                       variant="ghost"
                       className="hover:bg-hover h-auto w-full justify-between rounded-md px-3 py-2.5 text-left font-normal"
-                      onClick={() => handleAdd(r.code, r.name)}
+                      onClick={() => handleAdd(r.symbol ?? r.code, r.name)}
                     >
                       <span className="flex items-baseline gap-2">
                         <span className="text-body text-primary font-medium">{r.name}</span>

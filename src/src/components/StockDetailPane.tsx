@@ -35,6 +35,7 @@ export default function StockDetailPane({
     (code: string, name: string) => {
       setPaneSymbol(layoutId, leafId, code, name)
       // 钉住的同时也更新工作区当前标的：五档 / 下单格跟着换
+      // （指数也照传，那两个格子自己会说明"指数不可交易/没有盘口"）
       setActiveStock({ code, name })
     },
     [layoutId, leafId, setPaneSymbol, setActiveStock]

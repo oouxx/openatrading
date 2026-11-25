@@ -293,8 +293,18 @@ export interface ClosedPosition {
 
 /** 股票搜索建议项 —— GET /api/search-stocks?q= */
 export interface StockSearchItem {
+  /** 交易所内 6 位代码（展示用；指数与个股会撞车，不能拿它去查行情） */
   code: string
   name: string
+  /** 带交易所后缀的 Yahoo 代码（K 线/行情/自选都用它） */
+  symbol?: string
+  /**
+   * 标的类别，东财 `Classify`/`SecurityTypeName` 的权威标注。
+   *
+   * 前端也有 `classifySymbol(symbol)` 能按号码段判同一件事（自选、持仓这些只有
+   * 符号串的地方用它），两者对现有 A 股标的结论一致；拿不到后端标注时按符号推断。
+   */
+  kind?: "stock" | "index" | "fund" | "bond"
 }
 
 /**

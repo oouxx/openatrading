@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select"
 import { useRoleList } from "@/hooks/query/useRoleQueries"
 import { usePositionOf } from "@/hooks/usePositionOf"
+import { classifySymbol } from "@/lib/stock-utils"
 import { extractStockCode } from "@/lib/trade"
 import { useActiveStockStore } from "@/stores/activeStockStore"
 
@@ -43,6 +44,7 @@ function ActiveStockHeader({ extra }: { extra?: React.ReactNode }) {
         className="ml-auto w-36 shrink-0"
         placeholder="换股票…"
         ariaLabel="搜索要查看的股票"
+        excludeIndexes
         onPick={(code, name) => setStock({ code, name })}
       />
     </header>
@@ -51,7 +53,9 @@ function ActiveStockHeader({ extra }: { extra?: React.ReactNode }) {
 
 export function OrderBookPane() {
   const stock = useActiveStockStore((s) => s.stock)
-  const symbol = stock ? (extractStockCode(stock.code) ?? stock.code) : ""
+  // 指数没有盘口：不能把裸代码丢给接口——`000001` 会被查成平安银行
+  const isIndex = stock != null && classifySymbol(stock.code) === "index"
+  const symbol = stock && !isIndex ? (extractStockCode(stock.code) ?? stock.code) : ""
 
   return (
     <div className="bg-surface flex h-full min-w-0 flex-col overflow-hidden">
@@ -60,7 +64,7 @@ export function OrderBookPane() {
         <OrderBookPanel
           symbol={symbol}
           name={stock?.name}
-          placeholder="在自选/榜单里点一只股票，或从右上角搜索"
+          placeholder={isIndex ? "指数没有盘口" : "在自选/榜单里点一只股票，或从右上角搜索"}
           className="border-0"
         />
       </div>
@@ -123,6 +127,8 @@ export function TradePane() {
           <p className="text-tertiary text-caption">先在「模拟盘」里建一个角色。</p>
         ) : !stock ? (
           <p className="text-tertiary text-caption">在自选/榜单里点一只股票，或从右上角搜索。</p>
+        ) : classifySymbol(stock.code) === "index" ? (
+          <p className="text-tertiary text-caption">指数不可交易。</p>
         ) : side === "buy" ? (
           // 换股票就重挂载：价格、股数、备注都该跟着清空
           <BuyTicketForm key={stock.code} roleName={activeRole} preset={stock} />

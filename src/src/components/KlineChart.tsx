@@ -1,6 +1,7 @@
 import { chartColors, withAlpha } from "@/lib/chartColors"
 import { formatCompactNumber } from "@/lib/format"
 import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
+import { classifySymbol } from "@/lib/stock-utils"
 import { useUiStore } from "@/stores/ui"
 
 import { useRef, useEffect, useCallback, useState } from "react"
@@ -192,22 +193,77 @@ function getLimitPct(symbol: string): number {
 /** Round to the exchange price tick (A 股 0.01 元，四舍五入）。 */
 const roundTick = (p: number) => Math.round(p * 100) / 100
 
-/** Actual limit-up/down prices at `preclose`（交易所把 ±限幅取整到 0.01 —
- *  例如昨收 15.16 → 涨停 16.68 = +10.03%，并非精确 ±10%）。
- *  分时网格顶部/底部线必须锚在取整后的涨跌停价上，否则封板时
- *  现价线与 ±10% 网格线相差 0.004 元，视觉上“没贴到 10% 上”。 */
-function getLimitPrices(
+/**
+ * 分时量程的上下界。
+ *
+ * `limitSnapped` = 个股：锚在取整后的**真实涨跌停价**上（交易所把 ±限幅取整到
+ * 0.01，例如昨收 15.16 → 涨停 16.68 = +10.03%），封板时现价线才贴得住顶线。
+ *
+ * 指数/基金/债券没有涨跌停语义，直接按半程百分比算：它们的报价精度也不都是
+ * 0.01（ETF 是 0.001），硬按 0.01 取整会让上下界不对称、昨收线偏离 0%——
+ * 实测 510300 会画成 +1.91% / -2.06%，中线落在 -0.07%。
+ */
+function bandPrices(
   preclose: number,
-  limitPct: number
+  halfPct: number,
+  limitSnapped: boolean
 ): { up: number; down: number; upPct: number; downPct: number } {
-  const up = roundTick(preclose * (1 + limitPct / 100))
-  const down = roundTick(preclose * (1 - limitPct / 100))
+  const rawUp = preclose * (1 + halfPct / 100)
+  const rawDown = preclose * (1 - halfPct / 100)
+  const up = limitSnapped ? roundTick(rawUp) : rawUp
+  const down = limitSnapped ? roundTick(rawDown) : rawDown
   return {
     up,
     down,
     upPct: (up / preclose - 1) * 100,
     downPct: (down / preclose - 1) * 100,
   }
+}
+
+/** 指数分时的量程档位（半程百分比）：按当日最大振幅挑最小够用的一档。 */
+const INDEX_RANGE_STEPS = [1, 2, 3, 4, 5, 8, 10] as const
+/** 曲线与网格线之间留点余量，避免最高/最低点正好压在网格线上。 */
+const INDEX_RANGE_HEADROOM = 1.15
+
+/** 只留最后一个交易日的分钟线（分时量程只看当天）。 */
+function lastDayCandles(candles: KlineCandle[]): KlineCandle[] {
+  const last = candles[candles.length - 1]
+  if (!last) return []
+  const day = Math.floor(last.time / 86400)
+  return candles.filter((c) => Math.floor(c.time / 86400) === day)
+}
+
+/**
+ * 分时量程（半程百分比）。
+ *
+ * 只有个股有固定涨跌停（`getLimitPct`）。指数/ETF/可转债的幅度既不是 10% 也不
+ * 能从代码推（ETF 有 10% 也有 20%），套一个固定值不是把曲线压成窄带就是被裁，
+ * 所以按当日最大振幅挑一档整百分比。
+ *
+ * 没有昨收（实时行情首帧 / 停牌）时以当日开盘价为基准；连价格都没有则返回最小档。
+ */
+function intradayHalfPct(
+  symbol: string,
+  candles: KlineCandle[],
+  preclose: number | undefined
+): number {
+  if (classifySymbol(symbol) === "stock") return getLimitPct(symbol)
+  const day = lastDayCandles(candles)
+  const base = preclose && preclose > 0 ? preclose : day[0]?.close
+  const min = INDEX_RANGE_STEPS[0]
+  if (!base || base <= 0) return min
+  let maxAbs = 0
+  for (const c of day) {
+    for (const v of [c.close, c.high, c.low]) {
+      if (v == null || v <= 0) continue
+      maxAbs = Math.max(maxAbs, Math.abs((v / base - 1) * 100))
+    }
+  }
+  const need = Math.max(maxAbs * INDEX_RANGE_HEADROOM, min)
+  return (
+    INDEX_RANGE_STEPS.find((step) => step >= need) ??
+    INDEX_RANGE_STEPS[INDEX_RANGE_STEPS.length - 1]
+  )
 }
 
 export default function KlineChart({ data, period, preclose, symbol }: KlineChartProps) {
@@ -254,9 +310,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
   const gridRef = useRef<number[]>([])
   const gridDayRef = useRef<number>(-1)
   const axisPinnedRef = useRef(false)
-  const precloseAppliedRef = useRef<number | null>(null)
+  const precloseAppliedRef = useRef<{ preclose: number; halfPct: number } | null>(null)
   // 分时量程锚点（数据填充 effect 写入，series 的 autoscaleInfoProvider 读取）：
-  // 左轴 = 取整后的真实涨跌停价，右轴 = 对应涨跌停百分比。量程钉死 + 像素留白。
+  // 左轴 = 取整后的边界价（个股涨跌停 / 指数自适应档位），右轴 = 对应百分比。
+  // 量程钉死 + 像素留白。
   const intradayRangeRef = useRef<{
     left: { minValue: number; maxValue: number }
     right: { minValue: number; maxValue: number }
@@ -359,16 +416,19 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     })
 
-    // 同花顺复刻：均价线黄色实线（VWAP）
-    avgPriceSeriesRef.current = chart.addSeries(LineSeries, {
-      color: chartColors.warning(),
-      lineWidth: 1,
-      priceScaleId: "left",
-      crosshairMarkerVisible: false,
-      lastValueVisible: false,
-      priceLineVisible: false,
-      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-    })
+    // 同花顺复刻：均价线黄色实线（VWAP）。指数没有均价概念（点位按成交量加权
+    // 没有意义），不建这条线，数据填充阶段会跳过；ETF/可转债是可交易的，照画。
+    if (classifySymbol(symbol) !== "index") {
+      avgPriceSeriesRef.current = chart.addSeries(LineSeries, {
+        color: chartColors.warning(),
+        lineWidth: 1,
+        priceScaleId: "left",
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      })
+    }
 
     pctAnchorSeriesRef.current = chart.addSeries(LineSeries, {
       color: "transparent",
@@ -416,10 +476,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       autoscaleInfoProvider: () => {
         const r = intradayRangeRef.current?.right
         if (r) return { priceRange: r, margins: INTRADAY_AUTOSCALE_MARGINS }
-        // 没有昨收时仍按涨跌停幅度撑开百分比轴，避免退化成 ±0.5% 的默认量程。
-        const limitPct = getLimitPct(symbol)
+        // 没有昨收时仍按量程撑开百分比轴，避免退化成 ±0.5% 的默认量程。
+        const halfPct = intradayHalfPct(symbol, dataRef.current, precloseRef.current)
         return {
-          priceRange: { minValue: -limitPct, maxValue: limitPct },
+          priceRange: { minValue: -halfPct, maxValue: halfPct },
           margins: INTRADAY_AUTOSCALE_MARGINS,
         }
       },
@@ -744,7 +804,10 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       const avgPrice = avgPriceSeriesRef.current
       const volume = volumeSeriesRef.current
       const pctAnchor = pctAnchorSeriesRef.current
-      if (!price || !avgPrice || !volume || !pctAnchor) return
+      if (!price || !volume || !pctAnchor) return
+
+      // 个股的涨跌停边界要取整，其他标的直接按百分比算（见 bandPrices）
+      const hasPriceLimit = classifySymbol(symbol) === "stock"
 
       // Only trading-hour candles, single day = the last candle's day.
       const trading = deduped.filter((c) => isTradingTime(c.time))
@@ -776,10 +839,11 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
       )
 
       // VWAP (cumulative), reset at day boundaries; whitespace for future minutes.
+      // 指数没有均价线（点位乘成交量加权没有意义），avgPrice 为 null 时整段跳过。
       let cumValue = 0
       let cumVolume = 0
       let prevDay = -1
-      avgPrice.setData(
+      avgPrice?.setData(
         grid.map((t) => {
           const c = candleMap.get(t)
           if (!c) return { time: t as Time, value: undefined as unknown as number }
@@ -819,14 +883,14 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         })
       )
 
-      // pct anchor: two endpoints spanning the full grid (±涨跌停).
-      // 有昨收时用取整后的真实涨跌停幅度（如 +10.03%），与价格轴严格对齐。
+      // pct anchor: two endpoints spanning the full grid (±涨跌停 / 指数自适应量程).
+      // 有昨收时用取整后的真实边界幅度（如 +10.03%），与价格轴严格对齐。
       {
-        const limitPct = getLimitPct(symbol)
+        const halfPct = intradayHalfPct(symbol, dayCandles, precloseRef.current)
         const pc = precloseRef.current
-        const lim = pc && pc > 0 ? getLimitPrices(pc, limitPct) : null
-        const upPct = lim ? lim.upPct : limitPct
-        const downPct = lim ? lim.downPct : -limitPct
+        const lim = pc && pc > 0 ? bandPrices(pc, halfPct, hasPriceLimit) : null
+        const upPct = lim ? lim.upPct : halfPct
+        const downPct = lim ? lim.downPct : -halfPct
         pctAnchor.setData([
           { time: grid[0] as Time, value: downPct },
           { time: grid[grid.length - 1] as Time, value: upPct },
@@ -840,17 +904,21 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
         axisPinnedRef.current = true
       }
 
-      // 同花顺复刻网格：以昨收为中线、涨跌停对称等分（默认上下各 2 格 → 5 条横线）。
-      // 顶部/底部线锚在取整后的真实涨跌停价（如 16.68 = +10.03%），封板时
-      // 现价线恰好落在顶线上，而不是悬在未取整的 ±10% 下方/上方。
+      // 同花顺复刻网格：以昨收为中线、涨跌停自动对称等分（默认上下各 2 格 → 5 条横线）。
+      // 顶部/底部线锚在取整后的真实边界（个股 = 涨跌停价 16.68 = +10.03%，封板时
+      // 现价线恰好落在顶线上；指数 = 当日振幅自适应的一档整百分比）。
       // 每格位置同时画两条 priceLine：左轴（价格 series）显示价格标签，
       // 右轴（百分比 series）显示百分比标签；昨收（0%）用品牌 warning 色虚线。
       // 网格线 priceLine 挂在 series 上，宽度贯穿整个主图 pane，
       // 而 LWC 自动刻度文本已被 `tickmarksPriceFormatter` 隐藏。
-      if (preclose && preclose > 0 && precloseAppliedRef.current !== preclose) {
+      // 指数量程会随当日振幅变大而跳档，所以「决定性参数」是（昨收, 半程幅度）
+      // 二元组，两者任一变化都要重画。
+      const halfPct = intradayHalfPct(symbol, dayCandles, preclose)
+      const applied = precloseAppliedRef.current
+      const stale = applied === null || applied.preclose !== preclose || applied.halfPct !== halfPct
+      if (preclose && preclose > 0 && stale) {
         clearPriceLines()
-        const limitPct = getLimitPct(symbol)
-        const lim = getLimitPrices(preclose, limitPct)
+        const lim = bandPrices(preclose, halfPct, hasPriceLimit)
         const { upPct, downPct } = lim
         // 品牌配色：网格线 = tertiary 淡化，昨收线 = warning（与均价线同色系）
         const gridColor = withAlpha(chartColors.tertiary(), 0.35)
@@ -887,7 +955,7 @@ export default function KlineChart({ data, period, preclose, symbol }: KlineChar
           left: { minValue: lim.down, maxValue: lim.up },
           right: { minValue: downPct, maxValue: upPct },
         }
-        precloseAppliedRef.current = preclose
+        precloseAppliedRef.current = { preclose, halfPct }
       }
     } else {
       // ---- Kline (day/week/month): full snapshot each tick ----

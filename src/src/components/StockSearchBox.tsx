@@ -3,6 +3,7 @@ import { Search } from "lucide-react"
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { searchStocks } from "@/lib/stock-utils"
+import type { StockSearchItem } from "@/stores/data"
 
 /**
  * 股票搜索框（带下拉候选）。
@@ -14,16 +15,19 @@ export function StockSearchBox({
   placeholder = "搜索股票…",
   ariaLabel = "搜索股票代码或名称",
   className,
+  excludeIndexes = false,
   onPick,
 }: {
   placeholder?: string
   ariaLabel?: string
   /** 宽度/尺寸差异（如 `w-52`、`w-full`）给外层容器，输入框自己撑满。 */
   className?: string
+  /** 只列可交易标的：五档 / 下单格的换股票框用（指数不能交易，列出来只会白点一下）。 */
+  excludeIndexes?: boolean
   onPick: (code: string, name: string) => void
 }) {
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<{ code: string; name: string }[]>([])
+  const [results, setResults] = useState<StockSearchItem[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
@@ -57,7 +61,8 @@ export function StockSearchBox({
       void searchStocks(value)
         .then((items) => {
           if (seq !== seqRef.current) return
-          setResults(items.slice(0, 8))
+          const tradeable = excludeIndexes ? items.filter((item) => item.kind !== "index") : items
+          setResults(tradeable.slice(0, 8))
           setHighlight(0)
           setOpen(true)
         })
@@ -103,7 +108,8 @@ export function StockSearchBox({
           }
           if (e.key === "Enter") {
             const picked = results[highlight] ?? results[0]
-            if (picked) pick(picked.code, picked.name)
+            // 带后缀的符号才是行情/自选能用的：`000001` 既是上证指数也是平安银行
+            if (picked) pick(picked.symbol ?? picked.code, picked.name)
             return
           }
           if (e.key === "Escape") setOpen(false)
@@ -126,7 +132,7 @@ export function StockSearchBox({
                     <CommandItem
                       key={stock.code}
                       value={stock.code}
-                      onSelect={() => pick(stock.code, stock.name)}
+                      onSelect={() => pick(stock.symbol ?? stock.code, stock.name)}
                       className="text-caption"
                       data-highlighted={index === highlight ? "true" : undefined}
                     >

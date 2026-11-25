@@ -215,7 +215,9 @@ export function BuyTicketForm({
       try {
         const items = await searchStocks(q)
         if (cancelled) return
-        setResults(items)
+        // 指数不能下单：`000001` 裸码落到后端就成了平安银行
+        // （ETF / 可转债是场内可交易的，照常列出）
+        setResults(items.filter((item) => item.kind !== "index"))
       } catch (e) {
         if (cancelled) return
         setResults([])
@@ -236,9 +238,10 @@ export function BuyTicketForm({
   }, [symbol])
 
   const pickStock = (item: StockSearchItem) => {
-    skipSearchFor.current = item.code
-    setSymbol(item.code)
-    onSymbolChange?.(item.code)
+    const picked = item.symbol ?? item.code
+    skipSearchFor.current = picked
+    setSymbol(picked)
+    onSymbolChange?.(picked)
     setStockName(item.name)
     setPriceOverride(null)
     setResults([])

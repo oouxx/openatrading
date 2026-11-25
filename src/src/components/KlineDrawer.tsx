@@ -5,7 +5,7 @@ import KlineChart, { type KlineCandle } from "./KlineChart"
 import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
 import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
-import { toYahooSymbol } from "@/lib/stock-utils"
+import { classifySymbol, toYahooSymbol } from "@/lib/stock-utils"
 import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -26,26 +26,27 @@ const periods = [
   { label: "月K", value: "month" },
 ]
 
-/** 归一化为 Yahoo 格式；失败时回退原始输入，与后端 watchlist 容错一致。 */
-function canonicalWatchSymbol(raw: string): string {
+/**
+ * 归一化为 Yahoo 格式；失败时回退原始输入，与后端 watchlist 容错一致。
+ *
+ * 交易所后缀必须透传：指数与个股共用 6 位代码（`000001.SS` 上证指数 vs
+ * `000001.SZ` 平安银行），按首位数字重推会把指数画成另一只票。
+ */
+function toUpstreamSymbol(raw: string): string {
   try {
     return toYahooSymbol(raw)
   } catch {
-    return raw
+    return raw.trim()
   }
-}
-
-function toXuangubaoSymbol(code: string): string {
-  const clean = code.replace(/[.].*$/, "").replace(/^(sh|sz|bj)/i, "")
-  if (clean.startsWith("6")) return clean + ".SS"
-  if (clean.startsWith("0") || clean.startsWith("3")) return clean + ".SZ"
-  if (clean.startsWith("4") || clean.startsWith("8")) return clean + ".BJ"
-  return clean
 }
 
 export default function KlineDrawer({ symbol, name, onClose, showClose = true }: KlineDrawerProps) {
   const [period, setPeriod] = useState("minute")
-  const xgSymbol = toXuangubaoSymbol(symbol)
+  const xgSymbol = toUpstreamSymbol(symbol)
+  // 指数/基金/债券没有市盈率、市净率（上游恒 0），也没有所属板块：
+  // 只有个股才渲染这些区域
+  const kind = classifySymbol(xgSymbol)
+  const isStock = kind === "stock"
   const [quote, setQuote] = useState<RealtimeQuote | null>(null)
 
   // Watchlist
@@ -53,7 +54,7 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
   const addWatchlist = useAddWatchlist()
   const deleteWatchlist = useDeleteWatchlist()
   // 自选股统一以 Yahoo 格式存储，比较/增删前先归一化，避免同一股票重复
-  const watchSymbol = canonicalWatchSymbol(symbol)
+  const watchSymbol = xgSymbol
   const inWatchlist = watchlist.some((w) => w.code === watchSymbol)
 
   // Kline data from SSE
@@ -111,13 +112,13 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
       }
     )
   }, [xgSymbol, period, streamNonce])
-  const { data: plates } = usePlatesByStock(xgSymbol)
+  const { data: plates } = usePlatesByStock(isStock ? xgSymbol : "")
   const plateList = Array.isArray(plates) ? plates : []
   const [dialogPlate, setDialogPlate] = useState<PlateByStockItem | null>(null)
 
   const metrics = useMemo(() => {
     if (!quote) return []
-    return [
+    const rows = [
       { label: "今开", value: quote.open_px?.toFixed(2) || "-" },
       { label: "昨收", value: quote.preclose_px?.toFixed(2) || "-" },
       { label: "最高", value: quote.high_px?.toFixed(2) || "-" },
@@ -125,7 +126,7 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
       { label: "振幅", value: quote.amplitude != null ? quote.amplitude.toFixed(2) + "%" : "-" },
       {
         label: "换手率",
-        value: quote.turnover_ratio != null ? quote.turnover_ratio.toFixed(2) + "%" : "-",
+        value: quote.turnover_ratio ? quote.turnover_ratio.toFixed(2) + "%" : "-",
       },
       { label: "动态PE", value: quote.dyn_pe ? quote.dyn_pe.toFixed(1) : "-" },
       { label: "市净率", value: quote.dyn_pb_rate ? quote.dyn_pb_rate.toFixed(2) : "-" },
@@ -138,7 +139,23 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
           quote.turnover_volume != null ? `${formatCompactNumber(quote.turnover_volume)}股` : "-",
       },
     ]
-  }, [quote])
+    // 非个股的 PE / 市净率 / 市值上游一律给 0（指数量还是成分股加总），
+    // 留着只是几格 "0" / "-"：去掉后剩 8 格正好两行。
+    if (!isStock) {
+      const tradeableFields = new Set([
+        "今开",
+        "昨收",
+        "最高",
+        "最低",
+        "振幅",
+        "换手率",
+        "量比",
+        "成交量",
+      ])
+      return rows.filter((m) => tradeableFields.has(m.label))
+    }
+    return rows
+  }, [quote, isStock])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
