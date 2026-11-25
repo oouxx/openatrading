@@ -58,14 +58,20 @@ APP_BUNDLE := target/release/bundle/macos/openatrading.app
 SUDO := $(shell [ -w "$(dir $(APP_PATH))" ] || echo sudo)
 SUDO_BIN := $(shell [ -w /usr/local/bin ] || echo sudo)
 # 本地只出 .app：不打 DMG，也不生成更新包（更新包需要 TAURI_SIGNING_PRIVATE_KEY，
-# 那是发版流程的事，本地没有那把钥匙）
-TAURI_BUILD := cd src-tauri && cargo tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
+# 那是发版流程的事，本地没有那把钥匙）。
+#
+# `CARGO_PROFILE_RELEASE_STRIP=false` 是必须的：workspace 的 release profile 带
+# `strip = true`，rustc 1.97 在 macOS 上会把 **proc-macro 的 dylib** 剥成坏的 Mach-O
+# （LINKEDIT 字符串表错位），dyld 拒绝加载，表现成 `can't find crate for time_macros`
+# / `tokio_macros` 这种莫名其妙的编译错误。关掉剥离只是让本地二进制大几 MB，
+# 发版走 CI（交叉编译，不踩这条路径）。
+TAURI_BUILD := cd src-tauri && CARGO_PROFILE_RELEASE_STRIP=false cargo tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
 install:
 	$(TAURI_BUILD)
 	@if pgrep -f "$(APP_PATH)/Contents/MacOS" >/dev/null; then \
 		echo "→ 正在运行的 $(notdir $(APP_PATH)) 先退出"; \
-		osascript -e 'quit app "$(notdir $(basename $(APP_PATH)))"' >/dev/null 2>&1 || true; \
+		osascript -e 'quit app id "com.openatrading.app"' >/dev/null 2>&1 || true; \
 		sleep 1; \
 	fi
 	$(SUDO) rm -rf "$(APP_PATH)"
