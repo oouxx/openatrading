@@ -62,14 +62,19 @@ export default function ConversationSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-2 px-3 pt-3 pb-1">
-        <div className="text-primary flex h-8 items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center">
-          <img src="/app-icon.png" alt="" className="size-5 shrink-0 rounded-sm" />
+      <SidebarHeader className="gap-2 px-3 pt-3 pb-1 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:pt-2">
+        <div className="text-primary flex h-8 items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0">
+          {/* 折叠态 48px 只放得下一个控件：品牌图标让位给折叠按钮 */}
+          <img
+            src="/app-icon.png"
+            alt=""
+            className="size-5 shrink-0 rounded-sm group-data-[collapsible=icon]:hidden"
+          />
           <span className="text-body truncate font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             openatrading
           </span>
           {/* 折叠按钮跟着侧栏自己走：工作区的每一格（包括对话）都不再自带这条工具条 */}
-          <SidebarTrigger className="text-tertiary hover:text-primary ml-auto group-data-[collapsible=icon]:ml-0" />
+          <SidebarTrigger className="text-tertiary hover:text-primary ml-auto group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:shrink-0" />
         </div>
 
         <SidebarMenu>
@@ -77,10 +82,12 @@ export default function ConversationSidebar({
             <SidebarMenuButton
               onClick={onNewThread}
               tooltip="新建会话"
-              className="border-hairline bg-surface hover:bg-hover hover:border-secondary/25 h-9 rounded-md border transition-colors"
+              className="border-hairline bg-surface hover:bg-hover hover:border-secondary/25 h-9 rounded-md border transition-colors group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
             >
               <Plus className="text-brand" />
-              <span className="text-primary font-medium">新建会话</span>
+              <span className="text-primary font-medium group-data-[collapsible=icon]:hidden">
+                新建会话
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -90,7 +97,7 @@ export default function ConversationSidebar({
         {/* 布局里已经摆了模拟盘/自选时这一组会被清空，空分组连标题一起收掉 */}
         {workspaceNav.length > 0 && (
           <SidebarGroup className="pt-3 pb-1">
-            <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
+            <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium group-data-[collapsible=icon]:hidden">
               工作台
             </SidebarGroupLabel>
             <SidebarMenu>
@@ -109,7 +116,7 @@ export default function ConversationSidebar({
                       )}
                     >
                       <Icon className={active ? "text-brand" : undefined} />
-                      <span>{item.label}</span>
+                      <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )
@@ -118,7 +125,7 @@ export default function ConversationSidebar({
           </SidebarGroup>
         )}
 
-        <SidebarGroup className="min-h-0 flex-1 pt-4">
+        <SidebarGroup className="min-h-0 flex-1 pt-4 group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel className="text-tertiary text-micro mb-1 px-2 font-medium">
             会话
           </SidebarGroupLabel>
@@ -177,7 +184,7 @@ export default function ConversationSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-hairline border-t px-3 py-2">
+      <SidebarFooter className="border-hairline border-t px-3 py-2 group-data-[collapsible=icon]:px-1.5">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -187,7 +194,7 @@ export default function ConversationSidebar({
               className="text-secondary hover:text-primary data-[active=true]:text-primary h-9"
             >
               <Settings />
-              <span>设置</span>
+              <span className="group-data-[collapsible=icon]:hidden">设置</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
