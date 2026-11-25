@@ -4,7 +4,10 @@ import { ChatStockBar } from "@/components/ChatStockBar"
 import { useChatStockStore } from "@/stores/chatStockStore"
 
 /**
- * 对话格的外壳：顶部股票条 + 对话正文（需要时盖一层 K 线）。
+ * 对话格的外壳：顶部股票标签条（只在有标签时出现）+ 对话正文（需要时盖一层 K 线）。
+ *
+ * 标签来自**联动派发**：把某个榜单/自选拖到本格上成组，点那边的股票就会在这里开
+ * 一个 K 线标签。对话格自己不再提供搜索入口。
  *
  * K 线用覆盖层而不是替换正文：`AiCopilot` 卸载会 dispose 掉 WebSocket / Tauri
  * 传输层，回来时流式中的回合就断了。覆盖层和行情格里的 K 线子页面是同一个套路。
