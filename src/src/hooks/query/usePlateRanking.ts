@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { fetchJson } from "@/stores/data"
 import { plateRankingKeys } from "./queryKeys"
 
@@ -138,8 +138,12 @@ export function usePlateRankings(rankType: PlateRankType) {
   return useQuery({
     queryKey: plateRankingKeys.rankings(rankType),
     queryFn: () => fetchJson<PlateRankingsResponse>(`/api/plate-rankings?type=${rankType}`),
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    // 和其它榜单同一节奏：服务端缓存 10 秒，前端 15 秒一轮；页面不可见时不刷。
+    // 切「概念/行业/地域」时先留着上一份数据，别整块闪一下加载态。
+    placeholderData: keepPreviousData,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchIntervalInBackground: false,
   })
 }
 
@@ -147,7 +151,11 @@ export function usePlateDetail(plateId: number) {
   return useQuery({
     queryKey: plateRankingKeys.detail(plateId),
     queryFn: () => fetchJson<PlateDetail>(`/api/plate-details/${plateId}`),
-    staleTime: 60 * 1000,
+    // 以前只给 staleTime、没有定时器：板块详情打开后成分股涨跌幅一直是那一瞬的
+    // 快照。服务端会把实时行情并进成分股，所以 15 秒一轮就是活的。
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchIntervalInBackground: false,
     enabled: plateId > 0,
   })
 }
