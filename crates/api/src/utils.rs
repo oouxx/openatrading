@@ -94,18 +94,18 @@ pub fn compact_date(input: &str) -> Result<String> {
     Ok(digits)
 }
 
-/// 将 A 股股票代码规范化为 Yahoo Finance symbol
+/// 将 A 股股票/指数代码规范化为 Yahoo Finance symbol
 ///
 /// # Errors
 /// Returns an error if the input code cannot be parsed or the exchange cannot be inferred.
 pub fn to_yahoo_symbol(input: &str) -> Result<String> {
     let input = input.trim();
 
-    // 1. 已经是 Yahoo 格式（含 .SS / .SZ / .HK 等）
+    // 1. 已经是 Yahoo 格式（含 .SS / .SZ / .BJ 等）
     if let Some((code, suffix)) = input.split_once('.') {
         let suffix_upper = suffix.to_uppercase();
         match suffix_upper.as_str() {
-            "SS" | "SZ" | "HK" | "TW" => {
+            "SS" | "SZ" | "BJ" | "HK" | "TW" => {
                 let normalized_code = normalize_code(code)?;
                 return Ok(format!("{normalized_code}.{suffix_upper}"));
             }
@@ -113,7 +113,7 @@ pub fn to_yahoo_symbol(input: &str) -> Result<String> {
         }
     }
 
-    // 2. 带交易所前缀，如 SH600000 / SZ000001 / sh.600000 / sz.000001
+    // 2. 带交易所前缀，如 SH600000 / SZ000001 / sh.600000 / bj430047
     let (maybe_exchange, raw_code) = parse_prefixed(input);
 
     // 3. 规范化为6位纯数字
@@ -124,6 +124,7 @@ pub fn to_yahoo_symbol(input: &str) -> Result<String> {
         match ex.to_uppercase().as_str() {
             "SH" | "SS" => "SS",
             "SZ" => "SZ",
+            "BJ" => "BJ",
             _ => bail!("未知交易所前缀: {ex}"),
         }
     } else {
@@ -135,7 +136,7 @@ pub fn to_yahoo_symbol(input: &str) -> Result<String> {
 
 fn parse_prefixed(input: &str) -> (Option<&str>, &str) {
     let upper = input.to_uppercase();
-    for prefix in ["SH", "SZ", "SS"] {
+    for prefix in ["SH", "SZ", "SS", "BJ"] {
         if upper.starts_with(prefix) {
             let rest = &input[prefix.len()..];
             let rest = rest.trim_start_matches(['.', '-', '_']);
@@ -156,12 +157,15 @@ fn normalize_code(raw: &str) -> Result<String> {
     Ok(format!("{digits:0>6}"))
 }
 
-/// 根据 A 股/场内基金代码推断所属交易所
+/// 根据代码推断所属交易所
 ///
 /// 返回值：
-/// - "SS" 上海证券交易所（主板、科创板、ETF/LOF、债券等）
-/// - "SZ" 深圳证券交易所（主板、创业板、ETF/LOF、可转债等）
-/// - "BJ" 北京证券交易所
+/// - "SS" 上海证券交易所（主板、科创板、ETF/LOF、债券、`000xxx` 上证指数等）
+/// - "SZ" 深圳证券交易所（主板、创业板、ETF/LOF、可转债、`399xxx` 深证指数等）
+/// - "BJ" 北京证券交易所（含 `899xxx` 北证指数）
+///
+/// 注意 `000xxx` 的**裸码**天然歧义（`000001` 既是上证指数也是平安银行），
+/// 这里一律按深市个股处理；要指数必须带 `.SS` 后缀。
 fn infer_exchange(code: &str) -> Result<&'static str> {
     if code.is_empty() {
         bail!("空代码");
@@ -173,22 +177,22 @@ fn infer_exchange(code: &str) -> Result<&'static str> {
     let p2 = &code[0..2];
     let p3 = &code[0..3];
 
-    // 北交所：83/87/88 开头的存量代码，920 开头为 2023 年后新股代码段
-    if matches!(p2, "83" | "87" | "88") || p3 == "920" {
+    // 北交所：43/83/87/88 开头的存量代码，920 为 2023 年后新股代码段，
+    // 899 为北证指数（北证50）。深市没有这几段，可以无条件推断。
+    if matches!(p2, "43" | "83" | "87" | "88") || p3 == "920" || p3 == "899" {
         return Ok("BJ");
     }
 
-    // 上海证券交易所
-    let is_sh = matches!(
-        p3,
-        "600" | "601" | "603" | "605"          // 主板
-            | "688"                             // 科创板
-            | "900"                             // B股
-            | "510" | "511" | "512" | "513"
-            | "515" | "516" | "517" | "518"
-            | "519" | "520" | "588"              // ETF / LOF
-            | "500" | "501" | "502" // 其他场内基金
-    ) || matches!(p2, "10" | "11"); // 国债/公司债/可转债
+    // 深证指数：399xxx（深市个股、ETF、债券都不占这一段）
+    if p3 == "399" {
+        return Ok("SZ");
+    }
+
+    // 上海证券交易所：个股 + 全部场内基金（5xxxxx 是沪市基金专用段，
+    // ETF/LOF/封闭式基金都在这儿，深市基金走 15/16/18 开头，不冲突）
+    let is_sh = matches!(p3, "600" | "601" | "603" | "605" | "688" | "900")
+        || code.starts_with('5')
+        || matches!(p2, "10" | "11"); // 国债/公司债/可转债
 
     if is_sh {
         return Ok("SS");
@@ -202,13 +206,8 @@ fn infer_exchange(code: &str) -> Result<&'static str> {
             | "009"                           // 主板（含备用的 004-009 段）
             | "300" | "301"                     // 创业板
             | "200"                              // B股
-            | "150" | "151" | "152" | "159"
-            | "160" | "161" | "162" | "163"
-            | "164" | "165" | "166" | "167"
-            | "168" | "184"                       // ETF / LOF
-            | "123" | "127" | "128" | "129"
-            | "148" | "149" // 可转债
-    );
+    ) || matches!(p2, "15" | "16" | "18") // 场内基金
+        || matches!(p3, "123" | "127" | "128" | "129" | "148" | "149"); // 可转债
 
     if is_shenzhen {
         return Ok("SZ");
@@ -339,6 +338,58 @@ mod tests {
         assert!(to_yahoo_symbol("12_345_678").is_err()); // 超过6位
         assert!(to_yahoo_symbol("700000").is_err()); // 首位7无法推断
         assert!(to_yahoo_symbol("").is_err()); // 空字符串
+    }
+
+    #[test]
+    fn test_index_codes() {
+        // 000xxx 裸码有歧义（指数 vs 深市个股），带 .SS 才是指数
+        assert_eq!(
+            to_yahoo_symbol("000001.SS").unwrap_or_default(),
+            "000001.SS"
+        ); // 上证指数
+        assert_eq!(
+            to_yahoo_symbol("000300.SS").unwrap_or_default(),
+            "000300.SS"
+        ); // 沪深300
+        assert_eq!(to_yahoo_symbol("sh000001").unwrap_or_default(), "000001.SS"); // 新浪式前缀
+                                                                                  // 399xxx / 899xxx 是深市与京市个股不占的号段，裸码也能推断
+        assert_eq!(to_yahoo_symbol("399001").unwrap_or_default(), "399001.SZ"); // 深证成指
+        assert_eq!(to_yahoo_symbol("399006").unwrap_or_default(), "399006.SZ"); // 创业板指
+        assert_eq!(to_yahoo_symbol("899050").unwrap_or_default(), "899050.BJ"); // 北证50
+    }
+
+    #[test]
+    fn test_fund_and_bond_codes() {
+        // 沪市 5xxxxx 全是场内基金（ETF/LOF/封闭式），号码段不会撞股票
+        for code in ["510300", "512880", "560010", "588000", "501050"] {
+            assert_eq!(
+                to_yahoo_symbol(code).unwrap_or_default(),
+                format!("{code}.SS"),
+                "{code} 是沪市基金"
+            );
+        }
+        // 深市基金走 15/16/18 开头；可转债 12 开头
+        for (code, expected) in [
+            ("159915", "159915.SZ"),
+            ("159919", "159919.SZ"),
+            ("161725", "161725.SZ"),
+            ("184801", "184801.SZ"),
+            ("123245", "123245.SZ"),
+        ] {
+            assert_eq!(to_yahoo_symbol(code).unwrap_or_default(), expected);
+        }
+    }
+
+    #[test]
+    fn test_beijing_exchange_codes() {
+        assert_eq!(to_yahoo_symbol("430047").unwrap_or_default(), "430047.BJ"); // 存量代码
+        assert_eq!(to_yahoo_symbol("920819").unwrap_or_default(), "920819.BJ"); // 新代码段
+        assert_eq!(
+            to_yahoo_symbol("430047.BJ").unwrap_or_default(),
+            "430047.BJ"
+        ); // 后缀原样保留
+        assert_eq!(to_yahoo_symbol("bj430047").unwrap_or_default(), "430047.BJ");
+        // 前缀形式
     }
 
     #[test]

@@ -173,11 +173,40 @@ impl Default for EastmoneyClient {
     }
 }
 
-/// Stock search result
+/// 标的类别。
+///
+/// 只有东财自己知道（`Classify` / `SecurityTypeName`），前端靠号码段只能猜个大概：
+/// `159915`（创业板 ETF，±20%）和 `159919`（沪深 300 ETF，±10%）长得一模一样，
+/// 却连涨跌幅限制都不同。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SecurityKind {
+    /// 个股（含北交所）
+    #[default]
+    Stock,
+    /// 指数（上证指数、沪深 300 等）
+    Index,
+    /// 场内基金（ETF / LOF）
+    Fund,
+    /// 债券（可转债、国债等）
+    Bond,
+}
+
+/// 股票搜索候选
+///
+/// `code` 是交易所内的 6 位代码（展示用），`symbol` 是带交易所后缀的 Yahoo 代码
+/// （后续 K 线/行情/自选都靠它）。指数与个股的 `code` 会撞车（`000001` 既是
+/// 上证指数也是平安银行），只有 `symbol` 能区分，所以两个都留着。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockSearchItem {
     pub code: String,
     pub name: String,
+    /// 东财用 `MktNum` 标的交易所定的后缀；无法映射的候选会被丢弃。
+    #[serde(default)]
+    pub symbol: String,
+    /// 标的类别：决定 K 线走不走涨跌停网格、详情页显示哪些字段、能不能下单。
+    #[serde(default)]
+    pub kind: SecurityKind,
 }
 
 impl EastmoneyClient {
@@ -575,19 +604,75 @@ impl EastmoneyClient {
         let items: Vec<StockSearchItem> = data
             .iter()
             .filter_map(|v| {
-                let code = v.get("Code")?.as_str()?.to_string();
+                let code = v.get("Code")?.as_str()?;
                 let name = v.get("Name")?.as_str()?.to_string();
-                // Only include A-stock codes (6 digits, starting with 0/3/6/4/8)
-                if code.len() == 6 && code.chars().all(|c| c.is_ascii_digit()) {
-                    Some(StockSearchItem { code, name })
-                } else {
-                    None
-                }
+                let mkt_num = v
+                    .get("MktNum")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                let classify = v
+                    .get("Classify")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                let type_name = v
+                    .get("SecurityTypeName")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                // 映射不出交易所的候选（港股、场外基金等 6 位数字码）直接丢掉：
+                // 留着也只会在打开 K 线时才报错。
+                let symbol = suggestion_symbol(code, mkt_num)?;
+                Some(StockSearchItem {
+                    code: code.to_string(),
+                    name,
+                    symbol,
+                    kind: security_kind(classify, type_name),
+                })
             })
             .collect();
 
         Ok(items)
     }
+}
+
+/// 把东财 suggest 的一条候选映射成 Yahoo 代码。
+///
+/// 交易所优先信东财的 `MktNum`（`1` = 上交所、`0` = 深交所），但北交所也报 `0`，
+/// 所以京市号段（43/83/87/88 存量 + 920 新代码段 + 899 北证指数）先按代码段定为
+/// `.BJ`。非 6 位数字（港股、美股）返回 `None`。
+fn suggestion_symbol(code: &str, mkt_num: &str) -> Option<String> {
+    if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let p2 = &code[0..2];
+    let p3 = &code[0..3];
+    let exchange = if matches!(p2, "43" | "83" | "87" | "88") || p3 == "920" || p3 == "899" {
+        "BJ"
+    } else {
+        match mkt_num {
+            "1" => "SS",
+            "0" => "SZ",
+            _ => return None,
+        }
+    };
+    Some(format!("{code}.{exchange}"))
+}
+
+/// 候选的标的类别。
+///
+/// `Classify` 通常够用（`Index` / `Fund` / `Bond` / `AStock` / `NEEQ`），但北证 50
+/// 报的是 `"34"`、科创板报 `"23"`，所以再看 `SecurityTypeName`
+/// （指数 / 基金 / 债券 / 沪A / 深A / 京A / 科创板…）。
+fn security_kind(classify: &str, security_type_name: &str) -> SecurityKind {
+    if classify.eq_ignore_ascii_case("index") || security_type_name == "指数" {
+        return SecurityKind::Index;
+    }
+    if classify.eq_ignore_ascii_case("fund") || security_type_name == "基金" {
+        return SecurityKind::Fund;
+    }
+    if classify.eq_ignore_ascii_case("bond") || security_type_name == "债券" {
+        return SecurityKind::Bond;
+    }
+    SecurityKind::Stock
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -616,6 +701,56 @@ mod tests {
             EastmoneyClient::fmt_date("202401"),
             Err(LhbError::InvalidDate(_))
         ));
+    }
+
+    #[test]
+    fn test_suggestion_symbol() {
+        // 1 = 上交所，0 = 深交所
+        assert_eq!(
+            suggestion_symbol("600519", "1").as_deref(),
+            Some("600519.SS")
+        );
+        assert_eq!(
+            suggestion_symbol("000001", "0").as_deref(),
+            Some("000001.SZ")
+        );
+        // 指数与个股同代码：靠 MktNum 区分上证指数 / 平安银行
+        assert_eq!(
+            suggestion_symbol("000001", "1").as_deref(),
+            Some("000001.SS")
+        );
+        assert_eq!(
+            suggestion_symbol("399001", "0").as_deref(),
+            Some("399001.SZ")
+        );
+        // 北交所也报 0，得靠代码段判成 .BJ
+        assert_eq!(
+            suggestion_symbol("430047", "0").as_deref(),
+            Some("430047.BJ")
+        );
+        assert_eq!(
+            suggestion_symbol("920819", "0").as_deref(),
+            Some("920819.BJ")
+        );
+        assert_eq!(
+            suggestion_symbol("899050", "0").as_deref(),
+            Some("899050.BJ")
+        );
+        // 港股/场外基金：没有可用交易所，直接丢弃
+        assert_eq!(suggestion_symbol("00700", "116"), None);
+        assert_eq!(suggestion_symbol("017512", "150"), None);
+    }
+
+    #[test]
+    fn test_security_kind() {
+        assert_eq!(security_kind("Index", "指数"), SecurityKind::Index);
+        // 北证 50 的 Classify 是 "34"，只能靠 SecurityTypeName 认出来
+        assert_eq!(security_kind("34", "指数"), SecurityKind::Index);
+        assert_eq!(security_kind("Fund", "基金"), SecurityKind::Fund);
+        assert_eq!(security_kind("Bond", "债券"), SecurityKind::Bond);
+        assert_eq!(security_kind("AStock", "沪A"), SecurityKind::Stock);
+        assert_eq!(security_kind("NEEQ", "京A"), SecurityKind::Stock);
+        assert_eq!(security_kind("23", "科创板"), SecurityKind::Stock);
     }
 
     #[test]
@@ -761,6 +896,30 @@ mod tests {
         assert!(!rows.is_empty());
         println!("active yyb: {} rows", rows.len());
         println!("top dept: {} net={:?}", rows[0].dept_name, rows[0].net_amt);
+    }
+
+    #[tokio::test]
+    #[ignore = "integration test, requires network"]
+    async fn integration_search_maps_index_and_stock_symbols() {
+        let client = EastmoneyClient::new();
+        let items = client
+            .search_stocks("上证指数")
+            .await
+            .unwrap_or_else(|e| panic!("request failed: {e}"));
+
+        let index = items
+            .iter()
+            .find(|i| i.name == "上证指数")
+            .unwrap_or_else(|| panic!("上证指数 should be in suggestions: {items:?}"));
+        assert_eq!(
+            index.kind,
+            SecurityKind::Index,
+            "上证指数 should be an index"
+        );
+        // 指数与平安银行同代码，只能靠交易所后缀区分
+        assert_eq!(index.symbol, "000001.SS");
+        // 场外基金等映射不出交易所的候选应被过滤
+        assert!(items.iter().all(|i| i.symbol.contains('.')));
     }
 
     #[tokio::test]

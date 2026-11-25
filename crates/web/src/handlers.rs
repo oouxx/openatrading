@@ -2358,6 +2358,16 @@ mod tests {
     }
 
     #[test]
+    fn normalize_watchlist_items_keeps_index_and_stock_apart() {
+        // 指数与个股同代码：`000001.SS` 是上证指数、`000001.SZ` 是平安银行。
+        // 两条都要原样留下——把指数改写成深市个股就等于自选里凭空换了标的。
+        let items = vec![item("000001.SS", "上证指数"), item("000001.SZ", "平安银行")];
+        let (items, changed) = normalize_watchlist_items(items);
+        assert!(!changed, "canonical index symbols must not be rewritten");
+        assert_eq!(codes(&items), vec!["000001.SS", "000001.SZ"]);
+    }
+
+    #[test]
     fn normalize_watchlist_code_falls_back_on_non_ashare() {
         // 非 A 股 / 无法推断交易所的输入回退原样，不破坏已有条目
         assert_eq!(normalize_watchlist_code("AAPL"), "AAPL");

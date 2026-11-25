@@ -3665,6 +3665,15 @@ mod tests {
             "kline_batch",
             client.fetch_kline_batch(&["600519.SS".to_string()], KlinePeriod::Day, 30)
         );
+        // 指数走同一个 K 线接口（分时/日线都要能取）：前端把指数和个股放在同一张图上
+        check!(
+            "kline_index_day",
+            client.fetch_kline("000001.SS", KlinePeriod::Day, 30)
+        );
+        check!(
+            "kline_index_minute",
+            client.fetch_kline("399006.SZ", KlinePeriod::Minute, 30)
+        );
         check!("stock_data", client.fetch_stock_data(&["600519.SS"]));
         check!("stock_labels", client.fetch_stock_labels(&["600519.SS"]));
         check!("fund_flow", client.fetch_fund_flow_batch(&["600519.SS"], 5));
