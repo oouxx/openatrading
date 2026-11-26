@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react"
 import ThinkingBlock from "./ThinkingBlock"
 import { ToolCallItem, ToolIcon, type ToolCall } from "./ToolCallList"
+import { cn } from "@/lib/utils"
 
 // ── Types ────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ interface ActivityTimelineProps {
   items: ActivityItem[]
   isStreaming?: boolean
   sessionId?: string | null
+  className?: string
 }
 
 /**
@@ -24,27 +26,32 @@ export default function ActivityTimeline({
   items,
   isStreaming,
   sessionId,
+  className,
 }: ActivityTimelineProps) {
   if (items.length === 0) return null
 
   return (
-    <div className="relative my-2">
+    <div className={cn("relative my-2", className)}>
       {/* 垂直时间轴 */}
-      <div className="absolute top-3 bottom-3 left-[11px] w-px bg-hairline" />
+      <div className="bg-hairline absolute top-3 bottom-3 left-[11px] w-px" />
       <div className="flex flex-col">
         {items.map((item, i) => (
           <div key={item.id ?? i} className="relative flex gap-2.5 pb-2.5 last:pb-0">
             {/* 时间线节点 */}
             <div className="bg-surface border-hairline relative z-10 mt-0.5 flex size-[22px] shrink-0 items-center justify-center rounded-full border">
               {item.type === "thinking" ? (
-                <Sparkles className="size-3 text-warning" />
+                <Sparkles className="text-warning size-3" />
               ) : (
                 <ToolIcon name={item.toolCall.name} className="size-3" />
               )}
             </div>
             <div className="min-w-0 flex-1">
               {item.type === "thinking" ? (
-                <ThinkingBlock content={item.content} isStreaming={item.streaming} />
+                <ThinkingBlock
+                  content={item.content}
+                  isStreaming={item.streaming}
+                  showIcon={false}
+                />
               ) : (
                 <ToolCallItem
                   toolCall={item.toolCall}

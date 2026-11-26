@@ -13,7 +13,8 @@ import { Square, ArrowDown, ArrowUp, FileText, Loader2, Paperclip, X } from "luc
 import SystemNoticeBlock from "@/components/chat/SystemNoticeBlock"
 import AgentStatusBar from "@/components/chat/AgentStatusBar"
 import { TurnActions } from "@/components/chat/TurnActions"
-import ActivityTimeline, { type ActivityItem } from "@/components/chat/ActivityTimeline"
+import { type ActivityItem } from "@/components/chat/ActivityTimeline"
+import ActivityGroup from "@/components/chat/ActivityGroup"
 import { summarizeTool } from "@/lib/tool-summary"
 import type { AgentPhase } from "@/components/chat/AgentStatusBar"
 import type { HistoryMessage } from "@/agents/types"
@@ -1389,7 +1390,7 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
   const flushActivity = () => {
     if (activity.length === 0) return
     nodes.push(
-      <ActivityTimeline
+      <ActivityGroup
         key={`activity-${idx++}`}
         items={activity}
         isStreaming={isStreaming}

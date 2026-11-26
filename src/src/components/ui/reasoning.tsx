@@ -43,21 +43,29 @@ export function ReasoningRoot({
 
 // ── ReasoningTrigger ──────────────────────────────────
 
-export function ReasoningTrigger({ active = false }: { active?: boolean }) {
+export function ReasoningTrigger({
+  active = false,
+  showIcon = true,
+}: {
+  active?: boolean
+  showIcon?: boolean
+}) {
   return (
     <Collapsible.Trigger className="group hover:bg-ai/[0.03] flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors">
       {/* Sparkle icon (Claude-style) */}
-      <svg
-        className="text-ink-muted size-3.5 shrink-0"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M8 1C8 1 8.5 3.5 10.5 5.5C12.5 7.5 15 8 15 8C15 8 12.5 8.5 10.5 10.5C8.5 12.5 8 15 8 15C8 15 7.5 12.5 5.5 10.5C3.5 8.5 1 8 1 8C1 8 3.5 7.5 5.5 5.5C7.5 3.5 8 1 8 1Z" />
-      </svg>
+      {showIcon && (
+        <svg
+          className="text-ink-muted size-3.5 shrink-0"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M8 1C8 1 8.5 3.5 10.5 5.5C12.5 7.5 15 8 15 8C15 8 12.5 8.5 10.5 10.5C8.5 12.5 8 15 8 15C8 15 7.5 12.5 5.5 10.5C3.5 8.5 1 8 1 8C1 8 3.5 7.5 5.5 5.5C7.5 3.5 8 1 8 1Z" />
+        </svg>
+      )}
       <span className="text-ink-muted text-caption font-number font-medium tracking-wide">
         思考过程
       </span>

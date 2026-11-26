@@ -75,7 +75,11 @@ export function summarizeTool(name: string, args?: string): string {
     if (keys.length === 1) {
       const val = a[keys[0]]
       const short = typeof val === "string" ? val : JSON.stringify(val)
-      return short && short !== "{}" ? `${readable} · ${short}` : readable
+      // 空值（`""` / `{}` / 纯空白）不参与摘要：`Get Telegraph · ""` 只会让一行文字
+      // 看起来像渲染出了 bug，却没有任何信息量。
+      return short && short.replace(/["'`\s]/g, "") && short !== "{}"
+        ? `${readable} · ${short}`
+        : readable
     }
     if (keys.length > 1) return `${readable} · ${keys.join(", ")}`
   }
