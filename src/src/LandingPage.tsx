@@ -63,7 +63,7 @@ const FEATURES: Feature[] = [
   {
     icon: Star,
     title: "自选与 K 线",
-    desc: "实时行情、量比与涨速，分时和日 / 周 / 月 K 随手切换。",
+    desc: "实时行情与自选管理，分时和日 / 周 / 月 K 随手切换。",
   },
   {
     icon: Trophy,
@@ -73,7 +73,7 @@ const FEATURES: Feature[] = [
   {
     icon: Flame,
     title: "涨停与异动",
-    desc: "连板晋级、炸板率、板块涨跌榜与成分股资金流。",
+    desc: "连板晋级率、封板次数、板块排行与题材资金流。",
   },
   {
     icon: History,
@@ -83,7 +83,7 @@ const FEATURES: Feature[] = [
   {
     icon: MonitorSmartphone,
     title: "多端同步",
-    desc: "Web、桌面端与 Telegram 共用会话与自选。",
+    desc: "Web 与桌面端共用会话、布局与自选，数据都在网关。",
   },
   {
     icon: ShieldCheck,
