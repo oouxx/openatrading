@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use openatrading_core::trade::{
-    OrderError, OrderRequest, Price, Quote, QuoteSource, Shares, Side, TradeService, TradeStore,
+    OrderError, OrderRequest, PlaceOrderCtx, Price, Quote, QuoteSource, Shares, Side, TradeService,
+    TradeStore,
 };
 use openatrading_core::types::StockCode;
 
@@ -77,9 +78,41 @@ impl QuoteSource for FakeQuotes {
     }
 }
 
+fn open_store(dir: &tempfile::TempDir) -> Arc<TradeStore> {
+    Arc::new(must(
+        TradeStore::open(&dir.path().join("trade.db")),
+        "打开交易库",
+    ))
+}
+
+fn service_on(store: Arc<TradeStore>, quotes: FakeQuotes) -> TradeService {
+    TradeService::new(store, Arc::new(quotes))
+}
+
 fn service(dir: &tempfile::TempDir, quotes: FakeQuotes) -> TradeService {
-    let store = must(TradeStore::open(&dir.path().join("trade.db")), "打开交易库");
-    TradeService::new(Arc::new(store), Arc::new(quotes))
+    service_on(open_store(dir), quotes)
+}
+
+/// 上一交易日的成交时间。
+///
+/// T+1 下当日买入的股份当日不可卖，卖出类用例必须先有旧仓位；服务层只会写
+/// 「现在」，所以旧仓位直接由 [`seed_buy`] 写进账本。
+const PREVIOUS_DAY: &str = "2020-01-02 10:00:00";
+
+fn seed_buy(store: &TradeStore, role: &str, symbol: &str, shares: i64, price: f64) {
+    must(
+        store.place_order(&PlaceOrderCtx {
+            role_name: role,
+            symbol: StockCode::new(symbol),
+            stock_name: "旧仓",
+            side: Side::Buy,
+            shares,
+            price,
+            initial_capital: CAPITAL,
+            traded_at: PREVIOUS_DAY,
+        }),
+        "补上一交易日的买入",
+    );
 }
 
 fn order(side: Side, symbol: &str, shares: i64, price: f64) -> OrderRequest {
@@ -89,7 +122,6 @@ fn order(side: Side, symbol: &str, shares: i64, price: f64) -> OrderRequest {
         stock_name: String::new(),
         shares: must(Shares::new(shares), "构造股数"),
         price: must(Price::new(price), "构造价格"),
-        reason: String::new(),
     }
 }
 
@@ -114,6 +146,12 @@ async fn buy_creates_position_and_reduces_cash() {
     let position = must(outcome.position.ok_or("应留下持仓"), "取持仓");
     assert_eq!(position.shares, 400);
     assert_close(position.cost_price, 5.0, "成本价");
+
+    let (positions, _) = must(svc.positions("首板").await, "持仓列表");
+    assert_eq!(
+        positions[0].available_shares, 0,
+        "当日买入的股份当日不可卖（T+1）"
+    );
 
     let account = must(svc.account("首板", CAPITAL).await, "账户快照");
     assert_close(account.cash, CAPITAL - 2000.0, "现金");
@@ -148,13 +186,11 @@ async fn second_buy_merges_into_one_row_with_weighted_cost() {
 #[tokio::test]
 async fn partial_sell_keeps_cost_and_realizes_pnl() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("600519", 12.0)]));
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("600519", 12.0)]));
 
-    must(
-        svc.place_order("首板", CAPITAL, &order(Side::Buy, "600519", 1000, 10.0))
-            .await,
-        "建仓",
-    );
+    // 旧仓位：卖出必须发生在买入之后的另一个交易日（T+1）
+    seed_buy(&store, "首板", "600519", 1000, 10.0);
     let outcome = must(
         svc.place_order("首板", CAPITAL, &order(Side::Sell, "600519", 400, 12.0))
             .await,
@@ -183,13 +219,10 @@ async fn partial_sell_keeps_cost_and_realizes_pnl() {
 #[tokio::test]
 async fn full_sell_removes_position_and_lands_in_history() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("600519", 11.0)]));
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("600519", 11.0)]));
 
-    must(
-        svc.place_order("首板", CAPITAL, &order(Side::Buy, "600519", 500, 10.0))
-            .await,
-        "建仓",
-    );
+    seed_buy(&store, "首板", "600519", 500, 10.0);
     let outcome = must(
         svc.place_order("首板", CAPITAL, &order(Side::Sell, "600519", 500, 11.0))
             .await,
@@ -227,13 +260,10 @@ async fn buy_spending_exactly_all_cash_leaves_zero() {
 #[tokio::test]
 async fn odd_lot_sell_is_allowed() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("300272", 10.0)]));
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("300272", 10.0)]));
 
-    must(
-        svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 200, 10.0))
-            .await,
-        "建仓",
-    );
+    seed_buy(&store, "首板", "300272", 200, 10.0);
     // 卖出 50 股（零股）——配股、送股产生零股后清仓是真实场景，必须允许。
     let outcome = must(
         svc.place_order("首板", CAPITAL, &order(Side::Sell, "300272", 50, 10.0))
@@ -329,26 +359,27 @@ async fn empty_account_equals_initial_capital() {
 #[tokio::test]
 async fn cash_stays_consistent_across_many_trades() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("300272", 11.0)]));
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("300272", 11.0)]));
 
-    for _ in 0..7 {
-        must(
-            svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 100, 10.0))
-                .await,
-            "买入",
-        );
-    }
+    // 前 7 手是旧仓位，第 8 手是当天买的；卖出的 300 股只能来自旧仓位。
+    seed_buy(&store, "首板", "300272", 700, 10.0);
+    must(
+        svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 100, 10.0))
+            .await,
+        "买入",
+    );
     must(
         svc.place_order("首板", CAPITAL, &order(Side::Sell, "300272", 300, 11.0))
             .await,
         "卖出",
     );
 
-    // 现金 = 100000 - 7×1000 + 3300
+    // 现金 = 100000 - 8×1000 + 3300
     let account = must(svc.account("首板", CAPITAL).await, "账户快照");
-    assert_close(account.cash, CAPITAL - 7000.0 + 3300.0, "现金");
+    assert_close(account.cash, CAPITAL - 8000.0 + 3300.0, "现金");
     let (positions, _) = must(svc.positions("首板").await, "持仓");
-    assert_eq!(positions[0].shares, 400);
+    assert_eq!(positions[0].shares, 500);
 }
 
 // ── Failure case ─────────────────────────────────────────────────────────
@@ -383,12 +414,9 @@ async fn insufficient_cash_is_rejected_without_side_effects() {
 #[tokio::test]
 async fn selling_more_than_held_is_rejected() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("300272", 10.0)]));
-    must(
-        svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 100, 10.0))
-            .await,
-        "建仓",
-    );
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("300272", 10.0)]));
+    seed_buy(&store, "首板", "300272", 100, 10.0);
 
     let err = svc
         .place_order("首板", CAPITAL, &order(Side::Sell, "300272", 200, 10.0))
@@ -424,6 +452,91 @@ async fn selling_without_position_is_rejected() {
         matches!(err, OrderError::InsufficientShares { held: 0, .. }),
         "应报持有 0，实际 {err:?}"
     );
+}
+
+// ── T+1 ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn shares_bought_today_cannot_be_sold() {
+    let dir = temp();
+    let svc = service(&dir, FakeQuotes::new(&[("300272", 10.0)]));
+    must(
+        svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 200, 10.0))
+            .await,
+        "当日买入",
+    );
+
+    let err = svc
+        .place_order("首板", CAPITAL, &order(Side::Sell, "300272", 100, 10.0))
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("当日买入当日卖出应被拒绝"));
+    assert!(
+        matches!(
+            err,
+            OrderError::T1LockedShares {
+                available: 0,
+                requested: 100,
+                bought_today: 200
+            }
+        ),
+        "应报可卖 0 / 当日买入 200，实际 {err:?}"
+    );
+    assert!(err.is_client_error(), "应映射为 HTTP 400");
+
+    // 被拒的卖出不得动账本
+    let (positions, _) = must(svc.positions("首板").await, "持仓");
+    assert_eq!(positions[0].shares, 200);
+    assert_eq!(positions[0].available_shares, 0);
+}
+
+#[tokio::test]
+async fn t1_locks_only_todays_buys() {
+    let dir = temp();
+    let store = open_store(&dir);
+    let svc = service_on(store.clone(), FakeQuotes::new(&[("300272", 10.0)]));
+
+    seed_buy(&store, "首板", "300272", 1000, 10.0);
+    must(
+        svc.place_order("首板", CAPITAL, &order(Side::Buy, "300272", 500, 10.0))
+            .await,
+        "当日加仓",
+    );
+
+    let (positions, _) = must(svc.positions("首板").await, "持仓");
+    assert_eq!(positions[0].shares, 1500);
+    assert_eq!(
+        positions[0].available_shares, 1000,
+        "只有当日买入的 500 股被锁"
+    );
+
+    // 超过可卖但不是超过持仓：报 T+1，而不是「卖出股数超过持仓」
+    let err = svc
+        .place_order("首板", CAPITAL, &order(Side::Sell, "300272", 1200, 11.0))
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("超过可卖股数应被拒绝"));
+    assert!(
+        matches!(
+            err,
+            OrderError::T1LockedShares {
+                available: 1000,
+                requested: 1200,
+                bought_today: 500
+            }
+        ),
+        "实际 {err:?}"
+    );
+
+    // 卖光可卖部分后，只剩当日买入的 500 股，当天再无仓位可卖
+    must(
+        svc.place_order("首板", CAPITAL, &order(Side::Sell, "300272", 1000, 11.0))
+            .await,
+        "卖出可卖部分",
+    );
+    let (positions, _) = must(svc.positions("首板").await, "持仓");
+    assert_eq!(positions[0].shares, 500);
+    assert_eq!(positions[0].available_shares, 0);
 }
 
 #[tokio::test]
@@ -589,18 +702,18 @@ async fn open_migrates_legacy_schema_holding_data() {
 #[tokio::test]
 async fn empty_name_does_not_erase_existing_one() {
     let dir = temp();
-    let svc = service(&dir, FakeQuotes::new(&[("300272", 6.0)]));
-    let mut buy = order(Side::Buy, "300272", 400, 5.0);
-    buy.stock_name = "光纤技术公司".to_string();
-    must(svc.place_order("首板", CAPITAL, &buy).await, "买入");
+    let store = open_store(&dir);
+    // 行情里查不到这只票：服务层补不出名称，卖出传入的 `stock_name` 就是空串。
+    let svc = service_on(store.clone(), FakeQuotes::new(&[]));
+    // 卖出要先有旧仓位（T+1），名称由 `seed_buy` 写成「旧仓」。
+    seed_buy(&store, "首板", "300272", 400, 5.0);
 
-    // 不带名称的卖出：服务层会尝试用行情补全，但持仓名称以**非空入参**为准，
-    // 空值不会把已有名称清掉。
+    // 不带名称的卖出：持仓名称以**非空入参**为准，空值不会把已有名称清掉。
     let mut sell = order(Side::Sell, "300272", 100, 6.0);
     sell.stock_name = String::new();
     must(svc.place_order("首板", CAPITAL, &sell).await, "卖出");
     let (positions, _) = must(svc.positions("首板").await, "持仓");
-    assert!(!positions[0].stock_name.is_empty(), "名称不应被清空");
+    assert_eq!(positions[0].stock_name, "旧仓", "空名称不应覆盖已有名称");
 
     // 明确传名称时以传入值为准
     let mut rename = order(Side::Buy, "300272", 100, 6.0);

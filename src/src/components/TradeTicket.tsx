@@ -9,7 +9,7 @@ import { searchStocks } from "@/lib/stock-utils"
 import { formatMoney } from "@/lib/format"
 import {
   BOARD_LOT,
-  BUY_SHARE_RATIOS,
+  buyShareOptions,
   extractStockCode,
   maxBuyableShares,
   sellShareOptions,
@@ -98,7 +98,7 @@ function OrderSummary({
   )
 }
 
-/** 快捷仓位按钮（1/3 仓、半仓、全仓…）。 */
+/** 快捷仓位按钮（1/4 仓、1/3 仓、半仓、全仓）。 */
 function QuickShares({
   options,
   value,
@@ -157,7 +157,6 @@ export function BuyTicketForm({
   const [shares, setShares] = useState("")
   // null = 跟随现价；"" = 用户主动清空，两者必须区分，否则价格框清不掉
   const [priceOverride, setPriceOverride] = useState<string | null>(null)
-  const [reason, setReason] = useState("")
   const [attempted, setAttempted] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [results, setResults] = useState<StockSearchItem[]>([])
@@ -304,10 +303,7 @@ export function BuyTicketForm({
           : "请填写买入价格"
       : null
 
-  const quickShares = BUY_SHARE_RATIOS.map(({ label, ratio }) => ({
-    label,
-    shares: ratio === 1 ? maxShares : Math.floor((maxShares * ratio) / BOARD_LOT) * BOARD_LOT,
-  })).filter((o) => o.shares >= BOARD_LOT)
+  const quickShares = buyShareOptions(maxShares)
 
   const handleSubmit = async () => {
     setAttempted(true)
@@ -321,10 +317,8 @@ export function BuyTicketForm({
         stockName: stockName.trim() || undefined,
         shares: sharesNum,
         price: priceNum,
-        reason: reason.trim() || undefined,
       })
       setShares("")
-      setReason("")
       setAttempted(false)
       onDone?.()
     } catch (e) {
@@ -477,16 +471,6 @@ export function BuyTicketForm({
 
       <QuickShares options={quickShares} value={shares} onPick={(n) => setShares(String(n))} />
 
-      <OrderField label="备注" id="buy-reason">
-        <Input
-          id="buy-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="记录买入理由（可选）"
-          className="text-caption"
-        />
-      </OrderField>
-
       <OrderSummary
         rows={[
           {
@@ -524,12 +508,15 @@ export function SellTicketForm({
   position: RolePosition
   onDone?: () => void
 }) {
+  // T+1：当日买入的股份当日不可卖。旧响应没有这个字段时退回持仓股数。
+  const sellable = position.available_shares ?? position.shares
+  // 被 T+1 锁住的部分：股数上限小于持仓时，用户需要一个解释而不是一个更小的数字
+  const lockedToday = Math.max(0, position.shares - sellable)
   const placeOrder = usePlaceOrder()
-  const [shares, setShares] = useState(String(position.shares))
+  const [shares, setShares] = useState(String(sellable))
   const [price, setPrice] = useState(
     position.last_price === null ? "" : String(position.last_price)
   )
-  const [reason, setReason] = useState("")
   const [attempted, setAttempted] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -540,13 +527,13 @@ export function SellTicketForm({
     Number.isFinite(sharesNum) &&
     Number.isInteger(sharesNum) &&
     sharesNum > 0 &&
-    sharesNum <= position.shares
+    sharesNum <= sellable
   const priceOk = price.trim() !== "" && Number.isFinite(priceNum) && priceNum > 0
   const valid = sharesOk && priceOk
   // 已实现盈亏随输入实时变化：(卖价 − 成本价) × 股数
   const estimatedPnl = sharesOk && priceOk ? (priceNum - position.cost_price) * sharesNum : null
   const estimatedAmount = sharesOk && priceOk ? sharesNum * priceNum : null
-  const sellOptions = sellShareOptions(position.shares)
+  const sellOptions = sellShareOptions(sellable)
 
   const sharesError = attempted
     ? shares.trim() === ""
@@ -555,8 +542,8 @@ export function SellTicketForm({
         ? "股数必须为正数"
         : !Number.isInteger(sharesNum)
           ? "股数必须是整数"
-          : sharesNum > position.shares
-            ? `最多可卖 ${position.shares} 股`
+          : sharesNum > sellable
+            ? `最多可卖 ${sellable} 股`
             : null
     : null
   const priceError = attempted && !priceOk ? "价格必须为正数" : null
@@ -573,14 +560,22 @@ export function SellTicketForm({
         stockName: position.stock_name,
         shares: sharesNum,
         price: priceNum,
-        reason: reason.trim() || undefined,
       })
-      setReason("")
       setAttempted(false)
       onDone?.()
     } catch (e) {
       setFormError(errorText(e))
     }
+  }
+
+  // 全部持仓都是今日买入的：没有可卖的量，给一句话而不是一堆填了也提交不了的表单
+  if (sellable <= 0) {
+    return (
+      <p className="text-secondary text-caption">
+        {position.stock_name || position.symbol} 今日买入的 {position.shares} 股按 T+1
+        下一交易日才能卖出。
+      </p>
+    )
   }
 
   return (
@@ -604,18 +599,24 @@ export function SellTicketForm({
         </span>
       </div>
 
+      {lockedToday > 0 && (
+        <p className="text-warning text-caption">
+          今日买入的 {lockedToday} 股按 T+1 下一交易日才能卖出
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <OrderField
           label="股数"
           id="sell-shares"
-          hint={<span className="text-tertiary text-caption">最多 {position.shares} 股</span>}
+          hint={<span className="text-tertiary text-caption">最多 {sellable} 股</span>}
           error={sharesError}
         >
           <Input
             id="sell-shares"
             value={shares}
             onChange={(e) => setShares(e.target.value)}
-            placeholder={String(position.shares)}
+            placeholder={String(sellable)}
             inputMode="numeric"
             aria-invalid={sharesError ? true : undefined}
             className="font-number text-caption"
@@ -640,16 +641,6 @@ export function SellTicketForm({
       </div>
 
       <QuickShares options={sellOptions} value={shares} onPick={(n) => setShares(String(n))} />
-
-      <OrderField label="备注" id="sell-reason">
-        <Input
-          id="sell-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="记录卖出理由（可选）"
-          className="text-caption"
-        />
-      </OrderField>
 
       <OrderSummary
         rows={[

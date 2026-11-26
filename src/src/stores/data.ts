@@ -137,6 +137,8 @@ export interface RolePosition {
   symbol: string
   stock_name: string
   shares: number
+  /** 可卖股数：T+1 下等于 shares 减去当日买入的部分 */
+  available_shares: number
   cost_price: number
   /** 建仓日期，格式 YYYY-MM-DD */
   opened_at: string
@@ -173,7 +175,6 @@ export interface PlaceOrderPayload {
   stock_name?: string
   shares: number
   price: number
-  reason?: string
 }
 
 /** 成交流水 —— GET /api/roles/:name/trades */
@@ -188,7 +189,6 @@ export interface RoleTrade {
   cost_price: number
   /** 买入为 null */
   realized_pnl: number | null
-  reason: string
   traded_at: string
 }
 
@@ -288,7 +288,6 @@ export interface ClosedPosition {
   /** 已实现盈亏百分比，单位是百分数（-0.2 表示 -0.2%） */
   realized_pct: number
   closed_at: string
-  reason: string
 }
 
 /** 股票搜索建议项 —— GET /api/search-stocks?q= */

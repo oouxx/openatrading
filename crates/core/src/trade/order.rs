@@ -153,8 +153,6 @@ pub struct OrderRequest {
     pub stock_name: String,
     pub shares: Shares,
     pub price: Price,
-    #[serde(default)]
-    pub reason: String,
 }
 
 /// 一条成交流水。
@@ -173,6 +171,8 @@ pub struct Trade {
     pub shares: i64,
     pub cost_price: f64,
     pub realized_pnl: Option<f64>,
+    /// 旧版本的「买入/卖出理由」。下单已不再采集，新成交恒为空串；
+    /// 老库里的文字原样返回，不做迁移。
     pub reason: String,
     pub traded_at: String,
 }
@@ -199,6 +199,11 @@ pub struct PositionView {
     pub symbol: StockCode,
     pub stock_name: String,
     pub shares: i64,
+    /// 可卖股数：T+1 下等于 `shares` 减去当日买入的部分。
+    ///
+    /// 与 `shares` 分开暴露，UI 才能在下单前就说清「今天买的那部分卖不掉」，
+    /// 而不是等后端报错。
+    pub available_shares: i64,
     pub cost_price: f64,
     pub opened_at: String,
     pub last_price: Option<f64>,
@@ -210,7 +215,11 @@ pub struct PositionView {
 impl PositionView {
     /// 用最新价补齐估值字段；`last_price` 为 `None` 时全部留空。
     #[must_use]
-    pub fn with_last_price(position: Position, last_price: Option<f64>) -> Self {
+    pub fn with_last_price(
+        position: Position,
+        last_price: Option<f64>,
+        available_shares: i64,
+    ) -> Self {
         let cost = position.cost_price * position.shares as f64;
         let (market_value, unrealized_pnl, unrealized_pct) = match last_price {
             Some(px) => {
@@ -230,6 +239,7 @@ impl PositionView {
             symbol: position.symbol,
             stock_name: position.stock_name,
             shares: position.shares,
+            available_shares,
             cost_price: position.cost_price,
             opened_at: position.opened_at,
             last_price,
@@ -253,6 +263,7 @@ pub struct ClosedTrade {
     pub realized_pnl: f64,
     pub realized_pct: f64,
     pub closed_at: String,
+    /// 同 [`Trade::reason`]：旧版本录入的卖出理由，新成交恒为空串。
     pub reason: String,
 }
 

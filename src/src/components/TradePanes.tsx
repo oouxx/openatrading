@@ -124,9 +124,9 @@ export function TradePane({
           // 换股票就重挂载：价格、股数、备注都该跟着清空
           <BuyTicketForm key={stock.code} roleName={activeRole} preset={stock} />
         ) : position ? (
-          // 持仓股数变了（刚卖过）就重挂载，股数框跟着回到新的可卖数量
+          // 可卖股数变了（刚买过/刚卖过）就重挂载，股数框跟着回到新的可卖数量
           <SellTicketForm
-            key={`${position.symbol}:${position.shares}`}
+            key={`${position.symbol}:${position.available_shares}`}
             roleName={activeRole}
             position={position}
           />

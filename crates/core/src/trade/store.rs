@@ -5,6 +5,7 @@
 //!
 //! 现金不落库，由成交流水推导（见模块文档），因此不存在现金列与流水不一致的可能。
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -31,7 +32,6 @@ pub struct PlaceOrderCtx<'a> {
     pub side: Side,
     pub shares: i64,
     pub price: f64,
-    pub reason: &'a str,
     pub initial_capital: f64,
     pub traded_at: &'a str,
 }
@@ -197,6 +197,18 @@ impl TradeStore {
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
+    /// 某日（`YYYY-MM-DD`）买入的股数，按标的汇总；当日无买入的标的不会出现。
+    ///
+    /// T+1 用：当日买入的股份当日不可卖。`trades.traded_at` 存的就是
+    /// `YYYY-MM-DD HH:MM:SS`，取前 10 位即成交日期，因此不需要额外的日期列。
+    ///
+    /// # Errors
+    /// 查询失败时返回错误。
+    pub fn bought_shares_on(&self, role_name: &str, date: &str) -> Result<HashMap<String, i64>> {
+        let conn = self.lock()?;
+        Self::bought_shares(&conn, role_name, date)
+    }
+
     /// 由流水推导当前现金与累计已实现盈亏。
     ///
     /// # Errors
@@ -282,6 +294,23 @@ impl TradeStore {
                         requested: ctx.shares,
                     });
                 }
+                // T+1：可卖 = 持仓 − 当日买入。直接查当日买入而不是给持仓加一列
+                // 「可卖」，是因为后者会随日期变迁而失效，必须有人在零点跑一次刷新。
+                // 历史 T+0 数据里可能存在「当日买入多于持仓」的日内回转，用
+                // `.max(0)` 兜底，避免可卖变成负数、错误文案也跟着报错。
+                let bought_today =
+                    Self::bought_shares(&tx, ctx.role_name, trade_date(ctx.traded_at))?
+                        .get(ctx.symbol.as_str())
+                        .copied()
+                        .unwrap_or(0);
+                let available = (held - bought_today).max(0);
+                if ctx.shares > available {
+                    return Err(OrderError::T1LockedShares {
+                        available,
+                        requested: ctx.shares,
+                        bought_today,
+                    });
+                }
                 let basis = existing.as_ref().map_or(0.0, |p| p.cost_price);
                 let pnl = round_money((ctx.price - basis) * ctx.shares as f64);
                 (basis, Some(pnl), held - ctx.shares)
@@ -316,10 +345,11 @@ impl TradeStore {
             )?;
         }
 
+        // 备注（reason）不再采集，交给列默认值 ''；旧库里的历史备注照旧读出。
         tx.execute(
             "INSERT INTO trades (role_name, symbol, stock_name, side, price, shares,
-                                 cost_price, realized_pnl, reason, traded_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                 cost_price, realized_pnl, traded_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 ctx.role_name,
                 ctx.symbol.as_str(),
@@ -329,7 +359,6 @@ impl TradeStore {
                 ctx.shares,
                 round_money(cost_price),
                 realized_pnl,
-                ctx.reason,
                 ctx.traded_at
             ],
         )?;
@@ -346,7 +375,7 @@ impl TradeStore {
             shares: ctx.shares,
             cost_price: round_money(cost_price),
             realized_pnl,
-            reason: ctx.reason.to_string(),
+            reason: String::new(),
             traded_at: ctx.traded_at.to_string(),
         };
         let position = if remaining == 0 {
@@ -429,6 +458,23 @@ impl TradeStore {
         Ok((round_money(cash), round_money(realized)))
     }
 
+    /// 按标的汇总某日买入的股数，事务内外共用（[`Self::bought_shares_on`] 与下单校验）。
+    fn bought_shares(
+        conn: &Connection,
+        role_name: &str,
+        date: &str,
+    ) -> Result<HashMap<String, i64>> {
+        let mut stmt = conn.prepare(
+            "SELECT symbol, SUM(shares) FROM trades
+             WHERE role_name = ?1 AND side = 'buy' AND substr(traded_at, 1, 10) = ?2
+             GROUP BY symbol",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![role_name, date], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<HashMap<_, _>, _>>()?)
+    }
+
     fn row_to_position(row: &rusqlite::Row<'_>) -> rusqlite::Result<Position> {
         Ok(Position {
             role_name: row.get(0)?,
@@ -460,4 +506,9 @@ impl TradeStore {
             traded_at: row.get(10)?,
         })
     }
+}
+
+/// 从 `traded_at`（`YYYY-MM-DD HH:MM:SS`）取成交日期，T+1 判定只看到「哪一天」。
+fn trade_date(traded_at: &str) -> &str {
+    traded_at.get(..10).unwrap_or(traded_at)
 }

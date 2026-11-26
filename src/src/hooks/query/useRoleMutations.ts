@@ -23,7 +23,6 @@ export interface PlaceOrderVars {
   stockName?: string
   shares: number
   price: number
-  reason?: string
 }
 
 /**
@@ -33,7 +32,7 @@ export interface PlaceOrderVars {
 export function usePlaceOrder() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ roleName, side, symbol, stockName, shares, price, reason }: PlaceOrderVars) =>
+    mutationFn: ({ roleName, side, symbol, stockName, shares, price }: PlaceOrderVars) =>
       fetchJson<PlaceOrderResponse>(`/api/roles/${roleName}/orders`, {
         method: "POST",
         body: JSON.stringify({
@@ -42,7 +41,6 @@ export function usePlaceOrder() {
           stock_name: stockName,
           shares,
           price,
-          reason,
         }),
       }),
     onSuccess: (_data, vars) => {

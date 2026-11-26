@@ -162,7 +162,6 @@ impl TradeService {
             side: req.side,
             shares: shares.get(),
             price: req.price.get(),
-            reason: req.reason.trim(),
             initial_capital,
             traded_at: &traded_at,
         })
@@ -173,6 +172,8 @@ impl TradeService {
     /// 第二个返回值是「估值是否完整」：有任何持仓拿不到行情即为 `false`，
     /// 相应的 `last_price` / `market_value` / `unrealized_*` 为 `None`。
     ///
+    /// `available_shares` 按 T+1 算出：当日买入的部分当日不可卖。
+    ///
     /// # Errors
     /// 只有读库失败才返回错误；行情失败会降级而不是让整个接口失败。
     pub async fn positions(&self, role: &str) -> Result<(Vec<PositionView>, bool)> {
@@ -180,6 +181,11 @@ impl TradeService {
         if positions.is_empty() {
             return Ok((Vec::new(), true));
         }
+        // 当日买入按标的汇总一次，而不是每个持仓各查一次库。
+        let today = crate::utils::time::beijing_now()
+            .format("%Y-%m-%d")
+            .to_string();
+        let bought_today = self.store.bought_shares_on(role, &today)?;
         let codes: Vec<StockCode> = positions.iter().map(|p| p.symbol.clone()).collect();
         let quotes = self.fetch_quotes(&codes).await;
 
@@ -191,7 +197,12 @@ impl TradeService {
                 if last_price.is_none() {
                     complete = false;
                 }
-                PositionView::with_last_price(position, last_price)
+                let locked = bought_today
+                    .get(position.symbol.as_str())
+                    .copied()
+                    .unwrap_or(0);
+                let available = (position.shares - locked).max(0);
+                PositionView::with_last_price(position, last_price, available)
             })
             .collect();
         Ok((views, complete))
@@ -417,8 +428,12 @@ fn make_point(initial_capital: f64, date: String, cash: f64, market_value: f64) 
 /// 让 `Position` 的字段在估值缺位时也能被 API 层直接使用。
 impl Position {
     /// 转成不带估值的视图（行情不可用时的兜底）。
+    ///
+    /// 不经过服务层就拿不到当日买入汇总，因此可卖股数直接给持仓股数——
+    /// 真正的 T+1 校验仍在 [`TradeStore::place_order`] 里，这里只影响展示。
     #[must_use]
     pub fn without_valuation(self) -> PositionView {
-        PositionView::with_last_price(self, None)
+        let shares = self.shares;
+        PositionView::with_last_price(self, None, shares)
     }
 }

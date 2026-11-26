@@ -858,7 +858,6 @@ export default function RoleView() {
                               <Th className="num">数量</Th>
                               <Th className="num">成本价</Th>
                               <Th className="num">已实现盈亏</Th>
-                              <Th>备注</Th>
                             </tr>
                           </thead>
                           <tbody>
@@ -893,7 +892,6 @@ export default function RoleView() {
                                     ? DASH
                                     : formatSignedMoney(t.realized_pnl)}
                                 </Td>
-                                <Td reason>{t.reason}</Td>
                               </tr>
                             ))}
                           </tbody>
@@ -925,7 +923,6 @@ export default function RoleView() {
                               <Th className="num">已实现盈亏</Th>
                               <Th className="num">盈亏%</Th>
                               <Th>平仓时间</Th>
-                              <Th>出场理由</Th>
                             </tr>
                           </thead>
                           <tbody>
@@ -956,7 +953,6 @@ export default function RoleView() {
                                   {formatPct(h.realized_pct)}
                                 </Td>
                                 <Td muted>{formatTradeTime(h.closed_at)}</Td>
-                                <Td reason>{h.reason}</Td>
                               </tr>
                             ))}
                           </tbody>
@@ -1190,18 +1186,15 @@ function Td({
   className,
   bold,
   muted,
-  reason,
 }: {
   children: React.ReactNode
   className?: string
   bold?: boolean
   muted?: boolean
-  reason?: boolean
 }) {
   let cls = "whitespace-nowrap"
   if (bold) cls += " font-medium"
   if (muted) cls += " text-secondary"
-  if (reason) cls += " max-w-sidebar whitespace-normal text-secondary leading-relaxed"
   if (className) cls += " " + className
   return <td className={cls}>{children}</td>
 }

@@ -3,6 +3,10 @@
 //! 用户自己填写成交价与股数来记账，**不做撮合**（无滑点、无模拟成交价），
 //! **不计手续费**。每个角色一个独立账户，初始资金由角色配置提供。
 //!
+//! 交易制度按 **T+1**：当日买入的股份当日不可卖出，可卖股数 = 持仓 − 当日买入。
+//! 判定用的是成交日期（`traded_at` 的前 10 位），不是交易日历——周末本就没有
+//! 交易，跨日期即视为解冻。卖出所得资金当日即可再买入，与 A 股一致。
+//!
 //! 现金不落库，由成交流水推导：
 //!
 //! ```text
@@ -44,6 +48,12 @@ pub enum OrderError {
     InvalidSymbol(String),
     /// 卖出的股数超过当前持仓。
     InsufficientShares { held: i64, requested: i64 },
+    /// 卖出的股数超过可卖股数——差额是当日买入、被 T+1 锁定的部分。
+    T1LockedShares {
+        available: i64,
+        requested: i64,
+        bought_today: i64,
+    },
     /// 买入所需金额超过可用现金。
     InsufficientCash { available: f64, required: f64 },
     /// 角色不存在（仅用于读取路径；下单会自动建账）。
@@ -72,6 +82,14 @@ impl std::fmt::Display for OrderError {
                     "卖出股数超过持仓：持有 {held} 股，试图卖出 {requested} 股"
                 )
             }
+            Self::T1LockedShares {
+                available,
+                requested,
+                bought_today,
+            } => write!(
+                f,
+                "T+1 限制：今日买入的 {bought_today} 股当日不可卖出，可卖 {available} 股，试图卖出 {requested} 股"
+            ),
             Self::InsufficientCash {
                 available,
                 required,

@@ -29,20 +29,41 @@ export function maxBuyableShares(cash: number | null, price: number): number {
   return Math.floor(cash / price / BOARD_LOT) * BOARD_LOT
 }
 
-/** 买入股数快捷比例 —— 按可用资金折算成「几成仓」 */
-export const BUY_SHARE_RATIOS: { label: string; ratio: number }[] = [
+/**
+ * 快捷仓位比例：买入按可用资金折算，卖出按可卖股数折算。
+ *
+ * 买/卖共用一张表，标签只有一份——两边各写一遍很容易在改比例时漏改一边。
+ */
+const POSITION_RATIOS: { label: string; ratio: number }[] = [
+  { label: "1/4 仓", ratio: 1 / 4 },
   { label: "1/3 仓", ratio: 1 / 3 },
   { label: "半仓", ratio: 1 / 2 },
   { label: "全仓", ratio: 1 },
 ]
 
-/** 卖出股数快捷比例 —— 「全部」取实际持仓，其余按整手折算 */
-export function sellShareOptions(held: number): { label: string; shares: number }[] {
-  const options = [{ label: "全部", shares: held }]
-  for (const ratio of [1 / 2, 1 / 3]) {
-    const shares = Math.floor((held * ratio) / BOARD_LOT) * BOARD_LOT
-    if (shares >= BOARD_LOT && shares < held) {
-      options.push({ label: ratio === 1 / 2 ? "半仓" : "1/3 仓", shares })
+/** 买入股数快捷比例 —— 按可用资金折算成「几成仓」，从轻仓到满仓排列 */
+export function buyShareOptions(maxShares: number): { label: string; shares: number }[] {
+  const options: { label: string; shares: number }[] = []
+  for (const { label, ratio } of POSITION_RATIOS) {
+    const shares = ratio >= 1 ? maxShares : Math.floor((maxShares * ratio) / BOARD_LOT) * BOARD_LOT
+    // 资金少时不同比例会落到同一个整手数，重复的按钮没有意义
+    if (shares >= BOARD_LOT && !options.some((o) => o.shares === shares)) {
+      options.push({ label, shares })
+    }
+  }
+  return options
+}
+
+/** 卖出股数快捷比例 —— 「全部」取可卖股数，其余按整手折算，从大仓到小仓排列 */
+export function sellShareOptions(sellable: number): { label: string; shares: number }[] {
+  const options = [{ label: "全部", shares: sellable }]
+  for (const { label, ratio } of [...POSITION_RATIOS].reverse()) {
+    // 「全仓」就是「全部」，不重复出两个同义按钮
+    if (ratio >= 1) continue
+    const shares = Math.floor((sellable * ratio) / BOARD_LOT) * BOARD_LOT
+    // 仓位小时不同比例会落到同一个整手数，重复的按钮没有意义
+    if (shares >= BOARD_LOT && !options.some((o) => o.shares === shares)) {
+      options.push({ label, shares })
     }
   }
   return options

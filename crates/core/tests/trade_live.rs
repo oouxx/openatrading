@@ -15,8 +15,9 @@ use std::sync::Arc;
 
 use openatrading_core::api::Client as ApiClient;
 use openatrading_core::trade::{
-    ApiQuoteSource, OrderRequest, Price, Shares, Side, TradeService, TradeStore,
+    ApiQuoteSource, OrderRequest, PlaceOrderCtx, Price, Shares, Side, TradeService, TradeStore,
 };
+use openatrading_core::types::StockCode;
 
 /// 大额本金，保证真实股价下也买得起。
 const CAPITAL: f64 = 10_000_000.0;
@@ -25,14 +26,21 @@ fn must<T, E: std::fmt::Display>(result: Result<T, E>, what: &str) -> T {
     result.unwrap_or_else(|e| panic!("{what} 失败: {e}"))
 }
 
-/// 走真实行情源的服务。
-fn live_service(dir: &tempfile::TempDir) -> TradeService {
-    let store = must(TradeStore::open(&dir.path().join("live.db")), "打开交易库");
-    TradeService::new(
-        Arc::new(store),
+/// 走真实行情源的服务，连带返回 store——平仓用例要先补上一交易日的仓位（T+1）。
+fn live_service(dir: &tempfile::TempDir) -> (Arc<TradeStore>, TradeService) {
+    let store = Arc::new(must(
+        TradeStore::open(&dir.path().join("live.db")),
+        "打开交易库",
+    ));
+    let service = TradeService::new(
+        store.clone(),
         Arc::new(ApiQuoteSource::new(ApiClient::new())),
-    )
+    );
+    (store, service)
 }
+
+/// 上一交易日的成交时间。服务层只会写「现在」，建仓得直接写账本。
+const PREVIOUS_DAY: &str = "2020-01-02 10:00:00";
 
 fn order(side: Side, symbol: &str, shares: i64, price: f64) -> OrderRequest {
     OrderRequest {
@@ -41,7 +49,6 @@ fn order(side: Side, symbol: &str, shares: i64, price: f64) -> OrderRequest {
         stock_name: String::new(),
         shares: must(Shares::new(shares), "构造股数"),
         price: must(Price::new(price), "构造价格"),
-        reason: "真实行情测试".to_string(),
     }
 }
 
@@ -60,7 +67,7 @@ fn assert_close(actual: f64, expected: f64, what: &str) {
 #[ignore = "需要网络：打真实行情接口"]
 async fn live_quotes_drive_valuation() {
     let dir = must(tempfile::tempdir(), "临时目录");
-    let svc = live_service(&dir);
+    let (_store, svc) = live_service(&dir);
 
     // 600519 贵州茅台、000001 平安银行；成交价随便给，反正估值看的是最新价。
     for (symbol, shares) in [("600519.SS", 100), ("000001.SZ", 1000)] {
@@ -139,16 +146,21 @@ async fn live_quotes_drive_valuation() {
 #[ignore = "需要网络：打真实行情接口"]
 async fn live_round_trip_keeps_cash_and_pnl_consistent() {
     let dir = must(tempfile::tempdir(), "临时目录");
-    let svc = live_service(&dir);
+    let (store, svc) = live_service(&dir);
 
-    // 200 股 @1.0 只是个占位成交价，成本按它记，后面按真实价卖出算盈亏。
+    // 200 股 @100.0 只是个占位成交价，成本按它记，后面按真实价卖出算盈亏。
+    // T+1 下当日买入当日不能卖，所以建仓写成上一交易日的成交。
     must(
-        svc.place_order(
-            "实盘验证",
-            CAPITAL,
-            &order(Side::Buy, "600519.SS", 200, 100.0),
-        )
-        .await,
+        store.place_order(&PlaceOrderCtx {
+            role_name: "实盘验证",
+            symbol: StockCode::new("600519"),
+            stock_name: "贵州茅台",
+            side: Side::Buy,
+            shares: 200,
+            price: 100.0,
+            initial_capital: CAPITAL,
+            traded_at: PREVIOUS_DAY,
+        }),
         "建仓",
     );
     assert_close(
@@ -218,7 +230,7 @@ async fn live_round_trip_keeps_cash_and_pnl_consistent() {
 #[ignore = "需要网络：打真实行情接口"]
 async fn live_symbol_formats_resolve_to_same_quote() {
     let dir = must(tempfile::tempdir(), "临时目录");
-    let svc = live_service(&dir);
+    let (_store, svc) = live_service(&dir);
 
     // 同一只股票，两种写法买两次，应合并为一行（归一化后再合并）
     must(
