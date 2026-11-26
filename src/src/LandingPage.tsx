@@ -213,11 +213,7 @@ export default function LandingPage() {
                   下载安装包
                 </a>
               </Button>
-              <CopyCodeBlock
-                className="mt-5"
-                text="xattr -dr com.apple.quarantine /Applications/OpenATrading.app"
-              />
-              <p className="text-tertiary text-caption mt-4">
+              <p className="text-tertiary text-caption mt-5">
                 Homebrew：
                 <a href={HOMEBREW_TAP} className="text-brand hover:underline">
                   brew install --cask openatrading
