@@ -1,7 +1,9 @@
 import type { ReactNode } from "react"
 import {
   ArrowLeftRight,
+  Boxes,
   CandlestickChart,
+  Gauge,
   Layers,
   MessageSquare,
   PanelRight,
@@ -11,6 +13,7 @@ import {
 import { RolePane, WatchlistPane } from "@/components/EmbeddedPages"
 import MarketPane from "@/components/MarketPane"
 import StockDetailPane from "@/components/StockDetailPane"
+import { QuoteMetricsPane, SectorsPane } from "@/components/StockInfoPanes"
 import { OrderBookPane, TradePane } from "@/components/TradePanes"
 import {
   MARKET_PANE_KINDS,
@@ -101,7 +104,7 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
     icon: Wallet,
     render: () => <RolePane />,
   },
-  // 这两个格子跟随工作区当前标的（activeStockStore），和 K 线派发同一条链路
+  // 这两个格子跟随工作区当前标的（activeStockStore），默认跟「个股详情」格同一只
   orderbook: {
     icon: Layers,
     render: () => <OrderBookPane />,
@@ -109,6 +112,15 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
   trade: {
     icon: ArrowLeftRight,
     render: () => <TradePane />,
+  },
+  // 同样跟随工作区当前标的：K 线格只画图，指标和板块各自是一格
+  metrics: {
+    icon: Gauge,
+    render: () => <QuoteMetricsPane />,
+  },
+  sectors: {
+    icon: Boxes,
+    render: () => <SectorsPane />,
   },
 }
 

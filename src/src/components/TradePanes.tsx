@@ -1,6 +1,6 @@
 import { useState } from "react"
+import { ActiveStockHeader } from "@/components/ActiveStockHeader"
 import { OrderBookPanel } from "@/components/OrderBookPanel"
-import { StockSearchBox } from "@/components/StockSearchBox"
 import { BuyTicketForm, SellTicketForm } from "@/components/TradeTicket"
 import {
   Select,
@@ -19,37 +19,9 @@ import { useActiveStockStore } from "@/stores/activeStockStore"
  * 「五档行情」「下单」两个网格格子。
  *
  * 它们跟随**工作区当前标的**（`activeStockStore`）：在自选/榜单里点一只股票，
- * 或者在这两格的搜索框里选一只，三处看的是同一只票——和 K 线派发同一条链路。
+ * 或者在这两格的搜索框里选一只，两处看的是同一只票。「个股详情」（未解绑时）、
+ * 「关键指标」「所属板块」读的也是这一份，所以这几格永远指向同一只。
  */
-
-/** 当前标的的头部：名称 + 换股票搜索框（两格共用）。 */
-function ActiveStockHeader({ extra }: { extra?: React.ReactNode }) {
-  const stock = useActiveStockStore((s) => s.stock)
-  const setStock = useActiveStockStore((s) => s.set)
-
-  return (
-    <header className="border-hairline flex h-9 shrink-0 items-center gap-2 border-b px-2">
-      {stock ? (
-        <span className="flex min-w-0 items-baseline gap-1.5">
-          <span className="text-primary text-caption truncate font-medium">{stock.name}</span>
-          <span className="text-tertiary font-number text-caption">
-            {stock.code.replace(/^[a-z]+/i, "")}
-          </span>
-        </span>
-      ) : (
-        <span className="text-tertiary text-caption">未选股票</span>
-      )}
-      {extra}
-      <StockSearchBox
-        className="ml-auto w-36 shrink-0"
-        placeholder="换股票…"
-        ariaLabel="搜索要查看的股票"
-        excludeIndexes
-        onPick={(code, name) => setStock({ code, name })}
-      />
-    </header>
-  )
-}
 
 export function OrderBookPane() {
   const stock = useActiveStockStore((s) => s.stock)

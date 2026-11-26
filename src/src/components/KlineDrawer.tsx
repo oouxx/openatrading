@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { subscribeKline, subscribeRealtime, type RealtimeQuote } from "@/hooks/useRealtimeStream"
-import { usePlatesByStock, type PlateByStockItem } from "@/hooks/query/usePlatesByStock"
 import KlineChart, { type KlineCandle } from "./KlineChart"
 import { getKlineChartStatics, type CrosshairInfo } from "@/lib/klineChartStatics"
-import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
+import { formatCompactNumber, pctClass } from "@/lib/format"
 import { useWatchlist, useAddWatchlist, useDeleteWatchlist } from "@/hooks/query/useWatchlist"
-import { classifySymbol, toYahooSymbol } from "@/lib/stock-utils"
+import { toUpstreamSymbol } from "@/lib/stock-utils"
 import { Star, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { DataEmpty, DataError, DataLoading } from "@/components/data-state"
 
 interface KlineDrawerProps {
@@ -26,27 +24,9 @@ const periods = [
   { label: "月K", value: "month" },
 ]
 
-/**
- * 归一化为 Yahoo 格式；失败时回退原始输入，与后端 watchlist 容错一致。
- *
- * 交易所后缀必须透传：指数与个股共用 6 位代码（`000001.SS` 上证指数 vs
- * `000001.SZ` 平安银行），按首位数字重推会把指数画成另一只票。
- */
-function toUpstreamSymbol(raw: string): string {
-  try {
-    return toYahooSymbol(raw)
-  } catch {
-    return raw.trim()
-  }
-}
-
 export default function KlineDrawer({ symbol, name, onClose, showClose = true }: KlineDrawerProps) {
   const [period, setPeriod] = useState("minute")
   const xgSymbol = toUpstreamSymbol(symbol)
-  // 指数/基金/债券没有市盈率、市净率（上游恒 0），也没有所属板块：
-  // 只有个股才渲染这些区域
-  const kind = classifySymbol(xgSymbol)
-  const isStock = kind === "stock"
   const [quote, setQuote] = useState<RealtimeQuote | null>(null)
 
   // Watchlist
@@ -112,51 +92,6 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
       }
     )
   }, [xgSymbol, period, streamNonce])
-  const { data: plates } = usePlatesByStock(isStock ? xgSymbol : "")
-  const plateList = Array.isArray(plates) ? plates : []
-  const [dialogPlate, setDialogPlate] = useState<PlateByStockItem | null>(null)
-
-  const metrics = useMemo(() => {
-    if (!quote) return []
-    const rows = [
-      { label: "今开", value: quote.open_px?.toFixed(2) || "-" },
-      { label: "昨收", value: quote.preclose_px?.toFixed(2) || "-" },
-      { label: "最高", value: quote.high_px?.toFixed(2) || "-" },
-      { label: "最低", value: quote.low_px?.toFixed(2) || "-" },
-      { label: "振幅", value: quote.amplitude != null ? quote.amplitude.toFixed(2) + "%" : "-" },
-      {
-        label: "换手率",
-        value: quote.turnover_ratio ? quote.turnover_ratio.toFixed(2) + "%" : "-",
-      },
-      { label: "动态PE", value: quote.dyn_pe ? quote.dyn_pe.toFixed(1) : "-" },
-      { label: "市净率", value: quote.dyn_pb_rate ? quote.dyn_pb_rate.toFixed(2) : "-" },
-      { label: "总市值", value: formatCompactNumber(quote.market_value) },
-      { label: "流通市值", value: formatCompactNumber(quote.circulation_value) },
-      { label: "量比", value: quote.volume_ratio?.toFixed(2) || "-" },
-      {
-        label: "成交量",
-        value:
-          quote.turnover_volume != null ? `${formatCompactNumber(quote.turnover_volume)}股` : "-",
-      },
-    ]
-    // 非个股的 PE / 市净率 / 市值上游一律给 0（指数量还是成分股加总），
-    // 留着只是几格 "0" / "-"：去掉后剩 8 格正好两行。
-    if (!isStock) {
-      const tradeableFields = new Set([
-        "今开",
-        "昨收",
-        "最高",
-        "最低",
-        "振幅",
-        "换手率",
-        "量比",
-        "成交量",
-      ])
-      return rows.filter((m) => tradeableFields.has(m.label))
-    }
-    return rows
-  }, [quote, isStock])
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!showClose) return
@@ -351,77 +286,6 @@ export default function KlineDrawer({ symbol, name, onClose, showClose = true }:
           </div>
         )}
       </div>
-
-      {/* Metrics */}
-      {quote && (
-        <div className="px-4 py-3 @md:px-6">
-          <div className="text-caption grid grid-cols-2 gap-2 @md:grid-cols-4">
-            {metrics.map((m) => (
-              <div key={m.label} className="bg-surface border-hairline rounded-md border p-2.5">
-                <p className="text-tertiary text-micro mb-1">{m.label}</p>
-                <p className="font-number text-caption text-primary">{m.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Plates */}
-      {plateList.length > 0 && (
-        <div className="border-hairline mt-2 border-t px-4 py-3 @md:px-6">
-          <p className="text-secondary text-caption mb-2">所属板块</p>
-          <div className="grid max-h-[200px] grid-cols-2 gap-2 overflow-y-auto">
-            {plateList.map((p) => (
-              <button
-                key={p.plate_id}
-                type="button"
-                disabled={!p.reason}
-                className={`bg-surface border-hairline w-full rounded-md border p-2.5 text-left transition-colors ${
-                  p.reason ? "hover:border-brand/30 cursor-pointer" : "cursor-default"
-                }`}
-                onClick={() => p.reason && setDialogPlate(p)}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-caption text-primary truncate font-medium">
-                    {p.plate_name}
-                  </span>
-                  <span className={`font-number text-caption shrink-0 ${pctClass(p.core_avg_pcp)}`}>
-                    {formatRatioPct(p.core_avg_pcp)}
-                  </span>
-                </div>
-                {p.reason && (
-                  <p className="text-caption text-secondary mt-1 line-clamp-2 leading-relaxed">
-                    {p.reason}
-                  </p>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Plate dialog */}
-      {dialogPlate && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setDialogPlate(null)
-          }}
-        >
-          <DialogContent className="bg-surface border-hairline shadow-modal w-[420px] max-w-[90vw] gap-3 rounded-lg border p-5 sm:max-w-[90vw]">
-            <div className="flex items-center gap-2 pr-8">
-              <DialogTitle className="text-body text-primary font-semibold">
-                {dialogPlate.plate_name}
-              </DialogTitle>
-              <span className={`font-number text-caption ${pctClass(dialogPlate.core_avg_pcp)}`}>
-                {formatRatioPct(dialogPlate.core_avg_pcp)}
-              </span>
-            </div>
-            <DialogDescription className="sr-only">板块详情</DialogDescription>
-            <p className="text-body text-secondary leading-relaxed">{dialogPlate.reason}</p>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   )
 }

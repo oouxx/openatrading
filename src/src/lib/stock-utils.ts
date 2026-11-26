@@ -175,6 +175,20 @@ export function classifySymbol(symbol: string): SymbolKind {
   return "stock"
 }
 
+/**
+ * 归一化为 Yahoo 格式；失败时回退原始输入，与后端 watchlist 的容错保持一致。
+ *
+ * 交易所后缀必须透传：指数与个股共用 6 位代码（`000001.SS` 上证指数 vs
+ * `000001.SZ` 平安银行），按首位数字重推会把指数画成另一只票。
+ */
+export function toUpstreamSymbol(raw: string): string {
+  try {
+    return toYahooSymbol(raw)
+  } catch {
+    return raw.trim()
+  }
+}
+
 export function normalizeSymbol(raw: string): string {
   const dot = raw.indexOf(".")
   if (dot !== -1) {

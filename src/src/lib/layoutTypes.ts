@@ -29,6 +29,8 @@ export type GeneralPaneKind =
   | "roles"
   | "orderbook"
   | "trade"
+  | "metrics"
+  | "sectors"
 
 export type PaneKind = GeneralPaneKind | MarketPaneKind
 
@@ -46,6 +48,8 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "roles",
   "orderbook",
   "trade",
+  "metrics",
+  "sectors",
 ]
 
 /**
@@ -61,6 +65,8 @@ export const GENERAL_PANE_KINDS: readonly GeneralPaneKind[] = [
   "roles",
   "orderbook",
   "trade",
+  "metrics",
+  "sectors",
 ]
 
 export const PANE_KIND_LABELS: Record<string, string> = {
@@ -71,6 +77,8 @@ export const PANE_KIND_LABELS: Record<string, string> = {
   roles: "模拟盘",
   orderbook: "五档行情",
   trade: "下单",
+  metrics: "关键指标",
+  sectors: "所属板块",
   ...Object.fromEntries(MARKET_PANE_KINDS.map((kind) => [kind, marketViewLabel(kind)])),
 }
 
@@ -94,6 +102,8 @@ const GENERIC_SIZING: Record<GeneralPaneKind, PaneSizing> = {
   roles: { minSize: 380, defaultSize: 560 },
   orderbook: { minSize: 220, defaultSize: 300 },
   trade: { minSize: 300, defaultSize: 360 },
+  metrics: { minSize: 200, defaultSize: 280 },
+  sectors: { minSize: 240, defaultSize: 320 },
 }
 
 /** 每类面板的尺寸约束：min 保证不塌，default 是首次打开时的比例基准。 */
@@ -130,7 +140,10 @@ export interface PaneLeaf {
   id: string
   type: "pane"
   kind: PaneKind
-  /** 仅 kind === "detail"：这一格钉住哪只股票（代码由搜索接口给出，如 600519）。 */
+  /**
+   * 仅 kind === "detail"：**解绑后**固定看的那只股票（如 600519）。
+   * 为空表示这一格跟随工作区当前标的（默认）。
+   */
   symbol?: string
   /** 股票名，仅用于标题与自选，避免每格都再查一次代码表。 */
   symbolName?: string
