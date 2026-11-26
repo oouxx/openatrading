@@ -197,7 +197,7 @@ export default function LandingPage() {
               <p className="text-tertiary text-caption">安装</p>
               <h2 className={`text-primary mt-3 ${SECTION_TITLE}`}>三分钟跑起来</h2>
             </div>
-            <p className="text-tertiary text-caption">桌面端连本地网关；Web 端可选远程网关地址。</p>
+            <p className="text-tertiary text-caption">桌面端连本地网关，Web 可连远程网关。</p>
           </div>
 
           <div className="mt-10 grid gap-5 md:grid-cols-2">
@@ -206,24 +206,20 @@ export default function LandingPage() {
                 <Monitor className="text-brand size-4" aria-hidden />
                 桌面端
               </h3>
-              <p className="text-secondary text-caption mt-2 leading-[1.7]">
-                安装包随每个版本发布在 GitHub Releases，覆盖 macOS / Windows / Linux。
-              </p>
+              <p className="text-secondary text-caption mt-2">macOS / Windows / Linux</p>
               <Button asChild size="sm" className="mt-5 self-start">
                 <a href={RELEASES}>
                   <Download />
-                  前往 Releases
+                  下载安装包
                 </a>
               </Button>
-              <p className="text-tertiary text-caption mt-5">
-                macOS 包为 ad-hoc 签名，首次打开需解除隔离：
-              </p>
+              <p className="text-tertiary text-caption mt-5">首次打开需解除隔离：</p>
               <CopyCodeBlock
                 className="mt-2"
                 text="xattr -dr com.apple.quarantine /Applications/OpenATrading.app"
               />
               <p className="text-tertiary text-caption mt-4">
-                或用 Homebrew：
+                Homebrew：
                 <a href={HOMEBREW_TAP} className="text-brand hover:underline">
                   brew install --cask openatrading
                 </a>
@@ -235,12 +231,12 @@ export default function LandingPage() {
                 <Terminal className="text-brand size-4" aria-hidden />
                 CLI / Gateway
               </h3>
-              <p className="text-secondary text-caption mt-2 leading-[1.7]">
-                在 Linux / macOS 上启动行情网关与定时任务，桌面端和 Web 都连它取数。
+              <p className="text-secondary text-caption mt-2">
+                行情网关与定时任务，桌面端和 Web 都连它。
               </p>
               <CopyCodeBlock
                 className="mt-5"
-                text={`# 安装 CLI（二进制取自 GitHub Releases）
+                text={`# 安装 CLI
 curl -fsSL ${INSTALL_SH} | bash
 
 # 启动网关
