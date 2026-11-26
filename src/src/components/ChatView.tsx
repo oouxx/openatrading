@@ -791,6 +791,10 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
     () => (activeThreadId ? (threadTurns.get(activeThreadId) ?? []) : []),
     [activeThreadId, threadTurns]
   )
+  // pi-rs 每跑一次工具迭代就是一个 turn（turn_start/turn_end 包着每条 assistant
+  // 消息），一个提问会产出好几条 assistant turn。分开渲染就是好几枚胶囊、好几份
+  // "复制/重新生成"。这里把连续的 assistant turn 合成一个渲染单元。
+  const renderUnits = useMemo(() => mergeAssistantTurns(currentTurns), [currentTurns])
   // True only when the *active* thread is streaming — controls the Stop
   // button and disables Send for the active thread.
   const isStreamingActive = activeThreadId ? streamingThreads.has(activeThreadId) : false
@@ -1107,18 +1111,19 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
               // 悬浮输入卡片（含渐变留白）盖住列表底部，留白按实测高度给足。
               style={{ paddingBottom: composerHeight + 80 }}
             >
-              {currentTurns.map((turn, idx) => {
-                const isLastAi = turn.role === "assistant" && idx === currentTurns.length - 1
+              {renderUnits.map((unit, idx) => {
+                const isLast = idx === renderUnits.length - 1
+                const blocks = unit.blocks
 
                 return (
-                  <div key={turn.id}>
-                    {turn.role === "user" ? (
+                  <div key={unit.key}>
+                    {unit.kind === "user" ? (
                       // Claude 样式：用户消息右侧气泡（无头像）
                       <div className="flex w-full justify-end">
                         <div className="bg-hover text-primary max-w-[85%] rounded-lg px-4 py-2.5">
-                          {turn.blocks.some((b) => b.type === "file") && (
+                          {blocks.some((b) => b.type === "file") && (
                             <div className="mb-2 flex flex-wrap gap-2">
-                              {turn.blocks.map((b) => {
+                              {blocks.map((b) => {
                                 if (b.type !== "file") return null
                                 return (
                                   <span
@@ -1133,9 +1138,9 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
                               })}
                             </div>
                           )}
-                          {turn.blocks.some((b) => b.type === "image") && (
+                          {blocks.some((b) => b.type === "image") && (
                             <div className="mb-2 flex flex-wrap gap-2">
-                              {turn.blocks.map((b) => {
+                              {blocks.map((b) => {
                                 if (b.type !== "image") return null
                                 const src = b.url ?? `data:${b.mimeType};base64,${b.data}`
                                 return (
@@ -1161,7 +1166,7 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
                             </div>
                           )}
                           <p className="text-body leading-[1.7] break-words whitespace-pre-wrap">
-                            {turn.blocks.map((b) => ("content" in b ? b.content : "")).join("")}
+                            {blocks.map((b) => ("content" in b ? b.content : "")).join("")}
                           </p>
                         </div>
                       </div>
@@ -1171,8 +1176,8 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
                         <div className="text-body w-full min-w-0 leading-[1.7] break-words">
                           <TurnRenderer
                             sessionId={activeThreadId}
-                            turn={turn}
-                            isStreaming={isLastAi && isStreamingActive}
+                            blocks={blocks}
+                            isStreaming={isLast && isStreamingActive}
                             respondToPermission={
                               isTauri
                                 ? (id: string, approved: boolean) =>
@@ -1184,8 +1189,8 @@ function AiCopilot({ activeThreadId, onActiveThreadChange, onReload }: AiCopilot
                             }
                           />
                         </div>
-                        {turn.status === "complete" && (
-                          <TurnActions text={turn.blocks.map(answerText).join("\n\n")} />
+                        {unit.complete && (
+                          <TurnActions text={blocks.map(answerText).join("\n\n")} />
                         )}
                       </div>
                     )}
@@ -1373,14 +1378,51 @@ function SlashCommandMenu({
 
 // ── Turn renderer ─────────────────────────────────────────────────────────
 
+/** 一个渲染单元：一条用户消息，或若干条连续 assistant turn 合成的一段回复。 */
+type RenderUnit = {
+  key: string
+  kind: "user" | "assistant"
+  blocks: TranscriptBlock[]
+  /** 这一段已经收尾（决定是否显示"复制/重新生成"）。 */
+  complete: boolean
+}
+
+/**
+ * 把连续的 assistant turn 合并成一个渲染单元。
+ *
+ * pi-rs 的 turn 边界是"每条 assistant 消息"，工具调用一迭代就结束一个 turn，
+ * 于是一个提问会产出 `[tool, tool, tool, …]` 好几条 turn。分开渲染的表现是：
+ * 一串互不相干的胶囊、以及每段回复各一组"复制/重新生成"。合并之后一轮提问只有
+ * 一段回复，活动也能收进同一枚胶囊。
+ */
+function mergeAssistantTurns(turns: TranscriptTurn[]): RenderUnit[] {
+  const units: RenderUnit[] = []
+  for (const turn of turns) {
+    const last = units[units.length - 1]
+    if (turn.role === "assistant" && last?.kind === "assistant") {
+      last.blocks = [...last.blocks, ...turn.blocks]
+      last.complete = turn.status === "complete"
+      continue
+    }
+    units.push({
+      key: turn.id,
+      kind: turn.role,
+      blocks: turn.blocks,
+      complete: turn.status === "complete",
+    })
+  }
+  return units
+}
+
 interface TurnRendererProps {
   sessionId: string | null
-  turn: TranscriptTurn
+  /** 一个"渲染单元"的全部块（可能来自多个 assistant turn，见 `mergeAssistantTurns`）。 */
+  blocks: TranscriptBlock[]
   isStreaming: boolean
   respondToPermission: (id: string, approved: boolean) => Promise<void>
 }
 
-function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: TurnRendererProps) {
+function TurnRenderer({ sessionId, blocks, isStreaming, respondToPermission }: TurnRendererProps) {
   // Claude.ai 活动时间线：thinking 与 tool call 按发生顺序串在一条垂直
   // 时间线上；文字/系统通知/权限卡不在时间线内（flush 后独立渲染）。
   const nodes: React.ReactNode[] = []
@@ -1400,7 +1442,7 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
     activity = []
   }
 
-  for (const block of turn.blocks) {
+  for (const block of blocks) {
     if (block.type === "thinking") {
       activity.push({
         type: "thinking",
@@ -1426,6 +1468,12 @@ function TurnRenderer({ sessionId, turn, isStreaming, respondToPermission }: Tur
       })
       continue
     }
+    // 不渲染任何东西的块不该切断活动分组：pi-rs 每次工具迭代都会补一条 "turn"
+    // 通知（工具结果预览，现在由每一步自己展开显示），留着它就会把一轮拆成
+    // 好几枚胶囊。空文本块同理。
+    if (block.type === "system_notice" && block.kind === "turn") continue
+    if (block.type === "text" && !block.content.trim()) continue
+
     flushActivity()
 
     if (block.type === "text") {
