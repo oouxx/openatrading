@@ -11,7 +11,8 @@ export type PaneLinkHintReason = "unlinked" | "no-receiver"
 const HINT_KEY = "openatrading-pane-link-hint"
 
 const TEXT: Record<PaneLinkHintReason, string> = {
-  unlinked: "这一格还没联动：把它拖到「个股详情」格上（出现链环），以后点股票就在那一格打开",
+  unlinked:
+    "这个布局里没有「个股详情」格：点股票只会换工作区标的。加一格「个股详情」，它默认就跟当前标的走",
   "no-receiver": "这个联动组里没有看盘格：把「个股详情」或对话格拖进来，点股票才有地方显示",
 }
 

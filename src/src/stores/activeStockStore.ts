@@ -13,13 +13,15 @@ interface ActiveStockState {
 }
 
 /**
- * 工作区的当前标的：点榜单/自选里的股票、或在「下单」「五档」格里搜一只，
- * 都会更新它。K 线派发（关联网格）、五档行情、下单框都读同一份。
+ * 工作区的当前标的：点榜单/自选里的股票、或在任意格里搜一只，都会更新它。
+ * 「个股详情」（未解绑时）、五档行情、下单框都读同一份。
  *
  * 只存内存：这是"我现在在看哪只"的临时视图状态，和 `paneDetail` 一样不落盘——
  * 重启后回到"没选股票"，比恢复一只早就过期的票更符合预期。
  */
 export const useActiveStockStore = create<ActiveStockState>((set) => ({
   stock: null,
-  set: (stock) => set({ stock }),
+  // 同一只票重复设置（一个联动组里有多个接收方时会连续 set）不再触发新快照，
+  // 否则 K 线格要跟着白白重渲染一轮。
+  set: (stock) => set((state) => (stock && state.stock?.code === stock.code ? state : { stock })),
 }))

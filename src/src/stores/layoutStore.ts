@@ -77,6 +77,8 @@ const LEGACY_CUSTOM_KEY = "workspace-custom-layouts"
 const PRESET_KINDS_KEY = "workspace-preset-kinds"
 /** 拖拽联动组（跟布局一起同步，本机也缓存一份）。 */
 const GROUPS_KEY = "workspace-pane-groups"
+/** 内置布局里被"解绑"固定的格子（同样跟布局一起同步）。 */
+const PRESET_SYMBOLS_KEY = "workspace-preset-symbols"
 /** 上一版：只记"这一格显示哪个行情视图"。 */
 const LEGACY_PRESET_VIEWS_KEY = "workspace-preset-views"
 const ACTIVE_KEY = "workspace-active-layout"
@@ -177,7 +179,7 @@ function sanitizeNode(raw: unknown, depth = 0): LayoutNode | null {
       return null
     }
     const kind = record.kind as PaneKind
-    // 个股详情格记住自己钉住的那只股票，换机器/重开也还在
+    // 个股详情格解绑后固定的那只票要留下来，换机器/重开也还在
     if (kind === "detail" && typeof record.symbol === "string" && record.symbol) {
       return {
         id: record.id,
@@ -289,6 +291,39 @@ function loadGroups(): PaneGroups {
   }
 }
 
+/**
+ * 内置布局里被解绑固定的格子：`{ 布局 id: { 节点 id: { code, name } } }`。
+ *
+ * 内置布局的树是代码里的预设（只读），钉住的股票没法写进叶子，所以和
+ * `presetKinds` 一样走覆盖表，跟着快照一起存。
+ */
+export type PresetSymbols = Record<string, Record<string, { code: string; name: string }>>
+
+function parsePresetSymbols(raw: unknown): PresetSymbols {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  const result: PresetSymbols = {}
+  for (const [layoutId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue
+    const out: Record<string, { code: string; name: string }> = {}
+    for (const [nodeId, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (!entry || typeof entry !== "object") continue
+      const item = entry as Record<string, unknown>
+      if (typeof item.code !== "string" || !item.code) continue
+      out[nodeId] = { code: item.code, name: typeof item.name === "string" ? item.name : item.code }
+    }
+    if (Object.keys(out).length > 0) result[layoutId] = out
+  }
+  return result
+}
+
+function loadPresetSymbols(): PresetSymbols {
+  try {
+    return parsePresetSymbols(JSON.parse(localStorage.getItem(PRESET_SYMBOLS_KEY) ?? "null"))
+  } catch {
+    return {}
+  }
+}
+
 function loadActiveId(customs: WorkspaceLayout[]): string {
   const known = new Set([...PRESET_LAYOUT_IDS, ...customs.map((layout) => layout.id)])
   try {
@@ -332,6 +367,8 @@ export interface LayoutSnapshot {
   activeId: string
   /** 内置布局里被换过的面板：`{ 布局 id: { 节点 id: 面板类型 } }`。 */
   presetKinds: Record<string, Record<string, PaneKind>>
+  /** 内置布局里被解绑固定的股票：`{ 布局 id: { 节点 id: { code, name } } }`。 */
+  presetSymbols: PresetSymbols
   /** 拖拽建立的联动组：`{ 布局 id: { 格子 id: 组 id } }`。 */
   groups: PaneGroups
   layouts: { id: string; name: string; storageId: string; root: LayoutNode }[]
@@ -351,6 +388,7 @@ export function toSnapshot(state: {
   layouts: WorkspaceLayout[]
   activeId: string
   presetKinds: Record<string, Record<string, PaneKind>>
+  presetSymbols: PresetSymbols
   groups: PaneGroups
 }): LayoutSnapshot {
   return {
@@ -358,6 +396,7 @@ export function toSnapshot(state: {
     updatedAt: Date.now(),
     activeId: state.activeId,
     presetKinds: state.presetKinds,
+    presetSymbols: state.presetSymbols,
     groups: state.groups,
     layouts: state.layouts
       .filter((layout) => !layout.builtin)
@@ -387,6 +426,7 @@ function parseGroups(raw: unknown): PaneGroups {
 export function parseSnapshot(raw: unknown): {
   layouts: WorkspaceLayout[]
   presetKinds: Record<string, Record<string, PaneKind>>
+  presetSymbols: PresetSymbols
   groups: PaneGroups
   activeId: string
   updatedAt: number
@@ -427,6 +467,7 @@ export function parseSnapshot(raw: unknown): {
   return {
     layouts,
     presetKinds,
+    presetSymbols: parsePresetSymbols(record.presetSymbols),
     groups: parseGroups(record.groups ?? record.links),
     activeId,
     updatedAt,
@@ -492,6 +533,7 @@ export function parseLayoutFile(raw: unknown): {
 
 const initialCustoms = loadCustomLayouts()
 const initialPresetKinds = loadPresetKinds()
+const initialPresetSymbols = loadPresetSymbols()
 
 export interface ImportResult {
   ok: boolean
@@ -509,6 +551,8 @@ interface LayoutState {
   activeId: string
   /** 内置布局里被用户换过内容的格（结构只读，换行情内容可以）。 */
   presetKinds: Record<string, Record<string, PaneKind>>
+  /** 内置布局里被解绑固定的格（同一张覆盖表的另一种值）。 */
+  presetSymbols: PresetSymbols
   /** 拖拽建立的联动：`布局 id → 派发格 → 接收格`（跟布局一起存服务端）。 */
   groups: PaneGroups
   /** 正在结构编辑的自定义布局 id；null 表示不在编辑态。 */
@@ -559,13 +603,21 @@ interface LayoutState {
   /** 让这一格退出联动组；组里剩不到两格就解散。 */
   leavePane: (layoutId: string, leafId: string) => void
   setPaneKind: (layoutId: string, nodeId: string, kind: PaneKind) => void
-  /** 给"个股详情"格钉一只股票。 */
+  /**
+   * 把「个股详情」格**解绑**：固定在这一只上，不再跟工作区当前标的走。
+   *
+   * 跟随才是默认——叶子没有 `symbol` 就渲染当前标的。解绑是唯一能让它停下来的
+   * 动作，值存在叶子上，跟布局一起同步；`followActiveStock` 是反向操作。
+   */
   setPaneSymbol: (layoutId: string, nodeId: string, symbol: string, name: string) => void
+  /** 解绑的反向操作：清掉固定的股票，重新跟随工作区当前标的。 */
+  followActiveStock: (layoutId: string, nodeId: string) => void
   /**
    * 把一只股票送到指定那一格打开（联动/派发用）。
    *
-   * “个股详情”格是直接钉住（K 线就是它的正文）；其它格子走子页面叠层，
-   * 关掉就回到原来那张表。内置布局的格子结构只读，一律走子页面。
+   * 先无条件更新工作区当前标的：跟随中的个股详情格、五档、下单格读的都是它，
+   * 所以对它们来说“派发”就是改当前标的，不用再写布局（也不会把格子解绑）。
+   * 其它格子走子页面叠层，关掉就回到原来那张表。
    */
   openStockInPane: (layoutId: string, nodeId: string, symbol: string, name: string) => void
   splitPane: (layoutId: string, nodeId: string, orientation: SplitOrientation) => void
@@ -593,17 +645,18 @@ function scheduleRemoteSave(snapshot: LayoutSnapshot) {
 export const useLayoutStore = create<LayoutState>((set, get) => {
   /** 本地缓存（毫秒级）与服务端（跨设备）同时写：前者保证刷新不丢，后者保证换机器还在。 */
   const commit = () => {
-    const { layouts, presetKinds, groups, activeId } = get()
+    const { layouts, presetKinds, presetSymbols, groups, activeId } = get()
     persist(
       CUSTOM_KEY,
       layouts.filter((layout) => !layout.builtin)
     )
     persist(PRESET_KINDS_KEY, presetKinds)
+    persist(PRESET_SYMBOLS_KEY, presetSymbols)
     persist(GROUPS_KEY, groups)
     persist(ACTIVE_KEY, activeId)
     persist(UPDATED_AT_KEY, Date.now())
     localEditsPending = true
-    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds, groups }))
+    scheduleRemoteSave(toSnapshot({ layouts, activeId, presetKinds, presetSymbols, groups }))
   }
 
   const updateLayout = (
@@ -611,6 +664,22 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     updater: (layout: WorkspaceLayout) => WorkspaceLayout
   ): WorkspaceLayout[] =>
     get().layouts.map((layout) => (layout.id === layoutId ? updater(layout) : layout))
+
+  /** 从覆盖表里去掉某一格的固定值；没有变化时原样返回（调用方据此跳过 set）。 */
+  const withoutPresetSymbol = (
+    all: PresetSymbols,
+    layoutId: string,
+    nodeId: string
+  ): PresetSymbols => {
+    const current = all[layoutId]
+    if (!current?.[nodeId]) return all
+    const next = { ...current }
+    delete next[nodeId]
+    const out = { ...all }
+    if (Object.keys(next).length > 0) out[layoutId] = next
+    else delete out[layoutId]
+    return out
+  }
 
   /** 关掉某一格上打开的"下一层页面"（换榜/换类型时用）。 */
   const clearPaneDetail = (paneId: string) =>
@@ -631,6 +700,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     layouts: [...PRESET_LAYOUTS, ...initialCustoms],
     activeId: loadActiveId(initialCustoms),
     presetKinds: initialPresetKinds,
+    presetSymbols: initialPresetSymbols,
     groups: loadGroups(),
     editingId: null,
     maximizedPaneId: null,
@@ -639,14 +709,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
 
     hydrate: async () => {
       const pushLocal = async () => {
-        const { layouts, presetKinds, groups, activeId } = get()
+        const { layouts, presetKinds, presetSymbols, groups, activeId } = get()
         const hasLocalState =
           layouts.some((layout) => !layout.builtin) ||
           Object.keys(presetKinds).length > 0 ||
+          Object.keys(presetSymbols).length > 0 ||
           Object.keys(groups).length > 0 ||
           activeId !== "review"
         if (!hasLocalState) return
-        const snapshot = toSnapshot({ layouts, activeId, presetKinds, groups })
+        const snapshot = toSnapshot({ layouts, activeId, presetKinds, presetSymbols, groups })
         persist(UPDATED_AT_KEY, snapshot.updatedAt)
         await pushLayoutSnapshot(snapshot)
       }
@@ -679,6 +750,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           layouts: [...PRESET_LAYOUTS, ...remote.layouts],
           activeId,
           presetKinds: remote.presetKinds,
+          presetSymbols: remote.presetSymbols,
           groups: remote.groups,
         })
         // 把服务端版本缓存到本地，下次打开可以先用缓存渲染
@@ -687,6 +759,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           remote.layouts.filter((layout) => !layout.builtin)
         )
         persist(PRESET_KINDS_KEY, remote.presetKinds)
+        persist(PRESET_SYMBOLS_KEY, remote.presetSymbols)
         persist(GROUPS_KEY, remote.groups)
         persist(ACTIVE_KEY, activeId)
         persist(UPDATED_AT_KEY, remote.updatedAt)
@@ -787,7 +860,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       if (!layout?.builtin) return
       const presetKinds = { ...get().presetKinds }
       delete presetKinds[id]
-      set({ presetKinds })
+      const presetSymbols = { ...get().presetSymbols }
+      delete presetSymbols[id]
+      set({ presetKinds, presetSymbols })
       commit()
     },
 
@@ -908,6 +983,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
             ...get().presetKinds,
             [layoutId]: { ...(get().presetKinds[layoutId] ?? {}), [nodeId]: kind },
           },
+          // 换成别的类型（或换回 detail 重新跟随）时把旧的固定值丢掉，避免残留
+          ...(kind === "detail"
+            ? {}
+            : { presetSymbols: withoutPresetSymbol(get().presetSymbols, layoutId, nodeId) }),
         })
         commit()
         return
@@ -931,7 +1010,22 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     },
 
     setPaneSymbol: (layoutId, nodeId, symbol, name) => {
-      if (!guardEditable(layoutId)) return
+      const layout = get().layouts.find((item) => item.id === layoutId)
+      if (!layout) return
+      // 内置布局的树是代码里的预设，写不进去：固定的股票记在覆盖表里（同 presetKinds）
+      if (layout.builtin) {
+        set({
+          presetSymbols: {
+            ...get().presetSymbols,
+            [layoutId]: {
+              ...(get().presetSymbols[layoutId] ?? {}),
+              [nodeId]: { code: symbol, name },
+            },
+          },
+        })
+        commit()
+        return
+      }
       set({
         layouts: updateLayout(layoutId, (item) => {
           const leaf = findLeaf(item.root, nodeId)
@@ -950,16 +1044,39 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       commit()
     },
 
+    followActiveStock: (layoutId, nodeId) => {
+      const layout = get().layouts.find((item) => item.id === layoutId)
+      if (!layout) return
+      if (layout.builtin) {
+        const presetSymbols = withoutPresetSymbol(get().presetSymbols, layoutId, nodeId)
+        if (presetSymbols === get().presetSymbols) return
+        set({ presetSymbols })
+        commit()
+        return
+      }
+      set({
+        layouts: updateLayout(layoutId, (item) => {
+          const leaf = findLeaf(item.root, nodeId)
+          if (!leaf || !leaf.symbol) return item
+          // 解绑就是去掉这两个字段：渲染层见到没有 `symbol` 就回到跟随
+          const next: PaneLeaf = { ...leaf }
+          delete next.symbol
+          delete next.symbolName
+          return { ...item, root: replaceNode(item.root, nodeId, next) }
+        }),
+      })
+      commit()
+    },
+
     openStockInPane: (layoutId, nodeId, symbol, name) => {
-      // 「五档行情」「下单」格跟着走：一次点击，三处看同一只票
+      // 工作区只有一份“当前标的”：跟随中的个股详情格、五档、下单格都读它
       useActiveStockStore.getState().set({ code: symbol, name })
       const layout = get().layouts.find((item) => item.id === layoutId)
       const leaf = layout && findLeaf(layout.root, nodeId)
       if (!leaf) return
-      if (leaf.kind === "detail" && !layout.builtin) {
-        get().setPaneSymbol(layoutId, nodeId, symbol, name)
-        return
-      }
+      // 个股详情格靠“跟随”拿到这只票；已经解绑固定的格子保持不动——用户显式
+      // 解绑过，派发不该把它拽回来
+      if (resolvePaneKind(layout, leaf, get().presetKinds) === "detail") return
       // 对话格有自己的一套 K 线标签，别再叠一层子页面
       if (leaf.kind === "chat") {
         useChatStockStore.getState().open(symbol, name)
@@ -1057,7 +1174,8 @@ export function groupOf(layoutId: string | null | undefined, leafId: string | nu
 /**
  * 点这一格的股票时，要一起更新的**接收方**格子。
  *
- * 只认"专门用来看一只票"的格子：个股详情（钉住那只票）、对话格（K 线标签）。
+ * 只认"专门用来看一只票"的格子：个股详情（没解绑时本来就在跟随，派发只是让它
+ * 和工作区标的同步）、对话格（开 K 线标签）。
  *
  * **行情格不算接收方**：把两个榜放在一组时，点 A 的股票会往 B 上叠一层 K 线，
  * 点 B 又叠回 A，两边互相盖、看着就乱了。榜单只负责派发，"在哪看"由个股详情格
@@ -1081,6 +1199,41 @@ export function linkedReceivers(
       return kind === "detail" || kind === "chat"
     })
     .map(([leaf]) => leaf)
+}
+
+/**
+ * 布局里有没有“正在跟随”的个股详情格。
+ *
+ * 有的话点股票就能看到反应（那一格会换票），不需要提示用户去建联动；
+ * 一个都没有（没放详情格，或者都已被手动解绑）时才提示。
+ */
+export function hasFollowingDetailPane(layoutId: string | null | undefined): boolean {
+  if (!layoutId) return false
+  const state = useLayoutStore.getState()
+  const layout = state.layouts.find((item) => item.id === layoutId)
+  if (!layout) return false
+  let found = false
+  eachLeaf(layout.root, (leaf) => {
+    if (found) return
+    if (resolvePaneKind(layout, leaf, state.presetKinds) !== "detail") return
+    if (!pinnedSymbolOf(layout, leaf, state.presetSymbols)) found = true
+  })
+  return found
+}
+
+/**
+ * 这一格的"解绑固定值"：自定义布局写在叶子上，内置布局写在覆盖表里。
+ *
+ * 两处都为空就是**跟随**工作区当前标的（默认行为）。
+ */
+export function pinnedSymbolOf(
+  layout: WorkspaceLayout,
+  leaf: PaneLeaf,
+  presetSymbols: PresetSymbols
+): { code: string; name: string } | null {
+  if (leaf.symbol) return { code: leaf.symbol, name: leaf.symbolName ?? leaf.symbol }
+  if (!layout.builtin) return null
+  return presetSymbols[layout.id]?.[leaf.id] ?? null
 }
 
 /** 同组其它格子的名字（给提示文案用："与「个股详情」同组"）。 */

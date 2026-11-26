@@ -1,6 +1,11 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
-import { groupOf, linkedReceivers, useLayoutStore } from "@/stores/layoutStore"
+import {
+  groupOf,
+  hasFollowingDetailPane,
+  linkedReceivers,
+  useLayoutStore,
+} from "@/stores/layoutStore"
 import { hintPaneLinkOnce } from "@/lib/pane-link-hint"
 
 import { useRightPanelStore } from "@/stores/rightPanelStore"
@@ -46,13 +51,16 @@ export function PaneNavProvider({
     () => ({
       openStock: (symbol, name) => {
         if (receivers.length === 0) {
-          // 没成组就不开任何页面：只把这只票设为工作区当前标的（五档/下单格会跟着），
-          // 免得整格榜单被一层临时 K 线盖住。第一次点顺带教一次怎么建立联动。
+          // 没成组：个股详情格自己会跟随当前标的，所以这里只需要更新标的。
           selectStock(symbol, name)
-          hintPaneLinkOnce(groupId ? "no-receiver" : "unlinked")
+          // 布局里没有任何“正在跟随”的详情格时，点下去什么都不会变，才需要教一次
+          // 怎么放一格出来
+          if (!hasFollowingDetailPane(layoutId)) {
+            hintPaneLinkOnce(groupId ? "no-receiver" : "unlinked")
+          }
           return
         }
-        // 一对多：组里的接收方（个股详情钉住那只票 / 对话格开 K 线标签）都更新
+        // 一对多：组里的接收方（个股详情跟着换票 / 对话格开 K 线标签）都更新
         for (const receiver of receivers) openStockInPane(layoutId, receiver, symbol, name)
       },
       plateDetail: top?.type === "plate" ? top.plate : null,

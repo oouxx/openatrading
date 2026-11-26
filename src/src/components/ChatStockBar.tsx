@@ -9,8 +9,8 @@ import { useChatStockStore } from "@/stores/chatStockStore"
  * **没有搜索框**：搜股票归「个股详情」格和各榜单，对话格不再重复一个入口；没有标签
  * 时整条不渲染，对话保持无表头的沉浸布局。
  *
- * 这里的 K 线是"临时看一眼"（标签存 localStorage、易失），要长期钉住一只票用
- * 「个股详情」格。
+ * 这里的 K 线是"临时看一眼"（标签存 localStorage、易失），要长期盯一只票用
+ * 「个股详情」格（并在表头上解绑）。
  */
 export function ChatStockBar() {
   const tabs = useChatStockStore((s) => s.tabs)
