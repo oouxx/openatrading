@@ -314,14 +314,34 @@ function loadPresetSymbols(): PresetSymbols {
   }
 }
 
+/**
+ * 本机记着"上次看的是哪一页"；没记过返回 null（新机器 / 首次启动）。
+ *
+ * 注意 `persist()` 写的是 JSON，所以读回来是带引号的（`"custom-layout-xxx"`）。
+ * 以前这里直接拿裸字符串去比对布局 id，永远对不上，于是每次启动都落回「复盘」——
+ * 这就是"记不住上次用的布局"的根因。旧版本可能留过裸字符串，一并兼容。
+ */
+function readStoredActiveId(): string | null {
+  let raw: string | null
+  try {
+    raw = localStorage.getItem(ACTIVE_KEY) ?? localStorage.getItem(LEGACY_ACTIVE_KEY)
+  } catch {
+    // localStorage 不可用或被禁用：当作没选过
+    return null
+  }
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return typeof parsed === "string" && parsed ? parsed : raw
+  } catch {
+    return raw
+  }
+}
+
 function loadActiveId(customs: WorkspaceLayout[]): string {
   const known = new Set([...PRESET_LAYOUT_IDS, ...customs.map((layout) => layout.id)])
-  try {
-    const stored = localStorage.getItem(ACTIVE_KEY) ?? localStorage.getItem(LEGACY_ACTIVE_KEY)
-    if (stored && known.has(stored)) return stored
-  } catch {
-    // localStorage 不可用或被禁用时回退到默认布局
-  }
+  const stored = readStoredActiveId()
+  if (stored && known.has(stored)) return stored
   return "review"
 }
 
@@ -684,7 +704,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         // 快照里记着的布局可能已经不存在了（预设被删掉、或布局在别处删了）：
         // 落到第一个预设，避免 activeId 一直指向一个渲染不出来的 id
         const knownIds = new Set([...PRESET_LAYOUT_IDS, ...remote.layouts.map((l) => l.id)])
-        const activeId = knownIds.has(remote.activeId) ? remote.activeId : PRESET_LAYOUT_IDS[0]
+        // **"在看哪一页"以本机为准**：它是视图状态，不是共享内容。以前这里直接
+        // 采纳快照里的 activeId，于是另一台设备（或 Web 端）切一下布局，这台机器
+        // 下次启动就被改回去了——表现就是"记不住上次用的布局"。
+        // 本机没选过（新机器/首次启动）才用快照记的那一页。
+        const localChoice = readStoredActiveId()
+        const activeId =
+          localChoice && knownIds.has(localChoice)
+            ? localChoice
+            : knownIds.has(remote.activeId)
+              ? remote.activeId
+              : PRESET_LAYOUT_IDS[0]
 
         set({
           layouts: [...PRESET_LAYOUTS, ...remote.layouts],
