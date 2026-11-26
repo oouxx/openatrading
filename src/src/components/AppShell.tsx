@@ -2,11 +2,9 @@ import { lazy, Suspense, useCallback, useMemo, type ReactNode } from "react"
 import { motion } from "motion/react"
 import { useAppMode } from "@/contexts/useAppMode"
 import AiCopilot from "@/components/ChatView"
-import ChatPane from "@/components/ChatPane"
 import ErrorBoundary from "@/components/ErrorBoundary"
 import ConversationSidebar from "./ConversationSidebar"
 import LayoutNodeView from "./LayoutNodeView"
-import LayoutToast from "./LayoutToast"
 import { useThreads } from "@/hooks/useChatThreads"
 import { useLayoutHydration } from "@/hooks/useLayoutHydration"
 import { useWorkspaceShortcuts } from "@/hooks/useWorkspaceShortcuts"
@@ -106,15 +104,13 @@ export default function AppShell() {
   // AppShell 只负责提供对话节点这份"外部句柄"。
   const paneContext = {
     chat: (
-      <ChatPane activeThreadId={activeThreadId}>
-        <ErrorBoundary name="AiCopilot">
-          <AiCopilot
-            activeThreadId={activeThreadId}
-            onActiveThreadChange={handleActiveChange}
-            onReload={reload}
-          />
-        </ErrorBoundary>
-      </ChatPane>
+      <ErrorBoundary name="AiCopilot">
+        <AiCopilot
+          activeThreadId={activeThreadId}
+          onActiveThreadChange={handleActiveChange}
+          onReload={reload}
+        />
+      </ErrorBoundary>
     ),
     layout,
     presetKinds,
@@ -164,7 +160,6 @@ export default function AppShell() {
             </LazyView>
           )}
         </SidebarInset>
-        <LayoutToast />
       </SidebarProvider>
     </TooltipProvider>
   )

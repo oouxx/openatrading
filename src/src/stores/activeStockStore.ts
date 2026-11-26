@@ -21,7 +21,6 @@ interface ActiveStockState {
  */
 export const useActiveStockStore = create<ActiveStockState>((set) => ({
   stock: null,
-  // 同一只票重复设置（一个联动组里有多个接收方时会连续 set）不再触发新快照，
-  // 否则 K 线格要跟着白白重渲染一轮。
+  // 同一只票重复设置不再触发新快照，否则所有跟随中的看盘格要跟着白白重渲染一轮。
   set: (stock) => set((state) => (stock && state.stock?.code === stock.code ? state : { stock })),
 }))

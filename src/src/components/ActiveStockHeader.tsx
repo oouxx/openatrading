@@ -1,16 +1,22 @@
 import { StockSearchBox } from "@/components/StockSearchBox"
-import { useActiveStockStore } from "@/stores/activeStockStore"
+import type { ActiveStock } from "@/stores/activeStockStore"
 
 /**
- * 跟随型格子的表头：工作区当前标的（名称 + 代码）+ 右侧"换股票"搜索框。
+ * 看盘格的表头：这一格正在看的标的（名称 + 代码）+ 右侧"换股票"搜索框。
  *
- * 「五档行情」「下单」「关键指标」「所属板块」共用这一份——它们都读
- * `activeStockStore`，表头长得一样，换票入口也只该有一个写法。
+ * 「五档行情」「下单」「关键指标」「所属板块」共用这一份。标的由各自的
+ * `usePaneStock` 给（跟随中的格子读工作区标的，解绑的格子读自己的固定值），
+ * 表头只负责显示和换票。
  */
-export function ActiveStockHeader({ extra }: { extra?: React.ReactNode }) {
-  const stock = useActiveStockStore((s) => s.stock)
-  const setStock = useActiveStockStore((s) => s.set)
-
+export function ActiveStockHeader({
+  stock,
+  onPick,
+  extra,
+}: {
+  stock: ActiveStock | null
+  onPick: (code: string, name: string) => void
+  extra?: React.ReactNode
+}) {
   return (
     <header className="border-hairline flex h-9 shrink-0 items-center gap-2 border-b px-2">
       {stock ? (
@@ -29,7 +35,7 @@ export function ActiveStockHeader({ extra }: { extra?: React.ReactNode }) {
         placeholder="换股票…"
         ariaLabel="搜索要查看的股票"
         excludeIndexes
-        onPick={(code, name) => setStock({ code, name })}
+        onPick={onPick}
       />
     </header>
   )

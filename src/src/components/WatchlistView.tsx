@@ -25,8 +25,7 @@ import { Input } from "@/components/ui/input"
 import { DataEmpty, DataLoading } from "@/components/data-state"
 import { cn } from "@/lib/utils"
 import KlineDrawer from "./KlineDrawer"
-import { groupOf, linkedReceivers, useLayoutStore } from "@/stores/layoutStore"
-import { hintPaneLinkOnce } from "@/lib/pane-link-hint"
+import { useLayoutStore } from "@/stores/layoutStore"
 
 type SortField = "price" | "change" | "market_value" | "circulation_value" | "added_at"
 type SortDir = "asc" | "desc"
@@ -39,11 +38,10 @@ interface RichStock extends WatchlistItem {
 /**
  * 自选股。
  *
- * 放进网格时（带 `leafId` / `layoutId`）：点某只票把 K 线**派发出去**——默认在本格
- * 打开子页面，也可以在表头手动关联到另一格（如「个股详情」或某个行情格），点行就
- * 在那一格打开。关联 / 解关联只影响"点行去哪一格"，不改这一格的内容。
+ * 放进网格时（带 `leafId` / `layoutId`）：点某只票只是把工作区当前标的换掉——跟随中的
+ * 看盘格（个股详情 / 五档 / 下单 / 关键指标 / 所属板块）一起换票，解绑固定的格子不动。
  *
- * 作为独立页面（侧栏「自选」）时没有别的格子可派发，K 线就在本页内开。
+ * 作为独立页面（侧栏「自选」）时没有别的格子可看，K 线就在本页内开。
  */
 export default function WatchlistView({
   leafId,
@@ -56,30 +54,21 @@ export default function WatchlistView({
   const addWatchlist = useAddWatchlist()
   const deleteWatchlist = useDeleteWatchlist()
 
-  // 独立页面模式的 K 线（网格模式下派发到别的格子，不用这份状态）
+  // 独立页面模式的 K 线（网格模式下由跟随中的看盘格显示，不用这份状态）
   const [pageKline, setPageKline] = useState<{ symbol: string; name: string } | null>(null)
-  const openStockInPane = useLayoutStore((s) => s.openStockInPane)
   const selectStock = useLayoutStore((s) => s.selectStock)
-  // 订阅 groups：拖拽改组后这一格的派发目标要立刻跟着变
-  useLayoutStore((s) => (layoutId ? s.groups[layoutId] : null))
-  const receivers = linkedReceivers(layoutId, leafId)
-  const groupId = layoutId ? groupOf(layoutId, leafId) : null
 
   const openStock = useCallback(
     (code: string, name: string) => {
+      // 独立页面（侧栏「自选」）没有别的格子可看，K 线就地开
       if (!layoutId || !leafId) {
         setPageKline({ symbol: code, name })
         return
       }
-      // 联动组里的接收方都更新；没成组就不盖榜单，只选中 + 提示一次
-      if (receivers.length === 0) {
-        selectStock(code, name)
-        hintPaneLinkOnce(groupId ? "no-receiver" : "unlinked")
-        return
-      }
-      for (const receiver of receivers) openStockInPane(layoutId, receiver, code, name)
+      // 网格里：只换工作区当前标的，跟随中的看盘格一起换票
+      selectStock(code, name)
     },
-    [layoutId, leafId, receivers, groupId, openStockInPane, selectStock]
+    [layoutId, leafId, selectStock]
   )
 
   // ── Real-time quotes via streams（内部按 60 一片拆成多条 SSE） ──

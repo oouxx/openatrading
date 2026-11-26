@@ -3,20 +3,14 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import RightPanel from "@/components/RightPanel"
 import PaneEditOverlay from "@/components/PaneEditOverlay"
 import PaneMaximizeButton from "@/components/PaneMaximizeButton"
-import { Link2, Move } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import PaneStockPage from "@/components/PaneStockPage"
+import PaneFollowToggle from "@/components/PaneFollowToggle"
 import PaneKindSwitcher from "@/components/PaneKindSwitcher"
-import { usePaneDragLink } from "@/hooks/usePaneDragLink"
-import { usePaneDragStore } from "@/stores/paneDragStore"
-import { cn } from "@/lib/utils"
 
 import { PANE_DEFINITIONS } from "@/lib/paneRegistry"
 import {
   countLeaves,
   findLeaf,
-  groupOf,
-  groupPeerLabels,
+  isFollowPaneKind,
   paneSizing,
   resolvePaneKind,
   useLayoutStore,
@@ -79,82 +73,6 @@ function PaneKindButton({
   )
 }
 
-/**
- * 格子角落的拖动把手：按住拖到另一格上 = 进同一个联动组，拖到空白处 = 退出组。
- *
- * 它同时是**组标识**：在组里就换成链环图标 + 品牌色（每格恒定一枚，一对多也不会
- * 长出第二个徽标）。提示里会列出同组的其它格子。
- */
-function PaneDragHandle({
-  layoutId,
-  leafId,
-  linked,
-  peers,
-  alwaysVisible,
-}: {
-  layoutId: string
-  leafId: string
-  linked: boolean
-  /** 同组其它格子的名字，用在提示里 */
-  peers: string[]
-  alwaysVisible?: boolean
-}) {
-  const begin = usePaneDragLink(layoutId)
-  const dragging = usePaneDragStore((s) => s.sourceId === leafId)
-  const Icon = linked ? Link2 : Move
-  const label = linked
-    ? `已联动${peers.length > 0 ? `：与${peers.map((name) => `「${name}」`).join("")}一组` : ""}（拖到空白处解除，拖到别的格改组）`
-    : "拖到另一格联动（榜单与看盘格互拖都行）"
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={label}
-      title={label}
-      onPointerDown={(event) => begin(leafId, event)}
-      className={cn(
-        "bg-surface/90 border-hairline hover:bg-hover text-tertiary hover:text-primary absolute top-1.5 right-19 z-30 rounded-md border transition-opacity",
-        alwaysVisible || dragging || linked
-          ? "opacity-100"
-          : "opacity-0 group-hover/pane:opacity-100",
-        (dragging || linked) && "text-brand hover:text-brand"
-      )}
-    >
-      <Icon />
-    </Button>
-  )
-}
-
-/**
- * 每格都挂把手：**两个方向都认**——把接收方（个股详情 / 对话格）拖到榜单上，同样
- * 等于"榜单派发到它"，关联方向永远由谁是派发方决定，跟谁被拖动无关。
- */
-function PaneDragHandleSlot({
-  leaf,
-  layout,
-  alwaysVisible,
-}: {
-  leaf: PaneLeaf
-  layout: WorkspaceLayout
-  alwaysVisible?: boolean
-}) {
-  // 订阅 links：拖拽改关联后把手要立刻亮/灭。关联的方向由谁是派发方决定，
-  // 所以派发方和接收方都算"有关联"
-  useLayoutStore((s) => s.groups[layout.id])
-  const linked = groupOf(layout.id, leaf.id) !== null
-  const peers = linked ? groupPeerLabels(layout.id, leaf.id) : []
-  return (
-    <PaneDragHandle
-      layoutId={layout.id}
-      leafId={leaf.id}
-      linked={linked}
-      peers={peers}
-      alwaysVisible={alwaysVisible}
-    />
-  )
-}
-
 /** 首次打开时的分配比例：按各面板"想要多少宽度"归一化成百分比，避免超宽被裁。 */
 function defaultSizes(children: LayoutNode[]): string[] {
   // 分割子树的权重按叶子数给：3×3 那种九格网格不该和对话栏五五开
@@ -170,13 +88,39 @@ function defaultSizes(children: LayoutNode[]): string[] {
 }
 
 /**
+ * 格子右上角的一组按钮：跟随开关（仅看盘格）+ 换内容 + 放大。
+ *
+ * 三家都浮在角落而不是焊进各自的表头：十几种面板表头形态各不相同，焊进去就会
+ * 有的格子进得去出不来。
+ */
+function PaneCornerActions({
+  leaf,
+  layout,
+  alwaysVisible,
+}: {
+  leaf: PaneLeaf
+  layout: WorkspaceLayout
+  alwaysVisible?: boolean
+}) {
+  const presetKinds = useLayoutStore((s) => s.presetKinds)
+  const kind = resolvePaneKind(layout, leaf, presetKinds)
+  return (
+    <>
+      {isFollowPaneKind(kind) && (
+        <PaneFollowToggle leaf={leaf} layout={layout} alwaysVisible={alwaysVisible} />
+      )}
+      <PaneKindButton leaf={leaf} layout={layout} alwaysVisible={alwaysVisible} />
+      <PaneMaximizeButton leafId={leaf.id} alwaysVisible={alwaysVisible} />
+    </>
+  )
+}
+
+/**
  * 一格的定位外壳：`group/pane` 让右上角按钮能跟着悬停出现，顺便把"鼠标在哪一格"
  * 记进 store —— ⌘↵ 需要一个作用对象，光标所在格就是最不意外的那一个。
  */
 function PaneFrame({ paneId, children }: { paneId: string; children: ReactNode }) {
   const setActivePane = useLayoutStore((s) => s.setActivePane)
-  const dragging = usePaneDragStore((s) => s.sourceId !== null)
-  const isDropTarget = usePaneDragStore((s) => s.hoverId === paneId)
 
   return (
     <div
@@ -186,14 +130,6 @@ function PaneFrame({ paneId, children }: { paneId: string; children: ReactNode }
       onPointerDown={() => setActivePane(paneId)}
     >
       {children}
-      {/* 拖拽中：落点高亮 + 一句"松手关联到此格" */}
-      {dragging && isDropTarget && (
-        <div className="border-brand/70 bg-brand/[0.06] pointer-events-none absolute inset-0 z-40 rounded-md border-2 border-dashed">
-          <span className="bg-brand text-pure-white text-caption shadow-modal absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md px-2 py-1">
-            松手关联到此格
-          </span>
-        </div>
-      )}
     </div>
   )
 }
@@ -232,10 +168,7 @@ function MaximizedPaneLayout({
       <Panel id={leaf.id} className="min-h-0 min-w-0">
         <PaneFrame paneId={leaf.id}>
           {renderPane(leaf)}
-          <PaneStockPage leafId={leaf.id} />
-          <PaneDragHandleSlot leaf={leaf} layout={layout} alwaysVisible />
-          <PaneKindButton leaf={leaf} layout={layout} alwaysVisible />
-          <PaneMaximizeButton leafId={leaf.id} alwaysVisible />
+          <PaneCornerActions leaf={leaf} layout={layout} alwaysVisible />
         </PaneFrame>
       </Panel>
     </Group>
@@ -296,11 +229,7 @@ export default function LayoutNodeView({
     return (
       <PaneFrame paneId={node.id}>
         {renderPane(node)}
-        {/* 每一格都能当 K 线子页面的宿主：拖拽关联到哪一格就在哪一格开 */}
-        <PaneStockPage leafId={node.id} />
-        {!editing && <PaneDragHandleSlot leaf={node} layout={layout} />}
-        {!editing && <PaneKindButton leaf={node} layout={layout} />}
-        {!editing && <PaneMaximizeButton leafId={node.id} />}
+        {!editing && <PaneCornerActions leaf={node} layout={layout} />}
         {editing && (
           <PaneEditOverlay leaf={node} layout={layout} parentOrientation={parentOrientation} />
         )}

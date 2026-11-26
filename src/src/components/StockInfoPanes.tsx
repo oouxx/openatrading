@@ -3,9 +3,10 @@ import { ActiveStockHeader } from "@/components/ActiveStockHeader"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { subscribeRealtime, type RealtimeQuote } from "@/hooks/useRealtimeStream"
 import { usePlatesByStock, type PlateByStockItem } from "@/hooks/query/usePlatesByStock"
+import { usePaneStock } from "@/hooks/usePaneStock"
 import { formatCompactNumber, formatRatioPct, pctClass } from "@/lib/format"
 import { classifySymbol, toUpstreamSymbol } from "@/lib/stock-utils"
-import { useActiveStockStore } from "@/stores/activeStockStore"
+import type { ActiveStock } from "@/stores/activeStockStore"
 
 /**
  * 「关键指标」「所属板块」两个网格格子。
@@ -16,13 +17,12 @@ import { useActiveStockStore } from "@/stores/activeStockStore"
  */
 
 /** 交易时段内的快照。切换标的时先清空，避免短暂显示上一只票的数字。 */
-function useQuote(): {
+function useQuote(stock: ActiveStock | null): {
   quote: RealtimeQuote | null
   upstream: string
   kind: SymbolKindName
   hasStock: boolean
 } {
-  const stock = useActiveStockStore((s) => s.stock)
   const upstream = stock ? toUpstreamSymbol(stock.code) : ""
   const kind = stock ? classifySymbol(upstream) : "stock"
   const [quote, setQuote] = useState<RealtimeQuote | null>(null)
@@ -76,12 +76,23 @@ function metricsOf(quote: RealtimeQuote, isStock: boolean) {
   return isStock ? rows : rows.filter((row) => TRADEABLE_LABELS.has(row.label))
 }
 
-export function QuoteMetricsPane() {
-  const { quote, kind, hasStock } = useQuote()
+export function QuoteMetricsPane({
+  layoutId,
+  leafId,
+  symbol,
+  symbolName,
+}: {
+  layoutId: string
+  leafId: string
+  symbol?: string
+  symbolName?: string
+}) {
+  const { stock, select } = usePaneStock({ layoutId, leafId, symbol, symbolName })
+  const { quote, kind, hasStock } = useQuote(stock)
 
   return (
     <div className="bg-surface @container flex h-full min-w-0 flex-col overflow-hidden">
-      <ActiveStockHeader />
+      <ActiveStockHeader stock={stock} onPick={select} />
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {!hasStock ? (
           // 没有标的时不能一直挂骨架屏：那读起来像"正在加载"
@@ -110,8 +121,18 @@ export function QuoteMetricsPane() {
   )
 }
 
-export function SectorsPane() {
-  const stock = useActiveStockStore((s) => s.stock)
+export function SectorsPane({
+  layoutId,
+  leafId,
+  symbol,
+  symbolName,
+}: {
+  layoutId: string
+  leafId: string
+  symbol?: string
+  symbolName?: string
+}) {
+  const { stock, select } = usePaneStock({ layoutId, leafId, symbol, symbolName })
   const upstream = stock ? toUpstreamSymbol(stock.code) : ""
   const isStock = stock != null && classifySymbol(upstream) === "stock"
   // 指数 / 基金没有所属板块：不请求，直接说明
@@ -131,7 +152,7 @@ export function SectorsPane() {
 
   return (
     <div className="bg-surface @container flex h-full min-w-0 flex-col overflow-hidden">
-      <ActiveStockHeader />
+      <ActiveStockHeader stock={stock} onPick={select} />
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {empty ? (
           <p className="text-tertiary text-caption px-1 py-2">{empty}</p>

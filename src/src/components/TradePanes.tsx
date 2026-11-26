@@ -10,31 +10,40 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useRoleList } from "@/hooks/query/useRoleQueries"
+import { usePaneStock } from "@/hooks/usePaneStock"
 import { usePositionOf } from "@/hooks/usePositionOf"
 import { classifySymbol } from "@/lib/stock-utils"
 import { extractStockCode } from "@/lib/trade"
-import { useActiveStockStore } from "@/stores/activeStockStore"
 
 /**
  * 「五档行情」「下单」两个网格格子。
  *
- * 它们跟随**工作区当前标的**（`activeStockStore`）：在自选/榜单里点一只股票，
- * 或者在这两格的搜索框里选一只，两处看的是同一只票。「个股详情」（未解绑时）、
- * 「关键指标」「所属板块」读的也是这一份，所以这几格永远指向同一只。
+ * 标的来自 `usePaneStock`：默认跟随工作区当前标的，右上角的开关可以解绑固定在
+ * 某一只上。所以"在榜单里点一只票 → 这两格跟着换"是零配置的，不需要先建立联动。
  */
 
-export function OrderBookPane() {
-  const stock = useActiveStockStore((s) => s.stock)
+export function OrderBookPane({
+  layoutId,
+  leafId,
+  symbol,
+  symbolName,
+}: {
+  layoutId: string
+  leafId: string
+  symbol?: string
+  symbolName?: string
+}) {
+  const { stock, select } = usePaneStock({ layoutId, leafId, symbol, symbolName })
   // 指数没有盘口：不能把裸代码丢给接口——`000001` 会被查成平安银行
   const isIndex = stock != null && classifySymbol(stock.code) === "index"
-  const symbol = stock && !isIndex ? (extractStockCode(stock.code) ?? stock.code) : ""
+  const code = stock && !isIndex ? (extractStockCode(stock.code) ?? stock.code) : ""
 
   return (
     <div className="bg-surface flex h-full min-w-0 flex-col overflow-hidden">
-      <ActiveStockHeader />
+      <ActiveStockHeader stock={stock} onPick={select} />
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <OrderBookPanel
-          symbol={symbol}
+          symbol={code}
           name={stock?.name}
           placeholder={isIndex ? "指数没有盘口" : "在自选/榜单里点一只股票，或从右上角搜索"}
           className="border-0"
@@ -44,8 +53,18 @@ export function OrderBookPane() {
   )
 }
 
-export function TradePane() {
-  const stock = useActiveStockStore((s) => s.stock)
+export function TradePane({
+  layoutId,
+  leafId,
+  symbol,
+  symbolName,
+}: {
+  layoutId: string
+  leafId: string
+  symbol?: string
+  symbolName?: string
+}) {
+  const { stock, select } = usePaneStock({ layoutId, leafId, symbol, symbolName })
   const { data: roles = [] } = useRoleList()
   const [roleName, setRoleName] = useState<string | null>(null)
   const [side, setSide] = useState<"buy" | "sell">("buy")
@@ -55,7 +74,7 @@ export function TradePane() {
 
   return (
     <div className="bg-surface flex h-full min-w-0 flex-col overflow-hidden">
-      <ActiveStockHeader />
+      <ActiveStockHeader stock={stock} onPick={select} />
       <div className="border-hairline flex h-9 shrink-0 items-center gap-2 border-b px-2">
         <div className="bg-hover border-hairline inline-flex rounded-md border p-0.5">
           {(["buy", "sell"] as const).map((value) => (

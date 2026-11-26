@@ -83,6 +83,22 @@ export const PANE_KIND_LABELS: Record<string, string> = {
 }
 
 /**
+ * 会显示"跟随 / 解绑"开关的看盘格：它们的正文是**一只票**，标的从工作区当前标的来，
+ * 也可以解绑固定。榜单/自选/模拟盘/对话不在其中——它们是"点票的地方"，没有标的可解绑。
+ */
+export const FOLLOW_PANE_KINDS: ReadonlySet<PaneKind> = new Set<PaneKind>([
+  "detail",
+  "orderbook",
+  "trade",
+  "metrics",
+  "sectors",
+])
+
+export function isFollowPaneKind(kind: PaneKind): boolean {
+  return FOLLOW_PANE_KINDS.has(kind)
+}
+
+/**
  * 上下分割里不可用的类型。
  *
  * "行情面板"折叠态是一条 48px 宽的竖条，横过来会散架，所以只允许放在左右分割里。
@@ -114,7 +130,6 @@ export function paneSizing(kind: PaneKind): PaneSizing {
 /**
  * 面板内打开的"下一层页面"。
  *
- * - `stock`：点某只股票打开的 K 线；
  * - `plate`：板块排行里点某个板块打开的板块详情；
  * - `dragon`：龙虎榜里点某只股票打开的上榜详情（含买卖席位）。
  *
@@ -130,7 +145,6 @@ export interface PlateDetailTarget {
 export type DragonDetailTarget = DragonTigerDetailItem
 
 export type PaneDetail =
-  | { type: "stock"; symbol: string; name: string }
   | { type: "plate"; plate: PlateDetailTarget }
   | { type: "dragon"; item: DragonDetailTarget }
 

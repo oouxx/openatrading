@@ -1,46 +1,24 @@
 import { useMemo, type ReactNode } from "react"
 import { PaneNavContext, type PaneNav } from "@/components/paneNavContext"
-import {
-  groupOf,
-  hasFollowingDetailPane,
-  linkedReceivers,
-  useLayoutStore,
-} from "@/stores/layoutStore"
-import { hintPaneLinkOnce } from "@/lib/pane-link-hint"
+import { useLayoutStore } from "@/stores/layoutStore"
 
 import { useRightPanelStore } from "@/stores/rightPanelStore"
 
 /**
  * 面板内的"下一层页面"导航。
  *
- * 点股票要打开 K 线、点板块要打开板块详情：
- * - 股票 K 线：这一格被拖到别的格上关联过就派发过去；没联动就只选中（不盖住榜单），
- *   并提示一次怎么建立联动。
- * - 板块 / 龙虎榜这些详情子页面必须开在**点它的那一格**里：
+ * 点股票只有一件事：**把工作区当前标的换掉**（`selectStock`）。所有跟随中的看盘格
+ * ——个股详情 / 五档 / 下单 / 关键指标 / 所属板块——一起换票；解绑固定的格子不动。
+ *
+ * 以前这里还要判断"这一格有没有联动组、组里的接收方是谁"，然后派发过去。跟随变成
+ * 默认之后那套逻辑没有信息量了：格子要不要跟着走，由它自己的跟随开关决定。
+ *
+ * 板块 / 龙虎榜这些详情子页面必须开在**点它的那一格**里：
  * - 网格格子 → 状态落在这一格的 leaf id 上，放大/还原、切回布局都还在，换榜时统一清掉；
  * - 右侧行情面板 → 沿用面板自身的覆盖层（老行为）。
- *
- * 之前这些点击写的是同一个全局 `klineTarget`，只有右侧面板会渲染它，于是网格里
- * 点股票要么没反应，要么在别的面板里冒出来、关都关不掉。
  */
-
-/** 网格格子用：子页面状态落在自己的 leaf id 上。 */
-export function PaneNavProvider({
-  leafId,
-  layoutId,
-  children,
-}: {
-  leafId: string
-  layoutId: string
-  children: ReactNode
-}) {
-  const openStockInPane = useLayoutStore((s) => s.openStockInPane)
+export function PaneNavProvider({ leafId, children }: { leafId: string; children: ReactNode }) {
   const selectStock = useLayoutStore((s) => s.selectStock)
-  // 联动组是拖出来的（`usePaneDragLink`）：组里有接收方就派发过去，没有就在本格开
-  // 子页面。订阅一下 groups，拖拽改组后这一格的派发目标要立刻跟着变。
-  useLayoutStore((s) => s.groups[layoutId])
-  const receivers = linkedReceivers(layoutId, leafId)
-  const groupId = groupOf(layoutId, leafId)
   const openPanePlate = useLayoutStore((s) => s.openPanePlate)
   const openPaneDragon = useLayoutStore((s) => s.openPaneDragon)
   const closePaneDetail = useLayoutStore((s) => s.closePaneDetail)
@@ -49,20 +27,7 @@ export function PaneNavProvider({
 
   const value = useMemo<PaneNav>(
     () => ({
-      openStock: (symbol, name) => {
-        if (receivers.length === 0) {
-          // 没成组：个股详情格自己会跟随当前标的，所以这里只需要更新标的。
-          selectStock(symbol, name)
-          // 布局里没有任何“正在跟随”的详情格时，点下去什么都不会变，才需要教一次
-          // 怎么放一格出来
-          if (!hasFollowingDetailPane(layoutId)) {
-            hintPaneLinkOnce(groupId ? "no-receiver" : "unlinked")
-          }
-          return
-        }
-        // 一对多：组里的接收方（个股详情跟着换票 / 对话格开 K 线标签）都更新
-        for (const receiver of receivers) openStockInPane(layoutId, receiver, symbol, name)
-      },
+      openStock: (symbol, name) => selectStock(symbol, name),
       plateDetail: top?.type === "plate" ? top.plate : null,
       openPlate: (plate) => openPanePlate(leafId, plate),
       closePlate: () => closePaneDetail(leafId),
@@ -70,19 +35,9 @@ export function PaneNavProvider({
       openDragon: (item) => openPaneDragon(leafId, item),
       closeDragon: () => closePaneDetail(leafId),
     }),
-    [
-      leafId,
-      layoutId,
-      receivers,
-      groupId,
-      top,
-      openStockInPane,
-      selectStock,
-      openPanePlate,
-      openPaneDragon,
-      closePaneDetail,
-    ]
+    [leafId, top, selectStock, openPanePlate, openPaneDragon, closePaneDetail]
   )
+
   return <PaneNavContext.Provider value={value}>{children}</PaneNavContext.Provider>
 }
 

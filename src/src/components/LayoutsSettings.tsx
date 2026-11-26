@@ -327,7 +327,7 @@ export default function LayoutsSettings() {
       <div className="text-tertiary text-caption flex flex-col gap-1 px-1 leading-relaxed">
         <p className="flex items-start gap-1.5">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
-          面板宽度属于这台机器，不同步；结构、内容、拖拽联动与当前布局会同步。
+          面板宽度属于这台机器，不同步；结构、内容、解绑固定与当前布局会同步。
         </p>
         <p className="flex items-start gap-1.5">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />

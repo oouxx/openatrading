@@ -8,7 +8,7 @@ import type { StockSearchItem } from "@/stores/data"
 /**
  * 股票搜索框（带下拉候选）。
  *
- * 对话格与个股详情格都要"搜一只票然后打开它"，两处只有占位符和尺寸不同，
+ * 个股详情格和几个跟随型看盘格都要"搜一只票然后打开它"，各处的占位符和尺寸不同，
  * 逻辑（防抖、请求序号、键盘选择、点外面收起）留在这里一份。
  */
 export function StockSearchBox({

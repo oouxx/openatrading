@@ -57,11 +57,7 @@ const MARKET_DEFINITIONS = Object.fromEntries(
     {
       icon: MARKET_VIEW_ICONS[kind] ?? MessageSquare,
       render: (leaf: PaneLeaf, ctx: PaneRenderContext) => (
-        <MarketPane
-          leafId={leaf.id}
-          layoutId={ctx.layout.id}
-          kind={resolvedMarketKind(leaf, ctx)}
-        />
+        <MarketPane leafId={leaf.id} kind={resolvedMarketKind(leaf, ctx)} />
       ),
     },
   ])
@@ -73,6 +69,19 @@ function resolvedMarketKind(leaf: PaneLeaf, ctx: PaneRenderContext): MarketPaneK
   return (MARKET_PANE_KINDS as readonly string[]).includes(effective)
     ? (effective as MarketPaneKind)
     : "strong-stocks"
+}
+
+/**
+ * 看盘格的公共入参：布局里记着的"解绑固定值"（自定义布局写叶子，内置布局写覆盖表，
+ * 由 `usePaneStock` 自己取舍）。
+ */
+function stockPaneProps(leaf: PaneLeaf, ctx: PaneRenderContext) {
+  return {
+    leafId: leaf.id,
+    layoutId: ctx.layout.id,
+    symbol: leaf.symbol,
+    symbolName: leaf.symbolName,
+  }
 }
 
 export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
@@ -104,23 +113,22 @@ export const PANE_DEFINITIONS: Record<PaneKind, PaneDefinition> = {
     icon: Wallet,
     render: () => <RolePane />,
   },
-  // 这两个格子跟随工作区当前标的（activeStockStore），默认跟「个股详情」格同一只
+  // 这四格和「个股详情」一样：默认跟随工作区当前标的，右上角开关可解绑固定
   orderbook: {
     icon: Layers,
-    render: () => <OrderBookPane />,
+    render: (leaf, ctx) => <OrderBookPane {...stockPaneProps(leaf, ctx)} />,
   },
   trade: {
     icon: ArrowLeftRight,
-    render: () => <TradePane />,
+    render: (leaf, ctx) => <TradePane {...stockPaneProps(leaf, ctx)} />,
   },
-  // 同样跟随工作区当前标的：K 线格只画图，指标和板块各自是一格
   metrics: {
     icon: Gauge,
-    render: () => <QuoteMetricsPane />,
+    render: (leaf, ctx) => <QuoteMetricsPane {...stockPaneProps(leaf, ctx)} />,
   },
   sectors: {
     icon: Boxes,
-    render: () => <SectorsPane />,
+    render: (leaf, ctx) => <SectorsPane {...stockPaneProps(leaf, ctx)} />,
   },
 }
 
