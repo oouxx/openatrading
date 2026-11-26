@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Check, ChevronDown, CircleAlert, Loader2 } from "lucide-react"
+import { ChevronRight, CircleAlert, Loader2 } from "lucide-react"
 import { Collapsible } from "radix-ui"
 import ActivityTimeline, { type ActivityItem } from "./ActivityTimeline"
 import { summarizeTool } from "@/lib/tool-summary"
@@ -25,13 +25,13 @@ function itemLabel(item: ActivityItem): string {
 }
 
 /**
- * 一轮回复里的全部中间步骤（思考 + 工具调用）合并成**一行**。
+ * 一轮回复里的全部中间步骤（思考 + 工具调用）收成**一枚小胶囊**。
  *
- * 只在乎正文的阅读场景下，N 个卡片会把正文挤到视线之外；Claude 的做法是
- * 把整段过程收起来，只有正文是默认展开的。收起态这一行必须自己讲清楚两件
- * 事，否则用户没有理由点开：
- * - 正在进行时：正在做哪一步（图标在转 + 具体动作）
- * - 结束后：一共几步；有失败就显式标出来（失败不能只靠颜色之外的信息隐藏）
+ * 只在乎正文的阅读场景下，N 个卡片会把正文挤到视线之外。形态照 Claude：一枚贴着
+ * 左边缘的圆角小标签（一行字 + 右箭头），点开才是完整时间线。它自己讲清楚两件事，
+ * 否则用户没有理由点开：
+ * - 正在进行时：正在做哪一步（转圈 + 具体动作）
+ * - 结束后：一共几步；有失败就整枚标红并写出来（不能只靠"少了个对勾"暗示）
  */
 export default function ActivityGroup({ items, isStreaming, sessionId }: ActivityGroupProps) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null)
@@ -53,7 +53,7 @@ export default function ActivityGroup({ items, isStreaming, sessionId }: Activit
   const inProgress = !!isStreaming
   const open = manualOpen ?? false
 
-  const label = liveItem
+  const base = liveItem
     ? liveItem.type === "thinking"
       ? "思考中"
       : itemLabel(liveItem)
@@ -62,6 +62,9 @@ export default function ActivityGroup({ items, isStreaming, sessionId }: Activit
       : items.length === 1
         ? itemLabel(items[0])
         : `执行了 ${items.length} 步`
+
+  // 失败要说出来而不是靠颜色：直接写进这一行文字里，胶囊不必再多一个角标
+  const label = !inProgress && failures > 0 ? `${base} · ${failures} 个失败` : base
 
   const tone = inProgress
     ? liveItem?.type === "tool" && liveItem.toolCall.status === "running"
@@ -72,35 +75,30 @@ export default function ActivityGroup({ items, isStreaming, sessionId }: Activit
       : "text-tertiary"
 
   return (
-    <Collapsible.Root open={open} onOpenChange={(next) => setManualOpen(next)} className="my-1.5">
-      <Collapsible.Trigger className="group hover:bg-hover/50 flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-colors">
-        {inProgress ? (
-          <Loader2 className={cn("size-3.5 shrink-0 animate-spin", tone)} />
-        ) : failures > 0 ? (
-          <CircleAlert className={cn("size-3.5 shrink-0", tone)} />
-        ) : (
-          <Check className={cn("size-3.5 shrink-0", tone)} />
+    <Collapsible.Root open={open} onOpenChange={(next) => setManualOpen(next)} className="my-2">
+      <Collapsible.Trigger
+        className={cn(
+          "group border-hairline hover:bg-hover inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-left transition-colors",
+          failures > 0 && !inProgress ? "border-danger/30" : ""
         )}
+      >
+        {inProgress ? (
+          <Loader2 className={cn("size-3 shrink-0 animate-spin", tone)} />
+        ) : failures > 0 ? (
+          <CircleAlert className={cn("size-3 shrink-0", tone)} />
+        ) : null}
         <span
           className={cn(
-            "text-body min-w-0 flex-1 truncate",
-            inProgress
-              ? "text-primary font-medium"
-              : failures > 0
-                ? "text-danger"
-                : "text-secondary"
+            "text-caption min-w-0 truncate",
+            inProgress ? "text-primary" : failures > 0 ? "text-danger" : "text-secondary"
           )}
-          title={label}
         >
           {label}
         </span>
-        {!inProgress && failures > 0 && (
-          <span className="text-danger text-caption shrink-0">· {failures} 个失败</span>
-        )}
-        <ChevronDown className="text-tertiary size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+        <ChevronRight className="text-tertiary size-3 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-90" />
       </Collapsible.Trigger>
       <Collapsible.Content className="reasoning-content overflow-hidden">
-        <div className="pt-1 pl-1">
+        <div className="pt-2 pl-1">
           <ActivityTimeline
             items={items}
             isStreaming={isStreaming}
