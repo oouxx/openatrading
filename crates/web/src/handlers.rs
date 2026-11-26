@@ -795,7 +795,8 @@ pub async fn get_plates_by_any_stock_data(
     get_or_fetch_json_tauri(
         &state.cache,
         &format!("plates_by_any_stock_{symbol}"),
-        CachePolicy::realtime(),
+        // 板块涨幅跟着盘面走：和盘口同档 3 秒，前端也是 3 秒一轮
+        CachePolicy::tick(),
         || async {
             let client = XuanguBaoClient::new();
             let data = client
