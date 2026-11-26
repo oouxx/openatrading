@@ -213,9 +213,8 @@ export default function LandingPage() {
                   下载安装包
                 </a>
               </Button>
-              <p className="text-tertiary text-caption mt-5">首次打开需解除隔离：</p>
               <CopyCodeBlock
-                className="mt-2"
+                className="mt-5"
                 text="xattr -dr com.apple.quarantine /Applications/OpenATrading.app"
               />
               <p className="text-tertiary text-caption mt-4">
