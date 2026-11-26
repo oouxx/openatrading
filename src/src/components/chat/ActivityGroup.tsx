@@ -18,6 +18,14 @@ function isLive(item: ActivityItem): boolean {
   return s === "streaming" || s === "running"
 }
 
+/** 这组里最后一次工具动作：多步时用它当摘要（全是思考就退回"思考过程"）。 */
+function lastActionLabel(items: ActivityItem[]): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].type === "tool") return itemLabel(items[i])
+  }
+  return "思考过程"
+}
+
 /** 单步的动作说明，收起态那一行文字就用它。 */
 function itemLabel(item: ActivityItem): string {
   if (item.type === "thinking") return "思考过程"
@@ -28,10 +36,11 @@ function itemLabel(item: ActivityItem): string {
  * 一轮回复里的全部中间步骤（思考 + 工具调用）收成**一枚小胶囊**。
  *
  * 只在乎正文的阅读场景下，N 个卡片会把正文挤到视线之外。形态照 Claude：一枚贴着
- * 左边缘的圆角小标签（一行字 + 右箭头），点开才是完整时间线。它自己讲清楚两件事，
- * 否则用户没有理由点开：
- * - 正在进行时：正在做哪一步（转圈 + 具体动作）
- * - 结束后：一共几步；有失败就整枚标红并写出来（不能只靠"少了个对勾"暗示）
+ * 左边缘的圆角小标签（一行字 + 右箭头），点开才是完整时间线。
+ *
+ * 文案是**动作摘要**而不是步数（Claude 那枚写的也是"做了什么"，不是"做了几件"）：
+ * 进行中是手头这一步，结束后是这组里最后一次工具动作；步数与失败数只作为后缀——
+ * `运行 date "…" · 3 步 · 1 个失败`。失败整枚标红，不能只靠"少了个对勾"暗示。
  */
 export default function ActivityGroup({ items, isStreaming, sessionId }: ActivityGroupProps) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null)
@@ -49,7 +58,7 @@ export default function ActivityGroup({ items, isStreaming, sessionId }: Activit
 
   if (items.length === 0) return null
 
-  // 一轮还没结束就不给对勾——那等于宣告“做完了”。
+  // 一轮还没结束就只说"手头在做什么"，不写步数——那等于宣告这一组收尾了。
   const inProgress = !!isStreaming
   const open = manualOpen ?? false
 
@@ -61,10 +70,13 @@ export default function ActivityGroup({ items, isStreaming, sessionId }: Activit
       ? "处理中"
       : items.length === 1
         ? itemLabel(items[0])
-        : `执行了 ${items.length} 步`
+        : lastActionLabel(items)
 
-  // 失败要说出来而不是靠颜色：直接写进这一行文字里，胶囊不必再多一个角标
-  const label = !inProgress && failures > 0 ? `${base} · ${failures} 个失败` : base
+  // 后缀只在有信息量时加：一步不写步数，失败必须写出来
+  const parts = [base]
+  if (!inProgress && !liveItem && items.length > 1) parts.push(`${items.length} 步`)
+  if (!inProgress && failures > 0) parts.push(`${failures} 个失败`)
+  const label = parts.join(" · ")
 
   const tone = inProgress
     ? liveItem?.type === "tool" && liveItem.toolCall.status === "running"
